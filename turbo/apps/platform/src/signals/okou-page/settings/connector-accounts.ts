@@ -94,6 +94,23 @@ export async function readConnectorAccountMutationVersion(
   return null;
 }
 
+export async function connectorAccountConnectionExists(
+  createClient: ApiClientFactory,
+  target: ConnectorAccountTarget,
+  connectionId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const result = await accept(
+    createClient(connectorAccountsContract).connection({
+      params: { connectionId },
+      query: target,
+      fetchOptions: { signal },
+    }),
+    [200, 404],
+  );
+  return result.status === 200;
+}
+
 export function connectorAccountMutationCompleted(
   account: ConnectorAccountMutationIntent,
   initialVersion: ConnectorAccountMutationVersion,

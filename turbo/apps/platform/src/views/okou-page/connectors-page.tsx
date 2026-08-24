@@ -72,7 +72,10 @@ import {
   connectorAccountSummaryStatus,
   type ConnectorAccountSummaryStatus,
 } from "./components/settings/connector-card.tsx";
-import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
+import {
+  launchConnectorConnect,
+  type ConnectorConnectHandlers,
+} from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import { ConnectorAgentAccessButton } from "./components/settings/connector-agent-access-button.tsx";
@@ -108,9 +111,11 @@ import {
   builtinAccountManager$,
   closeBuiltinAccountConnectDialog$,
   closeBuiltinAccountManager$,
+  openConnectorAccountNamePrompt$,
   openBuiltinAccountConnectDialog$,
   openBuiltinAccountManager$,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { ConnectorAccountNameDialog } from "./components/settings/connector-account-name-dialog.tsx";
 
 function connectorCategoryTranslation(
   id: string,
@@ -895,7 +900,6 @@ interface SettingsConnectorCardProps {
   readonly busy: boolean;
   readonly disconnecting: boolean;
   readonly connect: ConnectorConnectHandlers;
-  readonly onAdd: () => void;
   readonly onManageAccounts: () => void;
   readonly onManageAccess: () => void;
   readonly onDisconnect: () => void;
@@ -952,7 +956,7 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
         summary={props.accountSummary}
         summaryStatus={props.accountSummaryStatus}
         busy={props.busy}
-        onAdd={props.onAdd}
+        connect={props.connect}
         onManage={props.onManageAccounts}
         manageAccess={manageAccess}
       />
@@ -1008,6 +1012,7 @@ export function ZeroConnectorsPage() {
   const closeAccountManager = useSet(closeBuiltinAccountManager$);
   const openAccountConnect = useSet(openBuiltinAccountConnectDialog$);
   const closeAccountConnect = useSet(closeBuiltinAccountConnectDialog$);
+  const openAccountNamePrompt = useSet(openConnectorAccountNamePrompt$);
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -1107,6 +1112,64 @@ export function ZeroConnectorsPage() {
     };
   };
 
+  const finishExplicitAccountAdd = (
+    connector: PlatformConnectorCatalogStatusItem,
+    connectionId: string | null,
+  ) => {
+    reloadAccountSummaries();
+    reloadAccountList();
+    if (connectionId) {
+      openAccountNamePrompt({
+        target: { kind: "builtin", connectorSlug: connector.slug },
+        connectionId,
+        connectorLabel: connector.label,
+      });
+    }
+  };
+
+  const accountConnectHandlers = (
+    connector: PlatformConnectorCatalogStatusItem,
+  ): ConnectorConnectHandlers => {
+    return {
+      openModal: () => {
+        openAccountConnect(connector, { kind: "add" });
+      },
+      connectBrowserAuth: async (authMethod) => {
+        const result = await connect(
+          connector.slug,
+          authMethod,
+          {
+            account: { intent: "add" },
+            connectorLabel: connector.label,
+            connectorIcon: connector.icon,
+          },
+          signal,
+        );
+        if (result) {
+          finishExplicitAccountAdd(connector, result.connectionId);
+        }
+        return result;
+      },
+      connectNoAuth: async (authMethod) => {
+        const result = await connectNoAuth(
+          {
+            connectorSlug: connector.slug,
+            authMethod,
+            options: {
+              account: { intent: "add" },
+              connectorLabel: connector.label,
+            },
+          },
+          signal,
+        );
+        if (result) {
+          finishExplicitAccountAdd(connector, result.connectionId);
+        }
+        return result;
+      },
+    };
+  };
+
   const disconnectHandler = async (
     connectorSlug: ConnectorSlug,
     connectorLabel: string,
@@ -1137,12 +1200,13 @@ export function ZeroConnectorsPage() {
         connected={isConnected}
         busy={isPolling}
         disconnecting={disconnecting}
-        connect={connectHandlers(c)}
+        connect={
+          connectorAccountsEnabled
+            ? accountConnectHandlers(c)
+            : connectHandlers(c)
+        }
         onDisconnect={() => {
           detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
-        }}
-        onAdd={() => {
-          return openAccountConnect(c, { kind: "add" });
         }}
         onManageAccounts={() => {
           return openAccountManager(c);
@@ -1265,9 +1329,8 @@ export function ZeroConnectorsPage() {
           onClose={() => {
             closeAccountConnect();
           }}
-          onSuccess={() => {
-            reloadAccountSummaries();
-            reloadAccountList();
+          onSuccess={(connectionId) => {
+            finishExplicitAccountAdd(accountConnect.connector, connectionId);
           }}
         />
       )}
@@ -1285,7 +1348,11 @@ export function ZeroConnectorsPage() {
             closeAccountManager();
           }}
           onAdd={() => {
-            openAccountConnect(managedAccountConnector, { kind: "add" });
+            closeAccountManager();
+            launchConnectorConnect({
+              connector: managedAccountConnector,
+              ...accountConnectHandlers(managedAccountConnector),
+            });
           }}
           onReconnect={(account) => {
             openAccountConnect(managedAccountConnector, {
@@ -1339,6 +1406,7 @@ export function ZeroConnectorsPage() {
           }}
         />
       )}
+      <ConnectorAccountNameDialog />
 
       {managedConnectorSlug && managedConnectorLabel && (
         <ConnectorAccessManagementDialog

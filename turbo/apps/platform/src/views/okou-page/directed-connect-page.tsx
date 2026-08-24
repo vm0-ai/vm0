@@ -38,6 +38,7 @@ import {
   getOnlyManualConnectorStatusAuthMethod,
   hasConnectorStatusProviderDrivenConnectMethod,
   manualGrantInputValuesForMethod,
+  type ConnectorConnectionResult,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { hasTokenInputValue } from "../../signals/okou-page/settings/token-input.ts";
@@ -95,7 +96,7 @@ function runDirectedConnect(
         readonly agentId?: string;
       },
       signal: AbortSignal,
-    ) => Promise<boolean>;
+    ) => Promise<ConnectorConnectionResult | false>;
     connectNoAuth: (
       args: {
         readonly connectorSlug: ConnectorSlug;
@@ -106,7 +107,7 @@ function runDirectedConnect(
         };
       },
       signal: AbortSignal,
-    ) => Promise<boolean>;
+    ) => Promise<ConnectorConnectionResult | false>;
     openConnectModal: () => void;
     openManualGrantDialog: () => void;
     onSuccess: () => void | Promise<void>;

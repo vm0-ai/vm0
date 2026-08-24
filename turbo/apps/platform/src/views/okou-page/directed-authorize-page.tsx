@@ -17,6 +17,7 @@ import {
   getOnlyAvailableStatusNoAuthMethod,
   justConnectedSlugs$,
   pollingOAuthAuthCodeConnectorSlug$,
+  type ConnectorConnectionResult,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -297,7 +298,7 @@ function runDirectedAuthorize(
         readonly agentId?: string;
       },
       signal: AbortSignal,
-    ) => Promise<boolean>;
+    ) => Promise<ConnectorConnectionResult | false>;
     readonly connectNoAuth: (
       args: {
         readonly connectorSlug: ConnectorSlug;
@@ -308,7 +309,7 @@ function runDirectedAuthorize(
         };
       },
       signal: AbortSignal,
-    ) => Promise<boolean>;
+    ) => Promise<ConnectorConnectionResult | false>;
     readonly openConnectModal: () => void;
     readonly reloadAuthorization: () => void;
     readonly onSuccess: () => void | Promise<void>;
@@ -340,7 +341,7 @@ function runDirectedAuthorize(
   if ((browserAuthMethod && params.item) || noAuthMethod) {
     detach(
       (async () => {
-        let connected = false;
+        let connected: ConnectorConnectionResult | false = false;
         if (browserAuthMethod && params.item) {
           connected = await params.connect(
             params.connectorSlug,

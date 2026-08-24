@@ -2787,6 +2787,7 @@ async function persistCustomConnectorValues(
       readonly connector: CustomConnectorRow;
       readonly runtimeRecovered: boolean;
       readonly connectedConnection: boolean;
+      readonly connectedAccountId: string;
     }
   | BadRequestResponse
   | NotFoundResponse
@@ -2824,15 +2825,17 @@ async function persistCustomConnectorValues(
       customConnectorId: args.request.connectorId,
     },
   };
+  let connectedAccountId: string;
   if (state.preservesStoredValues) {
     const connection = await writeConnectorConnectionMetadata(args.tx, {
       ...connectionArgs,
       resolution: state.resolution,
     });
+    connectedAccountId = connection.id;
     signal.throwIfAborted();
     await writeValues(args.tx, connection.id, signal);
   } else {
-    await replaceConnectorConnection(
+    const connection = await replaceConnectorConnection(
       args.tx,
       {
         ...connectionArgs,
@@ -2843,11 +2846,13 @@ async function persistCustomConnectorValues(
       },
       signal,
     );
+    connectedAccountId = connection.id;
   }
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
     connectedConnection: true,
+    connectedAccountId,
   };
 }
 
@@ -2863,7 +2868,7 @@ export const setCustomConnectorValues$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    | CustomConnectorResponse
+    | (CustomConnectorResponse & { readonly connectedAccountId: string })
     | BadRequestResponse
     | NotFoundResponse
     | ForbiddenResponse
@@ -2885,14 +2890,6 @@ export const setCustomConnectorValues$ = command(
     if (connector.authMode !== "manual") {
       return badRequestMessage(
         "OAuth custom connectors must be connected through OAuth",
-      );
-    }
-    if (
-      args.account?.intent === "add" &&
-      args.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a custom connector account",
       );
     }
     const featureSwitchContext = await get(
@@ -2962,11 +2959,14 @@ export const setCustomConnectorValues$ = command(
       userId: args.userId,
     });
     signal.throwIfAborted();
-    return serialiseCustomConnector({
-      row: writeResult.connector,
-      valueMarkers: markers,
-      connectedConnection: writeResult.connectedConnection,
-    });
+    return {
+      ...serialiseCustomConnector({
+        row: writeResult.connector,
+        valueMarkers: markers,
+        connectedConnection: writeResult.connectedConnection,
+      }),
+      connectedAccountId: writeResult.connectedAccountId,
+    };
   },
 );
 

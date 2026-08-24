@@ -135,6 +135,7 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 async function requestOauthStart(
   connectorSlug: string,
   options: {
+    readonly accountIntent?: "add" | "single-account";
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
@@ -156,7 +157,7 @@ async function requestOauthStart(
     headers,
     body: JSON.stringify({
       authMethod: options.authMethod ?? "oauth",
-      account: { intent: "single-account" },
+      account: { intent: options.accountIntent ?? "single-account" },
       ...(options.callbackTarget
         ? { callbackTarget: options.callbackTarget }
         : {}),
@@ -216,6 +217,20 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expectOauthState(authorizationUrl);
+  });
+
+  it("returns the future connection id for an unnamed account addition", async () => {
+    const response = await requestOauthStart("test-oauth", {
+      accountIntent: "add",
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(200);
+    const body = connectorOauthStartResponseSchema.parse(await response.json());
+    expect(body.connectionId).toBeTruthy();
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("keeps an omitted callback target on the existing Web callback", async () => {
@@ -405,13 +420,18 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
+      accountIntent: "add",
       callbackTarget: "app",
       headers: authHeaders(),
       origin: OKOU_API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const startBody = connectorOauthStartResponseSchema.parse(
+      await response.json(),
+    );
+    const authorizationUrl = new URL(startBody.authorizationUrl);
+    expect(startBody.connectionId).toBeTruthy();
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://airtable.com/oauth2/v1/authorize",
     );
@@ -446,6 +466,14 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(tokenBodies).toHaveLength(1);
     expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
     expect(tokenBodies[0]?.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]+$/u);
+    const connected = await app.request(
+      `${API_ORIGIN}/api/connectors/airtable`,
+      { headers: authHeaders() },
+    );
+    expect(connected.status).toBe(200);
+    await expect(connected.json()).resolves.toMatchObject({
+      id: startBody.connectionId,
+    });
   });
 
   it("reuses the direct Okou redirect URI for a Google token exchange", async () => {
