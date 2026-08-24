@@ -333,9 +333,12 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       status: "pending",
     });
     expect(survivorRunRead).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(survivorRun.runId)).resolves.toBe(
-      survivorVersionId,
-    );
+    await expect(
+      readAgentRunVersionFixture(survivorRun.runId),
+    ).resolves.toBeNull();
+    await expect(
+      readAgentComposeVersionProvenanceFixture(survivorVersionId),
+    ).resolves.toMatchObject({ composeId: survivor.agentId });
     await expectCheckpointSucceeds(survivorOwner, survivorRun.runId);
     await expect(
       readUsageEventRunIdFixture(pendingUsageId),

@@ -4,6 +4,7 @@ import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { materializeAgentLegacyVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
 import { overrideCanonicalAgentAuthorityFixture } from "../../../test-fixtures/canonical-agent-authority";
 import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
@@ -136,6 +137,7 @@ describe("GET /api/agents", () => {
       }),
       [201],
     );
+    await materializeAgentLegacyVersionFixture(first.body.agentId);
 
     const legacy = await overrideCanonicalAgentAuthorityFixture({
       agentId: first.body.agentId,

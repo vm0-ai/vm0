@@ -224,8 +224,8 @@ function runnerPreference(job: RunnerJob | null | undefined) {
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const MCP_CONNECTOR_PROMPT_HEADING = "# MCP Custom Connectors";
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
-const MISSING_AGENT_CONFIGURATION_MESSAGE =
-  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+const MISSING_DIRECT_AGENT_VALUES_MESSAGE =
+  "Missing required values: vars.OKOU_AGENT_ID, secrets.OKOU_TOKEN";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
@@ -1628,7 +1628,7 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("returns a current remediation when a direct Agent has no compose version", async () => {
+  it("resolves a direct canonical Agent when its legacy compose has no version", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
     await setAgentComposeVersionlessFixture(context, agentId);
@@ -1644,11 +1644,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      MISSING_AGENT_CONFIGURATION_MESSAGE,
+      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
     );
   });
 
-  it("returns the same remediation when a Session Agent loses its compose version", async () => {
+  it("resolves a Session canonical Agent when its legacy compose loses its version", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
     const first = await api.createDirectRun(actor, {
@@ -1671,7 +1671,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      MISSING_AGENT_CONFIGURATION_MESSAGE,
+      MISSING_DIRECT_AGENT_VALUES_MESSAGE,
     );
   });
 
@@ -14618,15 +14618,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       throw new Error("The legacy compose fixture requires an organization");
     }
 
-    const canonicalCompose =
+    const initialLegacyCompose =
       await readHistoricalAgentComposeHeadFixture(agentId);
-    const canonicalAgent = Object.values(
-      canonicalCompose.content?.agents ?? {},
+    const initialLegacyAgent = Object.values(
+      initialLegacyCompose.content?.agents ?? {},
     )[0];
-    expect(canonicalAgent?.environment).toStrictEqual({
-      OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-      OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-    });
+    expect(initialLegacyAgent?.environment).toBeUndefined();
 
     const legacyEnvironment = {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
@@ -14635,7 +14632,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const legacyCompose = await api.createHistoricalCompose(actor, {
       version: "1",
       agents: {
-        [canonicalCompose.name]: {
+        [initialLegacyCompose.name]: {
           framework: "claude-code",
           environment: legacyEnvironment,
         },
