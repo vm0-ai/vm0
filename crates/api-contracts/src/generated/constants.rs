@@ -104,6 +104,10 @@ pub mod runners {
     /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
     pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
 
+    /// Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.
+    /// This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.
+    pub const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = 1;
+
     /// Maximum builtin firewall catalog response and cache size accepted by runners.
     /// This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.
     pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16777216;

@@ -1,5 +1,6 @@
 """Tests for built-in registry catalog payload and trust validation."""
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,7 @@ import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
 import state_file
+from generated.builtin_firewall_cache import BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION
 from tests.registry_builtin_helpers import (
     cache_firewall,
     write_catalog_cache,
@@ -107,7 +109,7 @@ class TestRegistryBuiltinCatalogValidation:
             mitm_ctx(),
             patch.object(
                 builtin_firewall_cache,
-                "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
+                "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
                 actual_size - 1,
             ),
             patch.object(
@@ -123,6 +125,25 @@ class TestRegistryBuiltinCatalogValidation:
         assert snapshot.catalog is None
         assert snapshot.unavailable_reason == "cache_invalid"
         assert spy.call_count == 0
+
+    def test_runner_catalog_cache_rejects_unsupported_schema_version(self, tmp_path, mitm_ctx):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
+        )
+        raw = json.loads(cache_path.read_text())
+        raw["schemaVersion"] = BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION + 1
+        write_trusted_catalog_cache_text(cache_path, json.dumps(raw, sort_keys=True))
+
+        with mitm_ctx():
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is not None
+        assert snapshot.catalog is None
+        assert snapshot.unavailable_reason == "cache_invalid"
 
     @pytest.mark.parametrize(
         "template_whitespace",
