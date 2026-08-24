@@ -18,6 +18,11 @@ class ConnectedIpEndpoint:
     parsed_ip: ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
+def client_peername(client: object) -> tuple[str, int] | None:
+    """Return the client peer address pair after shape validation without parsing its host."""
+    return address_pair(getattr(client, "peername", None))
+
+
 def server_address(server: object) -> tuple[str, int] | None:
     return address_pair(getattr(server, "address", None))
 
