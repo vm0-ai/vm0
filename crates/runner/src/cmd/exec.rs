@@ -1,4 +1,4 @@
-//! Execute a command inside a running VM for live debugging.
+//! Execute a command inside a running sandbox for live debugging.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -41,11 +41,11 @@ pub struct ExecArgs {
     #[arg(long, default_value = "30")]
     timeout: u32,
 
-    /// Run the command with sudo inside the VM
+    /// Run the command with sudo inside the sandbox
     #[arg(long)]
     sudo: bool,
 
-    /// Command to execute inside the VM (after `--`).
+    /// Command to execute inside the sandbox (after `--`).
     ///
     /// Arguments are preserved as argv — pipes, redirects, globs, and
     /// variable expansion must be invoked explicitly via a shell:

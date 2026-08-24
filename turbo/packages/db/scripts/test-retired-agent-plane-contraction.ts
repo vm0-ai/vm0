@@ -51,13 +51,22 @@ const artifactRunIds = [
   "00000000-0000-4000-8200-000000980002",
 ] as const;
 const artifactThreadId = "00000000-0000-4000-8300-000000980001";
+const artifactConversationIds = artifactRunIds.map((_, index) => {
+  return `00000000-0000-4000-9000-${String(980_001 + index).padStart(12, "0")}`;
+});
+const artifactCheckpointIds = artifactRunIds.map((_, index) => {
+  return `00000000-0000-4000-9100-${String(980_001 + index).padStart(12, "0")}`;
+});
 const canonicalAgentId = "00000000-0000-4000-8400-000000980001";
 const canonicalSessionId = "00000000-0000-4000-8500-000000980001";
 const canonicalRunId = "00000000-0000-4000-8600-000000980001";
 const canonicalConversationId = "00000000-0000-4000-8700-000000980001";
 const canonicalCheckpointId = "00000000-0000-4000-8800-000000980001";
+const canonicalThreadId = "00000000-0000-4000-8300-000000980002";
+const canonicalThreadEventId = "00000000-0000-4000-9200-000000980028";
 const storageId = "00000000-0000-4000-8900-000000980001";
 const usageEventId = "00000000-0000-4000-8a00-000000980001";
+const protectedUsageEventId = "00000000-0000-4000-8a00-000000980002";
 const usageRollupId = "00000000-0000-4000-8b00-000000980001";
 const usageAllocationId = "00000000-0000-4000-8c00-000000980001";
 const entitlementId = "00000000-0000-4000-8d00-000000980001";
@@ -319,12 +328,6 @@ async function seedApprovedClosure(
       [artifactThreadId, artifactIds[0]],
     );
 
-    const conversations = artifactRunIds.map((_, index) => {
-      return `00000000-0000-4000-9000-${String(980_001 + index).padStart(12, "0")}`;
-    });
-    const checkpoints = artifactRunIds.map((_, index) => {
-      return `00000000-0000-4000-9100-${String(980_001 + index).padStart(12, "0")}`;
-    });
     await client.query(
       `
         INSERT INTO "conversations" (
@@ -335,7 +338,7 @@ async function seedApprovedClosure(
         FROM unnest($1::uuid[], $2::uuid[])
           AS "conversation"("conversation_id", "run_id")
       `,
-      [conversations, artifactRunIds],
+      [artifactConversationIds, artifactRunIds],
     );
     await client.query(
       `
@@ -348,7 +351,7 @@ async function seedApprovedClosure(
         FROM unnest($1::uuid[], $2::uuid[], $3::uuid[])
           AS "checkpoint"("checkpoint_id", "run_id", "conversation_id")
       `,
-      [checkpoints, artifactRunIds, conversations],
+      [artifactCheckpointIds, artifactRunIds, artifactConversationIds],
     );
 
     await seedProtectedHistory(client);
@@ -408,6 +411,34 @@ async function seedProtectedHistory(client: Client): Promise<void> {
   );
   await client.query(
     `
+      INSERT INTO "chat_threads" (
+        "id", "user_id", "agent_id", "title"
+      ) VALUES ($1, 'stage8-protected-user', $2, 'stage8 protected thread')
+    `,
+    [canonicalThreadId, canonicalAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_thread_events" (
+        "id", "user_id", "org_id", "chat_thread_id", "kind",
+        "agent_id", "title", "seq_id"
+      ) VALUES ($1, 'stage8-protected-user', 'stage8-protected-org', $2,
+        'created', $3, 'stage8 protected thread', 1)
+    `,
+    [canonicalThreadEventId, canonicalThreadId, canonicalAgentId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_event_search_messages" (
+        "chat_thread_id", "seq_id", "user_id", "org_id", "agent_id",
+        "role", "created_at", "text", "text_bigram"
+      ) VALUES ($1, 1, 'stage8-protected-user', 'stage8-protected-org', $2,
+        'user', now(), 'stage8 protected message', 'stage8 protected message')
+    `,
+    [canonicalThreadId, canonicalAgentId],
+  );
+  await client.query(
+    `
       INSERT INTO "storages" (
         "id", "user_id", "org_id", "name", "s3_prefix"
       ) VALUES ($1, 'stage8-protected-user', 'stage8-protected-org',
@@ -423,6 +454,20 @@ async function seedProtectedHistory(client: Client): Promise<void> {
         'stage8-protected-user', 1)
     `,
     ["f".repeat(64), storageId],
+  );
+  await client.query(
+    `
+      INSERT INTO "usage_event" (
+        "id", "run_id", "idempotency_key", "org_id", "user_id", "kind",
+        "provider", "category", "quantity", "credits_charged", "status"
+      ) VALUES ($1, $2, $3, 'stage8-protected-org', 'stage8-protected-user',
+        'model', 'fixture', 'tokens', 20, 2, 'processed')
+    `,
+    [
+      protectedUsageEventId,
+      canonicalRunId,
+      "00000000-0000-4000-9500-000000980002",
+    ],
   );
 
   const anchorEventIds = Array.from({ length: 27 }, (_, index) => {
@@ -545,37 +590,136 @@ async function assertFinalState(client: Client): Promise<void> {
   `);
   assert.equal(legacyColumns.rows[0]?.count, 0);
 
+  const deletedArtifactRows = await client.query<{
+    sessionCount: number;
+    runCount: number;
+    conversationCount: number;
+    checkpointCount: number;
+    threadCount: number;
+    searchMessageCount: number;
+  }>(
+    `
+      SELECT
+        (SELECT count(*)::integer FROM "agent_sessions"
+          WHERE "id" = ANY($1::uuid[])) AS "sessionCount",
+        (SELECT count(*)::integer FROM "agent_runs"
+          WHERE "id" = ANY($2::uuid[])) AS "runCount",
+        (SELECT count(*)::integer FROM "conversations"
+          WHERE "id" = ANY($3::uuid[])) AS "conversationCount",
+        (SELECT count(*)::integer FROM "checkpoints"
+          WHERE "id" = ANY($4::uuid[])) AS "checkpointCount",
+        (SELECT count(*)::integer FROM "chat_threads"
+          WHERE "id" = $5) AS "threadCount",
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $5) AS "searchMessageCount"
+    `,
+    [
+      artifactSessionIds,
+      artifactRunIds,
+      artifactConversationIds,
+      artifactCheckpointIds,
+      artifactThreadId,
+    ],
+  );
+  assert.deepEqual(deletedArtifactRows.rows, [
+    {
+      sessionCount: 0,
+      runCount: 0,
+      conversationCount: 0,
+      checkpointCount: 0,
+      threadCount: 0,
+      searchMessageCount: 0,
+    },
+  ]);
+
   const protectedRows = await client.query<{
     agentCount: number;
     sessionCount: number;
     runCount: number;
+    conversationCount: number;
     checkpointCount: number;
+    threadCount: number;
+    eventCount: number;
+    searchMessageCount: number;
     storageCount: number;
     storageVersionCount: number;
+    usageEventCount: number;
     anchorCount: number;
   }>(
     `
       SELECT
-        (SELECT count(*)::integer FROM "agents" WHERE "id" = $1) AS "agentCount",
-        (SELECT count(*)::integer FROM "agent_sessions" WHERE "id" = $2) AS "sessionCount",
+        (SELECT count(*)::integer FROM "agents"
+          WHERE "id" = $1
+            AND "org_id" = 'stage8-protected-org'
+            AND "owner" = 'stage8-protected-user'
+            AND "name" = 'stage8-protected-agent') AS "agentCount",
+        (SELECT count(*)::integer FROM "agent_sessions"
+          WHERE "id" = $2
+            AND "user_id" = 'stage8-protected-user'
+            AND "org_id" = 'stage8-protected-org'
+            AND "agent_id" = $1) AS "sessionCount",
         (SELECT count(*)::integer FROM "agent_runs"
-          WHERE "id" = $3 AND "launch_snapshot" IS NOT NULL) AS "runCount",
+          WHERE "id" = $3
+            AND "status" = 'completed'
+            AND "session_id" = $2
+            AND "launch_snapshot" =
+              '{"schemaVersion":1,"framework":"claude-code","runnerProfile":"default"}'::jsonb)
+          AS "runCount",
+        (SELECT count(*)::integer FROM "conversations"
+          WHERE "id" = $4
+            AND "run_id" = $3
+            AND "cli_agent_session_id" = 'stage8-protected-session')
+          AS "conversationCount",
         (SELECT count(*)::integer FROM "checkpoints"
-          WHERE "id" = $4 AND "storage_mounts" = '{"protected":true}'::jsonb)
+          WHERE "id" = $5
+            AND "run_id" = $3
+            AND "conversation_id" = $4
+            AND "storage_mounts" = '{"protected":true}'::jsonb)
           AS "checkpointCount",
-        (SELECT count(*)::integer FROM "storages" WHERE "id" = $5) AS "storageCount",
-        (SELECT count(*)::integer FROM "storage_versions" WHERE "storage_id" = $5)
+        (SELECT count(*)::integer FROM "chat_threads"
+          WHERE "id" = $6
+            AND "user_id" = 'stage8-protected-user'
+            AND "agent_id" = $1
+            AND "title" = 'stage8 protected thread') AS "threadCount",
+        (SELECT count(*)::integer FROM "chat_thread_events"
+          WHERE "id" = $7
+            AND "chat_thread_id" = $6
+            AND "agent_id" = $1
+            AND "title" = 'stage8 protected thread') AS "eventCount",
+        (SELECT count(*)::integer FROM "chat_event_search_messages"
+          WHERE "chat_thread_id" = $6
+            AND "seq_id" = 1
+            AND "agent_id" = $1
+            AND "text" = 'stage8 protected message') AS "searchMessageCount",
+        (SELECT count(*)::integer FROM "storages"
+          WHERE "id" = $8
+            AND "name" = 'stage8-protected-storage'
+            AND "s3_prefix" = 'stage8/protected/storage') AS "storageCount",
+        (SELECT count(*)::integer FROM "storage_versions"
+          WHERE "storage_id" = $8
+            AND "s3_key" = 'stage8/protected/storage/version'
+            AND "archive_size" = 1)
           AS "storageVersionCount",
+        (SELECT count(*)::integer FROM "usage_event"
+          WHERE "id" = $9
+            AND "run_id" = $3
+            AND "quantity" = 20
+            AND "credits_charged" = 2) AS "usageEventCount",
         (SELECT count(*)::integer FROM "chat_thread_events"
           WHERE "id"::text LIKE '00000000-0000-4000-9200-%'
+            AND "id" <> $7
             AND "agent_id" IS NULL) AS "anchorCount"
     `,
     [
       canonicalAgentId,
       canonicalSessionId,
       canonicalRunId,
+      canonicalConversationId,
       canonicalCheckpointId,
+      canonicalThreadId,
+      canonicalThreadEventId,
       storageId,
+      protectedUsageEventId,
     ],
   );
   assert.deepEqual(protectedRows.rows, [
@@ -583,32 +727,57 @@ async function assertFinalState(client: Client): Promise<void> {
       agentCount: 1,
       sessionCount: 1,
       runCount: 1,
+      conversationCount: 1,
       checkpointCount: 1,
+      threadCount: 1,
+      eventCount: 1,
+      searchMessageCount: 1,
       storageCount: 1,
       storageVersionCount: 1,
+      usageEventCount: 1,
       anchorCount: 27,
     },
   ]);
 
   const billing = await client.query<{
-    usageEventRunId: string | null;
-    rollupRunId: string | null;
-    allocationRunId: string | null;
-    shortWindowRunId: string | null;
-    weeklyWindowRunId: string | null;
+    usageEventCount: number;
+    rollupCount: number;
+    allocationCount: number;
+    shortWindowCount: number;
+    weeklyWindowCount: number;
+    entitlementCount: number;
   }>(
     `
       SELECT
-        (SELECT "run_id"::text FROM "usage_event" WHERE "id" = $1)
-          AS "usageEventRunId",
-        (SELECT "run_id"::text FROM "usage_event_hourly_rollup" WHERE "id" = $2)
-          AS "rollupRunId",
-        (SELECT "run_id"::text FROM "usage_allowance_allocations" WHERE "id" = $3)
-          AS "allocationRunId",
-        (SELECT "created_by_run_id"::text FROM "org_usage_allowance_windows"
-          WHERE "id" = $4) AS "shortWindowRunId",
-        (SELECT "created_by_run_id"::text FROM "org_usage_allowance_windows"
-          WHERE "id" = $5) AS "weeklyWindowRunId"
+        (SELECT count(*)::integer FROM "usage_event"
+          WHERE "id" = $1
+            AND "run_id" IS NULL
+            AND "quantity" = 10
+            AND "credits_charged" = 1) AS "usageEventCount",
+        (SELECT count(*)::integer FROM "usage_event_hourly_rollup"
+          WHERE "id" = $2
+            AND "run_id" IS NULL
+            AND "quantity" = 10
+            AND "credits_charged" = 1) AS "rollupCount",
+        (SELECT count(*)::integer FROM "usage_allowance_allocations"
+          WHERE "id" = $3
+            AND "run_id" IS NULL
+            AND "usage_event_id" = $1
+            AND "units_applied" = 1) AS "allocationCount",
+        (SELECT count(*)::integer FROM "org_usage_allowance_windows"
+          WHERE "id" = $4
+            AND "created_by_run_id" IS NULL
+            AND "kind" = 'short'
+            AND "unit_limit" = 100) AS "shortWindowCount",
+        (SELECT count(*)::integer FROM "org_usage_allowance_windows"
+          WHERE "id" = $5
+            AND "created_by_run_id" IS NULL
+            AND "kind" = 'weekly'
+            AND "unit_limit" = 1000) AS "weeklyWindowCount",
+        (SELECT count(*)::integer FROM "org_usage_allowance_entitlements"
+          WHERE "id" = $6
+            AND "short_window_units" = 100
+            AND "weekly_window_units" = 1000) AS "entitlementCount"
     `,
     [
       usageEventId,
@@ -616,15 +785,17 @@ async function assertFinalState(client: Client): Promise<void> {
       usageAllocationId,
       shortWindowId,
       weeklyWindowId,
+      entitlementId,
     ],
   );
   assert.deepEqual(billing.rows, [
     {
-      usageEventRunId: null,
-      rollupRunId: null,
-      allocationRunId: null,
-      shortWindowRunId: null,
-      weeklyWindowRunId: null,
+      usageEventCount: 1,
+      rollupCount: 1,
+      allocationCount: 1,
+      shortWindowCount: 1,
+      weeklyWindowCount: 1,
+      entitlementCount: 1,
     },
   ]);
 }
@@ -635,6 +806,14 @@ function assertStaticBoundary(): void {
   );
   assert.doesNotMatch(productionMigrationSql, /\bCASCADE\b/u);
   assert.doesNotMatch(productionMigrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    productionMigrationSql,
+    /_stage8_preservation|current_preservation|\bbit_xor\s*\(|\bhashtextextended\s*\(/u,
+  );
+  assert.match(
+    productionMigrationSql,
+    /Broad before\/after preservation acceptance is controller-owned through\s+-- read-only MaskDB/u,
+  );
   assert.match(
     productionMigrationSql,
     /01390c8ae78016cf5cb60f7cf50ee70d5400e4a4/u,
@@ -856,14 +1035,64 @@ async function validateExactCleanupAndLockRetry(): Promise<void> {
         syntheticMigrationSql(),
         /lock timeout|canceling statement due to lock timeout/u,
       );
-      const artifactsAfterRollback = await client.query<{ count: number }>(
+      const rollbackState = await client.query<{
+        artifactCount: number;
+        sessionCount: number;
+        runCount: number;
+        threadCount: number;
+        searchMessageCount: number;
+        protectedCount: number;
+        triggerCount: number;
+        functionCount: number;
+      }>(
         `
-        SELECT count(*)::integer AS "count" FROM "agent_composes"
-        WHERE "id" = ANY($1::uuid[])
-      `,
-        [artifactIds],
+          SELECT
+            (SELECT count(*)::integer FROM "agent_composes"
+              WHERE "id" = ANY($1::uuid[])) AS "artifactCount",
+            (SELECT count(*)::integer FROM "agent_sessions"
+              WHERE "id" = ANY($2::uuid[])) AS "sessionCount",
+            (SELECT count(*)::integer FROM "agent_runs"
+              WHERE "id" = ANY($3::uuid[])) AS "runCount",
+            (SELECT count(*)::integer FROM "chat_threads"
+              WHERE "id" = $4) AS "threadCount",
+            (SELECT count(*)::integer FROM "chat_event_search_messages"
+              WHERE "chat_thread_id" = $4) AS "searchMessageCount",
+            (SELECT count(*)::integer FROM "agents" WHERE "id" = $5) +
+              (SELECT count(*)::integer FROM "agent_runs" WHERE "id" = $6) +
+              (SELECT count(*)::integer FROM "storages" WHERE "id" = $7)
+              AS "protectedCount",
+            (SELECT count(*)::integer FROM "pg_trigger"
+              WHERE NOT "tgisinternal"
+                AND "tgname" IN (
+                  'agent_compose_versions_delete_veto',
+                  'bridge_agent_composes_to_agents_0966'
+                )) AS "triggerCount",
+            (SELECT count(*)::integer FROM "pg_proc"
+              WHERE "proname" = 'bridge_legacy_agent_to_agents_0966')
+              AS "functionCount"
+        `,
+        [
+          artifactIds,
+          artifactSessionIds,
+          artifactRunIds,
+          artifactThreadId,
+          canonicalAgentId,
+          canonicalRunId,
+          storageId,
+        ],
       );
-      assert.equal(artifactsAfterRollback.rows[0]?.count, 6);
+      assert.deepEqual(rollbackState.rows, [
+        {
+          artifactCount: 6,
+          sessionCount: 22,
+          runCount: 2,
+          threadCount: 1,
+          searchMessageCount: 2,
+          protectedCount: 3,
+          triggerCount: 2,
+          functionCount: 1,
+        },
+      ]);
 
       await lockClient.query("ROLLBACK");
       await runMigration(client, syntheticMigrationSql());

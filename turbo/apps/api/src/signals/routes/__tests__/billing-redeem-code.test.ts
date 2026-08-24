@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { EVENT } from "@axiomhq/logging";
 import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billing";
 import { http, HttpResponse } from "msw";
 
@@ -16,6 +17,9 @@ const mocks = createRouteMocks(context);
 const ATOM_URL = "https://atom.example.test";
 const ATOM_MACHINE_SECRET_KEY = "msk_test_atom";
 const ATOM_M2M_TOKEN = "mt_test_atom";
+const MACHINE_SECRET_ALIAS_RESOLUTION_EVENT =
+  "billing_machine_secret_alias_resolution";
+const MACHINE_SECRET_LOG_CONTEXT = "api:zero:billing-redeem-code";
 
 interface SessionFixture {
   readonly userId: string;
@@ -51,6 +55,7 @@ function setAdminSession(): SessionFixture {
 describe("POST /api/billing/redeem-code", () => {
   beforeEach(() => {
     mockOptionalEnv("ATOM_URL", ATOM_URL);
+    mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", undefined);
     mockOptionalEnv("VM0_MACHINE_SECRET_KEY", ATOM_MACHINE_SECRET_KEY);
     context.mocks.clerk.m2m.createToken.mockResolvedValue({
       token: ATOM_M2M_TOKEN,
@@ -139,6 +144,7 @@ describe("POST /api/billing/redeem-code", () => {
   });
 
   it("returns 503 when Atom Clerk M2M auth is not configured", async () => {
+    mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", undefined);
     mockOptionalEnv("VM0_MACHINE_SECRET_KEY", undefined);
     setAdminSession();
 
@@ -160,6 +166,63 @@ describe("POST /api/billing/redeem-code", () => {
       },
     });
     expect(context.mocks.clerk.m2m.createToken).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      MACHINE_SECRET_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      MACHINE_SECRET_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
+  });
+
+  it("fails closed when Atom Clerk M2M auth aliases conflict", async () => {
+    const canonicalSecret = "canonical-secret-must-not-leak";
+    const legacySecret = "legacy-secret-must-not-leak";
+    mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", canonicalSecret);
+    mockOptionalEnv("VM0_MACHINE_SECRET_KEY", legacySecret);
+    setAdminSession();
+    let calledAtom = false;
+    server.use(
+      http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
+        calledAtom = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
+      billingRedeemCodeContract,
+    );
+    const response = await accept(
+      client.create({
+        body: { code: "YUMA-123" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Redeem service not configured",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(context.mocks.clerk.m2m.createToken).not.toHaveBeenCalled();
+    expect(calledAtom).toBeFalsy();
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      MACHINE_SECRET_ALIAS_RESOLUTION_EVENT,
+      {
+        [EVENT]: { source: "api" },
+        source: "conflicting-dual",
+        context: MACHINE_SECRET_LOG_CONTEXT,
+      },
+    );
+    const warningLog = JSON.stringify(
+      context.mocks.axiomLogging.warn.mock.calls,
+    );
+    expect(warningLog).not.toContain(canonicalSecret);
+    expect(warningLog).not.toContain(legacySecret);
   });
 
   it("returns 503 when Atom Clerk M2M auth fails", async () => {
@@ -334,41 +397,84 @@ describe("POST /api/billing/redeem-code", () => {
     });
   });
 
-  it("redeems a code through Atom", async () => {
-    const fixture = setAdminSession();
-    let requestedBody: unknown = null;
-    let requestedAuthorization: string | null = null;
-    server.use(
-      http.post(`${ATOM_URL}/api/redeem-codes/consume`, async ({ request }) => {
-        requestedAuthorization = request.headers.get("authorization");
-        requestedBody = await request.json();
-        return HttpResponse.json({ ok: true });
-      }),
-    );
+  it.each([
+    {
+      source: "canonical-only",
+      canonical: "msk_test_atom_canonical",
+      legacy: undefined,
+      expected: "msk_test_atom_canonical",
+    },
+    {
+      source: "legacy-only",
+      canonical: undefined,
+      legacy: "msk_test_atom_legacy",
+      expected: "msk_test_atom_legacy",
+    },
+    {
+      source: "equal-dual",
+      canonical: "msk_test_atom_equal_dual",
+      legacy: "msk_test_atom_equal_dual",
+      expected: "msk_test_atom_equal_dual",
+    },
+  ])(
+    "redeems a code with $source machine secret configuration",
+    async ({ source, canonical, legacy, expected }) => {
+      mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", canonical);
+      mockOptionalEnv("VM0_MACHINE_SECRET_KEY", legacy);
+      const fixture = setAdminSession();
+      let requestedBody: unknown = null;
+      let requestedAuthorization: string | null = null;
+      server.use(
+        http.post(
+          `${ATOM_URL}/api/redeem-codes/consume`,
+          async ({ request }) => {
+            requestedAuthorization = request.headers.get("authorization");
+            requestedBody = await request.json();
+            return HttpResponse.json({ ok: true });
+          },
+        ),
+      );
 
-    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      billingRedeemCodeContract,
-    );
-    const response = await accept(
-      client.create({
-        body: { code: " YUMA-123 " },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+      const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
+        billingRedeemCodeContract,
+      );
+      const response = await accept(
+        client.create({
+          body: { code: " YUMA-123 " },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
 
-    expect(response.body).toStrictEqual({ redeemed: true });
-    expect(context.mocks.clerk.m2m.createToken).toHaveBeenCalledWith({
-      machineSecretKey: ATOM_MACHINE_SECRET_KEY,
-      secondsUntilExpiration: 3600,
-      minRemainingTtlSeconds: 300,
-    });
-    expect(requestedAuthorization).toBe(`Bearer ${ATOM_M2M_TOKEN}`);
-    expect(requestedBody).toStrictEqual({
-      code: "YUMA-123",
-      email: fixture.email,
-      org_id: fixture.orgId,
-      user_id: fixture.userId,
-    });
-  });
+      expect(response.body).toStrictEqual({ redeemed: true });
+      expect(context.mocks.clerk.m2m.createToken).toHaveBeenCalledWith({
+        machineSecretKey: expected,
+        secondsUntilExpiration: 3600,
+        minRemainingTtlSeconds: 300,
+      });
+      expect(requestedAuthorization).toBe(`Bearer ${ATOM_M2M_TOKEN}`);
+      expect(requestedBody).toStrictEqual({
+        code: "YUMA-123",
+        email: fixture.email,
+        org_id: fixture.orgId,
+        user_id: fixture.userId,
+      });
+      const expectedAliasLogs =
+        source === "legacy-only"
+          ? [
+              [
+                MACHINE_SECRET_ALIAS_RESOLUTION_EVENT,
+                {
+                  [EVENT]: { source: "api" },
+                  source: "legacy-only",
+                  context: MACHINE_SECRET_LOG_CONTEXT,
+                },
+              ],
+            ]
+          : [];
+      expect(context.mocks.axiomLogging.debug.mock.calls).toStrictEqual(
+        expectedAliasLogs,
+      );
+    },
+  );
 });

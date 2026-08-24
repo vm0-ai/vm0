@@ -76,7 +76,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
     );
 
     // Wait for resource ownership to settle: the failed idle entry has been
-    // destroyed and the fresh-create VM is parked as the single idle lease.
+    // destroyed and the fresh-create sandbox is parked as the single idle lease.
     // `idle_pool.len() == 1` is true before the job starts, so budget must be
     // the first terminal-state probe.
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
@@ -131,7 +131,7 @@ async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-unpark-status".to_string()],
-        "pre-run status should list the idle VM",
+        "pre-run status should list the idle sandbox",
     );
 
     let run_handle = tokio::spawn(run(config));

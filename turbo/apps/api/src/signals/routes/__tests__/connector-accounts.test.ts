@@ -184,6 +184,15 @@ describe("connector account lifecycle routes", () => {
     );
 
     expect(response.body.error.message).toBe("Resource not found");
+    const exact = await accept(
+      accountClient().connection({
+        headers: authHeaders(),
+        params: { connectionId: randomUUID() },
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [404],
+    );
+    expect(exact.body.error.message).toBe("Resource not found");
   });
 
   it("adds siblings and manages exact default and deletion lifecycle", async () => {
@@ -215,6 +224,28 @@ describe("connector account lifecycle routes", () => {
       [200],
     );
     expect(second.body.id).not.toBe(first.body.id);
+
+    const exact = await accept(
+      accountClient().connection({
+        headers: authHeaders(),
+        params: { connectionId: second.body.id },
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [200],
+    );
+    expect(exact.body).toMatchObject({
+      id: second.body.id,
+      displayName: "Personal",
+      isDefault: false,
+    });
+    await accept(
+      accountClient().connection({
+        headers: authHeaders(),
+        params: { connectionId: second.body.id },
+        query: { kind: "builtin", connectorSlug: "github" },
+      }),
+      [404],
+    );
 
     const listed = await accept(
       accountClient().connections({
@@ -648,6 +679,14 @@ describe("connector account lifecycle routes", () => {
     );
     expect(listed.body.connections).toStrictEqual([]);
     await accept(
+      accountClient().connection({
+        headers: authHeaders(),
+        params: { connectionId: account.body.id },
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [404],
+    );
+    await accept(
       accountClient().rename({
         headers: authHeaders(),
         params: { connectionId: account.body.id },
@@ -687,6 +726,17 @@ describe("connector account lifecycle routes", () => {
           kind: "builtin",
           connectorSlug: "retired-connector",
           limit: 100,
+        },
+      }),
+      [404],
+    );
+    await accept(
+      accountClient().connection({
+        headers: authHeaders(),
+        params: { connectionId: accountId },
+        query: {
+          kind: "builtin",
+          connectorSlug: "retired-connector",
         },
       }),
       [404],
@@ -817,6 +867,22 @@ describe("connector account lifecycle routes", () => {
           })
           .sort(),
       ).toStrictEqual(["Personal", "Work"]);
+
+      const exact = await accept(
+        accountClient().connection({
+          headers: authHeaders(),
+          params: { connectionId: accounts.body.connections[0]!.id },
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+          },
+        }),
+        [200],
+      );
+      expect(exact.body.target).toStrictEqual({
+        kind: "custom",
+        customConnectorId: definition.body.id,
+      });
 
       const safeDisconnect = await accept(
         accountClient().disconnectSingleAccount({

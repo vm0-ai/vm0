@@ -168,6 +168,21 @@ export const connectorAccountsContract = c.router({
     },
     summary: "List one target's connector accounts",
   },
+  connection: {
+    method: "GET",
+    path: "/api/connector-accounts/:connectionId",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    query: connectorAccountTargetQuerySchema,
+    responses: {
+      200: connectorAccountConnectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get one exact connector account",
+  },
   rename: {
     method: "PATCH",
     path: "/api/connector-accounts/:connectionId",

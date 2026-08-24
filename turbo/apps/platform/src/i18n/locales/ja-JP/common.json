@@ -489,6 +489,26 @@
       "zoomIn": "Zoom 内",
       "zoomOut": "Zoom アウト"
     },
+    "annotation": {
+      "attach": "マークを添付",
+      "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "notePlaceholder": "ここをどう変えたいか書いてください",
+      "open": "注釈",
+      "redo": "やり直す",
+      "removeMark": "マークを削除",
+      "subtitle_other": "{{count}} 件のマーク",
+      "tools": {
+        "arrow": "矢印",
+        "box": "矩形",
+        "crop": "切り抜き",
+        "highlight": "ハイライト",
+        "pen": "手描き",
+        "redact": "塗りつぶし",
+        "select": "選択",
+        "text": "テキスト"
+      },
+      "undo": "元に戻す"
+    },
     "attachments": {
       "cancelUpload": "アップロードをキャンセル {{filename}}",
       "download": "{{filename}} をダウンロード",
@@ -1015,12 +1035,24 @@
       "signIn": "サインイン",
       "signUp": "サインアップ"
     },
+    "homeLink": "{{brandName}} のホームに移動",
     "loading": "認証を読み込み中",
+    "theme": {
+      "darkEnabled": "ダークテーマを有効にしました",
+      "lightEnabled": "ライトテーマを有効にしました"
+    },
     "toggleTheme": "テーマの切り替え",
     "v2": {
-      "continueToSignIn": "現在のサインインに進む",
-      "continueToSignUp": "現在のサインアップに進む",
-      "unavailable": "新しい認証画面はまだ利用できません。"
+      "signIn": {
+        "action": "現在のサインインを使用",
+        "description": "新しいサインイン画面はまだ利用できません。",
+        "title": "{{brandName}} にサインイン"
+      },
+      "signUp": {
+        "action": "現在のサインアップを使用",
+        "description": "新しいサインアップ画面はまだ利用できません。",
+        "title": "{{brandName}} アカウントを作成"
+      }
     }
   },
   "authorization": {
@@ -1665,6 +1697,36 @@
       "weeklyAt": "毎週 {{time}} で",
       "weeklyOnAt": "毎週 {{days}} の {{time}}"
     },
+    "banking": {
+      "accountFallback": "銀行口座",
+      "actionFailed": "銀行の操作に失敗しました",
+      "active_other": "{{count}}口座へのアクセスが有効です",
+      "automationOff": "自動化の実行では読み取り専用アクセスを利用できません。",
+      "cancel": "キャンセル",
+      "change": "変更",
+      "connect": "銀行を接続",
+      "continue": "続ける",
+      "duration": "アクセス期間",
+      "expiresAt": "{{time}}に期限切れ",
+      "grant": "アクセスを許可",
+      "institutionFallback": "金融機関",
+      "loadFailed": "銀行アクセスを読み込めませんでした",
+      "noAccounts": "利用可能な正常な口座がありません。まず金融機関を再接続または修復してください。",
+      "oneDay": "24時間",
+      "oneHour": "1時間",
+      "popupBlocked": "Zeroのポップアップを許可してから、もう一度お試しください。",
+      "readOnly": "口座、残高、取引 · 読み取り専用",
+      "repair": "修復",
+      "repairRequired": "{{institution}}は修復が必要です",
+      "retry": "再試行",
+      "revoke": "取り消す",
+      "revokeConfirm": "このエージェントの銀行アクセスを取り消しますか？",
+      "selectAccounts": "口座を選択",
+      "sevenDays": "7日間",
+      "thirtyDays": "30日間",
+      "title": "銀行アクセスのリクエスト",
+      "waiting": "Mastercard Data Connectでの操作を待っています。そこで完了してから、チャットに戻ってください。"
+    },
     "billing": {
       "addCreditsToContinue": "クレジットを追加すると、{{assistantName}} とのチャットを続けることができます。",
       "askAdminCredits": "{{assistantName}} とチャットを続けることができるように、ワークスペース管理者にクレジットを追加するように依頼してください。",
@@ -2134,6 +2196,39 @@
       "search": "エージェントを探す",
       "title": "{{connector}} アクセスを管理する",
       "unnamedAgent": "無名"
+    },
+    "accounts": {
+      "accountName": "アカウント名",
+      "accountsUnavailable": "このコネクターのアカウントは利用できません。",
+      "actions": "アカウント操作",
+      "add": "追加",
+      "addAccount": "アカウントを追加",
+      "connected": "接続済み",
+      "default": "デフォルト",
+      "deleteAccount": "アカウントを削除",
+      "deleteDescription": "このアカウントを使用しているスレッドは、デフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount": "{{value}} 件のスレッドがデフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} を削除しますか？",
+      "find": "アカウントを検索",
+      "loading": "アカウントを読み込み中…",
+      "loadingMore": "読み込み中…",
+      "loadMore": "さらに読み込む",
+      "makeDefault": "デフォルトに設定",
+      "manage": "管理",
+      "managerTitle": "{{connector}} のアカウントを管理",
+      "noAccounts": "アカウントなし",
+      "noAccountsFound": "アカウントが見つかりません",
+      "reconnectRequired": "再接続が必要です",
+      "rename": "名前を変更",
+      "summaryMany": "{{value}} 件のアカウント",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} 件のアカウント",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "仕事用アカウント"
     },
     "actions": {
       "apply": "申し込む",

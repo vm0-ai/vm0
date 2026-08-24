@@ -489,6 +489,27 @@
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट"
     },
+    "annotation": {
+      "attach": "चिह्न संलग्न करें",
+      "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
+      "open": "टिप्पणी करें",
+      "redo": "फिर से करें",
+      "removeMark": "चिह्न हटाएँ",
+      "subtitle_one": "{{count}} चिह्न",
+      "subtitle_other": "{{count}} चिह्न",
+      "tools": {
+        "arrow": "तीर",
+        "box": "बॉक्स",
+        "crop": "काटें",
+        "highlight": "हाइलाइट",
+        "pen": "बनाएँ",
+        "redact": "छिपाएँ",
+        "select": "चुनें",
+        "text": "टेक्स्ट"
+      },
+      "undo": "पूर्ववत करें"
+    },
     "attachments": {
       "cancelUpload": "अपलोड {{filename}} रद्द करें",
       "download": "{{filename}} डाउनलोड करें",
@@ -1015,12 +1036,24 @@
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
     },
+    "homeLink": "{{brandName}} होम पर जाएं",
     "loading": "प्रमाणीकरण लोड हो रहा है",
+    "theme": {
+      "darkEnabled": "डार्क थीम चालू है",
+      "lightEnabled": "लाइट थीम चालू है"
+    },
     "toggleTheme": "थीम टॉगल करें",
     "v2": {
-      "continueToSignIn": "साइन इन जारी रखें",
-      "continueToSignUp": "साइन अप जारी रखें",
-      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+      "signIn": {
+        "action": "मौजूदा साइन-इन का उपयोग करें",
+        "description": "नया साइन-इन अनुभव अभी उपलब्ध नहीं है।",
+        "title": "{{brandName}} में साइन इन करें"
+      },
+      "signUp": {
+        "action": "मौजूदा साइन-अप का उपयोग करें",
+        "description": "नया साइन-अप अनुभव अभी उपलब्ध नहीं है।",
+        "title": "अपना {{brandName}} खाता बनाएं"
+      }
     }
   },
   "authorization": {
@@ -1666,6 +1699,37 @@
       "weeklyAt": "{{time}} पर हर सप्ताह",
       "weeklyOnAt": "हर सप्ताह {{days}} पर {{time}} पर"
     },
+    "banking": {
+      "accountFallback": "बैंक खाता",
+      "actionFailed": "बैंकिंग कार्रवाई विफल रही",
+      "active_one": "{{count}} खाते के लिए एक्सेस सक्रिय",
+      "active_other": "{{count}} खातों के लिए एक्सेस सक्रिय",
+      "automationOff": "केवल पढ़ने की एक्सेस ऑटोमेशन रन के लिए उपलब्ध नहीं है।",
+      "cancel": "रद्द करें",
+      "change": "बदलें",
+      "connect": "बैंक कनेक्ट करें",
+      "continue": "जारी रखें",
+      "duration": "एक्सेस अवधि",
+      "expiresAt": "{{time}} को समाप्त होगा",
+      "grant": "एक्सेस दें",
+      "institutionFallback": "वित्तीय संस्थान",
+      "loadFailed": "बैंकिंग एक्सेस लोड नहीं हो सकी",
+      "noAccounts": "कोई सक्रिय खाता उपलब्ध नहीं है। पहले संस्थान को फिर से कनेक्ट या सुधारें।",
+      "oneDay": "24 घंटे",
+      "oneHour": "1 घंटा",
+      "popupBlocked": "Zero के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें।",
+      "readOnly": "खाते, बैलेंस और लेन-देन · केवल पढ़ने के लिए",
+      "repair": "सुधारें",
+      "repairRequired": "{{institution}} को सुधारने की आवश्यकता है",
+      "retry": "दोबारा कोशिश करें",
+      "revoke": "एक्सेस वापस लें",
+      "revokeConfirm": "इस एजेंट की बैंकिंग एक्सेस वापस लें?",
+      "selectAccounts": "खाते चुनें",
+      "sevenDays": "7 दिन",
+      "thirtyDays": "30 दिन",
+      "title": "बैंकिंग एक्सेस अनुरोध",
+      "waiting": "Mastercard Data Connect की प्रतीक्षा हो रही है। वहाँ प्रक्रिया पूरी करें, फिर Chat पर लौटें।"
+    },
     "billing": {
       "addCreditsToContinue": "{{assistantName}} के साथ चैट जारी रखने के लिए क्रेडिट जोड़ें।",
       "askAdminCredits": "वर्कस्पेस व्यवस्थापक से क्रेडिट जोड़ने के लिए कहें ताकि आप {{assistantName}} के साथ चैट करना जारी रख सकें।",
@@ -2136,6 +2200,43 @@
       "search": "एजेंटों को खोजें",
       "title": "{{connector}} पहुंच प्रबंधित करें",
       "unnamedAgent": "अज्ञात"
+    },
+    "accounts": {
+      "accountName": "खाते का नाम",
+      "accountsUnavailable": "इस कनेक्टर के लिए खाते उपलब्ध नहीं हैं।",
+      "actions": "खाते की कार्रवाइयाँ",
+      "add": "जोड़ें",
+      "addAccount": "खाता जोड़ें",
+      "connected": "कनेक्टेड",
+      "default": "डिफ़ॉल्ट",
+      "deleteAccount": "खाता हटाएँ",
+      "deleteDescription": "इस खाते का उपयोग करने वाले थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount": "{{value}} थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} को हटाएँ?",
+      "find": "खाते खोजें",
+      "loading": "खाते लोड हो रहे हैं…",
+      "loadingMore": "लोड हो रहा है…",
+      "loadMore": "और लोड करें",
+      "makeDefault": "डिफ़ॉल्ट बनाएँ",
+      "manage": "प्रबंधित करें",
+      "managerTitle": "{{connector}} खाते प्रबंधित करें",
+      "noAccounts": "कोई खाता नहीं",
+      "noAccountsFound": "कोई खाता नहीं मिला",
+      "reconnectRequired": "दोबारा कनेक्ट करना आवश्यक है",
+      "rename": "नाम बदलें",
+      "summaryMany": "{{value}} खाते",
+      "summaryMany_one": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} खाता",
+      "summaryOne_one": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "कार्य खाता"
     },
     "actions": {
       "apply": "आवेदन करना",

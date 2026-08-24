@@ -1,5 +1,8 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
@@ -24,3 +27,16 @@ export type PlatformWorkflowConnectorReadinessResponse =
 export const singleAccountConnectorMutation = {
   intent: "single-account",
 } satisfies ConnectorAccountMutationIntent;
+
+export function connectorAccountEffectiveLabel(
+  account: ConnectorAccountConnection,
+  connectorLabel: string,
+): string {
+  return (
+    account.displayName ??
+    account.externalEmail ??
+    account.externalUsername ??
+    account.externalId ??
+    `${connectorLabel} · ${account.id.slice(0, 8)}`
+  );
+}

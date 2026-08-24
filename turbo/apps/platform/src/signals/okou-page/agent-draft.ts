@@ -123,12 +123,16 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         draftAttachments,
         infos,
       ).map((result) => {
+        const annotation = get(result.attachment.annotation$);
         return {
           id: result.info.id,
           url: result.info.url,
           filename: result.attachment.filename,
           contentType: result.info.contentType,
           size: result.attachment.size,
+          // Rebuilt field by field, so anything new has to be carried across
+          // explicitly or a reload would silently drop the user's marks.
+          ...(annotation ? { annotation } : {}),
         };
       });
       const payload = buildDraftPersistencePayload({
