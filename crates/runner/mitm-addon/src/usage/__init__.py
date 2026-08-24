@@ -56,7 +56,9 @@ from .counters import (
     write_pending_snapshot,
 )
 from .model_json import (
+    ModelJsonResponseInspection,
     ModelUsageProtocol,
+    create_model_json_response_inspector,
     create_model_json_usage_extractor,
     extract_model_usage_with_error_from_json,
 )
@@ -102,6 +104,7 @@ __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR",
     "BufferedReportLease",
+    "ModelJsonResponseInspection",
     "ModelUsageProtocol",
     "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
@@ -117,6 +120,7 @@ __all__ = [
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
     "create_connector_response_parser",
+    "create_model_json_response_inspector",
     "create_model_json_usage_extractor",
     "create_openai_chat_completions_json_usage_extractor",
     "create_openai_chat_completions_sse_usage_extractor",

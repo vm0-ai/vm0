@@ -42,6 +42,13 @@ from .json_selective import (
     ScalarField,
 )
 from .json_selective import Path as JsonPath
+from .model_http import (
+    ModelHttpFailureEvidence,
+    ModelHttpFailureObserver,
+    combined_scalar_fields,
+    combined_value_presence_paths,
+    failure_evidence_from_result,
+)
 from .model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -711,6 +718,9 @@ def _store_sse_result_values(
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
     on_terminal_usage: _SseTerminalUsageCallback | None = None,
+    *,
+    include_usage: bool = True,
+    failure_observer: ModelHttpFailureObserver | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental usage parser for content-decoded Responses SSE bytes.
 
@@ -741,6 +751,8 @@ def create_openai_responses_sse_usage_extractor(
             usage,
             on_parse_error=on_parse_error,
             on_terminal_usage=on_terminal_usage,
+            include_usage=include_usage,
+            failure_observer=failure_observer,
         ),
         # Some compatible streams omit SSE event names and carry the terminal
         # response type in the JSON payload.
@@ -756,6 +768,8 @@ class _OpenAIResponsesSseUsageHandler:
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
         on_terminal_usage: _SseTerminalUsageCallback | None = None,
+        include_usage: bool = True,
+        failure_observer: ModelHttpFailureObserver | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
@@ -766,9 +780,18 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_named_event = False
         self._on_parse_error = on_parse_error
         self._on_terminal_usage = on_terminal_usage
+        self._include_usage = include_usage
+        self._failure_observer = failure_observer
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name is None or not _is_known_non_usage_event(event_name)
+        return (
+            event_name is None
+            or (self._include_usage and not _is_known_non_usage_event(event_name))
+            or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(event_name)
+            )
+        )
 
     def on_event_start(self, event_name: str | None) -> None:
         self._reset_event_state()
@@ -797,13 +820,25 @@ class _OpenAIResponsesSseUsageHandler:
             prefix = bytes(self._eventless_prefix)
             self._eventless_prefix = None
             event_type = _classify_responses_event_type(prefix)
-            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            observed_event_name = (
+                _observed_responses_event_type(_probe_responses_event_type(prefix))
+                if self._failure_observer is not None
+                and event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
+                else None
+            )
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(observed_event_name)
+            ):
                 self._start_full_extractor_from_prefix(prefix, event_type)
         if self._named_event_prefix is not None and self._data_event_type is None:
             prefix = bytes(self._named_event_prefix)
             self._named_event_prefix = None
             event_type = _classify_responses_event_type(prefix)
-            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(event_name)
+            ):
                 self._start_full_extractor_from_prefix(prefix, event_type)
         extractor = self._extractor
         data_event_type = self._data_event_type
@@ -811,6 +846,12 @@ class _OpenAIResponsesSseUsageHandler:
         if extractor is None:
             return
         result = extractor.finish()
+        if self._failure_observer is not None:
+            self._failure_observer.observe(
+                failure_evidence_from_result(result, event_name=event_name)
+            )
+        if not self._include_usage:
+            return
         if result.complete:
             terminal_usage = _store_sse_result_values(
                 result.values,
@@ -840,6 +881,10 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._reset_event_state()
+        if self._failure_observer is not None and self._failure_observer.needs_sse_event(
+            event_name
+        ):
+            self._failure_observer.observe(ModelHttpFailureEvidence(event_name=event_name))
 
     def _reset_event_state(self) -> None:
         self._extractor = None
@@ -850,12 +895,23 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_named_event = False
 
     def _start_full_extractor(self, *, include_type: bool = True) -> JsonSelectiveExtractor:
-        scalar_fields = (
+        usage_fields = (
             _RESPONSES_SSE_SCALAR_FIELDS if include_type else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
         )
         self._extractor = JsonSelectiveExtractor(
-            scalar_fields=scalar_fields,
-            scalar_consistency_paths={("type",)} if self._on_terminal_usage is not None else None,
+            scalar_fields=combined_scalar_fields(
+                usage_fields,
+                include_usage=self._include_usage,
+                include_failure=self._failure_observer is not None,
+            ),
+            value_presence_paths=combined_value_presence_paths(
+                (),
+                include_usage=self._include_usage,
+                include_failure=self._failure_observer is not None,
+            ),
+            scalar_consistency_paths=(
+                {("type",)} if self._include_usage and self._on_terminal_usage is not None else None
+            ),
             max_work_units=_RESPONSES_MAX_WORK_UNITS,
         )
         return self._extractor
@@ -863,8 +919,9 @@ class _OpenAIResponsesSseUsageHandler:
     def _should_include_type_scalar(self) -> bool:
         return (
             self._data_event_type is None
-            or self._on_parse_error is not None
-            or self._on_terminal_usage is not None
+            or (self._include_usage and self._on_parse_error is not None)
+            or (self._include_usage and self._on_terminal_usage is not None)
+            or self._failure_observer is not None
         )
 
     def _start_full_extractor_from_prefix(
@@ -891,8 +948,13 @@ class _OpenAIResponsesSseUsageHandler:
 
         prefix_bytes = bytes(prefix)
         self._eventless_prefix = None
-        event_type = _classify_responses_event_type(prefix_bytes)
-        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+        probe = _probe_responses_event_type(prefix_bytes)
+        event_type = _classify_responses_event_type_result(probe)
+        observed_event_name = _observed_responses_event_type(probe)
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE and not (
+            self._failure_observer is not None
+            and self._failure_observer.needs_sse_event(observed_event_name)
+        ):
             self._discard_eventless_event = True
             return
 
@@ -916,8 +978,12 @@ class _OpenAIResponsesSseUsageHandler:
         prefix_bytes = bytes(prefix)
         self._named_event_prefix = None
         event_type = _classify_responses_event_type(prefix_bytes)
-        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-            self._extractor = None
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE and not (
+            self._failure_observer is not None
+            and self._failure_observer.needs_sse_event(
+                _observed_responses_event_type(_probe_responses_event_type(prefix_bytes))
+            )
+        ):
             self._discard_named_event = True
             return
 
@@ -957,15 +1023,7 @@ class OpenAIResponsesJsonUsageExtractor:
 
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
-        if not result.complete:
-            return None, result.error
-
-        usage: dict = {}
-        _store_response_values(result.values, usage)
-
-        if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
-            return None, None
-        return usage, None
+        return model_json_usage_from_result(result)
 
 
 def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageExtractor:
@@ -976,6 +1034,26 @@ def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageEx
     """
 
     return OpenAIResponsesJsonUsageExtractor()
+
+
+def model_json_scalar_fields() -> dict:
+    """Return Responses JSON fields selected for usage inspection."""
+
+    return dict(_RESPONSES_RESPONSE_SCALAR_FIELDS)
+
+
+def model_json_usage_from_result(
+    result: JsonExtractionResult,
+) -> tuple[dict | None, str | None]:
+    """Map one complete shared JSON extraction into Responses usage."""
+
+    if not result.complete:
+        return None, result.error
+    usage: dict = {}
+    _store_response_values(result.values, usage)
+    if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
+        return None, None
+    return usage, None
 
 
 def _extract_openai_responses_usage_from_decoded_json_body(

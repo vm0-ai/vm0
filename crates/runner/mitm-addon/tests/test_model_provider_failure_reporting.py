@@ -1,7 +1,9 @@
 """Integration tests for trusted model-provider failure reduction."""
 
+import gzip
 import json
 import threading
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
@@ -12,11 +14,15 @@ from mitmproxy import http
 from mitmproxy.connection import ConnectionState
 from mitmproxy.flow import Error
 
+import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_provider_failure
 import model_websocket_usage
 import platform_api
+import usage.anthropic_messages as anthropic_messages
+import usage.model_json as model_json
+import usage.openai_responses as openai_responses
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
@@ -740,6 +746,317 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
     ]
 
 
+@pytest.mark.parametrize("content_encoding", ["", "gzip", "deflate"])
+def test_combined_sse_response_uses_one_decoder_and_one_dense_event_parse(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    content_encoding: str,
+    model_provider_failure_api,
+):
+    dense_values = b",".join([b"0"] * 2_000)
+    plaintext = (
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{"id":"resp-shared",'
+        b'"model":"gpt-5.5","usage":{"input_tokens":12,"output_tokens":3},'
+        b'"error":{"code":"server_error"}},"padding":[' + dense_values + b"]}\n\n"
+    )
+    if content_encoding == "gzip":
+        body = gzip.compress(plaintext)
+    elif content_encoding == "deflate":
+        body = zlib.compress(plaintext)
+    else:
+        body = plaintext
+    headers = {"content-type": "text/event-stream"}
+    if content_encoding:
+        headers["content-encoding"] = content_encoding
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map(headers),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    model_provider_failure.admit_flow(flow)
+
+    with (
+        patch.object(
+            body_decoding,
+            "create_stream_decode_session",
+            wraps=body_decoding.create_stream_decode_session,
+        ) as create_decoder,
+        patch.object(
+            openai_responses,
+            "JsonSelectiveExtractor",
+            wraps=openai_responses.JsonSelectiveExtractor,
+        ) as create_extractor,
+    ):
+        mitm_addon.responseheaders(flow)
+        stream = response_stream(flow)
+        stream(body)
+        stream(b"")
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert create_decoder.call_count == 1
+        assert create_extractor.call_count == 1
+
+    assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+        "message_id": "resp-shared",
+        "model": "gpt-5.5",
+        "tokens.input": 12,
+        "tokens.output": 3,
+    }
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+
+
+def test_combined_json_response_uses_one_decoder_and_one_parse(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = (
+        b'{"id":"resp-json","model":"gpt-5.5","status":"failed",'
+        b'"usage":{"input_tokens":9,"output_tokens":4},'
+        b'"error":{"code":"server_error"}}'
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "application/json"}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    model_provider_failure.admit_flow(flow)
+
+    with (
+        patch.object(
+            body_decoding,
+            "create_stream_decode_session",
+            wraps=body_decoding.create_stream_decode_session,
+        ) as create_decoder,
+        patch.object(
+            model_json,
+            "JsonSelectiveExtractor",
+            wraps=model_json.JsonSelectiveExtractor,
+        ) as create_extractor,
+        patch.object(
+            model_provider_failure,
+            "JsonSelectiveExtractor",
+            wraps=model_provider_failure.JsonSelectiveExtractor,
+        ) as create_legacy_extractor,
+    ):
+        mitm_addon.responseheaders(flow)
+        stream = response_stream(flow)
+        stream(body)
+        stream(b"")
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert create_decoder.call_count == 1
+        assert create_extractor.call_count == 1
+        assert create_legacy_extractor.call_count == 0
+
+    assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+        "message_id": "resp-json",
+        "model": "gpt-5.5",
+        "tokens.input": 9,
+        "tokens.output": 4,
+    }
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+
+
+def test_combined_sse_known_ordinary_deltas_skip_full_json_parse(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    cases = (
+        (
+            "model-provider:openai-api-key",
+            "/v1/responses",
+            b"event: response.output_text.delta\n"
+            b'data: {"type":"response.output_text.delta","delta":"hello"}\n\n',
+            openai_responses,
+        ),
+        (
+            "model-provider:anthropic-api-key",
+            "/v1/messages",
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","delta":{"text":"hello"}}\n\n',
+            anthropic_messages,
+        ),
+    )
+
+    for index, (firewall_name, request_path, body, provider_module) in enumerate(cases):
+        flow = _make_flow(
+            real_flow,
+            tmp_path / f"proxy-{index}.jsonl",
+            firewall_name=firewall_name,
+            request_path=request_path,
+            response_body=body,
+            response_headers=header_map({"content-type": "text/event-stream"}),
+        )
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "test-model"
+        model_provider_failure.admit_flow(flow)
+        with patch.object(
+            provider_module,
+            "JsonSelectiveExtractor",
+            wraps=provider_module.JsonSelectiveExtractor,
+        ) as create_extractor:
+            mitm_addon.responseheaders(flow)
+            stream = response_stream(flow)
+            stream(body)
+            stream(b"")
+            with mitm_ctx():
+                mitm_addon.response(flow)
+
+            assert create_extractor.call_count == 0
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
+def test_combined_sse_work_limit_does_not_retry_full_parse(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    dense_values = b",".join([b"0"] * 40_000)
+    body = (
+        b"event: response.completed\n"
+        b'data: {"type":"response.completed","response":{"id":"resp-limited",'
+        b'"model":"gpt-5.5","usage":{"input_tokens":12,"output_tokens":3}},'
+        b'"padding":[' + dense_values + b"]}\n\n"
+    )
+    flow = _make_flow(
+        real_flow,
+        proxy_log_path,
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    model_provider_failure.admit_flow(flow)
+
+    with (
+        patch.object(
+            openai_responses,
+            "JsonSelectiveExtractor",
+            wraps=openai_responses.JsonSelectiveExtractor,
+        ) as create_extractor,
+        patch.object(
+            model_provider_failure,
+            "JsonSelectiveExtractor",
+            wraps=model_provider_failure.JsonSelectiveExtractor,
+        ) as create_legacy_extractor,
+        mitm_ctx(),
+    ):
+        mitm_addon.responseheaders(flow)
+        stream = response_stream(flow)
+        stream(body)
+        stream(b"")
+        mitm_addon.response(flow)
+
+        assert create_extractor.call_count == 1
+        assert create_legacy_extractor.call_count == 0
+
+    assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+    warnings = [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log_path)
+        if entry.get("message") == "Model provider SSE usage extraction failed"
+    ]
+    assert [warning["error"] for warning in warnings] == ["work limit exceeded"]
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
+def test_combined_sse_failure_field_overflow_preserves_usage_and_fails_closed(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = (
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{"id":"resp-overflow",'
+        b'"model":"gpt-5.5","usage":{"input_tokens":8,"output_tokens":2},'
+        b'"error":{"code":"' + b"x" * 129 + b'"}}}\n\n'
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
+    stream(body)
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+        "message_id": "resp-overflow",
+        "model": "gpt-5.5",
+        "tokens.input": 8,
+        "tokens.output": 2,
+    }
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
+def test_combined_sse_overlapping_escaped_field_keeps_failure_byte_limit(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = (
+        b"event: response.failed\n"
+        b'data: {"type":"'
+        + rb"\u0061"
+        * 22
+        + b'","type":"response.failed","response":{"id":"resp-escaped",'
+        b'"model":"gpt-5.5","usage":{"input_tokens":5,"output_tokens":1},'
+        b'"error":{"code":"server_error"}}}\n\n'
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
+    stream(body)
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+        "message_id": "resp-escaped",
+        "model": "gpt-5.5",
+        "tokens.input": 5,
+        "tokens.output": 1,
+    }
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
 @pytest.mark.parametrize(
     ("firewall_name", "request_path", "body", "expected_kind"),
     [
@@ -1148,6 +1465,37 @@ def test_openrouter_stable_failure_survives_response_interruption(
     mitm_addon.responseheaders(flow)
     response_stream(flow)(body)
     flow.error = Error("connection reset after error body")
+
+    with mitm_ctx():
+        mitm_addon.error(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+
+
+def test_trailing_sse_failure_is_settled_once_during_response_interruption(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = (
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{'
+        b'"error":{"code":"server_error"}}}'
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    response_stream(flow)(body)
+    flow.error = Error("connection reset after trailing failure event")
 
     with mitm_ctx():
         mitm_addon.error(flow)

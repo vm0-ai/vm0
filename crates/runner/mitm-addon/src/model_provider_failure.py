@@ -4,14 +4,13 @@ import json
 import threading
 import urllib.error
 import urllib.parse
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from mitmproxy import http
 
-import body_decoding
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_response_classification
@@ -19,14 +18,13 @@ import openai_responses_events
 import platform_api
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
-from usage.json_selective import (
-    FIRST_ARRAY_ELEMENT,
-    JsonExtractionResult,
-    JsonSelectiveExtractor,
-    ScalarField,
+from usage.json_selective import JsonSelectiveExtractor
+from usage.model_http import (
+    FAILURE_SCALAR_FIELDS,
+    FAILURE_VALUE_PRESENCE_PATHS,
+    ModelHttpFailureEvidence,
+    failure_evidence_from_result,
 )
-from usage.json_selective import Path as JsonPath
-from usage.sse import SseUsageScanner
 
 if TYPE_CHECKING:
     from usage.openai_responses import OpenAIResponsesServerFailureEvidence
@@ -51,12 +49,10 @@ _OutcomeKind = Literal["failure", "success", "unknown"]
 _FLOW_STATE = "_model_provider_failure_flow_state"
 _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
-_MAX_SELECTED_STRING_BYTES = 128
 _MAX_RETRY_AFTER_SECONDS = 300
 _REPORT_TIMEOUT_SECONDS = 3
 _REPORT_WORKERS = 4
 _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
-_DONE_SENTINEL = b"[DONE]"
 RUNNER_AUTH_ENV = "VM0_MITM_RUNNER_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
@@ -89,47 +85,18 @@ _UNAVAILABLE_CODES = frozenset(
 )
 _TIMEOUT_CODES = frozenset(("timeout", "timeout_error"))
 _CONNECTION_CODES = frozenset(("connection", "connection_error"))
-
-_SCALAR_FIELDS: Mapping[JsonPath, ScalarField] = {
-    ("type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("code",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("status",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error_type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "code"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "error_type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "metadata", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
-    ("response", "id"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "status"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error_type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "code"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
-    ("choices", FIRST_ARRAY_ELEMENT, "error", "metadata", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
+_OPENAI_RESPONSES_IGNORED_HTTP_EVENTS = openai_responses_events.KNOWN_NON_USAGE_EVENTS - {
+    openai_responses_events.SERVER_ERROR_EVENT
 }
-_VALUE_PRESENCE_PATHS = (
-    ("error",),
-    ("response", "error"),
-    ("choices", FIRST_ARRAY_ELEMENT, "error"),
-    ("choices",),
-)
-_FAILURE_CODE_PATHS = (
-    ("error", "metadata", "error_type"),
-    ("choices", FIRST_ARRAY_ELEMENT, "error", "metadata", "error_type"),
-    ("error", "error_type"),
-    ("response", "error_type"),
-    ("response", "error", "error_type"),
-    ("error_type",),
-    ("response", "error", "code"),
-    ("error", "code"),
-    ("response", "error", "type"),
-    ("error", "type"),
+_ANTHROPIC_IGNORED_HTTP_EVENTS = frozenset(
+    (
+        "message_start",
+        "message_delta",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "ping",
+    )
 )
 
 
@@ -226,8 +193,96 @@ def admit_flow(flow: http.HTTPFlow) -> None:
     flow.metadata[_FLOW_STATE] = flow_state
 
 
-def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | None:
-    """Install bounded body classification for an admitted HTTP flow."""
+class HttpResponseFailureObserver:
+    """Reduce shared HTTP parse evidence without owning transport or parsing."""
+
+    def __init__(self, flow: http.HTTPFlow, flow_state: _FlowState) -> None:
+        self._flow = flow
+        self._flow_state = flow_state
+        self._terminal: _Outcome | None = None
+        self._parse_ambiguous = False
+
+    def needs_sse_event(self, event_name: str | None) -> bool:
+        if event_name is None:
+            return True
+        if self._flow_state.protocol == "openai_responses":
+            return event_name not in _OPENAI_RESPONSES_IGNORED_HTTP_EVENTS
+        if self._flow_state.protocol == "anthropic_messages":
+            return event_name not in _ANTHROPIC_IGNORED_HTTP_EVENTS
+        return True
+
+    def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        if not evidence.is_valid:
+            self._mark_parse_ambiguous()
+            return
+        if (
+            evidence.event_name is not None
+            and evidence.payload_type is not None
+            and evidence.event_name != evidence.payload_type
+        ):
+            self._mark_parse_ambiguous()
+            return
+
+        event_type = evidence.event_name or evidence.payload_type
+        if self._flow_state.protocol == "anthropic_messages":
+            if event_type == "message_stop":
+                self._record_terminal(_success_outcome())
+            elif event_type == "error":
+                self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+            return
+        if self._flow_state.protocol == "openai_responses":
+            if event_type in ("response.completed", "response.done"):
+                self._record_terminal(_success_outcome())
+            elif event_type in (
+                "response.failed",
+                "response.error",
+                openai_responses_events.SERVER_ERROR_EVENT,
+            ):
+                self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+            elif event_type == "response.incomplete":
+                self._record_terminal(_unknown_outcome())
+            return
+        if evidence.is_done:
+            self._record_terminal(_success_outcome())
+        elif evidence.has_error:
+            self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+
+    def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        self._store_terminal(_outcome_from_evidence(self._flow_state.protocol, evidence))
+
+    def finish(self) -> _Outcome:
+        if self._terminal is not None and self._terminal.kind == "failure":
+            outcome = self._terminal
+        elif self._parse_ambiguous:
+            outcome = _unknown_outcome()
+        else:
+            outcome = self._terminal or _unknown_outcome()
+        return outcome
+
+    def settle(self) -> _Outcome:
+        """Finish evidence reduction and settle a completed response stream."""
+
+        outcome = self.finish()
+        _settle_http_flow(self._flow, self._flow_state, outcome)
+        return outcome
+
+    def _record_terminal(self, outcome: _Outcome) -> None:
+        self._store_terminal(outcome)
+        self.settle()
+
+    def _store_terminal(self, outcome: _Outcome) -> None:
+        if self._terminal is None:
+            self._terminal = outcome
+        elif self._terminal != outcome:
+            self._terminal = _unknown_outcome()
+
+    def _mark_parse_ambiguous(self) -> None:
+        self._parse_ambiguous = True
+        self.settle()
+
+
+def configure_response_observer(flow: http.HTTPFlow) -> HttpResponseFailureObserver | None:
+    """Configure parser-free body classification for an admitted HTTP flow."""
     flow_state = _flow_state(flow)
     response = flow.response
     if (
@@ -255,40 +310,13 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
             ),
         )
         return None
+    return HttpResponseFailureObserver(flow, flow_state)
 
-    parser: _JsonResponseParser | _SseResponseParser
-    if http_response_classification.has_event_stream_media_type(response):
-        parser = _SseResponseParser(
-            flow_state.protocol,
-            lambda outcome: _settle_http_flow(flow, flow_state, outcome),
-        )
-    else:
-        parser = _JsonResponseParser(flow_state.protocol)
-    decode_session = body_decoding.create_stream_decode_session(response.headers, parser.feed)
-    if decode_session is None:
-        flow.metadata[_RESPONSE_FINISH] = _unknown_outcome
-        return None
 
-    final_outcome: _Outcome | None = None
-
-    def finish() -> _Outcome:
-        nonlocal final_outcome
-        if final_outcome is None:
-            final_outcome = (
-                _unknown_outcome() if decode_session.finish_error() is not None else parser.finish()
-            )
-        return final_outcome
-
-    def observe(chunk: bytes) -> None:
-        if chunk:
-            decode_session.feed(chunk)
-            return
-        # mitmproxy calls streaming transformations with an empty chunk at EOM,
-        # before it forwards the downstream end-of-message marker.
-        _settle_http_flow(flow, flow_state, finish())
+def register_response_finish(flow: http.HTTPFlow, finish: Callable[[], object]) -> None:
+    """Register the shared response finalizer consumed by failure hook ordering."""
 
     flow.metadata[_RESPONSE_FINISH] = finish
-    return observe
 
 
 def finish_http_response(flow: http.HTTPFlow) -> None:
@@ -353,6 +381,8 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
             outcome = _failure_outcome("connection")
         else:
             parsed_outcome = _finish_response_body(flow, flow_state.protocol)
+            if flow_state.terminal_observed:
+                return
             if parsed_outcome.kind != "unknown":
                 outcome = parsed_outcome
             elif (
@@ -464,136 +494,8 @@ class _JsonResponseParser:
         self._extractor.feed(chunk)
 
     def finish(self) -> _Outcome:
-        return _outcome_from_json(self._protocol, self._extractor.finish())
-
-
-class _SseResponseParser:
-    def __init__(
-        self,
-        protocol: _Protocol,
-        settle: Callable[[_Outcome], None],
-    ) -> None:
-        self._handler: _SseEventHandler = _SseEventHandler(protocol, settle)
-        self._scanner = SseUsageScanner(
-            self._handler,
-            capture_data_without_event=True,
-        )
-
-    def feed(self, chunk: bytes) -> None:
-        self._scanner.feed(chunk)
-
-    def finish(self) -> _Outcome:
-        self._scanner.finish()
-        return self._handler.outcome()
-
-
-class _SseEventHandler:
-    def __init__(
-        self,
-        protocol: _Protocol,
-        settle: Callable[[_Outcome], None],
-    ) -> None:
-        self._protocol: _Protocol = protocol
-        self._settle = settle
-        self._extractor: JsonSelectiveExtractor | None = None
-        self._done_candidate = bytearray()
-        self._done_overflow = False
-        self._terminal: _Outcome | None = None
-        self._parse_ambiguous = False
-
-    def should_capture_event(self, event_name: str | None) -> bool:
-        del event_name
-        return True
-
-    def on_event_start(self, event_name: str | None) -> None:
-        del event_name
-        self._extractor = _new_json_extractor()
-        self._done_candidate.clear()
-        self._done_overflow = False
-
-    def on_data(self, chunk: bytes) -> None:
-        if self._extractor is not None:
-            self._extractor.feed(chunk)
-        if not self._done_overflow:
-            remaining = len(_DONE_SENTINEL) - len(self._done_candidate)
-            self._done_candidate.extend(chunk[:remaining])
-            if len(chunk) > remaining:
-                self._done_overflow = True
-
-    def on_data_separator(self) -> None:
-        if self._extractor is not None:
-            self._extractor.feed(b"\n")
-        self._done_overflow = True
-
-    def on_event_end(self, event_name: str | None) -> None:
-        extractor = self._extractor
-        self._extractor = None
-        if (
-            not self._done_overflow
-            and bytes(self._done_candidate) == _DONE_SENTINEL
-            and self._protocol == "openai_chat_completions"
-        ):
-            self._record_terminal(_success_outcome())
-            return
-        if extractor is None:
-            self._mark_parse_ambiguous()
-            return
-        result = extractor.finish()
-        payload_event_type = _string_value(result.values, ("type",))
-        if (
-            event_name is not None
-            and payload_event_type is not None
-            and event_name != payload_event_type
-        ):
-            self._mark_parse_ambiguous()
-            return
-        event_type = event_name or payload_event_type
-        if not result.complete:
-            self._mark_parse_ambiguous()
-            return
-        if self._protocol == "anthropic_messages":
-            if event_type == "message_stop":
-                self._record_terminal(_success_outcome())
-            elif event_type == "error":
-                self._record_terminal(_failure_or_unknown(result))
-            return
-        if self._protocol == "openai_responses":
-            if event_type in ("response.completed", "response.done"):
-                self._record_terminal(_success_outcome())
-            elif event_type in (
-                "response.failed",
-                "response.error",
-                openai_responses_events.SERVER_ERROR_EVENT,
-            ):
-                self._record_terminal(_failure_or_unknown(result))
-            elif event_type == "response.incomplete":
-                self._record_terminal(_unknown_outcome())
-            return
-        if _has_error_value(result):
-            self._record_terminal(_failure_or_unknown(result))
-
-    def on_event_discard(self, event_name: str | None) -> None:
-        del event_name
-        self._extractor = None
-        self._mark_parse_ambiguous()
-
-    def outcome(self) -> _Outcome:
-        if self._terminal is not None and self._terminal.kind == "failure":
-            return self._terminal
-        if self._parse_ambiguous:
-            return _unknown_outcome()
-        return self._terminal or _unknown_outcome()
-
-    def _record_terminal(self, outcome: _Outcome) -> None:
-        if self._terminal is None:
-            self._terminal = outcome
-        elif self._terminal != outcome:
-            self._terminal = _unknown_outcome()
-        self._settle(self.outcome())
-
-    def _mark_parse_ambiguous(self) -> None:
-        self._parse_ambiguous = True
-        self._settle(self.outcome())
+        evidence = failure_evidence_from_result(self._extractor.finish())
+        return _outcome_from_evidence(self._protocol, evidence)
 
 
 def _protocol_for_flow(flow: http.HTTPFlow) -> _Protocol | None:
@@ -637,16 +539,10 @@ def _upstream_connection_failed(flow: http.HTTPFlow) -> bool:
 
 def _new_json_extractor() -> JsonSelectiveExtractor:
     return JsonSelectiveExtractor(
-        scalar_fields=_SCALAR_FIELDS,
-        value_presence_paths=_VALUE_PRESENCE_PATHS,
+        scalar_fields=FAILURE_SCALAR_FIELDS,
+        value_presence_paths=FAILURE_VALUE_PRESENCE_PATHS,
         max_work_units=_MAX_JSON_WORK_UNITS,
     )
-
-
-def _extract_json(body: bytes) -> JsonExtractionResult:
-    extractor = _new_json_extractor()
-    extractor.feed(body)
-    return extractor.finish()
 
 
 def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
@@ -664,41 +560,25 @@ def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
     return _unknown_outcome()
 
 
-def _outcome_from_json(protocol: _Protocol, result: JsonExtractionResult) -> _Outcome:
-    if not result.complete:
+def _outcome_from_evidence(
+    protocol: _Protocol,
+    evidence: ModelHttpFailureEvidence,
+) -> _Outcome:
+    if not evidence.is_valid:
         return _unknown_outcome()
-    failure = _failure_from_result(result)
+    failure = _failure_from_codes(evidence.failure_codes)
     if failure is not None:
         return _Outcome("failure", failure)
-    if _has_error_value(result):
+    if evidence.has_error:
         return _unknown_outcome()
     if protocol == "openai_responses":
-        status = _string_value(result.values, ("status",)) or _string_value(
-            result.values, ("response", "status")
-        )
+        status = evidence.status or evidence.response_status
         return _success_outcome() if status == "completed" else _unknown_outcome()
     if protocol == "anthropic_messages":
-        return (
-            _success_outcome()
-            if _string_value(result.values, ("type",)) == "message"
-            else _unknown_outcome()
-        )
-    if protocol == "openai_chat_completions" and ("choices",) in result.value_present:
+        return _success_outcome() if evidence.payload_type == "message" else _unknown_outcome()
+    if protocol == "openai_chat_completions" and evidence.has_choices:
         return _success_outcome()
     return _unknown_outcome()
-
-
-def _failure_from_result(result: JsonExtractionResult) -> Failure | None:
-    codes = tuple(
-        code
-        for path in _FAILURE_CODE_PATHS
-        if (code := _string_value(result.values, path)) is not None
-    )
-    if _string_value(result.values, ("type",)) == "error":
-        code = _string_value(result.values, ("code",))
-        if code is not None:
-            codes = (*codes, code)
-    return _failure_from_codes(codes)
 
 
 def _failure_from_codes(codes: tuple[str, ...]) -> Failure | None:
@@ -707,11 +587,6 @@ def _failure_from_codes(codes: tuple[str, ...]) -> Failure | None:
         if failure_kind is not None:
             return Failure(failure_kind)
     return None
-
-
-def _failure_or_unknown(result: JsonExtractionResult) -> _Outcome:
-    failure = _failure_from_result(result)
-    return _Outcome("failure", failure) if failure is not None else _unknown_outcome()
 
 
 def _failure_or_unknown_from_codes(codes: tuple[str, ...]) -> _Outcome:
@@ -775,22 +650,6 @@ def _retry_after_seconds(status: int, headers: http.Headers) -> int | None:
     if len(digits) > len(maximum) or (len(digits) == len(maximum) and digits > maximum):
         return _MAX_RETRY_AFTER_SECONDS
     return int(digits)
-
-
-def _has_error_value(result: JsonExtractionResult) -> bool:
-    return any(
-        path in result.value_present
-        for path in (
-            ("error",),
-            ("response", "error"),
-            ("choices", FIRST_ARRAY_ELEMENT, "error"),
-        )
-    )
-
-
-def _string_value(values: Mapping[JsonPath, object], path: JsonPath) -> str | None:
-    value = values.get(path)
-    return value if isinstance(value, str) else None
 
 
 def _failure_outcome(
