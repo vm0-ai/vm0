@@ -449,9 +449,6 @@ export interface DraftInputSyncTarget {
  * and reports `null` when it no longer resolves, instead of asserting the file
  * is still reachable. The disabled path preserves the persisted file info.
  *
- * A probe that cannot run at all (offline, transient failure) keeps the
- * persisted info so a flaky network never blocks a send; the server performs
- * the authoritative check.
  */
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
@@ -467,20 +464,14 @@ export function createRestoredAttachment(
     }
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
-    const resolved = await tapError(
-      accept(
-        client.fileUrl({
-          query: { file_id: persisted.id },
-          fetchOptions: { signal },
-        }),
-        [200, 404],
-        signal,
-        { showErrorToast: false },
-      ),
+    const resolved = await accept(
+      client.fileUrl({
+        query: { file_id: persisted.id },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      signal,
     );
-    if (!resolved) {
-      return persistedInfo;
-    }
     return resolved.status === 404 ? null : persistedInfo;
   });
 

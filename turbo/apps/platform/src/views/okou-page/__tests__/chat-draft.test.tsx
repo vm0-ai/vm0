@@ -575,7 +575,6 @@ describe("chat drafts", () => {
 
   it("keeps restored attachments untouched when validation is disabled", async () => {
     let validationRequests = 0;
-    const toastWarning = vi.spyOn(toast, "warning");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
       serviceTier: null,
@@ -627,12 +626,16 @@ describe("chat drafts", () => {
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
     expect(validationRequests).toBe(0);
-    expect(toastWarning).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(
+        "brief.md is no longer available. Upload it again to send.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("drops and clears a saved attachment whose artifact no longer resolves", async () => {
     const draftPatches: Record<string, unknown>[] = [];
-    const toastWarning = vi.spyOn(toast, "warning");
+    const warningIconColor = "#f59e0b";
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
       serviceTier: null,
@@ -693,10 +696,19 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
     });
-    expect(toastWarning).toHaveBeenCalledWith(
+    const warningMessage = await screen.findByText(
       "brief.md is no longer available. Upload it again to send.",
-      { id: "chat-attachment-unavailable" },
     );
+    const warningToast = warningMessage.closest("[data-sonner-toast]");
+    if (!(warningToast instanceof HTMLElement)) {
+      throw new Error("Warning toast was not rendered");
+    }
+    expect(warningToast).toHaveAttribute("data-type", "warning");
+    const warningIcon = warningToast.querySelector("[data-icon] svg");
+    if (!(warningIcon instanceof SVGElement)) {
+      throw new Error("Warning toast icon was not rendered");
+    }
+    expect(getComputedStyle(warningIcon).color).toBe(warningIconColor);
     expect(screen.queryByLabelText("Remove brief.md")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
@@ -707,6 +719,66 @@ describe("chat drafts", () => {
         draftAttachments: null,
       });
     });
+  });
+
+  it("surfaces restored attachment validation failures", async () => {
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+      });
+    });
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      return respond(403, {
+        error: {
+          message: "Attachment validation is unavailable",
+          code: "FORBIDDEN",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ONE_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Attachment validation is unavailable"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "brief.md is no longer available. Upload it again to send.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("restores and persists feedback as a userMessage draft", async () => {
@@ -1843,7 +1915,6 @@ describe("chat drafts", () => {
     const pastedText = "Please use the copied brief";
     const filename = "foreign-brief.md";
     const draftPatches: Record<string, unknown>[] = [];
-    const toastWarning = vi.spyOn(toast, "warning");
 
     mockChatLifecycle(context, { threadId });
     context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
@@ -1898,10 +1969,11 @@ describe("chat drafts", () => {
         screen.queryByLabelText(`Remove ${filename}`),
       ).not.toBeInTheDocument();
     });
-    expect(toastWarning).toHaveBeenCalledWith(
-      `${filename} is no longer available. Upload it again to send.`,
-      { id: "chat-attachment-unavailable" },
-    );
+    await expect(
+      screen.findByText(
+        `${filename} is no longer available. Upload it again to send.`,
+      ),
+    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftUserMessage: {

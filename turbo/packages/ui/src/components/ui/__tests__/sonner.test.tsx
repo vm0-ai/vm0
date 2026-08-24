@@ -42,17 +42,6 @@ describe("Toaster", () => {
     ).toBe("calc(var(--sab, 0px) + 16px)");
   });
 
-  it("uses the warning color for warning toast icons", async () => {
-    render(<Toaster />);
-
-    toast.warning("Attachment unavailable");
-
-    const message = await screen.findByText("Attachment unavailable");
-    expect(message.closest("[data-sonner-toast]")).toHaveClass(
-      "[&[data-type=warning]_[data-icon]]:text-amber-500",
-    );
-  });
-
   it("calls onReady only once when its callback identity changes", async () => {
     const firstOnReady = vi.fn<() => void>();
     const secondOnReady = vi.fn<() => void>();
