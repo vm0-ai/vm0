@@ -32,7 +32,7 @@ function client() {
 
 describe("registry resource download", () => {
   const CURRENT_PRESENTATION_SHA256 =
-    "d61844dc5030cd14a94b047b5cf4193dfcf470f5e389614eaacbf31f3943993e";
+    "dcffcf12b3fc735922a3868b4279dd13989b6514ab54e4a24e0581a3cff9fc23";
   const PREVIOUS_PRESENTATION_SHA256 =
     "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
 
@@ -46,7 +46,7 @@ describe("registry resource download", () => {
     ).toStrictEqual({
       storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
       versionId:
-        "336fc7d044a97b970d741c6782fcd2742d63bd6475ef8b1db232d84f6b9b5227",
+        "d55a22c0d37e506a06c2ead90fac3ee9bdc520f866d958c507fa6bce11592f6d",
       sha256: CURRENT_PRESENTATION_SHA256,
     });
   });
