@@ -819,9 +819,10 @@ class _OpenAIResponsesSseUsageHandler:
         if self._eventless_prefix is not None:
             prefix = bytes(self._eventless_prefix)
             self._eventless_prefix = None
-            event_type = _classify_responses_event_type(prefix)
+            probe = _probe_responses_event_type(prefix)
+            event_type = _classify_responses_event_type_result(probe)
             observed_event_name = (
-                _observed_responses_event_type(_probe_responses_event_type(prefix))
+                _observed_responses_event_type(probe)
                 if self._failure_observer is not None
                 and event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
                 else None
@@ -977,12 +978,11 @@ class _OpenAIResponsesSseUsageHandler:
 
         prefix_bytes = bytes(prefix)
         self._named_event_prefix = None
-        event_type = _classify_responses_event_type(prefix_bytes)
+        probe = _probe_responses_event_type(prefix_bytes)
+        event_type = _classify_responses_event_type_result(probe)
         if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE and not (
             self._failure_observer is not None
-            and self._failure_observer.needs_sse_event(
-                _observed_responses_event_type(_probe_responses_event_type(prefix_bytes))
-            )
+            and self._failure_observer.needs_sse_event(_observed_responses_event_type(probe))
         ):
             self._discard_named_event = True
             return
