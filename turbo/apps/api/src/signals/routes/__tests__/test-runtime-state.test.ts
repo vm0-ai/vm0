@@ -13,6 +13,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
+  deleteVm0ManagedCandidateCooldownFixture,
   resolveVm0ManagedModelRouteFixture,
   registerVm0ManagedCandidateCooldownCleanup,
   seedVm0ManagedModelCandidateKeys,
@@ -358,6 +359,49 @@ describe("POST /api/test/runtime-state/action", () => {
       ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
     });
   });
+
+  it.each(["legacy", "built-in"] as const)(
+    "reads and deletes a cooldown stored only in %s storage",
+    async (storage) => {
+      const selectedModel = "gpt-5.6-terra";
+      const startedAt = Date.UTC(2026, 7, 20, 2, 0, 0);
+      await seedVm0ManagedModelCandidateKeys(context, selectedModel);
+      const primary = await withMockNowForTest(startedAt, async () => {
+        return await resolveVm0ManagedModelRouteFixture(
+          context,
+          selectedModel,
+          true,
+        );
+      });
+      if (!primary) {
+        throw new Error("Expected a primary GPT Terra route");
+      }
+
+      await setVm0ManagedCandidateCooldownFixture(
+        context,
+        selectedModel,
+        primary,
+        new Date(startedAt + 60_000),
+        storage,
+      );
+      await withMockNowForTest(startedAt, async () => {
+        await expect(
+          resolveVm0ManagedModelRouteFixture(context, selectedModel, true),
+        ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
+      });
+
+      await deleteVm0ManagedCandidateCooldownFixture(
+        context,
+        selectedModel,
+        primary,
+      );
+      await withMockNowForTest(startedAt, async () => {
+        await expect(
+          resolveVm0ManagedModelRouteFixture(context, selectedModel, true),
+        ).resolves.toMatchObject({ provider_type: "openai-api-key" });
+      });
+    },
+  );
 });
 
 describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
@@ -492,6 +536,70 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
     },
   );
+
+  it("writes a reported cooldown to both compatibility tables", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 30, 0);
+    await withMockNowForTest(startedAt, async () => {
+      const claimed = await createClaimedVm0Run();
+      const primary = await resolveVm0ManagedModelRouteFixture(
+        context,
+        claimed.selectedModel,
+        true,
+      );
+      if (!primary) {
+        throw new Error("Expected a managed model primary route");
+      }
+      registerVm0ManagedCandidateCooldownCleanup(
+        context,
+        claimed.selectedModel,
+        primary,
+      );
+
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "rate_limit",
+          retryAfterSeconds: 300,
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+
+      const expiredDeadline = new Date(startedAt - 1);
+      await setVm0ManagedCandidateCooldownFixture(
+        context,
+        claimed.selectedModel,
+        primary,
+        expiredDeadline,
+        "legacy",
+      );
+      await expect(
+        resolveVm0ManagedModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+
+      await setVm0ManagedCandidateCooldownFixture(
+        context,
+        claimed.selectedModel,
+        primary,
+        expiredDeadline,
+        "built-in",
+      );
+      await expect(
+        resolveVm0ManagedModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
 
   it("monotonically extends concurrent bounded reports from receipt time", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 1, 0, 0);

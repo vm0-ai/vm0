@@ -557,7 +557,15 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
+      earlierDeadline,
+      "legacy",
+    );
+    await setVm0ManagedCandidateCooldownFixture(
+      context,
+      `${selectedModelPrefix}-b`,
+      firstRoute,
       laterDeadline,
+      "built-in",
     );
     await setVm0ManagedCandidateCooldownFixture(
       context,
