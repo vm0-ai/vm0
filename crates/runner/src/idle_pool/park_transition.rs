@@ -101,6 +101,7 @@ pub(crate) struct IdleParkFailure {
     ownership: IdleParkFailureOwnership,
     reason: &'static str,
     error: String,
+    expected_capacity_rejection: bool,
 }
 
 enum IdleParkFailureOwnership {
@@ -132,6 +133,7 @@ pub(crate) enum IdleParkFailureParts {
         rejected: RejectedParkedIdleCandidate,
         reason: &'static str,
         error: String,
+        expected_capacity_rejection: bool,
     },
 }
 
@@ -152,6 +154,7 @@ pub(crate) enum SpeculativeReparkResult {
         destroy_job: Box<IdleDestroyJob>,
         reason: &'static str,
         error: String,
+        expected_capacity_rejection: bool,
     },
 }
 
@@ -282,6 +285,7 @@ async fn park_idle_transition(
             },
             reason: "promotion_identity_mismatch",
             error: format!("workspace promotion identity mismatch: {mismatch}"),
+            expected_capacity_rejection: false,
         });
     }
 
@@ -304,6 +308,7 @@ async fn park_idle_transition(
                 },
                 reason: "reuse_preparation_failed",
                 error: error.to_string(),
+                expected_capacity_rejection: false,
             });
         }
     };
@@ -356,12 +361,14 @@ async fn park_idle_transition(
             let preparation_report = match preparation.validate_result(exec_result) {
                 Ok(report) => report,
                 Err(error) => {
+                    let expected_capacity_rejection = error.is_expected_capacity_rejection();
                     return Err(IdleParkFailure {
                         ownership: IdleParkFailureOwnership::Parked {
                             rejected: candidate.into_rejected(),
                         },
                         reason: "reuse_preparation_failed",
                         error: error.to_string(),
+                        expected_capacity_rejection,
                     });
                 }
             };
@@ -390,6 +397,7 @@ async fn park_idle_transition(
             },
             reason: "park_failed",
             error: error.to_string(),
+            expected_capacity_rejection: false,
         }),
         Err(_) => {
             // A panic leaves the park transition state uncertain; destroy
@@ -406,6 +414,7 @@ async fn park_idle_transition(
                 },
                 reason: "park_panicked",
                 error: "sandbox park panicked".into(),
+                expected_capacity_rejection: false,
             })
         }
     }
@@ -423,6 +432,7 @@ impl SpeculativeIdleSandbox {
                 destroy_job: Box::new(self.into_destroy_job(REASON)),
                 reason: REASON,
                 error: "speculative exact-reuse entry is missing a history generation".into(),
+                expected_capacity_rejection: false,
             };
         };
         let Self { entry } = self;
@@ -464,6 +474,7 @@ impl SpeculativeIdleSandbox {
                     }),
                     reason: "speculative_repark_unexpected_handoff",
                     error: "speculative re-park unexpectedly produced an immediate handoff".into(),
+                    expected_capacity_rejection: false,
                 }
             }
             Ok(IdleParkOutcome::NonReusable {
@@ -479,15 +490,17 @@ impl SpeculativeIdleSandbox {
                     }),
                     reason: "speculative_repark_non_reusable",
                     error: format!("re-parked sandbox is not reusable: {}", reason.as_str()),
+                    expected_capacity_rejection: false,
                 }
             }
             Err(failure) => {
-                let (destroy_job, reason, error) =
+                let (destroy_job, reason, error, expected_capacity_rejection) =
                     failure.into_speculative_destroy_job(reuse_key, profile_name);
                 SpeculativeReparkResult::Destroy {
                     destroy_job: Box::new(destroy_job),
                     reason,
                     error,
+                    expected_capacity_rejection,
                 }
             }
         }
@@ -533,11 +546,12 @@ impl IdleParkFailure {
         self,
         reuse_key: String,
         profile_name: String,
-    ) -> (IdleDestroyJob, &'static str, String) {
+    ) -> (IdleDestroyJob, &'static str, String, bool) {
         let Self {
             ownership,
             reason,
             error,
+            expected_capacity_rejection,
         } = self;
         let (payload, budget_lease) = match ownership {
             IdleParkFailureOwnership::Active {
@@ -559,6 +573,7 @@ impl IdleParkFailure {
             },
             reason,
             error,
+            expected_capacity_rejection,
         )
     }
 
@@ -567,6 +582,7 @@ impl IdleParkFailure {
             ownership,
             reason,
             error,
+            expected_capacity_rejection,
         } = self;
         match ownership {
             IdleParkFailureOwnership::Active {
@@ -593,6 +609,7 @@ impl IdleParkFailure {
                 rejected,
                 reason,
                 error,
+                expected_capacity_rejection,
             },
         }
     }
