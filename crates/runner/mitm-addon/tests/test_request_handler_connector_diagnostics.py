@@ -15,8 +15,8 @@ from tests.connector_diagnostic_helpers import (
 )
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
-    _vm_without_firewalls,
+    _sandbox_without_firewalls,
+    _single_firewall_sandbox,
     _write_registry,
 )
 
@@ -24,11 +24,11 @@ from tests.request_handler_helpers import (
 def _write_shared_base_active_firewall_registry(
     tmp_path,
     *,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ):
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="active-shared",
             api_entry={
@@ -42,7 +42,7 @@ def _write_shared_base_active_firewall_registry(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -119,7 +119,7 @@ async def test_shared_base_head_diagnostic_is_bodyless(
     )
     reg_path = _write_shared_base_active_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -347,7 +347,7 @@ async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     )
     reg_path = _write_shared_base_active_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -383,7 +383,7 @@ async def test_inactive_builtin_connector_url_without_auth_allows_upstream(
     tmp_path, real_flow, mitm_ctx
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -414,7 +414,9 @@ async def test_streamed_inactive_builtin_connector_request_waits_for_response_fa
     write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -443,7 +445,7 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
     tmp_path, real_flow, mitm_ctx, headers
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -474,7 +476,7 @@ async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
     mitm_ctx,
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -499,8 +501,8 @@ async def test_active_builtin_connector_url_uses_firewall_path(
     cache_path = write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
-        vm_info={
-            **_vm_without_firewalls(tmp_path),
+        sandbox_info={
+            **_sandbox_without_firewalls(tmp_path),
             "encryptedSecrets": "iv:tag:data",
             "firewalls": [{"kind": "builtin", "name": "fal"}],
         },

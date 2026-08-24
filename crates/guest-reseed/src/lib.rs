@@ -1,3 +1,13 @@
+//! Inject host-provided entropy and force a kernel CRNG reseed after a
+//! Firecracker snapshot restore.
+//!
+//! On ARM64 with Linux 6.1, VMGenID does not automatically reseed the CRNG
+//! after snapshot restore because the kernel driver supports ACPI but not
+//! DeviceTree until Linux 6.10. This crate accepts fresh host entropy through
+//! stdin, writes it to `/dev/urandom`, and forces an immediate reseed through
+//! the `RNDRESEEDCRNG` ioctl so restored VMs do not share identical random
+//! output.
+
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -59,6 +69,26 @@ fn reseed(entropy: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+/// Runs the `guest-reseed` CLI.
+///
+/// `args` must contain the command-line arguments after the executable name,
+/// matching `std::env::args_os().skip(1)`. The command accepts no arguments;
+/// use the following syntax:
+///
+/// ```text
+/// guest-reseed < entropy-bytes
+/// ```
+///
+/// `input` supplies raw entropy bytes through stdin. The input must contain
+/// between 1 and 65,536 bytes, inclusive. `stderr` receives usage and runtime
+/// diagnostics.
+///
+/// Valid input is written to `/dev/urandom`, then the kernel CRNG is force-
+/// reseeded through the `RNDRESEEDCRNG` ioctl. This operation requires
+/// `CAP_SYS_ADMIN`.
+///
+/// Returns process-style exit codes: `0` for success and `1` for argument,
+/// input, or reseed failures.
 pub fn run_cli<I, A>(input: impl Read, stderr: impl Write, args: I) -> i32
 where
     I: IntoIterator<Item = A>,

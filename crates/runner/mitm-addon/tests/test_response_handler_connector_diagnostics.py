@@ -21,8 +21,8 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
-    _vm_without_firewalls,
+    _sandbox_without_firewalls,
+    _single_firewall_sandbox,
     _write_registry,
 )
 
@@ -168,7 +168,7 @@ async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, r
     # Keep the catalog owner active while a nonmatching runtime base forces ordinary Allow.
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="active-shared",
             api_entry={
@@ -191,7 +191,7 @@ async def test_active_shared_base_owner_preserves_ordinary_allow_401(tmp_path, r
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     upstream_body = b"upstream auth error"
@@ -482,7 +482,7 @@ async def test_configured_auth_preserves_connector_401(
             }
         },
     )
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -587,7 +587,7 @@ async def test_head_response_stream_emits_no_diagnostic_body(tmp_path, real_flow
 async def test_streams_connector_401_when_user_auth_is_present(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -619,7 +619,9 @@ async def test_streamed_connector_401_with_user_auth_keeps_upstream_response(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -660,7 +662,9 @@ async def test_streamed_connector_401_with_query_auth_keeps_upstream_response(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -696,7 +700,9 @@ def test_streamed_connector_401_before_request_gets_diagnostic(tmp_path, real_fl
     write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -740,7 +746,9 @@ def test_streamed_authenticated_connector_401_before_request_keeps_upstream_resp
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -782,7 +790,9 @@ def test_streamed_query_authenticated_connector_401_before_request_keeps_upstrea
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -820,7 +830,9 @@ def test_streamed_browser_connector_403_before_request_keeps_upstream_response(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -866,7 +878,9 @@ def test_streamed_api_allow_response_before_request_logs_without_firewall_contex
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+        sandbox_info=_sandbox_without_firewalls(
+            tmp_path, sandbox_fields={"captureNetworkBodies": True}
+        ),
     )
     flow = real_flow(
         with_response=False,
@@ -1045,7 +1059,7 @@ async def test_replaces_connector_401_body_when_auth_query_param_is_empty(
 async def test_preserves_connector_401_body_when_user_auth_is_present(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1081,7 +1095,7 @@ async def test_preserves_connector_401_body_when_user_auth_is_present(
 async def test_preserves_model_provider_401_body_without_connector_diagnostic(
     tmp_path, real_flow, mitm_ctx
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1110,7 +1124,7 @@ async def test_preserves_model_provider_401_body_without_connector_diagnostic(
 async def test_preserves_connector_401_body_when_query_auth_is_present(
     tmp_path, real_flow, mitm_ctx
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1138,7 +1152,7 @@ async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
     tmp_path, real_flow, mitm_ctx
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1175,7 +1189,7 @@ async def test_preserves_non_auth_connector_response(
     status_code,
 ):
     write_connector_diagnostic_catalog_cache(tmp_path)
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1214,7 +1228,7 @@ async def test_preserves_non_auth_connector_response(
 async def test_preserves_browser_403_body_for_connector_candidate(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",

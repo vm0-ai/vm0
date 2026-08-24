@@ -30,7 +30,7 @@ from tests.codex_model_catalog_cache_helpers import (
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
@@ -176,7 +176,7 @@ def _write_codex_registry(tmp_path: Path, *, capture: bool, billable: bool = Fal
     firewall_name = "model-provider:codex-oauth-token"
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-catalog-cache",
             firewall_name=firewall_name,
@@ -202,7 +202,7 @@ def _write_codex_registry(tmp_path: Path, *, capture: bool, billable: bool = Fal
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name] if billable else None,
-            vm_fields={
+            sandbox_fields={
                 "captureNetworkBodies": capture,
                 "cliAgentType": "codex",
             },
@@ -562,7 +562,7 @@ async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
         auth_value="sensitive-auth",
         account="sensitive-account",
     )
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
     await prepare_prefetch_miss(flow)
     flow.response = catalog_response(encoding="br")
     mitm_addon.responseheaders(flow)

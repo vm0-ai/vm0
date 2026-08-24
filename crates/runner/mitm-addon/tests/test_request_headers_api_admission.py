@@ -11,7 +11,7 @@ import request_classification
 import upstream_admission
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import _sandbox_without_firewalls, _write_registry
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     track_trusted_authority_validations,
@@ -23,12 +23,12 @@ from tests.upstream_connection_helpers import (
 
 
 def _write_api_registry(tmp_path: Path, *, capture_network_bodies: bool) -> Path:
-    vm_fields: dict[str, object] | None = (
+    sandbox_fields: dict[str, object] | None = (
         {"captureNetworkBodies": True} if capture_network_bodies else None
     )
     return _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields=vm_fields),
+        sandbox_info=_sandbox_without_firewalls(tmp_path, sandbox_fields=sandbox_fields),
     )
 
 
@@ -508,7 +508,7 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
 
         assert validated_flows == [flow]
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
@@ -541,7 +541,7 @@ async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
         assert mitm_addon.requestheaders(flow) is None
 
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
@@ -575,7 +575,7 @@ def test_api_allow_bounded_prebind_ignores_unregistered_client(
         assert mitm_addon.requestheaders(flow) is None
 
     _assert_no_request_stream(flow)
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
     assert flow.server_conn.address == ("203.0.113.10", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}

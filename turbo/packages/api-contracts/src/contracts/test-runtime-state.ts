@@ -45,6 +45,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     provider_type: z.string(),
     upstream_model: z.string(),
     unavailable_until: z.iso.datetime(),
+    cooldown_storage: z.enum(["legacy", "built-in", "both"]).optional(),
   }),
   z.object({
     action: z.literal("delete-vm0-managed-candidate-cooldown"),

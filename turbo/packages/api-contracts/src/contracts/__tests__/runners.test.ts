@@ -124,6 +124,7 @@ describe("runner claim response contract", () => {
       runId: "00000000-0000-4000-8000-000000020985",
       reuseKey: "thread:00000000-0000-4000-8000-000000020986",
       modelUsageProvider: "fixture-model",
+      platformEnvironment: { OKOU_AGENT_ID: "fixture-agent-id" },
     });
     expect(context).not.toHaveProperty("experimentalProfile");
   });
@@ -138,6 +139,57 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+
+  it("keeps old API and old runner claim shapes compatible", () => {
+    const current = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const previousApiResponse: Record<string, unknown> = { ...current };
+    Reflect.deleteProperty(previousApiResponse, "platformEnvironment");
+    expect(
+      executionContextSchema.parse(previousApiResponse),
+    ).not.toHaveProperty("platformEnvironment");
+
+    const previousRunnerSchema = z
+      .object(executionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousRunnerSchema.parse(current)).not.toHaveProperty(
+      "platformEnvironment",
+    );
+  });
+
+  it("round-trips the optional trusted environment through stored contexts", () => {
+    const storedContext = storedExecutionContextSchema.parse({
+      storageMounts: [],
+      connectorRuntimeTargets: [],
+      environment: {
+        OKOU_AGENT_ID: "stored-agent-id",
+        USER_VALUE: "user-value",
+      },
+      platformEnvironment: { OKOU_AGENT_ID: "stored-agent-id" },
+      secretValueEnvironmentKeys: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "claude-code",
+    });
+    const roundTripped = compatibleStoredExecutionContextSchema.parse(
+      JSON.parse(JSON.stringify(storedContext)),
+    );
+
+    expect(roundTripped.platformEnvironment).toStrictEqual({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+    expect(roundTripped.environment).toMatchObject({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+
+    const previousStoredContextSchema = z
+      .object(storedExecutionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousStoredContextSchema.parse(storedContext)).not.toHaveProperty(
+      "platformEnvironment",
+    );
   });
 });
 

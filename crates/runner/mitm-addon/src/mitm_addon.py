@@ -2,9 +2,9 @@
 """
 mitmproxy addon for VM0 runner-level network proxy.
 
-This addon runs on the runner HOST (not inside VMs) and:
-1. Intercepts all HTTPS requests from VMs
-2. Looks up the source VM's runId from the proxy registry
+This addon runs on the runner HOST (not inside sandboxes) and:
+1. Intercepts all HTTPS requests from sandboxes
+2. Looks up the source sandbox's runId from the proxy registry
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 5. Reports model-provider failures plus model-provider and connector usage
@@ -638,11 +638,11 @@ def _block_registry_unavailable(
     http_local_responses.block_registry_unavailable(flow, unavailable)
 
 
-def _block_invalid_registry_vm(
+def _block_invalid_registry_sandbox(
     flow: http.HTTPFlow,
-    invalid_vm: registry.InvalidVmEntry,
+    invalid_sandbox: registry.InvalidSandboxEntry,
 ) -> None:
-    http_local_responses.block_invalid_registry_vm(flow, invalid_vm)
+    http_local_responses.block_invalid_registry_sandbox(flow, invalid_sandbox)
 
 
 def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
@@ -816,11 +816,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     _prebind_requestheaders_upstream_destination(flow, classification)
     if classification.kind == "firewall_allow":
         allow = classification.firewall_allow
-        vm_info = classification.vm_info
+        sandbox_info = classification.sandbox_info
         auth_base = _firewall_allow_auth_base(allow)
         if auth_base_body_check.kind != "ok" and auth_base:
             _start_request_timing(flow)
-            prepare_firewall_metadata(flow, allow, vm_info)
+            prepare_firewall_metadata(flow, allow, sandbox_info)
             proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
             firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
             if auth_base_body_check.kind == "too_large":
@@ -852,7 +852,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                 RuntimeError,
             ):
                 _start_request_timing(flow)
-                prepare_firewall_metadata(flow, allow, vm_info)
+                prepare_firewall_metadata(flow, allow, sandbox_info)
                 proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
                 firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
                 mark_auth_base_forwarding_saturated(
@@ -882,7 +882,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                     classification=classification,
                     metadata_snapshot=metadata_snapshot,
                     request_end_stream=request_end_stream,
-                    capture_body=bool(vm_info.get("captureNetworkBodies", False)),
+                    capture_body=bool(sandbox_info.get("captureNetworkBodies", False)),
                     aws_sigv4_buffered_fallback=aws_sigv4_body_check,
                 )
             _admit_buffered_aws_sigv4_request(
@@ -933,11 +933,11 @@ def _admit_buffered_aws_sigv4_request(
     body_check: _BufferedRequestBodyCheck,
 ) -> None:
     allow = classification.firewall_allow
-    vm_info = classification.vm_info
+    sandbox_info = classification.sandbox_info
 
     if body_check.kind != "ok":
         _start_request_timing(flow)
-        prepare_firewall_metadata(flow, allow, vm_info)
+        prepare_firewall_metadata(flow, allow, sandbox_info)
         proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
         firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
         if body_check.kind == "too_large":
@@ -964,7 +964,7 @@ def _admit_buffered_aws_sigv4_request(
         admission = aws_sigv4_body_admission.reserve(body_check.observed_size)
     except aws_sigv4_body_admission.AwsSigV4BodyAdmissionSaturatedError:
         _start_request_timing(flow)
-        prepare_firewall_metadata(flow, allow, vm_info)
+        prepare_firewall_metadata(flow, allow, sandbox_info)
         proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
         firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
         mark_aws_sigv4_request_admission_saturated(
@@ -995,7 +995,7 @@ async def _try_firewall_request_stream_from_headers(
     aws_sigv4_buffered_fallback: _BufferedRequestBodyCheck | None,
 ) -> None:
     allow = classification.firewall_allow
-    vm_info = classification.vm_info
+    sandbox_info = classification.sandbox_info
     request_headers_snapshot = http.Headers(flow.request.headers.fields)
     request_url_snapshot = flow.request.url
 
@@ -1027,7 +1027,7 @@ async def _try_firewall_request_stream_from_headers(
         fall_back()
         return
 
-    _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
+    _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, sandbox_info)
     _start_request_timing(flow)
     expected_run_id = flow_metadata.run_id(flow.metadata)
     admitted_server = flow.server_conn
@@ -1036,7 +1036,7 @@ async def _try_firewall_request_stream_from_headers(
         result = await try_apply_stream_safe_firewall_auth_for_requestheaders(
             flow,
             allow,
-            vm_info,
+            sandbox_info,
             revalidate_current_firewall_authorization=lambda: (
                 _firewall_authorization_is_current_for_requestheaders(
                     flow,
@@ -1057,8 +1057,8 @@ async def _try_firewall_request_stream_from_headers(
 
     terminal_usage.track_flow_if_needed(
         flow,
-        is_billable_firewall(allow.name, vm_info),
-        _is_model_provider_usage_observable(allow.name, vm_info),
+        is_billable_firewall(allow.name, sandbox_info),
+        _is_model_provider_usage_observable(allow.name, sandbox_info),
     )
     try:
         request_classification.cache_classification(flow, classification)
@@ -1179,7 +1179,7 @@ def _equivalent_current_firewall_allow(
 ) -> request_classification.FirewallAllow | None:
     if not isinstance(classification, request_classification.FirewallAllow):
         return None
-    current_run_id = classification.vm_info.get("runId")
+    current_run_id = classification.sandbox_info.get("runId")
     if current_run_id != expected_run_id:
         return None
     if classification.firewall_allow != expected_allow:
@@ -1231,8 +1231,8 @@ def _block_request_classification(
     if classification.kind == "stale_tls_admission":
         _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
         return
-    if classification.kind == "invalid_registry_vm":
-        _block_invalid_registry_vm(flow, classification.invalid_vm)
+    if classification.kind == "invalid_registry_sandbox":
+        _block_invalid_registry_sandbox(flow, classification.invalid_sandbox)
         return
     if classification.kind == "authority_denied":
         _block_authority_validation_error(flow, classification.authority_error)
@@ -1377,7 +1377,7 @@ async def request(flow: http.HTTPFlow) -> None:
             prepare_firewall_metadata(
                 flow,
                 classification.firewall_allow,
-                classification.vm_info,
+                classification.sandbox_info,
             )
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER, None)
@@ -1385,7 +1385,7 @@ async def request(flow: http.HTTPFlow) -> None:
             return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
-            vm_info = classification.vm_info
+            sandbox_info = classification.sandbox_info
             if connector_diagnostics.maybe_make_firewall_allow_local_response(
                 flow,
                 classification,
@@ -1403,23 +1403,23 @@ async def request(flow: http.HTTPFlow) -> None:
                 kind="connector_auth",
                 api_url=get_api_url(),
             ):
-                prepare_firewall_metadata(flow, allow, vm_info)
+                prepare_firewall_metadata(flow, allow, sandbox_info)
                 _block_upstream_destination_unbound(flow, reason="connector_auth")
                 return
             host_policy_error = _builtin_host_policy_error_for_firewall_allow(flow, allow)
             if host_policy_error is not None:
-                prepare_firewall_metadata(flow, allow, vm_info)
+                prepare_firewall_metadata(flow, allow, sandbox_info)
                 _block_builtin_host_policy_denied(
                     flow,
                     allow=allow,
                     error=host_policy_error,
                 )
                 return
-            _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
+            _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, sandbox_info)
             terminal_usage.track_flow_if_needed(
                 flow,
-                is_billable_firewall(allow.name, vm_info),
-                _is_model_provider_usage_observable(allow.name, vm_info),
+                is_billable_firewall(allow.name, sandbox_info),
+                _is_model_provider_usage_observable(allow.name, sandbox_info),
             )
             expected_run_id = flow_metadata.run_id(flow.metadata)
             admitted_server = flow.server_conn
@@ -1427,7 +1427,7 @@ async def request(flow: http.HTTPFlow) -> None:
             auth_result = await handle_firewall_request(
                 flow,
                 allow,
-                vm_info,
+                sandbox_info,
                 revalidate_current_firewall_authorization=lambda: (
                     _revalidate_current_firewall_authorization_for_request(
                         flow,
@@ -1474,9 +1474,9 @@ async def request(flow: http.HTTPFlow) -> None:
         request_classification.pop_cached_classification(flow)
 
 
-def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
+def _is_model_provider_usage_observable(firewall_name: str, sandbox_info: dict) -> bool:
     """Return whether a firewall can produce model usage observations."""
-    model_usage_provider = vm_info.get("modelUsageProvider")
+    model_usage_provider = sandbox_info.get("modelUsageProvider")
     return (
         firewall_name.startswith("model-provider:")
         and isinstance(model_usage_provider, str)
@@ -1487,11 +1487,11 @@ def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bo
 def _maybe_normalize_accept_encoding_for_body_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> None:
     if _is_websocket_upgrade_request(flow):
         flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
-    if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
+    if _expects_http_response_body_usage_inspection(flow, allow, sandbox_info):
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
             flow.request.headers
         )
@@ -1500,15 +1500,15 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
 def _expects_http_response_body_usage_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> bool:
     if flow.request.method.upper() in _HTTP_RESPONSE_BODYLESS_METHODS:
         return False
     if _is_websocket_upgrade_request(flow):
         return False
-    if _is_model_provider_usage_observable(allow.name, vm_info):
+    if _is_model_provider_usage_observable(allow.name, sandbox_info):
         return True
-    return is_billable_firewall(allow.name, vm_info) and usage.has_connector_response_parser(
+    return is_billable_firewall(allow.name, sandbox_info) and usage.has_connector_response_parser(
         allow.name
     )
 
@@ -1728,7 +1728,7 @@ def _handle_response(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     run_id = flow_metadata.run_id(flow.metadata)
     if not run_id:
-        # Unregistered VM: the request handler returned before populating
+        # Unregistered sandbox: the request handler returned before populating
         # metadata, so none of this handler's work applies.
         return None
 
@@ -1960,8 +1960,10 @@ def done():
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer
     shutdown is also bounded and best-effort; if it times out, process shutdown
-    continues with accepted log entries possibly still pending. Model-provider
-    failure delivery stops admission and receives one bounded drain window.
+    continues with accepted log entries possibly still pending. After joining
+    the usage executor, retained billing and diagnostic work is drained through
+    synchronous delivery. Model-provider failure delivery stops admission and
+    receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
@@ -1969,7 +1971,7 @@ def done():
         try:
             try:
                 usage.webhook.usage_executor.shutdown(wait=True)
-                usage.drain_usage_events_after_executor_shutdown()
+                runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)
         finally:

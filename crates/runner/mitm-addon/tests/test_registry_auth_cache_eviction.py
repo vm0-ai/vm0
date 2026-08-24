@@ -70,7 +70,7 @@ class TestRegistryAuthCacheEviction:
 
         # Update registry: remove run-abc-123, add run-other
         new_data = {
-            "vms": {
+            "sandboxes": {
                 "10.200.0.99": {
                     "runId": "run-other",
                     "billableFirewalls": [],
@@ -216,7 +216,7 @@ class TestRegistryAuthCacheEviction:
         mark_force_refresh(cache_key)
         set_last_force_refresh_monotonic_at(cache_key, 100.0)
 
-        registry_file.write_text(json.dumps({"vms": {}, "updatedAt": 0}))
+        registry_file.write_text(json.dumps({"sandboxes": {}, "updatedAt": 0}))
 
         registry.load_registry(str(registry_file))
 
@@ -238,7 +238,7 @@ class TestRegistryAuthCacheEviction:
         registry_file.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {"runId": "", "billableFirewalls": []},
                         "10.200.0.2": {"billableFirewalls": []},
                         "10.200.0.3": {
@@ -269,7 +269,7 @@ class TestRegistryAuthCacheEviction:
         registry_file = tmp_path / "registry.json"
         write_firewall_registry(registry_file)
 
-        context = registry.get_vm_context("10.200.0.1", str(registry_file))
+        context = registry.get_sandbox_context("10.200.0.1", str(registry_file))
         assert context is not None
         _, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
@@ -282,7 +282,7 @@ class TestRegistryAuthCacheEviction:
         registry_file.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {"runId": ""},
                     },
                     "updatedAt": 0,
@@ -294,15 +294,15 @@ class TestRegistryAuthCacheEviction:
             state = registry.load_registry_state(str(registry_file))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.vms == {}
-        assert set(state.invalid_vms) == {"10.200.0.1"}
+        assert state.sandboxes == {}
+        assert set(state.invalid_sandboxes) == {"10.200.0.1"}
         assert state.compiled_firewalls == {}
         assert state.compiled_network_policies == {}
-        assert registry.get_vm_context("10.200.0.1", str(registry_file)) is None
+        assert registry.get_sandbox_context("10.200.0.1", str(registry_file)) is None
         assert not has_auth_state(cache_key)
 
-    def test_invalid_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
-        """Invalid VM entries are not active cache owners."""
+    def test_invalid_sandbox_entries_do_not_block_header_cache_eviction(self, registry_file):
+        """Invalid sandbox entries are not active cache owners."""
         registry.load_registry(str(registry_file))
 
         old_run_key = auth_cache_key(run_id="run-old", api_id="api-0")
@@ -317,7 +317,7 @@ class TestRegistryAuthCacheEviction:
         registry_file.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {
                             "runId": "run-active",
                             "billableFirewalls": [],

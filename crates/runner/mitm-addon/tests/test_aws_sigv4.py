@@ -401,10 +401,11 @@ def test_sign_request_reinspects_changed_representation(
     assert prepared_result == ordinary_result
 
 
-def test_presigned_query_preserves_ordinary_pairs() -> None:
+def test_presigned_query_preserves_pairs_and_sorts_encoded_values() -> None:
+    # %C3%A9 sorts before z after SigV4 URI encoding, opposite the input order.
     url = aws_sigv4_presigned_url(
         STS_HOST,
-        leading_query="Tag=one&Tag=two&Flag",
+        leading_query="Tag=z&Tag=%C3%A9&Flag",
     )
 
     signed_url, _headers = sign_request(
@@ -415,14 +416,16 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
         credentials=_credentials(),
     )
 
+    query_pairs = urllib.parse.urlsplit(signed_url).query.split("&")
+    assert query_pairs[:3] == ["Tag=z", "Tag=%C3%A9", "Flag="]
     assert signed_url == (
-        "https://sts.amazonaws.com/?Tag=one&Tag=two&Flag="
+        "https://sts.amazonaws.com/?Tag=z&Tag=%C3%A9&Flag="
         "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
         "&X-Amz-Credential=AKIDEXAMPLE%2F20260101%2Fus-east-1%2Fsts%2Faws4_request"
         "&X-Amz-Date=20260101T000000Z"
         "&X-Amz-Expires=60"
         "&X-Amz-SignedHeaders=host"
-        "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
+        "&X-Amz-Signature=468cbb77f2dfadb89e3908770ac79408964deb9deda67950683286d94c4d6730"
     )
 
 

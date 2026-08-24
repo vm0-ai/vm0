@@ -1,5 +1,5 @@
 {
-  "id": "2c502da4-ba74-4b39-89a8-38f018f7429b",
+  "id": "43470047-9955-4e72-9c8e-6d16e3bcbb64",
   "prevId": "bbaa8977-ae1c-4b6d-94a6-afe8e1c9e5dc",
   "version": "7",
   "dialect": "postgresql",
@@ -4513,6 +4513,52 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.built_in_model_candidate_cooldown": {
+      "name": "built_in_model_candidate_cooldown",
+      "schema": "",
+      "columns": {
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_type": {
+          "name": "provider_type",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "upstream_model": {
+          "name": "upstream_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unavailable_until": {
+          "name": "unavailable_until",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "built_in_model_candidate_cooldown_selected_model_provider_type_upstream_model_pk": {
+          "name": "built_in_model_candidate_cooldown_selected_model_provider_type_upstream_model_pk",
+          "columns": [
+            "selected_model",
+            "provider_type",
+            "upstream_model"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.built_in_model_keys": {
       "name": "built_in_model_keys",
       "schema": "",
@@ -6144,12 +6190,6 @@
         },
         "thinking_message_id": {
           "name": "thinking_message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "public_brand": {
-          "name": "public_brand",
           "type": "text",
           "primaryKey": false,
           "notNull": false

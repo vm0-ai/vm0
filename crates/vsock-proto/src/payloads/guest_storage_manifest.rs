@@ -371,6 +371,22 @@ mod tests {
     }
 
     #[test]
+    fn result_rejects_unknown_termination_and_truncated_exit_code() {
+        assert!(matches!(
+            decode_guest_storage_manifest_result(&[0xff]),
+            Err(ProtocolError::InvalidPayload(
+                "invalid exec termination tag"
+            ))
+        ));
+        assert!(matches!(
+            decode_guest_storage_manifest_result(&[0x00, 0x00, 0x00, 0x00]),
+            Err(ProtocolError::InvalidPayload(
+                "exec result exit_code truncated"
+            ))
+        ));
+    }
+
+    #[test]
     fn request_decoder_rejects_trailing_bytes() {
         let mut payload = encode_guest_storage_manifest_request(1, "run", "/run", b"{}").unwrap();
         payload.push(0);

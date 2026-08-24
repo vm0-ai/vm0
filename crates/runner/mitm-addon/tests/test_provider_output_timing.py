@@ -305,7 +305,7 @@ def test_provider_stores_keep_independent_lru_capacity(
             cli_agent_type="claude-code",
             model_usage_provider="claude-sonnet-4-6",
         )
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
         return flow
 
     with (
@@ -319,7 +319,7 @@ def test_provider_stores_keep_independent_lru_capacity(
         patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
     ):
         codex_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        codex_flow.metadata[metadata_keys.VM_RUN_ID] = "run-shared"
+        codex_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-shared"
         codex_output_timing.observe_server_event(codex_flow, "response.created")
         codex_output_timing.observe_server_event(codex_flow, "response.output_item.added")
 

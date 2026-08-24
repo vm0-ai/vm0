@@ -140,14 +140,14 @@ def record_allow_context(
     if metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG in flow.metadata:
         return
 
-    vm_info = classification.vm_info
+    sandbox_info = classification.sandbox_info
     original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
     if not isinstance(original_url, str):
         return
 
     flow.metadata[_CONNECTOR_DIAGNOSTIC_ELIGIBLE] = True
     flow.metadata[_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = tuple(
-        sorted(_active_firewall_names(vm_info))
+        sorted(_active_firewall_names(sandbox_info))
     )
     _pin_diagnostic_snapshot(flow, classification)
 
@@ -161,7 +161,7 @@ def maybe_make_firewall_allow_local_response(
     """Diagnose an inactive shared-base owner for an unknown endpoint.
 
     This applies only to a non-browser ``firewall_allow`` whose matched firewall
-    has no permission/rule for the endpoint and whose VM and original-URL
+    has no permission/rule for the endpoint and whose sandbox and original-URL
     context is complete. ``requestheaders()`` passes ``commit=False`` for its
     provisional probe; ``request()`` passes ``commit=True`` for the committed
     path.
@@ -181,7 +181,7 @@ def maybe_make_firewall_allow_local_response(
         return False
 
     allow = classification.firewall_allow
-    vm_info = classification.vm_info
+    sandbox_info = classification.sandbox_info
     if not _firewall_allow_is_unknown_endpoint(allow):
         return False
 
@@ -196,7 +196,7 @@ def maybe_make_firewall_allow_local_response(
         diagnostic_snapshot,
         original_url,
         flow.request.method,
-        active_firewall_names=_active_firewall_names(vm_info),
+        active_firewall_names=_active_firewall_names(sandbox_info),
         matched_firewall_name=allow.name,
         connector_intent=_present_connector_intent_from_flow(flow),
     )
@@ -401,8 +401,8 @@ def _present_connector_intent_from_flow(flow: http.HTTPFlow) -> str | None:
     return intent.value if intent.status == "present" else None
 
 
-def _active_firewall_names(vm_info: dict) -> set[str]:
-    raw_firewalls = vm_info.get("firewalls")
+def _active_firewall_names(sandbox_info: dict) -> set[str]:
+    raw_firewalls = sandbox_info.get("firewalls")
     if not isinstance(raw_firewalls, list):
         return set()
 

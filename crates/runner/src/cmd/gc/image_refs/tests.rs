@@ -14,18 +14,18 @@ use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
 };
 
-const ENABLED_SERVICE_SCENARIO_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_SCENARIO";
-const ENABLED_SERVICE_CONFIG_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_CONFIG";
-const ENABLED_SERVICE_HOME_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_HOME";
-const ENABLED_SERVICE_SYSTEM_DIR_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_SYSTEM_DIR";
-const ENABLED_SERVICE_INVOCATIONS_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_INVOCATIONS";
+const ENABLED_SERVICE_SCENARIO_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO";
+const ENABLED_SERVICE_CONFIG_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_CONFIG";
+const ENABLED_SERVICE_HOME_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_HOME";
+const ENABLED_SERVICE_SYSTEM_DIR_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SYSTEM_DIR";
+const ENABLED_SERVICE_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS";
 const ENABLED_SERVICE_CHILD_TEST: &str =
     "cmd::gc::image_refs::tests::enabled_service_systemctl_child";
 const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
-printf '%s\n' "$*" >> "$VM0_RUN_GC_ENABLED_SERVICE_INVOCATIONS"
+printf '%s\n' "$*" >> "$OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS"
 
 if [ "$1" = "is-enabled" ]; then
-  if [ "$VM0_RUN_GC_ENABLED_SERVICE_SCENARIO" = "enablement-error" ]; then
+  if [ "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" = "enablement-error" ]; then
     printf '%s\n' 'cannot determine unit file state' >&2
     exit 1
   fi
@@ -34,7 +34,7 @@ if [ "$1" = "is-enabled" ]; then
 fi
 
 if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
-  case "$VM0_RUN_GC_ENABLED_SERVICE_SCENARIO" in
+  case "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" in
     cat-error)
       printf '%s\n' 'cannot read selected drop-in' >&2
       exit 1
@@ -60,7 +60,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
         '# /run/systemd/system/vm0-runner-test.service.d/20-runtime.conf' \
         '[Service]' \
         'ExecStart=' \
-        "ExecStart=/usr/bin/runner start --config $VM0_RUN_GC_ENABLED_SERVICE_CONFIG"
+        "ExecStart=/usr/bin/runner start --config $OKOU_RUN_GC_ENABLED_SERVICE_CONFIG"
       exit 0
       ;;
   esac

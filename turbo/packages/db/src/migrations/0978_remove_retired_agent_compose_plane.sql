@@ -6,6 +6,9 @@
 --
 -- This is intentionally a normal migration. migration-runner.ts owns the
 -- enclosing transaction plus lock_timeout=1s and statement_timeout=10s.
+-- Broad before/after preservation acceptance is controller-owned through
+-- read-only MaskDB. This transaction keeps only the exact mutation-boundary
+-- gates needed to prove that the frozen artifact closure is safe to remove.
 
 DO $$
 DECLARE
@@ -742,164 +745,6 @@ BEGIN
 END
 $$;--> statement-breakpoint
 
-CREATE TEMP TABLE "_stage8_preservation" (
-  "cohort" text PRIMARY KEY,
-  "row_count" bigint NOT NULL,
-  "row_digest" bigint NOT NULL
-) ON COMMIT DROP;--> statement-breakpoint
-
-INSERT INTO "_stage8_preservation" ("cohort", "row_count", "row_digest")
-SELECT
-  'agents',
-  count(*),
-  coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-FROM "agents" AS "row"
-UNION ALL
-SELECT
-  'agent_sessions',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "agent_sessions" AS "row"
-WHERE "row"."id" NOT IN (SELECT "id" FROM "_stage8_artifact_sessions")
-UNION ALL
-SELECT
-  'agent_runs',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_version_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "agent_runs" AS "row"
-WHERE "row"."id" NOT IN (SELECT "id" FROM "_stage8_artifact_runs")
-UNION ALL
-SELECT
-  'chat_threads',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "chat_threads" AS "row"
-WHERE "row"."id" NOT IN (SELECT "id" FROM "_stage8_artifact_threads")
-UNION ALL
-SELECT
-  'chat_thread_events',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "chat_thread_events" AS "row"
-UNION ALL
-SELECT
-  'chat_event_search_messages',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "chat_event_search_messages" AS "row"
-WHERE ("row"."chat_thread_id", "row"."seq_id") NOT IN (
-  SELECT "chat_thread_id", "seq_id"
-  FROM "_stage8_artifact_search_messages"
-)
-UNION ALL
-SELECT
-  'checkpoints',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'agent_compose_snapshot')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "checkpoints" AS "row"
-WHERE "row"."run_id" NOT IN (SELECT "id" FROM "_stage8_artifact_runs")
-UNION ALL
-SELECT
-  'storages',
-  count(*),
-  coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-FROM "storages" AS "row"
-UNION ALL
-SELECT
-  'storage_versions',
-  count(*),
-  coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-FROM "storage_versions" AS "row"
-UNION ALL
-SELECT
-  'usage_event',
-  count(*),
-  coalesce(
-    bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-    0
-  )
-FROM "usage_event" AS "row"
-UNION ALL
-SELECT
-  'usage_event_hourly_rollup',
-  count(*),
-  coalesce(
-    bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-    0
-  )
-FROM "usage_event_hourly_rollup" AS "row"
-UNION ALL
-SELECT
-  'usage_allowance_allocations',
-  count(*),
-  coalesce(
-    bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-    0
-  )
-FROM "usage_allowance_allocations" AS "row"
-UNION ALL
-SELECT
-  'org_usage_allowance_windows',
-  count(*),
-  coalesce(
-    bit_xor(
-      hashtextextended(
-        (to_jsonb("row") - 'created_by_run_id')::text,
-        0
-      )
-    ),
-    0
-  )
-FROM "org_usage_allowance_windows" AS "row";--> statement-breakpoint
-
 CREATE TEMP TABLE "_stage8_artifact_billing" ON COMMIT DROP AS
 SELECT
   'usage_event'::text AS "cohort",
@@ -1038,6 +883,11 @@ BEGIN
         "row"."run_id",
         (to_jsonb("row") - 'run_id')::text AS "payload"
       FROM "usage_event" AS "row"
+      WHERE "row"."id" IN (
+        SELECT "id"
+        FROM "_stage8_artifact_billing"
+        WHERE "cohort" = 'usage_event'
+      )
       UNION ALL
       SELECT
         'usage_event_hourly_rollup',
@@ -1045,6 +895,11 @@ BEGIN
         "row"."run_id",
         (to_jsonb("row") - 'run_id')::text
       FROM "usage_event_hourly_rollup" AS "row"
+      WHERE "row"."id" IN (
+        SELECT "id"
+        FROM "_stage8_artifact_billing"
+        WHERE "cohort" = 'usage_event_hourly_rollup'
+      )
       UNION ALL
       SELECT
         'usage_allowance_allocations',
@@ -1052,6 +907,11 @@ BEGIN
         "row"."run_id",
         (to_jsonb("row") - 'run_id')::text
       FROM "usage_allowance_allocations" AS "row"
+      WHERE "row"."id" IN (
+        SELECT "id"
+        FROM "_stage8_artifact_billing"
+        WHERE "cohort" = 'usage_allowance_allocations'
+      )
       UNION ALL
       SELECT
         'org_usage_allowance_windows',
@@ -1059,6 +919,11 @@ BEGIN
         "row"."created_by_run_id",
         (to_jsonb("row") - 'created_by_run_id')::text
       FROM "org_usage_allowance_windows" AS "row"
+      WHERE "row"."id" IN (
+        SELECT "id"
+        FROM "_stage8_artifact_billing"
+        WHERE "cohort" = 'org_usage_allowance_windows'
+      )
     )
     SELECT 1
     FROM "_stage8_artifact_billing" AS "frozen"
@@ -1322,116 +1187,6 @@ $$;--> statement-breakpoint
 
 DO $$
 BEGIN
-  IF EXISTS (
-    WITH current_preservation AS (
-      SELECT
-        'agents'::text AS "cohort",
-        count(*) AS "row_count",
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-          AS "row_digest"
-      FROM "agents" AS "row"
-      UNION ALL
-      SELECT
-        'agent_sessions',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "agent_sessions" AS "row"
-      UNION ALL
-      SELECT
-        'agent_runs',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "agent_runs" AS "row"
-      UNION ALL
-      SELECT
-        'chat_threads',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "chat_threads" AS "row"
-      UNION ALL
-      SELECT
-        'chat_thread_events',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "chat_thread_events" AS "row"
-      UNION ALL
-      SELECT
-        'chat_event_search_messages',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "chat_event_search_messages" AS "row"
-      UNION ALL
-      SELECT
-        'checkpoints',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "checkpoints" AS "row"
-      UNION ALL
-      SELECT
-        'storages',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "storages" AS "row"
-      UNION ALL
-      SELECT
-        'storage_versions',
-        count(*),
-        coalesce(bit_xor(hashtextextended(to_jsonb("row")::text, 0)), 0)
-      FROM "storage_versions" AS "row"
-      UNION ALL
-      SELECT
-        'usage_event',
-        count(*),
-        coalesce(
-          bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-          0
-        )
-      FROM "usage_event" AS "row"
-      UNION ALL
-      SELECT
-        'usage_event_hourly_rollup',
-        count(*),
-        coalesce(
-          bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-          0
-        )
-      FROM "usage_event_hourly_rollup" AS "row"
-      UNION ALL
-      SELECT
-        'usage_allowance_allocations',
-        count(*),
-        coalesce(
-          bit_xor(hashtextextended((to_jsonb("row") - 'run_id')::text, 0)),
-          0
-        )
-      FROM "usage_allowance_allocations" AS "row"
-      UNION ALL
-      SELECT
-        'org_usage_allowance_windows',
-        count(*),
-        coalesce(
-          bit_xor(
-            hashtextextended(
-              (to_jsonb("row") - 'created_by_run_id')::text,
-              0
-            )
-          ),
-          0
-        )
-      FROM "org_usage_allowance_windows" AS "row"
-    )
-    SELECT 1
-    FROM "_stage8_preservation" AS "frozen"
-    FULL OUTER JOIN current_preservation AS "current"
-      ON "current"."cohort" = "frozen"."cohort"
-    WHERE "current"."cohort" IS NULL
-      OR "frozen"."cohort" IS NULL
-      OR "current"."row_count" IS DISTINCT FROM "frozen"."row_count"
-      OR "current"."row_digest" IS DISTINCT FROM "frozen"."row_digest"
-  ) THEN
-    RAISE EXCEPTION 'Stage 8 protected history/Storage preservation drift';
-  END IF;
-
   IF EXISTS (
     SELECT 1
     FROM "_stage8_deleted_anchor_events" AS "frozen"

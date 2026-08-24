@@ -73,6 +73,11 @@ class _BodyRefinementRule(NamedTuple):
     matches_body: Callable[[bytes | None], bool]
 
 
+class _BillingDomainLabelNormalization(NamedTuple):
+    normalized_label: str | None
+    unsafe_compatibility_mapping: bool
+
+
 # Permission → default bucket.  The default matches the majority of
 # paths in the scope; outliers go in `_PATH_OVERRIDES`.  Prices are
 # defined in turbo/apps/api/src/scripts/dev-seed.ts.
@@ -390,6 +395,15 @@ def _label_has_tld_prefix_before_unicode(label: str) -> bool:
     return False
 
 
+def _normalize_billing_domain_label(label: str) -> _BillingDomainLabelNormalization:
+    try:
+        return _BillingDomainLabelNormalization(normalize_idna_label(label), False)
+    except UnsafeIdnaCompatibilityMappingError:
+        return _BillingDomainLabelNormalization(None, True)
+    except UnicodeError:
+        return _BillingDomainLabelNormalization(None, False)
+
+
 def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: str) -> bool:
     if candidate.isascii():
         simple_ascii_candidate = candidate.lower()
@@ -399,23 +413,33 @@ def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: s
     else:
         use_simple_ascii_labels = False
         labels = candidate.split(".")
+    label_normalizations: dict[str, _BillingDomainLabelNormalization] = {}
+    label_tld_prefixes: dict[str, bool] = {}
     last_label_index = len(labels) - 1
     for index, label in enumerate(labels):
         if use_simple_ascii_labels:
             normalized_label = label
         else:
-            if index > 0 and _label_has_tld_prefix_before_unicode(label):
-                return True
+            if index > 0:
+                has_tld_prefix = label_tld_prefixes.get(label)
+                if has_tld_prefix is None:
+                    has_tld_prefix = _label_has_tld_prefix_before_unicode(label)
+                    label_tld_prefixes[label] = has_tld_prefix
+                if has_tld_prefix:
+                    return True
 
-            try:
-                normalized_label = normalize_idna_label(label)
-            except UnsafeIdnaCompatibilityMappingError:
+            normalization = label_normalizations.get(label)
+            if normalization is None:
+                normalization = _normalize_billing_domain_label(label)
+                label_normalizations[label] = normalization
+            if normalization.unsafe_compatibility_mapping:
                 # Keep billing conservative for URL-like compatibility aliases,
                 # but do not fold them into unrelated ASCII domains.
                 if index == last_label_index:
                     return _is_twitter_text_tld_boundary(following_char)
                 continue
-            except UnicodeError:
+            normalized_label = normalization.normalized_label
+            if normalized_label is None:
                 return False
 
         if not _label_is_billing_domain_label(normalized_label):

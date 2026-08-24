@@ -84,7 +84,7 @@ banned-from = ["matching"]
 
 [tool.ruff.lint.per-file-ignores]
 # S101: pytest uses `assert` universally; S105: tests hardcode fixture tokens
-# like "vm_sandbox_token" that bandit flags as "possible password". Both are
+# like "sandbox_token" that bandit flags as "possible password". Both are
 # standard pytest patterns with no security meaning in test-only code.
 # PLR2004: `assert status == 200` / `assert len(lines) == 2` are idiomatic in
 # tests; naming each threshold as a constant adds noise without catching bugs.
