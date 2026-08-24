@@ -170,7 +170,7 @@ function executableMethod(args: {
 function createConnectorActionResolver(
   snapshot: ConnectorRuntimeSnapshot,
 ): ConnectorActionResolver {
-  const resolveSlugCore: ConnectorActionResolver["resolveSlug"] = (input) => {
+  const resolveSlug: ConnectorActionResolver["resolveSlug"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
       snapshot,
       input.connectorSlug,
@@ -248,7 +248,7 @@ function createConnectorActionResolver(
   };
 
   return {
-    resolveSlug: resolveSlugCore,
+    resolveSlug,
     resolveMethod,
 
     resolveNewActionMethod(input) {
@@ -275,7 +275,7 @@ function createConnectorActionResolver(
     resolveSlugs(input) {
       const connectors: ResolvedConnectorSlug[] = [];
       for (const connectorSlug of input.connectorSlugs) {
-        const resolved = resolveSlugCore({
+        const resolved = resolveSlug({
           connectorSlug,
           requireExecutable: input.requireExecutable,
         });
