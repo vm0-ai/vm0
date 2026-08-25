@@ -5,6 +5,20 @@ use crate::error::{RunnerError, RunnerResult};
 
 const CPU_SYSFS_ROOT: &str = "/sys/devices/system/cpu";
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PreSpawnCpuCapacity {
+    ExactPhysical(u32),
+    ConservativeLogical(u32),
+}
+
+impl PreSpawnCpuCapacity {
+    pub(crate) fn tokens(&self) -> u32 {
+        match self {
+            Self::ExactPhysical(tokens) | Self::ConservativeLogical(tokens) => *tokens,
+        }
+    }
+}
+
 /// Return the number of logical CPUs available to this process.
 pub fn cpu_count() -> RunnerResult<usize> {
     std::thread::available_parallelism()
@@ -12,21 +26,63 @@ pub fn cpu_count() -> RunnerResult<usize> {
         .map_err(|e| RunnerError::Internal(format!("detect CPU count: {e}")))
 }
 
-pub(crate) fn pre_spawn_cpu_capacity() -> RunnerResult<u32> {
-    let physical_cores = physical_core_count(Path::new(CPU_SYSFS_ROOT))
-        .map_err(|error| RunnerError::Internal(format!("detect physical CPU topology: {error}")))?;
-    u32::try_from(physical_cores).map_err(|_| {
-        RunnerError::Internal(format!(
-            "physical CPU count {physical_cores} exceeds supported pre-spawn capacity"
-        ))
-    })
+pub(crate) fn pre_spawn_cpu_capacity(
+    logical_cpu_count: usize,
+) -> RunnerResult<PreSpawnCpuCapacity> {
+    pre_spawn_cpu_capacity_at(Path::new(CPU_SYSFS_ROOT), logical_cpu_count)
+        .map_err(|error| RunnerError::Internal(format!("detect physical CPU topology: {error}")))
 }
 
-fn physical_core_count(cpu_root: &Path) -> Result<usize, String> {
+fn pre_spawn_cpu_capacity_at(
+    cpu_root: &Path,
+    logical_cpu_count: usize,
+) -> Result<PreSpawnCpuCapacity, String> {
+    match physical_core_count(cpu_root)? {
+        Some(physical_cores) => u32::try_from(physical_cores)
+            .map(PreSpawnCpuCapacity::ExactPhysical)
+            .map_err(|_| {
+                format!("physical CPU count {physical_cores} exceeds supported pre-spawn capacity")
+            }),
+        None => {
+            let conservative_logical = (logical_cpu_count / 2).max(1);
+            u32::try_from(conservative_logical)
+                .map(PreSpawnCpuCapacity::ConservativeLogical)
+                .map_err(|_| {
+                    format!(
+                        "logical CPU fallback count {conservative_logical} exceeds supported pre-spawn capacity"
+                    )
+                })
+        }
+    }
+}
+
+fn physical_core_count(cpu_root: &Path) -> Result<Option<usize>, String> {
     let online_path = cpu_root.join("online");
     let online = std::fs::read_to_string(&online_path)
         .map_err(|error| format!("read {}: {error}", online_path.display()))?;
     let cpus = parse_cpu_list(&online)?;
+    let mut missing_topology = BTreeSet::new();
+
+    for cpu in &cpus {
+        let topology = cpu_root.join(format!("cpu{cpu}/topology"));
+        match std::fs::symlink_metadata(&topology) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing_topology.insert(*cpu);
+            }
+            Err(error) => return Err(format!("inspect {}: {error}", topology.display())),
+        }
+    }
+
+    if missing_topology == cpus {
+        return Ok(None);
+    }
+    if !missing_topology.is_empty() {
+        return Err(format!(
+            "physical CPU topology is missing for online CPUs {missing_topology:?}"
+        ));
+    }
+
     let mut cores = BTreeSet::new();
 
     for cpu in cpus {
@@ -39,7 +95,7 @@ fn physical_core_count(cpu_root: &Path) -> Result<usize, String> {
     if cores.is_empty() {
         return Err("online CPU topology contains no physical cores".into());
     }
-    Ok(cores.len())
+    Ok(Some(cores.len()))
 }
 
 fn read_topology_id(path: &Path) -> Result<i64, String> {
@@ -148,7 +204,32 @@ mod tests {
         write_topology(dir.path(), 4, 1, 0);
         write_topology(dir.path(), 5, 1, 0);
 
-        assert_eq!(physical_core_count(dir.path()).unwrap(), 3);
+        assert_eq!(
+            pre_spawn_cpu_capacity_at(dir.path(), 6).unwrap(),
+            PreSpawnCpuCapacity::ExactPhysical(3)
+        );
+    }
+
+    #[test]
+    fn pre_spawn_cpu_capacity_falls_back_when_topology_is_uniformly_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("online"), "0-15").unwrap();
+
+        assert_eq!(
+            pre_spawn_cpu_capacity_at(dir.path(), 16).unwrap(),
+            PreSpawnCpuCapacity::ConservativeLogical(8)
+        );
+    }
+
+    #[test]
+    fn pre_spawn_cpu_capacity_keeps_one_token_for_one_logical_cpu() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("online"), "0").unwrap();
+
+        assert_eq!(
+            pre_spawn_cpu_capacity_at(dir.path(), 1).unwrap(),
+            PreSpawnCpuCapacity::ConservativeLogical(1)
+        );
     }
 
     #[test]
@@ -157,7 +238,10 @@ mod tests {
         std::fs::write(dir.path().join("online"), "0-1").unwrap();
         write_topology(dir.path(), 0, 0, 0);
 
-        assert!(physical_core_count(dir.path()).is_err());
+        assert_eq!(
+            physical_core_count(dir.path()).unwrap_err(),
+            "physical CPU topology is missing for online CPUs {1}"
+        );
     }
 
     #[test]
@@ -167,7 +251,26 @@ mod tests {
         write_topology(dir.path(), 0, 0, 0);
         write_topology(dir.path(), 2, 0, 2);
 
-        assert_eq!(physical_core_count(dir.path()).unwrap(), 2);
+        assert_eq!(physical_core_count(dir.path()).unwrap(), Some(2));
+    }
+
+    #[test]
+    fn physical_core_count_rejects_incomplete_and_malformed_topology() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("online"), "0").unwrap();
+        let topology = dir.path().join("cpu0/topology");
+        std::fs::create_dir_all(&topology).unwrap();
+        std::fs::write(topology.join("physical_package_id"), "0").unwrap();
+
+        let error = physical_core_count(dir.path()).unwrap_err();
+        assert!(error.contains("read"), "unexpected error: {error}");
+        assert!(error.contains("core_id"), "unexpected error: {error}");
+
+        std::fs::write(topology.join("core_id"), "invalid").unwrap();
+
+        let error = physical_core_count(dir.path()).unwrap_err();
+        assert!(error.contains("parse"), "unexpected error: {error}");
+        assert!(error.contains("core_id"), "unexpected error: {error}");
     }
 
     #[test]

@@ -577,7 +577,8 @@ async fn run_start_with_home(
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
-    let pre_spawn_vcpu_tokens = host::pre_spawn_cpu_capacity()?;
+    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
+    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
     let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
@@ -597,11 +598,25 @@ async fn run_start_with_home(
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
     );
-    info!(
-        pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-        host_logical_cpus = host_cpus,
-        "pre-spawn admission initialized"
-    );
+    match pre_spawn_capacity {
+        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
+            info!(
+                capacity_source = "physical_topology",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
+            warn!(
+                capacity_source = "logical_cpu_fallback",
+                reason = "topology directories are absent for all online CPUs",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+    }
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
     let device_rate_limits = io_limit_resolution.device_rate_limits();
