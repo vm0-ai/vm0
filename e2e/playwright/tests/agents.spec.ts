@@ -107,10 +107,13 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use five equal columns and keep Pin in the first row", async ({
+test("three-column rail is darker and pinned agents keep five equal columns", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem("theme", "dark");
+  });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
   const defaultAgentId = new URL(page.url()).pathname.match(
@@ -145,6 +148,45 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
   });
   await expect(cards).toHaveCount(4);
   await expect(pinAgent).toBeVisible();
+
+  const railSurface = await page
+    .getByTestId("labeled-nav-rail")
+    .evaluate((rail) => {
+      const chatList = document.querySelector(
+        '[data-testid="chat-list-column"]',
+      );
+      if (!(chatList instanceof HTMLElement)) {
+        throw new Error("Three-column chat list is not rendered");
+      }
+
+      const appearance = (element: Element) => {
+        const backgroundColor = getComputedStyle(element).backgroundColor;
+        const channels = backgroundColor
+          .match(/\d+(?:\.\d+)?/gu)
+          ?.slice(0, 3)
+          .map(Number);
+        const [red, green, blue] = channels ?? [];
+        if (red === undefined || green === undefined || blue === undefined) {
+          throw new Error(`Cannot read background color: ${backgroundColor}`);
+        }
+        return {
+          backgroundColor,
+          luminance: 0.2126 * red + 0.7152 * green + 0.0722 * blue,
+        };
+      };
+
+      return {
+        chatList: appearance(chatList),
+        rail: appearance(rail),
+      };
+    });
+
+  expect(railSurface.rail.backgroundColor).not.toBe(
+    railSurface.chatList.backgroundColor,
+  );
+  expect(railSurface.rail.luminance).toBeLessThan(
+    railSurface.chatList.luminance,
+  );
 
   await expect
     .poll(async () => {
