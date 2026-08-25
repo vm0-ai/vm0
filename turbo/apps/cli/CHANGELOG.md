@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.284.0](https://github.com/vm0-ai/vm0/compare/cli-v9.283.0...cli-v9.284.0) (2026-08-25)
+
+
+### Features
+
+* **social:** add managed socialkit pagination and usage billing ([#29180](https://github.com/vm0-ai/vm0/issues/29180)) ([72a60ca](https://github.com/vm0-ai/vm0/commit/72a60ca0aa52e611cc544eb4d7062581fc498106))
+
+
+### Bug Fixes
+
+* **rebranding:** neutralize agent-facing brand copy ([#29167](https://github.com/vm0-ai/vm0/issues/29167)) ([d1a4cc6](https://github.com/vm0-ai/vm0/commit/d1a4cc63dfc912c36e636315772d9353ee190334))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.362.0
+    * @okouai/core bumped to 8.589.0
+
 ## [9.283.0](https://github.com/vm0-ai/vm0/compare/cli-v9.282.3...cli-v9.283.0) (2026-08-25)
 
 

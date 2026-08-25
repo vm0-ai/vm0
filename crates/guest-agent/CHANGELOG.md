@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.76.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.10...guest-agent-v0.76.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest-agent:** ignore task notification results ([#28534](https://github.com/vm0-ai/vm0/issues/28534)) ([db3e953](https://github.com/vm0-ai/vm0/commit/db3e95327b14181d74456de8f00120bd1e186be0))
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+* **guest-agent:** mask sandbox operation telemetry ([#28512](https://github.com/vm0-ai/vm0/issues/28512)) ([d81bf2d](https://github.com/vm0-ai/vm0/commit/d81bf2d0505e96a7e76efc5365c2275e271dca2f))
+* **guest-agent:** redact multiline secrets in telemetry ([#28514](https://github.com/vm0-ai/vm0/issues/28514)) ([484c288](https://github.com/vm0-ai/vm0/commit/484c28853522c09be3eca6e9aa21726169dc0665))
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* handle revoked claude code oauth tokens ([#29181](https://github.com/vm0-ai/vm0/issues/29181)) ([fefb3c9](https://github.com/vm0-ai/vm0/commit/fefb3c9a1a46d6239f9646b2280054e1ee133687))
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+* surface claude terms acceptance failures ([#28314](https://github.com/vm0-ai/vm0/issues/28314)) ([dc0674c](https://github.com/vm0-ai/vm0/commit/dc0674cd33b9b5ec44e592814c4f7b0c3d952575))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+* **guest-agent:** dual-read codex service-tier environment aliases ([#29038](https://github.com/vm0-ai/vm0/issues/29038)) ([dc84c21](https://github.com/vm0-ai/vm0/commit/dc84c21c569fc9919321c27ee2af32209d319ee7))
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound reuse cleanup memory ([#28593](https://github.com/vm0-ai/vm0/issues/28593)) ([23ac7ce](https://github.com/vm0-ai/vm0/commit/23ac7ce52340901becc277fa521dd649b8d23d59))
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+* **guest-agent:** retain compact pi terminal state ([#29179](https://github.com/vm0-ai/vm0/issues/29179)) ([6e5f64e](https://github.com/vm0-ai/vm0/commit/6e5f64ecdc9d0c0024ecd62fab55b9baccdf1fda))
+* **rust:** bound generic codex completed-item fields ([#28876](https://github.com/vm0-ai/vm0/issues/28876)) ([b13d3d2](https://github.com/vm0-ai/vm0/commit/b13d3d21e2630ac4472083988f4ca2766fa1b3e1))
+
 ## [0.75.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.9...guest-agent-v0.75.10) (2026-08-25)
 
 ## [0.75.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.8...guest-agent-v0.75.9) (2026-08-24)
