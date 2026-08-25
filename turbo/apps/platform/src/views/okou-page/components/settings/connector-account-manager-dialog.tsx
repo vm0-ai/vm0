@@ -466,7 +466,9 @@ export function ConnectorAccountManagerDialog({
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {icon}
-              <DialogTitle className="truncate">{connectorLabel}</DialogTitle>
+              <DialogTitle className="truncate leading-6">
+                {connectorLabel}
+              </DialogTitle>
             </div>
             <Button
               type="button"
