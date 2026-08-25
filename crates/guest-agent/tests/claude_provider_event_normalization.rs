@@ -37,7 +37,11 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
                         "type": "tool_use",
                         "id": "tool-use-a",
                         "name": "Bash",
-                        "input": { "command": format!("printf {SECRET}") }
+                        "input": {
+                            "command": format!(
+                                "exec '/usr/local/bin/guest-tool-exec' --shell \"$0\" -c 'printf {SECRET}'"
+                            )
+                        }
                     },
                     {
                         "type": "tool_use",
@@ -185,6 +189,12 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
             .pointer("/message/content/0/id")
             .and_then(Value::as_str),
         Some("tool-use-a")
+    );
+    assert_eq!(
+        delivered[2]
+            .pointer("/message/content/0/input/command")
+            .and_then(Value::as_str),
+        Some("exec '/usr/local/bin/guest-tool-exec' --shell \"$0\" -c 'printf ***'")
     );
     assert_eq!(
         delivered[3]
