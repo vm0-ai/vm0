@@ -605,8 +605,33 @@ def _apply_header_query_injection(
     headers: dict[str, str],
     resolved_query: dict | None,
 ) -> None:
-    for header_name, header_value in resolved_auth_header_pairs(headers):
-        flow.request.headers[header_name] = header_value
+    auth_pairs = resolved_auth_header_pairs(headers)
+    if auth_pairs:
+        resolved_fields_by_name: dict[bytes, tuple[bytes, bytes]] = {}
+        for header_name, header_value in auth_pairs:
+            encoded_name = header_name.encode()
+            encoded_value = header_value.encode()
+            normalized_name = encoded_name.lower()
+            existing_field = resolved_fields_by_name.get(normalized_name)
+            if existing_field is None:
+                resolved_fields_by_name[normalized_name] = (encoded_name, encoded_value)
+            else:
+                resolved_fields_by_name[normalized_name] = (
+                    existing_field[0],
+                    encoded_value,
+                )
+
+        remaining_fields = resolved_fields_by_name.copy()
+        merged_fields: list[tuple[bytes, bytes]] = []
+        for header_name, header_value in flow.request.headers.fields:
+            normalized_name = header_name.lower()
+            if normalized_name in remaining_fields:
+                _resolved_name, resolved_value = remaining_fields.pop(normalized_name)
+                merged_fields.append((header_name, resolved_value))
+            elif normalized_name not in resolved_fields_by_name:
+                merged_fields.append((header_name, header_value))
+        merged_fields.extend(remaining_fields.values())
+        flow.request.headers.fields = tuple(merged_fields)
     if resolved_query:
         remaining_query = resolved_query.copy()
         merged_query: list[tuple[str, str]] = []
