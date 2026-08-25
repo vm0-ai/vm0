@@ -291,10 +291,12 @@ async fn evict_storage_candidate(
     let lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
-            info!(
-                "storages/{}/{}: in use, skipping",
-                candidate.name, candidate.version
-            );
+            if dry_run {
+                info!(
+                    "storages/{}/{}: in use, skipping",
+                    candidate.name, candidate.version
+                );
+            }
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
@@ -303,7 +305,7 @@ async fn evict_storage_candidate(
             };
         }
         LockProbe::Error(e) => {
-            info!(
+            warn!(
                 "storages/{}/{}: lock probe failed ({e}), skipping",
                 candidate.name, candidate.version
             );
@@ -319,7 +321,7 @@ async fn evict_storage_candidate(
     let metadata = match gc_path_dir_status(&candidate.path).await {
         Ok(GcDirStatus::RealDir(metadata)) => metadata,
         Ok(GcDirStatus::NotDirectory) => {
-            info!(
+            warn!(
                 "storages/{}/{}: no longer a directory, skipping",
                 candidate.name, candidate.version
             );
@@ -362,12 +364,14 @@ async fn evict_storage_candidate(
         };
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "storages/{}/{}: too recent ({}s), keeping",
-            candidate.name,
-            candidate.version,
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "storages/{}/{}: too recent ({}s), keeping",
+                candidate.name,
+                candidate.version,
+                age.as_secs()
+            );
+        }
         return StorageEvictionResult {
             freed: 0,
             remaining_size: Some(size),
@@ -486,11 +490,13 @@ async fn gc_storage_staging_dir(
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(l) => l,
         LockProbe::Held => {
-            info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
+            if dry_run {
+                info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
+            }
             return None;
         }
         LockProbe::Error(e) => {
-            info!("storages/{name_hash}/{version_hash}.tmp: lock probe failed ({e}), skipping");
+            warn!("storages/{name_hash}/{version_hash}.tmp: lock probe failed ({e}), skipping");
             return None;
         }
     };
@@ -507,10 +513,12 @@ async fn gc_storage_staging_dir(
     let (size, mtime) = dir_stats(path).await;
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "storages/{name_hash}/{version_hash}.tmp: too recent ({}s), keeping",
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "storages/{name_hash}/{version_hash}.tmp: too recent ({}s), keeping",
+                age.as_secs()
+            );
+        }
         return None;
     }
 
@@ -524,11 +532,6 @@ async fn gc_storage_staging_dir(
             "failed to remove stale storage staging storages/{name_hash}/{version_hash}.tmp: {e}"
         );
         return None;
-    } else {
-        info!(
-            "removed stale storage staging storages/{name_hash}/{version_hash}.tmp ({})",
-            human_bytes(size)
-        );
     }
 
     Some(size)

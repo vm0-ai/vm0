@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
@@ -29,11 +29,13 @@ pub(super) async fn gc_debootstrap(
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
-            info!("debootstrap cache: in use, skipping");
+            if dry_run {
+                info!("debootstrap cache: in use, skipping");
+            }
             return Ok(GcReport::default());
         }
         LockProbe::Error(e) => {
-            info!("debootstrap cache: lock probe failed ({e}), skipping");
+            warn!("debootstrap cache: lock probe failed ({e}), skipping");
             return Ok(GcReport::default());
         }
     };
@@ -69,11 +71,13 @@ pub(super) async fn gc_debootstrap(
     files.retain(|file| {
         let age = now.duration_since(file.mtime).unwrap_or_default();
         if age < GC_MIN_AGE {
-            info!(
-                "debootstrap cache: {} too recent ({}s old), skipping",
-                file.path.display(),
-                age.as_secs()
-            );
+            if dry_run {
+                info!(
+                    "debootstrap cache: {} too recent ({}s old), skipping",
+                    file.path.display(),
+                    age.as_secs()
+                );
+            }
             false
         } else {
             true
@@ -100,14 +104,8 @@ pub(super) async fn gc_debootstrap(
                 human_bytes(file.size)
             );
         } else if let Err(e) = tokio::fs::remove_file(&file.path).await {
-            tracing::warn!("remove {}: {e}", file.path.display());
+            warn!("remove {}: {e}", file.path.display());
             continue;
-        } else {
-            info!(
-                "debootstrap cache: removed {} ({})",
-                file.path.display(),
-                human_bytes(file.size)
-            );
         }
         report += GcReport::cleanup(1, file.size);
     }

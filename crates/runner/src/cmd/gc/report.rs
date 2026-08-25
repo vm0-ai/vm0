@@ -52,8 +52,19 @@ pub(super) fn log_gc_summary(report: &GcReport, dry_run: bool) {
     if report.is_empty() {
         info!("nothing to clean up");
     } else {
-        let verb = if dry_run { "would be freed" } else { "freed" };
-        info!("total: {} {verb}", human_bytes(report.freed_bytes));
+        if dry_run {
+            info!(
+                "total: would_clean={}, would_free={}",
+                report.activity_count,
+                human_bytes(report.freed_bytes)
+            );
+        } else {
+            info!(
+                "total: cleaned={}, freed={}",
+                report.activity_count,
+                human_bytes(report.freed_bytes)
+            );
+        }
         if !report.removed_versions.is_empty() {
             let list = report.removed_versions.join(", ");
             if dry_run {
@@ -78,6 +89,22 @@ pub(super) fn log_gc_summary(report: &GcReport, dry_run: bool) {
     }
 }
 
+pub(super) fn log_gc_phase_summary(domain: &str, report: &GcReport, dry_run: bool) {
+    if dry_run {
+        info!(
+            "gc {domain} complete: would_clean={}, would_free={}",
+            report.activity_count,
+            human_bytes(report.freed_bytes)
+        );
+    } else {
+        info!(
+            "gc {domain} complete: cleaned={}, freed={}",
+            report.activity_count,
+            human_bytes(report.freed_bytes)
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +124,21 @@ mod tests {
             .filter_map(|event| event.fields.get("message").cloned())
             .collect()
     }
+
+    fn capture_gc_phase_summary(domain: &str, report: &GcReport, dry_run: bool) -> Vec<String> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        log_gc_phase_summary(domain, report, dry_run);
+        drop(guard);
+        captured
+            .entries()
+            .into_iter()
+            .filter_map(|event| event.fields.get("message").cloned())
+            .collect()
+    }
+
     #[test]
     fn gc_report_composition_preserves_all_summary_fields() {
         let mut report = GcReport::cleanup(2, 512);
@@ -119,7 +161,7 @@ mod tests {
         );
         assert_eq!(
             capture_gc_summary(&GcReport::cleanup(0, 1024), false),
-            ["total: 1.0 KiB freed"]
+            ["total: cleaned=0, freed=1.0 KiB"]
         );
     }
 
@@ -127,10 +169,13 @@ mod tests {
     fn gc_summary_reports_zero_byte_activity_in_real_and_dry_run_modes() {
         let report = GcReport::cleanup(1, 0);
 
-        assert_eq!(capture_gc_summary(&report, false), ["total: 0 B freed"]);
+        assert_eq!(
+            capture_gc_summary(&report, false),
+            ["total: cleaned=1, freed=0 B"]
+        );
         assert_eq!(
             capture_gc_summary(&report, true),
-            ["total: 0 B would be freed"]
+            ["total: would_clean=1, would_free=0 B"]
         );
     }
 
@@ -142,7 +187,7 @@ mod tests {
         assert_eq!(
             capture_gc_summary(&report, false),
             [
-                "total: 0 B freed",
+                "total: cleaned=4, freed=0 B",
                 "versions removed: v1.0.0, v2.0.0",
                 "version service locks removed: 2",
             ]
@@ -150,10 +195,22 @@ mod tests {
         assert_eq!(
             capture_gc_summary(&report, true),
             [
-                "total: 0 B would be freed",
+                "total: would_clean=4, would_free=0 B",
                 "versions that would be removed: v1.0.0, v2.0.0",
                 "version service locks that would be removed: 2",
             ]
+        );
+    }
+
+    #[test]
+    fn gc_phase_summary_reports_completion_in_real_and_dry_run_modes() {
+        assert_eq!(
+            capture_gc_phase_summary("orphaned locks", &GcReport::default(), false),
+            ["gc orphaned locks complete: cleaned=0, freed=0 B"]
+        );
+        assert_eq!(
+            capture_gc_phase_summary("orphaned locks", &GcReport::cleanup(2, 1024), true),
+            ["gc orphaned locks complete: would_clean=2, would_free=1.0 KiB"]
         );
     }
 }
