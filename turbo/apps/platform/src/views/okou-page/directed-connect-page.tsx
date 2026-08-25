@@ -853,7 +853,7 @@ function CustomDirectedConnectCard({
   );
 }
 
-export function ZeroDirectedConnectPage() {
+export function DirectedConnectPage() {
   const customConnectorSlug = useGet(directedConnectCustomSlug$);
   return customConnectorSlug ? (
     <CustomDirectedConnectCard connectorSlug={customConnectorSlug} />

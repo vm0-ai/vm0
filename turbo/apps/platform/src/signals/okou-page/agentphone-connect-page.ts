@@ -6,7 +6,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
-import { ZeroAgentPhoneConnectPage } from "../../views/okou-page/agentphone-connect-page.tsx";
+import { AgentPhoneConnectPage } from "../../views/okou-page/agentphone-connect-page.tsx";
 import { parseAgentPhoneConnectParams } from "./agentphone-connect-params.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
@@ -21,7 +21,7 @@ export const setupAgentPhoneConnectPage$ = command(
       props: { method: parsed.ok ? "connect_signature" : "invalid" },
     });
 
-    set(updatePage$, createElement(ZeroAgentPhoneConnectPage));
+    set(updatePage$, createElement(AgentPhoneConnectPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

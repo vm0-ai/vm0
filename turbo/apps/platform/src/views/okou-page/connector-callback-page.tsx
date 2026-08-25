@@ -3,11 +3,11 @@ import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts
 import { Button } from "@okouai/ui/components/ui/button";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ZeroConnectorFlowCard } from "./connector-flow-card.tsx";
+import { ConnectorFlowCard } from "./connector-flow-card.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
 
-export function ZeroConnectorCallbackPage({
+export function ConnectorCallbackPage({
   connectorIcon,
   iconContent,
   connectorLabel,
@@ -74,7 +74,7 @@ export function ZeroConnectorCallbackPage({
           });
 
   return (
-    <ZeroConnectorFlowCard
+    <ConnectorFlowCard
       connectorIcon={connectorIcon}
       iconContent={iconContent}
       title={title}
@@ -125,6 +125,6 @@ export function ZeroConnectorCallbackPage({
           </Button>
         </div>
       )}
-    </ZeroConnectorFlowCard>
+    </ConnectorFlowCard>
   );
 }

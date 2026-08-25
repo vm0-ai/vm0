@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ProductBrandMarkLink } from "./directed-shared.tsx";
 
-export function ZeroConnectorFlowCard({
+export function ConnectorFlowCard({
   connectorIcon,
   iconContent,
   title,
