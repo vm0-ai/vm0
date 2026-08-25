@@ -187,6 +187,7 @@ async function loadConnectorAccountRows(
     searchPattern === undefined
       ? undefined
       : or(
+          ilike(sql`${connectors.id}::text`, searchPattern),
           ilike(connectors.displayName, searchPattern),
           ilike(connectors.externalEmail, searchPattern),
           ilike(connectors.externalUsername, searchPattern),
