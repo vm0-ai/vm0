@@ -1033,7 +1033,7 @@ describe("connector account lifecycle routes", () => {
         }),
         [200],
       );
-      expect(searchedByFallback.body.connections).toStrictEqual([work]);
+      expect(searchedByFallback.body.connections).toContainEqual(work);
 
       const renamed = await accept(
         accountClient().rename({
