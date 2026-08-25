@@ -147,9 +147,11 @@ jobs:
 
           release_target=$(
             jq -er '
-              map(select(. != ""))
+              map(select(. != null and . != ""))
               | map(
-                  if test("^[0-9a-f]{40}$") then
+                  if type != "string" then
+                    error("release-please returned non-string release SHA: " + tostring)
+                  elif test("^[0-9a-f]{40}$") then
                     .
                   else
                     error("release-please returned invalid release SHA: " + .)
