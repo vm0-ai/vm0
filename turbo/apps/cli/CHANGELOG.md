@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.288.0](https://github.com/vm0-ai/vm0/compare/cli-v9.287.0...cli-v9.288.0) (2026-08-25)
+
+
+### Features
+
+* **social:** expose typed tools and results ([#29379](https://github.com/vm0-ai/vm0/issues/29379)) ([eafebf9](https://github.com/vm0-ai/vm0/commit/eafebf9f455c283b6410c18e4715c68bfef47d5f)), closes [#29368](https://github.com/vm0-ai/vm0/issues/29368)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.367.0
+    * @okouai/connectors bumped to 1.210.1
+    * @okouai/core bumped to 8.591.1
+
 ## [9.287.0](https://github.com/vm0-ai/vm0/compare/cli-v9.286.0...cli-v9.287.0) (2026-08-25)
 
 

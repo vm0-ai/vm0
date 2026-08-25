@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.1...guest-agent-v0.79.2) (2026-08-25)
+
+
+### Refactoring
+
+* **guest:** rename unmanaged process-control test environment key ([#29394](https://github.com/vm0-ai/vm0/issues/29394)) ([22867f9](https://github.com/vm0-ai/vm0/commit/22867f948f207d267e16e47e98c86591500f6536))
+
 ## [0.79.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.0...guest-agent-v0.79.1) (2026-08-25)
 
 

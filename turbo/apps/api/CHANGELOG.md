@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.492.0](https://github.com/vm0-ai/vm0/compare/api-v1.491.0...api-v1.492.0) (2026-08-25)
+
+
+### Features
+
+* add per-thread connector account picker ([#29337](https://github.com/vm0-ai/vm0/issues/29337)) ([8434768](https://github.com/vm0-ai/vm0/commit/843476856beade4376249579dac0ce96d2df1dc5))
+* **social:** expose typed tools and results ([#29379](https://github.com/vm0-ai/vm0/issues/29379)) ([eafebf9](https://github.com/vm0-ai/vm0/commit/eafebf9f455c283b6410c18e4715c68bfef47d5f)), closes [#29368](https://github.com/vm0-ai/vm0/issues/29368)
+
+
+### Bug Fixes
+
+* decode managed Codex command wrappers ([#29396](https://github.com/vm0-ai/vm0/issues/29396)) ([b25dc18](https://github.com/vm0-ai/vm0/commit/b25dc18ae633cff097689ae3bfefd714f237abe8))
+
+
+### Refactoring
+
+* **api:** dual-read api backend url aliases ([#29392](https://github.com/vm0-ai/vm0/issues/29392)) ([0643e7f](https://github.com/vm0-ai/vm0/commit/0643e7fd75cf5ea2ef261a86ce3f43e2d98f5a1d))
+* **api:** dual-read debug logging aliases ([#29402](https://github.com/vm0-ai/vm0/issues/29402)) ([2682a27](https://github.com/vm0-ai/vm0/commit/2682a2721a4fa485ddf1299945c3fa19c54acec0)), closes [#29400](https://github.com/vm0-ai/vm0/issues/29400)
+* **api:** dual-read web url aliases ([#29404](https://github.com/vm0-ai/vm0/issues/29404)) ([332d2ff](https://github.com/vm0-ai/vm0/commit/332d2ff1d723584497354c72f94b3ac31f6a2487))
+* remove expired deployment compatibility ([#29405](https://github.com/vm0-ai/vm0/issues/29405)) ([d86c760](https://github.com/vm0-ai/vm0/commit/d86c760015662e5272734aa0e0172836be75c1b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.367.0
+    * @okouai/connectors bumped to 1.210.1
+    * @okouai/core bumped to 8.591.1
+    * @okouai/db bumped to 1.224.2
+
 ## [1.491.0](https://github.com/vm0-ai/vm0/compare/api-v1.490.0...api-v1.491.0) (2026-08-25)
 
 
