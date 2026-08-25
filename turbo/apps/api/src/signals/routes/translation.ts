@@ -23,9 +23,11 @@ const translateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 /**
- * Temporary compatibility for commit-addressed CLI artifacts created before
- * new run contexts stopped advertising `okou translate`. Remove this route
- * after all pre-deployment queued and claimed runs have drained.
+ * Rollout fallback. Surface: pre-deployment commit-addressed CLI -> new API.
+ * Contexts can hold the old CLI package for the two-hour queue lifetime plus
+ * maximum claimed execution and bounded finalization. Remove under #29356 once
+ * no queued or active pre-deployment context or supported external caller can
+ * invoke this route.
  */
 export const translationRoutes: readonly RouteEntry[] = [
   {
