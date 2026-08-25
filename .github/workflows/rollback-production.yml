@@ -244,7 +244,7 @@ jobs:
     needs: resolve-target
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:7f9fc507b457e6661f6e967d837c01e2bcea4e4da49845d29f8add85821ea458
     permissions:
       contents: read
     environment: production
