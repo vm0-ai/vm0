@@ -461,6 +461,16 @@ export function isClaudeCodeAuthenticationCredentialsError(
   );
 }
 
+function isClaudeCodeOAuthTokenRevokedError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes("failed to authenticate") &&
+    /api error:[\s:.-]*401(?![a-z0-9_-])/u.test(normalized) &&
+    normalized.includes("oauth access token") &&
+    normalized.includes("revoked")
+  );
+}
+
 function isClaudeCodeTermsAcceptanceRequiredError(
   errorMessage: string,
 ): boolean {
@@ -571,7 +581,10 @@ export function formatRunErrorForExternalSurface(params: {
 
   if (
     params.claudeCodeCredentialRecovery !== undefined &&
-    isClaudeCodeAuthenticationCredentialsError(errorMessage)
+    (isClaudeCodeAuthenticationCredentialsError(errorMessage) ||
+      (params.claudeCodeCredentialRecovery.modelProviderType ===
+        "claude-code-oauth-token" &&
+        isClaudeCodeOAuthTokenRevokedError(errorMessage)))
   ) {
     const recoveryMessage = formatClaudeCodeCredentialRecoveryMessage(
       params.claudeCodeCredentialRecovery,

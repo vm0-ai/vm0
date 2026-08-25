@@ -225,6 +225,32 @@ async function entitledChatMemberActor(): Promise<EntitledChatActor> {
   return { ...adminFixture, actor, agentId: agent.agentId };
 }
 
+async function configureClaudeCodeSubscriptionProvider(
+  fixture: EntitledChatActor,
+): Promise<void> {
+  await misc.upsertPersonalModelProvider(
+    fixture.actor,
+    { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
+    [200, 201],
+  );
+  await api.updateOrgModelPolicies(fixture.actor, [
+    {
+      model: "claude-sonnet-5",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: fixture.providerId,
+    },
+    {
+      model: "claude-opus-4-8",
+      isDefault: false,
+      defaultProviderType: "claude-code-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+    },
+  ]);
+}
+
 async function startChatRun(
   actor: ApiTestUser,
   body: {
@@ -4372,9 +4398,12 @@ describe("CHAT-02: failed chat callbacks", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
+    const revokedOAuthError =
+      "Failed to authenticate. API Error: 401 OAuth access token has been revoked.";
 
     async function failAndReadError(params: {
       readonly prompt: string;
+      readonly errorMessage?: string;
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
       readonly publicBrand?: PublicBrand;
@@ -4410,7 +4439,11 @@ describe("CHAT-02: failed chat callbacks", () => {
           params.orgRole === "admin" ? "org:admin" : "org:member",
         );
       }
-      await failChatRun(run.runId, sandboxHeaders, upstreamAuthError);
+      await failChatRun(
+        run.runId,
+        sandboxHeaders,
+        params.errorMessage ?? upstreamAuthError,
+      );
 
       const page = await waitForThreadMessages(
         fixture.actor,
@@ -4437,33 +4470,28 @@ describe("CHAT-02: failed chat callbacks", () => {
         prompt: "subscription credential failed",
         selectedModel: "claude-opus-4-8",
         publicBrand: "okou",
-        async configureProvider(fixture) {
-          await misc.upsertPersonalModelProvider(
-            fixture.actor,
-            { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
-            [200, 201],
-          );
-          await api.updateOrgModelPolicies(fixture.actor, [
-            {
-              model: "claude-sonnet-5",
-              isDefault: true,
-              defaultProviderType: "anthropic-api-key",
-              credentialScope: "org",
-              modelProviderId: fixture.providerId,
-            },
-            {
-              model: "claude-opus-4-8",
-              isDefault: false,
-              defaultProviderType: "claude-code-oauth-token",
-              credentialScope: "member",
-              modelProviderId: null,
-            },
-          ]);
-        },
+        configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
       "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
+    await expect(
+      failAndReadError({
+        prompt: "revoked subscription credential failed",
+        errorMessage: revokedOAuthError,
+        selectedModel: "claude-opus-4-8",
+        configureProvider: configureClaudeCodeSubscriptionProvider,
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "revoked OAuth text with an Anthropic API key",
+        errorMessage: revokedOAuthError,
+        selectedModel: "claude-sonnet-5",
+      }),
+    ).resolves.toBe("Oops, something went wrong. Please try again later.");
     await expect(
       failAndReadError({
         prompt: "legacy callback without public brand failed for admin",
