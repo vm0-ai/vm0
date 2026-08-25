@@ -471,6 +471,8 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GOOGLE_DRIVE_UPLOAD_URL =
+  "https://www.googleapis.com/upload/drive/v3/files";
 const GOOGLE_OPENID_USERINFO_URL =
   "https://openidconnect.googleapis.com/v1/userinfo";
 
@@ -685,6 +687,56 @@ export function mockGoogleDriveFilesList(
         return new HttpResponse(null, { status: response.status });
       }
       return HttpResponse.json({ files: [...response.files] });
+    }),
+  );
+
+  return recorded;
+}
+
+interface GoogleDriveArtifactUploadRecorder {
+  readonly authorizationHeaders: (string | null)[];
+  readonly contentLengthHeaders: (string | null)[];
+  readonly contentTypeHeaders: (string | null)[];
+  readonly folderQueries: string[];
+}
+
+/**
+ * Google Drive folder and multipart-upload provider boundary. Folder lookups
+ * resolve an existing root and thread folder so the recorder stays focused on
+ * the file upload request.
+ */
+export function mockGoogleDriveArtifactUpload(
+  file: GoogleDriveFileFixture,
+): GoogleDriveArtifactUploadRecorder {
+  const recorded: GoogleDriveArtifactUploadRecorder = {
+    authorizationHeaders: [],
+    contentLengthHeaders: [],
+    contentTypeHeaders: [],
+    folderQueries: [],
+  };
+
+  server.use(
+    http.get(GOOGLE_DRIVE_FILES_URL, ({ request }) => {
+      const query = new URL(request.url).searchParams.get("q") ?? "";
+      recorded.folderQueries.push(query);
+      const rootFolder = query.includes("'root' in parents");
+      return HttpResponse.json({
+        files: [
+          {
+            id: rootFolder
+              ? "drive-artifact-root-folder"
+              : "drive-artifact-thread-folder",
+            name: rootFolder ? "vm0-artifact" : "thread-artifacts",
+          },
+        ],
+      });
+    }),
+    http.post(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
+      recorded.authorizationHeaders.push(request.headers.get("authorization"));
+      recorded.contentLengthHeaders.push(request.headers.get("content-length"));
+      recorded.contentTypeHeaders.push(request.headers.get("content-type"));
+      await request.arrayBuffer();
+      return HttpResponse.json(file);
     }),
   );
 

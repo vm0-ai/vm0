@@ -62,6 +62,7 @@ import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
+  mockGoogleDriveArtifactUpload,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
@@ -3475,6 +3476,34 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
 
     await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
+
+    const uploadRecorder = mockGoogleDriveArtifactUpload({
+      id: "drive-uploaded-file",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-uploaded-file/view",
+    });
+    const synced = await chat.requestSyncThreadArtifact(
+      actor,
+      run.threadId,
+      { runId: run.runId, fileId: csvId },
+      [200],
+    );
+    expect(synced.body).toStrictEqual({
+      id: "drive-uploaded-file",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-uploaded-file/view",
+    });
+    expect(uploadRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-ok",
+    ]);
+    expect(uploadRecorder.folderQueries).toHaveLength(2);
+    expect(uploadRecorder.contentTypeHeaders[0]).toMatch(
+      /^multipart\/related; boundary=vm0-/u,
+    );
+    // Fetch derives this forbidden request header from the Buffer body at the
+    // transport layer. Supplying it explicitly is rejected by instrumented
+    // Node/Undici and would be visible to MSW here.
+    expect(uploadRecorder.contentLengthHeaders).toStrictEqual([null]);
 
     // Drive lists one mirrored file: csv synced, pdf not synced.
     const listRecorder = mockGoogleDriveFilesList(() => {
