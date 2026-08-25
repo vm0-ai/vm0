@@ -1,0 +1,3885 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "ddf83dd855c513a0552dec7f3de306f410b57943",
+    "path": "Template-Website-v2"
+  },
+  "packages": [
+    {
+      "slug": "black-slabs",
+      "storageId": "81f4e53e-a086-4533-aba3-f3694348879b",
+      "versionId": "037045074360d1e6b499fc37a4c5cad208dfd79e59a53bdea78910c5fbe9f2f9",
+      "archive": {
+        "path": "black-slabs.tar.gz",
+        "sha256": "a2ba4a18fe6be58a05a99fcf755f696629c7cbfe295ec9e4f7685bef1eebff79",
+        "byteSize": 201092
+      },
+      "totalSize": 545445,
+      "fileCount": 72,
+      "files": [
+        {
+          "path": "black-slabs/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "black-slabs/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "black-slabs/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "black-slabs/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "black-slabs/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "black-slabs/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "black-slabs/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "black-slabs/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "black-slabs/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "black-slabs/design-system.md",
+          "hash": "f104dc3568c43238e1a859d5426f60b935809b8e9aca682258e6765c5fecf537",
+          "size": 4362
+        },
+        {
+          "path": "black-slabs/favicon.svg",
+          "hash": "8ccd70cc816c2aa060fc3dd1ec71fcdd1953b149dbc1944a8beb8af624b4740a",
+          "size": 319
+        },
+        {
+          "path": "black-slabs/index.html",
+          "hash": "c29d31b995a5749dc1e041ba3dc0379e18bf27d2944e30f2c8e314d154864e79",
+          "size": 38716
+        },
+        {
+          "path": "black-slabs/layout-map.md",
+          "hash": "f421c7c51f1421d659d03c7c2435669d9a1c6a720e6454208ab21baed47da7dd",
+          "size": 2515
+        },
+        {
+          "path": "black-slabs/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "black-slabs/sections/_baselayer.css",
+          "hash": "b59f94927c9033c2966cd2f6700183be63ce83a5d5fdc89304637ff9ed7700c7",
+          "size": 4691
+        },
+        {
+          "path": "black-slabs/sections/_foundation.css",
+          "hash": "0dc87d2cb6a01354d52cc7b85ea613bb3d8f91ddfe3474efa978085f130ab276",
+          "size": 47954
+        },
+        {
+          "path": "black-slabs/sections/_index.md",
+          "hash": "5959fd1c3a76a6b6b7d52be2e22a703e9695f05180ac159c4be3536a38951109",
+          "size": 6132
+        },
+        {
+          "path": "black-slabs/sections/_shell.part",
+          "hash": "d67ed1908f83b59ffec2d20506212c503d4486905cf1bc0f372c35ee97fadd21",
+          "size": 2319
+        },
+        {
+          "path": "black-slabs/sections/01-nav.html",
+          "hash": "efdaf2536a7963e202dcf76019b4831b494b09b382d85d722c476d486bd916a3",
+          "size": 1776
+        },
+        {
+          "path": "black-slabs/sections/02-hero.html",
+          "hash": "a96a1d7afbf568e84b0c3e0938f5e5a2e4c7ce97903ca202fc600fa03b5a51cc",
+          "size": 1103
+        },
+        {
+          "path": "black-slabs/sections/03-feature.html",
+          "hash": "7dd03f45df33eeaa7d75301919425a9233eefcf3a552f81345019c3ed98f7024",
+          "size": 1852
+        },
+        {
+          "path": "black-slabs/sections/04-showcase-panels.html",
+          "hash": "667f8894efab021868353f936f99849fa14638ca1260862aef9eea24fc395c8d",
+          "size": 3025
+        },
+        {
+          "path": "black-slabs/sections/05-logos.html",
+          "hash": "3f288d2744fb0f8761e8a08ee417a25ee0f5794a77ac5d7e62f120ba102e0ad8",
+          "size": 1710
+        },
+        {
+          "path": "black-slabs/sections/06-stat-cards.html",
+          "hash": "8d4c193e1171e354d189e736df68333ca07898feb93959287840031f6489363e",
+          "size": 3214
+        },
+        {
+          "path": "black-slabs/sections/07-steps.html",
+          "hash": "0da110c354945da21c7dadc092608b4b1ce52562190ee9ae6b8947e398ac2572",
+          "size": 917
+        },
+        {
+          "path": "black-slabs/sections/08-spotlight-show.html",
+          "hash": "771a5f16d8cb423c7b8ba913e8e25e0fc4659b1a7862fec21f01cdf4a24d9ce4",
+          "size": 4668
+        },
+        {
+          "path": "black-slabs/sections/09-statement.html",
+          "hash": "93e18ba8eac3e9a538025f730737d9c69f1edd8522506aaef8adcd637c954fb6",
+          "size": 1984
+        },
+        {
+          "path": "black-slabs/sections/10-pricing.html",
+          "hash": "5102e58310d4f707f217e66068445a3766c101501f5037b4f5fb266e5bcbec94",
+          "size": 1437
+        },
+        {
+          "path": "black-slabs/sections/11-faq.html",
+          "hash": "fc7c5cfddcd11cf75e67aba0b7acd211335d6ed4d11be569b92fe04b545c8f88",
+          "size": 2335
+        },
+        {
+          "path": "black-slabs/sections/12-contact.html",
+          "hash": "c676ac3848198393d3c689beaf774ccbd65a06e04195facac7acac5c6d7f1006",
+          "size": 932
+        },
+        {
+          "path": "black-slabs/sections/13-card-grid.html",
+          "hash": "4824497c177c757bd78fffc7c36d63dae56e3652eecccfb6fc4e5a90b5582068",
+          "size": 6026
+        },
+        {
+          "path": "black-slabs/sections/14-index-tiles.html",
+          "hash": "3c7bf5f9a098ff17edd24958bb939cea1e6c5c2592f20484b8b2fe9258e6123c",
+          "size": 3342
+        },
+        {
+          "path": "black-slabs/sections/15-cta.html",
+          "hash": "25e6e9fdb517de501f8ac846114f4b00fa5931af165269b3a4b5c212e54714e6",
+          "size": 378
+        },
+        {
+          "path": "black-slabs/sections/16-footer.html",
+          "hash": "8ab629be36f431635594e262d5437e1c8e8dbf3e1a81a9883b7e99733ed5f438",
+          "size": 1733
+        },
+        {
+          "path": "black-slabs/sections/skin-01-nav.css",
+          "hash": "69a4047d68f545719b0b642595984701d2ed6a91d4d793d84a69ed35546688b2",
+          "size": 341
+        },
+        {
+          "path": "black-slabs/sections/skin-02-hero.css",
+          "hash": "a64410301c820f930d0cae9a76e943109a696dc741bd96a219d2c3f63491058d",
+          "size": 882
+        },
+        {
+          "path": "black-slabs/sections/skin-03-feature-split.css",
+          "hash": "edaff04ce7e986b7378a498d10777c11d9390acf97dd66a0e55e2df8d1fa2412",
+          "size": 741
+        },
+        {
+          "path": "black-slabs/sections/skin-04-feature-grid.always.css",
+          "hash": "e99e5d77f7cb8014f814bd4bc5775a1c40a791a36c7728c445fa474531493ab7",
+          "size": 992
+        },
+        {
+          "path": "black-slabs/sections/skin-05-logos.css",
+          "hash": "c889cb3685848bf1fef6aa812f0eb5e1d941686b2a3458d80e18a8740d14ddb2",
+          "size": 385
+        },
+        {
+          "path": "black-slabs/sections/skin-06-stats.always.css",
+          "hash": "e0d879bcc9993c0e83ef0472b7f7119b71da7463a0de040eb53b26d9a4949041",
+          "size": 613
+        },
+        {
+          "path": "black-slabs/sections/skin-07-steps.css",
+          "hash": "2c30e97918d61fa8e030b986aa650a2801bfcb3c68d28a0434d5b73602367d43",
+          "size": 435
+        },
+        {
+          "path": "black-slabs/sections/skin-08-testimonial.always.css",
+          "hash": "de5c6dc8818d87c934d28b1646e4cff52bb660889457efe169d805c76debc02a",
+          "size": 826
+        },
+        {
+          "path": "black-slabs/sections/skin-09-pricing.css",
+          "hash": "ac8dc4ac031c00c8271b0bf92e75b6c27fddf99d8e47a41a18963f09883b5aea",
+          "size": 950
+        },
+        {
+          "path": "black-slabs/sections/skin-10-faq.css",
+          "hash": "bd7f8841d5635ffc411feaad7ce818ed9b55d997aee605e384a941e986fdda5d",
+          "size": 399
+        },
+        {
+          "path": "black-slabs/sections/skin-11-contact.css",
+          "hash": "9d7660c3818381ad5b47799ae42bc3aaf86d01027e2f7321c54a83c308b6a0ce",
+          "size": 465
+        },
+        {
+          "path": "black-slabs/sections/skin-12-card-grid.css",
+          "hash": "b39a21859582998c21125a8c372d6310960e616935b06338374c7a01a8687456",
+          "size": 578
+        },
+        {
+          "path": "black-slabs/sections/skin-13-index-tiles.css",
+          "hash": "0096db494fe4a15c4d9a955d134a361f3a26394998452825ec514cfed4fcd8d3",
+          "size": 388
+        },
+        {
+          "path": "black-slabs/sections/skin-14-cta.css",
+          "hash": "5bfbf51fb6483728e12eefc17c57fd8c955d30ddd611e948124aac132184a3f8",
+          "size": 736
+        },
+        {
+          "path": "black-slabs/sections/skin-15-footer.css",
+          "hash": "285fd04d3c751d71b600b75a68811fc210e1359f524306665b95832e025c29b1",
+          "size": 526
+        },
+        {
+          "path": "black-slabs/SKILL.md",
+          "hash": "0e46513eb8715117a26037b3b76ec1bc5ae0492c3e8693141aeb8d16326895e2",
+          "size": 10110
+        },
+        {
+          "path": "black-slabs/social-card.png",
+          "hash": "a1bc88891339b1a9554ab635ac0a2c15c6e4ff36e374d6997d75abe7faa79ccd",
+          "size": 56366
+        },
+        {
+          "path": "black-slabs/template.css",
+          "hash": "d69cc5b509566480e56b6e603d5459b91cda72d54b82d63d7b4a01d946950226",
+          "size": 61902
+        },
+        {
+          "path": "black-slabs/template.js",
+          "hash": "697e09feaa5ec805097e0277eb1a5a592e900a06ad0c9d9672c6fc78cba9bd60",
+          "size": 14869
+        },
+        {
+          "path": "black-slabs/template.json",
+          "hash": "b1051a0f9711295d43645c126372b8057f257f598e8e620312c4ddeb04760215",
+          "size": 2279
+        },
+        {
+          "path": "black-slabs/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "black-slabs/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "black-slabs/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "black-slabs/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "black-slabs/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "black-slabs/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "black-slabs/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "black-slabs/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "black-slabs/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "black-slabs/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "black-slabs/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "black-slabs/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "black-slabs/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "black-slabs/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "black-slabs/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "black-slabs/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "black-slabs/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "black-slabs/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 38674
+    },
+    {
+      "slug": "blueprint-grid",
+      "storageId": "b571b9ef-e9ca-4f16-a4ca-9fe79549acb3",
+      "versionId": "bbe1a91664e813adf179071713b159fbcd25c42fe9d06860f2ecaea907b06d2b",
+      "archive": {
+        "path": "blueprint-grid.tar.gz",
+        "sha256": "b0312334dd8ad42f2e8b219cc0522bd11b0de1d246d133b34d9b832352286468",
+        "byteSize": 172342
+      },
+      "totalSize": 516271,
+      "fileCount": 74,
+      "files": [
+        {
+          "path": "blueprint-grid/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "blueprint-grid/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "blueprint-grid/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "blueprint-grid/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "blueprint-grid/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "blueprint-grid/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "blueprint-grid/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "blueprint-grid/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "blueprint-grid/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "blueprint-grid/design-system.md",
+          "hash": "8a67ded49f3167a826c6b40c1de64f7333bd58e3e754fe52d07335f97721a213",
+          "size": 4285
+        },
+        {
+          "path": "blueprint-grid/favicon.svg",
+          "hash": "425295a9ef27ce2ce7f77c99ea54f757e4f4b6572624d4357c9abd27a9239d3d",
+          "size": 317
+        },
+        {
+          "path": "blueprint-grid/index.html",
+          "hash": "164c503331dc6820ee39ea64efe4f26aafb1bc33c0e7fc1385b314c6861996e4",
+          "size": 37401
+        },
+        {
+          "path": "blueprint-grid/layout-map.md",
+          "hash": "c7c8be33acb958bab34279ccd659f9e747bd9a26207da89694be17a0325243b8",
+          "size": 2645
+        },
+        {
+          "path": "blueprint-grid/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "blueprint-grid/sections/_baselayer.css",
+          "hash": "6a3aac95398574f4275f18ea7ea2320bbe2436f96f49a8e285cf302c3259029d",
+          "size": 4781
+        },
+        {
+          "path": "blueprint-grid/sections/_foundation.css",
+          "hash": "dc4e09d2e4673a39e294a80b731be22b7f8d495cc86270701e9152f0db80fb7e",
+          "size": 43132
+        },
+        {
+          "path": "blueprint-grid/sections/_index.md",
+          "hash": "392b288f2eb8ca1b3a1be4fa16fc9fc5ba224c7f55e51d68ce152ca306294f80",
+          "size": 6639
+        },
+        {
+          "path": "blueprint-grid/sections/_shell.part",
+          "hash": "b6641ea12f28013602d02a9fc2d0323890d62b438f0f5bcd30af57544c7946fd",
+          "size": 2150
+        },
+        {
+          "path": "blueprint-grid/sections/01-nav.html",
+          "hash": "e8df3b40fc8a5b860bfc2c65ad8a12bbc2091458a6a782b09df66bc57e3c6bb3",
+          "size": 1816
+        },
+        {
+          "path": "blueprint-grid/sections/02-hero.html",
+          "hash": "bf3c18e043c62fe66e7b06cafa8cacadbbb38edc47243da561bba312bd5e6e5e",
+          "size": 1235
+        },
+        {
+          "path": "blueprint-grid/sections/03-grid-editorial.html",
+          "hash": "58438b9ac471f75e1b353ba6d36c6957e6dc9b41a566f9ec69a58462dcea47b8",
+          "size": 1349
+        },
+        {
+          "path": "blueprint-grid/sections/04-logos.html",
+          "hash": "9eb586d508724dcf47859cd98692061f50b6253b2ce8988f594b7dad175a496b",
+          "size": 1458
+        },
+        {
+          "path": "blueprint-grid/sections/05-feature.html",
+          "hash": "07c22db2b317cb2aabf3e007f24d6e28f16651219567cb6891bd4b66bbcfb4c5",
+          "size": 1549
+        },
+        {
+          "path": "blueprint-grid/sections/06-feature-grid.html",
+          "hash": "65efe86c14c0432659bc7169ecb0a0c698e32001d2a5decf2af5a51ad01fa8d5",
+          "size": 3957
+        },
+        {
+          "path": "blueprint-grid/sections/07-fixed-showcase.html",
+          "hash": "98991a4a701aa639ad614728cf6646838a44ebf92fa77bf7f113c3da0e6fc27e",
+          "size": 3060
+        },
+        {
+          "path": "blueprint-grid/sections/08-stats.html",
+          "hash": "ecdd495b080f6d0f7e913324b90ac391cb16591a8c8e3f481c15a96525884f58",
+          "size": 596
+        },
+        {
+          "path": "blueprint-grid/sections/09-steps.html",
+          "hash": "15c29617556782c42d919cecb054296aa01fbe202a18f17efacd575ea208508d",
+          "size": 872
+        },
+        {
+          "path": "blueprint-grid/sections/10-index-tiles.html",
+          "hash": "1941df27d3ab02f7dbf9a9a6fb6ec6854260f026dfa283ea13efccf5ea432093",
+          "size": 2689
+        },
+        {
+          "path": "blueprint-grid/sections/11-card-grid.html",
+          "hash": "851b0677c74ad68d5018074911e7d6291f7f189e39c9a9050b0c47bd5bb89b1a",
+          "size": 5242
+        },
+        {
+          "path": "blueprint-grid/sections/12-testimonial.html",
+          "hash": "95efdc5de07140786dd94edbd391f83150975975cf5824673cbb0c276f1e5ed3",
+          "size": 2575
+        },
+        {
+          "path": "blueprint-grid/sections/13-statement.html",
+          "hash": "313017350c73132ef2a49f936f82414ae59640b21463f629876750ef95fdfc40",
+          "size": 1986
+        },
+        {
+          "path": "blueprint-grid/sections/14-pricing.html",
+          "hash": "329e430ddc2f31d64a98d44fef08430bb5a4f96db618712ac9649b89c5bffebf",
+          "size": 1472
+        },
+        {
+          "path": "blueprint-grid/sections/15-faq.html",
+          "hash": "e22a3135831c2efbbc8f9efaf84999e38b391a00077854c28901b8a1817b5376",
+          "size": 2283
+        },
+        {
+          "path": "blueprint-grid/sections/16-contact.html",
+          "hash": "7a359feae7d39a55de034f3adfd34376fcfc9e339867e09f6d62848ce74797ac",
+          "size": 967
+        },
+        {
+          "path": "blueprint-grid/sections/17-cta.html",
+          "hash": "ea04dd63230109ecb0d4dec4787ea5385902ab7aa70bff1a6b09c2c65344513c",
+          "size": 389
+        },
+        {
+          "path": "blueprint-grid/sections/18-footer.html",
+          "hash": "23854bb92e22b5770c2c119c1aac06b1e151a23c628aca52b7ad84b66bb281e0",
+          "size": 1793
+        },
+        {
+          "path": "blueprint-grid/sections/skin-01-nav.css",
+          "hash": "82343167439ede93c17ca3ffd8af5c24c970e7698d1c99701739e005441d4c27",
+          "size": 549
+        },
+        {
+          "path": "blueprint-grid/sections/skin-02-hero.css",
+          "hash": "78d7e5e235da6180dc035af985a16b77089ac44d8d3958a53c4ae34f76a88d30",
+          "size": 96
+        },
+        {
+          "path": "blueprint-grid/sections/skin-03-logos.css",
+          "hash": "e67d30bfcb96a6fc748e8c20657eb8fea6b7dd5ab457ee97c0ffb9d970c05b44",
+          "size": 502
+        },
+        {
+          "path": "blueprint-grid/sections/skin-04-feature-grid.css",
+          "hash": "958ce8d935b995c2770d1665c08efae0461a03cfe99c70e759344c2f426a7feb",
+          "size": 1635
+        },
+        {
+          "path": "blueprint-grid/sections/skin-05-stats.css",
+          "hash": "ae85af9a1ad4a6afb67dae17aace977ef16073bf9278d9fb427eee43839e76f4",
+          "size": 758
+        },
+        {
+          "path": "blueprint-grid/sections/skin-06-steps.css",
+          "hash": "c1c0cfe28c2655c2d639d99245b6773f8b4e6ceea09a47b14fecd6472cc3d507",
+          "size": 805
+        },
+        {
+          "path": "blueprint-grid/sections/skin-07-sticky-scroll.always.css",
+          "hash": "209a7893a7e6a08371fea8737afb385fed5ce6df4005a168837a3fc2baac2450",
+          "size": 435
+        },
+        {
+          "path": "blueprint-grid/sections/skin-08-testimonial.css",
+          "hash": "d6319d27413bf56c83d03e7b775b939ab012c427f3607d35b525bfdf2ca500ea",
+          "size": 1026
+        },
+        {
+          "path": "blueprint-grid/sections/skin-09-pricing.css",
+          "hash": "fff72b16a159fb32f627c3f55cabcd081a322ca0bb742f1848238bb0a215dbd1",
+          "size": 1376
+        },
+        {
+          "path": "blueprint-grid/sections/skin-10-faq.css",
+          "hash": "c72fc0273f4064a62d98226257ceaac4ed47d7219a7c5999326862db267e6269",
+          "size": 639
+        },
+        {
+          "path": "blueprint-grid/sections/skin-11-contact.css",
+          "hash": "0f3d6ed05bdbbb6361a5c4c4366536f3d1b474b5766902e2e38f27ceec34d1cf",
+          "size": 642
+        },
+        {
+          "path": "blueprint-grid/sections/skin-12-card-grid.css",
+          "hash": "62016c9c225f203270afd087f9efd5b7744928c306faab030df2640ba615b875",
+          "size": 986
+        },
+        {
+          "path": "blueprint-grid/sections/skin-13-index-tiles.css",
+          "hash": "419b32a73d1895e07c7110acc14e79af14ae7e3b9b4fe114844a19fae2ff959a",
+          "size": 649
+        },
+        {
+          "path": "blueprint-grid/sections/skin-14-cta.css",
+          "hash": "5d81a22c252ae2c3b94474e4eb016530685b7fb233090d5d22270d45d4907f5e",
+          "size": 940
+        },
+        {
+          "path": "blueprint-grid/sections/skin-15-footer.css",
+          "hash": "7e069cea83ad65511c6367d09d5e8132073a79304e01271020c947f0275a035b",
+          "size": 3053
+        },
+        {
+          "path": "blueprint-grid/SKILL.md",
+          "hash": "1180efdcb8c5ec8535905943da44f2a9328c35724c3c92bfa20db2f45ebb7140",
+          "size": 13028
+        },
+        {
+          "path": "blueprint-grid/social-card.png",
+          "hash": "85b694ce89e8fa756a649dd375ced4ef995081e75fbfa7b09c95434c840d23ff",
+          "size": 27110
+        },
+        {
+          "path": "blueprint-grid/template.css",
+          "hash": "3660089d20b5398a7b9f2e13bc9e1bfd337dc6daed9371fd3f1de3322b2a0960",
+          "size": 62004
+        },
+        {
+          "path": "blueprint-grid/template.js",
+          "hash": "a48ea89f646568e2c86506b334391445993830b032dfa58a4d1548ce15c3df30",
+          "size": 14032
+        },
+        {
+          "path": "blueprint-grid/template.json",
+          "hash": "214144d039cf98c0f53bd2a83dbf80bcb1df90f295d66922a22e7cfd300d561e",
+          "size": 2146
+        },
+        {
+          "path": "blueprint-grid/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "blueprint-grid/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "blueprint-grid/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "blueprint-grid/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "blueprint-grid/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "blueprint-grid/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "blueprint-grid/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "blueprint-grid/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "blueprint-grid/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "blueprint-grid/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "blueprint-grid/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "blueprint-grid/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "blueprint-grid/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "blueprint-grid/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "blueprint-grid/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "blueprint-grid/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "blueprint-grid/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "blueprint-grid/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 37361
+    },
+    {
+      "slug": "coastal-hotel",
+      "storageId": "f556014b-5224-4257-9ab8-28daab351e98",
+      "versionId": "dfcc93538a28f4dd902e82908991c3ed1ee4657f81b12e425ca3469b0bf67af0",
+      "archive": {
+        "path": "coastal-hotel.tar.gz",
+        "sha256": "4df5f2099cee35c286af6af9e3413f496a6b45b9423d7308336ad8372468efa3",
+        "byteSize": 195867
+      },
+      "totalSize": 640447,
+      "fileCount": 62,
+      "files": [
+        {
+          "path": "coastal-hotel/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "coastal-hotel/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "coastal-hotel/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "coastal-hotel/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "coastal-hotel/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "coastal-hotel/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "coastal-hotel/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "coastal-hotel/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "coastal-hotel/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "coastal-hotel/design-system.md",
+          "hash": "5a14f87b391811395560d047163d5096b23764477ef672620c3236941053c11c",
+          "size": 3916
+        },
+        {
+          "path": "coastal-hotel/favicon.svg",
+          "hash": "1d3e5c347e617e33fbea01c9a87323319d3cfd30632184c7987b53a1b11ab823",
+          "size": 319
+        },
+        {
+          "path": "coastal-hotel/index.html",
+          "hash": "5f110a05ebe96636ff783b6decb6315dace791a28fdae10baa405fe853e6d0cf",
+          "size": 77462
+        },
+        {
+          "path": "coastal-hotel/layout-map.md",
+          "hash": "c23a73f09c7550204dfe203fb57e0d0ae99cd3a96b4653731032463ee385f6ea",
+          "size": 2908
+        },
+        {
+          "path": "coastal-hotel/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "coastal-hotel/sections/_foundation.css",
+          "hash": "b9acfeeb60f86c021b15681deeba259046f1bc5fbf2ee19ae03bad75c0144a18",
+          "size": 76568
+        },
+        {
+          "path": "coastal-hotel/sections/_index.md",
+          "hash": "74876ed90efb296a3c2950285ed30c7222bb42adf23ca7939486f3ccf452089b",
+          "size": 6935
+        },
+        {
+          "path": "coastal-hotel/sections/_shell.part",
+          "hash": "346e7e71c0098255a17dd26c44a58b7eb29e9f19988109ef9f52f370c44359b3",
+          "size": 2145
+        },
+        {
+          "path": "coastal-hotel/sections/01-nav.html",
+          "hash": "1d50943a8139b56930ee90c50a8ade08f8a5e7bba6b7dbc2b69ae06fac903367",
+          "size": 1777
+        },
+        {
+          "path": "coastal-hotel/sections/02-hero.html",
+          "hash": "21823e5356511a3de75ce5c918c5998a309fbcdbbabac476a2fbd232a4298a5a",
+          "size": 1680
+        },
+        {
+          "path": "coastal-hotel/sections/03-logos.html",
+          "hash": "70d2941e30da30e1c410c3855c5fdde8f0d45a57b240cbb995008fff76a56bb6",
+          "size": 1698
+        },
+        {
+          "path": "coastal-hotel/sections/04-feature-grid.html",
+          "hash": "d77f95b4f1c1ea21c74659a195ec7f851eeb73513b512e7ca07efa1e49b11506",
+          "size": 4592
+        },
+        {
+          "path": "coastal-hotel/sections/05-mosaic-scroll.html",
+          "hash": "7b7168b32342bcb1496ddc48164a19b40deaff70735adb70ae4b0bca44382432",
+          "size": 20574
+        },
+        {
+          "path": "coastal-hotel/sections/06-feature.html",
+          "hash": "abc92099d2430661cccc0a5a9ee746bec0f35a416bd8253bb6527f6e22a1f5ef",
+          "size": 2138
+        },
+        {
+          "path": "coastal-hotel/sections/07-feature.html",
+          "hash": "2eee9b045bf244094fa79804fbeacfd2fbcf91c5c6720cd283e5557fb1698931",
+          "size": 2152
+        },
+        {
+          "path": "coastal-hotel/sections/08-stats.html",
+          "hash": "94320c17025e695833ecdd323ff5ba45849ebb41cb7e9ce15e14049856e08ba5",
+          "size": 572
+        },
+        {
+          "path": "coastal-hotel/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "coastal-hotel/sections/10-sticky-scroll.html",
+          "hash": "9ff8a8902dc28c3790d588dde6998dbb0a82c2e96cb16c44a8945a7e7eab1b41",
+          "size": 4160
+        },
+        {
+          "path": "coastal-hotel/sections/11-sticky-scroll.html",
+          "hash": "4d3be87c4ec27d324281528a7387e444eb898e9ad8ad0ab2273c2ff3940888a1",
+          "size": 3460
+        },
+        {
+          "path": "coastal-hotel/sections/12-arc-showcase.html",
+          "hash": "72762eec4d3cf0a13bbb5384d24a180e7f8b8efdc9b3330daeb88822c8444fae",
+          "size": 3535
+        },
+        {
+          "path": "coastal-hotel/sections/13-card-grid.html",
+          "hash": "fa310cacd8043ff4b13446ac43e0df77ff2955e827e7009c70025eee31acd666",
+          "size": 5228
+        },
+        {
+          "path": "coastal-hotel/sections/14-index-tiles.html",
+          "hash": "3c7307132a82984b50fb50468863b8d8e0fed518e33c2107b6f771384f12596a",
+          "size": 2399
+        },
+        {
+          "path": "coastal-hotel/sections/15-testimonial.html",
+          "hash": "82c925e13e7868b1aa8e4d27248e822db85a7038ea649cf983cadecd548bf938",
+          "size": 2516
+        },
+        {
+          "path": "coastal-hotel/sections/16-testimonial.html",
+          "hash": "b9ac7527ed363b21af439c990e741a205759fd7276d25d58f536f8917c5ae001",
+          "size": 9345
+        },
+        {
+          "path": "coastal-hotel/sections/17-statement.html",
+          "hash": "7a69c0ddc38430f1f022ccaf3ae58e1d2024b15e190fedf4f5ea229f71b8520a",
+          "size": 1982
+        },
+        {
+          "path": "coastal-hotel/sections/18-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "coastal-hotel/sections/19-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "coastal-hotel/sections/20-contact.html",
+          "hash": "bf8c53417c9cf84c0798098a36554fa36935c1d2b29c0a9bdef8b528f26a8aea",
+          "size": 1100
+        },
+        {
+          "path": "coastal-hotel/sections/21-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "coastal-hotel/sections/22-footer.html",
+          "hash": "bf6118f61e65cf0d59c657607dafea3ecf67ca7af824f8b6fefef100cea1035a",
+          "size": 1723
+        },
+        {
+          "path": "coastal-hotel/SKILL.md",
+          "hash": "80efd9b334a461cf42957af4c5fd0708ff75df83b4cd3e5e6567e9163a66a241",
+          "size": 12809
+        },
+        {
+          "path": "coastal-hotel/social-card.png",
+          "hash": "f0cef000316d4ff45aa52ad41c934d9e458629415c9e78a792b2cb505eb8bfe9",
+          "size": 38264
+        },
+        {
+          "path": "coastal-hotel/template.css",
+          "hash": "b9acfeeb60f86c021b15681deeba259046f1bc5fbf2ee19ae03bad75c0144a18",
+          "size": 76568
+        },
+        {
+          "path": "coastal-hotel/template.js",
+          "hash": "777ef7f49782e62e4d78d60a842320ad2573935ec4e6c893c23b527a725809ec",
+          "size": 17945
+        },
+        {
+          "path": "coastal-hotel/template.json",
+          "hash": "8276ae6db5c2a31039bccd51f38431488bc85e9dfce7357d6f621cc8200a2918",
+          "size": 2028
+        },
+        {
+          "path": "coastal-hotel/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "coastal-hotel/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "coastal-hotel/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "coastal-hotel/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "coastal-hotel/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "coastal-hotel/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "coastal-hotel/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "coastal-hotel/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "coastal-hotel/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "coastal-hotel/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "coastal-hotel/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "coastal-hotel/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "coastal-hotel/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "coastal-hotel/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "coastal-hotel/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "coastal-hotel/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "coastal-hotel/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "coastal-hotel/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 77427
+    },
+    {
+      "slug": "dot-matrix",
+      "storageId": "fd4bacaf-e8d2-497b-a60f-c79981560882",
+      "versionId": "fe4915d7c67bfc7e259192072647f62cb064066b0854a84e7fa7cc85bff43112",
+      "archive": {
+        "path": "dot-matrix.tar.gz",
+        "sha256": "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
+        "byteSize": 192583
+      },
+      "totalSize": 499502,
+      "fileCount": 56,
+      "files": [
+        {
+          "path": "dot-matrix/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "dot-matrix/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "dot-matrix/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "dot-matrix/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "dot-matrix/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "dot-matrix/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "dot-matrix/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "dot-matrix/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "dot-matrix/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "dot-matrix/design-system.md",
+          "hash": "e0eb93ca1e29393222eec9bc61f508e16d46e53e73d9e64d7b23d4b4f2d91892",
+          "size": 3836
+        },
+        {
+          "path": "dot-matrix/favicon.svg",
+          "hash": "a8bb4470bf28b3dae707ceb2233dc101901d46969f153aebbcb149307cac7e6f",
+          "size": 322
+        },
+        {
+          "path": "dot-matrix/index.html",
+          "hash": "66a9ed4d8a120aa42f4bc5894faf956b72c686f6e59ca3943520109986ee77de",
+          "size": 37091
+        },
+        {
+          "path": "dot-matrix/layout-map.md",
+          "hash": "48e64f4f4984c0b576bde4e8ff36e5ab1c4441bf3cdaced1fdcb051f17da4014",
+          "size": 2721
+        },
+        {
+          "path": "dot-matrix/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "dot-matrix/sections/_foundation.css",
+          "hash": "57915432e501e170a28edfa8538b098a16e381e28155457676b6214312d3f529",
+          "size": 38727
+        },
+        {
+          "path": "dot-matrix/sections/_index.md",
+          "hash": "d9e54171b0bdc4ecc5929d66b50e0d617d11181098e0a34e9b0a3ab191e1f508",
+          "size": 5150
+        },
+        {
+          "path": "dot-matrix/sections/_shell.part",
+          "hash": "2073c93b23e5342eddd31bd76b22eccd390c9a8e4471adab6a62c2c411a0b56f",
+          "size": 2193
+        },
+        {
+          "path": "dot-matrix/sections/01-nav.html",
+          "hash": "1231f795f63aeb0faaa333fe1864b162bad0b903679fdf6e54e4d761e1276f73",
+          "size": 1751
+        },
+        {
+          "path": "dot-matrix/sections/02-hero.html",
+          "hash": "33b91ad7608cb55cb209912e2b49e4168bbf4fbc413fe33b786df32d9683c0b7",
+          "size": 1536
+        },
+        {
+          "path": "dot-matrix/sections/03-statement.html",
+          "hash": "73bc23c1f39346d01466a8369145d20a5e13d6d822c9941d74e940b4dfbf68f0",
+          "size": 987
+        },
+        {
+          "path": "dot-matrix/sections/04-logos.html",
+          "hash": "fa8e52fd06173cd62a0457a1539ab4c1a341059cabed25d2d77ee1d6627c2c67",
+          "size": 891
+        },
+        {
+          "path": "dot-matrix/sections/05-steps.html",
+          "hash": "ef67c9f48fbac7b38199a7115f257015cc17f9d742ee48f7040b562dbb87dd63",
+          "size": 7391
+        },
+        {
+          "path": "dot-matrix/sections/06-feature.html",
+          "hash": "843d2eaebee3f108fc2fc52e2ac896e8c9e7e0169c1381adfb1d880a143b9489",
+          "size": 2879
+        },
+        {
+          "path": "dot-matrix/sections/07-gallery.html",
+          "hash": "a6bb4f8c43a0e914613a8b9fa0b937e58b21cec893e8dba70518080be4a52c8b",
+          "size": 4142
+        },
+        {
+          "path": "dot-matrix/sections/08-index.html",
+          "hash": "96a3c9db968a97eacba413f6ac71a9304505c16a335b503a23fd2e04613cea23",
+          "size": 2425
+        },
+        {
+          "path": "dot-matrix/sections/09-narrative.html",
+          "hash": "b7e4b58e1b0ea22141223f6922aca7b71dac4297c2eaa24c3a2912a5cfcd82bb",
+          "size": 2095
+        },
+        {
+          "path": "dot-matrix/sections/10-testimonial.html",
+          "hash": "a86c37a411e282a5c2864260bd678e3dadb41fccb11d9f1434b1626257d88314",
+          "size": 2581
+        },
+        {
+          "path": "dot-matrix/sections/11-statement.html",
+          "hash": "0f89fc4363a48ebb7473c3d86e06d96aeec6e6ec8b60df304af8bc3a4e66f25a",
+          "size": 1959
+        },
+        {
+          "path": "dot-matrix/sections/12-pricing.html",
+          "hash": "eefec2ce6b0db66c373856911a6725a3926f4c30d77761bdbc3bd07c065e1599",
+          "size": 1557
+        },
+        {
+          "path": "dot-matrix/sections/13-faq.html",
+          "hash": "0d4c8f3e6b65b2d6ecdeb9acd6796aee6f5780a2fa35beb27940b9dc233a4f2e",
+          "size": 1363
+        },
+        {
+          "path": "dot-matrix/sections/14-stats.html",
+          "hash": "7d10b9dc58d661b626cebadc29bfae2d8121beb13ea05ee76c6eec85b0fe4921",
+          "size": 622
+        },
+        {
+          "path": "dot-matrix/sections/15-cta.html",
+          "hash": "14f6ef12059edf7bcecaed1abab866f98d7aa45748f4d031904af0d58891526c",
+          "size": 366
+        },
+        {
+          "path": "dot-matrix/sections/16-footer.html",
+          "hash": "3a1cdb1d237227be669aaa9bfaa8529f333033771750dcb7c98400b03fe8da5d",
+          "size": 2388
+        },
+        {
+          "path": "dot-matrix/SKILL.md",
+          "hash": "4ba777f60b5792194a9a9ebd430e91c25dba28ad603bc52500dbf589f765ef5b",
+          "size": 12750
+        },
+        {
+          "path": "dot-matrix/social-card.png",
+          "hash": "e6df19dbb09d7a039eb58b852c466ccf52777cfb735105f53d5f0031b17ac0ab",
+          "size": 61182
+        },
+        {
+          "path": "dot-matrix/template.css",
+          "hash": "57915432e501e170a28edfa8538b098a16e381e28155457676b6214312d3f529",
+          "size": 38727
+        },
+        {
+          "path": "dot-matrix/template.js",
+          "hash": "8c6ebd535b60863293e76d2e38794e59f2308f164e58837a012dff5dbb7bca89",
+          "size": 12632
+        },
+        {
+          "path": "dot-matrix/template.json",
+          "hash": "21678b0b6be984c1678e825bad8ac991c0c19db8fcf97eeef3665bd5b931b2f1",
+          "size": 2016
+        },
+        {
+          "path": "dot-matrix/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "dot-matrix/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "dot-matrix/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "dot-matrix/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "dot-matrix/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "dot-matrix/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "dot-matrix/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "dot-matrix/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "dot-matrix/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "dot-matrix/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "dot-matrix/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "dot-matrix/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "dot-matrix/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "dot-matrix/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "dot-matrix/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "dot-matrix/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "dot-matrix/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "dot-matrix/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 37086
+    },
+    {
+      "slug": "frame-stack",
+      "storageId": "ed402508-e8cf-40f4-8908-72a315420075",
+      "versionId": "e9675a20ab0cc0c3970a21ef88716fd5f6f774bf7107739181d1545d6c39d466",
+      "archive": {
+        "path": "frame-stack.tar.gz",
+        "sha256": "b00cbbe2a39486545d695986b6d2be2def28916d4d21fc80591c64d326ddaa5a",
+        "byteSize": 199770
+      },
+      "totalSize": 629513,
+      "fileCount": 61,
+      "files": [
+        {
+          "path": "frame-stack/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "frame-stack/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "frame-stack/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "frame-stack/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "frame-stack/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "frame-stack/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "frame-stack/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "frame-stack/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "frame-stack/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "frame-stack/design-system.md",
+          "hash": "b773d1270bc036ec9c6cf689884fd687387e6bd1e0d17e8a4a2db0e228fb66e6",
+          "size": 3930
+        },
+        {
+          "path": "frame-stack/favicon.svg",
+          "hash": "a298b71d3eb3a5539d919180ecdf0204fa0a7897d0ec34b213fd9fa2b0cacd5b",
+          "size": 325
+        },
+        {
+          "path": "frame-stack/index.html",
+          "hash": "3b54940d0a284d7a04014105390a94bcdb2daa7421ca25327fcb432100e68551",
+          "size": 73811
+        },
+        {
+          "path": "frame-stack/layout-map.md",
+          "hash": "c2a2fffa9617a5e22612e9b675d560d27ed53b0f0d86d55c3825bb251c0f76bb",
+          "size": 2843
+        },
+        {
+          "path": "frame-stack/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "frame-stack/sections/_foundation.css",
+          "hash": "c70ae9db4de8147812e0577c9a8f20368085c46e7d138d364e1f1f3641e08678",
+          "size": 73508
+        },
+        {
+          "path": "frame-stack/sections/_index.md",
+          "hash": "545c3e9d50d144c8b9722b9a868a0af394d5dcfea4785fb5f41c1878beed7cb1",
+          "size": 6575
+        },
+        {
+          "path": "frame-stack/sections/_shell.part",
+          "hash": "acfd6f80b7deebbd22ed538cb7efdd5ce7c8fe456f389b40583fa2bb57f85985",
+          "size": 2139
+        },
+        {
+          "path": "frame-stack/sections/01-nav.html",
+          "hash": "267688af0d804b55de4c6134a7d2d5deb45e11246ae2856d04d84166417ef934",
+          "size": 1775
+        },
+        {
+          "path": "frame-stack/sections/02-hero.html",
+          "hash": "99651f96520e512a825566502a0955d63a360cb7f9ebe3fb5481c7c6465dc641",
+          "size": 2549
+        },
+        {
+          "path": "frame-stack/sections/03-logos.html",
+          "hash": "4980d950c4891d4b8ef74ed7b703eaf5d172f84c75c5e94ba4a25f0059d68d55",
+          "size": 1226
+        },
+        {
+          "path": "frame-stack/sections/04-feature-grid.html",
+          "hash": "d77f95b4f1c1ea21c74659a195ec7f851eeb73513b512e7ca07efa1e49b11506",
+          "size": 4592
+        },
+        {
+          "path": "frame-stack/sections/05-mosaic-scroll.html",
+          "hash": "7b7168b32342bcb1496ddc48164a19b40deaff70735adb70ae4b0bca44382432",
+          "size": 20574
+        },
+        {
+          "path": "frame-stack/sections/06-feature.html",
+          "hash": "abc92099d2430661cccc0a5a9ee746bec0f35a416bd8253bb6527f6e22a1f5ef",
+          "size": 2138
+        },
+        {
+          "path": "frame-stack/sections/07-feature.html",
+          "hash": "2eee9b045bf244094fa79804fbeacfd2fbcf91c5c6720cd283e5557fb1698931",
+          "size": 2152
+        },
+        {
+          "path": "frame-stack/sections/08-stats.html",
+          "hash": "94320c17025e695833ecdd323ff5ba45849ebb41cb7e9ce15e14049856e08ba5",
+          "size": 572
+        },
+        {
+          "path": "frame-stack/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "frame-stack/sections/10-sticky-scroll.html",
+          "hash": "9ff8a8902dc28c3790d588dde6998dbb0a82c2e96cb16c44a8945a7e7eab1b41",
+          "size": 4160
+        },
+        {
+          "path": "frame-stack/sections/11-sticky-scroll.html",
+          "hash": "4d3be87c4ec27d324281528a7387e444eb898e9ad8ad0ab2273c2ff3940888a1",
+          "size": 3460
+        },
+        {
+          "path": "frame-stack/sections/12-card-grid.html",
+          "hash": "e6b28bacc0e4789ad3827b472f94cce0ac05e35b6658b696ce166037daa04f0b",
+          "size": 4803
+        },
+        {
+          "path": "frame-stack/sections/13-index-tiles.html",
+          "hash": "3c7307132a82984b50fb50468863b8d8e0fed518e33c2107b6f771384f12596a",
+          "size": 2399
+        },
+        {
+          "path": "frame-stack/sections/14-testimonial.html",
+          "hash": "e75c119349749ab51526e046c09795eb223a61b2986b186928964ef65aa2e676",
+          "size": 2501
+        },
+        {
+          "path": "frame-stack/sections/15-testimonial.html",
+          "hash": "146eb3d0ddef46c7be29f15b744c16d0a7cd9edbaeadf68167115bd8d943814a",
+          "size": 9285
+        },
+        {
+          "path": "frame-stack/sections/16-statement.html",
+          "hash": "1c6294511ee9dd6e3d8cbfc78626b374b27cd1ce26cfc700ea6ea4bcf42009c1",
+          "size": 1980
+        },
+        {
+          "path": "frame-stack/sections/17-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "frame-stack/sections/18-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "frame-stack/sections/19-contact.html",
+          "hash": "bf8c53417c9cf84c0798098a36554fa36935c1d2b29c0a9bdef8b528f26a8aea",
+          "size": 1100
+        },
+        {
+          "path": "frame-stack/sections/20-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "frame-stack/sections/21-footer.html",
+          "hash": "1c1997233a63503346eb6cf2606fa24960215fd26f4fd61f3a62d884cba66264",
+          "size": 1719
+        },
+        {
+          "path": "frame-stack/SKILL.md",
+          "hash": "4629e1e350cf202fb63fb2292f62149997d82bdd0f6db518e4f794dad6ecad13",
+          "size": 12812
+        },
+        {
+          "path": "frame-stack/social-card.png",
+          "hash": "2e933392cb82efd70092f30569b834dcfc6798f28ee26b197977f1f35f580541",
+          "size": 43776
+        },
+        {
+          "path": "frame-stack/template.css",
+          "hash": "c70ae9db4de8147812e0577c9a8f20368085c46e7d138d364e1f1f3641e08678",
+          "size": 73508
+        },
+        {
+          "path": "frame-stack/template.js",
+          "hash": "1fad12282d488d820e53b923846962fe4ebbedeb03cab92b496efa27799947c3",
+          "size": 15407
+        },
+        {
+          "path": "frame-stack/template.json",
+          "hash": "8e778ad2c663e77c9d5021280863d112c72bdd539eb5b4841cc0ac17b899591e",
+          "size": 1945
+        },
+        {
+          "path": "frame-stack/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "frame-stack/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "frame-stack/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "frame-stack/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "frame-stack/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "frame-stack/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "frame-stack/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "frame-stack/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "frame-stack/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "frame-stack/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "frame-stack/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "frame-stack/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "frame-stack/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "frame-stack/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "frame-stack/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "frame-stack/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "frame-stack/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "frame-stack/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 73777
+    },
+    {
+      "slug": "frosted-scatter",
+      "storageId": "a93875fc-7370-4212-9c23-e8565977a8a9",
+      "versionId": "2954955f13a31eeb5a9b5cf69c6c170a92c328ed807eed8573bbac52685e2b16",
+      "archive": {
+        "path": "frosted-scatter.tar.gz",
+        "sha256": "3aa13240db1b905b8222c3eb7eccacfeec44f93aba30e3f495e0e2f1dc395e58",
+        "byteSize": 226832
+      },
+      "totalSize": 739308,
+      "fileCount": 63,
+      "files": [
+        {
+          "path": "frosted-scatter/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "frosted-scatter/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "frosted-scatter/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "frosted-scatter/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "frosted-scatter/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "frosted-scatter/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "frosted-scatter/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "frosted-scatter/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "frosted-scatter/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "frosted-scatter/design-system.md",
+          "hash": "1451c451195c081c3ef4f6be3b3c9d7081c6b4d8285a360961904cab2aa173c6",
+          "size": 4077
+        },
+        {
+          "path": "frosted-scatter/favicon.svg",
+          "hash": "cbf7472a69865af32b25d566f7b149a769ef9d024039c4a92e3b276f4c4da202",
+          "size": 316
+        },
+        {
+          "path": "frosted-scatter/index.html",
+          "hash": "743dcaf5b812511cbb3bc967aaa50f006a3bc4131e11aa07eaa70ae871d1e7b6",
+          "size": 85766
+        },
+        {
+          "path": "frosted-scatter/layout-map.md",
+          "hash": "9dc39fd1fa13e88d7dfec3348b966e0111457e0d914851ca6fb17bae9e6e1015",
+          "size": 3003
+        },
+        {
+          "path": "frosted-scatter/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "frosted-scatter/sections/_foundation.css",
+          "hash": "07ed534554db8853b7184adadc6909be18a50a701fb4534fef308b0182fed453",
+          "size": 109292
+        },
+        {
+          "path": "frosted-scatter/sections/_index.md",
+          "hash": "30b4c75ededf8e5e59bff77f1c9f08f34c1101408e9d1b0ea3d061eadafe1e54",
+          "size": 7847
+        },
+        {
+          "path": "frosted-scatter/sections/_shell.part",
+          "hash": "d70b2d91cfdc2538d34b74b20812004e1dc1bacff8f01e19d4e23ae1e189a2b7",
+          "size": 2071
+        },
+        {
+          "path": "frosted-scatter/sections/01-nav.html",
+          "hash": "2a071d89b37c8513c86f7a4fb9120ce1cbce0b2df37a3d12365351d8eb218d09",
+          "size": 1926
+        },
+        {
+          "path": "frosted-scatter/sections/02-hero.html",
+          "hash": "2b140c77511ae581fad094328f95b96acd765582423d85ddd76362d505030ba7",
+          "size": 4503
+        },
+        {
+          "path": "frosted-scatter/sections/03-logos.html",
+          "hash": "01eee03ede22e75bd84cd3288ab37524ae6fbfe8fa472ad899f0454a21850020",
+          "size": 1720
+        },
+        {
+          "path": "frosted-scatter/sections/04-feature-grid.html",
+          "hash": "54ce97b31f093a5a3fd89fe8ca0738c8b049bbc56743a6075b3b09e7d73987d5",
+          "size": 4692
+        },
+        {
+          "path": "frosted-scatter/sections/05-pinned-split.html",
+          "hash": "4faf426b8bd9bfdbc1dbdccaaa0f2b542a1b2a6dabd208b39a215155177ade0c",
+          "size": 3070
+        },
+        {
+          "path": "frosted-scatter/sections/06-mosaic-scroll.html",
+          "hash": "72cdbc21b62390a80bfe61221b4ac7fcb31865c1026dafa902f17b640eea0820",
+          "size": 6026
+        },
+        {
+          "path": "frosted-scatter/sections/07-feature.html",
+          "hash": "5fabd6cbe2a0f27830b3176238da3f3833ac621d4e9bbf73c6c604d79dc694ae",
+          "size": 2588
+        },
+        {
+          "path": "frosted-scatter/sections/08-feature.html",
+          "hash": "158350b3c00a826b570817df4b781c3155db2902e8ca08052bb984574f5642a7",
+          "size": 2602
+        },
+        {
+          "path": "frosted-scatter/sections/09-stats.html",
+          "hash": "a1f1e41eb98eef09315cc25e600c9b23771e3a92ec62ddc7019812a310faa163",
+          "size": 1302
+        },
+        {
+          "path": "frosted-scatter/sections/10-steps.html",
+          "hash": "e01c3b129a070cab90ceb4cb5326984de3dabfc9ca74213881dcf53752dbd4d2",
+          "size": 1876
+        },
+        {
+          "path": "frosted-scatter/sections/11-sticky-scroll.html",
+          "hash": "81cb675fcbec1683700c2b92d4bb6ebdb31df9b4a7260ee0f32c923eb9f72ca5",
+          "size": 4820
+        },
+        {
+          "path": "frosted-scatter/sections/12-sticky-scroll.html",
+          "hash": "32b85fd99f421a5df8d0812d8c23bdd984c27306e2838e1b9fd05f918c7d4c8a",
+          "size": 3953
+        },
+        {
+          "path": "frosted-scatter/sections/13-card-grid.html",
+          "hash": "407d186f3c8a39c0a05014bd12f20f10a80b65639d6d9e10033ded8321719c54",
+          "size": 5653
+        },
+        {
+          "path": "frosted-scatter/sections/14-index-tiles.html",
+          "hash": "1d225d340d2b6c56c2d8d04a6f81ee472282fe06539b462a36832c1b864bfae4",
+          "size": 2683
+        },
+        {
+          "path": "frosted-scatter/sections/15-team.html",
+          "hash": "f0ea2f8792319b5bb5ea433f5240be1fe55c85d376695c13183c25f543f7bef4",
+          "size": 5523
+        },
+        {
+          "path": "frosted-scatter/sections/16-testimonial.html",
+          "hash": "332d29b121854854bf60ffa4c91b098fb72f9f10cd7d1c701c9a99677ef7346d",
+          "size": 11481
+        },
+        {
+          "path": "frosted-scatter/sections/17-testimonial.html",
+          "hash": "469d9f3c99131a669b8c193b388205eca169e1cbc25d0307ec907c54c20e4a28",
+          "size": 9525
+        },
+        {
+          "path": "frosted-scatter/sections/18-statement.html",
+          "hash": "519691390e2503dcb7172d0ae76918ff0636512287dad58cec439d1bf28c4ee3",
+          "size": 1984
+        },
+        {
+          "path": "frosted-scatter/sections/19-pricing.html",
+          "hash": "efdfe69a8b13a47adb778fe94d62257dc057fc79480349c6d01717881473650d",
+          "size": 1443
+        },
+        {
+          "path": "frosted-scatter/sections/20-faq.html",
+          "hash": "bae243ebc9750d40cbe1d48af022bc66c0a3d47ac383acfbea569b037ac9490e",
+          "size": 2207
+        },
+        {
+          "path": "frosted-scatter/sections/21-contact.html",
+          "hash": "e1429e0c006090c9e594f6a81f7027810176cc3cbc51b73f878fb5f0b7478f96",
+          "size": 1124
+        },
+        {
+          "path": "frosted-scatter/sections/22-cta.html",
+          "hash": "c8372ed4b2f097416c79d83e96c5a92282c7a0ea59ce2c7e234e229db7276039",
+          "size": 388
+        },
+        {
+          "path": "frosted-scatter/sections/23-footer.html",
+          "hash": "7df3744d267cb6ab2d0a572d23b26b7d2b7353253108adb4c06c860b4918055f",
+          "size": 2648
+        },
+        {
+          "path": "frosted-scatter/SKILL.md",
+          "hash": "c4e4d71037501148a2e3b9f083677d0bc7a6639cd24a87629742f1d36d6f9948",
+          "size": 12774
+        },
+        {
+          "path": "frosted-scatter/social-card.png",
+          "hash": "0a9c86fc061cc66431151911a1ef63c96ff1d09999f6d1342317466ae60ba14a",
+          "size": 45213
+        },
+        {
+          "path": "frosted-scatter/template.css",
+          "hash": "07ed534554db8853b7184adadc6909be18a50a701fb4534fef308b0182fed453",
+          "size": 109292
+        },
+        {
+          "path": "frosted-scatter/template.js",
+          "hash": "c901e298d49e13e901d321447432ec7f12d67622cb36fd3be06874886cf36b4c",
+          "size": 26705
+        },
+        {
+          "path": "frosted-scatter/template.json",
+          "hash": "62319c961cfa48c8cd6fef40b4e2d50ce99343de8a8ed58e934d80a25bde6744",
+          "size": 1993
+        },
+        {
+          "path": "frosted-scatter/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "frosted-scatter/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "frosted-scatter/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "frosted-scatter/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "frosted-scatter/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "frosted-scatter/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "frosted-scatter/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "frosted-scatter/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "frosted-scatter/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "frosted-scatter/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "frosted-scatter/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "frosted-scatter/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "frosted-scatter/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "frosted-scatter/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "frosted-scatter/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "frosted-scatter/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "frosted-scatter/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "frosted-scatter/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 85716
+    },
+    {
+      "slug": "gallery-wall",
+      "storageId": "619d50a9-01fb-44dd-8a60-af3c97b557e7",
+      "versionId": "8a2ca4ee5c50294cf54053fc29122196b4265fe5955eeec86bd0967778b86033",
+      "archive": {
+        "path": "gallery-wall.tar.gz",
+        "sha256": "41941dd3c92814efc30a36ec8c4929aecda48335619c8684c2e0d3c3d0cbd1fa",
+        "byteSize": 185324
+      },
+      "totalSize": 546337,
+      "fileCount": 61,
+      "files": [
+        {
+          "path": "gallery-wall/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "gallery-wall/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "gallery-wall/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "gallery-wall/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "gallery-wall/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "gallery-wall/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "gallery-wall/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "gallery-wall/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "gallery-wall/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "gallery-wall/design-system.md",
+          "hash": "158574004e3e5815fb2ca1e4de5e8cfbb71d86f3b17bc96d2cfd9b233439c988",
+          "size": 3911
+        },
+        {
+          "path": "gallery-wall/favicon.svg",
+          "hash": "5c0a277265d987cbeba62a21f74493c7c6d6ab826081ace5a7f1bc144ad1b9d8",
+          "size": 326
+        },
+        {
+          "path": "gallery-wall/index.html",
+          "hash": "04882e4a66f0eb7eb7ed187d9098e4b3835aead4f2483d52525571f6cb9f184c",
+          "size": 56292
+        },
+        {
+          "path": "gallery-wall/layout-map.md",
+          "hash": "04f9095ababd179d9f5e44cea00ae40475959c293bd9cb88a0e47f75b890cc96",
+          "size": 2835
+        },
+        {
+          "path": "gallery-wall/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "gallery-wall/sections/_foundation.css",
+          "hash": "f3ffc602be09134ebf2f15b1a2c30cfc36d7afc7809b003d6b3a7be5d3fd4c52",
+          "size": 50108
+        },
+        {
+          "path": "gallery-wall/sections/_index.md",
+          "hash": "5758c9fc8a0f6f5e70af3a0c4052eca3d0ed06d59c1e220d79d52c19b9666e85",
+          "size": 6654
+        },
+        {
+          "path": "gallery-wall/sections/_shell.part",
+          "hash": "df13257cb86043774520c2e7b7a298f46814837a08d46acac2c30b79a57f654a",
+          "size": 2124
+        },
+        {
+          "path": "gallery-wall/sections/01-nav.html",
+          "hash": "6a5535006ccba00fda8251e218077b3b9ac86bd70ce4e52b624259568b42105e",
+          "size": 1778
+        },
+        {
+          "path": "gallery-wall/sections/02-hero.html",
+          "hash": "192deb34069224ec2ad52b73651f70a1d05a4ac61d17bfe756e0efca2ede742e",
+          "size": 1438
+        },
+        {
+          "path": "gallery-wall/sections/03-logos.html",
+          "hash": "0c39a3e77b694111004a57dbd42a752384a2b532eb09f4b4e75efedce4b3bd25",
+          "size": 2170
+        },
+        {
+          "path": "gallery-wall/sections/04-feature-grid.html",
+          "hash": "1de64eb5f8967a2639d5afe75dfd62e0023742e90280485aeb4ead8dbc2b0faa",
+          "size": 3863
+        },
+        {
+          "path": "gallery-wall/sections/05-feature-grid.html",
+          "hash": "08ff5ea911c8ec9d4f9dce216794f785cbcd510cc573aa9cc44d6c5af8ba0ba0",
+          "size": 3841
+        },
+        {
+          "path": "gallery-wall/sections/06-feature.html",
+          "hash": "6de38354695383ace6f5b11623c2943f268857f2e67f9bc8cea59156631eba9a",
+          "size": 2563
+        },
+        {
+          "path": "gallery-wall/sections/07-feature.html",
+          "hash": "40a14c08cdaae2b7ceebf60983a6f00b8b4587880eb9188c751ec37a3ab1beec",
+          "size": 2577
+        },
+        {
+          "path": "gallery-wall/sections/08-stats.html",
+          "hash": "a362a7beb56a9d8228cdacb76134632b9a69af4f3e0ce5e0a2b1aa38212416a9",
+          "size": 591
+        },
+        {
+          "path": "gallery-wall/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "gallery-wall/sections/10-sticky-scroll.html",
+          "hash": "70555e213de1580adb3172de103a93327c62651f9f3fe6bea82b0ebee3d00653",
+          "size": 2943
+        },
+        {
+          "path": "gallery-wall/sections/11-sticky-scroll.html",
+          "hash": "05ff18694e522f692d0f068261519bb3cab461c27510b85bfd180e26a49baf12",
+          "size": 2021
+        },
+        {
+          "path": "gallery-wall/sections/12-card-grid.html",
+          "hash": "36023355ab455c8a1418c50e564b0a5fd7ad61e5539f15e73b5e43036f4bcfd6",
+          "size": 5574
+        },
+        {
+          "path": "gallery-wall/sections/13-index-tiles.html",
+          "hash": "af2ab93c47f653c89c055432b21f09fcf7108404f53282838db696e30ef51648",
+          "size": 3201
+        },
+        {
+          "path": "gallery-wall/sections/14-testimonial.html",
+          "hash": "e75c119349749ab51526e046c09795eb223a61b2986b186928964ef65aa2e676",
+          "size": 2501
+        },
+        {
+          "path": "gallery-wall/sections/15-testimonial.html",
+          "hash": "146eb3d0ddef46c7be29f15b744c16d0a7cd9edbaeadf68167115bd8d943814a",
+          "size": 9285
+        },
+        {
+          "path": "gallery-wall/sections/16-statement.html",
+          "hash": "50e7138340ff309d8df61d015394c4045e463a18b1835bc45f853299978fb0ef",
+          "size": 1981
+        },
+        {
+          "path": "gallery-wall/sections/17-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "gallery-wall/sections/18-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "gallery-wall/sections/19-contact.html",
+          "hash": "829b91217def7291b49790b8e22b3667cec6aebe613c8cc683180ce93deec7e2",
+          "size": 1429
+        },
+        {
+          "path": "gallery-wall/sections/20-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "gallery-wall/sections/21-footer.html",
+          "hash": "bc3ec5aef110ad56e7f8a57329078664f9a1d69ecd07b7fc578fe2ba94e0f7f3",
+          "size": 1725
+        },
+        {
+          "path": "gallery-wall/SKILL.md",
+          "hash": "f12a0f42d46b04e6d452da34d594645f618b82ad9c38c56a9338393c1a4b16ee",
+          "size": 12722
+        },
+        {
+          "path": "gallery-wall/social-card.png",
+          "hash": "146a8deaafdc9c354d986be3aaf0ddb72b16e9e92b4e9e36b15bbc6e72714ff2",
+          "size": 45215
+        },
+        {
+          "path": "gallery-wall/template.css",
+          "hash": "f3ffc602be09134ebf2f15b1a2c30cfc36d7afc7809b003d6b3a7be5d3fd4c52",
+          "size": 50108
+        },
+        {
+          "path": "gallery-wall/template.js",
+          "hash": "5c84d647431859647b15c55156f6a47eb25d0d591dba9700fe25defbb17f9192",
+          "size": 12614
+        },
+        {
+          "path": "gallery-wall/template.json",
+          "hash": "07f676642c486bc64d8725cdc97932adc169b886167ed5857d54d293187b2921",
+          "size": 1998
+        },
+        {
+          "path": "gallery-wall/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "gallery-wall/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "gallery-wall/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "gallery-wall/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "gallery-wall/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "gallery-wall/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "gallery-wall/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "gallery-wall/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "gallery-wall/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "gallery-wall/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "gallery-wall/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "gallery-wall/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "gallery-wall/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "gallery-wall/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "gallery-wall/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "gallery-wall/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "gallery-wall/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "gallery-wall/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 56266
+    },
+    {
+      "slug": "glass-bloom",
+      "storageId": "49a24bc7-0515-431c-81c2-6f4ea7386e9c",
+      "versionId": "ad5b00f8a2ceb176aa7de7906345d18ab798d0b6835d86ab1e58bfa033822dee",
+      "archive": {
+        "path": "glass-bloom.tar.gz",
+        "sha256": "455acd8f36c55a30b3a58654f3f2d5d20b58fcef379b99a28c52aac54246eaf6",
+        "byteSize": 214958
+      },
+      "totalSize": 684861,
+      "fileCount": 78,
+      "files": [
+        {
+          "path": "glass-bloom/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "glass-bloom/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "glass-bloom/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "glass-bloom/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "glass-bloom/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "glass-bloom/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "glass-bloom/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "glass-bloom/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "glass-bloom/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "glass-bloom/design-system.md",
+          "hash": "e3ca0a28f4f043762618e7847d0bc1d68564035833114e37e34d32c4a231db71",
+          "size": 4360
+        },
+        {
+          "path": "glass-bloom/favicon.svg",
+          "hash": "e4095581c24b82967990283f8744a018eff11f6913c7ce0a103ff1eb05049a99",
+          "size": 316
+        },
+        {
+          "path": "glass-bloom/index.html",
+          "hash": "415aa3af37d0ef79a1f5d13b8b8badf408049899435c8cfa3a896ff2d4ec5257",
+          "size": 83636
+        },
+        {
+          "path": "glass-bloom/layout-map.md",
+          "hash": "41709a0add722258891c46399317b5265316865bbd35756802d91f8ae557eb37",
+          "size": 2914
+        },
+        {
+          "path": "glass-bloom/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "glass-bloom/sections/_baselayer.css",
+          "hash": "b59f94927c9033c2966cd2f6700183be63ce83a5d5fdc89304637ff9ed7700c7",
+          "size": 4691
+        },
+        {
+          "path": "glass-bloom/sections/_foundation.css",
+          "hash": "4a3441cef8c08b100561bf19b363e62e85260cc546887a249469ec116737fbc4",
+          "size": 64784
+        },
+        {
+          "path": "glass-bloom/sections/_index.md",
+          "hash": "19508b181ccbc3c08230ca6567280376d3f99189768b7f43065264e012a96007",
+          "size": 8026
+        },
+        {
+          "path": "glass-bloom/sections/_shell.part",
+          "hash": "d9f4bf24fb73da31a34a569eb4477b3d0355bed0078fb3e6c26fb01aceacb312",
+          "size": 2326
+        },
+        {
+          "path": "glass-bloom/sections/01-nav.html",
+          "hash": "6db2d4c5ed41365ace9bdc17e17000e6a831a1bc9a109a835dec1d37fe50dbf7",
+          "size": 1918
+        },
+        {
+          "path": "glass-bloom/sections/02-hero.html",
+          "hash": "c2da9e3bada931f20ef37df2e001364cf9c90b4e8e92213dc2a9fa6a03e2c18a",
+          "size": 811
+        },
+        {
+          "path": "glass-bloom/sections/03-logos.html",
+          "hash": "70d2941e30da30e1c410c3855c5fdde8f0d45a57b240cbb995008fff76a56bb6",
+          "size": 1698
+        },
+        {
+          "path": "glass-bloom/sections/04-feature-grid.html",
+          "hash": "d77f95b4f1c1ea21c74659a195ec7f851eeb73513b512e7ca07efa1e49b11506",
+          "size": 4592
+        },
+        {
+          "path": "glass-bloom/sections/05-pinned-split.html",
+          "hash": "6a8a318f27737606702476c3d5564c855d990f4ef19d9e69354fcabed056cde7",
+          "size": 3189
+        },
+        {
+          "path": "glass-bloom/sections/06-mosaic-scroll.html",
+          "hash": "73408a0592279473946b3c0574aa992029eec8c669d9a79813594f871df9d4dd",
+          "size": 20730
+        },
+        {
+          "path": "glass-bloom/sections/07-feature.html",
+          "hash": "43b4621293001ddbfc689eb75e2647f93b43847bdbcce894baf72046ec2cfbc7",
+          "size": 2108
+        },
+        {
+          "path": "glass-bloom/sections/08-feature.html",
+          "hash": "552047642206c37353b2ec480cbbd52b4dce15cea22975e09a665efe03ab871f",
+          "size": 2130
+        },
+        {
+          "path": "glass-bloom/sections/09-stats.html",
+          "hash": "94320c17025e695833ecdd323ff5ba45849ebb41cb7e9ce15e14049856e08ba5",
+          "size": 572
+        },
+        {
+          "path": "glass-bloom/sections/10-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "glass-bloom/sections/11-sticky-scroll.html",
+          "hash": "66a8230410e0b9f9ffe734162fefb18415e0b0970b296e14f17c8ce470c3ff26",
+          "size": 4843
+        },
+        {
+          "path": "glass-bloom/sections/12-sticky-scroll.html",
+          "hash": "bf8c843869d0baaba341c45fb9407056f34c74ce90a75e55d9fcccdde40b6715",
+          "size": 3954
+        },
+        {
+          "path": "glass-bloom/sections/13-card-grid.html",
+          "hash": "f9046742f2d0613a02fef9383e2197c14dc7435dc9d1f29d95bdeb6d39af5066",
+          "size": 5570
+        },
+        {
+          "path": "glass-bloom/sections/14-index-tiles.html",
+          "hash": "8800613f713f78de0c775d10690308e6ef4d719e2d5d96f990f8c5cae0992f8c",
+          "size": 2386
+        },
+        {
+          "path": "glass-bloom/sections/15-testimonial.html",
+          "hash": "2d249ec8b83fa84a2cdc9801f9d17e4919e2399bad49253816661a07d4ad9aa9",
+          "size": 7213
+        },
+        {
+          "path": "glass-bloom/sections/16-testimonial.html",
+          "hash": "b9ac7527ed363b21af439c990e741a205759fd7276d25d58f536f8917c5ae001",
+          "size": 9345
+        },
+        {
+          "path": "glass-bloom/sections/17-statement.html",
+          "hash": "384f7dca7536f62629faf6754272de62eadab7c807b0d07691042ea8aa9b5029",
+          "size": 1980
+        },
+        {
+          "path": "glass-bloom/sections/18-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "glass-bloom/sections/19-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "glass-bloom/sections/20-contact.html",
+          "hash": "bf8c53417c9cf84c0798098a36554fa36935c1d2b29c0a9bdef8b528f26a8aea",
+          "size": 1100
+        },
+        {
+          "path": "glass-bloom/sections/21-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "glass-bloom/sections/22-footer.html",
+          "hash": "7da9de5111b585af228da800dfaa070f3c1701703a799c8061faf1e0cffebac9",
+          "size": 2485
+        },
+        {
+          "path": "glass-bloom/sections/skin-01-nav.css",
+          "hash": "739ef42e214e4958bf1da085943b8713128f27620a8f884742c2d8a27af875c6",
+          "size": 2754
+        },
+        {
+          "path": "glass-bloom/sections/skin-02-hero.css",
+          "hash": "6b286c50297fbdef322a46dc66100df8944670bb06352e1a68b2eecb2bd1a203",
+          "size": 1600
+        },
+        {
+          "path": "glass-bloom/sections/skin-03-feature-split.css",
+          "hash": "f303bbd878197df2dbc2c4b063091fac9fe9f4108ee8a89e124b4016ca239c34",
+          "size": 435
+        },
+        {
+          "path": "glass-bloom/sections/skin-04-feature-grid.css",
+          "hash": "2a51e5fa484f71a4be868f3a19e3db81b6ae75c13f4a92e552dd88437bbb9ffe",
+          "size": 621
+        },
+        {
+          "path": "glass-bloom/sections/skin-05-logos.css",
+          "hash": "08057b361981c6d884e19163e03bef167f200b03a3173da967fd2879274da6d7",
+          "size": 682
+        },
+        {
+          "path": "glass-bloom/sections/skin-06-stats.css",
+          "hash": "7671e911f470d96f80a88aad21659a6d6cc4e8d6efbe5c713e261588c3123b79",
+          "size": 456
+        },
+        {
+          "path": "glass-bloom/sections/skin-07-steps.css",
+          "hash": "6f0afbbe4b9fc6bbe4ac0a31403ceb94ab70327d8ca617099082b683be10b046",
+          "size": 138
+        },
+        {
+          "path": "glass-bloom/sections/skin-08-testimonial.css",
+          "hash": "2e32c29daa035e6b5a65dbc9a3155cf984a9c976a36302c9111deba958816b88",
+          "size": 1327
+        },
+        {
+          "path": "glass-bloom/sections/skin-09-pricing.css",
+          "hash": "22a979f78d5ab2a20191c92a96cb65dc48eb1a45d099e1562ebf259bbf7770d4",
+          "size": 583
+        },
+        {
+          "path": "glass-bloom/sections/skin-10-faq.css",
+          "hash": "0f7c975604931e2fdf5c7a5f7c32d96f9f577b9e0145ee2d17162b51e1f57d10",
+          "size": 313
+        },
+        {
+          "path": "glass-bloom/sections/skin-11-contact.css",
+          "hash": "1fa44df21e504b0defdc1e80cd6ce8414d8eb375916a474d5a9c9bf686714e49",
+          "size": 554
+        },
+        {
+          "path": "glass-bloom/sections/skin-12-card-grid.css",
+          "hash": "5c8fdd29e685a6aafe86022505d4978266bca6d79f2720740895f5019b3d0d49",
+          "size": 3595
+        },
+        {
+          "path": "glass-bloom/sections/skin-13-index-tiles.css",
+          "hash": "6f69a089cac1aa922df43e695538282c5458774d91fde9d3a34951c8ceca7aac",
+          "size": 170
+        },
+        {
+          "path": "glass-bloom/sections/skin-14-cta.css",
+          "hash": "0053e765937423c21dee6f75ffc450937be97ddd1177f16be7fd546293b4f88f",
+          "size": 589
+        },
+        {
+          "path": "glass-bloom/sections/skin-15-footer.css",
+          "hash": "47f6db3f834de7b0c79bfc31e20741ab89cf8399092594d556338a770f800658",
+          "size": 4437
+        },
+        {
+          "path": "glass-bloom/SKILL.md",
+          "hash": "de7e65f384a1e5585611771ce0800c2a85cd62d5df761f28ae1ec72e6e6944c2",
+          "size": 12818
+        },
+        {
+          "path": "glass-bloom/social-card.png",
+          "hash": "9bc2098425b2df7a2555a3675c3ea5833d667d9df5607c7d01bd0001ceb30b3b",
+          "size": 45585
+        },
+        {
+          "path": "glass-bloom/template.css",
+          "hash": "d0d46eb1196bfc468dbddcb2d88ca45c5e7acc4fd070435b9a0f42a07498e499",
+          "size": 87730
+        },
+        {
+          "path": "glass-bloom/template.js",
+          "hash": "f0cff178ee9efb4d872473ddcca6028e59ae414f5edd5936f018051101c97e0b",
+          "size": 18672
+        },
+        {
+          "path": "glass-bloom/template.json",
+          "hash": "718600caf9234adaae66cc3a4e72d016c430d9052dcca7b76184c24246454d33",
+          "size": 2176
+        },
+        {
+          "path": "glass-bloom/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "glass-bloom/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "glass-bloom/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "glass-bloom/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "glass-bloom/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "glass-bloom/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "glass-bloom/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "glass-bloom/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "glass-bloom/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "glass-bloom/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "glass-bloom/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "glass-bloom/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "glass-bloom/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "glass-bloom/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "glass-bloom/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "glass-bloom/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "glass-bloom/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "glass-bloom/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 83588
+    },
+    {
+      "slug": "serif-stack",
+      "storageId": "1fb5c01a-da4c-409a-8238-ed067309d670",
+      "versionId": "0dcd6eccf59e23d06c2f4653f001db9bb58b443a0ca0d4bfbd3e411a69ea781d",
+      "archive": {
+        "path": "serif-stack.tar.gz",
+        "sha256": "f6eb7b64155f25e9361fbe4f6ea3eb5e7ed626445472e38d15af52b99204036a",
+        "byteSize": 206554
+      },
+      "totalSize": 661469,
+      "fileCount": 77,
+      "files": [
+        {
+          "path": "serif-stack/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "serif-stack/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "serif-stack/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "serif-stack/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "serif-stack/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "serif-stack/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "serif-stack/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "serif-stack/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "serif-stack/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "serif-stack/design-system.md",
+          "hash": "1fcc2fc40967aacac72924136ef7b570d1a2a3f32e119d7385fab74b8e73dfeb",
+          "size": 3975
+        },
+        {
+          "path": "serif-stack/favicon.svg",
+          "hash": "778adcc5c55759cf90c8d723ced3099334ae2496be649bbb1c91fc0f96c4852b",
+          "size": 326
+        },
+        {
+          "path": "serif-stack/index.html",
+          "hash": "7785a77157e1387ec4e8227dd388a5ede72de2eb8aecc1518a4b96d4ad829c3b",
+          "size": 87683
+        },
+        {
+          "path": "serif-stack/layout-map.md",
+          "hash": "091f649de8157e87331d1d0d8653fdcdf8c2e90133e08986a7178ac1d2283090",
+          "size": 2914
+        },
+        {
+          "path": "serif-stack/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "serif-stack/sections/_foundation.css",
+          "hash": "4d9dee92c3e15df7cab15d9f9266e55f49a14f6618c82ad97f10ac08c6b4bf75",
+          "size": 56581
+        },
+        {
+          "path": "serif-stack/sections/_index.md",
+          "hash": "97740b710ed0e5ffbf0bf989ff370865650665c83728a255519db9e15ce7bec6",
+          "size": 7810
+        },
+        {
+          "path": "serif-stack/sections/_shell.part",
+          "hash": "21747c11ecbc1f19403d4895764cfd4aea1f2d221c68021d202bcdbef8761d3f",
+          "size": 2319
+        },
+        {
+          "path": "serif-stack/sections/01-nav.html",
+          "hash": "4de4d20f9ee9613c821458537627646ad301980e73878addb8e62766907d5d1b",
+          "size": 1775
+        },
+        {
+          "path": "serif-stack/sections/02-hero.html",
+          "hash": "fe006248f0f8fb2f8540592b8fe05363da4afa9b18bf3fb9ddba1037cf88dd86",
+          "size": 9832
+        },
+        {
+          "path": "serif-stack/sections/03-logos.html",
+          "hash": "0c39a3e77b694111004a57dbd42a752384a2b532eb09f4b4e75efedce4b3bd25",
+          "size": 2170
+        },
+        {
+          "path": "serif-stack/sections/04-feature-grid.html",
+          "hash": "d77f95b4f1c1ea21c74659a195ec7f851eeb73513b512e7ca07efa1e49b11506",
+          "size": 4592
+        },
+        {
+          "path": "serif-stack/sections/05-mosaic-scroll.html",
+          "hash": "e632a9d09f42bf0e542061aacca6c4a02afc3d4e872046351a29519f2ee7c4f9",
+          "size": 16798
+        },
+        {
+          "path": "serif-stack/sections/06-feature.html",
+          "hash": "c72ca2c44030b61b3207d0140ea65220ebf3577901c2801110d1f82a58b9ebf2",
+          "size": 2138
+        },
+        {
+          "path": "serif-stack/sections/07-feature.html",
+          "hash": "5cca7b3bfbf350e9d638a76f16e5265febdfc7bb55fc9dbdc13e6d3fac11e0fb",
+          "size": 2152
+        },
+        {
+          "path": "serif-stack/sections/08-stats.html",
+          "hash": "94320c17025e695833ecdd323ff5ba45849ebb41cb7e9ce15e14049856e08ba5",
+          "size": 572
+        },
+        {
+          "path": "serif-stack/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "serif-stack/sections/10-sticky-scroll.html",
+          "hash": "c071adebc49c8001a6c291a29eeec34a5a3b067c81744b6a2f8a2e060ec65c3c",
+          "size": 4160
+        },
+        {
+          "path": "serif-stack/sections/11-sticky-scroll.html",
+          "hash": "4d3be87c4ec27d324281528a7387e444eb898e9ad8ad0ab2273c2ff3940888a1",
+          "size": 3460
+        },
+        {
+          "path": "serif-stack/sections/12-cover-stack.html",
+          "hash": "2d7e245f15544dcf658f7d5ca434f5fed46f8ebacfa49fe389b7f2b2d6fad1ab",
+          "size": 4531
+        },
+        {
+          "path": "serif-stack/sections/13-card-grid.html",
+          "hash": "698fe70a2ec7a4d0af4e4e2b2c786d2c34afd67df5dafb2a7c68a74a16f70d34",
+          "size": 5247
+        },
+        {
+          "path": "serif-stack/sections/14-index-tiles.html",
+          "hash": "0ff5ba8354847bce5d3dcb536fdbdedf0310f6822cd59f6590373c4b18fdd527",
+          "size": 6666
+        },
+        {
+          "path": "serif-stack/sections/15-testimonial.html",
+          "hash": "e75c119349749ab51526e046c09795eb223a61b2986b186928964ef65aa2e676",
+          "size": 2501
+        },
+        {
+          "path": "serif-stack/sections/16-testimonial.html",
+          "hash": "146eb3d0ddef46c7be29f15b744c16d0a7cd9edbaeadf68167115bd8d943814a",
+          "size": 9285
+        },
+        {
+          "path": "serif-stack/sections/17-statement.html",
+          "hash": "3ab77f378432918b111768eeb003b399e428b0f4233a2a88618f494021c9bf1a",
+          "size": 1980
+        },
+        {
+          "path": "serif-stack/sections/18-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "serif-stack/sections/19-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "serif-stack/sections/20-contact.html",
+          "hash": "bf8c53417c9cf84c0798098a36554fa36935c1d2b29c0a9bdef8b528f26a8aea",
+          "size": 1100
+        },
+        {
+          "path": "serif-stack/sections/21-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "serif-stack/sections/22-footer.html",
+          "hash": "56331647f8554e860bf5b45eb17b8c408d50f687edda7ba179eff27bd9cb1e15",
+          "size": 1719
+        },
+        {
+          "path": "serif-stack/sections/skin-01-nav.css",
+          "hash": "d41997c5637413ab65c584d2d6d68a664027996065c9fcbef5a15d74e6e2abca",
+          "size": 1138
+        },
+        {
+          "path": "serif-stack/sections/skin-02-hero.css",
+          "hash": "b20fd9023f300241b90077196b7fbb99560222ad1eddefb734a75d12286935a2",
+          "size": 2674
+        },
+        {
+          "path": "serif-stack/sections/skin-03-feature-split.css",
+          "hash": "f11dc30b06a57f1af2e451e2efd7c96a08152c090caec7c7f140839419ca9cf2",
+          "size": 382
+        },
+        {
+          "path": "serif-stack/sections/skin-04-feature-grid.css",
+          "hash": "194c7bd2a36db9496eb042e045c90da04d06bbe95aa7e215c23c083c4b0a82ea",
+          "size": 526
+        },
+        {
+          "path": "serif-stack/sections/skin-05-logos.css",
+          "hash": "673ee4a851ca46cf68b6bf2d99922cbee3e1234d298252e5f4840da3ee790f7d",
+          "size": 461
+        },
+        {
+          "path": "serif-stack/sections/skin-06-stats.css",
+          "hash": "d349f89f94306d63c4c8de4fb93d4bdb2cc9013b63b56d7deb12a8b8dac8391e",
+          "size": 328
+        },
+        {
+          "path": "serif-stack/sections/skin-07-steps.css",
+          "hash": "bb5ca4a17b62a7cadcd7c774aee3d6baa34c7eb97d5f0f6daa40462623b7806e",
+          "size": 490
+        },
+        {
+          "path": "serif-stack/sections/skin-08-testimonial.css",
+          "hash": "2c608dce40e44128faf0344314c2b199a7a2396d5aa34dac5fe152e68bf9bf74",
+          "size": 492
+        },
+        {
+          "path": "serif-stack/sections/skin-09-pricing.css",
+          "hash": "7170d991889939b18952e814fc364de1664a78936e50572fb0e8f524d792b0c4",
+          "size": 548
+        },
+        {
+          "path": "serif-stack/sections/skin-10-faq.css",
+          "hash": "7e744f5a7a3db1a4b7a87795597ed8e90e77bc55bdbd4dc665411ecca0107484",
+          "size": 514
+        },
+        {
+          "path": "serif-stack/sections/skin-11-contact-form.css",
+          "hash": "c047dbc97497c85bd206b046ad67190f7cb9a447b09956487a9315e72d24f10d",
+          "size": 454
+        },
+        {
+          "path": "serif-stack/sections/skin-12-card-grid.css",
+          "hash": "7cbb49d6522993d75ff85f426b1e42aaf4280e80b26e53dab8678340727e60eb",
+          "size": 963
+        },
+        {
+          "path": "serif-stack/sections/skin-13-index-tiles.css",
+          "hash": "a37d734673f2af0d09cd95067a735ca3a919912f7e629211e69001d5cb562fb4",
+          "size": 298
+        },
+        {
+          "path": "serif-stack/sections/skin-14-cta.css",
+          "hash": "a08902655c2561b9dede22cf48c339d6e79bb75715589fb52fc5799c73ef118e",
+          "size": 494
+        },
+        {
+          "path": "serif-stack/sections/skin-15-footer.css",
+          "hash": "32747bb5093c34978610afaf1af0a611009819dc25ff13172af5a1cb744eba23",
+          "size": 7974
+        },
+        {
+          "path": "serif-stack/SKILL.md",
+          "hash": "223869c2088903f7aba29c9bfc7a180c7158360c920e76f08ed291488b452856",
+          "size": 12874
+        },
+        {
+          "path": "serif-stack/social-card.png",
+          "hash": "4c1c9c84fea07c11a473188c42eec53031b964bd3b7ad78bcfe36d501b2b937d",
+          "size": 41270
+        },
+        {
+          "path": "serif-stack/template.css",
+          "hash": "88b45f5eb56a68f7d9db0449eddfaa3b7852834d46d1efe707ad99ee7b8def3a",
+          "size": 74316
+        },
+        {
+          "path": "serif-stack/template.js",
+          "hash": "8dd8c88b24b8652c4f45876f32f76e745d36e87d1ad7ba2a655203a59aca5609",
+          "size": 18838
+        },
+        {
+          "path": "serif-stack/template.json",
+          "hash": "8020063dd2fbaf4afba897d7514183166509bdd639831b764466f522409e1a51",
+          "size": 2200
+        },
+        {
+          "path": "serif-stack/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "serif-stack/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "serif-stack/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "serif-stack/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "serif-stack/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "serif-stack/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "serif-stack/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "serif-stack/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "serif-stack/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "serif-stack/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "serif-stack/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "serif-stack/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "serif-stack/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "serif-stack/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "serif-stack/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "serif-stack/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "serif-stack/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "serif-stack/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 87641
+    },
+    {
+      "slug": "sticker-pop",
+      "storageId": "9b3511ce-a5ef-4b7a-ae3b-9d94919497ac",
+      "versionId": "1435824e871307371108ca9176b8e67dfe1ba4538d52abbf6e6b7b196f5393ad",
+      "archive": {
+        "path": "sticker-pop.tar.gz",
+        "sha256": "3f7fb7f11dcf6524eec1aa2f94fb3df145ae78fc21b7797c23fdfd2ec5ec481a",
+        "byteSize": 185242
+      },
+      "totalSize": 556693,
+      "fileCount": 61,
+      "files": [
+        {
+          "path": "sticker-pop/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "sticker-pop/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "sticker-pop/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "sticker-pop/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "sticker-pop/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "sticker-pop/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "sticker-pop/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "sticker-pop/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "sticker-pop/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "sticker-pop/design-system.md",
+          "hash": "b54a3369b5cf6a2b99250de0bb9c6c24c1127441fb45348274de5eaa81f66dec",
+          "size": 4001
+        },
+        {
+          "path": "sticker-pop/favicon.svg",
+          "hash": "1d6df2e42deda10c05bbeee2333ccf993e3d4200bd158f9e3b61c8208e6ad06a",
+          "size": 312
+        },
+        {
+          "path": "sticker-pop/index.html",
+          "hash": "8f7828c968d69d64b23edbb232955c0cc0f87f658846086c322d25753efd4872",
+          "size": 55441
+        },
+        {
+          "path": "sticker-pop/layout-map.md",
+          "hash": "e293863309ecc5f66faedf78b39bbe977852ab9d053373b3374ee5c6f9fdaf51",
+          "size": 2834
+        },
+        {
+          "path": "sticker-pop/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "sticker-pop/sections/_foundation.css",
+          "hash": "a88d0cbcc95d6b04930c98c30cb100c3d3a8b0d61434bb7847f47793c443ca30",
+          "size": 57735
+        },
+        {
+          "path": "sticker-pop/sections/_index.md",
+          "hash": "dc7d7249d75c9566871b06dd4eb5823c6997312bb5e8f0e81546be8ed8ebdd65",
+          "size": 6375
+        },
+        {
+          "path": "sticker-pop/sections/_shell.part",
+          "hash": "96fafdeb41e3557757526916dcc79ad846a16bf97848276b512202dcf9fd2207",
+          "size": 2249
+        },
+        {
+          "path": "sticker-pop/sections/01-nav.html",
+          "hash": "f5fdcf8f90528215d37a3f027022910ae3e594bda74654e0481dd7213d27d62b",
+          "size": 1771
+        },
+        {
+          "path": "sticker-pop/sections/02-hero.html",
+          "hash": "79dd4e04a7ef14e8d00e46d04d2631680d7789bd2028d5807a9753af9d07b647",
+          "size": 1541
+        },
+        {
+          "path": "sticker-pop/sections/03-logos.html",
+          "hash": "649a1132c2eb3eb9e2615237abb64168627663f3941b8b0eb2fd7b3cf19db253",
+          "size": 1703
+        },
+        {
+          "path": "sticker-pop/sections/04-feature-grid.html",
+          "hash": "1de64eb5f8967a2639d5afe75dfd62e0023742e90280485aeb4ead8dbc2b0faa",
+          "size": 3863
+        },
+        {
+          "path": "sticker-pop/sections/05-feature-grid.html",
+          "hash": "08ff5ea911c8ec9d4f9dce216794f785cbcd510cc573aa9cc44d6c5af8ba0ba0",
+          "size": 3841
+        },
+        {
+          "path": "sticker-pop/sections/06-feature.html",
+          "hash": "893efc47fe9ca3f519c0d072dd1fba56c221f204f940247721289c2cc44ce22b",
+          "size": 2431
+        },
+        {
+          "path": "sticker-pop/sections/07-feature.html",
+          "hash": "b4a005cc692cd898665f6f3fbadb601e590005a593d40b9cd8f2b1713bf94a01",
+          "size": 2445
+        },
+        {
+          "path": "sticker-pop/sections/08-stats.html",
+          "hash": "a362a7beb56a9d8228cdacb76134632b9a69af4f3e0ce5e0a2b1aa38212416a9",
+          "size": 591
+        },
+        {
+          "path": "sticker-pop/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "sticker-pop/sections/10-sticky-scroll.html",
+          "hash": "70555e213de1580adb3172de103a93327c62651f9f3fe6bea82b0ebee3d00653",
+          "size": 2943
+        },
+        {
+          "path": "sticker-pop/sections/11-sticky-scroll.html",
+          "hash": "05ff18694e522f692d0f068261519bb3cab461c27510b85bfd180e26a49baf12",
+          "size": 2021
+        },
+        {
+          "path": "sticker-pop/sections/12-card-grid.html",
+          "hash": "d04846d6809ffaceaf3eb637b847e2cedeee7f720b19b35ba643dbd9ef6ccf35",
+          "size": 5574
+        },
+        {
+          "path": "sticker-pop/sections/13-index-tiles.html",
+          "hash": "7d83076eaf9da24751f6e747b4978b70386e4927969a5fb78aaf6998ee5e19bb",
+          "size": 2941
+        },
+        {
+          "path": "sticker-pop/sections/14-testimonial.html",
+          "hash": "e75c119349749ab51526e046c09795eb223a61b2986b186928964ef65aa2e676",
+          "size": 2501
+        },
+        {
+          "path": "sticker-pop/sections/15-testimonial.html",
+          "hash": "146eb3d0ddef46c7be29f15b744c16d0a7cd9edbaeadf68167115bd8d943814a",
+          "size": 9285
+        },
+        {
+          "path": "sticker-pop/sections/16-statement.html",
+          "hash": "add4ddc1600d31aeebcf56b9ed981b8684bd2e0a907ea559cc51551d11033579",
+          "size": 1980
+        },
+        {
+          "path": "sticker-pop/sections/17-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "sticker-pop/sections/18-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "sticker-pop/sections/19-contact.html",
+          "hash": "2bd02541ccd7978af9f00d76a018a3009f0b4056817b92a761f7be9dd942080e",
+          "size": 1363
+        },
+        {
+          "path": "sticker-pop/sections/20-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "sticker-pop/sections/21-footer.html",
+          "hash": "d48bf32cc00ef4bb3405cf00704e2fec583058aba55747ace52830e59d5475a6",
+          "size": 1711
+        },
+        {
+          "path": "sticker-pop/SKILL.md",
+          "hash": "3c4ff2203dc06f66dd584443adc2d0babde2e3bac307edf6af70518c9a73502b",
+          "size": 12830
+        },
+        {
+          "path": "sticker-pop/social-card.png",
+          "hash": "aba97e83c222d03a416fad25bffe42ac6683d9863f9c8e75d536362aff00bc20",
+          "size": 41926
+        },
+        {
+          "path": "sticker-pop/template.css",
+          "hash": "a88d0cbcc95d6b04930c98c30cb100c3d3a8b0d61434bb7847f47793c443ca30",
+          "size": 57735
+        },
+        {
+          "path": "sticker-pop/template.js",
+          "hash": "5c84d647431859647b15c55156f6a47eb25d0d591dba9700fe25defbb17f9192",
+          "size": 12614
+        },
+        {
+          "path": "sticker-pop/template.json",
+          "hash": "76be296e310c8bb10b6f58b561b2c87b2875d3c069730414ab65024c41b75840",
+          "size": 2187
+        },
+        {
+          "path": "sticker-pop/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "sticker-pop/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "sticker-pop/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "sticker-pop/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "sticker-pop/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "sticker-pop/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "sticker-pop/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "sticker-pop/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "sticker-pop/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "sticker-pop/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "sticker-pop/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "sticker-pop/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "sticker-pop/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "sticker-pop/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "sticker-pop/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "sticker-pop/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "sticker-pop/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "sticker-pop/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 55414
+    },
+    {
+      "slug": "warm-cards",
+      "storageId": "ac36455c-04e5-471c-9a14-b5b765c18ec2",
+      "versionId": "1ca8a11a520ed6225a32634fe3f2b0f443d10c28f64098f0f1bd0a795a62f16c",
+      "archive": {
+        "path": "warm-cards.tar.gz",
+        "sha256": "52f5f9670b3d0fba697635d35784bc021a2150f1c84cc73af87c6fd049ed8234",
+        "byteSize": 194035
+      },
+      "totalSize": 569302,
+      "fileCount": 77,
+      "files": [
+        {
+          "path": "warm-cards/checks/GATES.md",
+          "hash": "a10ae5479929e8db77ed6638c80a88dafeb13c24a7ce74520da8303503b23bf5",
+          "size": 8289
+        },
+        {
+          "path": "warm-cards/checks/gates.mjs",
+          "hash": "ea4c06e438a82d2b8cec4846d418e21006c5f0481fecbbda9801d61d49f3f408",
+          "size": 38910
+        },
+        {
+          "path": "warm-cards/checks/motion.mjs",
+          "hash": "2bfd508a02e064076eccff724ca3a3901dea6966275814b704ce81da5d849eac",
+          "size": 27686
+        },
+        {
+          "path": "warm-cards/checks/positive-controls.mjs",
+          "hash": "6497c42752c555a67905fccc8b7ab41c0b6b7666e69be861990827603d8fe752",
+          "size": 15866
+        },
+        {
+          "path": "warm-cards/checks/settle.mjs",
+          "hash": "18f05571d61ff6adb8c3ffb14eb652855aec9870aa354ccd2ca7ca6771e7b186",
+          "size": 3910
+        },
+        {
+          "path": "warm-cards/checks/verify-published.sh",
+          "hash": "4d466e3403233e20f454f81f59359447d9d17977ca7264f832b9e1dd0ccd5890",
+          "size": 3093
+        },
+        {
+          "path": "warm-cards/checks/verify.mjs",
+          "hash": "6874b77bf0e50c97276074c3e889193abd53f610462ceef2d6cd4eb77c7d6966",
+          "size": 7871
+        },
+        {
+          "path": "warm-cards/checks/verify.sh",
+          "hash": "cb6b6a5699f81688645ffdb9624ed966800d77663f0c1711ad63d5f5c14149ff",
+          "size": 1010
+        },
+        {
+          "path": "warm-cards/COLOR-SYSTEM.md",
+          "hash": "3dc8df129cf6667a74efa70fd490ac5a16e70dfa80dbfe7d33336a8fc428aaf9",
+          "size": 6319
+        },
+        {
+          "path": "warm-cards/design-system.md",
+          "hash": "98da823da07dbf5c1a7eae7540b48f12767dcded45a37ab4f3f0724a1d10f744",
+          "size": 4181
+        },
+        {
+          "path": "warm-cards/favicon.svg",
+          "hash": "a522646f17a14096af3a92ab2cb655db08b0d8c09a73247b3ddf540ce81a57a2",
+          "size": 314
+        },
+        {
+          "path": "warm-cards/index.html",
+          "hash": "1895233ca19932ae033182bf82f685e54f254a41dd0be86ba1160ccf893eaf58",
+          "size": 51975
+        },
+        {
+          "path": "warm-cards/layout-map.md",
+          "hash": "c1d6f10b10eda34f38c34b68e119a4f2582ef3d9dc82b258816cf14b8c8f3611",
+          "size": 2839
+        },
+        {
+          "path": "warm-cards/NARRATIVE.md",
+          "hash": "db2eb7378005b74039bb286d011fde1d7076f20664b5813441c4fc5628223305",
+          "size": 6726
+        },
+        {
+          "path": "warm-cards/sections/_baselayer.css",
+          "hash": "d05ee013e094cc62c9cd117acc33f45de838552215ee68d455920cd76e47a926",
+          "size": 4364
+        },
+        {
+          "path": "warm-cards/sections/_foundation.css",
+          "hash": "b01ca6f43ee64300e66cad5d6dd105caaed4602780b42d3c9b080d3442568579",
+          "size": 44472
+        },
+        {
+          "path": "warm-cards/sections/_index.md",
+          "hash": "de7b078d2adc0ac13d1440fa15dba316ead3b2ffdedce88ed05cdb14d73ec502",
+          "size": 7391
+        },
+        {
+          "path": "warm-cards/sections/_shell.part",
+          "hash": "a86cf18c3bcee116bdb2eee0b86e4dcb34704e0acc55ab270f5c42fce75cdbf3",
+          "size": 2128
+        },
+        {
+          "path": "warm-cards/sections/01-nav.html",
+          "hash": "2663c200d913711668412803c63659e28fef66892630bf8b7999d8cffccf8643",
+          "size": 1774
+        },
+        {
+          "path": "warm-cards/sections/02-hero.html",
+          "hash": "8c9eabf23d424067c45bb1347274ef29ee4a1e8b57a35828f8de6ea8826b49ea",
+          "size": 1296
+        },
+        {
+          "path": "warm-cards/sections/03-logos.html",
+          "hash": "f7002bbf3408693e33baa86e0071a2fdfb660f75553d7d7a9ba00576d8707705",
+          "size": 1704
+        },
+        {
+          "path": "warm-cards/sections/04-feature-grid.html",
+          "hash": "1de64eb5f8967a2639d5afe75dfd62e0023742e90280485aeb4ead8dbc2b0faa",
+          "size": 3863
+        },
+        {
+          "path": "warm-cards/sections/05-feature-grid.html",
+          "hash": "08ff5ea911c8ec9d4f9dce216794f785cbcd510cc573aa9cc44d6c5af8ba0ba0",
+          "size": 3841
+        },
+        {
+          "path": "warm-cards/sections/06-feature.html",
+          "hash": "4263e849c1cbcdcfaad9b55c011cecd06a001fb04e1cf3b1c0595ef02f3eeafd",
+          "size": 2104
+        },
+        {
+          "path": "warm-cards/sections/07-feature.html",
+          "hash": "23b650c132832ce42d41645dc7f33b9aa519560d37260caaa79286c494e407e9",
+          "size": 2118
+        },
+        {
+          "path": "warm-cards/sections/08-stats.html",
+          "hash": "a362a7beb56a9d8228cdacb76134632b9a69af4f3e0ce5e0a2b1aa38212416a9",
+          "size": 591
+        },
+        {
+          "path": "warm-cards/sections/09-steps.html",
+          "hash": "4ddc000df106f48664698b0b5ddc31dbaee4bf80feec80c791cf4f601055e75d",
+          "size": 800
+        },
+        {
+          "path": "warm-cards/sections/10-sticky-scroll.html",
+          "hash": "9a90ce6ce2f98a23839fae4ef733ac735c0328eadb953093b9508f4824f3a3bf",
+          "size": 2450
+        },
+        {
+          "path": "warm-cards/sections/11-sticky-scroll.html",
+          "hash": "6e95080a0ea069bcfa2871158a8fff2d37bb90e8c2bcd56860031ca76b0b92e2",
+          "size": 1689
+        },
+        {
+          "path": "warm-cards/sections/12-card-grid.html",
+          "hash": "606864f47b389092f163aef7771d34f080e3d1840c67175fda18cd4c25cdc9ae",
+          "size": 4711
+        },
+        {
+          "path": "warm-cards/sections/13-index-tiles.html",
+          "hash": "da77a0e33d61debe17fa0e13b84c0a0ca70ee7077de43eef0ecb019e36b4032b",
+          "size": 2340
+        },
+        {
+          "path": "warm-cards/sections/14-testimonial.html",
+          "hash": "e75c119349749ab51526e046c09795eb223a61b2986b186928964ef65aa2e676",
+          "size": 2501
+        },
+        {
+          "path": "warm-cards/sections/15-testimonial.html",
+          "hash": "146eb3d0ddef46c7be29f15b744c16d0a7cd9edbaeadf68167115bd8d943814a",
+          "size": 9285
+        },
+        {
+          "path": "warm-cards/sections/16-statement.html",
+          "hash": "7deffd132d11188c061995e83b98935d3753e28358aa5160d71dc428a5be6fbe",
+          "size": 1979
+        },
+        {
+          "path": "warm-cards/sections/17-pricing.html",
+          "hash": "c08f64f7f0428edd917a1b99f253fd5a65e5c864d8c5c0774403f7f89185f193",
+          "size": 1380
+        },
+        {
+          "path": "warm-cards/sections/18-faq.html",
+          "hash": "7a91d1c024e0f359f0cf35a0424ed5bcb7dca875b139d7a0c44272071635d7da",
+          "size": 2183
+        },
+        {
+          "path": "warm-cards/sections/19-contact.html",
+          "hash": "b6f2b4e726d06dea729e5c7ea8ea0092f597c96be90dc65bf7226e3adfaa6859",
+          "size": 1197
+        },
+        {
+          "path": "warm-cards/sections/20-cta.html",
+          "hash": "c87d2745f4f1aa1749bb6fc5b0611e8a7903cc3d32b69ab593c3fc7fecbe408f",
+          "size": 364
+        },
+        {
+          "path": "warm-cards/sections/21-footer.html",
+          "hash": "4dcdf56e4fd3c5d6a7cc153225a277f7e2bb5eae17e10f464cf6f21ddfe370e5",
+          "size": 1717
+        },
+        {
+          "path": "warm-cards/sections/skin-01-nav.css",
+          "hash": "b341ae90fc940b5609123e80ef80ca63771b35543e10cc368d2af368cbc7ffaf",
+          "size": 1942
+        },
+        {
+          "path": "warm-cards/sections/skin-02-hero.css",
+          "hash": "c646b8b9c9c3264bc61ce54e966be538706a491734de75f04a826586f3acca3b",
+          "size": 1753
+        },
+        {
+          "path": "warm-cards/sections/skin-03-feature-split.css",
+          "hash": "e423c67d25d8b472de2ed64ff818ecaabc19ee50d541dc32aec49d7c6878e3bd",
+          "size": 770
+        },
+        {
+          "path": "warm-cards/sections/skin-04-feature-grid.css",
+          "hash": "fe0db0ac712897a6ab31fd6312f6598de8bedbcdc5e0d637e1c67bacb9ce0118",
+          "size": 996
+        },
+        {
+          "path": "warm-cards/sections/skin-05-logos.css",
+          "hash": "5dd3a853d827ba31a50b265db7dc7a5b0ae9a0a953fc43b1a6b7cfcc3d918cd0",
+          "size": 655
+        },
+        {
+          "path": "warm-cards/sections/skin-06-stats.css",
+          "hash": "99b008d5c45319f2dccfe17279e66e681dd65f76e6b38820e0d2309f74bb593b",
+          "size": 457
+        },
+        {
+          "path": "warm-cards/sections/skin-07-steps.css",
+          "hash": "5ae2fec84c4ebd5b2cb8514e29c813fcea980c2346f2e1b93884f18cdbee2137",
+          "size": 656
+        },
+        {
+          "path": "warm-cards/sections/skin-08-testimonial.css",
+          "hash": "35a8ee79b9c53d16ebd5331c260ef687ce7124409a51c22225833789f4c86aa5",
+          "size": 1169
+        },
+        {
+          "path": "warm-cards/sections/skin-09-pricing.css",
+          "hash": "7b377f089fa7ef1c4bf721febd2d8a7148a2541f9199225eab9769fd2f1925da",
+          "size": 826
+        },
+        {
+          "path": "warm-cards/sections/skin-10-faq.css",
+          "hash": "f73080012ab3120414918dd1485958281aab03260aa6b82d9cbc00e86b531734",
+          "size": 549
+        },
+        {
+          "path": "warm-cards/sections/skin-11-contact-form.css",
+          "hash": "3c7dd478c839f0ac6bdefee4634ffabc32021fc73d6dbd4f5ae41f8e0635a8bb",
+          "size": 1364
+        },
+        {
+          "path": "warm-cards/sections/skin-12-card-grid.css",
+          "hash": "a307bc6c0a0123a893d12bd0898e4afda6d9c029a15bb0c704cab46120de03bc",
+          "size": 2666
+        },
+        {
+          "path": "warm-cards/sections/skin-13-index-tiles.css",
+          "hash": "73eac412aca72c9ab1501aedd95ec4a8c0cc7fc4232674b67623ca80ebfa1719",
+          "size": 398
+        },
+        {
+          "path": "warm-cards/sections/skin-14-cta.css",
+          "hash": "2eea4ac5b6b356b98fe52a082683904206b309f4d6306a368b9859414c9e3087",
+          "size": 355
+        },
+        {
+          "path": "warm-cards/sections/skin-15-footer.css",
+          "hash": "24656d92a09497dc2b90310f47136fcfeda0b7a064b3d9900362859f1c6da8b3",
+          "size": 1479
+        },
+        {
+          "path": "warm-cards/SKILL.md",
+          "hash": "71862d61239c08fceeb8438e1533df2d761508abe7577d84c365353d3bc9e8dc",
+          "size": 12767
+        },
+        {
+          "path": "warm-cards/social-card.png",
+          "hash": "9d70cb4ea570c84ad4740c1e413e725318517491a534c90dc9a4158805f08409",
+          "size": 46078
+        },
+        {
+          "path": "warm-cards/template.css",
+          "hash": "7e1633c01af8d536a4a5c3e58d78f8bb849f224834445ce097ef5c0d515f59de",
+          "size": 64871
+        },
+        {
+          "path": "warm-cards/template.js",
+          "hash": "3ea9dca313c50c7106be30cc5a34ae9db86566e9eadb339468242a6081c1ce56",
+          "size": 12733
+        },
+        {
+          "path": "warm-cards/template.json",
+          "hash": "94a492b668784e8945656cfdf0a9cb55507133ed141d196c4d98fa24168917d4",
+          "size": 2045
+        },
+        {
+          "path": "warm-cards/tools/brand-assets.mjs",
+          "hash": "3a8ca4cd0032cb902271325f77003ee668efb47551196af753c3d78ffb46edab",
+          "size": 5972
+        },
+        {
+          "path": "warm-cards/tools/check-layout.mjs",
+          "hash": "5f3018ce8b320899310d76f7bf62925b2f43710fe55325158adc9222d22189ee",
+          "size": 7901
+        },
+        {
+          "path": "warm-cards/tools/color-systems.json",
+          "hash": "1701abc7369bd048c57d67989d070d2b9f87eca9080e5fd2ee6bb1f9da21e296",
+          "size": 9286
+        },
+        {
+          "path": "warm-cards/tools/color.mjs",
+          "hash": "240555062fb1315913257461b6e1e963d6c3202a892371dcf36e6c10c093f41d",
+          "size": 4360
+        },
+        {
+          "path": "warm-cards/tools/compose.mjs",
+          "hash": "2cc023a85d278f8492d338b33bf85847897962e2fcd325a53d307b93ada83685",
+          "size": 5096
+        },
+        {
+          "path": "warm-cards/tools/describe-sections.mjs",
+          "hash": "ad0e1e524b7c6bf6f8ae35d31b7671a29f58829fb8efcf3b4551b2ce767872ce",
+          "size": 10225
+        },
+        {
+          "path": "warm-cards/tools/driver.mjs",
+          "hash": "ef4bcdd125c2a376e957c12aec757a091beb5d07a05be6257777e46b6e67276d",
+          "size": 2802
+        },
+        {
+          "path": "warm-cards/tools/fix-contrast.mjs",
+          "hash": "2f36750525480e841219d97c6ccaa15c7e900208c725c19d41a1b93b8e9656f0",
+          "size": 7850
+        },
+        {
+          "path": "warm-cards/tools/generate-images.mjs",
+          "hash": "840cea43f2ce1d15eff88f94194dfda087a5360d0c5ca891f77abfbdd49abed7",
+          "size": 17885
+        },
+        {
+          "path": "warm-cards/tools/list-gates.mjs",
+          "hash": "102212714b38b21c4a9a99b71098d16bbf90ae6e13707547244c889db414eccb",
+          "size": 5756
+        },
+        {
+          "path": "warm-cards/tools/measure-sections.mjs",
+          "hash": "843b97f3daa3d34157f2de1ac9869671c84c59d97332f875cecac16e0cbd82d4",
+          "size": 4881
+        },
+        {
+          "path": "warm-cards/tools/measure.mjs",
+          "hash": "6717f87fdf28c6e48484890a456d391e8f3899595372380109c38cb9a1935fdc",
+          "size": 8098
+        },
+        {
+          "path": "warm-cards/tools/palette.mjs",
+          "hash": "d308ae4425ccf9f54433ef0326531ad184581cca7cf3a183ac287efa6853d4d8",
+          "size": 10864
+        },
+        {
+          "path": "warm-cards/tools/palette.test.mjs",
+          "hash": "d118b7c7f4933a95804840a61ba46aa448cff61b6ebc7e6fc5f5a9979929e66a",
+          "size": 4449
+        },
+        {
+          "path": "warm-cards/tools/screenshot.mjs",
+          "hash": "d06d5a67bac11048c715b59864e0fba9efd70be55eacf7bdccbc049fd61fa6ca",
+          "size": 2739
+        },
+        {
+          "path": "warm-cards/tools/split-sections.mjs",
+          "hash": "5ba34812da5a5a8b2b8bc54b2f93217bf7100cc52dd623be6477bc22b52074c8",
+          "size": 9454
+        },
+        {
+          "path": "warm-cards/tools/stage.mjs",
+          "hash": "04dd2d177752dca21cff01632c340ae30fd90a560883042c800947fb264e46f7",
+          "size": 3318
+        },
+        {
+          "path": "warm-cards/tools/stamp-identity.mjs",
+          "hash": "6e3ad4e582e45cbc71632a87ad118d289d1becfb7f4535ed1643b9be522c836c",
+          "size": 6606
+        }
+      ],
+      "composedBytes": 51951
+    }
+  ]
+}

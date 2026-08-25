@@ -1,0 +1,97 @@
+{
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "ddf83dd855c513a0552dec7f3de306f410b57943",
+    "path": "Template-Website-v2"
+  },
+  "templates": [
+    {
+      "slug": "black-slabs",
+      "storageId": "81f4e53e-a086-4533-aba3-f3694348879b",
+      "oldVersionId": "8d5c6ba72363e8e63c2fe8badbd5412c5ca41c32349c2ec63cee757d9a2a1c8d",
+      "oldSha256": "44126993be4b2932a270efcc21dbc855e60ccc0b280fadedc6ce2c90399f7e17",
+      "newVersionId": "037045074360d1e6b499fc37a4c5cad208dfd79e59a53bdea78910c5fbe9f2f9",
+      "newSha256": "a2ba4a18fe6be58a05a99fcf755f696629c7cbfe295ec9e4f7685bef1eebff79"
+    },
+    {
+      "slug": "blueprint-grid",
+      "storageId": "b571b9ef-e9ca-4f16-a4ca-9fe79549acb3",
+      "oldVersionId": "0ce83ffb4e74289d5dbf7270551290e7774c254660ed86805bd040c8425fd103",
+      "oldSha256": "9fdf8c7555e85072b9c92526b098edbe90c3230a71f6a1ec08ec3fa902ebabf0",
+      "newVersionId": "bbe1a91664e813adf179071713b159fbcd25c42fe9d06860f2ecaea907b06d2b",
+      "newSha256": "b0312334dd8ad42f2e8b219cc0522bd11b0de1d246d133b34d9b832352286468"
+    },
+    {
+      "slug": "coastal-hotel",
+      "storageId": "f556014b-5224-4257-9ab8-28daab351e98",
+      "oldVersionId": "04260e1aa26477d09b7bfb38f03d471a0af5c58f3703fca94d20811097f2ce69",
+      "oldSha256": "b285b649b73c0b526734ce63b01de5f3f6704ed89f5e71a96f953484a882f979",
+      "newVersionId": "dfcc93538a28f4dd902e82908991c3ed1ee4657f81b12e425ca3469b0bf67af0",
+      "newSha256": "4df5f2099cee35c286af6af9e3413f496a6b45b9423d7308336ad8372468efa3"
+    },
+    {
+      "slug": "dot-matrix",
+      "storageId": "fd4bacaf-e8d2-497b-a60f-c79981560882",
+      "oldVersionId": "4b4c686788d23a449b75705211432f1609c183149dce8ac9737a94fea2da6861",
+      "oldSha256": "9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
+      "newVersionId": "fe4915d7c67bfc7e259192072647f62cb064066b0854a84e7fa7cc85bff43112",
+      "newSha256": "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623"
+    },
+    {
+      "slug": "frame-stack",
+      "storageId": "ed402508-e8cf-40f4-8908-72a315420075",
+      "oldVersionId": "180a444fb5b96595e480d0218b349d4d2c0bb3c31102e706a292443f67983671",
+      "oldSha256": "182a63e7b268779b2d45a81651a99da6004873162b1a98d5da27f15be6338d15",
+      "newVersionId": "e9675a20ab0cc0c3970a21ef88716fd5f6f774bf7107739181d1545d6c39d466",
+      "newSha256": "b00cbbe2a39486545d695986b6d2be2def28916d4d21fc80591c64d326ddaa5a"
+    },
+    {
+      "slug": "frosted-scatter",
+      "storageId": "a93875fc-7370-4212-9c23-e8565977a8a9",
+      "oldVersionId": "73b3b343a96b459b8bcc3da9a41c7ed533ab870c45b64e575326b14c690be337",
+      "oldSha256": "32fb6fc4ebc85ffa3ea1672cd75005048519dfd1fbc3c1d4c254363d89ebb14e",
+      "newVersionId": "2954955f13a31eeb5a9b5cf69c6c170a92c328ed807eed8573bbac52685e2b16",
+      "newSha256": "3aa13240db1b905b8222c3eb7eccacfeec44f93aba30e3f495e0e2f1dc395e58"
+    },
+    {
+      "slug": "gallery-wall",
+      "storageId": "619d50a9-01fb-44dd-8a60-af3c97b557e7",
+      "oldVersionId": "d92042c684c6a50705a5792cd827b6e5b546d6e2b4f376ae80f67610c5564f94",
+      "oldSha256": "401854b89ea8b8ce98880309a190fa19e03647b564e64bc082ae481f3cb9c8fc",
+      "newVersionId": "8a2ca4ee5c50294cf54053fc29122196b4265fe5955eeec86bd0967778b86033",
+      "newSha256": "41941dd3c92814efc30a36ec8c4929aecda48335619c8684c2e0d3c3d0cbd1fa"
+    },
+    {
+      "slug": "glass-bloom",
+      "storageId": "49a24bc7-0515-431c-81c2-6f4ea7386e9c",
+      "oldVersionId": "6106c1b544fea9d9efb226eae5f0281bb875e9aaa6661afb68b17e129ea2fbe3",
+      "oldSha256": "ed9f6ef684cc89d5e6653b7f35a62988665a63993ca69305334399652cb7f586",
+      "newVersionId": "ad5b00f8a2ceb176aa7de7906345d18ab798d0b6835d86ab1e58bfa033822dee",
+      "newSha256": "455acd8f36c55a30b3a58654f3f2d5d20b58fcef379b99a28c52aac54246eaf6"
+    },
+    {
+      "slug": "serif-stack",
+      "storageId": "1fb5c01a-da4c-409a-8238-ed067309d670",
+      "oldVersionId": "b499ee4143bae451660589dc732413f42b6e3b0d2fcb26a11f4c1fb9d261e194",
+      "oldSha256": "55034642b7becda0da90d202c689e79938844142144fef15b5371706bdb3ef46",
+      "newVersionId": "0dcd6eccf59e23d06c2f4653f001db9bb58b443a0ca0d4bfbd3e411a69ea781d",
+      "newSha256": "f6eb7b64155f25e9361fbe4f6ea3eb5e7ed626445472e38d15af52b99204036a"
+    },
+    {
+      "slug": "sticker-pop",
+      "storageId": "9b3511ce-a5ef-4b7a-ae3b-9d94919497ac",
+      "oldVersionId": "c3b0b7e74e3b61ac9a09bd64317a688c67b8e9f6b19095a965d5deeb46c8d334",
+      "oldSha256": "d6a8fc7658fe0709a089d819fa745af461e99a1f1759040b60e8b0e4d4eb8ef4",
+      "newVersionId": "1435824e871307371108ca9176b8e67dfe1ba4538d52abbf6e6b7b196f5393ad",
+      "newSha256": "3f7fb7f11dcf6524eec1aa2f94fb3df145ae78fc21b7797c23fdfd2ec5ec481a"
+    },
+    {
+      "slug": "warm-cards",
+      "storageId": "ac36455c-04e5-471c-9a14-b5b765c18ec2",
+      "oldVersionId": "9fade1ad5c3e5d48ec282d2bad6c0c67ae44da2525d633dd434be3c1d3e3651f",
+      "oldSha256": "30a7ce127311bcba581793c47f234c043474b9b7bdfca2ba0732bd35e065cee3",
+      "newVersionId": "1ca8a11a520ed6225a32634fe3f2b0f443d10c28f64098f0f1bd0a795a62f16c",
+      "newSha256": "52f5f9670b3d0fba697635d35784bc021a2150f1c84cc73af87c6fd049ed8234"
+    }
+  ]
+}
