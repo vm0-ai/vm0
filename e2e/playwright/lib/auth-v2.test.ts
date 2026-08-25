@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Page, Response, Route } from "@playwright/test";
 
 import {
   AuthV2TestResources,
   type AuthV2ResourceAdapter,
+  cacheAuthV2VerificationPreparations,
   classifyAuthV2VerificationRequest,
 } from "./auth-v2";
 
@@ -99,6 +101,103 @@ test("tracks exact resources and cleans organizations before users", async () =>
     "delete-user:test-2@example.test",
     "delete-user:test-1@example.test",
   ]);
+});
+
+test("replays preparation responses only for the same Clerk resource", async () => {
+  const previousFrontendApi = process.env.CLERK_FAPI;
+  process.env.CLERK_FAPI = "clerk.example.test";
+  let responseHandler: ((response: Response) => Promise<void>) | undefined;
+  let routeHandler: ((route: Route) => Promise<void>) | undefined;
+  let removedResponseHandler = false;
+  let removedRouteHandler = false;
+  const page = {
+    off: (
+      event: string,
+      handler: (response: Response) => Promise<void>,
+    ): void => {
+      removedResponseHandler =
+        event === "response" && handler === responseHandler;
+    },
+    on: (
+      event: string,
+      handler: (response: Response) => Promise<void>,
+    ): void => {
+      assert.equal(event, "response");
+      responseHandler = handler;
+    },
+    route: async (
+      _pattern: string,
+      handler: (route: Route) => Promise<void>,
+    ): Promise<void> => {
+      routeHandler = handler;
+    },
+    unroute: async (
+      _pattern: string,
+      handler: (route: Route) => Promise<void>,
+    ): Promise<void> => {
+      removedRouteHandler = handler === routeHandler;
+    },
+  } as unknown as Page;
+
+  try {
+    const cache = await cacheAuthV2VerificationPreparations(page, "sign-in");
+    assert.ok(responseHandler);
+    assert.ok(routeHandler);
+    const resourceUrl =
+      "https://clerk.example.test/v1/client/sign_ins/attempt_alpha/prepare_first_factor";
+    await responseHandler({
+      body: async () => Buffer.from('{"status":"ok"}'),
+      headers: () => ({
+        "content-length": "15",
+        "content-type": "application/json",
+      }),
+      ok: () => true,
+      request: () => ({ method: () => "POST" }),
+      status: () => 200,
+      url: () => resourceUrl,
+    } as unknown as Response);
+    assert.equal(cache.cachedResourceCount(), 1);
+
+    let replay: Record<string, unknown> | undefined;
+    let fallbacks = 0;
+    await routeHandler({
+      fallback: async () => {
+        fallbacks += 1;
+      },
+      fulfill: async (options: Parameters<Route["fulfill"]>[0]) => {
+        replay = options as Record<string, unknown>;
+      },
+      request: () => ({ method: () => "POST", url: () => resourceUrl }),
+    } as unknown as Route);
+    assert.equal(fallbacks, 0);
+    assert.equal(replay?.status, 200);
+    assert.deepEqual(replay?.headers, { "content-type": "application/json" });
+
+    await routeHandler({
+      fallback: async () => {
+        fallbacks += 1;
+      },
+      fulfill: async () => {
+        throw new Error("a different resource must not be replayed");
+      },
+      request: () => ({
+        method: () => "POST",
+        url: () => resourceUrl.replace("attempt_alpha", "attempt_beta"),
+      }),
+    } as unknown as Route);
+    assert.equal(fallbacks, 1);
+
+    await cache.dispose();
+    assert.equal(removedResponseHandler, true);
+    assert.equal(removedRouteHandler, true);
+    assert.equal(cache.cachedResourceCount(), 0);
+  } finally {
+    if (previousFrontendApi === undefined) {
+      delete process.env.CLERK_FAPI;
+    } else {
+      process.env.CLERK_FAPI = previousFrontendApi;
+    }
+  }
 });
 
 test("cleanup continues after failures and reports no resource identifiers", async () => {

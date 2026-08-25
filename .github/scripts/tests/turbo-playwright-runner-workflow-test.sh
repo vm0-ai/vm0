@@ -171,6 +171,7 @@ unless playwright_run.fetch("run").include?(
   ) && playwright_run.fetch("run").include?("__clerk_db_jwt") &&
     playwright_run.fetch("run").include?("masked-clerk-test-email") &&
     playwright_run.fetch("run").include?("masked-clerk-resource-id") &&
+    playwright_run.fetch("run").include?("sess|user|org|sia|sua") &&
     playwright_run.fetch("run").include?("set -o pipefail")
   raise "the Auth v2 lane must redact Clerk secrets and identifiers"
 end

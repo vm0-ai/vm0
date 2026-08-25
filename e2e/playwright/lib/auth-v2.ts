@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import type { Page, Request } from "@playwright/test";
+import type {
+  Page,
+  Request,
+  Response as PlaywrightResponse,
+  Route,
+} from "@playwright/test";
 
 import {
   createOrganization,
@@ -30,6 +35,11 @@ export type AuthV2VerificationAction = "attempt" | "prepare";
 export interface AuthV2VerificationRequest {
   readonly action: AuthV2VerificationAction;
   readonly flow: AuthV2VerificationFlow;
+}
+
+export interface AuthV2VerificationPreparationCache {
+  readonly cachedResourceCount: () => number;
+  readonly dispose: () => Promise<void>;
 }
 
 export interface AuthV2PasswordIdentity {
@@ -205,6 +215,72 @@ export function observeAuthV2VerificationRequests(page: Page): {
   };
 }
 
+/**
+ * Keeps resend and retry coverage deterministic without removing the initial
+ * real Clerk preparation for each sign-in/sign-up attempt. The first successful
+ * preparation response is retained in memory and replayed only to later prepare
+ * requests for that exact resource path. No response data is logged or persisted.
+ */
+export async function cacheAuthV2VerificationPreparations(
+  page: Page,
+  flow: AuthV2VerificationFlow,
+): Promise<AuthV2VerificationPreparationCache> {
+  const frontendApi = requiredClerkFrontendApi();
+  const routePattern = authV2VerificationRoutePattern(flow, "prepare");
+  const responses = new Map<string, CachedVerificationPreparation>();
+  const responseHandler = async (
+    response: PlaywrightResponse,
+  ): Promise<void> => {
+    if (
+      response.request().method() !== "POST" ||
+      !response.ok() ||
+      classifyAuthV2VerificationRequest(response.url(), frontendApi)?.flow !==
+        flow
+    ) {
+      return;
+    }
+    const key = verificationPreparationResourceKey(response.url(), frontendApi);
+    if (!key || responses.has(key)) {
+      return;
+    }
+    try {
+      responses.set(key, {
+        body: await response.body(),
+        headers: replayableResponseHeaders(response.headers()),
+        status: response.status(),
+      });
+    } catch {
+      // A disposed page can make the body unavailable. The next request then
+      // falls through to Clerk instead of retaining partial response data.
+    }
+  };
+  const routeHandler = async (route: Route): Promise<void> => {
+    const request = route.request();
+    const key = verificationPreparationResourceKey(request.url(), frontendApi);
+    const cached = key ? responses.get(key) : undefined;
+    if (request.method() !== "POST" || !cached) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      body: cached.body,
+      headers: cached.headers,
+      status: cached.status,
+    });
+  };
+
+  page.on("response", responseHandler);
+  await page.route(routePattern, routeHandler);
+  return {
+    cachedResourceCount: () => responses.size,
+    dispose: async () => {
+      page.off("response", responseHandler);
+      await page.unroute(routePattern, routeHandler);
+      responses.clear();
+    },
+  };
+}
+
 export async function mockNextAuthV2VerificationExpiry(
   page: Page,
   flow: AuthV2VerificationFlow,
@@ -278,6 +354,37 @@ function verificationRequestKey(
   action: AuthV2VerificationAction,
 ): string {
   return `${flow}:${action}`;
+}
+
+interface CachedVerificationPreparation {
+  readonly body: Buffer;
+  readonly headers: Record<string, string>;
+  readonly status: number;
+}
+
+function verificationPreparationResourceKey(
+  requestUrl: string,
+  frontendApi: string,
+): string | null {
+  const classified = classifyAuthV2VerificationRequest(requestUrl, frontendApi);
+  if (classified?.action !== "prepare") {
+    return null;
+  }
+  return new URL(requestUrl).pathname;
+}
+
+function replayableResponseHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => {
+      return ![
+        "content-encoding",
+        "content-length",
+        "transfer-encoding",
+      ].includes(name.toLowerCase());
+    }),
+  );
 }
 
 function createStrongTestPassword(): string {

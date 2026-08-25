@@ -1953,7 +1953,7 @@ jobs:
               sed -E \
                 -e 's/([?&])__clerk_db_jwt=[^&[:space:])]+/\1[masked-clerk-testing-token]/g' \
                 -e 's/[[:alnum:]._%+-]+\+clerk_test[^@[:space:]]*@[[:alnum:].-]+/[masked-clerk-test-email]/g' \
-                -e 's/(^|[^[:alnum:]_])(sess|user|org)_[[:alnum:]_-]+/\1[masked-clerk-resource-id]/g'
+                -e 's/(^|[^[:alnum:]_])(sess|user|org|sia|sua)_[[:alnum:]_-]+/\1[masked-clerk-resource-id]/g'
           else
             "${playwright_command[@]}"
           fi

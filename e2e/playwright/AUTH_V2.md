@@ -54,8 +54,12 @@ The `auth-v2.spec.ts` project covers:
 Expired-code coverage fulfills the first matching Clerk verification attempt
 with the provider's `form_code_expired` response. This makes recovery and
 request-count assertions deterministic without waiting beyond the eight-minute
-CI budget. The following retry and completion calls use the real development
-Clerk API.
+CI budget. In the email-code recovery test, the Clerk resource's first
+verification preparation uses the real development API; later resend/retry
+preparations for that same resource replay the successful provider response in
+memory. The editable identifier is changed and restored before that real
+preparation. This preserves UI request counts and real completion while avoiding
+a self-induced provider rate limit.
 
 ## Exact-preview and manual checkpoints
 

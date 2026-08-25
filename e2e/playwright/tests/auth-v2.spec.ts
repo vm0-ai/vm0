@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../auth-v2-fixtures";
 import {
   AUTH_V2_TEST_OTP,
+  cacheAuthV2VerificationPreparations,
   mockNextAuthV2VerificationExpiry,
   mockNextAuthV2VerificationServerError,
   observeAuthV2VerificationRequests,
@@ -181,17 +182,28 @@ test("email-code sign-in sends once, coalesces retry, edits, expires, and refres
   const identity = await authV2Resources.createPasswordIdentity([
     ORGANIZATION_ALPHA,
   ]);
-  const editedIdentity = await authV2Resources.createPasswordIdentity([
-    ORGANIZATION_BETA,
-  ]);
+  const editedIdentifierDraft = authV2Resources.allocateEmail();
   const redirect = sameOriginRedirect(baseURL, "email-code");
+  const preparationCache = await cacheAuthV2VerificationPreparations(
+    page,
+    "sign-in",
+  );
   const requests = observeAuthV2VerificationRequests(page);
   try {
     await openAuthV2(page, authUrl("/v2/sign-in", redirect));
     await submitSignInIdentifier(page, identity.email);
+    await authV2Root(page).getByRole("button", { name: /edit/i }).click();
+    const identifier = authV2Input(page, "identifier");
+    await expect(identifier).toBeVisible();
+    await expect(identifier).toHaveValue(identity.email);
+    await identifier.fill(editedIdentifierDraft);
+    await expect(identifier).toHaveValue(editedIdentifierDraft);
+    await identifier.fill(identity.email);
+    await identifier.press("Enter");
     await chooseSignInMethod(page, "email-code");
     await expect(authV2Input(page, "code")).toBeVisible();
     await expect.poll(() => requests.count("sign-in", "prepare")).toBe(1);
+    await expect.poll(() => preparationCache.cachedResourceCount()).toBe(1);
 
     const initialResend = resendOrRetryButton(page);
     await expect(initialResend).toBeDisabled();
@@ -229,25 +241,16 @@ test("email-code sign-in sends once, coalesces retry, edits, expires, and refres
       .last()
       .click();
     await expect(signInMethodButton(page, "email-code")).toBeVisible();
-    await authV2Root(page).getByRole("button", { name: /edit/i }).click();
-    const identifier = authV2Input(page, "identifier");
-    await expect(identifier).toBeVisible();
-    expect(
-      await identifier.evaluate((input: HTMLInputElement) => {
-        return input.value.length > 0;
-      }),
-    ).toBe(true);
-    await identifier.fill(editedIdentity.email);
-    await identifier.press("Enter");
     await chooseSignInMethod(page, "email-code");
     await expect(authV2Input(page, "code")).toBeVisible();
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(4);
+    expect(requests.count("sign-in", "prepare")).toBe(3);
 
     await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
     await authV2Input(page, "code").press("Enter");
-    await finishAuthV2Continuation(page, redirect, ORGANIZATION_BETA);
+    await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
   } finally {
     requests.dispose();
+    await preparationCache.dispose();
   }
 });
 
@@ -357,7 +360,8 @@ test("progressive sign-up validates details and activates after one verification
 
     await passwordInput.fill(password);
     await expect(passwordError).toHaveCount(0);
-    await expect(passwordInput).not.toHaveAttribute("aria-invalid");
+    await expect(passwordInput).not.toHaveAttribute("aria-invalid", "true");
+    await expect(passwordInput).not.toHaveAttribute("aria-describedby");
     await passwordInput.press("Enter");
     await expect(authV2Input(page, "code")).toBeVisible();
     await expect.poll(() => requests.count("sign-up", "prepare")).toBe(1);
@@ -540,17 +544,25 @@ async function finishAuthV2Continuation(
   organizationName: string,
 ): Promise<void> {
   const organization = organizationButton(page, organizationName);
-  await expect
-    .poll(
-      async () => {
-        return (
-          new URL(page.url()).pathname === redirect.pathname ||
-          (await organization.isVisible())
-        );
-      },
-      { timeout: 30_000 },
-    )
-    .toBe(true);
+  try {
+    await expect
+      .poll(
+        async () => {
+          return (
+            new URL(page.url()).pathname === redirect.pathname ||
+            (await organization.isVisible())
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+  } catch {
+    throw new Error(
+      `Auth v2 continuation did not settle: ${JSON.stringify(
+        await authV2ContinuationDiagnostics(page, redirect, organization),
+      )}`,
+    );
+  }
   await expectNoOrganizationCreation(page);
   if (new URL(page.url()).pathname !== redirect.pathname) {
     await continueWithOrganization(page, organizationName);
@@ -559,6 +571,73 @@ async function finishAuthV2Continuation(
   expect(new URL(page.url()).searchParams.get("auth_v2_e2e")).toBe(
     redirect.searchParams.get("auth_v2_e2e"),
   );
+}
+
+async function authV2ContinuationDiagnostics(
+  page: Page,
+  redirect: URL,
+  organization: Locator,
+): Promise<Record<string, boolean | null | string>> {
+  const currentUrl = new URL(page.url());
+  const alert = authV2Root(page).getByRole("alert").first();
+  const alertText = (await alert.isVisible())
+    ? sanitizeAuthV2DiagnosticText(await alert.innerText())
+    : null;
+  const clerkState = await page.evaluate(() => {
+    const clerk = window.Clerk as unknown as {
+      readonly client?: {
+        readonly signIn?: {
+          readonly createdSessionId?: unknown;
+          readonly status?: unknown;
+        };
+      };
+      readonly session?: {
+        readonly currentTask?: unknown;
+        readonly status?: unknown;
+      };
+    };
+    const currentTask = clerk?.session?.currentTask;
+    return {
+      clientSignInHasCreatedSession:
+        typeof clerk?.client?.signIn?.createdSessionId === "string",
+      clientSignInStatus:
+        typeof clerk?.client?.signIn?.status === "string"
+          ? clerk.client.signIn.status
+          : null,
+      sessionStatus:
+        typeof clerk?.session?.status === "string"
+          ? clerk.session.status
+          : null,
+      sessionTask:
+        currentTask &&
+        typeof currentTask === "object" &&
+        "key" in currentTask &&
+        typeof currentTask.key === "string"
+          ? currentTask.key
+          : null,
+    };
+  });
+  return {
+    alert: alertText,
+    clientSignInHasCreatedSession: clerkState.clientSignInHasCreatedSession,
+    clientSignInStatus: clerkState.clientSignInStatus,
+    currentPathname: currentUrl.pathname,
+    organizationChooserVisible: await authV2Root(page)
+      .getByRole("heading", { name: /choose an organization/i })
+      .isVisible(),
+    requestedOrganizationVisible: await organization.isVisible(),
+    redirectReached: currentUrl.pathname === redirect.pathname,
+    sessionStatus: clerkState.sessionStatus,
+    sessionTask: clerkState.sessionTask,
+  };
+}
+
+function sanitizeAuthV2DiagnosticText(value: string): string {
+  return value
+    .replace(/[\w.+-]+@[\w.-]+/g, "[masked-email]")
+    .replace(/\b(?:org|sess|sia|sua|user)_[\w-]+\b/g, "[masked-clerk-id]")
+    .replace(/https?:\/\/\S+/g, "[masked-url]")
+    .slice(0, 240);
 }
 
 async function waitForActivatedSessionOrRedirect(
