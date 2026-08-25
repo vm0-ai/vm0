@@ -678,7 +678,6 @@ describe("cron snapshot chat events", () => {
       archive_schema_version: fullRetryHead.archive_schema_version,
       last_event_id: fullRetryHead.last_event_id,
       last_seq_id: fullRetryHead.last_seq_id,
-      object_key: fullRetryHead.object_key,
     });
 
     const firstLines = expectArchiveInvariants(firstRetryPut, firstThreadId);
