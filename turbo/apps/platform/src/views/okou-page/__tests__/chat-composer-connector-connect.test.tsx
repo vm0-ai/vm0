@@ -444,6 +444,83 @@ describe("chat composer connector connection", () => {
     expect(authorizationWrites).toBe(0);
   });
 
+  it("keeps the selected account visible when search has no matches", async () => {
+    const user = userEvent.setup({ delay: null });
+    const defaultAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000021",
+      "Work",
+      true,
+    );
+    const personalAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000022",
+      "Personal",
+      false,
+    );
+    const requestedSearches: string[] = [];
+    mockThread();
+    mockConnectors([{ connectorSlug: "github" }]);
+    mockAgentConnectorAuthorizations(["github"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 7,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        requestedSearches.push(query.search ?? "");
+        return respond(200, {
+          connections: query.search ? [] : [defaultAccount, personalAccount],
+          nextCursor: null,
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          selections: [
+            {
+              connectionId: personalAccount.id,
+              target: personalAccount.target,
+            },
+          ],
+          selectedConnections: [personalAccount],
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(
+      await screen.findByLabelText("GitHub · Selected account: Personal"),
+    );
+    await user.type(screen.getByPlaceholderText("Find accounts"), "missing");
+
+    await expect(screen.findByText("No accounts found")).resolves.toBeVisible();
+    expect(
+      screen.getByRole("radio", { name: /Personal/u }),
+    ).toBeInTheDocument();
+    expect(requestedSearches).toStrictEqual(["", "missing"]);
+
+    await user.click(screen.getByLabelText("Back"));
+    expect(requestedSearches).toStrictEqual(["", "missing"]);
+  });
+
   it("applies a pending account selection when creating a thread", async () => {
     const user = userEvent.setup({ delay: null });
     const defaultAccount = githubAccount(
