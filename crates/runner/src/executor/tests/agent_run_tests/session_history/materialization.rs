@@ -919,6 +919,12 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst"
     );
     assert_eq!(writes[0].content, compressed_history);
+    assert!(sandbox.exec_calls().iter().all(|call| {
+        !call
+            .env_keys
+            .iter()
+            .any(|key| key == "OKOU_CODEX_RESTORE_SESSION_ID")
+    }));
     history_mock.assert_calls_async(0).await;
 }
 

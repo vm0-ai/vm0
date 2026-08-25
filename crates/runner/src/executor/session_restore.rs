@@ -15,7 +15,7 @@ use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
 use super::env::validate_resume_session_id;
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::RestoredSessionIdentity;
-use crate::types::{ExecutionContext, ResumeSessionHistoryRefKind};
+use crate::types::{ExecutionContext, ResumeSessionHistoryRefKind, SandboxReuseResult};
 use api_contracts::generated::constants::runners::paths::{
     CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_WORKING_DIR,
 };
@@ -144,6 +144,7 @@ pub(super) struct SessionRestoreDiagnostics {
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
+    sandbox_reuse_result: SandboxReuseResult,
     session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
@@ -166,7 +167,7 @@ pub(super) async fn restore_session(
             restore_claude_session(sandbox, context, session).await
         }
         EffectiveCliFramework::Codex => {
-            codex::restore_codex_session(sandbox, context, session).await
+            codex::restore_codex_session(sandbox, context, sandbox_reuse_result, session).await
         }
         EffectiveCliFramework::Pi => restore_pi_session(sandbox, context, session).await,
     }

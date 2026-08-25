@@ -12,11 +12,14 @@ use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_history_cpu::codex_timestamp_for_test;
-use super::super::session_restore::MaterializedResumeSession;
+use super::super::session_restore::{
+    MaterializedResumeSession, SessionRestoreDiagnostics,
+    restore_session as restore_session_for_sandbox,
+};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context};
 use crate::types::{
     ExecutionContext, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding,
-    ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+    ResumeSessionHistoryRef, ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
@@ -199,6 +202,14 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(!exec_calls[0].cmd.contains("tr -d"));
     assert!(!exec_calls[0].cmd.contains("-delete"));
     assert!(!exec_calls[0].cmd.contains("for path in \"$dir\"/*"));
+}
+
+async fn restore_session(
+    sandbox: &dyn sandbox::Sandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> crate::error::RunnerResult<SessionRestoreDiagnostics> {
+    restore_session_for_sandbox(sandbox, context, SandboxReuseResult::Reused, session).await
 }
 
 fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

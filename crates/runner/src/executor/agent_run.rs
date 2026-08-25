@@ -1791,7 +1791,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             WorkspaceSessionHistoryMaterialization::Materialized { session, timings } => {
                 record_workspace_session_history_timings(telemetry, timings);
                 let guest_restore_started = Instant::now();
-                let restore_result = restore_session(sandbox, context, &session).await;
+                let restore_result =
+                    restore_session(sandbox, context, start.reuse_result, &session).await;
                 let guest_restore_elapsed = guest_restore_started.elapsed();
                 telemetry.record(
                     "session_history_workspace_cache_guest_restore",
@@ -1975,7 +1976,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
         if let Some(session) = resume_session {
             let t = Instant::now();
-            let result = restore_session(sandbox, context, &session).await;
+            let result = restore_session(sandbox, context, start.reuse_result, &session).await;
             let err = result.as_ref().err().map(|e| e.to_string());
             telemetry.record(
                 "session_restore",

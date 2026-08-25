@@ -8,7 +8,7 @@ use api_contracts::generated::constants::runners::paths::{
 
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::{
@@ -35,6 +35,7 @@ fn codex_restore_rollout_timestamp(
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
+    sandbox_reuse_result: SandboxReuseResult,
     session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let original_session_id = session.cli_agent_session_id();
@@ -54,15 +55,22 @@ pub(super) async fn restore_codex_session(
         codex_rollout_relative_path(&thread_id, timestamp)
     );
 
-    let logical_path = cleanup_existing_codex_session_files(
-        sandbox,
-        context,
-        session_id,
-        &session_filename_key,
-        &fallback_logical_path,
-    )
-    .await?
-    .unwrap_or(fallback_logical_path);
+    let logical_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
+        cleanup_existing_codex_session_files(
+            sandbox,
+            context,
+            session_id,
+            &session_filename_key,
+            &fallback_logical_path,
+        )
+        .await?
+        .unwrap_or(fallback_logical_path)
+    } else {
+        // Only actual sandbox reuse retains the framework home. Fresh
+        // sandboxes may mount a reused workspace drive, but it contains only
+        // the working directory and cannot contain a prior Codex rollout.
+        fallback_logical_path
+    };
     let session_path = format!("{logical_path}{physical_suffix}");
 
     write_session_history_file(sandbox, &session_path, session_history).await?;

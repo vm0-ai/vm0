@@ -1,4 +1,3 @@
-use super::super::super::session_restore::restore_session;
 use super::super::support::sandbox_write_file_error;
 use super::*;
 use sandbox::{ExecResult, ExecTermination};
@@ -22,6 +21,29 @@ fn restore_session_writes_codex_session() {
         writes[0].path
     );
     assert_eq!(writes[0].content, session.history_bytes());
+    assert_eq!(diagnostics.bytes_in, history.len());
+}
+
+#[test]
+fn fresh_sandbox_restore_writes_codex_session_without_cleanup() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let session = materialized_text_session(CODEX_SESSION_ID, history.clone());
+
+    let diagnostics = run_restore_session(restore_session_for_sandbox(
+        &sandbox,
+        &ctx,
+        SandboxReuseResult::PoolMiss,
+        &session,
+    ))
+    .unwrap();
+
+    assert!(sandbox.exec_calls().is_empty());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert!(writes[0].path.ends_with(CODEX_CANONICAL_ROLLOUT_SUFFIX));
+    assert_eq!(writes[0].content, history.as_bytes());
     assert_eq!(diagnostics.bytes_in, history.len());
 }
 
