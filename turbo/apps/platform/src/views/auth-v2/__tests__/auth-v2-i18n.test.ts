@@ -26,6 +26,12 @@ const v1LocalizationSources = import.meta.glob(
   },
 ) as Record<string, string>;
 
+const v1ProviderSources = import.meta.glob("../../clerk/clerk-provider.tsx", {
+  eager: true,
+  import: "default",
+  query: "?raw",
+}) as Record<string, string>;
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null;
 }
@@ -76,6 +82,16 @@ describe("auth v2 platform localization ownership", () => {
     }
   });
 
+  it("preserves every localized legal-link token contract", () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      const copy = resources[locale].common.auth.v2.signUp;
+      expect(copy.legalPrivacyOnly).toMatch(/<privacy>.+<\/privacy>/);
+      expect(copy.legalTermsOnly).toMatch(/<terms>.+<\/terms>/);
+      expect(copy.legalTermsAndPrivacy).toMatch(/<terms>.+<\/terms>/);
+      expect(copy.legalTermsAndPrivacy).toMatch(/<privacy>.+<\/privacy>/);
+    }
+  });
+
   it("uses no Clerk localization lookup in Auth v2 while preserving v1", () => {
     const sources = Object.entries({
       ...authV2SignalSources,
@@ -91,5 +107,9 @@ describe("auth v2 platform localization ownership", () => {
     const v1Localization = Object.values(v1LocalizationSources).join("\n");
     expect(v1Localization).toContain("@clerk/localizations");
     expect(v1Localization).toContain("getClerkLocalization");
+
+    const v1Provider = Object.values(v1ProviderSources).join("\n");
+    expect(v1Provider).toContain('from "../auth/clerk-localization.ts"');
+    expect(v1Provider).toMatch(/localization:\s*getClerkLocalization\(/);
   });
 });

@@ -90,6 +90,14 @@ function setupSignInPage(
   });
 }
 
+function useGermanLocale(): void {
+  document.documentElement.lang = "de-DE";
+  context.mocks.data.userPreferences({
+    locale: "de-DE",
+    supportedLocales: ["de-DE", "en-US"],
+  });
+}
+
 function containingForm(element: HTMLElement): HTMLFormElement {
   const form = element.closest("form");
   if (!(form instanceof HTMLFormElement)) {
@@ -995,6 +1003,43 @@ describe("auth v2 sign-in flow", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Sign in to Okou",
     );
+  });
+
+  it("substitutes the Okou brand in German entry and password subtitles", async () => {
+    useGermanLocale();
+    setupSignInPage(
+      { status: "needs_identifier" },
+      { url: "https://app.okou.ai/v2/sign-in" },
+    );
+
+    const identifierInput = await screen.findByLabelText(
+      "E-Mail-Adresse oder Benutzername",
+    );
+    expect(
+      screen.getByRole("region", { name: "Bei Okou anmelden" }),
+    ).toHaveAccessibleDescription("weiter zu Okou");
+
+    const nextResource = moveSignInTo({
+      status: "needs_first_factor",
+      supportedFirstFactors: [passwordFactor()],
+    });
+    mockedClerk.clientSignInCreate.mockResolvedValue(nextResource);
+    fireEvent.change(identifierInput, {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.submit(containingForm(identifierInput));
+
+    fireEvent.click(
+      await waitForRoleElement(
+        "button",
+        "Melden Sie sich mit Ihrem Passwort an",
+      ),
+    );
+    await screen.findByLabelText("Passwort");
+    expect(
+      screen.getByRole("region", { name: "Bei Okou anmelden" }),
+    ).toHaveAccessibleDescription("weiter zu Okou");
+    expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
 
   it("renders a transfer state without implementing sign-up", async () => {

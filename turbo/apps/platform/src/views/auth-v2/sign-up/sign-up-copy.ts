@@ -1,4 +1,5 @@
 import { publicBrandPresentation } from "@okouai/core/public-brand";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -54,26 +55,132 @@ export interface AuthV2SignUpCopy {
   readonly verify: string;
 }
 
-// oxlint-disable-next-line max-lines-per-function -- Declarative locale mapping is intentionally kept together for ownership auditing.
-export function useAuthV2SignUpCopy(
+function signUpDetailsCopy(
+  t: TFunction<"common">,
   brandName: AuthBrandContext["brandName"],
-): AuthV2SignUpCopy {
-  const { t } = useTranslation();
-  const supportEmail = publicBrandPresentation(
-    brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+) {
+  return {
+    alreadyHaveAccount: t(($) => {
+      return $.auth.v2.signUp.alreadyHaveAccount;
+    }),
+    continue: t(($) => {
+      return $.auth.v2.signUp.continue;
+    }),
+    description: t(
+      ($) => {
+        return $.auth.v2.signUp.description;
+      },
+      { brandName },
+    ),
+    emailAddressLabel: t(($) => {
+      return $.auth.v2.signUp.emailAddressLabel;
+    }),
+    firstNameLabel: t(($) => {
+      return $.auth.v2.signUp.firstNameLabel;
+    }),
+    googleMethod: t(($) => {
+      return $.auth.v2.signUp.googleMethod;
+    }),
+    hidePassword: t(($) => {
+      return $.auth.v2.signUp.hidePassword;
+    }),
+    lastNameLabel: t(($) => {
+      return $.auth.v2.signUp.lastNameLabel;
+    }),
+    legalPrivacyOnly: t(($) => {
+      return $.auth.v2.signUp.legalPrivacyOnly;
+    }),
+    legalRequired: t(($) => {
+      return $.auth.v2.signUp.legalRequired;
+    }),
+    legalTermsAndPrivacy: t(($) => {
+      return $.auth.v2.signUp.legalTermsAndPrivacy;
+    }),
+    legalTermsOnly: t(($) => {
+      return $.auth.v2.signUp.legalTermsOnly;
+    }),
+    optional: t(($) => {
+      return $.auth.v2.signUp.optional;
+    }),
+    passwordInvalid: t(($) => {
+      return $.auth.v2.signUp.passwordInvalid;
+    }),
+    passwordLabel: t(($) => {
+      return $.auth.v2.signUp.passwordLabel;
+    }),
+    showPassword: t(($) => {
+      return $.auth.v2.signUp.showPassword;
+    }),
+    signIn: t(($) => {
+      return $.auth.v2.signUp.signIn;
+    }),
+    signUpTitle: t(
+      ($) => {
+        return $.auth.v2.signUp.title;
+      },
+      { brandName },
+    ),
+  };
+}
+
+function signUpVerificationCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
   const resendCode = t(($) => {
     return $.auth.v2.signUp.resendCode;
   });
   return {
-    accessNotAllowed: t(($) => {
-      return $.auth.clerk.accessNotAllowed;
-    }),
-    alreadyHaveAccount: t(($) => {
-      return $.auth.v2.signUp.alreadyHaveAccount;
-    }),
     back: t(($) => {
       return $.auth.v2.signUp.back;
+    }),
+    codeExpired: t(($) => {
+      return $.auth.v2.signUp.codeExpired;
+    }),
+    codeLabel: t(($) => {
+      return $.auth.v2.signUp.codeLabel;
+    }),
+    editEmailAddress: t(($) => {
+      return $.auth.v2.signUp.editEmailAddress;
+    }),
+    emailCodeSubtitle: t(
+      ($) => {
+        return $.auth.v2.signUp.emailCodeSubtitle;
+      },
+      { brandName },
+    ),
+    emailCodeTitle: t(($) => {
+      return $.auth.v2.signUp.emailCodeTitle;
+    }),
+    resendCode,
+    resendCodeCooldown: t(
+      ($) => {
+        return $.auth.v2.signUp.resendCodeCooldown;
+      },
+      {
+        resendCode,
+        seconds: AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
+      },
+    ),
+    retry: t(($) => {
+      return $.auth.v2.signUp.retry;
+    }),
+    verify: t(($) => {
+      return $.auth.v2.signUp.verify;
+    }),
+  };
+}
+
+function signUpTerminalCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
+  const supportEmail = publicBrandPresentation(
+    brandName === "Okou" ? "okou" : "vm0",
+  ).supportEmail;
+  return {
+    accessNotAllowed: t(($) => {
+      return $.auth.clerk.accessNotAllowed;
     }),
     captchaError: t(($) => {
       return $.auth.v2.signUp.captchaError;
@@ -90,103 +197,21 @@ export function useAuthV2SignUpCopy(
     captchaTitle: t(($) => {
       return $.auth.v2.signUp.captchaTitle;
     }),
-    codeExpired: t(($) => {
-      return $.auth.v2.signUp.codeExpired;
-    }),
-    codeLabel: t(($) => {
-      return $.auth.v2.signUp.codeLabel;
-    }),
     completeSubtitle: t(($) => {
       return $.auth.v2.signUp.completeSubtitle;
     }),
     completeTitle: t(($) => {
       return $.auth.v2.signUp.completeTitle;
     }),
-    continue: t(($) => {
-      return $.auth.v2.signUp.continue;
-    }),
-    description: t(($) => {
-      return $.auth.v2.signUp.description;
-    }),
-    editEmailAddress: t(($) => {
-      return $.auth.v2.signUp.editEmailAddress;
-    }),
-    emailAddressLabel: t(($) => {
-      return $.auth.v2.signUp.emailAddressLabel;
-    }),
-    emailCodeSubtitle: t(($) => {
-      return $.auth.v2.signUp.emailCodeSubtitle;
-    }),
-    emailCodeTitle: t(($) => {
-      return $.auth.v2.signUp.emailCodeTitle;
-    }),
-    firstNameLabel: t(($) => {
-      return $.auth.v2.signUp.firstNameLabel;
-    }),
-    googleMethod: t(($) => {
-      return $.auth.v2.signUp.googleMethod;
-    }),
-    hidePassword: t(($) => {
-      return $.auth.v2.signUp.hidePassword;
-    }),
-    lastNameLabel: t(($) => {
-      return $.auth.v2.signUp.lastNameLabel;
-    }),
     legacySignUp: t(($) => {
       return $.auth.v2.signUp.action;
-    }),
-    legalPrivacyOnly: t(($) => {
-      return $.auth.v2.signUp.legalPrivacyOnly;
-    }),
-    legalRequired: t(($) => {
-      return $.auth.v2.signUp.legalRequired;
-    }),
-    legalTermsAndPrivacy: t(($) => {
-      return $.auth.v2.signUp.legalTermsAndPrivacy;
-    }),
-    legalTermsOnly: t(($) => {
-      return $.auth.v2.signUp.legalTermsOnly;
     }),
     loading: t(($) => {
       return $.auth.loading;
     }),
-    optional: t(($) => {
-      return $.auth.v2.signUp.optional;
-    }),
-    passwordInvalid: t(($) => {
-      return $.auth.v2.signUp.passwordInvalid;
-    }),
-    passwordLabel: t(($) => {
-      return $.auth.v2.signUp.passwordLabel;
-    }),
-    resendCode,
-    resendCodeCooldown: t(
-      ($) => {
-        return $.auth.v2.signUp.resendCodeCooldown;
-      },
-      {
-        resendCode,
-        seconds: AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
-      },
-    ),
     restart: t(($) => {
       return $.auth.v2.signUp.restart;
     }),
-    retry: t(($) => {
-      return $.auth.v2.signUp.retry;
-    }),
-    showPassword: t(($) => {
-      return $.auth.v2.signUp.showPassword;
-    }),
-    signIn: t(($) => {
-      return $.auth.v2.signUp.signIn;
-    }),
-    signUpTitle: t(
-      ($) => {
-        return $.auth.v2.signUp.title;
-      },
-      { brandName },
-    ),
     unknownError: t(($) => {
       return $.auth.v2.signUp.unknownError;
     }),
@@ -205,9 +230,17 @@ export function useAuthV2SignUpCopy(
         supportEmail,
       },
     ),
-    verify: t(($) => {
-      return $.auth.v2.signUp.verify;
-    }),
+  };
+}
+
+export function useAuthV2SignUpCopy(
+  brandName: AuthBrandContext["brandName"],
+): AuthV2SignUpCopy {
+  const { t } = useTranslation();
+  return {
+    ...signUpDetailsCopy(t, brandName),
+    ...signUpVerificationCopy(t, brandName),
+    ...signUpTerminalCopy(t, brandName),
   };
 }
 

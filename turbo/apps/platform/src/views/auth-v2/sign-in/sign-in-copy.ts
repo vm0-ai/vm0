@@ -1,4 +1,5 @@
 import { publicBrandPresentation } from "@okouai/core/public-brand";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -6,7 +7,10 @@ import type {
   AuthV2SignInFactor,
   AuthV2SignInState,
 } from "../../../signals/auth-v2/sign-in-flow.ts";
-import { resolveAuthBrandContext } from "../../../signals/auth.ts";
+import {
+  resolveAuthBrandContext,
+  type AuthBrandContext,
+} from "../../../signals/auth.ts";
 
 export interface AuthV2SignInCopy {
   readonly accessNotAllowed: string;
@@ -62,22 +66,13 @@ export interface AuthV2SignInCopy {
   readonly verify: string;
 }
 
-// oxlint-disable-next-line max-lines-per-function -- Declarative locale mapping is intentionally kept together for ownership auditing.
-export function useAuthV2SignInCopy(): AuthV2SignInCopy {
-  const { t } = useTranslation();
-  const authBrand = resolveAuthBrandContext();
-  const supportEmail = publicBrandPresentation(
-    authBrand.brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+function signInEntryCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
   return {
-    accessNotAllowed: t(($) => {
-      return $.auth.clerk.accessNotAllowed;
-    }),
     addAccount: t(($) => {
       return $.auth.v2.signIn.addAccount;
-    }),
-    back: t(($) => {
-      return $.auth.v2.signIn.back;
     }),
     chooseAccountSubtitle: t(($) => {
       return $.auth.v2.signIn.chooseAccountSubtitle;
@@ -91,33 +86,10 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
     chooseMethodTitle: t(($) => {
       return $.auth.v2.signIn.chooseMethodTitle;
     }),
-    codeExpired: t(($) => {
-      return $.auth.v2.signIn.codeExpired;
-    }),
-    codeLabel: t(($) => {
-      return $.auth.v2.signIn.codeLabel;
-    }),
-    completeSubtitle: t(
-      ($) => {
-        return $.auth.v2.signIn.completeSubtitle;
-      },
-      {
-        brandName: authBrand.brandName,
-      },
-    ),
-    completeTitle: t(($) => {
-      return $.auth.v2.signIn.completeTitle;
-    }),
-    confirmPasswordLabel: t(($) => {
-      return $.auth.v2.signIn.confirmPasswordLabel;
-    }),
-    continue: t(($) => {
-      return $.auth.v2.signIn.continue;
-    }),
     editIdentifier: t(($) => {
       return $.auth.v2.signIn.editIdentifier;
     }),
-    emailCodeMethod: (identifier) => {
+    emailCodeMethod: (identifier: string) => {
       return t(
         ($) => {
           return $.auth.v2.signIn.emailCodeMethod;
@@ -125,34 +97,105 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
         { identifier },
       );
     },
-    emailCodeSubtitle: t(
-      ($) => {
-        return $.auth.v2.signIn.emailCodeSubtitle;
-      },
-      {
-        brandName: authBrand.brandName,
-      },
-    ),
-    emailCodeTitle: t(($) => {
-      return $.auth.v2.signIn.emailCodeTitle;
-    }),
-    forgotPassword: t(($) => {
-      return $.auth.v2.signIn.forgotPassword;
-    }),
     googleMethod: t(($) => {
       return $.auth.v2.signIn.googleMethod;
-    }),
-    hidePassword: t(($) => {
-      return $.auth.v2.signIn.hidePassword;
     }),
     identifierLabel: t(($) => {
       return $.auth.v2.signIn.identifierLabel;
     }),
-    legacySignIn: t(($) => {
-      return $.auth.v2.signIn.action;
+    noAccount: t(($) => {
+      return $.auth.v2.signIn.noAccount;
     }),
-    loading: t(($) => {
-      return $.auth.loading;
+    passwordMethod: t(($) => {
+      return $.auth.v2.signIn.passwordMethod;
+    }),
+    passwordResetMethod: t(($) => {
+      return $.auth.v2.signIn.passwordResetMethod;
+    }),
+    passkeyMethod: t(($) => {
+      return $.auth.v2.signIn.passkeyMethod;
+    }),
+    signUp: t(($) => {
+      return $.auth.v2.signIn.signUp;
+    }),
+    startSubtitle: t(
+      ($) => {
+        return $.auth.v2.signIn.startSubtitle;
+      },
+      { brandName },
+    ),
+    useAnotherMethod: t(($) => {
+      return $.auth.v2.signIn.useAnotherMethod;
+    }),
+  };
+}
+
+function signInCodeCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
+  const resendCode = t(($) => {
+    return $.auth.v2.signIn.resendCode;
+  });
+  return {
+    back: t(($) => {
+      return $.auth.v2.signIn.back;
+    }),
+    codeExpired: t(($) => {
+      return $.auth.v2.signIn.codeExpired;
+    }),
+    codeLabel: t(($) => {
+      return $.auth.v2.signIn.codeLabel;
+    }),
+    continue: t(($) => {
+      return $.auth.v2.signIn.continue;
+    }),
+    emailCodeSubtitle: t(
+      ($) => {
+        return $.auth.v2.signIn.emailCodeSubtitle;
+      },
+      { brandName },
+    ),
+    emailCodeTitle: t(($) => {
+      return $.auth.v2.signIn.emailCodeTitle;
+    }),
+    resendCode,
+    resendCodeCooldown: (remainingSeconds: number) => {
+      return t(
+        ($) => {
+          return $.auth.v2.signIn.resendCodeCooldown;
+        },
+        {
+          resendCode,
+          seconds: remainingSeconds,
+        },
+      );
+    },
+    resetPasswordCodeSubtitle: t(($) => {
+      return $.auth.v2.signIn.resetPasswordCodeSubtitle;
+    }),
+    resetPasswordCodeTitle: t(($) => {
+      return $.auth.v2.signIn.resetPasswordCodeTitle;
+    }),
+    verify: t(($) => {
+      return $.auth.v2.signIn.verify;
+    }),
+  };
+}
+
+function signInPasswordCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
+  return {
+    confirmPasswordLabel: t(($) => {
+      return $.auth.v2.signIn.confirmPasswordLabel;
+    }),
+    forgotPassword: t(($) => {
+      return $.auth.v2.signIn.forgotPassword;
+    }),
+    hidePassword: t(($) => {
+      return $.auth.v2.signIn.hidePassword;
     }),
     newPasswordLabel: t(($) => {
       return $.auth.v2.signIn.newPasswordLabel;
@@ -163,8 +206,55 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
     newPasswordTitle: t(($) => {
       return $.auth.v2.signIn.newPasswordTitle;
     }),
-    noAccount: t(($) => {
-      return $.auth.v2.signIn.noAccount;
+    passwordLabel: t(($) => {
+      return $.auth.v2.signIn.passwordLabel;
+    }),
+    passwordMismatch: t(($) => {
+      return $.auth.v2.signIn.passwordMismatch;
+    }),
+    passwordSubtitle: t(
+      ($) => {
+        return $.auth.v2.signIn.passwordSubtitle;
+      },
+      { brandName },
+    ),
+    passwordTitle: t(($) => {
+      return $.auth.v2.signIn.passwordTitle;
+    }),
+    resetPassword: t(($) => {
+      return $.auth.v2.signIn.resetPassword;
+    }),
+    showPassword: t(($) => {
+      return $.auth.v2.signIn.showPassword;
+    }),
+  };
+}
+
+function signInTerminalCopy(
+  t: TFunction<"common">,
+  authBrand: AuthBrandContext,
+) {
+  const supportEmail = publicBrandPresentation(
+    authBrand.brandName === "Okou" ? "okou" : "vm0",
+  ).supportEmail;
+  return {
+    accessNotAllowed: t(($) => {
+      return $.auth.clerk.accessNotAllowed;
+    }),
+    completeSubtitle: t(
+      ($) => {
+        return $.auth.v2.signIn.completeSubtitle;
+      },
+      { brandName: authBrand.brandName },
+    ),
+    completeTitle: t(($) => {
+      return $.auth.v2.signIn.completeTitle;
+    }),
+    legacySignIn: t(($) => {
+      return $.auth.v2.signIn.action;
+    }),
+    loading: t(($) => {
+      return $.auth.loading;
     }),
     noMethodsMessage: t(($) => {
       return $.auth.v2.signIn.noMethodsMessage;
@@ -172,80 +262,20 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
     noMethodsTitle: t(($) => {
       return $.auth.v2.signIn.noMethodsTitle;
     }),
-    passwordLabel: t(($) => {
-      return $.auth.v2.signIn.passwordLabel;
-    }),
-    passwordMethod: t(($) => {
-      return $.auth.v2.signIn.passwordMethod;
-    }),
-    passwordMismatch: t(($) => {
-      return $.auth.v2.signIn.passwordMismatch;
-    }),
-    passwordResetMethod: t(($) => {
-      return $.auth.v2.signIn.passwordResetMethod;
-    }),
-    passwordSubtitle: t(($) => {
-      return $.auth.v2.signIn.passwordSubtitle;
-    }),
-    passwordTitle: t(($) => {
-      return $.auth.v2.signIn.passwordTitle;
-    }),
     passkeyCancelled: t(($) => {
       return $.auth.v2.signIn.passkeyCancelled;
     }),
-    passkeyMethod: t(($) => {
-      return $.auth.v2.signIn.passkeyMethod;
-    }),
     passkeyUnavailable: t(($) => {
       return $.auth.v2.signIn.passkeyUnavailable;
-    }),
-    resendCode: t(($) => {
-      return $.auth.v2.signIn.resendCode;
-    }),
-    resendCodeCooldown: (remainingSeconds) => {
-      return t(
-        ($) => {
-          return $.auth.v2.signIn.resendCodeCooldown;
-        },
-        {
-          resendCode: t(($) => {
-            return $.auth.v2.signIn.resendCode;
-          }),
-          seconds: remainingSeconds,
-        },
-      );
-    },
-    resetPassword: t(($) => {
-      return $.auth.v2.signIn.resetPassword;
-    }),
-    resetPasswordCodeSubtitle: t(($) => {
-      return $.auth.v2.signIn.resetPasswordCodeSubtitle;
-    }),
-    resetPasswordCodeTitle: t(($) => {
-      return $.auth.v2.signIn.resetPasswordCodeTitle;
-    }),
-    showPassword: t(($) => {
-      return $.auth.v2.signIn.showPassword;
     }),
     signInTitle: t(
       ($) => {
         return $.auth.v2.signIn.title;
       },
-      {
-        brandName: authBrand.brandName,
-      },
+      { brandName: authBrand.brandName },
     ),
-    signUp: t(($) => {
-      return $.auth.v2.signIn.signUp;
-    }),
-    startSubtitle: t(($) => {
-      return $.auth.v2.signIn.startSubtitle;
-    }),
     unknownError: t(($) => {
       return $.auth.v2.signIn.unknownError;
-    }),
-    useAnotherMethod: t(($) => {
-      return $.auth.v2.signIn.useAnotherMethod;
     }),
     userBanned: t(
       ($) => {
@@ -256,9 +286,17 @@ export function useAuthV2SignInCopy(): AuthV2SignInCopy {
         supportEmail,
       },
     ),
-    verify: t(($) => {
-      return $.auth.v2.signIn.verify;
-    }),
+  };
+}
+
+export function useAuthV2SignInCopy(): AuthV2SignInCopy {
+  const { t } = useTranslation();
+  const authBrand = resolveAuthBrandContext();
+  return {
+    ...signInEntryCopy(t, authBrand.brandName),
+    ...signInCodeCopy(t, authBrand.brandName),
+    ...signInPasswordCopy(t, authBrand.brandName),
+    ...signInTerminalCopy(t, authBrand),
   };
 }
 

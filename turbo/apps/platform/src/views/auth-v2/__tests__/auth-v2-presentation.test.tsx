@@ -23,6 +23,14 @@ function useJapaneseLocale(): void {
   });
 }
 
+function useGermanLocale(): void {
+  document.documentElement.lang = "de-DE";
+  context.mocks.data.userPreferences({
+    locale: "de-DE",
+    supportedLocales: ["de-DE", "en-US"],
+  });
+}
+
 function linkByText(text: string): HTMLAnchorElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.textContent?.trim() === text;
@@ -146,5 +154,18 @@ describe("auth v2 presentation", () => {
     );
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");
+  });
+
+  it("substitutes the Okou brand in a non-English Auth v2 template", async () => {
+    useGermanLocale();
+    setBrowserUrl("https://app.okou.ai/v2/sign-up");
+
+    detachedSetupPage({ context, path: "/v2/sign-up" });
+
+    await screen.findByLabelText("E-Mail-Adresse");
+    expect(
+      screen.getByRole("region", { name: "Ihr Okou-Konto erstellen" }),
+    ).toHaveAccessibleDescription("weiter zu Okou");
+    expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
 });
