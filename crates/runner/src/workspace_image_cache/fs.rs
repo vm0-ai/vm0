@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-#[cfg(not(test))]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use tokio::fs;
@@ -9,7 +8,7 @@ use tokio::fs;
 use chrono::SecondsFormat;
 
 use crate::bounded_command::{
-    BoundedCommandError, BoundedCommandOutcome, CommandOutputCapture, run_output_bounded,
+    BoundedCommandError, BoundedCommandOutcome, CommandOutputPolicy, run_output_bounded,
 };
 use crate::error::{RunnerError, RunnerResult};
 
@@ -27,9 +26,13 @@ impl WorkspaceImageCache {
 
         #[cfg(not(test))]
         {
-            let path = self.workspace_image_cache_fs_stats_path();
-            statvfs_bytes(&path).await
+            self.query_fs_stats().await
         }
+    }
+
+    pub(super) async fn query_fs_stats(&self) -> RunnerResult<FsStats> {
+        let path = self.workspace_image_cache_fs_stats_path();
+        statvfs_bytes(&path).await
     }
 
     pub(super) async fn ensure_workspace_cache_entry_dir(
@@ -160,9 +163,14 @@ pub(super) async fn sparse_copy_with_timeout(
         .arg("--")
         .arg(src)
         .arg(dst);
-    let output = match run_output_bounded(command, "cp", CommandOutputCapture::Stderr, timeout)
-        .await
-        .map_err(cp_command_error)?
+    let output = match run_output_bounded(
+        command,
+        "cp",
+        CommandOutputPolicy::diagnostic_stderr(),
+        timeout,
+    )
+    .await
+    .map_err(cp_command_error)?
     {
         BoundedCommandOutcome::Exited(output) => output,
         BoundedCommandOutcome::TimedOut => {
@@ -191,10 +199,12 @@ fn cp_command_error(error: BoundedCommandError) -> RunnerError {
         BoundedCommandError::Spawn(error) => RunnerError::Internal(format!("exec cp: {error}")),
         BoundedCommandError::Wait(error) => RunnerError::Internal(format!("wait cp: {error}")),
         BoundedCommandError::Lifecycle(message) => RunnerError::Internal(message),
+        BoundedCommandError::OutputTooLarge { stream, limit } => RunnerError::Internal(format!(
+            "cp {stream} exceeded output limit of {limit} bytes"
+        )),
     }
 }
 
-#[cfg(not(test))]
 pub(super) async fn statvfs_bytes(path: &Path) -> RunnerResult<FsStats> {
     let path = path.to_owned();
     tokio::task::spawn_blocking(move || statvfs_bytes_sync(&path))
@@ -225,26 +235,29 @@ pub(super) async fn entry_file_type_matches(
     }
 }
 
-#[cfg(not(test))]
 pub(super) fn statvfs_bytes_sync(path: &Path) -> RunnerResult<FsStats> {
-    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    let stats = statvfs_for_path(path)?;
+    Ok(fs_stats_from_statvfs(&stats))
+}
+
+pub(super) fn statvfs_for_path(path: &Path) -> RunnerResult<libc::statvfs> {
     let bytes = path.as_os_str().as_bytes();
-    let c_path = std::ffi::CString::new(bytes).map_err(|_| {
-        RunnerError::Internal(format!(
-            "statvfs path contains nul byte: {}",
-            path.display()
-        ))
-    })?;
+    let c_path = std::ffi::CString::new(bytes)
+        .map_err(|_| RunnerError::Internal("statvfs path contains nul byte".to_owned()))?;
+    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
     let rc = unsafe { libc::statvfs(c_path.as_ptr(), stats.as_mut_ptr()) };
     if rc != 0 {
         return Err(std::io::Error::last_os_error().into());
     }
-    let stats = unsafe { stats.assume_init() };
+    Ok(unsafe { stats.assume_init() })
+}
+
+pub(super) fn fs_stats_from_statvfs(stats: &libc::statvfs) -> FsStats {
     let block_size = stats.f_frsize;
-    Ok(FsStats {
+    FsStats {
         total_bytes: stats.f_blocks.saturating_mul(block_size),
         available_bytes: stats.f_bavail.saturating_mul(block_size),
-    })
+    }
 }
 
 async fn path_tree_allocated_bytes(path: &Path, metadata: std::fs::Metadata) -> u64 {

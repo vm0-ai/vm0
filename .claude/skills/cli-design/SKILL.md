@@ -8,10 +8,6 @@ context: fork
 
 Use this skill when writing new CLI commands, reviewing CLI code, or fixing inconsistencies.
 
-## Documentation
-
-Read the CLI design guideline: [docs/cli-design-guideline.md](../../../docs/cli-design-guideline.md)
-
 ## Key Principles
 
 1. **Atomic Command** — each command does one operation, agents compose them freely

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ProcessCancelCall, ProcessControlCall, ReadFileCall, StartProcessCall,
-    WaitProcessCall, WriteFileCall, WriteFilesCall,
+    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::{ExecMatcherOutcome, MockSandboxOverrides};
@@ -35,6 +35,7 @@ pub struct MockSandbox {
     run_control_id: Option<String>,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
+    storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
     copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
@@ -76,6 +77,7 @@ impl MockSandbox {
             run_control_id: None,
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
+            storage_manifest_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             read_file_calls: Mutex::new(Vec::new()),
             copy_file_results: Mutex::new(VecDeque::new()),
@@ -222,6 +224,11 @@ impl MockSandbox {
     /// [`MockSandboxOverrides::exec_calls`].
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return this sandbox's recorded fixed storage-manifest calls.
+    pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
+        self.storage_manifest_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a small file read result. Results are consumed in FIFO order.
@@ -575,6 +582,34 @@ impl Sandbox for MockSandbox {
                 .unwrap_or_else(|| Ok(default_exec_result()))
         }?;
         Ok(apply_exec_output_limits(result, request.output_limits))
+    }
+
+    async fn apply_storage_manifest(
+        &self,
+        request: &StorageManifestRequest<'_>,
+    ) -> Result<ExecResult> {
+        let call = StorageManifestCall {
+            manifest_json: request.manifest_json.to_vec(),
+            run_id: request.run_id.to_string(),
+            runtime_dir: request.runtime_dir.to_string(),
+            timeout: request.timeout,
+        };
+        self.storage_manifest_calls
+            .lock_ignoring_poison()
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .exec
+                .storage_manifest_calls
+                .lock_ignoring_poison()
+                .push(call);
+        }
+        let result = self
+            .exec_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {

@@ -15,11 +15,11 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { createRestoredAttachment } from "../okou-page/chat-draft.ts";
 import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
@@ -152,12 +152,19 @@ const loadDraft$ = command(
       const restoredAttachments = restoredDraft.attachments.map(
         createRestoredAttachment,
       );
-      set(thread.composer.draft.seed$, {
-        content: restoredDraft.content,
-        userMessage: restoredDraft.userMessage,
-        generationTemplate: undefined,
-        attachments: restoredAttachments,
-      });
+      const removedUnavailableAttachments = await set(
+        thread.composer.draft.seed$,
+        {
+          content: restoredDraft.content,
+          userMessage: restoredDraft.userMessage,
+          generationTemplate: undefined,
+          attachments: restoredAttachments,
+        },
+        signal,
+      );
+      if (removedUnavailableAttachments) {
+        await set(thread.composer.draft.save$, signal);
+      }
     }
   },
 );

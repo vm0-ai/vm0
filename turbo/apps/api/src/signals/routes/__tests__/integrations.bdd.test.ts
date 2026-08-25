@@ -12,7 +12,10 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
+import {
+  insertLegacySlackPublicBrandDefaultsFixture,
+  readChatEventContextFixture,
+} from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -30,6 +33,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { readConnectorOAuthAccountMutation } from "./helpers/connector-credential-storage-state";
 
 /*
 helper gap:
@@ -1224,6 +1228,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
           orgId,
           userId: admin.userId,
           prompt: "install prompt",
+          publicBrand: "vm0",
         }),
       },
       [307],
@@ -1311,6 +1316,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
           userId: member.userId,
           flow: "connect",
           prompt: "member prompt",
+          publicBrand: "vm0",
         }),
       },
       [307],
@@ -1350,6 +1356,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
           orgId,
           userId: disconnectedMember.userId,
           flow: "connect",
+          publicBrand: "vm0",
         }),
       },
       [307],
@@ -1448,6 +1455,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       eventBody,
       integrations.signedSlackIngressHeaders(eventBody),
       [200],
+      "vm0",
     );
     await flushWaitUntilForTest();
 
@@ -1543,6 +1551,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       eventBody,
       integrations.signedSlackIngressHeaders(eventBody),
       [200],
+      "vm0",
     );
     for (const retryNum of ["1", "2", "3"]) {
       await integrations.requestSlackEvent(
@@ -1552,6 +1561,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
           "x-slack-retry-num": retryNum,
         },
         [200],
+        "vm0",
       );
     }
     await flushWaitUntilForTest();
@@ -1568,6 +1578,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(state.chat_ingress[0]).toMatchObject({
       eventId,
       payload: eventBody,
+      publicBrand: "vm0",
       routeId: state.chat_thread_routes[0]?.id,
       status: "processed",
       retryCount: 3,
@@ -1644,6 +1655,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       readChatEventContextFixture(canonicalInputMessage.id),
     ).resolves.toMatchObject({
       slackBotUserId: botUserId,
+      slackPublicBrand: "vm0",
       slackMessageText: `admit this event once with <@${mentionedSlackUserId}>`,
       slackMessageAssets: [
         {
@@ -1720,6 +1732,45 @@ describe("INT-01: Slack app deep webhook flows", () => {
       assistantText: "Canonical Slack retry answer",
     });
     await flushWaitUntilForTest();
+    if (!actor.orgId) {
+      throw new Error("Expected canonical Slack actor to belong to an org");
+    }
+    const deliveryCallback = (
+      await callbackStore.set(
+        readAgentRunCallbacks$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: run1Id,
+        },
+        context.signal,
+      )
+    ).find((callback) => {
+      return callback.internalKind === "slack:chat";
+    });
+    expect(deliveryCallback).toMatchObject({
+      payload: { publicBrand: "vm0" },
+    });
+
+    const legacyRoute = state.chat_thread_routes[0];
+    if (!legacyRoute) {
+      throw new Error("Expected a canonical Slack route for legacy writes");
+    }
+    const legacyDefaults = await insertLegacySlackPublicBrandDefaultsFixture({
+      chatThreadId: legacyRoute.chatThreadId,
+      routeId: legacyRoute.id,
+    });
+    expect(legacyDefaults).toMatchObject({
+      chatContextPublicBrand: "vm0",
+      ingressPublicBrand: "vm0",
+    });
+    const stateAfterLegacyWrites =
+      await integrations.readSlackTestState(teamId);
+    expect(
+      stateAfterLegacyWrites.chat_ingress.find((ingress) => {
+        return ingress.eventId === legacyDefaults.ingressEventId;
+      }),
+    ).toMatchObject({ publicBrand: "vm0", status: "pending" });
   });
 
   it("keeps queued Web and Slack inputs on one canonical route", async () => {
@@ -3388,7 +3439,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
 
     // Beyond the legacy baseline: a connected Slack user with zero visible
-    // agents gets the no-agents ephemeral from /zero switch, and the App
+    // agents gets the no-agents ephemeral from /okou switch, and the App
     // Home switch action returns silently without opening a modal.
     const emptySwitch = await integrations.postSlackCommand({
       teamId: bareInstall.teamId,
@@ -3431,7 +3482,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!status.defaultAgentId) {
       throw new Error("Expected onboarding to configure a default agent");
     }
-    await bdd.deleteVersionFreeAgent(onboarded, status.defaultAgentId);
+    await bdd.deleteAgent(onboarded, status.defaultAgentId);
     const missingSlackUserId = uniqueSlackUserId();
     const missingInstall = await integrations.installSlackWorkspace(onboarded, {
       installerSlackUserId: missingSlackUserId,
@@ -3483,9 +3534,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
       visibility: "private",
     });
     const slackUserId = uniqueSlackUserId();
-    const { teamId } = await integrations.installSlackWorkspace(actor, {
-      installerSlackUserId: slackUserId,
-    });
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
     integrations.clearSlackCallHistory();
 
     for (const text of ["", "help", "unknown"]) {
@@ -3496,10 +3550,35 @@ describe("INT-01: Slack app deep webhook flows", () => {
         text,
       });
       const helpJson = JSON.stringify(help);
-      expect(helpJson).toContain("Zero Slack Bot Help");
-      expect(helpJson).toContain("/zero switch");
-      expect(helpJson).toContain("/zero model");
+      expect(helpJson).toContain(`<@${botUserId}> Slack Bot Help`);
+      expect(helpJson).toContain("/okou switch");
+      expect(helpJson).toContain("/okou model");
+      expect(helpJson).toContain("/zero");
+      expect(helpJson).toContain(`<@${botUserId}>`);
     }
+
+    const vm0HostHelp = await integrations.postSlackCommand({
+      teamId,
+      userId: slackUserId,
+      channelId: "C_BDD_CMD",
+      text: "help",
+      publicBrand: "vm0",
+    });
+    const vm0HostHelpJson = JSON.stringify(vm0HostHelp);
+    expect(vm0HostHelpJson).toContain(`<@${botUserId}> Slack Bot Help`);
+    expect(vm0HostHelpJson).toContain("Connect to Zero");
+    expect(vm0HostHelpJson).toContain(`<@${botUserId}>`);
+
+    const legacyHelp = await integrations.postSlackCommand({
+      teamId,
+      userId: slackUserId,
+      channelId: "C_BDD_CMD",
+      command: "/zero",
+      text: "help",
+    });
+    expect(JSON.stringify(legacyHelp)).toContain(
+      `<@${botUserId}> Slack Bot Help`,
+    );
 
     const alreadyConnected = await integrations.postSlackCommand({
       teamId,
@@ -3591,13 +3670,24 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("handles Slack commands for unknown workspaces and unbound installations", async () => {
     integrations.configureSlackAppMocks();
     const slackUserId = uniqueSlackUserId();
+    const uninstalledTeamId = `T_BDD_NONE_${randomUUID().slice(0, 8)}`;
 
     const notInstalled = await integrations.postSlackCommand({
-      teamId: `T_BDD_NONE_${randomUUID().slice(0, 8)}`,
+      teamId: uninstalledTeamId,
       userId: slackUserId,
       text: "connect",
     });
     expect(JSON.stringify(notInstalled)).toContain("hasn't been set up");
+
+    const uninstalledHelp = await integrations.postSlackCommand({
+      teamId: uninstalledTeamId,
+      userId: slackUserId,
+      text: "help",
+    });
+    const uninstalledHelpJson = JSON.stringify(uninstalledHelp);
+    expect(uninstalledHelpJson).toContain("Slack Bot Help");
+    expect(uninstalledHelpJson).toContain("mention it in a channel");
+    expect(uninstalledHelpJson).not.toContain("@Okou");
 
     const unbound = await integrations.installSlackWorkspace(null);
     const help = await integrations.postSlackCommand({
@@ -3606,9 +3696,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       text: "help",
     });
     const helpJson = JSON.stringify(help);
-    expect(helpJson).toContain("/zero connect");
-    expect(helpJson).not.toContain("/zero switch");
-    expect(helpJson).not.toContain("/zero model");
+    expect(helpJson).toContain("/okou connect");
+    expect(helpJson).not.toContain("/okou switch");
+    expect(helpJson).not.toContain("/okou model");
+    expect(helpJson).toContain("/zero");
   });
 
   it("prompts for login when switching agents without a Slack connection", async () => {
@@ -3971,12 +4062,16 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.clearSlackCallHistory();
     const teamId = install.teamId;
 
-    await integrations.postSlackEvent(teamId, {
-      type: "app_home_opened",
-      user: slackUserId,
-      tab: "home",
-      channel: "D_BDD_HOME",
-    });
+    await integrations.postSlackEvent(
+      teamId,
+      {
+        type: "app_home_opened",
+        user: slackUserId,
+        tab: "home",
+        channel: "D_BDD_HOME",
+      },
+      "vm0",
+    );
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
         expect.objectContaining({ user_id: slackUserId }),
@@ -3984,6 +4079,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect(
         JSON.stringify(context.mocks.slack.views.publish.mock.calls),
       ).toContain("Connected to Zero");
+    });
+
+    context.mocks.slack.views.publish.mockClear();
+    await integrations.postSlackEvent(teamId, {
+      type: "app_home_opened",
+      user: slackUserId,
+      tab: "home",
+      channel: "D_BDD_HOME",
+    });
+    await flushWaitUntilAndAssert(() => {
+      expect(
+        JSON.stringify(context.mocks.slack.views.publish.mock.calls),
+      ).toContain("Connected to Okou");
     });
 
     await integrations.postSlackEvent(teamId, {
@@ -4013,10 +4121,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
       team: { id: teamId, domain: "bdd" },
       actions: [{ action_id: "home_disconnect", block_id: "home" }],
     };
-    const disconnected =
-      await integrations.postSlackInteractive(homeDisconnect);
+    mockEnv("APP_URL", "https://app.okou.ai");
+    const disconnected = await integrations.postSlackInteractive(
+      homeDisconnect,
+      "vm0",
+    );
     expect(disconnected).toBe("");
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
+    expect(
+      JSON.stringify(context.mocks.slack.views.publish.mock.calls),
+    ).toContain("https://app.vm0.ai/settings/slack");
+    mockEnv("APP_URL", "https://app.vm0.test");
     const disconnectedStatus = await integrations.requestSlackConnectStatus(
       actor,
       [200],
@@ -4294,7 +4409,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const fastRunId = await pollSlackRun(runnerGroup);
     const fastClaim = await runs.claimRunnerJob(fastRunId);
     expect(fastClaim.cliAgentType).toBe("codex");
-    expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(fastClaim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe(
+      fastClaim.environment?.OKOU_CODEX_SERVICE_TIER,
+    );
     const fastOkouToken = fastClaim.environment?.OKOU_TOKEN;
     if (!fastOkouToken) {
       throw new Error("Expected the Slack Fast run to expose OKOU_TOKEN");
@@ -4410,6 +4528,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(auditedBlocks).toContain("Audit");
     expect(auditedBlocks).toContain(`https://app.okou.ai/activities/${run1Id}`);
     expect(auditedBlocks).toContain("Claude Sonnet 5");
+
+    // Production can no longer author this historical shape. Requeue the
+    // real Slack callback without only its new field, then redrive the real
+    // delivery service to prove the installation brand carries old payloads.
+    context.mocks.slack.chat.postMessage.mockClear();
+    await integrations.redriveLegacySlackChatCallback(run1Id);
+    const legacyAuditedBlocks = slackPostMessageCallsJson();
+    expect(legacyAuditedBlocks).toContain("SLACK_BDD_OUTPUT");
+    expect(legacyAuditedBlocks).toContain("Audit");
+    expect(legacyAuditedBlocks).toContain(
+      `https://app.okou.ai/activities/${run1Id}`,
+    );
     await flushWaitUntilAndAssert(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
@@ -4777,7 +4907,7 @@ describe("INT-02: Telegram integration", () => {
     expect(noContentMessage.body).toBe("OK");
   });
 
-  it("keeps official Telegram missing-agent guidance on the persisted Okou brand", async () => {
+  it("keeps official Telegram missing-agent guidance on the webhook Host brand", async () => {
     const officialToken = "123456:bdd-official-okou-token";
     const officialUsername = "bdd_official_okou_bot";
     mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", officialToken);
@@ -4810,7 +4940,7 @@ describe("INT-02: Telegram integration", () => {
       throw new Error("Expected Telegram onboarding to configure an agent");
     }
 
-    const telegramUserId = 91_234_567;
+    const telegramUserId = randomInt(100_000_000, 999_999_999);
     await integrations.requestLinkTelegram(
       actor,
       {
@@ -4824,7 +4954,7 @@ describe("INT-02: Telegram integration", () => {
       [200],
       "okou",
     );
-    await bdd.deleteVersionFreeAgent(actor, onboarding.defaultAgentId);
+    await bdd.deleteAgent(actor, onboarding.defaultAgentId);
 
     const inbound = await integrations.requestTelegramWebhook(
       OFFICIAL_TELEGRAM_BOT_ID,
@@ -4843,6 +4973,7 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
       [200],
+      "okou",
     );
     expect(inbound.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5064,6 +5195,7 @@ describe("INT-02: Telegram integration", () => {
         "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
       },
       [200],
+      "okou",
     );
     expect(customConnectPrompt.body).toBe("OK");
     await flushWaitUntilForTest();
@@ -5086,14 +5218,14 @@ describe("INT-02: Telegram integration", () => {
       }),
     );
 
-    const zeroTokenList = await integrations.requestListTelegramBots(
+    const okouTokenList = await integrations.requestListTelegramBots(
       actor,
       [200],
     );
-    if (!("bots" in zeroTokenList.body)) {
+    if (!("bots" in okouTokenList.body)) {
       throw new Error("Expected Telegram bot list response");
     }
-    expect(zeroTokenList.body.bots).toContainEqual(
+    expect(okouTokenList.body.bots).toContainEqual(
       expect.objectContaining({
         id: botId,
         username: "bdd_telegram_bot",
@@ -5400,6 +5532,7 @@ describe("INT-02: Telegram integration", () => {
       }),
       { "x-telegram-bot-api-secret-token": webhookSecret },
       [200],
+      "okou",
     );
     expect(inbound.body).toBe("OK");
 
@@ -5409,7 +5542,10 @@ describe("INT-02: Telegram integration", () => {
     );
     const claim = await runs.claimRunnerJob(runId);
     expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(claim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBe(
+      claim.environment?.OKOU_CODEX_SERVICE_TIER,
+    );
     const okouToken = claim.environment?.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the Telegram Fast run to expose OKOU_TOKEN");
@@ -5608,7 +5744,7 @@ describe("INT-02: Telegram integration", () => {
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
@@ -5666,14 +5802,30 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected app sign-in redirect");
     }
     const unauthenticatedUrl = new URL(unauthenticatedLocation);
-    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.test");
+    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.ai");
     expect(unauthenticatedUrl.pathname).toBe("/sign-in");
     const redirectUrl = unauthenticatedUrl.searchParams.get("redirect_url");
     if (!redirectUrl) {
       throw new Error("Expected redirect_url query parameter");
     }
-    expect(new URL(redirectUrl).pathname).toBe(
-      "/api/okou/github/oauth/connect",
+    expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
+
+    const fixedOriginOkouConnect = await integrations.requestGithubOauthConnect(
+      null,
+      { publicBrand: "okou" },
+      [307],
+    );
+    const fixedOriginOkouUrl = new URL(
+      fixedOriginOkouConnect.headers.get("location") ?? "",
+    );
+    expect(fixedOriginOkouUrl.origin).toBe("https://app.okou.ai");
+    const fixedOriginRedirect =
+      fixedOriginOkouUrl.searchParams.get("redirect_url");
+    if (!fixedOriginRedirect) {
+      throw new Error("Expected branded GitHub connect redirect_url");
+    }
+    expect(new URL(fixedOriginRedirect).searchParams.get("publicBrand")).toBe(
+      "okou",
     );
 
     const actor = integrations.user();
@@ -5749,10 +5901,27 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       "https://www.vm0.test/api/connectors/github/callback",
     );
-    expect(authorizationUrl.searchParams.get("state")).toMatch(
-      /^[0-9a-f]{64}$/u,
-    );
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/u);
+    if (!state) {
+      throw new Error("Expected GitHub authorization state");
+    }
+    await expect(
+      readConnectorOAuthAccountMutation(context, state),
+    ).resolves.toMatchObject({
+      account_mutation: { intent: "single-account" },
+    });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const okouResponse = await integrations.requestGithubOauthConnect(
+      actor,
+      { publicBrand: "okou" },
+      [307],
+    );
+    const okouState = new URL(
+      okouResponse.headers.get("location") ?? "",
+    ).searchParams.get("state");
+    expect(okouState).toMatch(/^okou\.[0-9a-f]{64}$/u);
   });
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
@@ -6066,6 +6235,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "vm0",
     });
 
     const invalidConnect = await integrations.requestConnectAgentPhone(
@@ -6155,6 +6325,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps AgentPhone start-link, unlink, and webhook boundaries visible through APIs", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = integrations.user();
     integrations.clearAgentPhoneProvider();
 
@@ -6206,6 +6377,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       actor,
       { phoneHandle },
       [200],
+      "okou",
     );
     expect(sent.body).toStrictEqual({
       phoneHandle,
@@ -6225,6 +6397,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected AgentPhone verification text to include a URL");
     }
     const connectParams = new URL(connectUrl).searchParams;
+    expect(new URL(connectUrl).origin).toBe("https://app.okou.ai");
+    expect(connectParams.get("publicBrand")).toBe("okou");
+    expect(connectParams.get("brandSig")).toMatch(/^[0-9a-f]{64}$/u);
     const timestamp = Number(connectParams.get("ts") ?? "");
     if (!Number.isFinite(timestamp)) {
       throw new Error("Expected AgentPhone connect URL to include timestamp");
@@ -6235,11 +6410,26 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       timestamp,
       signature: connectParams.get("sig") ?? "",
       channel: connectParams.get("channel") ?? undefined,
+      publicBrand:
+        connectParams.get("publicBrand") === "okou"
+          ? ("okou" as const)
+          : undefined,
+      publicBrandSignature: connectParams.get("brandSig") ?? undefined,
     };
+    const crossBrandConnect = await integrations.requestConnectAgentPhone(
+      actor,
+      connectBody,
+      [400],
+      "vm0",
+    );
+    expect(crossBrandConnect.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
     const connected = await integrations.requestConnectAgentPhone(
       actor,
       connectBody,
       [200],
+      "okou",
     );
     expect(connected.body).toStrictEqual({ phoneHandle });
 
@@ -6249,6 +6439,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       phoneHandle,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "okou",
     });
 
     const missingAgentMessage = await integrations.requestSendPhoneMessage(
@@ -6300,9 +6491,49 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       integrations.user(),
       connectBody,
       [409],
+      "okou",
     );
     expect(duplicateConnect.body).toMatchObject({
       error: { code: "CONFLICT" },
+    });
+
+    mockOptionalEnv(
+      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
+      String(connectBody.timestamp),
+    );
+    const legacyConnect = await integrations.requestConnectAgentPhone(
+      integrations.user(),
+      {
+        phoneHandle: connectBody.phoneHandle,
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        timestamp: connectBody.timestamp,
+        signature: connectBody.signature,
+        channel: connectBody.channel,
+      },
+      [409],
+    );
+    expect(legacyConnect.body).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
+
+    mockOptionalEnv(
+      "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS",
+      String(connectBody.timestamp - 1),
+    );
+    const strippedNewConnect = await integrations.requestConnectAgentPhone(
+      integrations.user(),
+      {
+        phoneHandle: connectBody.phoneHandle,
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        timestamp: connectBody.timestamp,
+        signature: connectBody.signature,
+        channel: connectBody.channel,
+      },
+      [400],
+      "vm0",
+    );
+    expect(strippedNewConnect.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
 
     const alreadyLinkedStart = await integrations.requestStartAgentPhoneLink(
@@ -6325,6 +6556,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
+      publicBrand: "vm0",
     });
 
     const missingUnlink = await integrations.requestUnlinkAgentPhone(

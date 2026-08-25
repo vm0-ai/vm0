@@ -54,7 +54,7 @@ export const chatThreadEvents = pgTable(
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     chatThreadId: uuid("chat_thread_id").notNull(),
     kind: chatThreadEventKind("kind").notNull(),
-    agentComposeId: uuid("agent_compose_id").notNull(),
+    agentId: uuid("agent_id"),
     title: text("title"),
     selectedModel: varchar("selected_model", { length: 255 }),
     serviceTier: varchar("service_tier", {

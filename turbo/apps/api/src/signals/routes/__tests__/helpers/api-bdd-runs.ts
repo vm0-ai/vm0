@@ -9,15 +9,14 @@ import {
 } from "@okouai/api-contracts/contracts/cli-auth";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
@@ -52,10 +51,11 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
-import { createHistoricalAgentComposeFixture } from "../../../../test-fixtures/historical-agent-composes";
 import {
+  createDirectAgentExecutionFixture,
   createDirectRunFixture,
   listAgentRunsFixture,
+  type DirectAgentExecutionConfig,
   type DirectRunFixtureRequest,
 } from "../../../../test-fixtures/agent-runs";
 import {
@@ -82,7 +82,7 @@ import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
+type AgentRunRequest = z.infer<typeof runCreateBodySchema>;
 type DirectRunRequest = DirectRunFixtureRequest;
 interface RunsListQuery {
   readonly status?: string;
@@ -102,7 +102,6 @@ type RunnerConnectorRuntimeSyncRequest = z.input<
 >;
 type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
-type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof modelPoliciesMainContract.update)["body"]
 >;
@@ -311,7 +310,7 @@ export function createRunsApi(context: TestContext) {
   }
 
   return {
-    async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
+    async requestRemovedAgentRunCreation(actor: ApiTestUser): Promise<number> {
       const { authorization } = authenticate(context, actor);
       const app = createAppWithRoutes({
         signal: context.signal,
@@ -364,10 +363,10 @@ export function createRunsApi(context: TestContext) {
       readonly invoiceId: string;
     }> {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-      mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
-      mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
+      mockEnv("OKOU_PRICE_PRO", "price_bdd_pro");
+      mockEnv("OKOU_PRICE_TEAM", "price_bdd_team");
       mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
-      mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
+      mockEnv("OKOU_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 
@@ -472,7 +471,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(
       actor: ApiTestUser,
-      body: ZeroRunRequest,
+      body: AgentRunRequest,
       publicBrand: PublicBrand = "vm0",
     ) {
       const response = await accept(
@@ -739,7 +738,7 @@ export function createRunsApi(context: TestContext) {
     },
 
     /** Mints a route-test token without changing production capability issuance. */
-    zeroTokenForRunWithCapabilities(
+    okouTokenForRunWithCapabilities(
       actor: ApiTestUser,
       runId: string,
       capabilities: readonly Capability[],
@@ -750,7 +749,7 @@ export function createRunsApi(context: TestContext) {
       }
       const seconds = Math.floor(now() / 1000);
       return signSandboxJwtForTests({
-        scope: "zero",
+        scope: "okou",
         userId: actor.userId,
         orgId: actor.orgId,
         runId,
@@ -761,23 +760,16 @@ export function createRunsApi(context: TestContext) {
       });
     },
 
-    /**
-     * Constructs legacy Compose/version content that the current Agent API
-     * cannot express. Tests needing only a current Agent use createAgent().
-     */
-    async createHistoricalCompose(
+    async createDirectAgent(
       actor: ApiTestUser,
-      content: ComposeContent,
-    ): Promise<{
-      readonly composeId: string;
-      readonly name: string;
-      readonly versionId: string;
-    }> {
+      content: DirectAgentExecutionConfig,
+    ): Promise<{ readonly agentId: string; readonly name: string }> {
       if (!actor.orgId) {
-        throw new Error("Compose fixtures require an org-scoped actor");
+        throw new Error("Direct Agent fixtures require an org-scoped actor");
       }
-      return await createHistoricalAgentComposeFixture({
-        actor: { userId: actor.userId, orgId: actor.orgId },
+      return await createDirectAgentExecutionFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
         content,
         signal: context.signal,
       });
@@ -826,7 +818,7 @@ export function createRunsApi(context: TestContext) {
       } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -848,7 +840,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -865,7 +857,7 @@ export function createRunsApi(context: TestContext) {
       },
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(userPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
@@ -884,7 +876,7 @@ export function createRunsApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        runApp(context)(zeroUserPermissionGrantsContract).list({
+        runApp(context)(userPermissionGrantsContract).list({
           headers: authenticate(context, actor),
           query: { agentId },
         }),
@@ -895,7 +887,7 @@ export function createRunsApi(context: TestContext) {
 
     /**
      * Replaces the caller's enabled connector slugs for an agent through
-     * PUT /api/zero/agents/:id/user-connectors and returns the visible set.
+     * PUT /api/agents/:id/user-connectors and returns the visible set.
      */
     async enableAgentConnectors(
       actor: ApiTestUser,
@@ -1008,7 +1000,7 @@ export function createRunsApi(context: TestContext) {
 
     async requestCreateRun(
       actor: ApiTestUser | null,
-      body: ZeroRunRequest,
+      body: AgentRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
@@ -1032,7 +1024,7 @@ export function createRunsApi(context: TestContext) {
       return await accept(
         runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
-          body: body as ZeroRunRequest,
+          body: body as AgentRunRequest,
         }),
         statuses,
       );

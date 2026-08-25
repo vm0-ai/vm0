@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { customConnectorMcpResponseSchema } from "./zero-custom-connectors";
+import { customConnectorMcpResponseSchema } from "./custom-connectors";
 
 const c = initContract();
 

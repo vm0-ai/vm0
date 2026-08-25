@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.18.35](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.34...vsock-proto-v0.18.35) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** centralize process termination codec ([#28973](https://github.com/vm0-ai/vm0/issues/28973)) ([6c15cd8](https://github.com/vm0-ai/vm0/commit/6c15cd8f5056d98f40d751cbe445840e4248445e))
+
+## [0.18.34](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.33...vsock-proto-v0.18.34) (2026-08-24)
+
+
+### Bug Fixes
+
+* **rust:** make payload-too-large diagnostics unit-accurate ([#28806](https://github.com/vm0-ai/vm0/issues/28806)) ([d2c2ab3](https://github.com/vm0-ai/vm0/commit/d2c2ab316045c28a3b8726847c3b5c9a14831d09))
+
+## [0.18.33](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.32...vsock-proto-v0.18.33) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
+## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.31...vsock-proto-v0.18.32) (2026-08-21)
+
+
+### Documentation
+
+* **rust:** specify vsock frame buffer state on encode errors ([#28537](https://github.com/vm0-ai/vm0/issues/28537)) ([28b5965](https://github.com/vm0-ai/vm0/commit/28b596527eaff3854a5dd6c03fae3a9a5b6b5006))
+
 ## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.30...vsock-proto-v0.18.31) (2026-08-21)
 
 

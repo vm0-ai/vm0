@@ -8,14 +8,14 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
 from tests.auth_state_helpers import auth_cache_key, has_auth_state
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 
 async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_flow, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -48,18 +48,18 @@ async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_
 @pytest.mark.parametrize(
     ("run_id_value", "expected_reason", "expected_message"),
     [
-        ("", "empty_run_id", "proxy registry VM entry runId must be non-empty"),
-        ("  \t", "empty_run_id", "proxy registry VM entry runId must be non-empty"),
+        ("", "empty_run_id", "proxy registry sandbox entry runId must be non-empty"),
+        ("  \t", "empty_run_id", "proxy registry sandbox entry runId must be non-empty"),
         (
             " run-abc ",
             "invalid_run_id",
-            "proxy registry VM entry runId must not include leading or trailing whitespace",
+            "proxy registry sandbox entry runId must not include leading or trailing whitespace",
         ),
-        (None, "missing_run_id", "proxy registry VM entry is missing runId"),
-        (123, "invalid_run_id", "proxy registry VM entry runId must be a string"),
+        (None, "missing_run_id", "proxy registry sandbox entry is missing runId"),
+        (123, "invalid_run_id", "proxy registry sandbox entry runId must be a string"),
     ],
 )
-async def test_invalid_registered_vm_blocks_before_auth_injection(
+async def test_invalid_registered_sandbox_blocks_before_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -68,7 +68,7 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
     expected_reason,
     expected_message,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -83,10 +83,10 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
         },
     )
     if run_id_value is None:
-        del vm_info["runId"]
+        del sandbox_info["runId"]
     else:
-        vm_info["runId"] = run_id_value
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+        sandbox_info["runId"] = run_id_value
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -98,16 +98,16 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
+        "error": "invalid_registry_sandbox",
         "message": expected_message,
         "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
     assert not has_auth_state(auth_cache_key(run_id="", api_id="https://api.github.com"))
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
 @pytest.mark.parametrize(
@@ -117,25 +117,25 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
             False,
             None,
             "missing_cli_agent_type",
-            "proxy registry VM entry is missing cliAgentType",
+            "proxy registry sandbox entry is missing cliAgentType",
         ),
         (
             True,
             "",
             "empty_cli_agent_type",
-            "proxy registry VM entry cliAgentType must be non-empty",
+            "proxy registry sandbox entry cliAgentType must be non-empty",
         ),
         (
             True,
             None,
             "invalid_cli_agent_type",
-            "proxy registry VM entry cliAgentType must be a string",
+            "proxy registry sandbox entry cliAgentType must be a string",
         ),
         (
             True,
             123,
             "invalid_cli_agent_type",
-            "proxy registry VM entry cliAgentType must be a string",
+            "proxy registry sandbox entry cliAgentType must be a string",
         ),
     ],
 )
@@ -149,7 +149,7 @@ async def test_invalid_cli_agent_type_blocks_before_auth_injection(
     expected_reason,
     expected_message,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -164,10 +164,10 @@ async def test_invalid_cli_agent_type_blocks_before_auth_injection(
         },
     )
     if field_present:
-        vm_info["cliAgentType"] = cli_agent_type
+        sandbox_info["cliAgentType"] = cli_agent_type
     else:
-        del vm_info["cliAgentType"]
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+        del sandbox_info["cliAgentType"]
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -179,16 +179,16 @@ async def test_invalid_cli_agent_type_blocks_before_auth_injection(
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
+        "error": "invalid_registry_sandbox",
         "message": expected_message,
         "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.CLI_AGENT_TYPE not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
 @pytest.mark.parametrize("cli_agent_type", ["claude-code", "codex", "custom-agent"])
@@ -199,7 +199,7 @@ async def test_valid_cli_agent_type_is_copied_to_request_metadata(
     fake_firewall_headers,
     cli_agent_type,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -212,9 +212,9 @@ async def test_valid_cli_agent_type_is_copied_to_request_metadata(
             "ask": [],
             "unknownPolicy": "allow",
         },
-        vm_fields={"cliAgentType": cli_agent_type},
+        sandbox_fields={"cliAgentType": cli_agent_type},
     )
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -224,18 +224,18 @@ async def test_valid_cli_agent_type_is_copied_to_request_metadata(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert flow.metadata[metadata_keys.VM_RUN_ID] == vm_info["runId"]
+    assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == sandbox_info["runId"]
     assert flow.metadata[metadata_keys.CLI_AGENT_TYPE] == cli_agent_type
 
 
-async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
+async def test_invalid_registered_sandbox_non_object_blocks_before_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
 ):
     reg_path = tmp_path / "registry.json"
-    reg_path.write_text(json.dumps({"vms": {"10.200.0.5": "broken"}, "updatedAt": 0}))
+    reg_path.write_text(json.dumps({"sandboxes": {"10.200.0.5": "broken"}, "updatedAt": 0}))
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -247,15 +247,15 @@ async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
-        "message": "proxy registry VM entry must be an object",
-        "reason": "invalid_vm_entry",
+        "error": "invalid_registry_sandbox",
+        "message": "proxy registry sandbox entry must be an object",
+        "reason": "invalid_sandbox_entry",
     }
     auth_fetch.assert_not_called()
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
 @pytest.mark.parametrize(
@@ -276,7 +276,7 @@ async def test_invalid_billable_firewalls_blocks_before_auth_injection(
     billable_firewalls,
     include_field,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -291,10 +291,10 @@ async def test_invalid_billable_firewalls_blocks_before_auth_injection(
         },
     )
     if include_field:
-        vm_info["billableFirewalls"] = billable_firewalls
+        sandbox_info["billableFirewalls"] = billable_firewalls
     else:
-        del vm_info["billableFirewalls"]
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+        del sandbox_info["billableFirewalls"]
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -306,25 +306,63 @@ async def test_invalid_billable_firewalls_blocks_before_auth_injection(
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
-        "message": "proxy registry VM entry billableFirewalls must be a list of strings",
+        "error": "invalid_registry_sandbox",
+        "message": "proxy registry sandbox entry billableFirewalls must be a list of strings",
         "reason": "invalid_billable_firewalls",
     }
     auth_fetch.assert_not_called()
     assert flow.request.headers.get("Authorization") is None
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
-async def test_invalid_connector_routing_variables_block_before_auth_injection(
+@pytest.mark.parametrize(
+    ("sandbox_fields", "expected_reason", "expected_message"),
+    [
+        pytest.param(
+            {"omittedBuiltinFirewalls": [1]},
+            "invalid_omitted_intents",
+            "proxy registry sandbox entry omittedBuiltinFirewalls must be a string list",
+            id="omitted-intent-string-list",
+        ),
+        pytest.param(
+            {"omittedCustomConnectorIds": ["connector-1", "connector-1"]},
+            "invalid_omitted_intents",
+            "proxy registry sandbox entry omittedCustomConnectorIds must be unique",
+            id="omitted-intent-unique",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": []},
+            "invalid_connector_routing_variables",
+            "proxy registry sandbox entry connectorRoutingVariables must be an object",
+            id="routing-variables-object",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": {"github": {}}},
+            "invalid_connector_routing_variables",
+            "proxy registry sandbox entry connectorRoutingVariables keys must identify a connector",
+            id="routing-identity",
+        ),
+        pytest.param(
+            {"connectorRoutingVariables": {"builtin:github": {"HOST": 1}}},
+            "invalid_connector_routing_variables",
+            "proxy registry sandbox entry connectorRoutingVariables values must be string maps",
+            id="routing-variable-map",
+        ),
+    ],
+)
+async def test_invalid_routing_metadata_blocks_before_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
+    sandbox_fields,
+    expected_reason,
+    expected_message,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -337,9 +375,9 @@ async def test_invalid_connector_routing_variables_block_before_auth_injection(
             "ask": [],
             "unknownPolicy": "allow",
         },
-        vm_fields={"connectorRoutingVariables": {"github": {"HOST": "example.test"}}},
+        sandbox_fields=sandbox_fields,
     )
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -351,27 +389,32 @@ async def test_invalid_connector_routing_variables_block_before_auth_injection(
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
-        "message": (
-            "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
-        ),
-        "reason": "invalid_connector_routing_variables",
+        "error": "invalid_registry_sandbox",
+        "message": expected_message,
+        "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
+    assert flow.request.headers.get("Authorization") is None
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
+    assert metadata_keys.CLI_AGENT_TYPE not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
 @pytest.mark.parametrize(
     "firewalls",
     [0, 1, False, True, "", {}, {"name": "github"}, "broken"],
 )
-async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injection(
+async def test_invalid_registered_sandbox_firewalls_shape_blocks_before_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
     firewalls,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -385,8 +428,8 @@ async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injectio
             "unknownPolicy": "allow",
         },
     )
-    vm_info["firewalls"] = firewalls
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    sandbox_info["firewalls"] = firewalls
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
 
     with (
@@ -398,24 +441,24 @@ async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injectio
     assert flow.response is not None
     assert flow.response.status_code == 503
     assert json.loads(flow.response.content) == {
-        "error": "invalid_registry_vm",
-        "message": "proxy registry VM entry firewalls must be a list",
+        "error": "invalid_registry_sandbox",
+        "message": "proxy registry sandbox entry firewalls must be a list",
         "reason": "invalid_firewalls",
     }
     auth_fetch.assert_not_called()
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
-async def test_registered_vm_null_firewalls_passes_through_without_auth_injection(
+async def test_registered_sandbox_null_firewalls_passes_through_without_auth_injection(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
 ):
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -429,8 +472,8 @@ async def test_registered_vm_null_firewalls_passes_through_without_auth_injectio
             "unknownPolicy": "allow",
         },
     )
-    vm_info["firewalls"] = None
-    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    sandbox_info["firewalls"] = None
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
     flow = real_flow(with_response=False, client_ip="10.200.0.5", host="unconfigured.example.com")
 
     with (
@@ -441,6 +484,6 @@ async def test_registered_vm_null_firewalls_passes_through_without_auth_injectio
 
     assert flow.response is None
     auth_fetch.assert_not_called()
-    assert flow.metadata[metadata_keys.VM_RUN_ID] == vm_info["runId"]
+    assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == sandbox_info["runId"]
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"

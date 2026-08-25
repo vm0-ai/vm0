@@ -60,7 +60,7 @@ export function persistedChatThreadModelSnapshotColumns() {
     modelProviderType: chatThreads.modelProviderType,
     modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
     codexServiceTier: chatThreads.codexServiceTier,
-    agentComposeId: chatThreads.agentComposeId,
+    agentId: chatThreads.agentId,
   };
 }
 
@@ -70,7 +70,7 @@ interface PersistedChatThreadModelSnapshot {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }
 
 export type PersistedChatThreadModelResolutionPath =
@@ -152,7 +152,7 @@ async function loadLockedChatThreadModel(
     )
     .limit(1)
     .for("update");
-  return thread;
+  return thread?.agentId ? { ...thread, agentId: thread.agentId } : undefined;
 }
 
 async function loadChatThreadModel(
@@ -169,7 +169,7 @@ async function loadChatThreadModel(
       ),
     )
     .limit(1);
-  return thread;
+  return thread?.agentId ? { ...thread, agentId: thread.agentId } : undefined;
 }
 
 function resolveCodexTier(args: {
@@ -242,10 +242,14 @@ async function persistReconciledChatThreadModel(args: {
   }
 
   const updatedAt = nowDate();
+  const pinColumns = chatThreadModelPinColumns(args.pin);
   await args.tx
     .update(chatThreads)
     .set({
-      ...chatThreadModelPinColumns(args.pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: args.persistedCodexServiceTier,
       updatedAt,
     })
@@ -261,7 +265,7 @@ async function persistReconciledChatThreadModel(args: {
       userId: args.params.userId,
       orgId: args.params.orgId,
       chatThreadId: args.params.threadId,
-      agentComposeId: args.thread.agentComposeId,
+      agentId: args.thread.agentId,
       selectedModel: args.pin.selectedModel,
       createdAt: updatedAt,
     });
@@ -272,7 +276,7 @@ async function persistReconciledChatThreadModel(args: {
       userId: args.params.userId,
       orgId: args.params.orgId,
       chatThreadId: args.params.threadId,
-      agentComposeId: args.thread.agentComposeId,
+      agentId: args.thread.agentId,
       serviceTier: chatThreadServiceTierFromCodex(
         args.persistedCodexServiceTier,
       ),

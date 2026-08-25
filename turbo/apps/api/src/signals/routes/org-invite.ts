@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { orgInviteContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import type { OrgRole } from "@okouai/api-contracts/contracts/org-members";
@@ -34,7 +34,6 @@ import {
 } from "../services/usage-pack-invitation-purchase.service";
 import { activeUsagePackBillingContext } from "../services/usage-pack-subscription.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -199,16 +198,17 @@ function invitationPurchaseError(args: {
 
 const inviteBody$ = bodyResultOf(orgInviteContract.invite);
 
-async function usagePackInvitationsEnabled(
-  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
+function usagePackInvitationsEnabled(
   orgId: string,
   userId: string,
-): Promise<boolean> {
-  const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-  return isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-    orgId,
-    userId,
-    overrides,
+): Computed<Promise<boolean>> {
+  return computed(async (get) => {
+    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
+    return isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
+      orgId,
+      userId,
+      overrides,
+    });
   });
 }
 
@@ -224,7 +224,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     return body.response;
   }
 
-  if (await usagePackInvitationsEnabled(get, auth.orgId, auth.userId)) {
+  if (await get(usagePackInvitationsEnabled(auth.orgId, auth.userId))) {
     signal.throwIfAborted();
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
@@ -322,7 +322,7 @@ const purchasePreviewInner$ = command(
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
       return providerUnavailable("Billing not configured");
     }
-    if (!(await usagePackInvitationsEnabled(get, auth.orgId, auth.userId))) {
+    if (!(await get(usagePackInvitationsEnabled(auth.orgId, auth.userId)))) {
       return {
         status: 403 as const,
         body: {
@@ -349,15 +349,7 @@ const purchasePreviewInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: body.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = body.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!body.data.returnUrl || !billingRedirectAllowed(body.data.returnUrl))
@@ -502,7 +494,7 @@ const purchaseConfirmInner$ = command(
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
       return providerUnavailable("Billing not configured");
     }
-    if (!(await usagePackInvitationsEnabled(get, auth.orgId, auth.userId))) {
+    if (!(await get(usagePackInvitationsEnabled(auth.orgId, auth.userId)))) {
       return {
         status: 403 as const,
         body: {

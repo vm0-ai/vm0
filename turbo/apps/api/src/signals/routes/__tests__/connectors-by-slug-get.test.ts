@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
@@ -19,6 +20,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
@@ -61,7 +63,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorManualGrantContract,
+      connectorManualGrantContract,
     ).connect({
       params: { connectorSlug: "openai" },
       body: {
@@ -77,11 +79,11 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
-    ).delete({
-      params: { connectorSlug: "openai" },
+    setupApp({ context, routes: connectorAccountRoutes })(
+      connectorAccountsContract,
+    ).disconnectSingleAccount({
       headers: authHeaders(),
+      body: { target: { kind: "builtin", connectorSlug: "openai" } },
     }),
     [204, 404],
   );
@@ -101,7 +103,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({ params: { connectorSlug: "github" }, headers: {} }),
@@ -115,7 +117,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -133,7 +135,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -153,7 +155,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -183,7 +185,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -206,7 +208,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({
@@ -226,7 +228,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
 
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
@@ -236,7 +238,7 @@ describe("GET /api/connectors/:connectorSlug", () => {
     });
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsBySlugContract,
+      connectorsBySlugContract,
     );
     const response = await accept(
       client.get({

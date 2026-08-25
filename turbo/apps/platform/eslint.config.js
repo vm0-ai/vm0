@@ -186,17 +186,17 @@ export default [
   },
   // Allow direct fetch$ in the abstraction layers and tests.
   // View files below use fetch$ for multipart file uploads that lack typed
-  // contracts — migrate them to zeroClient$ when contracts are added.
+  // contracts — migrate them to apiClient$ when contracts are added.
   {
     files: [
       "src/signals/fetch.ts",
       "src/signals/api-client.ts",
-      "src/signals/zero-page/chat-draft.ts",
+      "src/signals/okou-page/chat-draft.ts",
       "src/signals/__tests__/fetch.test.ts",
       "src/signals/voice-io/voice-io-stt.ts",
-      "src/views/zero-page/components/org-manage/org-general-tab.tsx",
+      "src/views/okou-page/components/org-manage/org-general-tab.tsx",
       "src/views/agents-page/agents-page.tsx",
-      "src/views/zero-page/zero-settings-tab.tsx",
+      "src/views/okou-page/settings-tab.tsx",
       "src/lib/push-notifications.ts",
     ],
     rules: {
@@ -226,7 +226,7 @@ export default [
     files: [
       "src/signals/utils.ts",
       "src/polyfill.ts",
-      "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
+      "src/views/okou-page/components/org-manage/read-image-dimensions.ts",
     ],
     rules: {
       "ccstate/no-new-promise": "off",

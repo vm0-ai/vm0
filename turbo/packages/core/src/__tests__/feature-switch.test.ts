@@ -13,7 +13,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.BoxConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
   });
 
@@ -26,7 +25,7 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ManagedModelProviderFallback, {}),
+      isFeatureEnabled(FeatureSwitchKey.BuiltInModelProviderFallback, {}),
     ).toBe(false);
   });
 
@@ -100,13 +99,11 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -123,25 +120,21 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
-    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -161,9 +154,22 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
-      true,
+    expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+  });
+
+  it("should enable the Bingjie-only composer switch only for Bingjie", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+    });
+    expect(bingjieStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+      false,
     );
   });
 

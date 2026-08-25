@@ -16,9 +16,9 @@ import type {
   ComposerFeedbackSignals,
   FeedbackRange,
   FeedbackSource,
-} from "../zero-page/chat-feedback.ts";
-import { writeToClipboard } from "../zero-page/clipboard.ts";
-import { setChatListQuery$ } from "../zero-page/zero-sidebar-state.ts";
+} from "../okou-page/chat-feedback.ts";
+import { writeToClipboard } from "../okou-page/clipboard.ts";
+import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
   ChatForwardComposerState,

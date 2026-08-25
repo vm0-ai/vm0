@@ -4,14 +4,14 @@ use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::pin::Pin;
 
-use sandbox::ExecTermination;
+use sandbox::{EXEC_OUTPUT_LIMIT_7_MIB, ExecTermination};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
-    RawMessage,
+    Decoder, ExecCapturedOutput, ExecOutputPolicy, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG,
+    MSG_READY, RawMessage,
 };
 
 use crate::control::client::send_exec;
@@ -860,9 +860,10 @@ async fn control_server_shutdown_cancels_pending_connection() {
 
 #[tokio::test]
 async fn control_exec_streams_both_capture_limits() {
-    const CAPTURE_LIMIT: usize = 7 * 1024 * 1024;
-    let stdout = vec![0xa5; CAPTURE_LIMIT];
-    let stderr = vec![0x5a; CAPTURE_LIMIT];
+    let stdout_limit = EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes as usize;
+    let stderr_limit = EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes as usize;
+    let stdout = vec![0xa5; stdout_limit];
+    let stderr = vec![0x5a; stderr_limit];
     let fixture = VsockExecFixture::connect(move |vsock_base| {
         mock_guest_returns_exec(
             vsock_base,
@@ -896,9 +897,9 @@ async fn control_exec_streams_both_capture_limits() {
         panic!("server should return a raw success response");
     };
     assert_eq!(termination, ExecTermination::Exited { exit_code: 23 });
-    assert_eq!(stdout.len(), CAPTURE_LIMIT);
+    assert_eq!(stdout.len(), stdout_limit);
     assert!(stdout.iter().all(|byte| *byte == 0xa5));
-    assert_eq!(stderr.len(), CAPTURE_LIMIT);
+    assert_eq!(stderr.len(), stderr_limit);
     assert!(stderr.iter().all(|byte| *byte == 0x5a));
     assert!(stdout_truncated);
     assert!(!stderr_truncated);
@@ -950,6 +951,64 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
         ),
         "cancelled in-flight control exec should leave vsock-host not parkable"
     );
+
+    fixture.guest_task.abort();
+    let _ = fixture.guest_task.await;
+}
+
+#[tokio::test]
+async fn control_exec_completes_second_request_while_first_is_in_flight() {
+    let (first_exec_seen_tx, first_exec_seen_rx) = oneshot::channel();
+    let fixture = VsockExecFixture::connect(|vsock_base| {
+        mock_guest_holds_first_exec_and_completes_second(vsock_base, first_exec_seen_tx)
+    })
+    .await;
+    let mut handle = fixture.spawn_server();
+    let first_client = tokio::spawn({
+        let sock_path = fixture.sock_path.clone();
+        async move {
+            send_exec(
+                &sock_path,
+                &exec_request("hold-first"),
+                Duration::from_secs(30),
+            )
+            .await
+        }
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), first_exec_seen_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!first_client.is_finished());
+
+    let second_response = tokio::time::timeout(
+        Duration::from_secs(1),
+        send_exec(
+            &fixture.sock_path,
+            &exec_request("complete-second"),
+            Duration::from_secs(5),
+        ),
+    )
+    .await
+    .expect("second control exec should remain responsive")
+    .unwrap();
+    let (termination, stdout, stderr, stdout_truncated, stderr_truncated, diagnostic) =
+        expect_exec_success(second_response);
+    assert_eq!(termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(stdout, b"second");
+    assert!(stderr.is_empty());
+    assert!(!stdout_truncated);
+    assert!(!stderr_truncated);
+    assert!(diagnostic.is_empty());
+    assert!(!first_client.is_finished());
+
+    handle.shutdown().await;
+    let first_result = tokio::time::timeout(Duration::from_secs(1), first_client)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(first_result.is_err());
 
     fixture.guest_task.abort();
     let _ = fixture.guest_task.await;
@@ -1220,6 +1279,50 @@ async fn mock_guest_holds_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<(
     mock_guest_until_exec(vsock_base, exec_seen, true).await;
 }
 
+async fn mock_guest_holds_first_exec_and_completes_second(
+    vsock_base: PathBuf,
+    first_exec_seen: oneshot::Sender<()>,
+) {
+    let listener_path = PathBuf::from(format!(
+        "{}_{}",
+        vsock_base.display(),
+        vsock_proto::VSOCK_PORT
+    ));
+    wait_for_socket_exists(&listener_path).await;
+
+    let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+    let first = read_vsock_message(&mut stream, &mut decoder).await;
+    assert_eq!(first.msg_type, MSG_EXEC_START);
+    first_exec_seen.send(()).unwrap();
+
+    let second = read_vsock_message(&mut stream, &mut decoder).await;
+    assert_eq!(second.msg_type, MSG_EXEC_START);
+    assert_ne!(second.seq, first.seq);
+    let mut frame = Vec::new();
+    vsock_proto::encode_exec_result_frame_into(
+        &mut frame,
+        second.seq,
+        vsock_proto::ExecTermination::Exited { exit_code: 0 },
+        10,
+        ExecCapturedOutput::Captured {
+            bytes: b"second",
+            truncated: false,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: &[],
+            truncated: false,
+        },
+        "",
+    )
+    .unwrap();
+    stream.write_all(&frame).await.unwrap();
+
+    std::future::pending::<()>().await;
+}
+
 async fn mock_guest_records_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<()>) {
     mock_guest_until_exec(vsock_base, exec_seen, false).await;
 }
@@ -1269,6 +1372,19 @@ async fn mock_guest_returns_exec(
     loop {
         let message = read_vsock_message(&mut stream, &mut decoder).await;
         if message.msg_type == MSG_EXEC_START {
+            let request = vsock_proto::decode_exec_start(&message.payload).unwrap();
+            assert_eq!(
+                request.stdout,
+                ExecOutputPolicy::Capture {
+                    limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes,
+                }
+            );
+            assert_eq!(
+                request.stderr,
+                ExecOutputPolicy::Capture {
+                    limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes,
+                }
+            );
             let mut frame = Vec::new();
             vsock_proto::encode_exec_result_frame_into(
                 &mut frame,

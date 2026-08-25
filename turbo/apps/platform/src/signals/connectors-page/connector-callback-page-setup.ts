@@ -2,7 +2,7 @@ import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
 } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
@@ -15,8 +15,8 @@ import {
 import { command } from "ccstate";
 import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";
-import { ZeroConnectorCallbackPage } from "../../views/zero-page/zero-connector-callback-page.tsx";
-import { zeroClient$ } from "../api-client.ts";
+import { ConnectorCallbackPage } from "../../views/okou-page/connector-callback-page.tsx";
+import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -163,7 +163,7 @@ function callbackPageElement(
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
-  return createElement(ZeroConnectorCallbackPage, {
+  return createElement(ConnectorCallbackPage, {
     connectorIcon,
     connectorLabel: label,
     status: result.status,
@@ -179,7 +179,7 @@ const completeConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(zeroClient$)(connectorsSlugCallbackContract, {
+    const client = get(apiClient$)(connectorsSlugCallbackContract, {
       apiBase: "api",
     });
     const response = await accept(
@@ -201,7 +201,7 @@ const completeCustomConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(zeroClient$)(zeroCustomConnectorOAuth2Contract, {
+    const client = get(apiClient$)(customConnectorOAuth2Contract, {
       apiBase: "api",
     });
     const response = await accept(

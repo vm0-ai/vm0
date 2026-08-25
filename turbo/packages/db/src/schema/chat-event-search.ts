@@ -37,7 +37,7 @@ export const chatEventSearchMessages = pgTable(
     runId: uuid("run_id"),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentComposeId: uuid("agent_compose_id").notNull(),
+    agentId: uuid("agent_id"),
     role: text("role").$type<"user" | "assistant">().notNull(),
     createdAt: timestamp("created_at").notNull(),
     text: text("text").notNull(),
@@ -54,10 +54,10 @@ export const chatEventSearchMessages = pgTable(
         table.orgId,
         table.createdAt.desc(),
       ),
-      index("chat_event_search_messages_user_org_agent_created_idx").on(
+      index("chat_event_search_messages_user_org_agent_id_created_idx").on(
         table.userId,
         table.orgId,
-        table.agentComposeId,
+        table.agentId,
         table.createdAt.desc(),
       ),
       index("chat_event_search_messages_tsv_idx").using("gin", table.tsv),

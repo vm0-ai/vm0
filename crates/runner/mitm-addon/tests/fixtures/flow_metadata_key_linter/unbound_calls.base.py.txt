@@ -1,19 +1,49 @@
 import operator
 
-dict.__getitem__(flow.metadata, "vm_run_id")
+dict.__getitem__(flow.metadata, "sandbox_run_id")
 dict.get(flow.metadata, "firewall_name")
 operator.getitem(flow.metadata, "firewall_action")
+dict.__setitem__(flow.metadata, "firewall_error", "error")
+dict.__delitem__(flow.metadata, "firewall_base")
+dict.pop(flow.metadata, "firewall_permission")
+dict.setdefault(flow.metadata, "auth_cache_hit", False)
+operator.setitem(flow.metadata, "network_log_target", "target")
+operator.delitem(flow.metadata, "sandbox_network_log_path")
 
 meta = flow.metadata
 dict.__getitem__(meta, "firewall_error")
 dict.get(meta, "firewall_base", None)
 operator.getitem(meta, "firewall_permission")
+dict.__setitem__(meta, "sandbox_run_id", "run")
+dict.__delitem__(meta, "firewall_name")
+dict.pop(meta, "firewall_action")
+dict.setdefault(meta, "firewall_error", "error")
+operator.setitem(meta, "firewall_base", "base")
+operator.delitem(meta, "firewall_permission")
 
-dict.__getitem__(flow.metadata, metadata_keys.VM_RUN_ID)
+dict.__getitem__(flow.metadata, metadata_keys.SANDBOX_RUN_ID)
 dict.get(flow.metadata, metadata_keys.FIREWALL_NAME)
 operator.getitem(flow.metadata, metadata_keys.FIREWALL_ACTION)
+dict.__setitem__(flow.metadata, metadata_keys.FIREWALL_ERROR, "error")
+dict.__delitem__(flow.metadata, metadata_keys.FIREWALL_BASE)
+dict.pop(flow.metadata, metadata_keys.FIREWALL_PERMISSION)
+dict.setdefault(flow.metadata, metadata_keys.AUTH_CACHE_HIT, False)
+operator.setitem(flow.metadata, metadata_keys.NETWORK_LOG_TARGET, "target")
+operator.delitem(flow.metadata, metadata_keys.SANDBOX_NETWORK_LOG_PATH)
 
-external = {"vm_run_id": "external"}
-dict.__getitem__(external, "vm_run_id")
+external = {"sandbox_run_id": "external"}
+dict.__getitem__(external, "sandbox_run_id")
 dict.get(external, "firewall_name")
 operator.getitem(external, "firewall_action")
+dict.__setitem__(external, "firewall_error", "error")
+dict.__delitem__(external, "firewall_base")
+dict.pop(external, "firewall_permission")
+dict.setdefault(external, "auth_cache_hit", False)
+operator.setitem(external, "network_log_target", "target")
+operator.delitem(external, "sandbox_network_log_path")
+
+args = (flow.metadata, "sandbox_run_id")
+dict.__setitem__(*args, "run")
+dict.pop(*args, "default")
+operator.setitem(*(flow.metadata, "firewall_name", "github"))
+operator.delitem(*(flow.metadata, "firewall_action"))

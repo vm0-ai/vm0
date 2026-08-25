@@ -6,7 +6,7 @@ import {
 import {
   customConnectorSlugSchema,
   type CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 

@@ -1,8 +1,29 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { CANONICAL_WORKING_DIR } from "./runners";
 
 const c = initContract();
+
+export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
+export function expandMountPath(mountPath: string | undefined): string {
+  if (mountPath === undefined || mountPath === MOUNT_PATH_TEMPLATE) {
+    return CANONICAL_WORKING_DIR;
+  }
+  return mountPath;
+}
+
+export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
+
+export const agentNameSchema = z
+  .string()
+  .min(3, "Agent name must be at least 3 characters")
+  .max(64, "Agent name must be 64 characters or less")
+  .regex(
+    AGENT_NAME_REGEX,
+    "Agent name must start and end with letter or number, and contain only letters, numbers, and hyphens",
+  );
 
 export const agentVisibilitySchema = z.enum(["public", "private"]);
 export type AgentVisibility = z.infer<typeof agentVisibilitySchema>;
@@ -61,12 +82,12 @@ export const agentInstructionsRequestSchema = z.object({
 });
 
 /**
- * Contract for GET/POST /api/okou/agents (list/create agents)
+ * Contract for GET/POST /api/agents (list/create agents)
  */
 export const agentsMainContract = c.router({
   create: {
     method: "POST",
-    path: "/api/okou/agents",
+    path: "/api/agents",
     headers: authHeadersSchema,
     body: agentRequestSchema,
     responses: {
@@ -77,28 +98,28 @@ export const agentsMainContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Create zero agent",
+    summary: "Create agent",
   },
   list: {
     method: "GET",
-    path: "/api/okou/agents",
+    path: "/api/agents",
     headers: authHeadersSchema,
     responses: {
       200: z.array(agentResponseSchema),
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List zero agents",
+    summary: "List agents",
   },
 });
 
 /**
- * Contract for GET/PUT/PATCH/DELETE /api/okou/agents/:id
+ * Contract for GET/PUT/PATCH/DELETE /api/agents/:id
  */
 export const agentsByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -108,11 +129,11 @@ export const agentsByIdContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get zero agent by id",
+    summary: "Get agent by id",
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentRequestSchema,
@@ -125,11 +146,11 @@ export const agentsByIdContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Update zero agent",
+    summary: "Update agent",
   },
   updateMetadata: {
     method: "PATCH",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentMetadataRequestSchema,
@@ -141,11 +162,11 @@ export const agentsByIdContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Update zero agent metadata",
+    summary: "Update agent metadata",
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/agents/:id",
+    path: "/api/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: c.noBody(),
@@ -157,17 +178,17 @@ export const agentsByIdContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Delete zero agent by id",
+    summary: "Delete agent by id",
   },
 });
 
 /**
- * Contract for GET/PUT /api/okou/agents/:id/instructions
+ * Contract for GET/PUT /api/agents/:id/instructions
  */
 export const agentInstructionsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id/instructions",
+    path: "/api/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -177,11 +198,11 @@ export const agentInstructionsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get zero agent instructions",
+    summary: "Get agent instructions",
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id/instructions",
+    path: "/api/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentInstructionsRequestSchema,
@@ -193,7 +214,7 @@ export const agentInstructionsContract = c.router({
       404: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Update zero agent instructions",
+    summary: "Update agent instructions",
   },
 });
 

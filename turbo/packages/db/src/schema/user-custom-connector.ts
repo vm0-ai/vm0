@@ -8,7 +8,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
@@ -28,14 +28,7 @@ export const userCustomConnectors = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     customConnectorId: uuid("custom_connector_id").notNull(),
     permissionNames: text("permission_names")
       .array()
@@ -45,6 +38,11 @@ export const userCustomConnectors = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "user_custom_connectors_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_user_custom_connectors_unique").on(
         table.orgId,
         table.userId,

@@ -1,9 +1,14 @@
-import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/user-permission-grants";
 import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 import {
   chatActionCallbackFromUrl,
   type ChatActionCallback,
 } from "./action-callback.ts";
+import {
+  chatActionIdMatches,
+  type ChatActionContext,
+  type ChatActionParseResult,
+} from "./chat-action-context.ts";
 import { parseTrustedPlatformUrl } from "./trusted-platform-url.ts";
 
 type PermissionAction = "allow" | "deny";
@@ -56,15 +61,16 @@ function parsePermissionActionPath(
 
 export function parsePermissionActionUrl(
   value: string,
-): PermissionActionDescriptor | null {
+  context: ChatActionContext | undefined,
+): ChatActionParseResult<PermissionActionDescriptor> {
   const url = parseTrustedPlatformUrl(value);
   if (!url) {
-    return null;
+    return { status: "unrelated" };
   }
 
   const path = parsePermissionActionPath(url.pathname);
   if (!path) {
-    return null;
+    return { status: "unrelated" };
   }
   // Historical permission links may use ref from before CLI 9.270.1.
   const connectorSlug =
@@ -78,29 +84,37 @@ export function parsePermissionActionUrl(
     action === "allow"
       ? parseUserPermissionGrantExpiresIn(url.searchParams.get("expiresIn"))
       : null;
-  const actionCallback = chatActionCallbackFromUrl(url);
+  const actionCallback = context
+    ? chatActionCallbackFromUrl(url, context)
+    : null;
 
   if (
+    !context ||
     !path.agentId ||
+    !chatActionIdMatches(path.agentId, context.agentId) ||
     !connectorSlug ||
     !permission ||
-    !isPermissionAction(action)
+    !isPermissionAction(action) ||
+    !actionCallback
   ) {
-    return null;
+    return { status: "invalid", originalUrl: value };
   }
 
   return {
-    scope: path.scope,
-    agentId: path.agentId,
-    connectorSlug,
-    permission,
-    action,
-    method,
-    path: requestPath,
-    reason,
-    expiresIn,
-    search: url.searchParams.toString(),
-    originalUrl: value,
-    ...actionCallback,
+    status: "valid",
+    descriptor: {
+      scope: path.scope,
+      agentId: context.agentId,
+      connectorSlug,
+      permission,
+      action,
+      method,
+      path: requestPath,
+      reason,
+      expiresIn,
+      search: url.searchParams.toString(),
+      originalUrl: value,
+      ...actionCallback,
+    },
   };
 }

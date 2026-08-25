@@ -10,7 +10,7 @@
 //! opens that file as a separate trust boundary and independently validates its
 //! ownership, permissions, schema, and firewall payload.
 //!
-//! Cache publication contains unresolved builtin definitions. For each VM, the
+//! Cache publication contains unresolved builtin definitions. For each sandbox, the
 //! Python registry path substitutes base URL variables, validates the resolved
 //! credentialed destination and host policy, assigns run-scoped API IDs, and
 //! compiles matchers before request enforcement.
@@ -21,7 +21,7 @@
 //! retries prevents provider startup readiness. A rejected periodic refresh
 //! never replaces the published file, so any previously published valid cache
 //! remains available. If the Python consumer rejects a new file identity, it
-//! exposes no catalog for that identity and marks builtin-dependent VM entries
+//! exposes no catalog for that identity and marks builtin-dependent sandbox entries
 //! invalid until a usable cache is loaded.
 //!
 //! # Cross-language compatibility
@@ -35,8 +35,9 @@
 //! `crates/runner/mitm-addon/src/builtin_firewall_cache.py` and
 //! `crates/runner/mitm-addon/src/registry_firewalls.py`. Changes to base URL,
 //! auth, `hostPolicy`, permission, or serialized firewall semantics must be
-//! reconciled across all three owners; cache-schema changes must be reconciled
-//! between Rust and Python. The shared base URL cases live in
+//! reconciled across all three owners. Cache format constants are generated
+//! from `turbo/packages/api-contracts/src/contracts/runners.ts` for both Rust
+//! and Python. The shared base URL cases live in
 //! `turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract.json`
 //! and are exercised by TypeScript and Python. Keep individual parser rules in
 //! executable validation and tests rather than duplicating them here.
@@ -53,7 +54,9 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use api_contracts::generated::constants::runners::BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+use api_contracts::generated::constants::runners::{
+    BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION, BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
+};
 
 use super::api::ApiClient;
 use crate::error::{RunnerError, RunnerResult};
@@ -63,8 +66,6 @@ use crate::types::Firewall;
 pub(super) const BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BUILTIN_FIREWALL_CATALOG_INITIAL_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_secs(2), Duration::from_secs(5)];
-const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = 1;
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct BuiltinFirewallCatalog {
@@ -982,6 +983,17 @@ mod tests {
         assert_eq!(cache.catalog_digest, digest());
         assert_eq!(cache.catalog_version, "test-catalog");
         assert_eq!(cache.firewalls["github"].name, "github");
+    }
+
+    #[test]
+    fn catalog_cache_rejects_unsupported_schema_version() {
+        let mut cache = BuiltinFirewallCatalogCache::from_catalog(catalog("github"));
+        cache.schema_version = BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION + 1;
+
+        assert_eq!(
+            cache.validate().unwrap_err(),
+            format!("unsupported schemaVersion {}", cache.schema_version)
+        );
     }
 
     #[tokio::test]

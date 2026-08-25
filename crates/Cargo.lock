@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.16"
+version = "1.0.17"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.19.0"
+version = "0.20.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -172,7 +172,7 @@ checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -387,7 +387,7 @@ dependencies = [
  "aws-smithy-types",
  "bytes",
  "h2 0.3.27",
- "h2 0.4.18",
+ "h2 0.4.19",
  "http 0.2.12",
  "http 1.5.0",
  "http-body 0.4.6",
@@ -708,9 +708,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.3"
+version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
+checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -811,7 +811,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -903,9 +903,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
+checksum = "8498c871161e1742aaa9d52551b2d6ebdd4c3d45a3be423e3728f33b955be550"
 dependencies = [
  "cfg-if",
 ]
@@ -1017,7 +1017,7 @@ checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -1156,7 +1156,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.74.18"
+version = "0.75.10"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.3.13"
+version = "0.3.19"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1299,8 +1299,9 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.11.12"
+version = "0.11.18"
 dependencies = [
+ "chrono",
  "libc",
  "process-control-ipc",
  "serde",
@@ -1311,7 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.23.15"
+version = "0.23.21"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1327,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.174"
+version = "0.16.184"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1338,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.72"
+version = "0.21.82"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1350,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.8.12"
+version = "0.8.18"
 dependencies = [
  "chrono",
  "clap",
@@ -1363,14 +1364,14 @@ dependencies = [
 
 [[package]]
 name = "guest-reseed"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "guest-session-prune"
-version = "0.3.26"
+version = "0.3.33"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -1381,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.0"
+version = "0.1.6"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1394,7 +1395,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.78"
+version = "0.1.87"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1423,9 +1424,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.18"
+version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "839c0e8a181239723652be9062bb56ca5bf5f64011f73b623f6f4fc59086a228"
+checksum = "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1657,7 +1658,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "h2 0.4.18",
+ "h2 0.4.19",
  "http 1.5.0",
  "http-body 1.1.0",
  "httparse",
@@ -1971,9 +1972,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.33"
+version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lru"
@@ -2059,7 +2060,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.77"
+version = "0.4.78"
 dependencies = [
  "bitvec",
  "libc",
@@ -2072,6 +2073,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-test-support",
+ "uuid",
  "which",
 ]
 
@@ -2292,7 +2294,7 @@ dependencies = [
 
 [[package]]
 name = "process-control-ipc"
-version = "0.3.4"
+version = "0.3.6"
 dependencies = [
  "libc",
  "proptest",
@@ -2595,7 +2597,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.169.18"
+version = "0.171.12"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2626,6 +2628,7 @@ dependencies = [
  "nix",
  "process-control-ipc",
  "reqwest",
+ "rustix",
  "sandbox",
  "sandbox-fc",
  "sandbox-mock",
@@ -2754,9 +2757,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.14"
+version = "0.103.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0527518605e68109d875e248ea259b6758801cf165e4b2c2733ae3b51f12535a"
+checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -2787,7 +2790,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.49"
+version = "0.19.51"
 dependencies = [
  "async-trait",
  "serde",
@@ -2799,7 +2802,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.232"
+version = "0.37.243"
 dependencies = [
  "async-trait",
  "clap",
@@ -2830,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.21"
+version = "0.9.29"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -2980,7 +2983,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3208,9 +3211,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.3"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+checksum = "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3293,7 +3296,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3385,7 +3388,7 @@ checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3702,9 +3705,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.24.1"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
+checksum = "f053576934f05a761a402421fbbe3d425d9366f75f978806a037b3ca481abecc"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
@@ -3733,7 +3736,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.93"
+version = "0.19.103"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3745,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.87"
+version = "0.17.92"
 dependencies = [
  "nix",
  "sandbox",
@@ -3760,14 +3763,14 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.31"
+version = "0.18.35"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vsock-test"
-version = "0.9.223"
+version = "0.9.234"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4209,7 +4212,7 @@ checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]

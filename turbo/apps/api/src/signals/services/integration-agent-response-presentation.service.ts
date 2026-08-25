@@ -10,7 +10,7 @@ import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { getRunModelDisplayName } from "@okouai/core/model-display-name";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
@@ -43,9 +43,9 @@ async function resolveRespondedByLabel(args: {
   }
 
   const [agent] = await args.db
-    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, args.composeId))
+    .select({ displayName: agents.displayName, name: agents.name })
+    .from(agents)
+    .where(eq(agents.id, args.composeId))
     .limit(1);
   const label = agent?.displayName ?? agent?.name;
   return label ? `Responded by ${label}` : undefined;
@@ -140,7 +140,7 @@ export async function resolveIntegrationAgentResponsePresentation(
     Object.keys(overrides).length > 0
       ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
       : undefined;
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.OkouDebug, {
     userId: args.userId,
     orgId: args.orgId,
     overrides: typedOverrides,

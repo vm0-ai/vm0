@@ -5,7 +5,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 
 /**
  * Per-user Microsoft Teams agent preference.
@@ -17,9 +17,9 @@ export const teamsUserAgentPreferences = pgTable(
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    selectedComposeId: uuid("selected_compose_id").references(
+    selectedAgentId: uuid("selected_agent_id").references(
       () => {
-        return agentComposes.id;
+        return agents.id;
       },
       { onDelete: "set null" },
     ),

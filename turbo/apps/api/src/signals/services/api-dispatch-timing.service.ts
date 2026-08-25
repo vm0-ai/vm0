@@ -4,6 +4,7 @@ import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 
 import { env } from "../../lib/env";
 import { normalizeBuildCommitSha } from "../../lib/build-info";
+import { singleton } from "../../lib/singleton";
 import { now } from "../../lib/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { safeSync } from "../utils";
@@ -13,6 +14,65 @@ export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
 export type ApiDispatchTimingDimensionsInput =
   | ApiDispatchTimingDimensions
   | (() => ApiDispatchTimingDimensions | undefined);
+
+type ApiProcessAgeBucket =
+  | "0_1s"
+  | "1_10s"
+  | "10_60s"
+  | "1_5m"
+  | "5_15m"
+  | "15m_plus";
+type ApiProcessDispatchOrdinalBucket =
+  | "first"
+  | "2_4"
+  | "5_16"
+  | "17_64"
+  | "65_plus";
+
+interface ApiProcessDispatchState {
+  ordinal: number;
+}
+
+const apiProcessDispatchState = singleton((): ApiProcessDispatchState => {
+  return { ordinal: 0 };
+});
+
+function apiProcessAgeBucket(processAgeMs: number): ApiProcessAgeBucket {
+  if (processAgeMs < 1000) {
+    return "0_1s";
+  }
+  if (processAgeMs < 10_000) {
+    return "1_10s";
+  }
+  if (processAgeMs < 60_000) {
+    return "10_60s";
+  }
+  if (processAgeMs < 300_000) {
+    return "1_5m";
+  }
+  if (processAgeMs < 900_000) {
+    return "5_15m";
+  }
+  return "15m_plus";
+}
+
+function claimApiProcessDispatchOrdinal(): ApiProcessDispatchOrdinalBucket {
+  const state = apiProcessDispatchState();
+  state.ordinal = Math.min(state.ordinal + 1, 65);
+  if (state.ordinal === 1) {
+    return "first";
+  }
+  if (state.ordinal <= 4) {
+    return "2_4";
+  }
+  if (state.ordinal <= 16) {
+    return "5_16";
+  }
+  if (state.ordinal <= 64) {
+    return "17_64";
+  }
+  return "65_plus";
+}
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -103,7 +163,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_run_callbacks"
   | "api_dispatch_prepare_run_context"
   | "api_dispatch_prepare_context_feature_switches"
-  | "api_dispatch_prepare_context_resolve_compose"
+  | "api_dispatch_prepare_context_resolve_agent_execution"
   | "api_dispatch_prepare_context_load_persisted_environment"
   | "api_dispatch_prepare_context_build_resolved_body"
   | "api_dispatch_prepare_context_resolve_framework"
@@ -130,11 +190,11 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_validate_environment"
   | "api_dispatch_prepare_context_load_user_timezone"
   | "api_dispatch_prepare_context_prepare_output_metadata"
-  | "api_dispatch_resolve_compose_by_agent_id"
-  | "api_dispatch_resolve_compose_by_session_id"
-  | "api_dispatch_resolve_compose_lookup_agent"
-  | "api_dispatch_resolve_compose_lookup_session_snapshot"
-  | "api_dispatch_resolve_compose_resolve_session_history"
+  | "api_dispatch_resolve_agent_execution_by_agent_id"
+  | "api_dispatch_resolve_agent_execution_by_session_id"
+  | "api_dispatch_resolve_agent_execution_lookup_agent"
+  | "api_dispatch_resolve_agent_execution_lookup_session_snapshot"
+  | "api_dispatch_resolve_agent_execution_resolve_session_history"
   | "api_dispatch_check_vm0_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_build_runner_job_payload"
@@ -146,6 +206,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_concurrency_preflight_lock_wait"
   | "api_dispatch_concurrency_preflight_check"
+  | "api_dispatch_queue_promotion_lock_wait"
+  | "api_dispatch_queue_promotion_lock_held"
   | "api_dispatch_resolve_queue_first_admission"
   | "api_dispatch_claim_queue_first_message"
   | "api_dispatch_resolve_queue_first_claim_snapshot"
@@ -179,6 +241,14 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_storage_manifest_assemble"
   | "api_dispatch_build_stored_execution_context"
   | "api_dispatch_connector_catalog_load_runtime_snapshot"
+  | "api_dispatch_connector_catalog_query_projection_identity"
+  | "api_dispatch_connector_catalog_query_projection_rows"
+  | "api_dispatch_connector_catalog_fetch_projection_rows"
+  | "api_dispatch_connector_catalog_validate_projection_rows"
+  | "api_dispatch_connector_catalog_parse_projection_rows"
+  | "api_dispatch_connector_catalog_verify_projection_row_digests"
+  | "api_dispatch_connector_catalog_count_projection_rows"
+  | "api_dispatch_connector_catalog_materialize_projection"
   | "api_dispatch_connector_catalog_query_identity"
   | "api_dispatch_connector_catalog_query_payload"
   | "api_dispatch_connector_catalog_decompress"
@@ -251,8 +321,12 @@ interface ApiDispatchTimingRecord {
 
 export class ApiDispatchTimingCollector {
   private readonly records: ApiDispatchTimingRecord[] = [];
+  private readonly processAgeBucket = apiProcessAgeBucket(performance.now());
+  private processDispatchOrdinalBucket:
+    | ApiProcessDispatchOrdinalBucket
+    | undefined;
 
-  private recordDuration(
+  recordDuration(
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     durationMs: number,
@@ -334,6 +408,17 @@ export class ApiDispatchTimingCollector {
     readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
+    // Goal scheduling can construct a collector for an empty drain. Only a
+    // run-associated telemetry flush should advance the dispatch ordinal.
+    if (records.length === 0) {
+      recordSandboxOperations([]);
+      return;
+    }
+    this.processDispatchOrdinalBucket ??= claimApiProcessDispatchOrdinal();
+    const processDimensions = {
+      api_process_age_bucket: this.processAgeBucket,
+      api_process_dispatch_ordinal_bucket: this.processDispatchOrdinalBucket,
+    } satisfies ApiDispatchTimingDimensions;
     const apiCommitSha = normalizeBuildCommitSha(env("GIT_COMMIT_SHA"));
     recordSandboxOperations(
       records.map((record) => {
@@ -347,6 +432,7 @@ export class ApiDispatchTimingCollector {
           dimensions: {
             ...args.dimensions,
             ...record.dimensions,
+            ...processDimensions,
             runner_group: args.runnerGroup,
             profile: args.profile,
             dispatch_path: args.dispatchPath,

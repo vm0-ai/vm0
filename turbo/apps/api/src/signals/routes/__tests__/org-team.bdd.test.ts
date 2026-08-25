@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { createHistoricalAgentComposeFixture } from "../../../test-fixtures/historical-agent-composes";
 import { createDeferredPromise } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
@@ -29,7 +28,7 @@ zero-team, and zero-default-agent route tests:
 - Per-route 401 / no-org / sandbox-token-rejection duplicates are merged:
   one representative per distinct inner-handler statement, plus two
   representative sandbox rejections in the run-scoped token chain.
-- "zero token without billing:read -> 403" is dropped: `generateZeroToken`
+- "zero token without billing:read -> 403" is dropped: `generateOkouToken`
   grants billing:read unconditionally, so the case is not API-constructible
   (zero-maps precedent).
 */
@@ -981,30 +980,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       visibility: "public",
     });
-    expect(defaultEntry?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
     expect(typeof defaultEntry?.updatedAt).toBe("string");
-
-    // The current Agent API always creates a zero-agent row, so direct
-    // historical construction is required to verify that a Compose-only row
-    // never appears in the Agent team list.
-    if (!admin.orgId) {
-      throw new Error("Historical Compose fixtures require an organization");
-    }
-    const composeName = slug("bdd-r5-compose");
-    const compose = await createHistoricalAgentComposeFixture({
-      actor: { userId: admin.userId, orgId: admin.orgId },
-      content: {
-        version: "1",
-        agents: { [composeName]: { framework: "claude-code" } },
-      },
-      signal: context.signal,
-    });
-    const teamAfterCompose = await api.listTeam(admin);
-    expect(
-      teamAfterCompose.map((entry) => {
-        return entry.id;
-      }),
-    ).not.toContain(compose.composeId);
 
     // Private agents are visible to their owner only; public agents to the
     // whole org; nothing leaks across orgs.
@@ -1032,15 +1008,15 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
 
     // Deleting the default agent clears the FK, then onboarding status lazily
     // restores a usable org default for admins.
-    await api.deleteVersionFreeAgent(admin, defaultAgentId);
+    await api.deleteAgent(admin, defaultAgentId);
     const restored = await api.readOnboardingStatus(admin);
     expect(restored.defaultAgentId).toBeTruthy();
     expect(restored.defaultAgentId).not.toBe(defaultAgentId);
   });
 });
 
-describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
-  it("serves the org read to a claimed run's zero token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
+describe("AUTH-02/ORG-01: run-scoped agent tokens on org routes", () => {
+  it("serves the org read to a claimed run's agent token and rejects member reads and org writes [ORG-TOKEN-G]", async () => {
     const runs = createRunsApi(context);
     const admin = api.user();
     api.acceptAgentStorageWrites();

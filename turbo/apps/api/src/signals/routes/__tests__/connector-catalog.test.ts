@@ -5,7 +5,7 @@ import {
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -44,7 +44,7 @@ async function enableFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.update({
@@ -61,7 +61,7 @@ async function deleteFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.delete({ headers: { authorization: "Bearer clerk-session" } }),
@@ -306,7 +306,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -338,7 +338,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -398,7 +398,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -420,7 +420,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
-  it("returns 403 for diagnostics when ZeroDebug is disabled", async () => {
+  it("returns 403 for diagnostics when OkouDebug is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
@@ -440,11 +440,11 @@ describe("GET /api/connector-catalog", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
-  it("returns sanitized DB diagnostics when ZeroDebug is enabled", async () => {
+  it("returns sanitized DB diagnostics when OkouDebug is enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     mocks.clerk.session(userId, orgId);
 
@@ -575,7 +575,7 @@ describe("GET /api/connector-catalog", () => {
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,

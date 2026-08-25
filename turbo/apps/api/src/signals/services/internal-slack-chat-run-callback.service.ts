@@ -6,10 +6,11 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackChatThreadRoutes } from "@okouai/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
@@ -102,10 +103,11 @@ async function loadSlackChatDeliveryContext(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -225,6 +227,10 @@ async function deliverClaimedSlackChatCallback(
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
   signal.throwIfAborted();
+  // Callbacks persisted by the pre-#28795 API can complete while their run
+  // drains for up to two hours. Remove this installation-brand fallback after
+  // #28937 verifies that old callbacks and retained rollback writers are gone.
+  const publicBrand = payload.publicBrand ?? binding.publicBrand;
   const [botToken, presentation] = await Promise.all([
     decryptPersistentSecretValue(binding.encryptedBotToken, featureContext),
     resolveIntegrationAgentResponsePresentation(
@@ -234,7 +240,7 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
-        publicBrand: binding.publicBrand,
+        publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {
@@ -331,6 +337,7 @@ export async function deliverSlackChatAdmissionFailure(
     readonly threadTs: string;
     readonly routeThreadTs?: string;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -352,7 +359,6 @@ export async function deliverSlackChatAdmissionFailure(
         slackUserId: slackOrgConnections.slackUserId,
         workspaceId: slackOrgConnections.slackWorkspaceId,
         encryptedBotToken: slackOrgInstallations.encryptedBotToken,
-        publicBrand: slackOrgInstallations.publicBrand,
       })
       .from(slackChatThreadRoutes)
       .innerJoin(
@@ -403,9 +409,9 @@ export async function deliverSlackChatAdmissionFailure(
         .where(eq(orgMetadata.orgId, args.orgId))
         .limit(1),
       args.db
-        .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, args.agentId))
+        .select({ displayName: agents.displayName, name: agents.name })
+        .from(agents)
+        .where(eq(agents.id, args.agentId))
         .limit(1),
     ]);
   signal.throwIfAborted();
@@ -420,8 +426,8 @@ export async function deliverSlackChatAdmissionFailure(
   if (mentionerCount > 1) {
     footerParts.push(`Reply to <@${binding.slackUserId}>`);
   }
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
-    ? `${appUrlForPublicBrand(env("APP_URL"), binding.publicBrand)}/activities`
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
+    ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities`
     : undefined;
   const botToken = await decryptPersistentSecretValue(
     binding.encryptedBotToken,

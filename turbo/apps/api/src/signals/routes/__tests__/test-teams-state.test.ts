@@ -291,6 +291,7 @@ describe("GET /api/test/teams-state", () => {
               conversationId: "19:e2e-dm@thread.v2",
               activityId: "activity-e2e",
               connectionId: fixture.connectionId,
+              publicBrand: "vm0",
             }),
           }),
         }),
@@ -306,13 +307,6 @@ describe("GET /api/test/teams-state", () => {
       id: fixture.defaultAgentId,
       name: "e2e-teams-agent",
       orgId: fixture.orgId,
-    });
-    expect(body.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-teams-agent",
-    });
-    expect(body.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 });

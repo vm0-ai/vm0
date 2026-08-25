@@ -67,6 +67,8 @@ pub const CLEAN_EXIT: i32 = 0;
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
@@ -1001,13 +1003,20 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::API_TOKEN_ENV,
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV,
         guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
         guest_contracts::env::RESUME_SESSION_ID_ENV,
+        guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
         guest_contracts::env::API_START_TIME_ENV,
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
         guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
@@ -1015,7 +1024,9 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::SETTINGS_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::ARTIFACTS_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -1026,9 +1037,14 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::USE_MOCK_CODEX_ENV,
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
         "VM0_TEST_CLAUDE_CONFIG_DIR",
         "VM0_TEST_CODEX_HOME_DIR",

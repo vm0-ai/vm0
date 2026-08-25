@@ -1,4 +1,4 @@
-import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/custom-connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicyValue,

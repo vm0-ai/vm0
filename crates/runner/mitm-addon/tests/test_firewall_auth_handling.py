@@ -53,7 +53,7 @@ async def _run_firewall_auth_phase(
     hook_phase: HookPhase,
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
     *,
     revalidate: Callable[[], bool] = _allow_current_firewall_authorization,
 ) -> auth.FirewallAuthHandlingResult | auth.FirewallHeaderPhaseAuthResult:
@@ -61,13 +61,13 @@ async def _run_firewall_auth_phase(
         return await auth.handle_firewall_request(
             flow,
             allow,
-            vm_info,
+            sandbox_info,
             revalidate_current_firewall_authorization=revalidate,
         )
     return await auth.try_apply_stream_safe_firewall_auth_for_requestheaders(
         flow,
         allow,
-        vm_info,
+        sandbox_info,
         revalidate_current_firewall_authorization=revalidate,
     )
 
@@ -92,7 +92,7 @@ def _firewall_flow(
     run_id: str = "test-run",
 ):
     flow = real_flow(with_response=False, host=host, path=path)
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
     return flow
 
 
@@ -124,7 +124,7 @@ def _copy_auth_config(auth_config: dict | None) -> dict:
     return copied
 
 
-def _vm_info(
+def _sandbox_info(
     tmp_path=None,
     *,
     run_id: str = "run-1",
@@ -139,15 +139,15 @@ def _vm_info(
             raise ValueError("tmp_path or network_log_path is required")
         network_log_path = str(tmp_path / "net.jsonl")
 
-    vm_info: dict[str, object] = {
+    sandbox_info: dict[str, object] = {
         "runId": run_id,
         "sandboxToken": sandbox_marker,
         "networkLogPath": network_log_path,
         "billableFirewalls": list(billable_firewalls or []),
     }
     if include_encrypted_secrets:
-        vm_info["encryptedSecrets"] = encrypted_secrets
-    return vm_info
+        sandbox_info["encryptedSecrets"] = encrypted_secrets
+    return sandbox_info
 
 
 def _token_meta(
@@ -173,12 +173,12 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
         api_entry = _api_entry(
             api_id="run-1:0",
             auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, params={"owner": "octocat", "repo": "hello"})
         token_meta = _token_meta(
             headers={"Authorization": "Bearer real-token", "X-Custom": "value"},
@@ -189,7 +189,9 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
@@ -231,13 +233,13 @@ class TestHandleFirewallRequest:
             method="POST",
         )
         flow.request.headers["Authorization"] = "Bearer upload-jwt"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
         api_entry = _api_entry(
             base="https://api.cloudflare.com/client",
             auth_config={},
             api_id="run-1:1",
         )
-        vm_info = _vm_info(tmp_path, include_encrypted_secrets=False)
+        sandbox_info = _sandbox_info(tmp_path, include_encrypted_secrets=False)
         allow = _allow(
             api_entry,
             name="cloudflare",
@@ -251,7 +253,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
             mitm_ctx(),
         ):
-            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
 
         expected_result = (
             auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -276,7 +278,7 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(auth_config={})
-        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
+        sandbox_info = _sandbox_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
         token_meta = _token_meta(headers={})
 
@@ -287,7 +289,7 @@ class TestHandleFirewallRequest:
                 hook_phase,
                 flow,
                 allow,
-                vm_info,
+                sandbox_info,
                 revalidate=_fail_if_current_firewall_authorization_is_revalidated,
             )
 
@@ -329,7 +331,7 @@ class TestHandleFirewallRequest:
         )
         flow.metadata.update(
             {
-                metadata_keys.VM_RUN_ID: "test-run",
+                metadata_keys.SANDBOX_RUN_ID: "test-run",
                 "preexisting": "keep",
             }
         )
@@ -337,7 +339,7 @@ class TestHandleFirewallRequest:
         original_url = flow.request.url
         original_headers = flow.request.headers.fields
         api_entry = _api_entry()
-        vm_info = _vm_info(
+        sandbox_info = _sandbox_info(
             tmp_path,
             include_encrypted_secrets=include_encrypted_secrets,
         )
@@ -349,7 +351,7 @@ class TestHandleFirewallRequest:
                 hook_phase,
                 flow,
                 allow,
-                vm_info,
+                sandbox_info,
                 revalidate=_fail_if_current_firewall_authorization_is_revalidated,
             )
 
@@ -378,8 +380,12 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
         first_flow = _firewall_flow(real_flow, run_id="run-1")
         second_flow = _firewall_flow(real_flow, run_id="run-1")
-        first_vm_info = _vm_info(tmp_path, run_id="run-1", encrypted_secrets="encrypted-first")
-        second_vm_info = _vm_info(tmp_path, run_id="run-1", encrypted_secrets="encrypted-second")
+        first_sandbox_info = _sandbox_info(
+            tmp_path, run_id="run-1", encrypted_secrets="encrypted-first"
+        )
+        second_sandbox_info = _sandbox_info(
+            tmp_path, run_id="run-1", encrypted_secrets="encrypted-second"
+        )
         mock_fetch = AsyncMock(
             side_effect=[
                 firewall_auth_success(headers={"Authorization": "Bearer first"}),
@@ -389,10 +395,10 @@ class TestHandleFirewallRequest:
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch), mitm_ctx():
             first_result = await handle_firewall_request_without_upstream_admission(
-                first_flow, allow, first_vm_info
+                first_flow, allow, first_sandbox_info
             )
             second_result = await handle_firewall_request_without_upstream_admission(
-                second_flow, allow, second_vm_info
+                second_flow, allow, second_sandbox_info
             )
 
         assert first_result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -435,8 +441,8 @@ class TestHandleFirewallRequest:
         second_name = first_name
         first_base = "https://api.github.com"
         second_base = first_base
-        first_vm_info = _vm_info(tmp_path, run_id="run-1")
-        second_vm_info = _vm_info(tmp_path, run_id="run-1")
+        first_sandbox_info = _sandbox_info(tmp_path, run_id="run-1")
+        second_sandbox_info = _sandbox_info(tmp_path, run_id="run-1")
 
         if changed_input == "firewall-name":
             second_name = "github-enterprise"
@@ -463,17 +469,17 @@ class TestHandleFirewallRequest:
                 },
             }
         elif changed_input == "encrypted-secrets":
-            second_vm_info["encryptedSecrets"] = "encrypted-updated"
+            second_sandbox_info["encryptedSecrets"] = "encrypted-updated"
         elif changed_input == "secret-connector-map":
-            second_vm_info["secretConnectorMap"] = {"GITHUB_TOKEN": "github"}
+            second_sandbox_info["secretConnectorMap"] = {"GITHUB_TOKEN": "github"}
         elif changed_input == "secret-connector-metadata-map":
-            second_vm_info["secretConnectorMetadataMap"] = {"GITHUB_TOKEN": {"kind": "oauth"}}
+            second_sandbox_info["secretConnectorMetadataMap"] = {"GITHUB_TOKEN": {"kind": "oauth"}}
         elif changed_input == "vars":
-            second_vm_info["vars"] = {"TEAM": "vm0"}
+            second_sandbox_info["vars"] = {"TEAM": "vm0"}
         elif changed_input == "billable":
-            second_vm_info["billableFirewalls"] = [second_name]
+            second_sandbox_info["billableFirewalls"] = [second_name]
         elif changed_input == "sandbox-token":
-            second_vm_info["sandboxToken"] = "sandbox-token-updated"
+            second_sandbox_info["sandboxToken"] = "sandbox-token-updated"
         else:
             raise AssertionError(f"Unhandled auth identity input: {changed_input}")
 
@@ -498,12 +504,12 @@ class TestHandleFirewallRequest:
             await handle_firewall_request_without_upstream_admission(
                 first_flow,
                 _allow(first_api_entry, name=first_name),
-                first_vm_info,
+                first_sandbox_info,
             )
             await handle_firewall_request_without_upstream_admission(
                 second_flow,
                 _allow(second_api_entry, name=second_name),
-                second_vm_info,
+                second_sandbox_info,
             )
 
         assert mock_get_firewall_headers.await_count == 2
@@ -549,7 +555,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.API_KEY }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         token_meta = _token_meta(
             headers={
@@ -574,7 +580,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
 
         expected_result = (
             auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -618,7 +624,7 @@ class TestHandleFirewallRequest:
                 ("Authorization", placeholder_authorization),
             ),
         )
-        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
         flow.metadata[metadata_keys.ORIGINAL_URL] = get_trusted_authority(flow).url
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
@@ -631,7 +637,7 @@ class TestHandleFirewallRequest:
                 },
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
         token_meta = _token_meta(
             headers={
@@ -645,7 +651,9 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert flow.request.headers["host"] == STS_HOST
@@ -681,7 +689,7 @@ class TestHandleFirewallRequest:
                 ),
             ),
         )
-        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
         flow.metadata[metadata_keys.ORIGINAL_URL] = get_trusted_authority(flow).url
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
@@ -693,14 +701,14 @@ class TestHandleFirewallRequest:
                 }
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
         token_meta = _token_meta()
         token_meta["aws_sigv4"] = resolved_aws_sigv4_credentials()
         get_firewall_headers = AsyncMock(return_value=token_meta)
 
         with patch.object(auth, "get_firewall_headers", get_firewall_headers), mitm_ctx():
-            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
 
         expected_result = (
             auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -712,6 +720,72 @@ class TestHandleFirewallRequest:
         assert flow.request.headers["x-amz-content-sha256"] == "UNSIGNED-PAYLOAD"
         assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
         assert "Credential=AKIDEXAMPLE/" in flow.request.headers["authorization"]
+
+    async def test_requestheaders_auth_application_failure_restores_probe_state(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        flow.request.headers["X-Client"] = "original"
+        flow.metadata["preexisting"] = "keep"
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_TOKEN }}"},
+            },
+        )
+        sandbox_info = _sandbox_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(headers={"Authorization": "Bearer managed-token"})
+        token_meta["query"] = {"api_key": "managed-query"}
+        get_firewall_headers = AsyncMock(return_value=token_meta)
+        revalidation_count = 0
+        mutation_observed = False
+        set_query = flow.request._set_query
+
+        def revalidate() -> bool:
+            nonlocal revalidation_count
+            revalidation_count += 1
+            return True
+
+        def set_query_then_fail(query: list[tuple[str, str]]) -> None:
+            nonlocal mutation_observed
+            set_query(query)
+            assert flow.request.headers["Authorization"] == "Bearer managed-token"
+            assert flow.request.query["api_key"] == "managed-query"
+            assert flow.request.url != original_url
+            assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+            mutation_observed = True
+            raise RuntimeError("query setter failed after mutation")
+
+        with (
+            patch.object(auth, "get_firewall_headers", get_firewall_headers),
+            patch.object(flow.request, "_set_query", set_query_then_fail),
+            mitm_ctx(),
+        ):
+            result = await _run_firewall_auth_phase(
+                "requestheaders",
+                flow,
+                allow,
+                sandbox_info,
+                revalidate=revalidate,
+            )
+
+        get_firewall_headers.assert_awaited_once()
+        assert revalidation_count == 1
+        assert mutation_observed is True
+        assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+        assert flow.metadata == original_metadata
+        assert flow.request.url == original_url
+        assert flow.request.headers.fields == original_headers
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
 
     @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_unexpected_resolved_auth_base_fails_closed_in_both_phases(
@@ -727,7 +801,7 @@ class TestHandleFirewallRequest:
         original_url = flow.request.url
         original_headers = flow.request.headers.fields
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         token_meta = _token_meta(headers={"Authorization": "Bearer token"})
         token_meta["base"] = "https://unexpected.example.com"
@@ -736,7 +810,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
 
         if hook_phase == "requestheaders":
             assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
@@ -777,7 +851,7 @@ class TestHandleFirewallRequest:
         )
         flow.metadata.update(
             {
-                metadata_keys.VM_RUN_ID: "test-run",
+                metadata_keys.SANDBOX_RUN_ID: "test-run",
                 metadata_keys.ORIGINAL_URL: get_trusted_authority(flow).url,
                 "preexisting": "keep",
             }
@@ -794,7 +868,7 @@ class TestHandleFirewallRequest:
                 }
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
         token_meta = _token_meta()
 
@@ -802,7 +876,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
 
         if hook_phase == "requestheaders":
             assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
@@ -840,7 +914,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         token_meta = _token_meta(
             headers={
@@ -854,7 +928,9 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -874,7 +950,7 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(api_id="run-1:0")
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="GET /repos")
         token_meta = _token_meta()
 
@@ -882,7 +958,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
 
@@ -893,10 +969,10 @@ class TestHandleFirewallRequest:
         sandbox_token = "sensitive-sandbox-token"
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
         endpoint = FakeAuthEndpoint()
         api_entry = _api_entry()
-        vm_info = _vm_info(
+        sandbox_info = _sandbox_info(
             tmp_path,
             encrypted_secrets=encrypted_secrets,
             sandbox_marker=sandbox_token,
@@ -908,7 +984,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 0),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert endpoint.request_count == 0
@@ -935,7 +1013,7 @@ class TestHandleFirewallRequest:
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -947,7 +1025,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -989,7 +1069,7 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
 
         class FailingResolver:
@@ -1012,7 +1092,7 @@ class TestHandleFirewallRequest:
             patch.object(auth_client, "_dns_resolver", FailingResolver()),
             mitm_ctx(api_url="http://auth-endpoint.invalid"),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1039,7 +1119,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         endpoint = FakeAuthEndpoint()
         endpoint.queue_response(200, body=b"not-json")
@@ -1048,7 +1128,7 @@ class TestHandleFirewallRequest:
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1205,7 +1285,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         response = firewall_auth_success_response(
             {"Authorization": "Bearer resolved"},
@@ -1226,7 +1306,7 @@ class TestHandleFirewallRequest:
             result = await handle_firewall_request_without_upstream_admission(
                 flow,
                 allow,
-                vm_info,
+                sandbox_info,
             )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
@@ -1258,7 +1338,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         response = firewall_auth_success_response({"Authorization": "Bearer resolved"}) | {
             "query": {"api_key": "resolved-key"},
@@ -1270,7 +1350,9 @@ class TestHandleFirewallRequest:
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1295,7 +1377,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
         endpoint = FakeAuthEndpoint()
@@ -1310,7 +1392,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(api_url=endpoint.api_url),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1340,7 +1422,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response({"headers": []})
@@ -1349,7 +1431,7 @@ class TestHandleFirewallRequest:
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1369,7 +1451,7 @@ class TestHandleFirewallRequest:
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         api_error = auth_client.FirewallAuthApiError(
             status=502,
@@ -1388,7 +1470,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1412,7 +1496,7 @@ class TestHandleFirewallRequest:
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
         )
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         api_error = auth_client.FirewallAuthApiError(
             status=403,
@@ -1428,7 +1512,9 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1448,9 +1534,9 @@ class TestHandleFirewallRequest:
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
+        sandbox_info = _sandbox_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1468,7 +1554,9 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1492,7 +1580,7 @@ class TestHandleFirewallRequest:
         """On success, flow.response should remain None (request continues to origin)."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(network_log_path="")
+        sandbox_info = _sandbox_info(network_log_path="")
         allow = _allow(api_entry)
 
         with (
@@ -1511,7 +1599,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is None
 
@@ -1521,7 +1609,7 @@ class TestHandleFirewallRequest:
         """When connector is enabled but not linked, return 424 with missing secrets."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -1537,7 +1625,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1555,7 +1645,7 @@ class TestHandleFirewallRequest:
         """Billable firewall auth denied for credits returns 402 and blocks usage."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
+        sandbox_info = _sandbox_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1567,7 +1657,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1587,7 +1679,7 @@ class TestHandleFirewallRequest:
         """Connector slugs are only returned when the firewall name is known."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, name="", permission=None, rule=None)
 
         with (
@@ -1603,7 +1695,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -1620,7 +1712,7 @@ class TestHandleFirewallRequest:
         """When connector is not configured, return 424 with its slug."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(base="https://hcti.io")
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, name="htmlcsstoimage")
 
         with (
@@ -1636,7 +1728,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(platform_api, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -1646,18 +1738,20 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://hcti.io"
 
     async def test_missing_encrypted_secrets_returns_502(self, real_flow, headers, mitm_ctx):
-        """When encryptedSecrets is missing from vm_info, return 502."""
+        """When encryptedSecrets is missing from sandbox_info, return 502."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(
             auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}
         )
-        vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
+        sandbox_info = _sandbox_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
         admission = auth_base_forwarder.reserve_forward_request_admission(42)
         auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
 
         with mitm_ctx():
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
@@ -1678,7 +1772,7 @@ class TestHandleFirewallRequest:
     ):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
-        vm_info = _vm_info(tmp_path)
+        sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
         admission = auth_base_forwarder.reserve_forward_request_admission(42)
         auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
@@ -1698,7 +1792,7 @@ class TestHandleFirewallRequest:
             ),
         ):
             task = asyncio.create_task(
-                handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+                handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
             )
             try:
                 await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)

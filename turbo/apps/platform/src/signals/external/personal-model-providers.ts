@@ -1,12 +1,12 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProviderAccountsByIdContract,
+  personalModelProvidersMainContract,
+  personalModelProvidersByTypeContract,
+  personalModelProviderAccountsByIdContract,
   type ResetPersonalModelProviderSubscriptionUsageResponse,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 /**
@@ -20,8 +20,8 @@ const internalReloadPersonalModelProviders$ = state(0);
  */
 export const personalModelProviders$ = computed(async (get) => {
   get(internalReloadPersonalModelProviders$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroPersonalModelProvidersMainContract);
+  const createClient = get(apiClient$);
+  const client = createClient(personalModelProvidersMainContract);
   const result = await accept(client.list(), [200]);
   return result.body;
 });
@@ -31,8 +31,8 @@ export const personalModelProviders$ = computed(async (get) => {
  */
 export const deletePersonalModelProvider$ = command(
   async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProvidersByTypeContract);
+    const createClient = get(apiClient$);
+    const client = createClient(personalModelProvidersByTypeContract);
     await accept(
       client.delete({
         params: { type },
@@ -49,8 +49,8 @@ export const deletePersonalModelProvider$ = command(
 
 export const activatePersonalModelProviderAccount$ = command(
   async ({ get, set }, id: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    const createClient = get(apiClient$);
+    const client = createClient(personalModelProviderAccountsByIdContract);
     const result = await accept(
       client.activate({
         params: { id },
@@ -69,8 +69,8 @@ export const activatePersonalModelProviderAccount$ = command(
 
 export const deletePersonalModelProviderAccount$ = command(
   async ({ get, set }, id: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    const createClient = get(apiClient$);
+    const client = createClient(personalModelProviderAccountsByIdContract);
     await accept(
       client.delete({
         params: { id },
@@ -91,8 +91,8 @@ export const resetPersonalCodexAccountSubscriptionUsage$ = command(
     args: { readonly id: string; readonly idempotencyKey: string },
     signal: AbortSignal,
   ): Promise<ResetPersonalModelProviderSubscriptionUsageResponse> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    const createClient = get(apiClient$);
+    const client = createClient(personalModelProviderAccountsByIdContract);
     const result = await accept(
       client.resetSubscriptionUsage({
         params: { id: args.id },
@@ -117,8 +117,8 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
     },
     signal: AbortSignal,
   ): Promise<ResetPersonalModelProviderSubscriptionUsageResponse> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProvidersByTypeContract);
+    const createClient = get(apiClient$);
+    const client = createClient(personalModelProvidersByTypeContract);
     const result = await accept(
       client.resetSubscriptionUsage({
         params: { type: "codex-oauth-token" },

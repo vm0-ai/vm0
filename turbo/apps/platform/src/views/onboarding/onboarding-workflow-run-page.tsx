@@ -80,7 +80,7 @@ export function OnboardingWorkflowRunPage() {
             runLabel={
               custom
                 ? t(($) => {
-                    return $.onboarding.workflowRun.continueWithZero;
+                    return $.onboarding.workflowRun.continueWithAssistant;
                   })
                 : t(($) => {
                     return $.onboarding.workflowRun.createWorkflow;

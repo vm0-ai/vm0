@@ -68,7 +68,7 @@ function okouToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId ?? `run_${randomUUID()}`,
@@ -484,7 +484,7 @@ describe("POST /api/integrations/feishu/message", () => {
       type: "file",
     });
     const response = await app.request(
-      `/api/zero/integrations/feishu/download-file?${query.toString()}`,
+      `/api/integrations/feishu/download-file?${query.toString()}`,
       {
         headers: {
           authorization: `Bearer ${okouToken(actor)}`,

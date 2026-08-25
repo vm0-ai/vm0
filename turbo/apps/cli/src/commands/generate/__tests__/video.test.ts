@@ -14,7 +14,7 @@ import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
 import { videoCommand } from "../video";
 
-const VIDEO_URL = "http://localhost:3000/api/okou/video-io/generate";
+const VIDEO_URL = "http://localhost:3000/api/video-io/generate";
 const FIRST_FRAME_URL = "https://example.com/first.png";
 const LAST_FRAME_URL = "https://example.com/last.png";
 const VIDEO_RESULT = {
@@ -473,5 +473,28 @@ describe("okou generate video command", () => {
     expect(stderr).toContain("Paid plan required");
     expect(stderr).toContain("okou upgrade pro");
     expect(generationRequests).toBe(0);
+  });
+
+  it("names the catalog default as the model an omitted --model falls back to", () => {
+    // The help used to spell the default out by hand, and kept naming
+    // seedance 2.0 fast for a while after the catalog moved off it.
+    let help = "";
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        help += text;
+      },
+    });
+    videoCommand.outputHelp();
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        process.stdout.write(text);
+      },
+    });
+
+    const collapsed = help.replace(/\s+/g, " ");
+    expect(collapsed).toContain(
+      "Omitting --model generates with dreamina-seedance-2.0 ",
+    );
+    expect(collapsed).not.toContain("dreamina-seedance-2.0-fast (default)");
   });
 });

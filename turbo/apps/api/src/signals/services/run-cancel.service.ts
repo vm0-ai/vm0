@@ -22,7 +22,7 @@ import {
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
-import { drainOrgQueue$ } from "./run-queue.service";
+import { drainOrgQueue$ } from "./agent-run-lifecycle.service";
 
 const L = logger("RunCancel");
 

@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -1534,44 +1534,18 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     );
     expect(resultDeliveredBytes).toBeLessThanOrEqual(900_000);
 
-    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
-      ([message]) => {
-        return message === "Reduced oversized agent event for Axiom";
-      },
-    );
-    expect(reductionLogs).toHaveLength(2);
-    const assistantFields = reductionLogs[0]?.[1];
-    expect(assistantFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: assistantEvent.sequenceNumber,
-        eventType: assistantEvent.type,
-        originalBytes: assistantOriginalBytes,
-        deliveredBytes: assistantDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    const resultFields = reductionLogs[1]?.[1];
-    expect(resultFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: resultEvent.sequenceNumber,
-        eventType: resultEvent.type,
-        originalBytes: resultOriginalBytes,
-        deliveredBytes: resultDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    for (const fields of [assistantFields, resultFields]) {
-      expect(fields).not.toHaveProperty("eventData");
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedAssistantContent.slice(0, 64),
-      );
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedResultContent.slice(0, 64),
-      );
+    const reductionMessage = "Reduced oversized agent event for Axiom";
+    for (const calls of [
+      context.mocks.axiomLogging.debug.mock.calls,
+      context.mocks.axiomLogging.info.mock.calls,
+      context.mocks.axiomLogging.warn.mock.calls,
+      context.mocks.axiomLogging.error.mock.calls,
+    ]) {
+      expect(
+        calls.some(([message]) => {
+          return message === reductionMessage;
+        }),
+      ).toBeFalsy();
     }
   });
 
@@ -2103,7 +2077,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
-  it("attributes sandbox operation telemetry to the optional runner name", async () => {
+  it("attributes sandbox operation telemetry to optional runner dimensions", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,
     );
@@ -2119,6 +2093,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
             action_type: "runner_name_attribution",
             duration_ms: 12,
             success: true,
+            runner_pre_spawn_concurrency_bucket: "3_4",
           },
         ],
       },
@@ -2134,6 +2109,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
           run_id: runId,
           op_type: "runner_name_attribution",
           runner_name: "v0.168.14",
+          runner_pre_spawn_concurrency_bucket: "3_4",
         }),
       ],
     );
@@ -2161,6 +2137,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
       [
         expect.not.objectContaining({
           runner_name: expect.anything(),
+          runner_pre_spawn_concurrency_bucket: expect.anything(),
         }),
       ],
     );

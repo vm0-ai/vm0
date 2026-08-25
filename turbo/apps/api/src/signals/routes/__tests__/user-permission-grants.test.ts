@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   type ApplyUserPermissionGrant,
   type UserPermissionGrantResponse,
-  zeroUserPermissionGrantsContract,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+  userPermissionGrantsContract,
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -69,7 +69,7 @@ async function seedAgent(args: {
 
 function client() {
   return setupApp({ context, routes: userPermissionGrantsRoutes })(
-    zeroUserPermissionGrantsContract,
+    userPermissionGrantsContract,
   );
 }
 
@@ -268,7 +268,7 @@ describe("zero user permission grants", () => {
     const client = setupApp({
       context,
       routes: userPermissionGrantsRoutes,
-    })(zeroUserPermissionGrantsContract);
+    })(userPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
     const ownerResponse = await applyPermissionGrant({
@@ -329,7 +329,7 @@ describe("zero user permission grants", () => {
     const client = setupApp({
       context,
       routes: userPermissionGrantsRoutes,
-    })(zeroUserPermissionGrantsContract);
+    })(userPermissionGrantsContract);
 
     const malformedConnector = await accept(
       client.apply({
@@ -606,7 +606,7 @@ describe("zero user permission grants", () => {
     const client = setupApp({
       context,
       routes: userPermissionGrantsRoutes,
-    })(zeroUserPermissionGrantsContract);
+    })(userPermissionGrantsContract);
 
     const invalidConnector = await accept(
       client.apply({
@@ -725,7 +725,7 @@ describe("zero user permission grants", () => {
     const client = setupApp({
       context,
       routes: userPermissionGrantsRoutes,
-    })(zeroUserPermissionGrantsContract);
+    })(userPermissionGrantsContract);
 
     const response = await accept(
       client.apply({

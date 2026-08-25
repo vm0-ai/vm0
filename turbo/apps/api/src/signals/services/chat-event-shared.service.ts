@@ -100,21 +100,21 @@ export async function touchChatThreadLastMessageAt(
     .set({
       lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, ${touchedAt})`,
     })
-    .where(eq(chatThreads.id, threadId))
+    .where(and(eq(chatThreads.id, threadId), isNotNull(chatThreads.agentId)))
     .returning({
       id: chatThreads.id,
       userId: chatThreads.userId,
-      agentComposeId: chatThreads.agentComposeId,
+      agentId: chatThreads.agentId,
       lastMessageAt: chatThreads.lastMessageAt,
     });
-  if (!thread) {
+  if (!thread?.agentId) {
     return;
   }
   await appendChatThreadEvent(tx, {
     kind: "sort_touched",
     userId: thread.userId,
     chatThreadId: thread.id,
-    agentComposeId: thread.agentComposeId,
+    agentId: thread.agentId,
     eventId,
     createdAt: thread.lastMessageAt,
   });

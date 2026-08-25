@@ -134,7 +134,7 @@ class TestBodylessModelResponseParserAdmission:
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata.update(
             {
-                metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
+                metadata_keys.SANDBOX_PROXY_LOG_PATH: str(proxy_log_path),
                 metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
                 metadata_keys.FIREWALL_BILLABLE: True,
                 metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",

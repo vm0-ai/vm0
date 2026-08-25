@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -25,10 +29,12 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { setConnectorAccountState } from "./helpers/connector-credential-storage-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { chatThreadRoutes } from "../chat-threads";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
@@ -90,6 +96,12 @@ function chatThreadConnectorSelectionsClient() {
   );
 }
 
+function connectorAccountsClient() {
+  return setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
+  );
+}
+
 async function connectStripeOAuth(
   actor: ApiTestUser,
   accountId: string,
@@ -106,6 +118,43 @@ async function connectStripeOAuth(
     state,
   });
   return await connectors.readConnectorBySlug(actor, "stripe");
+}
+
+async function addStripeOAuthAccount(
+  actor: ApiTestUser,
+  displayName: string,
+): Promise<ConnectorAccountConnection> {
+  mockStripeConnectorOAuth({ accountId: STRIPE_ACCOUNT_ID, livemode: true });
+  const started = await connectors.startOauth(
+    actor,
+    "stripe",
+    "oauth",
+    undefined,
+    { intent: "add", displayName },
+  );
+  const state = new URL(started.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Stripe OAuth state");
+  }
+  await connectors.completeOauthCallback("stripe", {
+    code: `stripe-workflow-${randomUUID()}`,
+    state,
+  });
+  mocks.clerk.session(actor.userId, actor.orgId);
+  const accounts = await accept(
+    connectorAccountsClient().connections({
+      headers: authHeaders(),
+      query: { kind: "builtin", connectorSlug: "stripe", limit: 100 },
+    }),
+    [200],
+  );
+  const account = accounts.body.connections.find((connection) => {
+    return connection.displayName === displayName;
+  });
+  if (!account) {
+    throw new Error(`Expected Stripe account ${displayName}`);
+  }
+  return account;
 }
 
 async function setupScenario(
@@ -381,6 +430,36 @@ async function claimScenarioRun(scenario: Scenario, stripeEventId?: string) {
   throw new Error("Expected a Stripe workflow run");
 }
 
+async function claimUnseenScenarioRun(
+  scenario: Scenario,
+  seenRunIds: Set<string>,
+) {
+  mocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+  const events = await workflows.readThreadEvents(scenario.chatThreadId);
+  const runId = events
+    .flatMap((event) => {
+      return event.runId && !seenRunIds.has(event.runId) ? [event.runId] : [];
+    })
+    .at(0);
+  if (!runId) {
+    throw new Error("Expected an unseen Stripe workflow run");
+  }
+  seenRunIds.add(runId);
+  return await runs.claimRunnerJob(runId);
+}
+
+async function completeScenarioRun(claim: {
+  readonly runId: string;
+  readonly sandboxToken: string;
+}): Promise<void> {
+  await webhooks.requestAgentComplete(
+    { runId: claim.runId, exitCode: 0 },
+    { authorization: `Bearer ${claim.sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
 async function readStripeAutomation(scenario: Scenario) {
   mocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const summary = await workflows.readAutomation(scenario.automationId);
@@ -612,6 +691,202 @@ describe("Stripe automation event webhook", () => {
     );
   });
 
+  it("orders distinct ingress, thread, and default Stripe accounts", async () => {
+    const scenario = await setupScenario();
+    const orgId = scenario.actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped workflow owner");
+    }
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+      "stripe",
+    ]);
+    const threadAccount = await addStripeOAuthAccount(
+      scenario.actor,
+      "Thread account",
+    );
+    const defaultAccount = await addStripeOAuthAccount(
+      scenario.actor,
+      "Default account",
+    );
+    mocks.clerk.session(scenario.actor.userId, orgId);
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(),
+        params: { connectionId: defaultAccount.id },
+        body: { target: { kind: "builtin", connectorSlug: "stripe" } },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+        body: {
+          connectionId: threadAccount.id,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+      }),
+      [200],
+    );
+    const configuredSelections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+      }),
+      [200],
+    );
+    expect(configuredSelections.body.selections).toStrictEqual([
+      {
+        connectionId: threadAccount.id,
+        target: { kind: "builtin", connectorSlug: "stripe" },
+      },
+    ]);
+    const configuredAccounts = await accept(
+      connectorAccountsClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "stripe", limit: 100 },
+      }),
+      [200],
+    );
+    expect(
+      configuredAccounts.body.connections.map((connection) => {
+        return {
+          id: connection.id,
+          status: connection.connectionStatus,
+        };
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        { id: scenario.connector.id, status: "connected" },
+        { id: threadAccount.id, status: "connected" },
+        { id: defaultAccount.id, status: "connected" },
+      ]),
+    );
+
+    const seenRunIds = new Set<string>();
+    const sourceEventId = "evt_connector_priority_source";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: sourceEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    const sourceClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
+    expect(
+      Object.values(sourceClaim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(
+      expect.objectContaining({ sourceId: scenario.connector.id }),
+    );
+
+    const threadEventId = "evt_connector_priority_thread";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: threadEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    await setConnectorAccountState(context, {
+      orgId,
+      userId: scenario.actor.userId,
+      connectorId: scenario.connector.id,
+      needsReconnect: true,
+      storageVersion: 1,
+    });
+    await completeScenarioRun(sourceClaim);
+    const threadClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
+    const threadSourceId = Object.values(
+      threadClaim.secretConnectorMetadataMap ?? {},
+    ).find((metadata) => {
+      return metadata.sourceType === "connector";
+    })?.sourceId;
+    expect(threadSourceId).toBe(threadAccount.id);
+
+    await setConnectorAccountState(context, {
+      orgId,
+      userId: scenario.actor.userId,
+      connectorId: scenario.connector.id,
+      needsReconnect: false,
+      storageVersion: 2,
+    });
+    const defaultEventId = "evt_connector_priority_default";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: defaultEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    await Promise.all([
+      setConnectorAccountState(context, {
+        orgId,
+        userId: scenario.actor.userId,
+        connectorId: scenario.connector.id,
+        needsReconnect: true,
+        storageVersion: 1,
+      }),
+      setConnectorAccountState(context, {
+        orgId,
+        userId: scenario.actor.userId,
+        connectorId: threadAccount.id,
+        needsReconnect: true,
+        storageVersion: 1,
+      }),
+    ]);
+    await completeScenarioRun(threadClaim);
+    const defaultClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
+    expect(
+      Object.values(defaultClaim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: defaultAccount.id }));
+
+    await setConnectorAccountState(context, {
+      orgId,
+      userId: scenario.actor.userId,
+      connectorId: scenario.connector.id,
+      needsReconnect: false,
+      storageVersion: 2,
+    });
+    const unavailableEventId = "evt_connector_priority_unavailable";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: unavailableEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    await Promise.all([
+      setConnectorAccountState(context, {
+        orgId,
+        userId: scenario.actor.userId,
+        connectorId: scenario.connector.id,
+        needsReconnect: true,
+        storageVersion: 1,
+      }),
+      setConnectorAccountState(context, {
+        orgId,
+        userId: scenario.actor.userId,
+        connectorId: defaultAccount.id,
+        needsReconnect: true,
+        storageVersion: 1,
+      }),
+    ]);
+    await completeScenarioRun(defaultClaim);
+    const unavailableClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
+    const unavailableMetadata = Object.values(
+      unavailableClaim.secretConnectorMetadataMap ?? {},
+    );
+    expect(unavailableMetadata).not.toContainEqual(
+      expect.objectContaining({ sourceId: scenario.connector.id }),
+    );
+    expect(unavailableMetadata).not.toContainEqual(
+      expect.objectContaining({ sourceId: threadAccount.id }),
+    );
+    expect(unavailableMetadata).not.toContainEqual(
+      expect.objectContaining({ sourceId: defaultAccount.id }),
+    );
+    await completeScenarioRun(unavailableClaim);
+  });
+
   it("falls back when a queued event's Stripe source is deleted", async () => {
     const scenario = await setupScenario();
     await connectors.updateFeatureSwitches(scenario.actor, {
@@ -639,7 +914,10 @@ describe("Stripe automation event webhook", () => {
       EXECUTED_EXECUTION,
     );
 
-    await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+    await connectors.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "stripe",
+    );
     const replacement = await connectStripeOAuth(
       scenario.actor,
       STRIPE_ACCOUNT_ID,
@@ -1137,7 +1415,10 @@ describe("Stripe automation event webhook", () => {
     it("when the connector is deleted", async () => {
       const { scenario } =
         await setupPendingLifecycleDelivery("deleted_connector");
-      await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+      await connectors.disconnectSingleBuiltinConnectorAccount(
+        scenario.actor,
+        "stripe",
+      );
       const result = await executeLifecycleDelivery(scenario);
       expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
       expect((await readStripeAutomation(scenario)).health).toMatchObject({

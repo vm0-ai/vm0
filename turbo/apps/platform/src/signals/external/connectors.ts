@@ -1,8 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
-import {
-  zeroConnectorsMainContract,
-  zeroConnectorsBySlugContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorsMainContract } from "@okouai/api-contracts/contracts/connectors";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogDiscoveryResponse,
@@ -10,7 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroClient$ } from "../api-client";
+import { apiClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
@@ -32,8 +30,8 @@ export const connectors$ = computed(async (get) => {
   get(connectorsReloadVersion$);
   get(featureSwitch$);
 
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroConnectorsMainContract);
+  const createClient = get(apiClient$);
+  const client = createClient(connectorsMainContract);
   const result = await accept(client.list(), [200]);
   return result.body;
 });
@@ -45,7 +43,7 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   get(connectorsReloadVersion$);
   get(featureSwitch$);
 
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(connectorCatalogContract);
   const result = await accept(client.status(), [200]);
   return result.body;
@@ -76,7 +74,7 @@ export function relatedConnectorCatalog(
 
     get(connectorsReloadVersion$);
     const keyword = get(keyword$).trim();
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
     const result = await accept(
       client.discovery({ query: keyword ? { keyword } : {} }),
@@ -98,7 +96,7 @@ export function connectorCatalogItemBySlug(
       );
     }
 
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
     const result = await accept(
       client.get({ params: { connectorSlug } }),
@@ -122,11 +120,13 @@ export const reloadConnectors$ = command(({ set }) => {
  */
 export const deleteConnector$ = command(
   async ({ get, set }, connectorSlug: ConnectorSlug, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorsBySlugContract);
+    const createClient = get(apiClient$);
+    const client = createClient(connectorAccountsContract);
     await accept(
-      client.delete({
-        params: { connectorSlug },
+      client.disconnectSingleAccount({
+        body: {
+          target: { kind: "builtin", connectorSlug },
+        },
         fetchOptions: { signal },
       }),
       [204],

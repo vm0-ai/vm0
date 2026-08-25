@@ -219,13 +219,13 @@ export function getDefaultOrgModelPolicySeed(
 }
 
 /**
- * Mapping from VM0 managed model names to their concrete provider type and vendor.
+ * Mapping from VM0 built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
  *
  * NOTE: Defined before MODEL_PROVIDER_TYPES so the vm0 entry can derive its
  * models list from this mapping via Object.keys().
  */
-export const VM0_MANAGED_ROUTE_PROVIDERS = {
+export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
   "openrouter-api-key": { vendor: "openrouter" },
   deepseek: { vendor: "deepseek" },
@@ -233,11 +233,11 @@ export const VM0_MANAGED_ROUTE_PROVIDERS = {
   "openai-api-key": { vendor: "openai" },
 } as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
 
-export type Vm0ManagedRouteProviderType =
-  keyof typeof VM0_MANAGED_ROUTE_PROVIDERS;
+export type Vm0BuiltInModelRouteProviderType =
+  keyof typeof VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS;
 
-export interface Vm0ManagedRouteCandidate {
-  readonly concreteType: Vm0ManagedRouteProviderType;
+export interface Vm0BuiltInModelRouteCandidate {
+  readonly concreteType: Vm0BuiltInModelRouteProviderType;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
   // different identifier than what we show to users.
@@ -246,8 +246,8 @@ export interface Vm0ManagedRouteCandidate {
 
 interface Vm0ModelConfig {
   readonly candidates: readonly [
-    Vm0ManagedRouteCandidate,
-    ...Vm0ManagedRouteCandidate[],
+    Vm0BuiltInModelRouteCandidate,
+    ...Vm0BuiltInModelRouteCandidate[],
   ];
 }
 
@@ -356,14 +356,14 @@ export const VM0_MODEL_TO_PROVIDER = {
   },
 } as const satisfies Record<SupportedRunModel, Vm0ModelConfig>;
 
-export interface Vm0ManagedRouteTarget {
+export interface Vm0BuiltInModelRouteTarget {
   readonly selectedModel: SupportedRunModel;
-  readonly providerType: Vm0ManagedRouteProviderType;
+  readonly providerType: Vm0BuiltInModelRouteProviderType;
   readonly upstreamModel: string;
   readonly vendor: string;
 }
 
-function vm0PrimaryCandidate(model: string): Vm0ManagedRouteCandidate {
+function vm0PrimaryCandidate(model: string): Vm0BuiltInModelRouteCandidate {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -372,9 +372,9 @@ function vm0PrimaryCandidate(model: string): Vm0ManagedRouteCandidate {
   return VM0_MODEL_TO_PROVIDER[model].candidates[0];
 }
 
-export function getVm0ManagedRouteCandidates(
+export function getVm0BuiltInModelRouteCandidates(
   model: string,
-): readonly Vm0ManagedRouteTarget[] {
+): readonly Vm0BuiltInModelRouteTarget[] {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -385,17 +385,18 @@ export function getVm0ManagedRouteCandidates(
       selectedModel: model,
       providerType: candidate.concreteType,
       upstreamModel: "apiModel" in candidate ? candidate.apiModel : model,
-      vendor: VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor,
+      vendor: VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
     };
   });
 }
 
-export function getVm0ManagedRouteVendors(): readonly string[] {
+export function getVm0BuiltInModelRouteVendors(): readonly string[] {
   return [
     ...new Set(
       Object.values(VM0_MODEL_TO_PROVIDER).flatMap((config) => {
         return config.candidates.map((candidate) => {
-          return VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor;
+          return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType]
+            .vendor;
         });
       }),
     ),
@@ -492,7 +493,7 @@ export function modelSupportsImageInput(
 }
 
 /**
- * Return the VM0 managed models visible to callers.
+ * Return the VM0 built-in models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
   return [...SUPPORTED_RUN_MODELS];
@@ -881,7 +882,7 @@ export const MODEL_PROVIDER_TYPES = {
   },
   vm0: {
     framework: "claude-code" as const,
-    label: "VM0 Managed",
+    label: "Built-in model",
     models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
     defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   },
@@ -890,9 +891,6 @@ export const MODEL_PROVIDER_TYPES = {
 export function getModelProviderPresentationLabel(
   type: ModelProviderType,
 ): string {
-  if (type === "vm0") {
-    return "Built-in model";
-  }
   return MODEL_PROVIDER_TYPES[type].label;
 }
 
@@ -1073,26 +1071,26 @@ export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
- * Get the concrete provider type for a VM0 managed model.
+ * Get the concrete provider type for a VM0 built-in model.
  * Throws if the model is not in the VM0 model mapping.
  */
 export function getVm0ConcreteProviderType(
   model: string,
-): Vm0ManagedRouteProviderType {
+): Vm0BuiltInModelRouteProviderType {
   return vm0PrimaryCandidate(model).concreteType;
 }
 
 /**
- * Get the vendor name for a VM0 managed model.
+ * Get the vendor name for a VM0 built-in model.
  * Used for key pool lookup.
  */
 export function getVm0Vendor(model: string): string {
   const providerType = vm0PrimaryCandidate(model).concreteType;
-  return VM0_MANAGED_ROUTE_PROVIDERS[providerType].vendor;
+  return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
- * Get the upstream API model identifier for a VM0 managed model.
+ * Get the upstream API model identifier for a VM0 built-in model.
  * Falls back to the display name when no override is configured.
  */
 export function getVm0ApiModel(model: string): string {
@@ -1204,14 +1202,19 @@ export function getModelProviderCodexRuntimeConfig(
 }
 
 /**
- * Project a provider-owned Codex catalog record onto the model ID used at
- * runtime. Returns undefined when no provider has authoritative metadata for
- * the logical model.
+ * Project a provider-owned Codex catalog record onto the model ID and provider
+ * used at runtime. Returns undefined when no provider has authoritative
+ * metadata for the logical model.
  */
 export function getModelProviderCodexCatalogForModel(
   logicalModel: string,
   runtimeModel: string,
+  runtimeProviderType: ModelProviderType,
 ): Record<string, unknown> | undefined {
+  const disableApplyPatch =
+    runtimeProviderType === "openrouter-codex" &&
+    (logicalModel === "deepseek-v4-flash" ||
+      logicalModel === "deepseek-v4-pro");
   for (const type of getProvidersForModel(logicalModel)) {
     const sourceCatalog =
       MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type]?.modelCatalog;
@@ -1232,7 +1235,13 @@ export function getModelProviderCodexCatalogForModel(
     if (sourceCatalog && sourceModel) {
       return {
         ...sourceCatalog,
-        models: [{ ...sourceModel, slug: runtimeModel }],
+        models: [
+          {
+            ...sourceModel,
+            ...(disableApplyPatch ? { apply_patch_tool_type: null } : {}),
+            slug: runtimeModel,
+          },
+        ],
       };
     }
   }

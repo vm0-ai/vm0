@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -155,7 +155,7 @@ describe("GET /api/mcp-connectors", () => {
     const response = await accept(
       client().list({
         headers: headers(
-          runs.zeroTokenForRunWithCapabilities(actor, run.runId, [
+          runs.okouTokenForRunWithCapabilities(actor, run.runId, [
             "connector:read",
           ]),
         ),
@@ -190,7 +190,7 @@ describe("GET /api/mcp-connectors", () => {
     const peerResponse = await accept(
       client().list({
         headers: headers(
-          runs.zeroTokenForRunWithCapabilities(peer, run.runId, [
+          runs.okouTokenForRunWithCapabilities(peer, run.runId, [
             "connector:read",
           ]),
         ),
@@ -202,7 +202,7 @@ describe("GET /api/mcp-connectors", () => {
     const foreignResponse = await accept(
       client().list({
         headers: headers(
-          runs.zeroTokenForRunWithCapabilities(foreign, run.runId, [
+          runs.okouTokenForRunWithCapabilities(foreign, run.runId, [
             "connector:read",
           ]),
         ),
@@ -221,7 +221,7 @@ describe("GET /api/mcp-connectors", () => {
     const response = await accept(
       client().list({
         headers: headers(
-          runs.zeroTokenForRunWithCapabilities(actor, randomUUID(), [
+          runs.okouTokenForRunWithCapabilities(actor, randomUUID(), [
             "connector:read",
           ]),
         ),
@@ -232,7 +232,7 @@ describe("GET /api/mcp-connectors", () => {
     expect(response.body).toStrictEqual({ connectors: [] });
   });
 
-  it("requires Zero authentication with connector read capability", async () => {
+  it("requires agent authentication with connector read capability", async () => {
     const actor = bdd.user();
     mockClerkMembership(context, actor, "org:admin");
     const runId = randomUUID();
@@ -241,7 +241,7 @@ describe("GET /api/mcp-connectors", () => {
     const missingCapability = await accept(
       client().list({
         headers: headers(
-          runs.zeroTokenForRunWithCapabilities(actor, runId, []),
+          runs.okouTokenForRunWithCapabilities(actor, runId, []),
         ),
       }),
       [403],

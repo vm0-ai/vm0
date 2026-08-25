@@ -136,7 +136,7 @@ describe("low-credit email delivery", () => {
     ]);
 
     const agentName = `bdd-low-credit-${randomUUID().slice(0, 8)}`;
-    const compose = await runs.createHistoricalCompose(actor, {
+    const compose = await runs.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [agentName]: {
@@ -146,7 +146,7 @@ describe("low-credit email delivery", () => {
       },
     });
     const run = await runs.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "cross the low-credit alert threshold",
       triggerSource: "web",
     });
@@ -191,7 +191,7 @@ describe("low-credit email delivery", () => {
   });
 });
 
-describe("POST /api/zero/email/inbound", () => {
+describe("POST /api/email/inbound", () => {
   it("rejects missing or invalid Svix signatures", async () => {
     const missingHeaders = await webhooks.requestResendInboundWebhook(
       { type: "email.received" },

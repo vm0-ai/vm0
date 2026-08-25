@@ -1,6 +1,7 @@
 """Tests for upstream destination binding in server_connect()."""
 
 import uuid
+from typing import cast
 
 import pytest
 from mitmproxy import connection
@@ -10,7 +11,7 @@ import matching
 import mitm_addon
 import upstream_destination_binding
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -64,7 +65,7 @@ class _Client:
         sockname: tuple[str, int] = ("127.0.0.1", 8080),
     ) -> None:
         self.id = str(uuid.uuid4())
-        self.peername = (client_ip, 12345)
+        self.peername: tuple[str, int] = (client_ip, 12345)
         self.sockname = sockname
         self.sni = sni
 
@@ -111,7 +112,7 @@ def test_server_connect_does_not_bind_parameterized_connector_to_undeclared_port
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.{domain}",
@@ -345,7 +346,7 @@ def test_server_connect_treats_api_origin_on_other_scheme_as_connector(
 def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
@@ -450,7 +451,7 @@ async def test_server_connect_waits_for_tls_before_binding_connector_on_shared_i
 def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://placeholder.example.com",
@@ -469,10 +470,23 @@ def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mit
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-def test_server_connect_ignores_unregistered_vm(registry_file, mitm_ctx):
+def test_server_connect_ignores_unregistered_sandbox(registry_file, mitm_ctx):
     data = _data(client_ip="192.168.99.99")
 
     with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+def test_server_connect_ignores_non_string_client_peer_host(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    client = _Client()
+    client.peername = cast(tuple[str, int], (10, 12345))
+    data = _ServerConnectData(client=client, server=_Server())
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)

@@ -7,6 +7,8 @@ use guest_contracts::diagnostics::CliTerminationReason;
 use serde_json::json;
 use std::time::Duration;
 
+const TRANSCRIPT_CHECKPOINT_PADDING_BYTES: usize = 16 * 1024;
+
 #[tokio::test]
 async fn task_notification_result_does_not_end_the_user_command()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -64,7 +66,10 @@ async fn task_notification_result_does_not_end_the_user_command()
             "message": {
                 "role": "assistant",
                 "content": [{ "type": "text", "text": continued_activity }]
-            }
+            },
+            // Keep this checkpoint larger than the transcript buffer. Its
+            // persisted marker proves the earlier task result was consumed.
+            "checkpoint_padding": "x".repeat(TRANSCRIPT_CHECKPOINT_PADDING_BYTES)
         })
         .to_string(),
     ]

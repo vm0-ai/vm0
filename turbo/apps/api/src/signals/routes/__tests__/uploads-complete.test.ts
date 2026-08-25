@@ -45,7 +45,7 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   userId: string;
   orgId: string;
   runId: string;
@@ -53,7 +53,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -69,7 +69,7 @@ function zeroBearer(
   const actor = bdd.user();
   const orgId = requireOrgId(actor);
   mockClerkMembership(context, { ...actor, orgId }, "org:admin");
-  return `Bearer ${zeroToken({
+  return `Bearer ${okouToken({
     userId: actor.userId,
     orgId,
     runId: randomUUID(),
@@ -123,7 +123,7 @@ async function createRunUploadFixture(
   return {
     actor: orgActor,
     runId,
-    bearer: `Bearer ${zeroToken({
+    bearer: `Bearer ${okouToken({
       userId: actor.userId,
       orgId,
       runId,
@@ -146,7 +146,7 @@ function addUploadObject(
   });
 }
 
-describe("POST /api/zero/uploads/complete", () => {
+describe("POST /api/uploads/complete", () => {
   it("completes a run-scoped upload after the object exists", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();
@@ -439,7 +439,7 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("returns 403 for a zero token without file:write capability", async () => {
+  it("returns 403 for an agent token without file:write capability", async () => {
     const response = await chat.completeUploadWithBearer(
       zeroBearer(["file:read"]),
       { id: randomUUID() },

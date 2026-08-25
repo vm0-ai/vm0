@@ -207,7 +207,7 @@ function providerResponse() {
 }
 
 describe("okou web-search route", () => {
-  it("rejects zero tokens without web-search:read capability", async () => {
+  it("rejects agent tokens without web-search:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Web Search test actor must belong to an organization");
@@ -215,7 +215,7 @@ describe("okou web-search route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_zero_web_search_missing_capability",
@@ -253,7 +253,7 @@ describe("okou web-search route", () => {
     const pricing = await setupConfiguredWebSearchPricing();
     configureProvider();
     const name = `web-search-${randomUUID().slice(0, 8)}`;
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [name]: {
@@ -263,10 +263,10 @@ describe("okou web-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "Find current public information",
     });
-    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+    const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "web-search:read",
     ]);
     server.use(

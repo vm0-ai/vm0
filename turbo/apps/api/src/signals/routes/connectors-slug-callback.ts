@@ -60,7 +60,6 @@ import {
   connectorOAuthRedirectResponse,
 } from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -79,7 +78,8 @@ type CompleteOAuthCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type CompleteOpenIdCallbackInput = {
@@ -92,7 +92,8 @@ type CompleteOpenIdCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type ResolveCallbackStateInput = {
@@ -119,7 +120,8 @@ type ResolvedCallbackState =
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -135,7 +137,8 @@ type ResolvedOpenIdCallbackState =
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -572,6 +575,7 @@ const completeOAuthCallback$ = command(
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -656,6 +660,7 @@ const completeOpenIdCallback$ = command(
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -727,9 +732,11 @@ async function resolveCallbackState(
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
     redirectUri: args.storedState.redirectUri,
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
-    ),
+    account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -781,9 +788,11 @@ async function resolveOpenIdCallbackState(
       args.storedState.oauthContext,
       args.storedState.redirectUri,
     ),
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
-    ),
+    account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -877,6 +886,7 @@ const handleOpenIdConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
@@ -1093,6 +1103,7 @@ const handleAuthCodeConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },

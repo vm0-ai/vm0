@@ -3,7 +3,7 @@ import type {
   ChatSearchMessage,
   ChatSearchResult,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEventSearchMessages } from "@okouai/db/schema/chat-event-search";
 import { alias } from "drizzle-orm/pg-core";
 import { and, asc, desc, eq, gt, gte, lt, type SQL, sql } from "drizzle-orm";
@@ -100,7 +100,7 @@ async function chatSearchIndexedMatches(
   const indexedMatches = db
     .select({
       ...searchMessageColumns,
-      agentComposeId: chatEventSearchMessages.agentComposeId,
+      agentId: chatEventSearchMessages.agentId,
     })
     .from(chatEventSearchMessages)
     .where(
@@ -109,7 +109,7 @@ async function chatSearchIndexedMatches(
         eq(chatEventSearchMessages.orgId, args.orgId),
         sql`${chatEventSearchMessages.tsv} @@ to_tsquery('simple', ${tsquery})`,
         args.agentId
-          ? eq(chatEventSearchMessages.agentComposeId, args.agentId)
+          ? eq(chatEventSearchMessages.agentId, args.agentId)
           : undefined,
         args.since
           ? gte(chatEventSearchMessages.createdAt, args.since)
@@ -128,13 +128,10 @@ async function chatSearchIndexedMatches(
       role: indexedMatches.role,
       createdAt: indexedMatches.createdAt,
       text: indexedMatches.text,
-      agentName: agentComposes.name,
+      agentName: agents.name,
     })
     .from(indexedMatches)
-    .innerJoin(
-      agentComposes,
-      eq(indexedMatches.agentComposeId, agentComposes.id),
-    )
+    .innerJoin(agents, eq(indexedMatches.agentId, agents.id))
     .orderBy(desc(indexedMatches.createdAt));
 }
 

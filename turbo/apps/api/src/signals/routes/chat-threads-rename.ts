@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadRenameContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -32,13 +32,17 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       .update(chatThreads)
       .set({ title: body.data.title, renamedAt: updatedAt, updatedAt })
       .where(
-        and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
+        and(
+          eq(chatThreads.id, params.id),
+          eq(chatThreads.userId, auth.userId),
+          isNotNull(chatThreads.agentId),
+        ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -46,7 +50,7 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       orgId: auth.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       eventId: body.data.eventId,
       title: body.data.title,
     });

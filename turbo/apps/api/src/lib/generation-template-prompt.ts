@@ -5,6 +5,7 @@ import {
   findVideoTemplate,
   findWebsiteTemplatePackage,
   resolvePresentationRunbookColorToken,
+  type PresentationRunbookArchiveVersion,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
 } from "@okouai/core/resource-registry";
@@ -14,10 +15,20 @@ import {
 } from "@okouai/core/website-template-items";
 import { findWorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import {
+  isUserPresentationTemplateId,
+  parseUserPresentationTemplateId,
+  userPresentationTemplateDirectory,
+} from "@okouai/core/presentation-template-selection";
+import {
   parseAvatarTemplateStylePresetId,
   readAvatarTemplateOptions,
   type AvatarTemplateOptions,
 } from "@okouai/core/avatar-template";
+import {
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+  PRESENTATION_STATIC_HTML_INSTRUCTION,
+} from "@okouai/core/presentation-generation-instructions";
+import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -96,11 +107,26 @@ function generationTemplateTypeLabel(
   return generationTemplate.type;
 }
 
+/**
+ * What a caller must tell the prompt builder about the run it is building for.
+ *
+ * `mountedUserPresentationTemplateIds` is the set of private template row ids
+ * whose packages that run will actually carry. Guidance for a private template
+ * is emitted only for an id in this set, so a prompt can never name a package
+ * the run does not mount. Callers that cannot mount anything — a prompt
+ * steered into an already-running run, whose volumes were fixed at creation —
+ * leave it empty and lose the guidance rather than point at nothing.
+ */
+interface GenerationTemplatePromptOptions {
+  readonly latestWebsiteTemplatesEnabled?: boolean;
+  readonly latestPresentationTemplatesEnabled?: boolean;
+  readonly presentationTemplatesEnabled?: boolean;
+  readonly mountedUserPresentationTemplateIds?: readonly string[];
+}
+
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
-  options: {
-    readonly latestWebsiteTemplatesEnabled?: boolean;
-  } = {},
+  options: GenerationTemplatePromptOptions = {},
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -122,7 +148,12 @@ export function buildGenerationTemplatePrompt(
     );
   }
 
-  return buildPresentationGenerationTemplatePrompt(generationTemplate);
+  return buildPresentationGenerationTemplatePrompt(
+    generationTemplate,
+    options.presentationTemplatesEnabled === true,
+    options.mountedUserPresentationTemplateIds ?? [],
+    options.latestPresentationTemplatesEnabled === true ? "latest" : "previous",
+  );
 }
 
 function stripGenerationTemplateContext(prompt: string): string {
@@ -141,9 +172,7 @@ function stripGenerationTemplateContext(prompt: string): string {
 
 export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
-  options: {
-    readonly latestWebsiteTemplatesEnabled?: boolean;
-  } = {},
+  options: GenerationTemplatePromptOptions = {},
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
     return { status: "resolved", prompt: "" };
@@ -201,22 +230,87 @@ function buildWorkflowGenerationTemplatePrompt(
 
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
+  presentationTemplatesEnabled: boolean,
+  mountedUserPresentationTemplateIds: readonly string[],
+  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
+  const { templateId } = generationTemplate.selection;
+  if (isUserPresentationTemplateId(templateId)) {
+    // Gated here rather than at the composer alone: an API version that still
+    // accepts the field must not honour a private id once the switch is off,
+    // and a run cannot mount a package the caller was never authorised for.
+    if (!presentationTemplatesEnabled) {
+      return { status: "invalid", message: "Unknown generation template" };
+    }
+    const rowId = parseUserPresentationTemplateId(templateId);
+    if (rowId === undefined) {
+      return { status: "invalid", message: "Malformed presentation template" };
+    }
+    // The guidance is worth nothing without the package it tells the agent to
+    // read, so it is emitted only for a row this run actually mounts.
+    if (!mountedUserPresentationTemplateIds.includes(rowId)) {
+      return { status: "invalid", message: "Presentation template not found" };
+    }
+    return buildUserPresentationTemplatePrompt(rowId);
+  }
   // Presentation picker selections are valid only when they resolve to a
   // self-contained runbook package. The legacy multi-resource registry flow has
   // been retired, so ids without a runbook package are rejected.
   const runbookPackage = findPresentationRunbookPackage(
-    generationTemplate.selection.templateId,
+    templateId,
+    archiveVersion,
   );
   if (!runbookPackage) {
     return { status: "invalid", message: "Unknown generation template" };
   }
-  return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
+  return buildPresentationRunbookPrompt(
+    generationTemplate,
+    runbookPackage,
+    archiveVersion,
+  );
+}
+
+/**
+ * Guidance for a deck the user imported.
+ *
+ * The package is mounted as an ordinary skill, so the prompt names the skill
+ * rather than a path: the skills root differs per framework and the prompt is
+ * built before a framework is chosen.
+ *
+ * The authoring rules are the point of the whole feature. The package
+ * describes a visual language, not a renderer: there is no deck schema, no
+ * layout id service, and no JSON-to-HTML compiler behind it, so an agent that
+ * reaches for its usual intermediate representation produces something the
+ * package cannot inform.
+ */
+function buildUserPresentationTemplatePrompt(
+  rowId: string,
+): GenerationTemplatePromptResult {
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("a presentation"),
+      `Selected presentation template: the user's own imported deck, mounted at ./${userPresentationTemplateDirectory(rowId)}.`,
+      "",
+      "To produce the presentation:",
+      `- Read ./${userPresentationTemplateDirectory(rowId)}/SKILL.md fully and follow only the files and assets it names.`,
+      "- Author the finished deck directly as semantic HTML, CSS, and SVG for this request's content.",
+      "- Do not produce slide JSON, read a `tokens.json`, call a layout-id API, or run a template-specific JSON-to-HTML renderer first. None of those exist for this package; the guidance describes a visual language, not a renderer.",
+      "- Lay out live rows, columns, and text flow with CSS Grid or Flexbox. Absolute positioning is for backgrounds, fixed chrome, decoration, and intentional overlays.",
+      "- Background images from the package are optional visual material. New text, charts, tables, labels, and diagrams stay live HTML or SVG so they reflow and stay legible.",
+      "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+      PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+      PRESENTATION_STATIC_HTML_INSTRUCTION,
+      "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
+      "- Return only the generated HTML deck as the final deliverable.",
+    ].join("\n"),
+  };
 }
 
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   runbookPackage: PresentationRunbookPackage,
+  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
   const color = resolvePresentationRunbookColorToken(
     runbookPackage,
@@ -236,6 +330,7 @@ function buildPresentationRunbookPrompt(
       ...buildPresentationRunbookInstructionLines({
         runbookPackage,
         colorSystemToken: color.token,
+        archiveVersion,
       }),
     ].join("\n"),
   };
@@ -291,16 +386,19 @@ function buildWebsiteTemplatePackagePrompt(
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
       ...(latestWebsiteTemplatesEnabled
         ? [
-            "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
-            "- Keep at most 3 image generations in flight at once; more are rejected with HTTP 429 and the retries cost more time than the extra parallelism saves.",
-            "- Embed the `Embed this URL in HTML` value returned by the generator, not the raw file URL. It serves the same image through the CDN image transform, which negotiates AVIF/WebP instead of the original PNG.",
+            `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
+            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
+            `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
+            "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
+            "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
+            "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
           ]
         : [
             `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
+            `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
+            "- Host the finished static website: okou host <output-dir> --site <slug>",
           ]),
-      `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
-      "- Host the finished static website: okou host <output-dir> --site <slug>",
       "- Return the hosted website URL and keep the generated static site as the final deliverable.",
     ].join("\n"),
   };

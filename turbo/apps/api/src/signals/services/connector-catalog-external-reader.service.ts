@@ -1,7 +1,7 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -752,20 +752,16 @@ function connectorCatalogDetail(
   };
 }
 
-export function getAcceptedConnectorCatalogResolutionDetail(args: {
-  readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorSlug: string;
-}): PublicConnectorCatalogDetail | null {
-  const connector = args.snapshot.connectorBySlug.get(args.connectorSlug);
-  return connector
-    ? connectorCatalogDetail(
-        {
-          connector,
-          authMethods: connector.authMethods,
-        },
-        "vm0",
-      )
-    : null;
+export function getConnectorCatalogResolutionDetail(
+  connector: ConnectorCatalogArtifactConnector,
+): PublicConnectorCatalogDetail {
+  return connectorCatalogDetail(
+    {
+      connector,
+      authMethods: connector.authMethods,
+    },
+    "vm0",
+  );
 }
 
 export function listAcceptedConnectorCatalogAvailableSlugs(args: {
@@ -780,16 +776,6 @@ export function listAcceptedConnectorCatalogAvailableSlugs(args: {
       return entry.connector.slug;
     })
     .sort();
-}
-
-export function acceptedConnectorCatalogMethodIsCompatible(args: {
-  readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorSlug: string;
-  readonly authMethodId: string;
-}): boolean {
-  return !args.snapshot.filteredMethodKeys.has(
-    authMethodKey(args.connectorSlug, args.authMethodId),
-  );
 }
 
 function categoryMetadataForConnectors(

@@ -5,6 +5,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const presentationTemplateVisibilitySchema = z.enum(["private", "public"]);
+
 export const MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES = 100 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PAGES = 100;
 export const MAX_PRESENTATION_TEMPLATE_PAGE_BYTES = 25 * 1024 * 1024;
@@ -12,6 +14,7 @@ export const MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES = 500 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PACKAGE_BYTES = 100 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILES = 200;
 export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES = 25 * 1024 * 1024;
+export const PRESENTATION_TEMPLATE_URL_TTL_SECONDS = 15 * 60;
 
 /** A deck the user uploaded. Both are rendered to page images the same way. */
 export const PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPES = [
@@ -33,6 +36,8 @@ const presentationTemplateSummarySchema = z.object({
   sourceFilename: z.string(),
   coverUrl: z.string().url().nullable(),
   pageCount: z.number().int().nonnegative(),
+  visibility: presentationTemplateVisibilitySchema,
+  canManage: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -46,9 +51,14 @@ const presentationTemplateIdParamsSchema = z.object({
   templateId: z.uuid(),
 });
 
-const updatePresentationTemplateBodySchema = z.object({
-  title: z.string().trim().min(1).max(255),
-});
+const updatePresentationTemplateBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(255).optional(),
+    visibility: presentationTemplateVisibilitySchema.optional(),
+  })
+  .refine((body) => {
+    return body.title !== undefined || body.visibility !== undefined;
+  }, "A title or visibility change is required");
 
 /**
  * Everything a finished analysis hands back, in one call.
@@ -68,7 +78,7 @@ const publishPresentationTemplateBodySchema = z.object({
 export const presentationTemplatesContract = c.router({
   publish: {
     method: "POST",
-    path: "/api/okou/presentation-templates",
+    path: "/api/presentation-templates",
     headers: authHeadersSchema,
     body: publishPresentationTemplateBodySchema,
     responses: {
@@ -83,7 +93,7 @@ export const presentationTemplatesContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/okou/presentation-templates",
+    path: "/api/presentation-templates",
     headers: authHeadersSchema,
     responses: {
       200: z.array(presentationTemplateSummarySchema),
@@ -91,11 +101,12 @@ export const presentationTemplatesContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "List presentation templates owned by the current user",
+    summary:
+      "List presentation templates available to the current workspace member",
   },
   get: {
     method: "GET",
-    path: "/api/okou/presentation-templates/:templateId",
+    path: "/api/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     responses: {
@@ -109,7 +120,7 @@ export const presentationTemplatesContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/okou/presentation-templates/:templateId",
+    path: "/api/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: updatePresentationTemplateBodySchema,
@@ -120,11 +131,11 @@ export const presentationTemplatesContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Rename a presentation template",
+    summary: "Update a presentation template",
   },
   delete: {
     method: "DELETE",
-    path: "/api/okou/presentation-templates/:templateId",
+    path: "/api/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: c.noBody(),
@@ -143,6 +154,15 @@ export type PresentationTemplatesContract =
   typeof presentationTemplatesContract;
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
+>;
+export type PresentationTemplateDetail = z.infer<
+  typeof presentationTemplateDetailSchema
+>;
+export type PresentationTemplateVisibility = z.infer<
+  typeof presentationTemplateVisibilitySchema
+>;
+export type UpdatePresentationTemplateBody = z.infer<
+  typeof updatePresentationTemplateBodySchema
 >;
 export type PublishPresentationTemplateBody = z.infer<
   typeof publishPresentationTemplateBodySchema

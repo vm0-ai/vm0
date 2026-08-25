@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.92](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.91...vsock-host-v0.17.92) (2026-08-24)
+
+## [0.17.91](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.90...vsock-host-v0.17.91) (2026-08-24)
+
+## [0.17.90](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.89...vsock-host-v0.17.90) (2026-08-24)
+
+## [0.17.89](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.88...vsock-host-v0.17.89) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
+## [0.17.88](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.87...vsock-host-v0.17.88) (2026-08-21)
+
 ## [0.17.87](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.86...vsock-host-v0.17.87) (2026-08-21)
 
 ## [0.17.86](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.85...vsock-host-v0.17.86) (2026-08-20)

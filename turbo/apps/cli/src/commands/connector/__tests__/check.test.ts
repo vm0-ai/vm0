@@ -29,7 +29,7 @@ type ResolvedEnvironmentDiagnostic = Extract<
 type ConnectorIdentity = ResolvedDiagnostic["connector"];
 type ConnectorRun = ResolvedDiagnostic["run"];
 
-function buildZeroToken(
+function buildOkouToken(
   overrides: Partial<{
     readonly userId: string;
     readonly runId: string;
@@ -193,7 +193,7 @@ function stubAgentConnectors(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/okou/agents/${AGENT_ID}/user-connectors`, () => {
+    http.get(`${baseUrl}/api/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -240,7 +240,7 @@ describe("okou connector check command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");

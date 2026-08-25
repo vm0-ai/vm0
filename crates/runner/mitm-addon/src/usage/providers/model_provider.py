@@ -39,6 +39,7 @@ from ..buffer import (
     buffer_source_model_usage_observations,
     buffer_source_usage_events,
     buffer_usage_events,
+    seen_source_idempotency_keys,
 )
 from ..idempotency import (
     USAGE_EVENT_NAMESPACE_MODEL,
@@ -155,7 +156,7 @@ def report_model_provider_usage(
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
-    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+    - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     Returns whether usage was accepted into the reporting path. When provided,
     the caller-owned set accumulates source payload keys accepted by the
@@ -206,7 +207,7 @@ def report_model_provider_usage_observation(
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
-    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+    - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
     Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
     expected to report observations without reporting billable usage events.
@@ -248,8 +249,10 @@ def report_model_provider_usage_source(
     returns: observable flows carry the canonical ``MODEL_USAGE_PROVIDER``, so
     zero-usage source model hints do not need to be retained for later
     same-response-id frames. Tiered models retain only their bounded concrete
-    tier decision so later or duplicate output-only frames derive the same
-    billable category.
+    tier decision. Evicted decisions are recovered from bounded source-key
+    admission history when possible so later or duplicate output-only frames
+    derive the same billable category; otherwise positive usage receives a
+    conservative billable fallback.
     """
     usage_events: list[UsageEvent] = []
     observations: list[ModelUsageObservation] = []
@@ -260,14 +263,13 @@ def report_model_provider_usage_source(
     if can_report_usage:
         pricing = _source_model_usage_pricing(
             flow,
+            run_id,
+            source_id,
             message_id,
             provider,
             source_usage,
         )
-        if pricing is None:
-            if has_positive_model_provider_usage(source_usage):
-                _log_model_usage_tier_unresolved(flow, run_id, provider)
-        else:
+        if pricing is not None:
             billing_tier, fast = pricing
             usage_events = _build_usage_events(
                 run_id,
@@ -780,6 +782,8 @@ def _build_usage_events(
 
 def _source_model_usage_pricing(
     flow: http.HTTPFlow,
+    run_id: str,
+    source_id: str,
     message_id: str,
     provider: str,
     usage: dict,
@@ -806,7 +810,29 @@ def _source_model_usage_pricing(
         tiers.move_to_end(message_id)
         return tier, fast
     if billing_tier is None:
-        return None
+        if not has_positive_model_provider_usage(usage):
+            return None
+        recovered_pricing = _recover_source_model_usage_pricing(run_id, source_id)
+        billing_tier, fast = recovered_pricing or (
+            _MODEL_USAGE_TIER_LONG_CONTEXT,
+            observed_fast is True,
+        )
+        if recovered_pricing is None:
+            _log_model_usage_tier_fallback(
+                flow,
+                run_id,
+                provider,
+                billing_tier,
+                fast,
+            )
+        tiers[message_id] = _ModelUsageTierDecision(
+            tier=billing_tier,
+            fast=fast,
+            committed=True,
+        )
+        if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
+            tiers.popitem(last=False)
+        return billing_tier, fast
 
     tiers[message_id] = _ModelUsageTierDecision(
         tier=billing_tier,
@@ -816,6 +842,32 @@ def _source_model_usage_pricing(
     if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
         tiers.popitem(last=False)
     return billing_tier, observed_fast is True
+
+
+def _recover_source_model_usage_pricing(
+    run_id: str,
+    source_id: str,
+) -> tuple[_ModelUsageTier, bool] | None:
+    pricing_by_source_key: dict[str, tuple[_ModelUsageTier, bool]] = {
+        derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_MODEL,
+            (
+                run_id,
+                source_id,
+                _billable_model_usage_category(category, billing_tier, fast),
+            ),
+        ): (billing_tier, fast)
+        for category in MODEL_USAGE_CATEGORIES
+        for billing_tier in (_MODEL_USAGE_TIER_BASE, _MODEL_USAGE_TIER_LONG_CONTEXT)
+        for fast in (False, True)
+    }
+    seen_keys = seen_source_idempotency_keys(pricing_by_source_key)
+    if not seen_keys:
+        return None
+    decisions = {pricing_by_source_key[source_key] for source_key in seen_keys}
+    if len(decisions) != 1:
+        raise RuntimeError("Model usage source keys resolved to conflicting pricing decisions")
+    return decisions.pop()
 
 
 def _model_provider_usage_tiers(
@@ -873,6 +925,26 @@ def _log_model_usage_tier_unresolved(
         "risk",
         run_id=run_id,
         provider=provider,
+    )
+
+
+def _log_model_usage_tier_fallback(
+    flow: http.HTTPFlow,
+    run_id: str,
+    provider: str,
+    billing_tier: _ModelUsageTier,
+    fast: bool,
+) -> None:
+    log_usage_underbilling(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "Billing tiered model usage with a conservative category fallback",
+        "model_long_context_tier_unresolved",
+        "risk",
+        run_id=run_id,
+        provider=provider,
+        usage_billed=True,
+        fallback_billing_tier=billing_tier,
+        fallback_fast=fast,
     )
 
 

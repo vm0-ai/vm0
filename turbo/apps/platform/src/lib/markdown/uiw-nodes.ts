@@ -17,7 +17,7 @@ function octiconLink(): Element {
     type: "element",
     tagName: "svg",
     properties: {
-      className: "octicon octicon-link",
+      className: ["octicon", "octicon-link"],
       viewBox: "0 0 16 16",
       version: "1.1",
       width: "16",

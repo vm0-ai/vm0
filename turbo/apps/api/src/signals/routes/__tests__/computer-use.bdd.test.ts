@@ -119,7 +119,7 @@ async function deleteComputerUseRunFixture(
 
 const trackComputerUseRun = createFixtureTracker(deleteComputerUseRunFixture);
 
-async function seedZeroRun(args: {
+async function seedAgentRun(args: {
   readonly actor: ApiTestUser;
   readonly triggerSource: "web" | "slack" | "teams";
   readonly canonicalThread?: boolean;
@@ -169,7 +169,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({ actor, triggerSource: "web" });
+    const run = await seedAgentRun({ actor, triggerSource: "web" });
     await expect(
       readRunLaunchSnapshotFixture(context, run.runId),
     ).resolves.toStrictEqual({
@@ -249,7 +249,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   it("only exposes online hosts for delegated authorization requests", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({ actor, triggerSource: "web" });
+    const run = await seedAgentRun({ actor, triggerSource: "web" });
     if (!run.threadId) {
       throw new Error("Expected web run fixture to create a chat thread");
     }
@@ -329,7 +329,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   it("uses chat-thread authorization for a canonical Slack run", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({
+    const run = await seedAgentRun({
       actor,
       triggerSource: "slack",
       canonicalThread: true,
@@ -375,7 +375,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   it("uses chat-thread authorization for a canonical Teams run", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({
+    const run = await seedAgentRun({
       actor,
       triggerSource: "teams",
       canonicalThread: true,
@@ -637,7 +637,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ]);
   });
 
-  it("scopes host discovery to the bound host for zero run tokens", async () => {
+  it("scopes host discovery to the bound host for agent run tokens", async () => {
     const actor = bdd.user();
     await api.startComputerUseHost(actor, {
       hostName: "Other Desktop",

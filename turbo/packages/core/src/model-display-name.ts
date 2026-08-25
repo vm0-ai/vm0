@@ -1,5 +1,7 @@
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 
+import { IMAGE_MODEL_CONFIGS, resolveImageModel } from "./image-model-catalog";
+
 /**
  * Human-readable display names for model IDs across all providers.
  * Falls back to the raw model ID if no mapping is found.
@@ -35,15 +37,6 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "gpt-5.5": "GPT 5.5",
   "gpt-5.3-codex": "GPT-5.3 Codex",
   "gpt-5.2": "GPT-5.2",
-  // Built-in image generation
-  "nano-banana-2": "Nano Banana 2",
-  "fal-ai/nano-banana-2": "Nano Banana 2",
-  "fal-ai/flux-pro/v1.1": "Flux Pro v1.1",
-  "fal-ai/flux-pro/v1.1-ultra": "Flux Pro v1.1 Ultra",
-  "fal-ai/qwen-image": "Qwen Image",
-  "fal-ai/bytedance/seedream/v4/text-to-image": "Seedream 4",
-  "dola-seedream-5-0-pro-260628": "Seedream 5 Pro",
-  "seedream-5-0-lite-260128": "Seedream 5 Lite",
   // Built-in video generation
   "dreamina-seedance-2-5-260628": "Seedance 2.5",
   "dreamina-seedance-2-0-260128": "Seedance 2.0",
@@ -64,6 +57,10 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
  * Returns the raw model ID if no friendly name is defined.
  */
 export function getModelDisplayName(model: string): string {
+  const imageModel = resolveImageModel(model);
+  if (imageModel !== undefined) {
+    return IMAGE_MODEL_CONFIGS[imageModel].label;
+  }
   return MODEL_DISPLAY_NAMES[model] ?? model;
 }
 

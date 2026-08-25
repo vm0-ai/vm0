@@ -10,13 +10,6 @@ export type { SignalRouteHandler };
 export interface RouteEntry {
   readonly route: AppRoute;
   readonly handler: SignalRouteHandler<unknown>;
-  /**
-   * Set when this registration exists only because the blanket namespace
-   * expansion derived it, and not because `LEGACY_ZERO_PATHS` lists it. Route
-   * modules never set it; `withApiNamespaceAliases` is its only producer, and
-   * `createAppWithRoutes` reads it to report the first request that arrives.
-   */
-  readonly viaNamespaceAliasFallback?: boolean;
 }
 
 function routeRegistrationKey(entry: RouteEntry): string {
@@ -47,123 +40,54 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * Final paths that the Feishu, Slack, and Microsoft consoles hold after #28278
- * Stage 0, keyed by the branded path that serves them today. OAuth callbacks
- * join `/api/integrations/**` beside the IM connect routes, and inbound
- * webhooks join `/api/webhooks/**` beside the other providers.
- *
- * Step 1 only makes these paths routable: each one adds a second way to reach
- * the handler that already serves its branded path. Producers switch one at a
- * time in #28278 step 3, once the provider console holds the final URL; the
- * Teams OAuth callback switched in #28300 and the Feishu events URL we display
- * to operators in #28338. Every branded path here stays registered: removal is
- * gated on #26701.
- */
-const FINAL_PROVIDER_CONSOLE_PATHS: Readonly<Record<string, string>> = {
-  "GET /api/okou/slack/oauth/callback":
-    "/api/integrations/slack/oauth/callback",
-  "GET /api/okou/teams/oauth/callback":
-    "/api/integrations/teams/oauth/callback",
-  "GET /api/okou/feishu/oauth/callback":
-    "/api/integrations/feishu/oauth/callback",
-  "POST /api/okou/slack/events": "/api/webhooks/slack/events",
-  "POST /api/okou/slack/commands": "/api/webhooks/slack/commands",
-  "POST /api/okou/slack/interactive": "/api/webhooks/slack/interactive",
-  "POST /api/okou/teams/bot": "/api/webhooks/teams/bot",
-  "POST /api/okou/feishu/events/:installationId":
-    "/api/webhooks/feishu/events/:installationId",
-};
-
-/**
- * Adds the eight final provider console paths. Unlike the namespace aliases
- * below, this expands an explicit list and never derives a path, so no other
- * route gains a second registration.
- */
-export function withFinalProviderConsolePaths(
-  routes: readonly RouteEntry[],
-): readonly RouteEntry[] {
-  return routes.flatMap((entry) => {
-    const finalPath = FINAL_PROVIDER_CONSOLE_PATHS[routeRegistrationKey(entry)];
-    if (finalPath === undefined) {
-      return [entry];
-    }
-    return [entry, routeEntryWithPath(entry, finalPath)];
-  });
-}
-
-/**
  * The legacy `/api/zero/**` paths this service owes callers, keyed by the
  * canonical `/api/okou/**` path of the contract that serves them. This table
  * is the source of truth for Phase A compatibility from #26487: an entry here
  * is compatibility kept deliberately, rather than a derivation nobody can
  * audit.
  *
- * While the fallback below is still in place, a row is what separates a
- * deliberate legacy path from a reported one — removing a row makes that path
- * start reporting, not start 404ing. Reachability follows the table only once
- * #26701 removes the fallback; that is the slice where a deleted row also
- * retires the path.
+ * The table is exhaustive. #28701 removed the blanket expansion that used to
+ * keep every other `/api/zero/**` path resolving behind it, so a `/api/zero/**`
+ * path is served only when this table or `MIGRATED_BRANDED_PATHS` names it, and
+ * removing a row now retires the path rather than downgrading it to a reported
+ * one.
  *
- * Keyed by path alone rather than by `METHOD path` like
- * `FINAL_PROVIDER_CONSOLE_PATHS`: the evidence below is a path template with
- * no method attached, so restricting an entry to the single method that
- * happened to appear inside a three-day window would 404 a caller's other
- * methods on the same path.
+ * Keyed by path alone rather than by `METHOD path`: the evidence below is a
+ * path template with no method attached, so restricting an entry to the single
+ * method that happened to appear inside the retained window would 404 a
+ * caller's other methods on the same path.
  *
- * The first group is every `/api/zero/**` path template that received a
- * request in `vm0-request-log-prod`, re-derived on 2026-08-20 over the whole
- * retained window. Some of the lowest-count rows are operator probes from the
- * #28356 investigation rather than real clients; they stay, because a dead
- * row costs one line and a missing row costs a real caller a 404.
+ * Every remaining row belongs to a provider console — a Slack or Teams app
+ * configuration holds the URL, not a client we control — so no deploy and no
+ * client release drains it. #28701 narrowed the table to these six against the
+ * 6.3 days `vm0-request-log-prod` retains, 2026-08-17 to 2026-08-23:
  *
- * The second group is seeded regardless of measured traffic, because a
- * provider console — not a client we control — holds the URL.
+ * - `slack/events`, `slack/oauth/install`, and `slack/oauth/callback` were
+ *   still taking requests on the last day of the window, from 33 and 17
+ *   distinct source addresses inside Slack's own infrastructure. That is what
+ *   proves the Slack app configuration still points at the legacy paths.
+ * - `slack/commands` and `slack/interactive` saw no traffic in the window and
+ *   stay anyway: they live in the same Slack app configuration as the Event
+ *   Subscriptions URL that is demonstrably still legacy, so their silence says
+ *   nobody used a slash command that week, not that the configuration moved.
+ * - `slack/oauth/callback` and `teams/oauth/callback` are also produced inside
+ *   this repository, as `redirect_uri` values in `routes/slack-oauth.ts` and
+ *   `routes/teams-oauth.ts`. The Teams row is held deliberately so that
+ *   `api.vm0.ai` and `/api/zero/**` retire together, as recorded on #26701.
+ *
+ * The rows #28701 removed are still served, by `MIGRATED_BRANDED_PATHS`: each
+ * of those contracts moved to a neutral path in a #28278 slice, and a row there
+ * names both branded forms. A row here records that a path is owed rather than
+ * which table serves it, which is why removing these twenty-five changed
+ * nothing a caller can observe.
  */
 const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
-  // Measured `/api/zero/**` traffic, most requests first.
-  "/api/okou/realtime/token": "/api/zero/realtime/token",
-  "/api/okou/computer-use/host/commands/next":
-    "/api/zero/computer-use/host/commands/next",
-  "/api/okou/computer-use/audit-events": "/api/zero/computer-use/audit-events",
-  "/api/okou/computer-use/heartbeat": "/api/zero/computer-use/heartbeat",
   "/api/okou/slack/events": "/api/zero/slack/events",
-  "/api/okou/org": "/api/zero/org",
-  "/api/okou/connector-catalog/:connectorSlug/permissions":
-    "/api/zero/connector-catalog/:connectorSlug/permissions",
   "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/host/deployments/:deploymentId/complete":
-    "/api/zero/host/deployments/:deploymentId/complete",
-  "/api/okou/host/deployments/prepare": "/api/zero/host/deployments/prepare",
-  "/api/okou/uploads/prepare": "/api/zero/uploads/prepare",
-  "/api/okou/uploads/complete": "/api/zero/uploads/complete",
-  "/api/okou/recognize": "/api/zero/recognize",
-  "/api/okou/web/download-file": "/api/zero/web/download-file",
-  "/api/okou/teams/bot": "/api/zero/teams/bot",
-  "/api/okou/logs": "/api/zero/logs",
-  "/api/okou/agents/:id": "/api/zero/agents/:id",
-  "/api/okou/agents/:id/user-connectors":
-    "/api/zero/agents/:id/user-connectors",
-  "/api/okou/scrape": "/api/zero/scrape",
-  "/api/okou/connectors": "/api/zero/connectors",
-  "/api/okou/host/sites/:publicSlug/files":
-    "/api/zero/host/sites/:publicSlug/files",
-  "/api/okou/billing/concurrency-checkout/preview":
-    "/api/zero/billing/concurrency-checkout/preview",
-  "/api/okou/feishu/events/:installationId":
-    "/api/zero/feishu/events/:installationId",
-  "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
-  "/api/okou/logs/:id": "/api/zero/logs/:id",
-  "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
-
-  // Held by a provider console, so measured traffic cannot retire them. Every
-  // branded path in `FINAL_PROVIDER_CONSOLE_PATHS` is listed, including the
-  // Teams OAuth callback that the Microsoft app registration still points at
-  // after #28300 — see the ordering constraint recorded on #26701.
-  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
   "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
-  "/api/okou/feishu/oauth/callback": "/api/zero/feishu/oauth/callback",
   "/api/okou/slack/commands": "/api/zero/slack/commands",
   "/api/okou/slack/interactive": "/api/zero/slack/interactive",
+  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
 
 interface BrandedPathForms {
@@ -191,46 +115,50 @@ function brandedPathForms(path: string): BrandedPathForms | undefined {
 }
 
 /**
- * True when only the blanket expansion produces `aliasPath`: it is a legacy
- * path that no contract declares and `LEGACY_ZERO_PATHS` does not list.
+ * True when the expansion may register `aliasPath` for a contract declaring
+ * `declaredPath`. The declared path and the canonical `/api/okou/**` form
+ * always register; a derived `/api/zero/**` path registers only when
+ * `LEGACY_ZERO_PATHS` names it.
  */
-function isFallbackOnlyLegacyPath(
+function servesNamespaceAliasPath(
   declaredPath: string,
   aliasPath: string,
 ): boolean {
   if (aliasPath === declaredPath) {
-    return false;
+    return true;
   }
   const forms = brandedPathForms(declaredPath);
   if (!forms || aliasPath !== forms.legacy) {
-    return false;
+    return true;
   }
-  return LEGACY_ZERO_PATHS[forms.canonical] !== aliasPath;
+  return LEGACY_ZERO_PATHS[forms.canonical] === aliasPath;
 }
 
 /**
- * Registers the legacy `/api/zero/**` paths named in `LEGACY_ZERO_PATHS`, and
- * keeps the blanket expansion behind them as a fallback so no path that
- * resolves today stops resolving.
+ * Registers the canonical `/api/okou/**` form of every branded contract path,
+ * and the legacy `/api/zero/**` form only where `LEGACY_ZERO_PATHS` names it.
  *
- * The fallback stays until #26701 can prove it is unused, which the request
- * log alone cannot do: it retains about three days, which cannot tell a
- * drained caller apart from a weekly one. Narrowing on that evidence would
- * silently 404 a real client, so instead every fallback-only registration is
- * marked and `createAppWithRoutes` reports the first request that reaches it.
- * That turns each gap in the table into a measurement rather than an outage.
+ * Until #28701 this expansion derived the legacy form unconditionally and
+ * marked the registrations the table did not list, so `createAppWithRoutes`
+ * could report the first request that reached one. That fallback existed
+ * because the request log retained about three days, which cannot tell a
+ * drained caller apart from a weekly one, and narrowing on that evidence would
+ * have silently 404ed a real client. The log retains 6.3 days now and #28701
+ * measured the whole window, so the table names every legacy path still owed
+ * and the derivation behind it is gone — the reporting was retired because it
+ * had nothing left to find, not because it was unwanted.
  */
 export function withApiNamespaceAliases(
   routes: readonly RouteEntry[],
 ): readonly RouteEntry[] {
   return routes.flatMap((entry) => {
-    return apiNamespaceAliasPaths(entry.route.path).map((path) => {
-      const alias = routeEntryWithPath(entry, path);
-      if (!isFallbackOnlyLegacyPath(entry.route.path, path)) {
-        return alias;
-      }
-      return { ...alias, viaNamespaceAliasFallback: true };
-    });
+    return apiNamespaceAliasPaths(entry.route.path)
+      .filter((path) => {
+        return servesNamespaceAliasPath(entry.route.path, path);
+      })
+      .map((path) => {
+        return routeEntryWithPath(entry, path);
+      });
   });
 }
 
@@ -239,14 +167,15 @@ export function withApiNamespaceAliases(
  * canonical path its contract now declares.
  *
  * `LEGACY_ZERO_PATHS` cannot express this, which is why this is a second table
- * rather than more rows in that one. That table classifies which of the
- * `/api/zero/**` registrations the expansion above already produced are
- * intentional; this one decides which branded registrations exist at all.
- * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
- * moves a contract off `/api/okou/**` the expansion produces no branded path
- * for it and neither branded path is registered any more — published CLI builds
- * still calling the branded path would get a 404 with nothing in either table
- * able to say otherwise.
+ * rather than more rows in that one. That table names the `/api/zero/**` form
+ * the expansion above may derive for a contract that still declares a branded
+ * path; this one names branded registrations for a contract that declares a
+ * neutral one, including the `/api/okou/**` form the expansion cannot derive
+ * either. `apiNamespaceAliasPaths` returns a neutral path unchanged, so once
+ * #28278 moves a contract off `/api/okou/**` the expansion produces no branded
+ * path for it and neither branded path is registered any more — published CLI
+ * builds still calling the branded path would get a 404 with nothing in either
+ * table able to say otherwise.
  *
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
@@ -255,9 +184,10 @@ export function withApiNamespaceAliases(
  * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
- * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
- * request log retains about three days, which by itself cannot prove a row is
- * drained — it cannot tell a caller that left from one that calls weekly.
+ * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules.
+ * `vm0-request-log-prod` retained 6.3 days when #28701 read it, which is long
+ * enough to name a caller that is still there and not long enough to prove a
+ * silent row has no caller that returns.
  *
  * The surfaces a row holds open, and the window each one bounds: an open web or
  * app page keeps the bundle it loaded for about two days, and an execution
@@ -266,76 +196,110 @@ export function withApiNamespaceAliases(
  * `JOB_TIMEOUT` drain. An installed CLI or desktop build has no window at all,
  * which is why removal is gated on #26701's request-log evidence rather than on
  * a date.
+ *
+ * #28709 applied that gate to the whole table for the first time and took it
+ * from 314 rows to 184. Each removed row had no request on either branded form
+ * across the 6.3 days `vm0-request-log-prod` retained, measured per row rather
+ * than from a truncated top-N summary — the log holds about 6,300 distinct
+ * branded path templates, most of them scanner noise, so a ranked query that
+ * stops short buries exactly the low-traffic rows this gate is deciding. The
+ * check matched each row's branded forms as patterns rather than as literals,
+ * because a CORS preflight is logged under its request path rather than the
+ * route template it never matched.
+ *
+ * Two classes of row survived that check and are why the table is 184 rather
+ * than 135. Forty-six rows took measured traffic on a branded form inside the
+ * window, all of it from released App and CLI builds, so they are still serving
+ * a caller. Three rows took none and stay anyway, because for them silence is
+ * the expected reading rather than evidence: the two `desktop/updates` rows are
+ * a one-shot download an installed macOS build asks for when its owner clicks
+ * it, and the Feishu events row is delivered to by an app console we cannot
+ * edit. None of those holders drains on a deploy, so a quiet week measures how
+ * often the surface is used, not whether it is still owed.
+ *
+ * #28711 then took forty-two of those forty-six traffic-bearing rows, leaving
+ * 142. Their branded forms had gone quiet for longer than any window that can
+ * hold their callers. Two facts about that evidence are worth keeping, because
+ * the next removal will meet them again:
+ *
+ * - `x_client_version` does not separate CLI builds. The commit-addressed
+ *   packages either side of a #28278 slice share one semver, so the same
+ *   version reports both branded and neutral requests. Only the pinning window
+ *   bounds the CLI tail; the version field proves nothing about migration.
+ * - A row's caller mix decides which window applies, so it has to be measured
+ *   per row rather than assumed per slice. #28711 was scoped as CLI-only work
+ *   and twelve of its rows turned out to have a web-app caller too, which is
+ *   the ~2 day bundle window rather than the two-hour one. Group the log by
+ *   `x_client_type` before reading a silence as a drain.
+ *
+ * #28917 then took fifty-three of the 142, leaving 89. Every one of them was
+ * silent on both branded forms across the whole retained window — 2026-08-20
+ * 06:34Z to 2026-08-24 08:28Z, 4.1 days, all 685 distinct branded templates
+ * pulled without truncation and matched with `:param` rewritten to `[^/]+`.
+ * Three whole slices drained: #28417 (maps), #28357 (weather) and #28418
+ * (browser, finance, SEO) no longer have a row here.
+ *
+ * Silence alone is weak for the rarer rows, so it was corroborated rather than
+ * trusted: for thirty-five of the fifty-three the neutral path carried traffic
+ * inside the same window while both branded forms stayed at zero, and no
+ * shipped CLI, desktop or platform build emits a branded literal for any of
+ * them. The desktop build's entire hardcoded surface is `auth/me`,
+ * `computer-use/{heartbeat,host/*,hosts/start}`, `desktop/{updates,
+ * migration-policy}`, `feature-switches` and `org`, and every one of those
+ * rows is kept.
+ *
+ * Three rows the #28917 inventory listed were held back, and each names a way
+ * a zero-count reading fails:
+ *
+ * - `integrations/teams/oauth/callback`. `callbackRedirectUri` in
+ *   `routes/teams-oauth.ts` still emits its `zero` form for the VM0 brand, so
+ *   the row is an active producer target. No window can drain it and no count
+ *   can retire it; see the comment on the row itself.
+ * - `computer-use/hosts/start` and `computer-use/host/stop`. Both are
+ *   hardcoded in every Desktop build up to 0.38.53, and those builds were
+ *   still sending branded `heartbeat` and `host/commands/next` inside this
+ *   window. Start and stop fire once per session, so at the measured rate the
+ *   branded count they should produce over four days is under one request.
+ *   Zero is not a drain; it is the absence of statistical power.
+ *
+ * The general rule those three leave behind: a zero count retires a row only
+ * when the row's caller both has a bounded window and would have been expected
+ * to appear in the window at all. Check the call rate before reading a silence.
+ *
+ * #28916 then took twenty-six more. Its set is disjoint from #28917's: those
+ * rows were silent, these were not. Each of these carried branded traffic early
+ * in the same window and went to exactly zero once its producer cut over, with
+ * the neutral path taking the same calls from the same callers on the same day.
+ * Across the twenty-six the crossover is direct — branded 10/2415/27/0/0
+ * against neutral 0/3425/6605/13822/3810 on 08-20 through 08-24. An observed
+ * cutover is stronger than a silence, because it names the build that stopped
+ * emitting the branded form rather than only the absence of a request. Two more
+ * facts about reading this log:
+ *
+ * - `x_client_type` is absent on some released callers, so it cannot be the
+ *   only field a caller is classified by. The desktop Computer Use host sends
+ *   no client headers at all and appears as `user_agent: node`; classifying by
+ *   `x_client_type` alone read it as an anonymous caller and put two rows of
+ *   that family on this removal's list. Group by `user_agent` as well, and hold
+ *   a row whose caller is an installed build under the exclusion above.
+ * - A conditional endpoint is quiet for reasons that have nothing to do with a
+ *   drain. `computer-use/host/commands/:commandId/complete` is called only when
+ *   a write command finishes, so its silence measures how often that happened,
+ *   not whether the caller of `host/commands/next` — which this table still
+ *   holds — is still there. Read a row against the traffic of the loop it
+ *   belongs to, not only against its own. This is #28917's call-rate rule
+ *   reached from the other direction.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
-  // the URL by hand rather than from the contract, so the path it holds shipped
-  // independently of this table — and the `zero` form was reachable through the
-  // blanket expansion until the contract moved. Both are owed.
-  //
-  // Surface: commit-addressed CLI packages, not web clients. A run execution
-  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
-  // a later API deploy, so the exposure is the context drain described in
-  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
-  // claimed execution and finalization lifetime, with execution bounded by the
-  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
-  // drain is the floor for removal, not the condition: these rows retire under
-  // #26701's evidence rules like every other row in this file.
-  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
-  "/api/maps/reverse-geocode": [
-    "/api/okou/maps/reverse-geocode",
-    "/api/zero/maps/reverse-geocode",
-  ],
-  "/api/maps/directions": [
-    "/api/okou/maps/directions",
-    "/api/zero/maps/directions",
-  ],
-  "/api/maps/places/search": [
-    "/api/okou/maps/places/search",
-    "/api/zero/maps/places/search",
-  ],
-  "/api/maps/places/details": [
-    "/api/okou/maps/places/details",
-    "/api/zero/maps/places/details",
-  ],
-  "/api/maps/osm/download": [
-    "/api/okou/maps/osm/download",
-    "/api/zero/maps/osm/download",
-  ],
-  "/api/maps/osm/render": [
-    "/api/okou/maps/osm/render",
-    "/api/zero/maps/osm/render",
-  ],
   // #28421: personal model providers, onboarding, team, and user preferences.
-  "/api/me/model-provider-accounts/:id": [
-    "/api/okou/me/model-provider-accounts/:id",
-    "/api/zero/me/model-provider-accounts/:id",
-  ],
-  "/api/me/model-provider-accounts/:id/activate": [
-    "/api/okou/me/model-provider-accounts/:id/activate",
-    "/api/zero/me/model-provider-accounts/:id/activate",
-  ],
-  "/api/me/model-provider-accounts/:id/subscription-reset": [
-    "/api/okou/me/model-provider-accounts/:id/subscription-reset",
-    "/api/zero/me/model-provider-accounts/:id/subscription-reset",
-  ],
+  // #28917 removed `me/model-provider-accounts/:id/activate` and
+  // `onboarding/complete`: both branded forms were silent across the whole
+  // retained window while their neutral paths carried traffic.
   "/api/me/model-providers": [
     "/api/okou/me/model-providers",
     "/api/zero/me/model-providers",
-  ],
-  "/api/me/model-providers/:type": [
-    "/api/okou/me/model-providers/:type",
-    "/api/zero/me/model-providers/:type",
-  ],
-  "/api/me/model-providers/:type/subscription-reset": [
-    "/api/okou/me/model-providers/:type/subscription-reset",
-    "/api/zero/me/model-providers/:type/subscription-reset",
-  ],
-  "/api/onboarding/complete": [
-    "/api/okou/onboarding/complete",
-    "/api/zero/onboarding/complete",
   ],
   "/api/onboarding/status": [
     "/api/okou/onboarding/status",
@@ -350,149 +314,15 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/user-preferences",
     "/api/zero/user-preferences",
   ],
-  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
-  // form (`callWeather` built it by hand rather than from the contract, so it
-  // shipped independently of this path), and the `zero` form was reachable
-  // through the blanket expansion until the contract moved. Both are owed.
-  //
-  // Surface: commit-addressed CLI packages pinned by run contexts created
-  // before this deploy, so the branded form outlives the deploy by the queue
-  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
-  // external holder of the `zero` brand path, which has no time box. Removal
-  // therefore follows the table's #26701 evidence gate above, not a clock.
-  "/api/weather/current": [
-    "/api/okou/weather/current",
-    "/api/zero/weather/current",
-  ],
-  "/api/weather/forecast/hourly": [
-    "/api/okou/weather/forecast/hourly",
-    "/api/zero/weather/forecast/hourly",
-  ],
-  "/api/weather/forecast/daily": [
-    "/api/okou/weather/forecast/daily",
-    "/api/zero/weather/forecast/daily",
-  ],
-  "/api/weather/history/hourly": [
-    "/api/okou/weather/history/hourly",
-    "/api/zero/weather/history/hourly",
-  ],
-  "/api/weather/air-quality/current": [
-    "/api/okou/weather/air-quality/current",
-    "/api/zero/weather/air-quality/current",
-  ],
-  // #28418: the browser, finance, SEO, and MCP connector routes. The callers
-  // these rows keep working are a released web or app client, which holds the
-  // branded path until a refresh loads a build that derives the neutral one
-  // (~2 days), and a CLI artifact pinned by an execution context's
-  // `CLI_PKG_URL`, which holds it for that context's queue and claimed-run
-  // lifetime. Neither window is the removal condition on its own: a row is
-  // removed under #26701's evidence rules, because the request log retains
-  // about three days and cannot tell a drained caller from a weekly one.
-  "/api/browsers": ["/api/okou/browsers", "/api/zero/browsers"],
-  "/api/browsers/current": [
-    "/api/okou/browsers/current",
-    "/api/zero/browsers/current",
-  ],
-  "/api/browsers/lease": [
-    "/api/okou/browsers/lease",
-    "/api/zero/browsers/lease",
-  ],
-  "/api/browsers/use": ["/api/okou/browsers/use", "/api/zero/browsers/use"],
-  "/api/finance/chart": ["/api/okou/finance/chart", "/api/zero/finance/chart"],
-  "/api/finance/profile": [
-    "/api/okou/finance/profile",
-    "/api/zero/finance/profile",
-  ],
-  "/api/finance/quote": ["/api/okou/finance/quote", "/api/zero/finance/quote"],
-  "/api/finance/search": [
-    "/api/okou/finance/search",
-    "/api/zero/finance/search",
-  ],
-  "/api/mcp-connectors": [
-    "/api/okou/mcp-connectors",
-    "/api/zero/mcp-connectors",
-  ],
-  "/api/seo/backlinks-summary": [
-    "/api/okou/seo/backlinks-summary",
-    "/api/zero/seo/backlinks-summary",
-  ],
-  "/api/seo/keyword-ideas": [
-    "/api/okou/seo/keyword-ideas",
-    "/api/zero/seo/keyword-ideas",
-  ],
-  "/api/seo/ranked-keywords": [
-    "/api/okou/seo/ranked-keywords",
-    "/api/zero/seo/ranked-keywords",
-  ],
-  "/api/seo/serp": ["/api/okou/seo/serp", "/api/zero/seo/serp"],
-  // #28415. Published CLI builds poll generation status and post image
-  // generations at the `okou` form — `getBuiltInGenerationStatus` and
-  // `generateWebImage` build those URLs by hand rather than from the contract,
-  // so they shipped independently of this path. The `zero` form was reachable
-  // through the blanket expansion until the contract moved. Both are owed.
-  //
-  // Same surface as the rows above: commit-addressed CLI packages pinned by run
-  // contexts created before this deploy, draining over the queue lifetime plus
-  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. Removal follows
-  // the table's #26701 evidence gate, not that clock.
-  "/api/built-in-generations/:generationId": [
-    "/api/okou/built-in-generations/:generationId",
-    "/api/zero/built-in-generations/:generationId",
-  ],
-  "/api/image-io/generate": [
-    "/api/okou/image-io/generate",
-    "/api/zero/image-io/generate",
-  ],
-  // #28416. Every consumer of these four derives its URL from the contract, so
-  // no caller hardcodes the branded form — but a published CLI package embeds
-  // the contract path it was built from, and the `zero` form was reachable
-  // through the blanket expansion until the contract moved. Both are owed.
-  //
-  // Surface: commit-addressed CLI packages pinned by execution contexts created
-  // before this deploy, bounded by the queue lifetime plus the runner's 2h
-  // `JOB_TIMEOUT` drain, plus any external holder of the `zero` form, which has
-  // no window. Removal follows the #26701 evidence gate above, not a date.
-  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
-  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
-  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
-  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
-  // #28419. The goal and hosted-site contracts. `domains/host.ts` builds its
-  // four URLs by hand rather than from the contract, so a published CLI holds
-  // the `okou` form independently of this table; the `zero` form was reachable
-  // through the blanket expansion until the contract moved. Both are owed, on
-  // the same commit-addressed CLI drain described above.
-  //
-  // A key holds its path parameter verbatim, because the lookup below matches
-  // `entry.route.path` exactly rather than an expanded request path.
-  "/api/goal": ["/api/okou/goal", "/api/zero/goal"],
-  "/api/goal/block": ["/api/okou/goal/block", "/api/zero/goal/block"],
-  "/api/goal/complete": ["/api/okou/goal/complete", "/api/zero/goal/complete"],
-  "/api/goal/pause": ["/api/okou/goal/pause", "/api/zero/goal/pause"],
-  "/api/goal/resume": ["/api/okou/goal/resume", "/api/zero/goal/resume"],
-  "/api/host/deployments/:deploymentId/complete": [
-    "/api/okou/host/deployments/:deploymentId/complete",
-    "/api/zero/host/deployments/:deploymentId/complete",
-  ],
-  "/api/host/deployments/prepare": [
-    "/api/okou/host/deployments/prepare",
-    "/api/zero/host/deployments/prepare",
-  ],
-  "/api/host/sites/:publicSlug/files": [
-    "/api/okou/host/sites/:publicSlug/files",
-    "/api/zero/host/sites/:publicSlug/files",
-  ],
-  "/api/host/sites/:site/deployments": [
-    "/api/okou/host/sites/:site/deployments",
-    "/api/zero/host/sites/:site/deployments",
-  ],
-  // #28420. Every caller of these five derives its URL from the contract, so
+  // #28420. Every caller of these derives its URL from the contract, so
   // nothing in this repository still asks for a branded form. Released builds
   // do: a browser tab holding already-loaded platform code keeps calling the
   // `okou` path it was built against until it navigates or reloads, which is
   // the ~2 day old-web-client window in `docs/fallback.md` section 7. The
   // `zero` form was reachable through the blanket expansion until the contract
   // moved. Both are owed, and both are removable only under #26701's evidence
-  // rules, like every other row in this table.
+  // rules, like every other row in this table. #28917 removed
+  // `chat-thread-unreads/mark-read` on zero-traffic evidence.
   "/api/attribution/signup": [
     "/api/okou/attribution/signup",
     "/api/zero/attribution/signup",
@@ -505,65 +335,42 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-thread-unreads",
     "/api/zero/chat-thread-unreads",
   ],
-  "/api/chat-thread-unreads/mark-read": [
-    "/api/okou/chat-thread-unreads/mark-read",
-    "/api/zero/chat-thread-unreads/mark-read",
-  ],
   "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
-  // #28422: artifact catalog, logs, push subscriptions, the platform realtime
-  // token, and the run reads.
-  "/api/artifacts/catalog": [
-    "/api/okou/artifacts/catalog",
-    "/api/zero/artifacts/catalog",
-  ],
-  "/api/artifacts/catalog/:artifactId": [
-    "/api/okou/artifacts/catalog/:artifactId",
-    "/api/zero/artifacts/catalog/:artifactId",
-  ],
-  "/api/logs": ["/api/okou/logs", "/api/zero/logs"],
+  // #28422: logs and the platform realtime token, all that is left of the
+  // artifact catalog, push subscription and run rows the slice moved. #28917
+  // removed the per-artifact catalog read and every run row but the agent
+  // telemetry read — `runs/:id`, its `context`, `network` and `runner` reads,
+  // and `runs/queue` — because their branded forms were silent across the whole
+  // retained window while the neutral paths carried the same callers. #28916
+  // then removed the three that were not silent — the catalog collection, push
+  // subscriptions and that agent telemetry read — because the platform build
+  // holding their branded forms cut over mid-window and the branded traffic
+  // stopped dead.
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
-  "/api/push-subscriptions": [
-    "/api/okou/push-subscriptions",
-    "/api/zero/push-subscriptions",
-  ],
   "/api/realtime/token": [
     "/api/okou/realtime/token",
     "/api/zero/realtime/token",
   ],
-  "/api/runs/:id": ["/api/okou/runs/:id", "/api/zero/runs/:id"],
-  "/api/runs/:id/cancel": [
-    "/api/okou/runs/:id/cancel",
-    "/api/zero/runs/:id/cancel",
-  ],
-  "/api/runs/:id/context": [
-    "/api/okou/runs/:id/context",
-    "/api/zero/runs/:id/context",
-  ],
-  "/api/runs/:id/network": [
-    "/api/okou/runs/:id/network",
-    "/api/zero/runs/:id/network",
-  ],
-  "/api/runs/:id/runner": [
-    "/api/okou/runs/:id/runner",
-    "/api/zero/runs/:id/runner",
-  ],
-  "/api/runs/:id/telemetry/agent": [
-    "/api/okou/runs/:id/telemetry/agent",
-    "/api/zero/runs/:id/telemetry/agent",
-  ],
-  "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
-  // #28459: the chat threads themselves, the chat event and search readers,
-  // shared threads, per-thread browser sessions, per-thread goals, workflow
-  // automations, queue position, and the X image share. Every caller in this
-  // repository derives its URL from the contract, so nothing here still asks
-  // for a branded form. Released builds do: a browser tab holding
-  // already-loaded platform code keeps calling the `okou` path it was built
-  // against until it navigates or reloads, the ~2 day old-web-client window in
-  // `docs/fallback.md` section 7; a commit-addressed CLI package pinned by an
-  // execution context's `CLI_PKG_URL` holds it for that context's queue and
-  // claimed-run lifetime; and the `okou-app` share worker deployed to
-  // Cloudflare Pages reads `shared-threads/:id/meta` from a build that ships
-  // separately from this one. The `zero` form was reachable through the
+  // #28459: the chat threads themselves, the chat event reader, the per-thread
+  // browser read, and workflow automations.
+  // The slice also covered shared threads, queue position and the X image
+  // share; #28709 removed those rows on zero-traffic evidence, which is why the
+  // `okou-app` share worker no longer appears among the holders below. #28711
+  // removed the search reader, `chat-threads/:id/metadata` and
+  // `chat-threads/:id/rename` on drained-traffic evidence, and #28917 removed
+  // `chat-threads/:id/computer-use-host`, `chat-threads/:id/unpin` and both
+  // per-thread goal rows, which is why goals no longer appear below. #28916
+  // removed `chat-threads/:id/model-selection` and the three browser-session
+  // writes (`browser/open`, `browser/lease`, `browser/close`) on cutover
+  // evidence: their branded forms carried platform traffic through 08-22 and
+  // then stopped while the neutral forms picked the same calls up. Every
+  // caller in this repository derives its URL from the contract, so nothing
+  // here still asks for a branded form. Released builds do: a browser tab
+  // holding already-loaded platform code keeps calling the `okou` path it was
+  // built against until it navigates or reloads, the ~2 day old-web-client
+  // window in `docs/fallback.md` section 7; and a commit-addressed CLI package
+  // pinned by an execution context's `CLI_PKG_URL` holds it for that context's
+  // queue and claimed-run lifetime. The `zero` form was reachable through the
   // blanket expansion until the contract moved. All of it is owed, and a row
   // retires under #26701's evidence rules rather than on any of those clocks.
   //
@@ -574,53 +381,17 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:id",
     "/api/zero/chat-threads/:id",
   ],
-  "/api/chat-threads/:id/computer-use-host": [
-    "/api/okou/chat-threads/:id/computer-use-host",
-    "/api/zero/chat-threads/:id/computer-use-host",
-  ],
-  "/api/chat-threads/:id/connector-selections": [
-    "/api/okou/chat-threads/:id/connector-selections",
-    "/api/zero/chat-threads/:id/connector-selections",
-  ],
   "/api/chat-threads/:id/draft": [
     "/api/okou/chat-threads/:id/draft",
     "/api/zero/chat-threads/:id/draft",
-  ],
-  "/api/chat-threads/:id/image-model": [
-    "/api/okou/chat-threads/:id/image-model",
-    "/api/zero/chat-threads/:id/image-model",
   ],
   "/api/chat-threads/:id/mark-read": [
     "/api/okou/chat-threads/:id/mark-read",
     "/api/zero/chat-threads/:id/mark-read",
   ],
-  "/api/chat-threads/:id/mark-unread": [
-    "/api/okou/chat-threads/:id/mark-unread",
-    "/api/zero/chat-threads/:id/mark-unread",
-  ],
-  "/api/chat-threads/:id/metadata": [
-    "/api/okou/chat-threads/:id/metadata",
-    "/api/zero/chat-threads/:id/metadata",
-  ],
-  "/api/chat-threads/:id/model-selection": [
-    "/api/okou/chat-threads/:id/model-selection",
-    "/api/zero/chat-threads/:id/model-selection",
-  ],
   "/api/chat-threads/:id/pin": [
     "/api/okou/chat-threads/:id/pin",
     "/api/zero/chat-threads/:id/pin",
-  ],
-  "/api/chat-threads/:id/rename": [
-    "/api/okou/chat-threads/:id/rename",
-    "/api/zero/chat-threads/:id/rename",
-  ],
-  "/api/chat-threads/:id/unpin": [
-    "/api/okou/chat-threads/:id/unpin",
-    "/api/zero/chat-threads/:id/unpin",
-  ],
-  "/api/chat-threads/:id/video-model": [
-    "/api/okou/chat-threads/:id/video-model",
-    "/api/zero/chat-threads/:id/video-model",
   ],
   "/api/chat-threads/:threadId/artifacts": [
     "/api/okou/chat-threads/:threadId/artifacts",
@@ -630,22 +401,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:threadId/browser",
     "/api/zero/chat-threads/:threadId/browser",
   ],
-  "/api/chat-threads/:threadId/browser/close": [
-    "/api/okou/chat-threads/:threadId/browser/close",
-    "/api/zero/chat-threads/:threadId/browser/close",
-  ],
-  "/api/chat-threads/:threadId/browser/lease": [
-    "/api/okou/chat-threads/:threadId/browser/lease",
-    "/api/zero/chat-threads/:threadId/browser/lease",
-  ],
-  "/api/chat-threads/:threadId/browser/open": [
-    "/api/okou/chat-threads/:threadId/browser/open",
-    "/api/zero/chat-threads/:threadId/browser/open",
-  ],
-  "/api/chat-threads/:threadId/browser/resize": [
-    "/api/okou/chat-threads/:threadId/browser/resize",
-    "/api/zero/chat-threads/:threadId/browser/resize",
-  ],
   "/api/chat-threads/:threadId/event-rows": [
     "/api/okou/chat-threads/:threadId/event-rows",
     "/api/zero/chat-threads/:threadId/event-rows",
@@ -653,18 +408,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/chat-threads/:threadId/event-snapshot": [
     "/api/okou/chat-threads/:threadId/event-snapshot",
     "/api/zero/chat-threads/:threadId/event-snapshot",
-  ],
-  "/api/chat-threads/:threadId/goal": [
-    "/api/okou/chat-threads/:threadId/goal",
-    "/api/zero/chat-threads/:threadId/goal",
-  ],
-  "/api/chat-threads/:threadId/goal/pause": [
-    "/api/okou/chat-threads/:threadId/goal/pause",
-    "/api/zero/chat-threads/:threadId/goal/pause",
-  ],
-  "/api/chat-threads/:threadId/shared-threads": [
-    "/api/okou/chat-threads/:threadId/shared-threads",
-    "/api/zero/chat-threads/:threadId/shared-threads",
   ],
   "/api/chat-threads/:threadId/workflow-automations": [
     "/api/okou/chat-threads/:threadId/workflow-automations",
@@ -679,168 +422,41 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/chat-threads/snapshot",
   ],
   "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
-  "/api/chat/search": ["/api/okou/chat/search", "/api/zero/chat/search"],
-  "/api/image-share/x": ["/api/okou/image-share/x", "/api/zero/image-share/x"],
-  "/api/queue-position": [
-    "/api/okou/queue-position",
-    "/api/zero/queue-position",
-  ],
-  "/api/shared-threads/:id": [
-    "/api/okou/shared-threads/:id",
-    "/api/zero/shared-threads/:id",
-  ],
-  "/api/shared-threads/:id/meta": [
-    "/api/okou/shared-threads/:id/meta",
-    "/api/zero/shared-threads/:id/meta",
-  ],
   // #28457: the billing surface — plan and usage-pack checkout, concurrency
   // subscriptions, credit purchase, the Stripe portal, invoices, and code
-  // redemption. Every caller derives its URL from the contract, so nothing in
+  // redemption, of which only the status read is still owed. Every caller
+  // derives its URL from the contract, so nothing in
   // this repository asks for a branded form, but released builds still do: an
   // already-loaded platform tab keeps calling the `okou` path it was built
   // against for the ~2 day old-web-client window in `docs/fallback.md` section
   // 7, and a CLI package pinned by an execution context's `CLI_PKG_URL` embeds
   // the contract path it was built from for that context's queue and claimed-run
   // lifetime. The `zero` form was reachable through the blanket expansion until
-  // the contract moved, and `/api/zero/billing/concurrency-checkout/preview` is
-  // measured traffic in `LEGACY_ZERO_PATHS`, so it is owed by evidence rather
-  // than by symmetry. Both forms are removable only under #26701's evidence
-  // rules, like every other row in this table.
-  "/api/billing/auto-recharge": [
-    "/api/okou/billing/auto-recharge",
-    "/api/zero/billing/auto-recharge",
-  ],
-  "/api/billing/checkout": [
-    "/api/okou/billing/checkout",
-    "/api/zero/billing/checkout",
-  ],
-  "/api/billing/checkout/complete": [
-    "/api/okou/billing/checkout/complete",
-    "/api/zero/billing/checkout/complete",
-  ],
-  "/api/billing/checkout/confirm": [
-    "/api/okou/billing/checkout/confirm",
-    "/api/zero/billing/checkout/confirm",
-  ],
-  "/api/billing/concurrency-checkout": [
-    "/api/okou/billing/concurrency-checkout",
-    "/api/zero/billing/concurrency-checkout",
-  ],
-  "/api/billing/concurrency-checkout/preview": [
-    "/api/okou/billing/concurrency-checkout/preview",
-    "/api/zero/billing/concurrency-checkout/preview",
-  ],
-  "/api/billing/concurrency-subscriptions/:subscriptionId/cancel": [
-    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/cancel",
-    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/cancel",
-  ],
-  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/confirm": [
-    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
-    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
-  ],
-  "/api/billing/concurrency-subscriptions/:subscriptionId/changes/preview": [
-    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
-    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
-  ],
-  "/api/billing/concurrency-subscriptions/:subscriptionId/restore": [
-    "/api/okou/billing/concurrency-subscriptions/:subscriptionId/restore",
-    "/api/zero/billing/concurrency-subscriptions/:subscriptionId/restore",
-  ],
-  "/api/billing/credit-checkout": [
-    "/api/okou/billing/credit-checkout",
-    "/api/zero/billing/credit-checkout",
-  ],
-  "/api/billing/credit-checkout/confirm": [
-    "/api/okou/billing/credit-checkout/confirm",
-    "/api/zero/billing/credit-checkout/confirm",
-  ],
-  "/api/billing/downgrade": [
-    "/api/okou/billing/downgrade",
-    "/api/zero/billing/downgrade",
-  ],
-  "/api/billing/invoices": [
-    "/api/okou/billing/invoices",
-    "/api/zero/billing/invoices",
-  ],
-  "/api/billing/invoices/receipts": [
-    "/api/okou/billing/invoices/receipts",
-    "/api/zero/billing/invoices/receipts",
-  ],
-  "/api/billing/portal": [
-    "/api/okou/billing/portal",
-    "/api/zero/billing/portal",
-  ],
-  "/api/billing/redeem-code": [
-    "/api/okou/billing/redeem-code",
-    "/api/zero/billing/redeem-code",
-  ],
-  "/api/billing/redeem/:campaign": [
-    "/api/okou/billing/redeem/:campaign",
-    "/api/zero/billing/redeem/:campaign",
-  ],
-  "/api/billing/restore": [
-    "/api/okou/billing/restore",
-    "/api/zero/billing/restore",
-  ],
+  // the contract moved. Both forms are removable only under #26701's evidence
+  // rules, like every other row here.
+  //
+  // #28917 removed nine of these rows — both concurrency-checkout rows, the
+  // concurrency subscription change preview, the credit-checkout confirm, the
+  // Stripe portal, code redemption, purchase restore, the usage-pack checkout,
+  // and both usage-pack subscription-change rows. Several of them fire only on
+  // a user action that need not occur inside a four-day window, so the reading
+  // rests on the corroborating sweep as much as on the silence: no shipped CLI,
+  // desktop, or platform build emits a branded literal for any of them, and
+  // every caller derives its URL from a contract that has declared the neutral
+  // path since #28457. `/api/zero/billing/concurrency-checkout/preview` was
+  // among the nine: it carried measured traffic when #28701 dropped its
+  // `LEGACY_ZERO_PATHS` row and these rows are what served it afterwards, but
+  // the retained window recorded no request on either branded form.
+  //
+  // #28916 then removed the six that were not silent — plan checkout, invoices,
+  // `usage-pack-catalog`, `usage-pack-credits`, `usage-pack-migration` and
+  // `usage-pack-subscription`. Those did carry branded traffic, and it stopped
+  // when the platform build holding the branded forms cut over; the last
+  // branded request on any of the six was `billing/checkout` at 2026-08-22
+  // 20:08 UTC, with the neutral paths taking the same callers from 08-23 on.
   "/api/billing/status": [
     "/api/okou/billing/status",
     "/api/zero/billing/status",
-  ],
-  "/api/billing/usage-pack-catalog": [
-    "/api/okou/billing/usage-pack-catalog",
-    "/api/zero/billing/usage-pack-catalog",
-  ],
-  "/api/billing/usage-pack-checkout": [
-    "/api/okou/billing/usage-pack-checkout",
-    "/api/zero/billing/usage-pack-checkout",
-  ],
-  "/api/billing/usage-pack-checkout/confirm": [
-    "/api/okou/billing/usage-pack-checkout/confirm",
-    "/api/zero/billing/usage-pack-checkout/confirm",
-  ],
-  "/api/billing/usage-pack-credits": [
-    "/api/okou/billing/usage-pack-credits",
-    "/api/zero/billing/usage-pack-credits",
-  ],
-  "/api/billing/usage-pack-migration": [
-    "/api/okou/billing/usage-pack-migration",
-    "/api/zero/billing/usage-pack-migration",
-  ],
-  "/api/billing/usage-pack-migration/:migrationId/confirm": [
-    "/api/okou/billing/usage-pack-migration/:migrationId/confirm",
-    "/api/zero/billing/usage-pack-migration/:migrationId/confirm",
-  ],
-  "/api/billing/usage-pack-migration/:migrationId/revision/confirm": [
-    "/api/okou/billing/usage-pack-migration/:migrationId/revision/confirm",
-    "/api/zero/billing/usage-pack-migration/:migrationId/revision/confirm",
-  ],
-  "/api/billing/usage-pack-migration/:migrationId/revision/preview": [
-    "/api/okou/billing/usage-pack-migration/:migrationId/revision/preview",
-    "/api/zero/billing/usage-pack-migration/:migrationId/revision/preview",
-  ],
-  "/api/billing/usage-pack-migration/preview": [
-    "/api/okou/billing/usage-pack-migration/preview",
-    "/api/zero/billing/usage-pack-migration/preview",
-  ],
-  "/api/billing/usage-pack-subscription": [
-    "/api/okou/billing/usage-pack-subscription",
-    "/api/zero/billing/usage-pack-subscription",
-  ],
-  "/api/billing/usage-pack-subscription/changes/:changeId/confirm": [
-    "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
-    "/api/zero/billing/usage-pack-subscription/changes/:changeId/confirm",
-  ],
-  "/api/billing/usage-pack-subscription/changes/preview": [
-    "/api/okou/billing/usage-pack-subscription/changes/preview",
-    "/api/zero/billing/usage-pack-subscription/changes/preview",
-  ],
-  "/api/billing/usage-pack-subscription/subscription-change/confirm": [
-    "/api/okou/billing/usage-pack-subscription/subscription-change/confirm",
-    "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
-  ],
-  "/api/billing/usage-pack-subscription/subscription-change/preview": [
-    "/api/okou/billing/usage-pack-subscription/subscription-change/preview",
-    "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
   ],
   // #28466: the desktop Computer Use family. The highest-traffic branded family
   // in the repository — about 716,000 requests over the retained request-log
@@ -849,48 +465,52 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // endpoints, and an installed build updates on its owner's schedule rather
   // than on a deploy, so it has no window at all. The `zero` form carried
   // measured traffic of its own and was reachable through the blanket expansion
-  // until the contract moved. Both are owed on all sixteen paths.
+  // until the contract moved. Both are owed on all seven remaining paths.
   //
-  // The four rows `LEGACY_ZERO_PATHS` lists — `host/commands/next`,
-  // `audit-events`, `heartbeat`, and `hosts/start` — were served by that table
-  // before this move and are served by these rows after it: the contract no
-  // longer declares a branded path for the expansion to classify. The rows
-  // there stay untouched, and removal of either set follows #26701's evidence
-  // rules.
+  // The slice had sixteen. #28709 removed the three authorization-request rows,
+  // `commands/:commandId/plugin-content` and `plugin-commands` on zero-traffic
+  // evidence, and #28711 removed `commands`, `commands/:commandId`,
+  // `commands/:commandId/screenshot` and `write-commands`: those four are the
+  // agent side of the family, called by the CLI rather than by an installed
+  // Desktop build, and the log measured no Desktop caller on their branded
+  // forms at all. The host endpoints the Desktop build hardcodes are untouched.
+  //
+  // #28917 measured `hosts/start` and `host/stop` silent on both branded forms
+  // and kept them anyway, because for this family silence is not drain
+  // evidence. Both are hardcoded — see `computer-use-host.ts` at 5edd3c9c^ —
+  // in every Desktop build up to 0.38.53, and those builds were still sending
+  // `/api/okou/computer-use/heartbeat` and `/api/okou/computer-use/host/
+  // commands/next` inside the same window. Start and stop fire once per
+  // session, so the branded count they should produce over four days is under
+  // one request: the neutral paths took ~70 each against ~130,000 neutral
+  // `host/commands/next`. Zero is what a fully live caller looks like at that
+  // rate. Removing them would also strand a build that can still poll and
+  // heartbeat but can no longer open or close a session.
+  //
+  // Four of these paths — `host/commands/next`, `audit-events`, `heartbeat`,
+  // and `hosts/start` — were served by `LEGACY_ZERO_PATHS` before this move and
+  // are served by these rows after it: the contract no longer declares a
+  // branded path for the expansion to derive. #28701 dropped their rows from
+  // that table once it was clear these rows are what serve them. Removal of
+  // these follows #26701's evidence rules like every other row here.
+  //
+  // #28916 listed `audit-events` and `host/commands/:commandId/complete` for
+  // removal and both were kept, for the mirror image of #28917's reason. All of
+  // their branded traffic came from the desktop host loop, which sends no
+  // client headers and shows up as `user_agent: node` with a null
+  // `x_client_type` — the same installed build this comment names, not the
+  // anonymous caller an `x_client_type`-only grouping reported. `complete` is
+  // worse than quiet: it is only called when a write command finishes, so its
+  // silence measures how often that happened while `host/commands/next`, which
+  // this table still holds for the same build, kept being polled. Removing it
+  // would 404 the completion half of a loop whose polling half is kept on
+  // purpose, which is the same failure `hosts/start` and `host/stop` avoid.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
   "/api/computer-use/audit-events": [
     "/api/okou/computer-use/audit-events",
     "/api/zero/computer-use/audit-events",
-  ],
-  "/api/computer-use/authorization-requests": [
-    "/api/okou/computer-use/authorization-requests",
-    "/api/zero/computer-use/authorization-requests",
-  ],
-  "/api/computer-use/authorization-requests/:requestToken": [
-    "/api/okou/computer-use/authorization-requests/:requestToken",
-    "/api/zero/computer-use/authorization-requests/:requestToken",
-  ],
-  "/api/computer-use/authorization-requests/:requestToken/apply": [
-    "/api/okou/computer-use/authorization-requests/:requestToken/apply",
-    "/api/zero/computer-use/authorization-requests/:requestToken/apply",
-  ],
-  "/api/computer-use/commands": [
-    "/api/okou/computer-use/commands",
-    "/api/zero/computer-use/commands",
-  ],
-  "/api/computer-use/commands/:commandId": [
-    "/api/okou/computer-use/commands/:commandId",
-    "/api/zero/computer-use/commands/:commandId",
-  ],
-  "/api/computer-use/commands/:commandId/plugin-content": [
-    "/api/okou/computer-use/commands/:commandId/plugin-content",
-    "/api/zero/computer-use/commands/:commandId/plugin-content",
-  ],
-  "/api/computer-use/commands/:commandId/screenshot": [
-    "/api/okou/computer-use/commands/:commandId/screenshot",
-    "/api/zero/computer-use/commands/:commandId/screenshot",
   ],
   "/api/computer-use/heartbeat": [
     "/api/okou/computer-use/heartbeat",
@@ -916,23 +536,21 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/computer-use/hosts/start",
     "/api/zero/computer-use/hosts/start",
   ],
-  "/api/computer-use/plugin-commands": [
-    "/api/okou/computer-use/plugin-commands",
-    "/api/zero/computer-use/plugin-commands",
-  ],
-  "/api/computer-use/write-commands": [
-    "/api/okou/computer-use/write-commands",
-    "/api/zero/computer-use/write-commands",
-  ],
   // #28423: the integration control plane and the CLI messaging and file
-  // surfaces for Feishu, Slack, Microsoft Teams, Telegram, GitHub, AgentPhone,
-  // and Strapi. Two callers hold a branded form independently of the contract:
-  // `downloadFeishuFile` and `downloadPhoneFile` in the CLI build their URL by
-  // hand, so a published package keeps asking for the `okou` path it shipped
-  // with. Every other caller derives its URL from the contract, which a
-  // published CLI package still embeds at the version it was built from, and
-  // the `zero` form was reachable through the blanket expansion until the
-  // contract moved. Both are owed.
+  // surfaces. The slice covered Feishu, Slack, Microsoft Teams, Telegram,
+  // GitHub, AgentPhone and Strapi; #28709 removed the Telegram, GitHub,
+  // AgentPhone and Feishu messaging and file rows on zero-traffic evidence, and
+  // #28917 removed the Feishu and Strapi control-plane reads on the same
+  // evidence. #28916 then removed `integrations/teams/connect`, the last Teams
+  // row here, on cutover evidence, so what remains is the Slack messaging and
+  // file surface plus the Slack control-plane read. The #28709 removal also
+  // retired
+  // `downloadFeishuFile` and `downloadPhoneFile`, the two CLI callers that
+  // built a branded URL by hand rather than from the contract. Every remaining
+  // caller derives its URL from the contract, which a published CLI package
+  // still embeds at the version it was built from, and the `zero` form was
+  // reachable through the blanket expansion until the contract moved. Both are
+  // owed.
   //
   // Surfaces: commit-addressed CLI packages pinned by execution contexts
   // created before this deploy, which drain over the queue lifetime plus
@@ -943,66 +561,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
-  "/api/integrations/feishu": [
-    "/api/okou/integrations/feishu",
-    "/api/zero/integrations/feishu",
-  ],
-  "/api/integrations/feishu/app-id": [
-    "/api/okou/integrations/feishu/app-id",
-    "/api/zero/integrations/feishu/app-id",
-  ],
-  "/api/integrations/feishu/connect": [
-    "/api/okou/integrations/feishu/connect",
-    "/api/zero/integrations/feishu/connect",
-  ],
-  "/api/integrations/feishu/download-file": [
-    "/api/okou/integrations/feishu/download-file",
-    "/api/zero/integrations/feishu/download-file",
-  ],
-  "/api/integrations/feishu/installations/:installationId": [
-    "/api/okou/integrations/feishu/installations/:installationId",
-    "/api/zero/integrations/feishu/installations/:installationId",
-  ],
-  "/api/integrations/feishu/installations/:installationId/connect": [
-    "/api/okou/integrations/feishu/installations/:installationId/connect",
-    "/api/zero/integrations/feishu/installations/:installationId/connect",
-  ],
-  "/api/integrations/feishu/message": [
-    "/api/okou/integrations/feishu/message",
-    "/api/zero/integrations/feishu/message",
-  ],
-  "/api/integrations/feishu/upload-file/complete": [
-    "/api/okou/integrations/feishu/upload-file/complete",
-    "/api/zero/integrations/feishu/upload-file/complete",
-  ],
-  "/api/integrations/feishu/upload-file/init": [
-    "/api/okou/integrations/feishu/upload-file/init",
-    "/api/zero/integrations/feishu/upload-file/init",
-  ],
-  "/api/integrations/github/upload-file/complete": [
-    "/api/okou/integrations/github/upload-file/complete",
-    "/api/zero/integrations/github/upload-file/complete",
-  ],
-  "/api/integrations/github/upload-file/init": [
-    "/api/okou/integrations/github/upload-file/init",
-    "/api/zero/integrations/github/upload-file/init",
-  ],
-  "/api/integrations/phone/download-file": [
-    "/api/okou/integrations/phone/download-file",
-    "/api/zero/integrations/phone/download-file",
-  ],
-  "/api/integrations/phone/message": [
-    "/api/okou/integrations/phone/message",
-    "/api/zero/integrations/phone/message",
-  ],
-  "/api/integrations/phone/upload-file/complete": [
-    "/api/okou/integrations/phone/upload-file/complete",
-    "/api/zero/integrations/phone/upload-file/complete",
-  ],
-  "/api/integrations/phone/upload-file/init": [
-    "/api/okou/integrations/phone/upload-file/init",
-    "/api/zero/integrations/phone/upload-file/init",
-  ],
   "/api/integrations/slack": [
     "/api/okou/integrations/slack",
     "/api/zero/integrations/slack",
@@ -1027,214 +585,57 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/integrations/slack/upload-file/materialize",
     "/api/zero/integrations/slack/upload-file/materialize",
   ],
-  "/api/integrations/strapi": [
-    "/api/okou/integrations/strapi",
-    "/api/zero/integrations/strapi",
-  ],
-  "/api/integrations/strapi/:integrationId": [
-    "/api/okou/integrations/strapi/:integrationId",
-    "/api/zero/integrations/strapi/:integrationId",
-  ],
-  "/api/integrations/strapi/:integrationId/check-test": [
-    "/api/okou/integrations/strapi/:integrationId/check-test",
-    "/api/zero/integrations/strapi/:integrationId/check-test",
-  ],
-  "/api/integrations/strapi/:integrationId/secret": [
-    "/api/okou/integrations/strapi/:integrationId/secret",
-    "/api/zero/integrations/strapi/:integrationId/secret",
-  ],
-  "/api/integrations/teams/connect": [
-    "/api/okou/integrations/teams/connect",
-    "/api/zero/integrations/teams/connect",
-  ],
-  "/api/integrations/teams/message": [
-    "/api/okou/integrations/teams/message",
-    "/api/zero/integrations/teams/message",
-  ],
-  "/api/integrations/teams/upload-file/complete": [
-    "/api/okou/integrations/teams/upload-file/complete",
-    "/api/zero/integrations/teams/upload-file/complete",
-  ],
-  "/api/integrations/teams/upload-file/init": [
-    "/api/okou/integrations/teams/upload-file/init",
-    "/api/zero/integrations/teams/upload-file/init",
-  ],
-  "/api/integrations/telegram/bots": [
-    "/api/okou/integrations/telegram/bots",
-    "/api/zero/integrations/telegram/bots",
-  ],
-  "/api/integrations/telegram/message": [
-    "/api/okou/integrations/telegram/message",
-    "/api/zero/integrations/telegram/message",
-  ],
-  "/api/integrations/telegram/upload-file/complete": [
-    "/api/okou/integrations/telegram/upload-file/complete",
-    "/api/zero/integrations/telegram/upload-file/complete",
-  ],
-  "/api/integrations/telegram/upload-file/init": [
-    "/api/okou/integrations/telegram/upload-file/init",
-    "/api/zero/integrations/telegram/upload-file/init",
-  ],
   // #28460: the connector catalog, the connector connections and their
   // authorization starts, the custom connectors, the model provider
-  // connections, and the user permission grants. Two surfaces hold these
-  // branded paths. A released web or app build keeps calling the form it was
+  // connections, and the user permission grants. #28711 removed the slice's
+  // `connector-catalog/:connectorSlug/permissions`, `connectors`,
+  // `connectors/:connectorSlug` and `connectors/diagnostics/check` rows once
+  // the log showed their callers drained, and #28917 removed
+  // `connector-catalog/diagnostics`, `connectors/:connectorSlug/manual-grant`,
+  // `model-provider-connections` and `user-permission-grants/apply` on
+  // zero-traffic evidence. #28916 removed `connector-catalog/discovery`,
+  // `connectors/:connectorSlug/oauth/start` and the `user-permission-grants`
+  // collection on cutover evidence. `/api/connector-catalog/status` stays: an
+  // earlier pass batched these rows into one APL `case()`, which returns the
+  // first match, so `connector-catalog/:connectorSlug` absorbed its seven
+  // requests and hid them. Attribute a logged path to every row whose pattern
+  // matches it.
+  //
+  // Two surfaces hold the branded paths
+  // that remain. A released web or app build keeps calling the form it was
   // compiled against until it reloads, the ~2 day old-web-client window in
   // `docs/fallback.md` section 7; and a commit-addressed CLI package pinned by
   // an execution context's `CLI_PKG_URL` keeps calling it for that context's
   // queue lifetime plus claimed execution, bounded by the runner's 2h
   // `JOB_TIMEOUT`. Neither window is the removal condition on its own: a row
   // retires under the #26701 evidence gate above, like every other row here.
-  "/api/connector-catalog": [
-    "/api/okou/connector-catalog",
-    "/api/zero/connector-catalog",
-  ],
   "/api/connector-catalog/:connectorSlug": [
     "/api/okou/connector-catalog/:connectorSlug",
     "/api/zero/connector-catalog/:connectorSlug",
-  ],
-  "/api/connector-catalog/:connectorSlug/permissions": [
-    "/api/okou/connector-catalog/:connectorSlug/permissions",
-    "/api/zero/connector-catalog/:connectorSlug/permissions",
-  ],
-  "/api/connector-catalog/diagnostics": [
-    "/api/okou/connector-catalog/diagnostics",
-    "/api/zero/connector-catalog/diagnostics",
-  ],
-  "/api/connector-catalog/discovery": [
-    "/api/okou/connector-catalog/discovery",
-    "/api/zero/connector-catalog/discovery",
   ],
   "/api/connector-catalog/status": [
     "/api/okou/connector-catalog/status",
     "/api/zero/connector-catalog/status",
   ],
-  "/api/connectors": ["/api/okou/connectors", "/api/zero/connectors"],
-  "/api/connectors/:connectorSlug": [
-    "/api/okou/connectors/:connectorSlug",
-    "/api/zero/connectors/:connectorSlug",
-  ],
-  "/api/connectors/:connectorSlug/external-code/sessions": [
-    "/api/okou/connectors/:connectorSlug/external-code/sessions",
-    "/api/zero/connectors/:connectorSlug/external-code/sessions",
-  ],
-  "/api/connectors/:connectorSlug/external-code/sessions/:sessionId/complete": [
-    "/api/okou/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
-    "/api/zero/connectors/:connectorSlug/external-code/sessions/:sessionId/complete",
-  ],
-  "/api/connectors/:connectorSlug/manual-grant": [
-    "/api/okou/connectors/:connectorSlug/manual-grant",
-    "/api/zero/connectors/:connectorSlug/manual-grant",
-  ],
-  "/api/connectors/:connectorSlug/no-auth": [
-    "/api/okou/connectors/:connectorSlug/no-auth",
-    "/api/zero/connectors/:connectorSlug/no-auth",
-  ],
-  "/api/connectors/:connectorSlug/oauth/device/sessions": [
-    "/api/okou/connectors/:connectorSlug/oauth/device/sessions",
-    "/api/zero/connectors/:connectorSlug/oauth/device/sessions",
-  ],
-  "/api/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll": [
-    "/api/okou/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
-    "/api/zero/connectors/:connectorSlug/oauth/device/sessions/:sessionId/poll",
-  ],
-  "/api/connectors/:connectorSlug/oauth/start": [
-    "/api/okou/connectors/:connectorSlug/oauth/start",
-    "/api/zero/connectors/:connectorSlug/oauth/start",
-  ],
-  "/api/connectors/:connectorSlug/openid/start": [
-    "/api/okou/connectors/:connectorSlug/openid/start",
-    "/api/zero/connectors/:connectorSlug/openid/start",
-  ],
-  "/api/connectors/:connectorSlug/scope-diff": [
-    "/api/okou/connectors/:connectorSlug/scope-diff",
-    "/api/zero/connectors/:connectorSlug/scope-diff",
-  ],
-  "/api/connectors/diagnostics/check": [
-    "/api/okou/connectors/diagnostics/check",
-    "/api/zero/connectors/diagnostics/check",
-  ],
-  "/api/connectors/search": [
-    "/api/okou/connectors/search",
-    "/api/zero/connectors/search",
-  ],
-  "/api/connectors/steam/player": [
-    "/api/okou/connectors/steam/player",
-    "/api/zero/connectors/steam/player",
-  ],
   "/api/custom-connectors": [
     "/api/okou/custom-connectors",
     "/api/zero/custom-connectors",
   ],
-  "/api/custom-connectors/:id": [
-    "/api/okou/custom-connectors/:id",
-    "/api/zero/custom-connectors/:id",
-  ],
-  "/api/custom-connectors/:id/connection": [
-    "/api/okou/custom-connectors/:id/connection",
-    "/api/zero/custom-connectors/:id/connection",
-  ],
-  "/api/custom-connectors/:id/oauth2/start": [
-    "/api/okou/custom-connectors/:id/oauth2/start",
-    "/api/zero/custom-connectors/:id/oauth2/start",
-  ],
-  "/api/custom-connectors/:id/permissions": [
-    "/api/okou/custom-connectors/:id/permissions",
-    "/api/zero/custom-connectors/:id/permissions",
-  ],
-  "/api/custom-connectors/:id/values": [
-    "/api/okou/custom-connectors/:id/values",
-    "/api/zero/custom-connectors/:id/values",
-  ],
-  "/api/custom-connectors/oauth2/callback": [
-    "/api/okou/custom-connectors/oauth2/callback",
-    "/api/zero/custom-connectors/oauth2/callback",
-  ],
-  "/api/custom-connectors/proposals/save": [
-    "/api/okou/custom-connectors/proposals/save",
-    "/api/zero/custom-connectors/proposals/save",
-  ],
-  "/api/model-provider-connections": [
-    "/api/okou/model-provider-connections",
-    "/api/zero/model-provider-connections",
-  ],
-  "/api/model-provider-connections/:id": [
-    "/api/okou/model-provider-connections/:id",
-    "/api/zero/model-provider-connections/:id",
-  ],
-  "/api/user-permission-grants": [
-    "/api/okou/user-permission-grants",
-    "/api/zero/user-permission-grants",
-  ],
-  "/api/user-permission-grants/apply": [
-    "/api/okou/user-permission-grants/apply",
-    "/api/zero/user-permission-grants/apply",
-  ],
-  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
-  // eight paths a provider console holds stay branded and are not moved here —
-  // they are listed in `FINAL_PROVIDER_CONSOLE_PATHS` above.
+  // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes, of
+  // which #28709 kept only the Slack rows — the Teams and Feishu connect and
+  // OAuth-start rows had no request on either branded form in the retained
+  // window. The paths a provider console holds were not in this slice; they
+  // moved later, and their rows are at the end of this table.
   //
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
   // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
   // The OAuth-start paths have a second holder that no client version bounds: a
-  // connect or install link the API handed out earlier lives in a Slack, Teams,
-  // or Feishu message a user can still click, and `/api/okou/slack/oauth/install`
-  // is measured traffic listed in `LEGACY_ZERO_PATHS` above, which after this
-  // move only these rows can serve. Removal follows the #26701 evidence gate
-  // like every other row, not either clock.
-  "/api/feishu/connect": [
-    "/api/okou/feishu/connect",
-    "/api/zero/feishu/connect",
-  ],
-  "/api/feishu/connect/status": [
-    "/api/okou/feishu/connect/status",
-    "/api/zero/feishu/connect/status",
-  ],
-  "/api/feishu/oauth/connect": [
-    "/api/okou/feishu/oauth/connect",
-    "/api/zero/feishu/oauth/connect",
-  ],
+  // connect or install link the API handed out earlier lives in a Slack message
+  // a user can still click, and `/api/okou/slack/oauth/install` is measured
+  // traffic listed in `LEGACY_ZERO_PATHS` above, which after this move only
+  // these rows can serve. Removal follows the #26701 evidence gate like every
+  // other row, not either clock.
   "/api/slack/channels": [
     "/api/okou/slack/channels",
     "/api/zero/slack/channels",
@@ -1246,11 +647,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/slack/oauth/install": [
     "/api/okou/slack/oauth/install",
     "/api/zero/slack/oauth/install",
-  ],
-  "/api/teams/connect": ["/api/okou/teams/connect", "/api/zero/teams/connect"],
-  "/api/teams/oauth/connect": [
-    "/api/okou/teams/oauth/connect",
-    "/api/zero/teams/oauth/connect",
   ],
   // #28465: the stable desktop release page and DMG download.
   //
@@ -1281,8 +677,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // #28462: feature switches, model policies, org-level model providers and
   // their device-auth sessions, the org profile and membership routes, and the
-  // usage reads. Three surfaces hold these branded paths open, and the widest
-  // one is why the rows matter more here than in most slices:
+  // usage reads, of which only feature switches, model policies and the org
+  // profile are still owed. Three surfaces hold these branded paths open, and
+  // the widest one is why the rows matter more here than in most slices:
   //
   // - An installed desktop build, which hardcodes `/api/okou/org` and
   //   `/api/okou/feature-switches` rather than deriving them from a contract.
@@ -1293,10 +690,22 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //   `CLI_PKG_URL`, draining over that context's queue lifetime plus claimed
   //   execution bounded by the runner's 2h `JOB_TIMEOUT`.
   //
-  // The CI bootstrap steps in `.github/workflows/turbo.yml` also call the
-  // branded forms on purpose: they exercise the compatibility these rows
-  // guarantee. None of those windows is the removal condition — a row retires
-  // under #26701's evidence rules like every other row in this file.
+  // #28917 removed the three `model-providers/codex/device-auth/sessions`
+  // rows, the three `org/invite` rows, and `usage/members`. None of them has a
+  // desktop caller — the installed build hardcodes only `/api/okou/org` and
+  // `/api/okou/feature-switches`, both kept — and every one was silent on both
+  // branded forms across the retained window.
+  //
+  // #28916 removed the four that were not silent — the `model-providers`
+  // collection, `org/logo`, `org/members` and `usage/record`. All four were
+  // platform-held, and the build holding their branded forms cut over on 08-21.
+  //
+  // The CI bootstrap steps in `.github/workflows/turbo.yml` used to call
+  // `/api/okou/model-providers` on purpose, to exercise the compatibility these
+  // rows guarantee; #28916 repointed them at the neutral path along with the
+  // row itself, so no check depends on a row this table may retire. None of
+  // those windows is the removal condition — a row retires under #26701's
+  // evidence rules like every other row in this file.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
@@ -1308,58 +717,212 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/model-policies",
     "/api/zero/model-policies",
   ],
-  "/api/model-providers": [
-    "/api/okou/model-providers",
-    "/api/zero/model-providers",
-  ],
-  "/api/model-providers/:type": [
-    "/api/okou/model-providers/:type",
-    "/api/zero/model-providers/:type",
-  ],
-  "/api/model-providers/claude-code/device-auth/sessions": [
-    "/api/okou/model-providers/claude-code/device-auth/sessions",
-    "/api/zero/model-providers/claude-code/device-auth/sessions",
-  ],
-  "/api/model-providers/claude-code/device-auth/sessions/cancel": [
-    "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
-    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
-  ],
-  "/api/model-providers/claude-code/device-auth/sessions/complete": [
-    "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
-    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
-  ],
-  "/api/model-providers/codex/device-auth/sessions": [
-    "/api/okou/model-providers/codex/device-auth/sessions",
-    "/api/zero/model-providers/codex/device-auth/sessions",
-  ],
-  "/api/model-providers/codex/device-auth/sessions/cancel": [
-    "/api/okou/model-providers/codex/device-auth/sessions/cancel",
-    "/api/zero/model-providers/codex/device-auth/sessions/cancel",
-  ],
-  "/api/model-providers/codex/device-auth/sessions/complete": [
-    "/api/okou/model-providers/codex/device-auth/sessions/complete",
-    "/api/zero/model-providers/codex/device-auth/sessions/complete",
-  ],
   "/api/org": ["/api/okou/org", "/api/zero/org"],
-  "/api/org/delete": ["/api/okou/org/delete", "/api/zero/org/delete"],
-  "/api/org/invite": ["/api/okou/org/invite", "/api/zero/org/invite"],
-  "/api/org/invite/purchase/:purchaseId/confirm": [
-    "/api/okou/org/invite/purchase/:purchaseId/confirm",
-    "/api/zero/org/invite/purchase/:purchaseId/confirm",
+  // #28461: the agent reads and writes and the workflow and
+  // workflow-automation management routes. The slice also covered the manual
+  // Morning Brief trigger; #28709 removed that row on zero-traffic evidence,
+  // and #28711 removed `agents/:id/instructions`, `workflow-automations`,
+  // `workflows/:workflowId`, `workflows/:workflowId/automations` and
+  // `workflows/:workflowId/run` on drained-traffic evidence; #28917 removed
+  // `workflow-automations/:id/enable` and `workflow-automations/:id/disable`,
+  // which were silent on both branded forms while the neutral paths served
+  // them. #28916 removed the `agents` collection and `workflow-automations/:id`
+  // on cutover evidence. The branded `agents` form was platform-held and
+  // stopped on 08-21; the CLI took `workflow-automations/:id` to the neutral
+  // form mid-window, and the only caller its branded form had left was two
+  // ad-hoc `curl` requests out of a sandbox, which is not a released build with
+  // a drain window. Every caller in
+  // this repository derives its URL from the contract, so nothing here still
+  // asks for a branded form; released builds do. Two surfaces hold these paths,
+  // and each has its own window.
+  //
+  // A published CLI package embeds the contract path it was built from and
+  // stays pinned by an execution context's `CLI_PKG_URL` — `okou agent`,
+  // `okou workflow`, and `okou workflow automation` are the commands behind
+  // these paths. That artifact drains over the maximum queue lifetime plus the
+  // maximum claimed execution and finalization lifetime, with execution bounded
+  // by the runner's 2h `JOB_TIMEOUT`, as `docs/deployment-compatibility.md`
+  // describes for commit-addressed CLI artifacts.
+  //
+  // A browser tab holding already-loaded platform code keeps calling the `okou`
+  // path it was built against until it navigates or reloads: the ~2 day
+  // old-web-client window in `docs/fallback.md` section 7, and the longer of
+  // the two. The `zero` form was reachable through the blanket expansion until
+  // the contract moved. Both forms are owed, and both retire under #26701's
+  // evidence rules rather than on either clock.
+  //
+  // A key holds its path parameter verbatim, because the lookup below matches
+  // `entry.route.path` exactly rather than an expanded request path.
+  "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
+  "/api/agents/:id/custom-connectors": [
+    "/api/okou/agents/:id/custom-connectors",
+    "/api/zero/agents/:id/custom-connectors",
   ],
-  "/api/org/invite/purchase/preview": [
-    "/api/okou/org/invite/purchase/preview",
-    "/api/zero/org/invite/purchase/preview",
+  "/api/agents/:id/draft": [
+    "/api/okou/agents/:id/draft",
+    "/api/zero/agents/:id/draft",
   ],
-  "/api/org/leave": ["/api/okou/org/leave", "/api/zero/org/leave"],
-  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
-  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
-  "/api/org/membership-requests": [
-    "/api/okou/org/membership-requests",
-    "/api/zero/org/membership-requests",
+  "/api/agents/:id/user-connectors": [
+    "/api/okou/agents/:id/user-connectors",
+    "/api/zero/agents/:id/user-connectors",
   ],
-  "/api/usage/members": ["/api/okou/usage/members", "/api/zero/usage/members"],
-  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
+  "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
+  // #28545: the Microsoft console routes, the first rows whose branded forms a
+  // provider console holds rather than a released client. The Azure Bot
+  // messaging endpoint and the Microsoft identity platform redirect URIs now
+  // hold the final paths, so the contracts declare them and both branded forms
+  // are owed from here.
+  //
+  // What holds the branded forms open is not a released client but the
+  // Microsoft consoles themselves, which have no drain window: they keep
+  // sending to whatever URL is registered until an operator changes it.
+  // Removal follows #26701's evidence rules, and for the `zero` callback the
+  // ordering constraint recorded there.
+  //
+  // #28917 removed the slice's `webhooks/teams/bot` row. #28545 records that an
+  // operator had already repointed the Azure Bot messaging endpoint at the
+  // neutral path before that slice landed, so nothing on the Microsoft side
+  // still holds either branded bot URL, and the retained window measured both
+  // silent. The OAuth callback row below stays for the reason its own comment
+  // gives, which is not a drain window and is not measurable in the log at all.
+  "/api/integrations/teams/oauth/callback": [
+    "/api/okou/teams/oauth/callback",
+    // Not drain-window compatibility. `callbackRedirectUri` in
+    // `routes/teams-oauth.ts` is brand-conditional and still emits this exact
+    // path for the VM0 brand on purpose: it is registered in the Microsoft app
+    // registration, and #26701 records that it retires together with the
+    // `api.vm0.ai` brand host. So this row is an active producer target, not a
+    // leftover — do not prune it merely for being an `/api/zero/` path, or
+    // live VM0-brand connects lose the callback they were sent to.
+    //
+    // A traffic sweep cannot retire this row: a quiet window means nobody
+    // connected Teams under the VM0 brand that week, and the next person who
+    // does is sent here regardless. #28917 listed this row for removal on that
+    // silence and it was held back for exactly this reason.
+    "/api/zero/teams/oauth/callback",
+  ],
+  // #28463: avatar video generation, the per-token browser authorization
+  // requests, mail drafts, the per-template presentation read, uploads,
+  // voice-io quota and speech, and the web file-url read. The slice also
+  // covered banking, inbound email, the GitHub user-connect start, the Strapi
+  // webhook and video-io; #28709 removed those rows on zero-traffic evidence,
+  // which is why `domains/banking.ts` and the customer-held Strapi console URL
+  // no longer appear among the holders below.
+  //
+  // #28711 removed nine more: the two avatar-video catalog reads,
+  // `browser/authorization-requests`, `mail/drafts/link`, `people-search`, the
+  // `presentation-templates` collection, `uploads/complete`, `voice-io/stt` and
+  // `web/download-file`. The last two were platform-held alongside
+  // `web/file-url`, so their gate was the ~2 day web-client window rather than
+  // the CLI pinning window; the log measured both branded forms silent for
+  // longer than that before the removal.
+  //
+  // #28917 removed five more on zero-traffic evidence: both per-token browser
+  // authorization-request rows, `mail/drafts/:mailDraftId/send`, the
+  // per-template presentation read, and `uploads/multipart/abort`.
+  //
+  // #28974 removed `uploads/prepare`. #28916 and #28917 had both excluded it
+  // under "rows with a Desktop or CLI caller stay, because installed builds
+  // have no expiry window", which misreads its callers: neither is an installed
+  // build. The CLI caller runs under the pinned `CLI_PKG_URL` described below,
+  // and the App caller is the browser bundle on its ~2 day refresh. Both had
+  // visibly crossed over in the log — every App build up to `0.779.x` called
+  // the branded form and every build from `0.780.0` called the neutral one,
+  // with no version on both sides of the split.
+  //
+  // #28916 removed the three that were not silent — the mail draft read,
+  // `uploads/multipart/complete` and `web/file-url` — on cutover evidence.
+  // `web/file-url` was the largest branded producer in that removal at about
+  // 2,000 requests, and the clearest crossover in it: the platform build cut
+  // over on 08-22 and the neutral path took every call from the same browsers
+  // from 08-23 on, which is why `domains/web.ts` no longer appears among the
+  // holders below. What the slice still owns below is the two voice-io rows.
+  //
+  // Published CLI builds hold the `okou` form directly: they build some URLs by
+  // hand rather than from the contract, so the path they carry shipped
+  // independently of this table, and a run execution context pins its
+  // commit-addressed `CLI_PKG_URL` at creation — the queue lifetime plus
+  // claimed execution bounded by the runner's 2h `JOB_TIMEOUT`. A released
+  // platform build holds the branded form until a refresh loads a build that
+  // derives the neutral path (~2 days). Every `zero` form was reachable through
+  // the blanket expansion until these contracts moved, which has no window at
+  // all. Removal therefore follows the #26701 evidence gate above rather than
+  // any of those clocks.
+  "/api/voice-io/quota": [
+    "/api/okou/voice-io/quota",
+    "/api/zero/voice-io/quota",
+  ],
+  "/api/voice-io/speech": [
+    "/api/okou/voice-io/speech",
+    "/api/zero/voice-io/speech",
+  ],
+  // #28544: the Feishu routes that were classified as console-held without a
+  // Feishu console actually holding them — the console registers the
+  // frontend-forwarding OAuth target from `feishuOAuthAppCallbackUrl()` rather
+  // than the API callback, and #28338 already moved the events URL shown to
+  // operators.
+  //
+  // The events row is the load-bearing one, and the reason it outlived the
+  // #28709 sweep with no traffic behind it. Each Feishu installation registered
+  // its event subscription URL in its own Feishu app console, which we cannot
+  // edit, so an installation created before #28338 still posts to the branded
+  // form it was given. That holder has no drain window at all — it changes when
+  // its operator edits their own console — so a week without a delivery says
+  // the installation was quiet, not that its console moved, which is the same
+  // reading `slack/commands` and `slack/interactive` get above.
+  //
+  // The slice's other row, the OAuth callback, covered a time-boxed surface
+  // instead: `feishu-oauth-callback-page.ts` forwards the code it received from
+  // the Feishu console's `app.vm0.ai` target to whichever path the contract
+  // declared when that bundle was built, so an already-loaded platform tab kept
+  // posting the branded form for the ~2 day old-web-client window in
+  // `docs/fallback.md` section 7, and the `oauthRedirectUri()` branch behind it
+  // is reached only when `callbackTarget` is absent, which neither frontend
+  // entry point does. That window closed long before the retained log began, so
+  // #28709 removed it.
+  //
+  // Each key holds its path parameter verbatim, because the lookup below
+  // matches `entry.route.path` exactly rather than an expanded request path.
+  "/api/webhooks/feishu/events/:installationId": [
+    "/api/okou/feishu/events/:installationId",
+    "/api/zero/feishu/events/:installationId",
+  ],
+  // #28600, the last branded contract paths: the Slack OAuth callback and the
+  // three inbound Slack webhooks. They were the final entries of the console
+  // table #28283 added, which this slice deletes — the set of registered paths
+  // is unchanged by the move, because the contract now declares the path that
+  // table used to add and these rows name the two branded forms it used to
+  // declare and derive.
+  //
+  // The Slack app configuration holds one URL per endpoint and no drain window:
+  // it keeps posting to whatever is registered until an operator edits it, so
+  // all three forms stay served until #26701's evidence rules retire a row.
+  // Nothing in this repository produces the three webhook URLs — they exist
+  // only in that configuration — so the move needed no producer change.
+  "/api/integrations/slack/oauth/callback": [
+    "/api/okou/slack/oauth/callback",
+    // Not drain-window compatibility. `callbackRedirectUri` in
+    // `routes/slack-oauth.ts` emits this exact path as the `redirect_uri` sent
+    // to Slack, and Slack rejects a token exchange whose redirect URI is not
+    // registered in the app configuration. So this row is an active producer
+    // target: it can only be retired together with the emitted value, once the
+    // Slack app configuration is confirmed to hold the final path. Do not prune
+    // it for looking like a stale `/api/zero/` alias, or every authorization
+    // breaks the moment it lands.
+    "/api/zero/slack/oauth/callback",
+  ],
+  "/api/webhooks/slack/events": [
+    "/api/okou/slack/events",
+    "/api/zero/slack/events",
+  ],
+  "/api/webhooks/slack/commands": [
+    "/api/okou/slack/commands",
+    "/api/zero/slack/commands",
+  ],
+  "/api/webhooks/slack/interactive": [
+    "/api/okou/slack/interactive",
+    "/api/zero/slack/interactive",
+  ],
 };
 
 /**
@@ -1368,11 +931,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
  * callers still hold.
  *
  * Applied after `withApiNamespaceAliases` and never before it: these paths are
- * finished registrations, and passing them back through the blanket expansion
- * would derive each one's sibling namespace a second time and register it
- * twice. Nothing produced here is marked `viaNamespaceAliasFallback` — a row is
- * a declared commitment rather than a gap the compatibility table missed, so it
- * must not reach the fallback report in `createAppWithRoutes`.
+ * finished registrations, and passing a row's `/api/zero/**` form back through
+ * the expansion would derive its canonical sibling a second time and register
+ * that path twice.
  */
 export function withMigratedBrandedPaths(
   routes: readonly RouteEntry[],

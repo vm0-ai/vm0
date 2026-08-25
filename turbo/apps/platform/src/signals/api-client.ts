@@ -20,13 +20,13 @@ import { createAuthedContractClient } from "./api-client-base.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
- * Type alias for the factory function returned by `get(zeroClient$)`.
+ * Type alias for the factory function returned by `get(apiClient$)`.
  * Useful for shared helper functions that accept the client factory
- * as a parameter (e.g. `createZeroAgent`).
+ * as a parameter (e.g. `createAgent`).
  */
-export type ZeroClientFactory = <T extends AppRouter>(
+export type ApiClientFactory = <T extends AppRouter>(
   contract: T,
-  options?: ZeroClientOptions,
+  options?: ApiClientOptions,
 ) => InitClientReturn<T, InitClientArgs>;
 
 declare const oauthApiBaseBrand: unique symbol;
@@ -41,7 +41,7 @@ type OAuthApiBase = "oauth" & {
  */
 export const OAUTH_API_BASE = "oauth" as OAuthApiBase;
 
-export interface ZeroClientOptions {
+export interface ApiClientOptions {
   readonly apiBase?: "auto" | "api" | OAuthApiBase;
 }
 
@@ -60,7 +60,7 @@ function rebaseApiPath(path: string, apiBase: string): string {
  *
  * @example
  * ```ts
- * const createClient = get(zeroClient$);
+ * const createClient = get(apiClient$);
  * const client = createClient(agentsByIdContract);
  * const result = await client.get({ params: { id: "my-agent-id" } });
  * if (result.status === 200) {
@@ -68,8 +68,8 @@ function rebaseApiPath(path: string, apiBase: string): string {
  * }
  * ```
  */
-export const zeroClient$ = computed((get) => {
-  return <T extends AppRouter>(contract: T, options?: ZeroClientOptions) => {
+export const apiClient$ = computed((get) => {
+  return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {
       baseUrl: resolveApiBase(),
       getAuthRecovery: () => {

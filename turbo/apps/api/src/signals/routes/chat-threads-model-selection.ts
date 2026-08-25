@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   chatThreadModelSelectionContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -80,10 +80,14 @@ const updateModelSelectionInner$ = command(
 
     const updated = await writeDb.transaction(async (tx) => {
       const updatedAt = nowDate();
+      const pinColumns = chatThreadModelPinColumns(pin);
       const [thread] = await tx
         .update(chatThreads)
         .set({
-          ...chatThreadModelPinColumns(pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: body.data.codexServiceTier ?? null,
           updatedAt,
         })
@@ -91,13 +95,14 @@ const updateModelSelectionInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -105,7 +110,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
         createdAt: updatedAt,
@@ -115,7 +120,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.serviceTierEventId,
         serviceTier: chatThreadServiceTierFromCodex(
           body.data.codexServiceTier ?? null,

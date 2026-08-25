@@ -59,12 +59,11 @@ import {
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
 import {
-  normalizeConnectorAccountMutation,
-  parseStoredConnectorAccountMutationIntent,
+  connectorAccountSiblingWritesEnabled,
   storedConnectorAccountMutationSelection,
-  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -90,7 +89,7 @@ const deviceAuthSessionSelection = Object.freeze({
   encryptedProviderState:
     connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorOauthDeviceAuthorizationSessions,
+    connectorOauthDeviceAuthorizationSessions.accountMutation,
   ),
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
   verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
@@ -1000,7 +999,8 @@ async function createDeviceAuthSession(
     readonly authorizeAgent: true | undefined;
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
+    readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly userCode: string;
@@ -1024,7 +1024,8 @@ async function createDeviceAuthSession(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
+      allowSiblings: args.allowSiblings,
     });
     signal.throwIfAborted();
     if (mutationResolution.kind !== "ready") {
@@ -1050,7 +1051,7 @@ async function createDeviceAuthSession(
         status: "awaiting_user_authorization",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        ...storedConnectorAccountMutationWrite(args.account),
+        accountMutation: args.account,
         userCode: args.userCode,
         verificationUri: args.verificationUri,
         verificationUriComplete: args.verificationUriComplete,
@@ -1078,7 +1079,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options?: Readonly<Record<string, string>>;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ) => {
@@ -1146,6 +1147,10 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     const sessionResult = await createDeviceAuthSession(
       set(writeDb$),
       {
@@ -1156,6 +1161,8 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         agentId: args.agentId,
         authorizeAgent: args.authorizeAgent,
         account: args.account,
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
         userCode: startResult.userCode,
@@ -1298,9 +1305,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
               oauthScopes: result.token.scopes,
               expiresIn: result.token.expiresIn,
               extraConnectorSecrets: result.token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              account: claimedSession.accountMutation,
             },
             signal,
           );

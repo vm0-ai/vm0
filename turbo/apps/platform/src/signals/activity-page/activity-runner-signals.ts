@@ -4,12 +4,12 @@ import type {
   SandboxReuseResult,
   WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
-import { zeroClient$ } from "../api-client.ts";
-import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
+import { apiClient$ } from "../api-client.ts";
+import { currentRunId$, activityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
-import type { LogStatus } from "../zero-page/log-types.ts";
+import type { LogStatus } from "../okou-page/log-types.ts";
 
-interface ZeroActivityRunner {
+interface ActivityRunner {
   runId: string;
   status: LogStatus;
   runner: {
@@ -18,14 +18,14 @@ interface ZeroActivityRunner {
   };
 }
 
-export const zeroActivityRunner$ = computed(async (get) => {
+export const activityRunner$ = computed(async (get) => {
   const runId = get(currentRunId$);
-  const detail = await get(zeroActivityDetail$);
+  const detail = await get(activityDetail$);
   if (!runId || !detail || detail.id !== runId) {
     return null;
   }
 
-  const client = get(zeroClient$)(runRunnerContract);
+  const client = get(apiClient$)(runRunnerContract);
   const result = await accept(
     client.getRunner({ params: { id: runId } }),
     [200],
@@ -37,5 +37,5 @@ export const zeroActivityRunner$ = computed(async (get) => {
       sandboxReuseResult: result.body.sandboxReuseResult,
       workspaceReuseResult: result.body.workspaceReuseResult ?? null,
     },
-  } satisfies ZeroActivityRunner;
+  } satisfies ActivityRunner;
 });

@@ -178,7 +178,7 @@ async function createScrapePricingFixture(): Promise<UsagePricingFixture> {
 }
 
 describe("okou scrape route", () => {
-  it("rejects zero tokens without scrape:read capability", async () => {
+  it("rejects agent tokens without scrape:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Scrape test actor must belong to an organization");
@@ -186,7 +186,7 @@ describe("okou scrape route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_scrape_missing_capability",

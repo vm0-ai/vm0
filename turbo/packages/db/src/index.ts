@@ -2,7 +2,7 @@ import * as userSchema from "./schema/user";
 import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
-import * as agentComposeSchema from "./schema/agent-compose";
+import * as agentSchema from "./schema/agent";
 import * as agentRunSchema from "./schema/agent-run";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
@@ -87,13 +87,13 @@ import * as exportJobSchema from "./schema/export-job";
 import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
-import * as zeroAgentSchema from "./schema/zero-agent";
 import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
+import * as builtInModelCooldownSchema from "./schema/built-in-model-cooldown";
 import * as managedModelCooldownSchema from "./schema/managed-model-cooldown";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
@@ -127,13 +127,14 @@ import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
+import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 
 export const schema = {
   ...userSchema,
   ...deviceCodesSchema,
   ...cliTokensSchema,
   ...desktopAuthHandoffCodeSchema,
-  ...agentComposeSchema,
+  ...agentSchema,
   ...agentRunSchema,
   ...conversationSchema,
   ...checkpointSchema,
@@ -218,13 +219,13 @@ export const schema = {
   ...emailSuppressionSchema,
   ...skillSchema,
   ...usagePricingSchema,
-  ...zeroAgentSchema,
   ...agentDraftSchema,
   ...userPermissionGrantSchema,
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...builtInModelKeySchema,
+  ...builtInModelCooldownSchema,
   ...managedModelCooldownSchema,
   ...workflowSchema,
   ...morningBriefSchema,
@@ -258,6 +259,7 @@ export const schema = {
   ...mailDraftSchema,
   ...browserSessionSchema,
   ...presentationTemplateSchema,
+  ...piResourceSnapshotSchema,
 };
 
 export type DatabaseSchema = typeof schema;

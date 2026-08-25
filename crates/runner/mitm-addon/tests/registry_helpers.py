@@ -9,15 +9,15 @@ import registry
 _FIXED_MTIME_NS = 1_700_000_000_000_000_000
 
 
-def assert_invalid_builtin_vm(registry_path: Path) -> registry.InvalidVmEntry:
-    context = registry.get_vm_context("10.200.0.1", str(registry_path))
+def assert_invalid_builtin_sandbox(registry_path: Path) -> registry.InvalidSandboxEntry:
+    context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
     state = registry.load_registry_state(str(registry_path))
 
     assert context is None
     assert not isinstance(state, registry.RegistryUnavailable)
-    invalid_vm = state.invalid_vms["10.200.0.1"]
-    assert invalid_vm.reason == "invalid_firewalls"
-    return invalid_vm
+    invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+    assert invalid_sandbox.reason == "invalid_firewalls"
+    return invalid_sandbox
 
 
 def write_trusted_catalog_cache_text(path: Path, content: str) -> None:
@@ -27,7 +27,7 @@ def write_trusted_catalog_cache_text(path: Path, content: str) -> None:
 
 def write_simple_registry(path, *, run_id="run-one"):
     data = {
-        "vms": {
+        "sandboxes": {
             "10.200.0.1": {
                 "runId": run_id,
                 "billableFirewalls": [],
@@ -45,7 +45,7 @@ def pin_mtime(path):
 
 def write_firewall_registry(path, *, rule="/items"):
     data = {
-        "vms": {
+        "sandboxes": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
                 "billableFirewalls": [],
@@ -91,7 +91,7 @@ def write_builtin_firewall_registry(
     path.write_text(
         json.dumps(
             {
-                "vms": {
+                "sandboxes": {
                     "10.200.0.1": {
                         "runId": run_id,
                         "billableFirewalls": [],
@@ -111,11 +111,11 @@ def write_builtin_firewall_registry(
     )
 
 
-def write_multi_vm_registry(path, vms: dict) -> None:
-    path.write_text(json.dumps({"vms": vms, "updatedAt": 0}))
+def write_multi_sandbox_registry(path, sandboxes: dict) -> None:
+    path.write_text(json.dumps({"sandboxes": sandboxes, "updatedAt": 0}))
 
 
-def builtin_vm(run_id: str, name: str, base_url_vars: dict[str, str] | None = None) -> dict:
+def builtin_sandbox(run_id: str, name: str, base_url_vars: dict[str, str] | None = None) -> dict:
     entry: dict[str, object] = {"kind": "builtin", "name": name}
     if base_url_vars is not None:
         entry["baseUrlVars"] = base_url_vars
@@ -127,7 +127,7 @@ def builtin_vm(run_id: str, name: str, base_url_vars: dict[str, str] | None = No
     }
 
 
-def inline_vm(run_id: str) -> dict:
+def inline_sandbox(run_id: str) -> dict:
     return {
         "runId": run_id,
         "billableFirewalls": [],

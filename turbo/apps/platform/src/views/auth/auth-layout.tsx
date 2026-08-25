@@ -1,13 +1,6 @@
-import { Moon, Sun } from "lucide-react";
-import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import {
-  platformVm0LogoDarkImg,
-  platformVm0LogoImg,
-} from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
-import { setTheme$, theme$ } from "../../signals/theme.ts";
+import { AuthShell } from "./auth-shell.tsx";
 
 const CLERK_CSS = `
 /* Remove shadows from Clerk components */
@@ -85,9 +78,11 @@ const CLERK_CSS = `
    fields that Clerk renders without a wrapper div. The :not([class*="ShowPassword"])
    excludes the eye-toggle button/icon, whose class name also contains
    "formFieldInput" (cl-formFieldInputShowPasswordButton) - applying input height,
-   border, and transition to it causes the icon to flicker/jump on click. */
-.cl-formFieldInput,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
+   border, and transition to it causes the icon to flicker/jump on click. The
+   [type="checkbox"] exclusion preserves Clerk's native checkbox dimensions and
+   checked surface. */
+.cl-formFieldInput:not([type="checkbox"]),
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):not(:has([class*="formFieldInput"])),
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
@@ -105,8 +100,8 @@ const CLERK_CSS = `
 /* Dark mode: --border (gray-200 = #2F2F32) and --input (gray-200) are nearly
    identical to the card background (gray-100 = #252527) - borders are invisible.
    Use --gray-400 (#434550, labelled "stronger border" in the design system). */
-[data-theme="dark"] .cl-formFieldInput,
-[data-theme="dark"] .cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not(:has([class*="formFieldInput"])),
+[data-theme="dark"] .cl-formFieldInput:not([type="checkbox"]),
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):not(:has([class*="formFieldInput"])),
 [data-theme="dark"] .cl-card input[type="text"],
 [data-theme="dark"] .cl-card input[type="email"],
 [data-theme="dark"] .cl-card input[type="password"] {
@@ -126,11 +121,11 @@ const CLERK_CSS = `
 /* Input focus state. Exclude ShowPassword button - its class matches
    [class*="formFieldInput"] but focusing it on click would draw a primary-color
    border that transitions in/out, producing the flicker reported in #10462. */
-.cl-formFieldInput:focus,
-.cl-formFieldInput input:not([data-input-otp]):focus,
-.cl-card input:not([data-input-otp]):focus,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):focus,
-.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]) input:not([data-input-otp]):focus {
+.cl-formFieldInput:not([type="checkbox"]):focus,
+.cl-formFieldInput input:not([data-input-otp]):not([type="checkbox"]):focus,
+.cl-card input:not([data-input-otp]):not([type="checkbox"]):focus,
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]):not([type="checkbox"]):focus,
+.cl-card [class*="formFieldInput"]:not([class*="ShowPassword"]) input:not([data-input-otp]):not([type="checkbox"]):focus {
   border: 1px solid hsl(var(--primary)) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
   outline: none !important;
@@ -349,73 +344,10 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ authBrand, children }: AuthLayoutProps) {
-  const { t } = useTranslation();
-  const theme = useGet(theme$);
-  const setTheme = useSet(setTheme$);
-
   return (
     <>
       <style suppressHydrationWarning>{CLERK_CSS}</style>
-      <div
-        className="relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
-        data-testid="app-auth-layout"
-      >
-        {/* Background grid pattern - medium grid with subtle visibility */}
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
-
-        {/* Gradient glow overlay - using the palette colors */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#FFC8B0]/20 via-[#A6DEFF]/15 to-[#FFE7A2]/20 blur-3xl" />
-
-        {/* Radial glow - peach tone left */}
-        <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[#FFC8B0]/15 blur-3xl" />
-
-        {/* Radial glow - blue tone center */}
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-[#A6DEFF]/10 blur-3xl" />
-
-        {/* Radial glow - yellow tone right */}
-        <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-[#FFE7A2]/15 blur-3xl" />
-
-        {/* Theme Toggle Button */}
-        <button
-          onClick={() => {
-            setTheme(theme === "dark" ? "light" : "dark");
-          }}
-          className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-card-hover"
-          aria-label={t(($) => {
-            return $.auth.toggleTheme;
-          })}
-        >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-
-        {/* Logo Header */}
-        <a
-          href={authBrand.homeUrl}
-          className="absolute left-6 top-6 flex items-center gap-2"
-        >
-          {authBrand.brandName === "Okou" ? (
-            <span className="text-xl font-semibold tracking-tight">
-              {authBrand.brandName}
-            </span>
-          ) : (
-            <img
-              src={
-                theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
-              }
-              alt={t(($) => {
-                return $.appShell.logoAlt;
-              })}
-              crossOrigin="anonymous"
-              width={82}
-              height={20}
-            />
-          )}
-        </a>
-
-        <div className="relative z-10 m-auto flex w-full min-w-0 justify-center">
-          {children}
-        </div>
-      </div>
+      <AuthShell authBrand={authBrand}>{children}</AuthShell>
     </>
   );
 }

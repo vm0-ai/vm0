@@ -22,7 +22,7 @@ import {
 
 /**
  * Zero run request schema — subset of unified schema.
- * Server-side defaults are injected by createZeroRun():
+ * Server-side defaults are injected by agent-runs-create.service.ts:
  * artifacts, disallowedTools.
  * Fields not used by unattended workflow runs are omitted:
  * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
@@ -74,7 +74,7 @@ export const runsByIdContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get agent run by ID (zero proxy)",
+    summary: "Get agent run by ID",
   },
 });
 
@@ -97,7 +97,7 @@ export const runsCancelContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Cancel a pending or running run (zero proxy)",
+    summary: "Cancel a pending or running run",
   },
 });
 
@@ -114,7 +114,7 @@ export const runsQueueContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Get org run queue status (zero proxy)",
+    summary: "Get org run queue status",
   },
 });
 

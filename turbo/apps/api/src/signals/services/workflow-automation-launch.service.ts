@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
@@ -23,7 +24,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
-import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
@@ -87,6 +88,7 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly automationContext: WorkflowAutomationContext;
+  readonly publicBrand?: PublicBrand;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   /** Exact member connector that durably delivered this provider event. */
@@ -110,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
   readonly prompt: string;
+  readonly publicBrand: PublicBrand;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
   readonly connectorSourceId?: string;
@@ -131,7 +134,7 @@ interface WorkflowAutomationRunInput {
   readonly prompt: string;
   readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
-  readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
+  readonly agentRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
 }
 
 type ComputerUseHostGrant = Awaited<
@@ -168,10 +171,15 @@ export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
+  publicBrand: PublicBrand,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
   if (automation.kind !== "schedule") {
-    return buildChatOnlyWorkflowAutomationCallbacks(chatThreadId, agentId);
+    return buildChatOnlyWorkflowAutomationCallbacks(
+      chatThreadId,
+      agentId,
+      publicBrand,
+    );
   }
   if (automation.scheduleType === "loop") {
     callbacks.push({
@@ -197,7 +205,7 @@ export function buildWorkflowAutomationCallbacks(
   callbacks.push({
     internalKind: "chat",
     secret: generateCallbackSecret(),
-    payload: { threadId: chatThreadId, agentId },
+    payload: { threadId: chatThreadId, agentId, publicBrand },
   });
   return callbacks;
 }
@@ -254,6 +262,7 @@ function appendComputerUseSystemPrompt(
 export function buildChatOnlyWorkflowAutomationCallbacks(
   chatThreadId: string,
   agentId: string,
+  publicBrand: PublicBrand,
 ): InternalRunCallbackInput[] {
   return [
     {
@@ -262,6 +271,7 @@ export function buildChatOnlyWorkflowAutomationCallbacks(
       payload: {
         threadId: chatThreadId,
         agentId,
+        publicBrand,
       },
     },
   ];
@@ -310,7 +320,7 @@ async function resolveModelContext(
   const fallbackEnabled =
     effectiveModelProvider === "vm0"
       ? isFeatureEnabled(
-          FeatureSwitchKey.ManagedModelProviderFallback,
+          FeatureSwitchKey.BuiltInModelProviderFallback,
           await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
         )
       : false;
@@ -336,8 +346,8 @@ async function resolveModelContext(
                 ? "MODEL_PROVIDER_UNAVAILABLE"
                 : "PROVIDER_UNAVAILABLE",
               message: fallbackEnabled
-                ? "Every managed route for this model is temporarily unavailable"
-                : "No model provider configured: no VM0 managed model key is configured",
+                ? "Every built-in model route for this model is temporarily unavailable"
+                : "No model provider configured: no built-in model key is configured",
             },
           },
         },
@@ -502,7 +512,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
           args.computerUseHostGrant,
         ),
         callbacks: args.command.callbacks,
-        zeroRunMetadata: workflowAutomationRunMetadata(
+        agentRunMetadata: workflowAutomationRunMetadata(
           args.automation,
           args.command.triggerBrief,
           args.command.autonomyBudget,
@@ -642,7 +652,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       now(),
     );
     const result = await set(
-      createQueueFirstZeroRun$,
+      createQueueFirstAgentRun$,
       {
         auth: {
           orgId: automation.orgId,
@@ -658,6 +668,7 @@ export const launchQueuedWorkflowAutomation$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         ...(args.connectorSourceId
@@ -673,7 +684,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
-        zeroRunMetadata: runInput.zeroRunMetadata,
+        agentRunMetadata: runInput.agentRunMetadata,
         queueFirstAssociation: {
           kind: "automation_event",
           threadId: chatThreadId,
@@ -681,7 +692,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           prompt: runInput.prompt,
           automationId: automation.id,
         },
-        zeroRunModelPin: {
+        agentRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,
           modelProviderId: modelPin.modelProviderId,
           modelProviderCredentialScope: modelPin.modelProviderCredentialScope,

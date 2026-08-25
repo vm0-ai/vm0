@@ -49,6 +49,7 @@ export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
+export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
 export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES =
   CONNECTOR_CATALOG_MAX_RAW_BYTES;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
@@ -107,7 +108,7 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-const managedModelProviderFailureKindSchema = z.enum([
+const builtInModelProviderFailureKindSchema = z.enum([
   "authentication",
   "billing",
   "rate_limit",
@@ -116,7 +117,7 @@ const managedModelProviderFailureKindSchema = z.enum([
   "connection",
 ]);
 
-const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+const BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
 
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
@@ -473,7 +474,6 @@ export const jobSchema = z.object({
   runId: z.uuid(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
@@ -723,11 +723,90 @@ export const secretConnectorMetadataMapSchema = z.record(
 
 export const PI_MEMORY_ROOT = `${PI_AGENT_DIR}/memory`;
 export const PI_SKILLS_ROOT = `${PI_AGENT_DIR}/skills`;
+export const PI_API_FIRST_TURN_SESSION_MAX_BYTES = 16 * 1024 * 1024;
+
+const piSessionCheckpointSchema = z
+  .object({
+    sessionId: z.uuid(),
+    sha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .nullable(),
+  })
+  .strict()
+  .readonly();
+
+export const piResourceSnapshotSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    agentsFiles: z
+      .array(
+        z
+          .object({
+            path: z.string().startsWith("/"),
+            content: z.string(),
+          })
+          .strict()
+          .readonly(),
+      )
+      .readonly(),
+    skills: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1),
+            description: z.string().min(1),
+            filePath: z.string().startsWith("/"),
+            baseDir: z.string().startsWith("/"),
+            scope: z.enum(["user", "project", "temporary"]),
+            disableModelInvocation: z.boolean(),
+          })
+          .strict()
+          .readonly(),
+      )
+      .readonly(),
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    outcome: z.literal("handoff"),
+    baseSession: piSessionCheckpointSchema,
+    session: z
+      .object({
+        sessionId: z.uuid(),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        rawSize: z
+          .number()
+          .int()
+          .positive()
+          .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+      })
+      .strict()
+      .readonly(),
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnConfigSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    resourceSnapshotDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    manifestUrl: z.url(),
+    sessionUrl: z.url(),
+    deadlineAt: z.number().int().positive(),
+    baseSession: piSessionCheckpointSchema,
+    sandboxEventSequenceStart: z.literal(1),
+  })
+  .strict()
+  .readonly();
 
 /**
- * Non-secret Pi model metadata forwarded to the Sandbox. The API key remains
- * in the existing model-provider environment; `apiKeyEnv` names the exact
- * environment entry the Sandbox runtime must read.
+ * Non-secret Pi model metadata forwarded to the Sandbox. `apiKeyEnv` names the
+ * runtime environment entry used by the Sandbox, while `credentialSecretName`
+ * names the API-owned encrypted secret that backs that entry.
  */
 export const piModelConfigSchema = z
   .object({
@@ -746,7 +825,9 @@ export const piModelConfigSchema = z
       "OPENAI_API_KEY",
       "CHATGPT_ACCESS_TOKEN",
     ]),
+    credentialSecretName: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
   })
+  .strict()
   .readonly();
 
 /**
@@ -756,7 +837,9 @@ export const piModelConfigSchema = z
 export const piLaunchConfigSchema = z
   .object({
     schemaVersion: z.literal(2),
+    apiFirstTurn: piApiFirstTurnConfigSchema,
   })
+  .strict()
   .readonly();
 
 /**
@@ -772,34 +855,36 @@ export const piLaunchPayloadSchema = z
     appendSystemPrompt: z.string().nullable(),
     launchConfig: piLaunchConfigSchema,
   })
+  .strict()
   .readonly();
 
 function requireCompletePiFields(
   context: {
+    readonly cliAgentType?: unknown;
     readonly piSessionId?: unknown;
     readonly piLaunchConfig?: unknown;
     readonly piModelConfig?: unknown;
   },
   refinement: z.RefinementCtx,
 ): void {
-  const piEnabled = context.piSessionId !== undefined;
+  const expectsPi = context.cliAgentType === "pi";
   for (const field of [
     "piSessionId",
     "piLaunchConfig",
     "piModelConfig",
   ] as const) {
     const fieldPresent = context[field] !== undefined;
-    if (!piEnabled && fieldPresent) {
+    if (!expectsPi && fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} requires piSessionId`,
+        message: `${field} requires cliAgentType pi`,
       });
-    } else if (piEnabled && !fieldPresent) {
+    } else if (expectsPi && !fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} is required for a Pi session`,
+        message: `${field} is required for cliAgentType pi`,
       });
     }
   }
@@ -815,6 +900,10 @@ const storedExecutionContextObjectSchema = z.object({
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
+  // Old API/stored payload -> new API: previous contexts omit this field. Keep
+  // it optional until prior API rollback targets retire and no supported
+  // resumable context predates it; #28914 tracks that gate.
+  platformEnvironment: z.record(z.string(), z.string()).optional(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
   // order/repetition follows secret-map values.
@@ -878,8 +967,8 @@ const storedExecutionContextObjectSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
-  // Pi runs execute only in the Sandbox. The API stores filesystem references
-  // that the Pi runtime resolves after the runner has mounted Storage.
+  // Pi runs use the API first-turn slot and can continue through an explicit
+  // Sandbox tool handoff. This state is a single hard-cut protocol bundle.
   piSessionId: z.uuid().optional(),
   piLaunchConfig: piLaunchConfigSchema.optional(),
   piModelConfig: piModelConfigSchema.optional(),
@@ -913,11 +1002,14 @@ const executionContextObjectSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
+  // Old API -> new runner: previous claims omit this field. Keep it optional
+  // until prior API rollback targets and supported pre-field claims are gone;
+  // #28914 tracks that gate. Old runners ignore it and use legacy environment.
+  platformEnvironment: z.record(z.string(), z.string()).optional(),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
   // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.
@@ -1049,12 +1141,12 @@ export const runnersModelProviderFailuresContract = c.router({
     }),
     body: z
       .object({
-        failureKind: managedModelProviderFailureKindSchema,
+        failureKind: builtInModelProviderFailureKindSchema,
         retryAfterSeconds: z
           .number()
           .int()
           .positive()
-          .max(MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+          .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
           .optional(),
       })
       .strict(),
@@ -1069,7 +1161,7 @@ export const runnersModelProviderFailuresContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Report a managed model provider failure for a run",
+    summary: "Report a built-in model provider failure for a run",
   },
 });
 
@@ -1271,6 +1363,11 @@ export type StoredExecutionContext = z.infer<
 >;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
+export type PiApiFirstTurnConfig = z.infer<typeof piApiFirstTurnConfigSchema>;
+export type PiApiFirstTurnManifest = z.infer<
+  typeof piApiFirstTurnManifestSchema
+>;
+export type PiResourceSnapshot = z.infer<typeof piResourceSnapshotSchema>;
 export type PiLaunchPayload = z.infer<typeof piLaunchPayloadSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema

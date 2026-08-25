@@ -17,15 +17,19 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorExternalCodeSessionContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+  connectorExternalCodeSessionContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorScopeDiffContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+  type ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch-state.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -37,6 +41,7 @@ import {
 } from "./connector-catalog-fixtures.ts";
 
 let mockConnectors: ConnectorResponse[] = [];
+const mockConnectorAccountDisplayNames = new Map<string, string | null>();
 type MockOauthDeviceAuthSessionStartResponse = Omit<
   Partial<ConnectorOauthDeviceAuthSessionStartResponse>,
   "verificationUriComplete"
@@ -150,7 +155,56 @@ export function setMockConnectors(connectors: ConnectorResponse[]): void {
 
 export function resetMockConnectors(): void {
   mockConnectors = [];
+  mockConnectorAccountDisplayNames.clear();
   resetMockOauthDeviceAuth();
+}
+
+function mockAccountForConnector(
+  connector: ConnectorResponse,
+): ConnectorAccountConnection {
+  return {
+    id: connector.id,
+    target: { kind: "builtin", connectorSlug: connector.slug },
+    authMethod: connector.authMethod,
+    displayName: mockConnectorAccountDisplayNames.get(connector.id) ?? null,
+    isDefault: true,
+    externalId: connector.externalId,
+    externalUsername: connector.externalUsername,
+    externalEmail: connector.externalEmail,
+    oauthScopes: connector.oauthScopes,
+    connectionStatus: connector.connectionStatus,
+    reconnectReason: connector.reconnectReason,
+    tokenExpiresAt: connector.tokenExpiresAt,
+    createdAt: connector.createdAt,
+    updatedAt: connector.updatedAt,
+  };
+}
+
+function mockAccountMatchesTarget(
+  account: ConnectorAccountConnection,
+  target: ConnectorAccountTarget,
+): boolean {
+  if (target.kind === "builtin") {
+    return (
+      account.target.kind === "builtin" &&
+      account.target.connectorSlug === target.connectorSlug
+    );
+  }
+  return (
+    account.target.kind === "custom" &&
+    account.target.customConnectorId === target.customConnectorId
+  );
+}
+
+function findMockAccount(
+  connectionId: string,
+  target: ConnectorAccountTarget,
+): ConnectorAccountConnection | undefined {
+  return mockConnectors.map(mockAccountForConnector).find((account) => {
+    return (
+      account.id === connectionId && mockAccountMatchesTarget(account, target)
+    );
+  });
 }
 
 function upsertMockConnector(connector: ConnectorResponse): void {
@@ -306,7 +360,7 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
 }
 
 export const apiConnectorsHandlers = [
-  mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+  mockApi(connectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
       connectorProvidedBindings: [],
@@ -341,7 +395,7 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(zeroCustomConnectorsContract.list, ({ respond }) => {
+  mockApi(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [] });
   }),
 
@@ -411,49 +465,178 @@ export const apiConnectorsHandlers = [
     return respond(200, { permissions });
   }),
 
-  mockApi(zeroConnectorsBySlugContract.delete, ({ params, respond }) => {
-    const connectorSlug = params.connectorSlug;
-    const existing = mockConnectors.find((c) => {
-      return c.slug === connectorSlug;
+  mockApi(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: mockConnectors.map((connector) => {
+        const account = mockAccountForConnector(connector);
+        return {
+          target: account.target,
+          accountCount: 1,
+          attentionCount:
+            account.connectionStatus === "reconnect-required" ? 1 : 0,
+          defaultConnection: account,
+        };
+      }),
     });
+  }),
 
-    if (!existing) {
-      return respond(404, {
-        error: { message: "Connector not found", code: "NOT_FOUND" },
+  mockApi(connectorAccountsContract.connections, ({ query, respond }) => {
+    const accounts = mockConnectors
+      .map(mockAccountForConnector)
+      .filter((account) => {
+        return mockAccountMatchesTarget(account, query);
+      })
+      .filter((account) => {
+        const search = query.search?.toLowerCase();
+        return search
+          ? [
+              account.displayName,
+              account.externalEmail,
+              account.externalUsername,
+              account.externalId,
+            ].some((value) => {
+              return value?.toLowerCase().includes(search);
+            })
+          : true;
       });
-    }
-
-    mockConnectors = mockConnectors.filter((c) => {
-      return c.slug !== connectorSlug;
+    const start = query.cursor ? Number(query.cursor) : 0;
+    const page = accounts.slice(start, start + query.limit);
+    const next = start + page.length;
+    return respond(200, {
+      connections: page,
+      nextCursor: next < accounts.length ? String(next) : null,
     });
-    return respond(204);
   }),
 
   mockApi(
-    zeroConnectorManualGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
-      );
-      upsertMockConnector(connector);
-      return respond(200, connector);
+    connectorAccountsContract.connection,
+    ({ params, query, respond }) => {
+      const account = findMockAccount(params.connectionId, query);
+      return account
+        ? respond(200, account)
+        : respond(404, {
+            error: {
+              message: "Connector account not found",
+              code: "NOT_FOUND",
+            },
+          });
     },
   ),
+
+  mockApi(connectorAccountsContract.rename, ({ params, body, respond }) => {
+    const account = findMockAccount(params.connectionId, body.target);
+    if (!account) {
+      return respond(404, {
+        error: { message: "Connector account not found", code: "NOT_FOUND" },
+      });
+    }
+    mockConnectorAccountDisplayNames.set(account.id, body.displayName);
+    return respond(200, { ...account, displayName: body.displayName });
+  }),
+
+  mockApi(connectorAccountsContract.setDefault, ({ params, body, respond }) => {
+    const account = findMockAccount(params.connectionId, body.target);
+    return account
+      ? respond(200, account)
+      : respond(404, {
+          error: { message: "Connector account not found", code: "NOT_FOUND" },
+        });
+  }),
 
   mockApi(
-    zeroConnectorNoAuthGrantContract.connect,
-    ({ body, params, respond }) => {
-      const connector = createMockLocalGrantConnector(
-        params.connectorSlug,
-        body.authMethod,
-      );
-      upsertMockConnector(connector);
-      return respond(200, connector);
+    connectorAccountsContract.deletionImpact,
+    ({ params, query, respond }) => {
+      return findMockAccount(params.connectionId, query)
+        ? respond(200, {
+            connectionId: params.connectionId,
+            explicitSelectionCount: 0,
+            hasSibling: false,
+          })
+        : respond(404, {
+            error: {
+              message: "Connector account not found",
+              code: "NOT_FOUND",
+            },
+          });
     },
   ),
 
-  mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+  mockApi(connectorAccountsContract.delete, ({ params, body, respond }) => {
+    const account = findMockAccount(params.connectionId, body.target);
+    if (!account) {
+      return respond(404, {
+        error: { message: "Connector account not found", code: "NOT_FOUND" },
+      });
+    }
+    mockConnectors = mockConnectors.filter((connector) => {
+      return connector.id !== params.connectionId;
+    });
+    mockConnectorAccountDisplayNames.delete(params.connectionId);
+    return respond(200, {
+      deletedConnectionId: params.connectionId,
+      resolvedSelectionCount: 0,
+      promotedDefaultConnectionId: null,
+    });
+  }),
+
+  mockApi(
+    connectorAccountsContract.disconnectSingleAccount,
+    ({ body, respond }) => {
+      if (body.target.kind === "custom") {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      }
+
+      const connectorSlug = body.target.connectorSlug;
+      const existing = mockConnectors.find((c) => {
+        return c.slug === connectorSlug;
+      });
+
+      if (!existing) {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      }
+
+      mockConnectors = mockConnectors.filter((c) => {
+        return c.slug !== connectorSlug;
+      });
+      return respond(204);
+    },
+  ),
+
+  mockApi(connectorManualGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    if (body.account?.intent === "add") {
+      mockConnectorAccountDisplayNames.set(
+        connector.id,
+        body.account.displayName ?? null,
+      );
+    }
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
+
+  mockApi(connectorNoAuthGrantContract.connect, ({ body, params, respond }) => {
+    const connector = createMockLocalGrantConnector(
+      params.connectorSlug,
+      body.authMethod,
+    );
+    if (body.account?.intent === "add") {
+      mockConnectorAccountDisplayNames.set(
+        connector.id,
+        body.account.displayName ?? null,
+      );
+    }
+    upsertMockConnector(connector);
+    return respond(200, connector);
+  }),
+
+  mockApi(connectorScopeDiffContract.getScopeDiff, ({ respond }) => {
     return respond(200, {
       addedScopes: [],
       removedScopes: [],
@@ -463,7 +646,7 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(
-    zeroConnectorOauthDeviceAuthSessionContract.create,
+    connectorOauthDeviceAuthSessionContract.create,
     ({ params, respond }) => {
       const response = {
         ...defaultOauthDeviceAuthSessionStartResponse(params.connectorSlug),
@@ -485,7 +668,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorOauthDeviceAuthSessionContract.poll,
+    connectorOauthDeviceAuthSessionContract.poll,
     ({ params, respond }) => {
       const response =
         mockOauthDeviceAuthSessionPollResponses.shift() ??
@@ -502,7 +685,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorExternalCodeSessionContract.create,
+    connectorExternalCodeSessionContract.create,
     ({ params, respond }) => {
       return respond(200, {
         ...defaultExternalCodeSessionStartResponse(params.connectorSlug),
@@ -515,7 +698,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(
-    zeroConnectorExternalCodeSessionContract.complete,
+    connectorExternalCodeSessionContract.complete,
     ({ body, params, respond }) => {
       if (!body.code) {
         return respond(400, {

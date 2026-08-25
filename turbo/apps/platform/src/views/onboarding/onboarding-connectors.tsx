@@ -14,11 +14,11 @@ import {
   pollingOAuthDeviceAuthConnectorSlug$,
   selectedConnectorSlug$,
   setSelectedConnectorSlug$,
-} from "../../signals/zero-page/settings/connectors.ts";
+} from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { ConnectModal } from "../zero-page/components/settings/add-connection-dialog.tsx";
-import { ConnectorCard } from "../zero-page/components/settings/connector-card.tsx";
+import { ConnectModal } from "../okou-page/components/settings/add-connection-dialog.tsx";
+import { ConnectorCard } from "../okou-page/components/settings/connector-card.tsx";
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 

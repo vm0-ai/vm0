@@ -1,5 +1,6 @@
 """Tests for built-in registry catalog payload and trust validation."""
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -8,20 +9,21 @@ import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
 import state_file
+from generated.builtin_firewall_cache import BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION
 from tests.registry_builtin_helpers import (
     cache_firewall,
     write_catalog_cache,
     write_registry_with_cache,
 )
 from tests.registry_helpers import (
-    assert_invalid_builtin_vm,
-    builtin_vm,
-    write_multi_vm_registry,
+    assert_invalid_builtin_sandbox,
+    builtin_sandbox,
+    write_multi_sandbox_registry,
     write_trusted_catalog_cache_text,
 )
 
 
-def _assert_invalid_builtin_vm_with_cache(
+def _assert_invalid_builtin_sandbox_with_cache(
     *,
     registry_path,
     cache_path,
@@ -32,9 +34,9 @@ def _assert_invalid_builtin_vm_with_cache(
         registry_path=str(registry_path),
         builtin_firewall_catalog_cache_path=str(cache_path),
     ):
-        invalid_vm = assert_invalid_builtin_vm(registry_path)
+        invalid_sandbox = assert_invalid_builtin_sandbox(registry_path)
 
-    assert expected_message in invalid_vm.message
+    assert expected_message in invalid_sandbox.message
 
 
 def _assert_cache_firewall_is_invalid(
@@ -55,12 +57,12 @@ def _assert_cache_firewall_is_invalid(
     )
     if cache_mode is not None:
         cache_path.chmod(cache_mode)
-    write_multi_vm_registry(
+    write_multi_sandbox_registry(
         registry_path,
-        {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        {"10.200.0.1": builtin_sandbox("run-fallback", "fallback")},
     )
 
-    _assert_invalid_builtin_vm_with_cache(
+    _assert_invalid_builtin_sandbox_with_cache(
         registry_path=registry_path,
         cache_path=cache_path,
         mitm_ctx=mitm_ctx,
@@ -107,7 +109,7 @@ class TestRegistryBuiltinCatalogValidation:
             mitm_ctx(),
             patch.object(
                 builtin_firewall_cache,
-                "MAX_BUILTIN_FIREWALL_CATALOG_BYTES",
+                "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
                 actual_size - 1,
             ),
             patch.object(
@@ -124,6 +126,25 @@ class TestRegistryBuiltinCatalogValidation:
         assert snapshot.unavailable_reason == "cache_invalid"
         assert spy.call_count == 0
 
+    def test_runner_catalog_cache_rejects_unsupported_schema_version(self, tmp_path, mitm_ctx):
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
+        )
+        raw = json.loads(cache_path.read_text())
+        raw["schemaVersion"] = BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION + 1
+        write_trusted_catalog_cache_text(cache_path, json.dumps(raw, sort_keys=True))
+
+        with mitm_ctx():
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is not None
+        assert snapshot.catalog is None
+        assert snapshot.unavailable_reason == "cache_invalid"
+
     @pytest.mark.parametrize(
         "template_whitespace",
         [" ", "\ufeff"],
@@ -134,10 +155,10 @@ class TestRegistryBuiltinCatalogValidation:
     ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
             {
-                "10.200.0.1": builtin_vm(
+                "10.200.0.1": builtin_sandbox(
                     "run-template",
                     "templated",
                     {"TENANT": "acme"},
@@ -172,22 +193,22 @@ class TestRegistryBuiltinCatalogValidation:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
 
     def test_runner_catalog_cache_resolves_whole_host_template_with_path_parameter(
         self, tmp_path, mitm_ctx
     ):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
             {
-                "10.200.0.1": builtin_vm(
+                "10.200.0.1": builtin_sandbox(
                     "run-template",
                     "templated",
                     {"WORKSPACE_HOST": "acme.uspacy.com"},
@@ -225,13 +246,13 @@ class TestRegistryBuiltinCatalogValidation:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert (
-            vm_info["firewalls"][0]["apis"][0]["base"]
+            sandbox_info["firewalls"][0]["apis"][0]["base"]
             == "https://acme.uspacy.com/v1/hooks/{hookKey}"
         )
 
@@ -260,12 +281,12 @@ class TestRegistryBuiltinCatalogValidation:
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            {"10.200.0.1": builtin_sandbox("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm_with_cache(
+        _assert_invalid_builtin_sandbox_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -281,12 +302,12 @@ class TestRegistryBuiltinCatalogValidation:
             version="catalog-a",
             firewalls={"fallback": {"name": "fallback", "apis": []}},
         )
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            {"10.200.0.1": builtin_sandbox("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm_with_cache(
+        _assert_invalid_builtin_sandbox_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -376,12 +397,12 @@ class TestRegistryBuiltinCatalogValidation:
             firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
         )
         cache_path.chmod(0o666)
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            {"10.200.0.1": builtin_sandbox("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm_with_cache(
+        _assert_invalid_builtin_sandbox_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -417,7 +438,7 @@ class TestRegistryBuiltinCatalogValidation:
         firewall["apis"][0]["permissions"][0]["name"] = permission_name
         registry_path, cache_path = write_registry_with_cache(
             tmp_path,
-            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            {"10.200.0.1": builtin_sandbox("run-fallback", "fallback")},
             firewalls={"fallback": firewall},
         )
 
@@ -445,8 +466,8 @@ class TestRegistryBuiltinCatalogValidation:
             )
             assert diagnostic_candidate is None
 
-            invalid_vm = assert_invalid_builtin_vm(registry_path)
-            assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+            invalid_sandbox = assert_invalid_builtin_sandbox(registry_path)
+            assert "catalog cache unavailable: cache_invalid" in invalid_sandbox.message
 
     def test_malformed_rule_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         firewall = cache_firewall("fallback", "https://cache.example.com")

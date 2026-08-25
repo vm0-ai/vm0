@@ -24,7 +24,9 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
+const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/zero/teams/oauth/callback`;
 const OKOU_API_ORIGIN = "https://api.okou.ai";
+const OKOU_APP_ORIGIN = "https://app.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const APP_ORIGIN = "https://app.vm0.test";
 const MICROSOFT_TOKEN_URL =
@@ -157,7 +159,7 @@ describe("Teams OAuth API routes", () => {
 
   it("redirects to Microsoft OAuth with connect state without a browser session", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
     );
 
     expect(response.status).toBe(307);
@@ -190,7 +192,7 @@ describe("Teams OAuth API routes", () => {
 
   it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
     );
 
@@ -206,7 +208,7 @@ describe("Teams OAuth API routes", () => {
 
   it("projects the callback origin onto the Okou brand host", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: OKOU_API_ORIGIN },
     );
 
@@ -230,7 +232,7 @@ describe("Teams OAuth API routes", () => {
   // a refactor that moves it off this string breaks Microsoft's allowlist.
   it("leaves the VM0 brand authorization URI on the registered legacy value", async () => {
     const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&userId=user_1",
+      "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
     );
 
@@ -250,12 +252,65 @@ describe("Teams OAuth API routes", () => {
   });
 
   it("rejects connect requests without org and user state", async () => {
-    const response = await appRequest("/api/zero/teams/oauth/connect");
+    const response = await appRequest("/api/teams/oauth/connect");
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: "Missing orgId or userId",
     });
+  });
+
+  it.each([
+    ["missing", ""],
+    ["malformed", `&state=${encodeURIComponent("not-json")}`],
+    [
+      "omitted-brand",
+      `&state=${encodeURIComponent(
+        JSON.stringify({
+          redirectUri: `${OKOU_API_ORIGIN}/api/integrations/teams/oauth/callback`,
+        }),
+      )}`,
+    ],
+    [
+      "invalid-brand",
+      `&state=${encodeURIComponent(
+        JSON.stringify({
+          publicBrand: "other",
+          redirectUri: `${OKOU_API_ORIGIN}/api/integrations/teams/oauth/callback`,
+        }),
+      )}`,
+    ],
+  ])(
+    "rejects %s callback state using the trusted request brand",
+    async (_caseName, stateQuery) => {
+      mockEnv("APP_URL", "https://app.vm0.ai");
+
+      const response = await appRequest(
+        `/api/zero/teams/oauth/callback?code=valid-code${stateQuery}`,
+        { origin: OKOU_API_ORIGIN },
+      );
+
+      expect(response.status).toBe(307);
+      const location = new URL(response.headers.get("location")!);
+      expect(location.origin).toBe(OKOU_APP_ORIGIN);
+      expect(location.pathname).toBe("/settings/teams");
+      expect(location.searchParams.get("error")).toBe("Invalid connect state.");
+    },
+  );
+
+  it("uses the trusted request brand for provider errors with malformed state", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+
+    const response = await appRequest(
+      `/api/zero/teams/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,
+      { origin: OKOU_API_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe(OKOU_APP_ORIGIN);
+    expect(location.pathname).toBe("/settings/teams");
+    expect(location.searchParams.get("error")).toBe("access_denied");
   });
 
   it("connects and binds an unbound Teams installation using Microsoft OAuth", async () => {
@@ -271,7 +326,12 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          publicBrand: "vm0",
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );
@@ -280,6 +340,9 @@ describe("Teams OAuth API routes", () => {
     expect(response.headers.get("location")).toContain(
       `${APP_ORIGIN}/settings/teams?status=connected`,
     );
+    expect(
+      new URL(response.headers.get("location")!).searchParams.get("botName"),
+    ).toBe("Zero");
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
@@ -296,6 +359,7 @@ describe("Teams OAuth API routes", () => {
       isConnected: true,
       connectUrl: null,
       tenantId: fixture.teamsTenantId,
+      botName: "Zero",
     });
   });
 
@@ -317,6 +381,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: {
           orgId: fixture.orgId,
+          publicBrand: "vm0",
           userId: fixture.userId,
           redirectUri: recordedRedirectUri,
         },
@@ -328,31 +393,9 @@ describe("Teams OAuth API routes", () => {
     expect(response.headers.get("location")).toContain(
       `${APP_ORIGIN}/settings/teams?status=connected`,
     );
-  });
-
-  it("falls back to the legacy callback URI for state without a redirect URI", async () => {
-    const fixture = await seedTeamsInstallation(track);
-    await seedMembership(fixture.orgId, fixture.userId, "admin");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockMicrosoftOAuth({
-      tenantId: fixture.teamsTenantId,
-      aadObjectId: fixture.teamsAadObjectId,
-      userPrincipalName: fixture.teamsUserPrincipalName,
-      expectedRedirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
-    });
-
-    const response = await appRequest(
-      callbackPath({
-        code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
-      }),
-      { origin: API_ORIGIN },
-    );
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      `${APP_ORIGIN}/settings/teams?status=connected`,
-    );
+    expect(
+      new URL(response.headers.get("location")!).searchParams.get("botName"),
+    ).toBe("Zero");
   });
 
   it("rejects OAuth users when the org is already bound to another Microsoft tenant", async () => {
@@ -383,7 +426,12 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          publicBrand: "vm0",
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );
@@ -405,7 +453,12 @@ describe("Teams OAuth API routes", () => {
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
-        state: { orgId: fixture.orgId, userId: fixture.userId },
+        state: {
+          orgId: fixture.orgId,
+          publicBrand: "vm0",
+          userId: fixture.userId,
+          redirectUri: CALLBACK_REDIRECT_URI,
+        },
       }),
       { origin: API_ORIGIN },
     );

@@ -76,7 +76,7 @@ type StaffFixture =
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
     case "connector": {
-      await connectorApi.deleteConnectorBySlug(
+      await connectorApi.disconnectSingleBuiltinConnectorAccount(
         fixture.actor,
         fixture.connectorSlug,
       );
@@ -87,7 +87,7 @@ async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
       return;
     }
     case "agent": {
-      await bdd.deleteVersionFreeAgent(fixture.actor, fixture.agentId);
+      await bdd.deleteAgent(fixture.actor, fixture.agentId);
       return;
     }
   }
@@ -432,12 +432,12 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function expectZeroPreCreateSource(runId: string, source: string): void {
+function expectAgentRunPreCreateSource(runId: string, source: string): void {
   expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
     expect.arrayContaining([
       expect.objectContaining({
         op_type: "api_dispatch_pre_create_agent_run",
-        zero_pre_create_source: source,
+        agent_run_pre_create_source: source,
       }),
     ]),
   );
@@ -648,8 +648,8 @@ describe("workflows", () => {
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorSlug: "box",
-        reason: "The workflow reads Box files.",
+        connectorSlug: "missing-connector",
+        reason: "The workflow reads an unavailable connector.",
       },
     ]);
 
@@ -781,7 +781,7 @@ describe("workflows", () => {
     if (!run.body.runId) {
       throw new Error("Expected an idle workflow invocation to create a run");
     }
-    expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+    expectAgentRunPreCreateSource(run.body.runId, "workflow_slash_command");
     expect(run.body.chatThreadId).toBe(prepared.body.chatThreadId);
     const timingEvents = sandboxOperationEventsForRun(run.body.runId);
     const actionTypes = timingEvents.map((event) => {
@@ -1530,7 +1530,7 @@ describe("workflows", () => {
     ).toBeTruthy();
   });
 
-  it("inherits copied automation budgets from Zero callers and rejects exhausted runs", async () => {
+  it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {
     const actor = user({ orgRole: "org:admin" });
     await enableWorkflowRuns(actor);
     const sourceAgent = await createAgent(actor, {
@@ -1572,7 +1572,7 @@ describe("workflows", () => {
     if (!sourceRun.body.runId) {
       throw new Error("Expected the source workflow run to start");
     }
-    const sourceToken = api.zeroTokenForRunWithCapabilities(
+    const sourceToken = api.okouTokenForRunWithCapabilities(
       actor,
       sourceRun.body.runId,
       ["agent:write"],

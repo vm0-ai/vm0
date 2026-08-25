@@ -2,15 +2,15 @@
  * ESLint rule: require-accept
  *
  * Enforces that all contract client method calls obtained via
- * `get(zeroClient$)(contract)` in src/signals/** are wrapped in `accept()`.
+ * `get(apiClient$)(contract)` in src/signals/** are wrapped in `accept()`.
  *
  * Good:
- *   const createClient = get(zeroClient$);
+ *   const createClient = get(apiClient$);
  *   const client = createClient(someContract);
  *   const result = await accept(client.get(), [200]);
  *
  * Bad:
- *   const createClient = get(zeroClient$);
+ *   const createClient = get(apiClient$);
  *   const client = createClient(someContract);
  *   const result = await client.get(); // not wrapped in accept()
  */
@@ -25,12 +25,12 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Enforce that zeroClient$ calls are wrapped in accept(). See /ccstate documentation.",
+        "Enforce that apiClient$ calls are wrapped in accept(). See /ccstate documentation.",
     },
     schema: [],
     messages: {
       requireAccept:
-        "zeroClient$ calls must be wrapped in `accept()`. See /ccstate documentation.",
+        "apiClient$ calls must be wrapped in `accept()`. See /ccstate documentation.",
     },
   },
   create(context) {
@@ -42,12 +42,12 @@ export default createRule({
       return {};
     }
 
-    // Variable names bound to: get(zeroClient$)
+    // Variable names bound to: get(apiClient$)
     const factoryVars = new Set<string>();
     // Variable names bound to: factory(someContract)
     const clientVars = new Set<string>();
 
-    function isGetZeroClientCall(
+    function isGetApiClientCall(
       node: TSESTree.Node | null | undefined,
     ): boolean {
       if (!node || node.type !== AST_NODE_TYPES.CallExpression) {
@@ -59,7 +59,7 @@ export default createRule({
         call.callee.name === "get" &&
         call.arguments.length === 1 &&
         call.arguments[0].type === AST_NODE_TYPES.Identifier &&
-        (call.arguments[0] as TSESTree.Identifier).name === "zeroClient$"
+        (call.arguments[0] as TSESTree.Identifier).name === "apiClient$"
       );
     }
 
@@ -77,12 +77,12 @@ export default createRule({
     function isInlineClientCall(
       node: TSESTree.Node | null | undefined,
     ): boolean {
-      // get(zeroClient$)(contract) or factory(contract) inline
+      // get(apiClient$)(contract) or factory(contract) inline
       if (!node || node.type !== AST_NODE_TYPES.CallExpression) {
         return false;
       }
       const call = node as TSESTree.CallExpression;
-      if (isGetZeroClientCall(call.callee)) {
+      if (isGetApiClientCall(call.callee)) {
         return true;
       }
       // factory(contract) where factory is in factoryVars
@@ -113,7 +113,7 @@ export default createRule({
         }
         const name = (node.id as TSESTree.Identifier).name;
 
-        if (isGetZeroClientCall(node.init)) {
+        if (isGetApiClientCall(node.init)) {
           factoryVars.add(name);
           return;
         }

@@ -1,16 +1,15 @@
 import { command, computed } from "ccstate";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthStartContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-  zeroConnectorsSearchContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOpenIdStartContract,
+  connectorOauthStartContract,
+  connectorScopeDiffContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+  connectorsSearchContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
-import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -32,7 +31,6 @@ import {
 import {
   connectManualGrantConnector$,
   connectNoAuthConnector$,
-  deleteConnectorLocalState$,
   connectorBySlug,
   connectorList,
   connectorScopeDiff,
@@ -58,11 +56,10 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import {
-  normalizeConnectorAccountMutation,
-  storedConnectorAccountMutationWrite,
-} from "../services/connector-account-mutation.service";
+import { connectorAccountSiblingWritesEnabled } from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -186,7 +183,7 @@ const getConnectorListInner$ = computed(async (get) => {
 
 const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
+  const params = get(pathParamsOf(connectorsBySlugContract.get));
   const connector = await get(
     connectorBySlug({
       orgId: auth.orgId,
@@ -201,35 +198,9 @@ const getConnectorBySlugInner$ = computed(async (get) => {
   return { status: 200 as const, body: connector };
 });
 
-const deleteConnectorBySlugInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
-    const deleted = await set(
-      deleteConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: params.connectorSlug,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (deleted === "missing") {
-      return notFound("Connector not found");
-    }
-    if (deleted === "ambiguous") {
-      return conflict("Multiple connector accounts require an exact choice");
-    }
-
-    return { status: 204 as const, body: undefined };
-  },
-);
-
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
+  const params = get(pathParamsOf(connectorScopeDiffContract.getScopeDiff));
   const diff = await get(
     connectorScopeDiff({
       orgId: auth.orgId,
@@ -246,7 +217,7 @@ const getScopeDiffInner$ = computed(async (get) => {
 
 const searchConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroConnectorsSearchContract.search));
+  const query = get(queryOf(connectorsSearchContract.search));
   const connectors = await settle(
     get(
       connectorSearch({
@@ -273,23 +244,14 @@ const searchConnectorsInner$ = computed(async (get) => {
 const connectManualGrantConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorManualGrantContract.connect));
+    const params = get(pathParamsOf(connectorManualGrantContract.connect));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorManualGrantContract.connect),
+      bodyResultOf(connectorManualGrantContract.connect),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (
-      bodyResult.data.account?.intent === "add" &&
-      bodyResult.data.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a manual connector account",
-      );
-    }
-
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
       {
@@ -364,23 +326,14 @@ const connectManualGrantConnectorInner$ = command(
 const connectNoAuthConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorNoAuthGrantContract.connect));
+    const params = get(pathParamsOf(connectorNoAuthGrantContract.connect));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorNoAuthGrantContract.connect),
+      bodyResultOf(connectorNoAuthGrantContract.connect),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (
-      bodyResult.data.account?.intent === "add" &&
-      bodyResult.data.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a no-auth connector account",
-      );
-    }
-
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
       {
@@ -450,9 +403,9 @@ const connectNoAuthConnectorInner$ = command(
 
 const startConnectorOauthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(zeroConnectorOauthStartContract.start));
+    const params = get(pathParamsOf(connectorOauthStartContract.start));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorOauthStartContract.start),
+      bodyResultOf(connectorOauthStartContract.start),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -531,18 +484,24 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const mutationResolution = await writeDb.transaction(async (tx) => {
+    const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
         orgId: auth.orgId,
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
-        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+        mutation: bodyResult.data.account,
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
         connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
@@ -554,20 +513,27 @@ const startConnectorOauthInner$ = command(
         authorizationUrl: authResult.url,
         codeVerifier: authResult.codeVerifier,
         oauthContext: authResult.oauthContext,
-        ...storedConnectorAccountMutationWrite(bodyResult.data.account),
+        accountMutation: bodyResult.data.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId:
+          bodyResult.data.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    if (mutationStart.resolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(
+        mutationStart.resolution.kind,
+      );
     }
 
     return {
       status: 200 as const,
       body: {
         authorizationUrl: authResult.url,
+        connectionId: mutationStart.connectionId ?? undefined,
       },
     };
   },
@@ -575,9 +541,9 @@ const startConnectorOauthInner$ = command(
 
 const startConnectorOpenIdInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(zeroConnectorOpenIdStartContract.start));
+    const params = get(pathParamsOf(connectorOpenIdStartContract.start));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorOpenIdStartContract.start),
+      bodyResultOf(connectorOpenIdStartContract.start),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -648,18 +614,24 @@ const startConnectorOpenIdInner$ = command(
     });
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const mutationResolution = await writeDb.transaction(async (tx) => {
+    const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
         orgId: auth.orgId,
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
-        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+        mutation: bodyResult.data.account,
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
         connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
@@ -670,20 +642,27 @@ const startConnectorOpenIdInner$ = command(
         redirectUri: prepared.expectedReturnTo,
         codeVerifier: authResult.codeVerifier,
         oauthContext: JSON.stringify({ realm: prepared.realm }),
-        ...storedConnectorAccountMutationWrite(bodyResult.data.account),
+        accountMutation: bodyResult.data.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId:
+          bodyResult.data.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    if (mutationStart.resolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(
+        mutationStart.resolution.kind,
+      );
     }
 
     return {
       status: 200 as const,
       body: {
         authorizationUrl: authResult.url,
+        connectionId: mutationStart.connectionId ?? undefined,
       },
     };
   },
@@ -691,39 +670,35 @@ const startConnectorOpenIdInner$ = command(
 
 export const connectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorManualGrantContract.connect,
+    route: connectorManualGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectManualGrantConnectorInner$),
   },
   {
-    route: zeroConnectorNoAuthGrantContract.connect,
+    route: connectorNoAuthGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectNoAuthConnectorInner$),
   },
   {
-    route: zeroConnectorsSearchContract.search,
+    route: connectorsSearchContract.search,
     handler: authRoute(connectorReadAuth, searchConnectorsInner$),
   },
   {
-    route: zeroConnectorsMainContract.list,
+    route: connectorsMainContract.list,
     handler: authRoute(connectorReadAuth, getConnectorListInner$),
   },
   {
-    route: zeroConnectorScopeDiffContract.getScopeDiff,
+    route: connectorScopeDiffContract.getScopeDiff,
     handler: authRoute(connectorReadAuth, getScopeDiffInner$),
   },
   {
-    route: zeroConnectorOauthStartContract.start,
+    route: connectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
   },
   {
-    route: zeroConnectorOpenIdStartContract.start,
+    route: connectorOpenIdStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOpenIdInner$),
   },
   {
-    route: zeroConnectorsBySlugContract.get,
+    route: connectorsBySlugContract.get,
     handler: authRoute(connectorReadAuth, getConnectorBySlugInner$),
-  },
-  {
-    route: zeroConnectorsBySlugContract.delete,
-    handler: authRoute(connectorWriteAuth, deleteConnectorBySlugInner$),
   },
 ];

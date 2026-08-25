@@ -4,13 +4,12 @@ import {
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { slackUserAgentPreferences } from "@okouai/db/schema/slack-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
@@ -19,6 +18,10 @@ import {
   buildWelcomeMessage,
 } from "../../lib/slack-connect-blocks";
 import { env } from "../../lib/env";
+import {
+  OFFICIAL_SLACK_PUBLIC_BRAND,
+  officialSlackBotMention,
+} from "../../lib/slack-official-app";
 import { clerk$ } from "../external/clerk";
 import { publishUserSignal } from "../external/realtime";
 import {
@@ -93,6 +96,42 @@ async function upsertSlackConnection(
   return existing.id;
 }
 
+/**
+ * The API version draining after migrations 0985/0986 can still explicitly
+ * write its request-flow brand onto the shared installation row. Repair that
+ * DB/API rollout state (observed for up to about 102 minutes) while old and
+ * retained rollback writers exist; remove this bridge after #28937 closes its
+ * version-floor gate.
+ */
+async function normalizeOfficialSlackInstallationBrand(
+  writeDb: Db,
+  installation: SlackInstallation,
+  signal: AbortSignal,
+): Promise<SlackInstallation> {
+  if (installation.publicBrand === OFFICIAL_SLACK_PUBLIC_BRAND) {
+    return installation;
+  }
+
+  const [updated] = await writeDb
+    .update(slackOrgInstallations)
+    .set({
+      publicBrand: OFFICIAL_SLACK_PUBLIC_BRAND,
+      updatedAt: nowDate(),
+    })
+    .where(
+      eq(slackOrgInstallations.slackWorkspaceId, installation.slackWorkspaceId),
+    )
+    .returning();
+  signal.throwIfAborted();
+
+  if (!updated) {
+    throw new Error(
+      `Slack installation ${installation.slackWorkspaceId} disappeared during official-brand normalization`,
+    );
+  }
+  return updated;
+}
+
 async function resolveDefaultComposeId(
   db: Db,
   orgId: string,
@@ -111,7 +150,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
-    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: slackUserAgentPreferences.selectedAgentId })
     .from(slackUserAgentPreferences)
     .where(
       and(
@@ -120,7 +159,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function resolveEffectiveComposeId(
@@ -131,9 +170,9 @@ async function resolveEffectiveComposeId(
   const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, override), eq(agents.orgId, orgId)))
       .limit(1);
     if (agent?.id) {
       return override;
@@ -147,9 +186,9 @@ async function getWorkspaceAgentName(
   composeId: string,
 ): Promise<string | undefined> {
   const [agent] = await db
-    .select({ name: zeroAgents.name, displayName: zeroAgents.displayName })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, composeId))
+    .select({ name: agents.name, displayName: agents.displayName })
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return agent?.displayName ?? agent?.name;
 }
@@ -184,6 +223,7 @@ async function refreshSlackAppHome(args: {
   readonly client: SlackClient;
   readonly installation: SlackInstallation;
   readonly slackUserId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<void> {
   const [connection] = await args.db
     .select()
@@ -203,16 +243,14 @@ async function refreshSlackAppHome(args: {
     await args.client.publishAppHome(
       args.slackUserId,
       buildAppHomeView({
-        publicBrand: args.installation.publicBrand,
-        appUrl: appUrlForPublicBrand(
-          env("APP_URL"),
-          args.installation.publicBrand,
-        ),
+        publicBrand: args.publicBrand,
+        botUserId: args.installation.botUserId,
+        appUrl: appUrlForPublicBrand(env("APP_URL"), args.publicBrand),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
           args.installation.slackWorkspaceId,
           args.slackUserId,
-          args.installation.publicBrand,
+          args.publicBrand,
         ),
       }),
     );
@@ -223,7 +261,7 @@ async function refreshSlackAppHome(args: {
   let isOverrideActive = false;
   let canSwitch = false;
   if (args.installation.orgId) {
-    const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+    const [effectiveComposeId, overrideComposeId, defaultAgentId] =
       await Promise.all([
         resolveEffectiveComposeId(
           args.db,
@@ -242,19 +280,17 @@ async function refreshSlackAppHome(args: {
       agentName = await getWorkspaceAgentName(args.db, effectiveComposeId);
     }
     isOverrideActive = Boolean(
-      overrideComposeId && overrideComposeId !== defaultComposeId,
+      overrideComposeId && overrideComposeId !== defaultAgentId,
     );
-    canSwitch = Boolean(defaultComposeId);
+    canSwitch = Boolean(defaultAgentId);
   }
 
   await args.client.publishAppHome(
     args.slackUserId,
     buildAppHomeView({
-      publicBrand: args.installation.publicBrand,
-      appUrl: appUrlForPublicBrand(
-        env("APP_URL"),
-        args.installation.publicBrand,
-      ),
+      publicBrand: args.publicBrand,
+      botUserId: args.installation.botUserId,
+      appUrl: appUrlForPublicBrand(env("APP_URL"), args.publicBrand),
       isLinked: true,
       userId: connection.userId,
       userEmail: await getPrimaryUserEmail(args.clerkClient, connection.userId),
@@ -313,10 +349,9 @@ export function slackConnectStatus(args: {
 
     const [agent] = metadata?.defaultAgentId
       ? await db
-          .select({ name: zeroAgents.name })
-          .from(agentComposes)
-          .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-          .where(eq(agentComposes.id, metadata.defaultAgentId))
+          .select({ name: agents.name })
+          .from(agents)
+          .where(eq(agents.id, metadata.defaultAgentId))
           .limit(1)
       : [];
 
@@ -366,6 +401,7 @@ export const connectSlackWorkspace$ = command(
         .set({
           orgId: args.orgId,
           installedByUserId: args.userId,
+          publicBrand: OFFICIAL_SLACK_PUBLIC_BRAND,
           updatedAt: nowDate(),
         })
         .where(
@@ -391,7 +427,11 @@ export const connectSlackWorkspace$ = command(
         if (existing.orgId !== args.orgId) {
           return { kind: "forbidden", message: orgMismatchMessage };
         }
-        boundInstallation = existing;
+        boundInstallation = await normalizeOfficialSlackInstallationBrand(
+          writeDb,
+          existing,
+          signal,
+        );
       }
 
       const connectionId = await upsertSlackConnection(writeDb, {
@@ -416,6 +456,12 @@ export const connectSlackWorkspace$ = command(
       return { kind: "forbidden", message: orgMismatchMessage };
     }
 
+    const brandedInstallation = await normalizeOfficialSlackInstallationBrand(
+      writeDb,
+      installation,
+      signal,
+    );
+
     const connectionId = await upsertSlackConnection(writeDb, {
       slackUserId: args.slackUserId,
       slackWorkspaceId: args.workspaceId,
@@ -427,7 +473,7 @@ export const connectSlackWorkspace$ = command(
       kind: "ok",
       connectionId,
       role: args.orgRole,
-      installation,
+      installation: brandedInstallation,
       slackUserId: args.slackUserId,
       channelId: args.channelId,
       threadTs: args.threadTs,
@@ -479,6 +525,7 @@ export const notifySlackConnect$ = command(
       readonly channelId?: string;
       readonly threadTs?: string;
       readonly pendingPrompt?: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -489,18 +536,16 @@ export const notifySlackConnect$ = command(
         await get(userFeatureSwitchContext(args.orgId, args.userId)),
       ),
     );
-    const defaultComposeId = await resolveDefaultComposeId(writeDb, args.orgId);
+    const defaultAgentId = await resolveDefaultComposeId(writeDb, args.orgId);
     signal.throwIfAborted();
-    const agentName = defaultComposeId
-      ? await getWorkspaceAgentName(writeDb, defaultComposeId)
+    const agentName = defaultAgentId
+      ? await getWorkspaceAgentName(writeDb, defaultAgentId)
       : undefined;
     signal.throwIfAborted();
-    const { assistantName } = publicBrandPresentation(
-      args.installation.publicBrand,
-    );
+    const { assistantName } = publicBrandPresentation(args.publicBrand);
 
     const blocks = buildSuccessMessage(
-      `You're connected to ${assistantName}! :tada:\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+      `You're connected to ${assistantName}! :tada:\nMention ${officialSlackBotMention(args.installation.botUserId)} in any channel or send a DM to start chatting with your agent.`,
     );
 
     let sentEphemeral = false;
@@ -526,13 +571,10 @@ export const notifySlackConnect$ = command(
       if (connectMessage.kind === "ok") {
         await client.postMessage(
           args.slackUserId,
-          `Hi! I'm ${assistantName}.`,
+          `Hi! I'm ${officialSlackBotMention(args.installation.botUserId)}.`,
           {
             threadTs: connectMessage.ts,
-            blocks: buildWelcomeMessage(
-              args.installation.publicBrand,
-              agentName,
-            ),
+            blocks: buildWelcomeMessage(args.installation.botUserId, agentName),
           },
         );
         signal.throwIfAborted();
@@ -569,6 +611,7 @@ export const notifySlackConnect$ = command(
       client,
       installation: args.installation,
       slackUserId: args.slackUserId,
+      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
   },

@@ -4,6 +4,8 @@ mod result;
 mod start;
 mod started_cancel;
 
+pub use super::process_termination::ExecTermination;
+
 pub use control::{
     DecodedExecControl, DecodedExecControlResult, EXEC_CONTROL_MAX_PAYLOAD_BYTES,
     EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus, decode_exec_control,
@@ -15,7 +17,7 @@ pub use output::{
     encode_exec_output_frame_into,
 };
 pub use result::{
-    DecodedExecResult, ExecCapturedOutput, ExecTermination, decode_exec_result, encode_exec_result,
+    DecodedExecResult, ExecCapturedOutput, decode_exec_result, encode_exec_result,
     encode_exec_result_frame_into,
 };
 pub use start::{
@@ -29,9 +31,9 @@ pub use started_cancel::{
 };
 
 #[cfg(test)]
-use crate::error::ProtocolError;
+use super::process_termination::TERMINATION_CANCELLED as EXEC_TERMINATION_CANCELLED;
 #[cfg(test)]
-use result::EXEC_TERMINATION_CANCELLED;
+use crate::error::ProtocolError;
 #[cfg(test)]
 use start::{
     EXEC_LIFECYCLE_ONE_SHOT, EXEC_OUTPUT_POLICY_CAPTURE, EXEC_OUTPUT_POLICY_DISCARD,

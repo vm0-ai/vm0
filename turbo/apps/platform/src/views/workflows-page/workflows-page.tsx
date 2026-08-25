@@ -52,17 +52,17 @@ import {
   type WorkflowSortMode,
   type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
-import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
-import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
+import { userPreferences$ } from "../../signals/okou-page/settings/user-preferences.ts";
+import { AgentAvatarImg } from "../okou-page/sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { emptyWorkflowImg } from "../zero-page/platform-assets.ts";
+import { emptyWorkflowImg } from "../okou-page/platform-assets.ts";
 import {
   CreateWorkflowAutomationDialog,
   humanReadableAutomationRuleLabel,
   AutomationListIcon,
   automationTypeLabel,
   WorkflowAutomationEnabledSwitch,
-} from "../zero-page/workflow-automations-page.tsx";
+} from "../okou-page/workflow-automations-page.tsx";
 import {
   agentLabel,
   labelInitials,

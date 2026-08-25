@@ -69,7 +69,6 @@ interface RunFixture {
   readonly sandboxId: string;
   readonly sessionId: string;
   readonly composeId: string;
-  readonly versionId: string;
   readonly orgId: string;
   readonly userId: string;
 }
@@ -182,7 +181,6 @@ async function cleanupRunFixture(fixture: RunFixture): Promise<void> {
     run_id: fixture.runId,
     session_id: fixture.sessionId,
     compose_id: fixture.composeId,
-    version_id: fixture.versionId,
     org_id: fixture.orgId,
   });
 }
@@ -265,7 +263,6 @@ async function insertRunFixture(args?: {
     sandboxId: stringField(response, "sandbox_id"),
     sessionId: stringField(response, "session_id"),
     composeId: stringField(response, "compose_id"),
-    versionId: stringField(response, "version_id"),
     orgId: stringField(response, "org_id"),
     userId: stringField(response, "user_id"),
   };

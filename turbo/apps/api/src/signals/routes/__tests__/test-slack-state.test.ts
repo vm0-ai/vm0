@@ -304,8 +304,6 @@ describe("GET /api/test/slack-state", () => {
     expect(body.recent_runs).toStrictEqual([]);
     expect(body.org_metadata).toBeNull();
     expect(body.default_agent).toBeNull();
-    expect(body.default_compose).toBeNull();
-    expect(body.default_compose_version).toBeNull();
   });
 
   it("returns Slack installation diagnostics, recent runs, and default agent metadata", async () => {
@@ -361,13 +359,6 @@ describe("GET /api/test/slack-state", () => {
       id: fixture.defaultAgentId,
       name: "e2e-slack-agent",
       orgId: fixture.orgId,
-    });
-    expect(body.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-slack-agent",
-    });
-    expect(body.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 });
@@ -450,18 +441,11 @@ describe("POST /api/test/slack-state", () => {
       orgId: fixture.orgId,
       name: "e2e-slack-agent",
     });
-    expect(state.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-slack-agent",
-    });
     expect(state.org_metadata).toMatchObject({
       orgId: fixture.orgId,
       defaultAgentId: fixture.defaultAgentId,
       credits: 10_000,
       tier: "free",
-    });
-    expect(state.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 
@@ -618,9 +602,6 @@ describe("DELETE /api/test/slack-state", () => {
     expect(seededState.default_agent).toMatchObject({
       id: fixture.defaultAgentId,
     });
-    expect(seededState.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-    });
 
     const deleteResponse = await requestApp(
       `${SLACK_STATE_ROUTE}?team_id=${fixture.teamId}`,
@@ -634,7 +615,5 @@ describe("DELETE /api/test/slack-state", () => {
     const deletedState = await readSlackState(fixture.teamId);
     expect(deletedState.installation).toBeNull();
     expect(deletedState.default_agent).toBeNull();
-    expect(deletedState.default_compose).toBeNull();
-    expect(deletedState.default_compose_version).toBeNull();
   });
 });

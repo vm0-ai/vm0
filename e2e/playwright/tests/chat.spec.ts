@@ -87,7 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
@@ -205,7 +205,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/okou/agents/*/user-connectors", async (route) => {
+  await page.route("**/api/agents/*/user-connectors", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -847,7 +847,7 @@ async function setupDelayedImageRoutes(
   };
   await routeImage(userImageUrl, userImageRequested);
   await routeImage(assistantImageUrl, assistantImageRequested);
-  await page.route("**/api/okou/web/file-url?*", async (route) => {
+  await page.route("**/api/web/file-url?*", async (route) => {
     const fileId = new URL(route.request().url()).searchParams.get("file_id");
     if (fileId !== "playwright-delayed-user-image") {
       await route.continue();
@@ -966,7 +966,19 @@ async function expectRightAlignedDivider(label: Locator): Promise<void> {
   ).toBeLessThan(tolerance);
 }
 
-async function expectFastActionRightmost(page: Page): Promise<void> {
+/** `right-2` on the checkmark, measured from the row's right edge. */
+const MODEL_ROW_CHECK_INSET = 8;
+/** `right-8 w-8` on the fast toggle: the column left of the check. */
+const MODEL_ROW_FAST_INSET = 32;
+
+/**
+ * Every model row ends with the same checkmark column, and a row that offers
+ * Codex fast mode reserves a second fixed column beside it for the toggle.
+ * Both columns are reserved whether or not the row is selected, so selecting a
+ * model must not move the check: it used to shift 32px left and land on the
+ * far side of the toggle.
+ */
+async function expectModelRowColumns(page: Page): Promise<void> {
   const standardOption = page.getByRole("option", {
     name: "GPT 5.6 Sol",
     exact: true,
@@ -976,29 +988,36 @@ async function expectFastActionRightmost(page: Page): Promise<void> {
     exact: true,
   });
   const selectedCheck = standardOption.locator("svg.lucide-check");
+  const priceTier = standardOption.getByText(/^\$+$/);
   const row = standardOption.locator("..");
   await expect(standardOption).toBeVisible();
   await expect(fastOption).toBeVisible();
   await expect(selectedCheck).toBeVisible();
-  const [standardBox, fastBox, checkBox, rowBox] = await Promise.all([
-    standardOption.boundingBox(),
+  const [fastBox, checkBox, priceTierBox, rowBox] = await Promise.all([
     fastOption.boundingBox(),
     selectedCheck.boundingBox(),
+    priceTier.boundingBox(),
     row.boundingBox(),
   ]);
-  if (!standardBox || !fastBox || !checkBox || !rowBox) {
+  if (!fastBox || !checkBox || !priceTierBox || !rowBox) {
     throw new Error("Model picker option geometry unavailable");
   }
   const tolerance = 1;
-  expect(standardBox.x + standardBox.width).toBeLessThanOrEqual(
+  const rowRight = rowBox.x + rowBox.width;
+  const checkRight = checkBox.x + checkBox.width;
+  const fastRight = fastBox.x + fastBox.width;
+  // The checkmark is the element closest to the row's right edge.
+  expect(rowRight - checkRight).toBeGreaterThan(0);
+  expect(rowRight - checkRight).toBeLessThanOrEqual(MODEL_ROW_CHECK_INSET);
+  // The fast toggle holds the next column in and never covers the check.
+  expect(Math.abs(rowRight - fastRight - MODEL_ROW_FAST_INSET)).toBeLessThan(
+    tolerance,
+  );
+  expect(fastRight).toBeLessThanOrEqual(checkBox.x + tolerance);
+  // Row content stops before both columns rather than running under them.
+  expect(priceTierBox.x + priceTierBox.width).toBeLessThanOrEqual(
     fastBox.x + tolerance,
   );
-  expect(checkBox.x + checkBox.width).toBeLessThanOrEqual(
-    fastBox.x + tolerance,
-  );
-  expect(
-    Math.abs(fastBox.x + fastBox.width - (rowBox.x + rowBox.width)),
-  ).toBeLessThan(tolerance);
 }
 
 async function openModelPickerAndReadGeometry(
@@ -1007,20 +1026,10 @@ async function openModelPickerAndReadGeometry(
   await page
     .getByRole("combobox", { name: "Claude Fable 5", exact: true })
     .click();
-  const listbox = page.getByRole("listbox");
-  await expect(listbox).toBeVisible();
-  return listbox.evaluate((element) => {
-    let scrollContainer = element.parentElement;
-    while (scrollContainer) {
-      const overflowY = getComputedStyle(scrollContainer).overflowY;
-      if (overflowY === "auto" || overflowY === "scroll") {
-        break;
-      }
-      scrollContainer = scrollContainer.parentElement;
-    }
-    if (!scrollContainer) {
-      throw new Error("Model picker scroll container unavailable");
-    }
+  const scrollContainer = page.locator('[data-slot="select-content"]');
+  await expect(scrollContainer).toBeVisible();
+  await expect(scrollContainer.getByRole("option").first()).toBeVisible();
+  return scrollContainer.evaluate((element) => {
     const options = Array.from(
       element.querySelectorAll<HTMLElement>('[role="option"]'),
     ).filter((option) => {
@@ -1032,10 +1041,10 @@ async function openModelPickerAndReadGeometry(
       throw new Error("Model picker row geometry unavailable");
     }
     return {
-      clientHeight: scrollContainer.clientHeight,
+      clientHeight: element.clientHeight,
       optionCount: options.length,
       rowStep: second.top - first.top,
-      scrollHeight: scrollContainer.scrollHeight,
+      scrollHeight: element.scrollHeight,
     };
   });
 }
@@ -1197,6 +1206,22 @@ async function cardEdgeAppearance(locator: Locator) {
   });
 }
 
+async function segmentFill(locator: Locator) {
+  return locator.evaluate(async (element) => {
+    // Segments cross-fade when the selection moves, so read them settled.
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+}
+
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -1205,7 +1230,7 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
-test("Fast action stays rightmost across selection states and previews deactivation", async ({
+test("checkmark keeps its column across selection states and previews deactivation", async ({
   page,
 }) => {
   await mockSelectedFastModel(page);
@@ -1215,7 +1240,7 @@ test("Fast action stays rightmost across selection states and previews deactivat
   await page
     .getByRole("combobox", { name: "GPT 5.6 Sol Fast", exact: true })
     .click();
-  await expectFastActionRightmost(page);
+  await expectModelRowColumns(page);
   const fastOption = page.getByRole("option", {
     name: "GPT 5.6 Sol Fast",
     exact: true,
@@ -1230,7 +1255,7 @@ test("Fast action stays rightmost across selection states and previews deactivat
   await page
     .getByRole("combobox", { name: "GPT 5.6 Sol", exact: true })
     .click();
-  await expectFastActionRightmost(page);
+  await expectModelRowColumns(page);
 });
 
 test("model picker fits seven rows and scrolls one row for eight", async ({
@@ -1242,10 +1267,10 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const sevenModels = await openModelPickerAndReadGeometry(page);
   expect(sevenModels).toStrictEqual({
-    clientHeight: 292,
+    clientHeight: 288,
     optionCount: 7,
     rowStep: 36,
-    scrollHeight: 292,
+    scrollHeight: 288,
   });
 
   boundary.showEightModels();
@@ -1253,14 +1278,100 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
 
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 292,
+    clientHeight: 288,
     optionCount: 8,
     rowStep: 36,
-    scrollHeight: 328,
+    scrollHeight: 324,
   });
   expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
     eightModels.rowStep,
   );
+});
+
+test("model picker category switch marks its selection without a raised shadow", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const categorySwitch = page.getByRole("radiogroup", { name: "Models" });
+  const chatCategory = categorySwitch.getByRole("radio", { name: "Chat" });
+  const imageCategory = categorySwitch.getByRole("radio", { name: "Image" });
+  await imageCategory.click();
+  await expect(imageCategory).toBeChecked();
+
+  // The switch sits straight on the popover surface with no track to lift off,
+  // so the selection is a flat state layer: readable against its neighbours,
+  // and carrying none of the raised segment's shadow.
+  const [selected, unselected] = await Promise.all([
+    segmentFill(imageCategory),
+    segmentFill(chatCategory),
+  ]);
+  expect(selected.boxShadow).toBe("none");
+  expect(selected.backgroundColor).not.toBe(unselected.backgroundColor);
+});
+
+test("model picker category switch keeps its measurement row hidden", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const imageCategory = page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" });
+  await expect(imageCategory).toBeVisible();
+
+  // A media category replaces the model rows, so the selected chat model stays
+  // in the list as a 1px, transparent row the select can still measure. The
+  // swap fades the rows it brings in, and a keyframe outranks the class that
+  // hides that row: fading it printed the model name over the header for the
+  // whole fade. The click and the read share one evaluate because a round trip
+  // between them can outlast the fade and miss the row while it is lit.
+  const swap = await imageCategory.evaluate(async (segment) => {
+    if (!(segment instanceof HTMLElement)) {
+      throw new Error("Model picker category segment is not an HTML element");
+    }
+    segment.click();
+    // The fade starts once the swapped list has laid out, so let one frame
+    // carry the resize and read on the next.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+    const list = document.querySelector('[data-slot="select-list"]');
+    if (list === null) {
+      throw new Error("Model picker has no list");
+    }
+    const measurementRow = list.querySelector(
+      '[data-slot="select-item"][aria-hidden="true"]',
+    );
+    const modelRows = list.querySelector('[data-slot="select-group"]');
+    if (measurementRow === null || modelRows === null) {
+      throw new Error("Model picker list has no measurement row or model rows");
+    }
+    return {
+      measurementRowOpacity: getComputedStyle(measurementRow).opacity,
+      modelRowsOpacity: getComputedStyle(modelRows).opacity,
+    };
+  });
+  expect(swap.measurementRowOpacity).toBe("0");
+  // The rows the swap brings in are mid-fade at that same instant. Asserting
+  // that keeps the swap covered from both sides: the fade the picker still
+  // owes its rows, and proof that the sample landed inside the fade rather
+  // than after it, where a hidden row reads as transparent either way.
+  expect(Number(swap.modelRowsOpacity)).toBeLessThan(1);
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
@@ -1712,7 +1823,7 @@ test("image lightbox centers and pans across the full viewer", async ({
   const imageUrl = new URL("/playwright/lightbox-geometry.svg", appUrl).href;
   const uploadUrl = new URL("/playwright/lightbox-upload", appUrl).href;
 
-  await page.route("**/api/okou/uploads/prepare", async (route) => {
+  await page.route("**/api/uploads/prepare", async (route) => {
     await route.fulfill({
       json: {
         id: "playwright-lightbox-geometry",
@@ -1823,15 +1934,7 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/feature-switches", async (route) => {
-    await route.fulfill({
-      json: {
-        switches: {},
-        effectiveSwitches: { joggAiBuiltIn: true },
-      },
-    });
-  });
-  await page.route("**/api/okou/avatar-video/avatars**", async (route) => {
+  await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {
         avatars: [
@@ -1848,7 +1951,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/okou/avatar-video/voices**", async (route) => {
+  await page.route("**/api/avatar-video/voices**", async (route) => {
     await route.fulfill({
       json: {
         voices: [

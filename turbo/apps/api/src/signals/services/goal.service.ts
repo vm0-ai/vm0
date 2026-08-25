@@ -5,6 +5,7 @@ import type {
 } from "@okouai/api-contracts/contracts/goals";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   threadGoals,
@@ -107,12 +108,13 @@ async function currentGoalContext(
   const [row] = await db
     .select({
       threadId: agentRuns.chatThreadId,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       runGoalId: agentRuns.goalId,
       autonomyBudget: agentRuns.autonomyBudget,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(
       and(
         eq(agentRuns.id, auth.runId),
@@ -236,18 +238,23 @@ async function createGoalThread(
     orgId: args.orgId,
     userId: args.userId,
   });
+  const pinColumns = chatThreadModelPinColumns(pin);
   const [thread] = await tx
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       title: args.objective,
-      ...chatThreadModelPinColumns(pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -258,7 +265,7 @@ async function createGoalThread(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.objective,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,

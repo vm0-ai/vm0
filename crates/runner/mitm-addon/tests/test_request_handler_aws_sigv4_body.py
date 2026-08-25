@@ -29,9 +29,14 @@ from tests.aws_sigv4_helpers import (
     aws_sigv4_presigned_query_path,
     resolved_aws_sigv4_credentials,
 )
+from tests.buffered_auth_body_framing_cases import (
+    BufferedAuthBodyFramingRejectionCase,
+    buffered_auth_body_framing_case_id,
+    buffered_auth_body_framing_rejection_cases,
+)
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
 from tests.firewall_helpers import cancel_pending_task
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     await_requestheaders_result,
@@ -109,7 +114,7 @@ def _write_aws_registry(
     return _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="aws",
             api_entry=api_entry,
@@ -119,7 +124,7 @@ def _write_aws_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": capture_body},
+            sandbox_fields={"captureNetworkBodies": capture_body},
         ),
     )
 
@@ -658,7 +663,7 @@ async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
         registry_payload = json.loads(registry_path.read_text())
-        policy = registry_payload["vms"][_CLIENT_IP]["networkPolicies"]["aws"]
+        policy = registry_payload["sandboxes"][_CLIENT_IP]["networkPolicies"]["aws"]
         policy["allow"] = []
         policy["deny"] = [_AWS_PERMISSION]
         registry_payload["updatedAt"] = 1
@@ -877,43 +882,25 @@ async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
 
 
 @pytest.mark.parametrize(
-    ("extra_headers", "expected_error"),
+    "framing_case",
     [
-        (
-            [
-                (
-                    "Content-Length",
-                    str(aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES + 1),
-                )
-            ],
-            auth.AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR,
+        *buffered_auth_body_framing_rejection_cases(
+            max_body_bytes=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES
         ),
-        (
-            [("Content-Length", "not-a-number")],
-            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
-        ),
-        (
-            [("Content-Length", "4"), ("Content-Length", "5")],
-            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
-        ),
-        (
-            [("Transfer-Encoding", "chunked")],
-            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
-        ),
-        (
-            [],
-            auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
+        BufferedAuthBodyFramingRejectionCase(
+            id="indeterminate",
+            header_pairs=(),
+            kind="length_required",
         ),
     ],
-    ids=["oversized", "invalid", "conflicting", "chunked", "indeterminate"],
+    ids=buffered_auth_body_framing_case_id,
 )
 def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
     tmp_path,
     real_flow,
     headers,
     mitm_ctx,
-    extra_headers: list[tuple[str, str]],
-    expected_error: str,
+    framing_case: BufferedAuthBodyFramingRejectionCase,
 ) -> None:
     registry_path = _write_aws_registry(tmp_path)
     flow = real_flow(
@@ -922,7 +909,9 @@ def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
         host=STS_HOST,
         method="POST",
         path="/",
-        request_headers=headers(*aws_sigv4_header_auth_headers(extra_headers=extra_headers)),
+        request_headers=headers(
+            *aws_sigv4_header_auth_headers(extra_headers=framing_case.header_pairs)
+        ),
     )
     get_headers = AsyncMock()
 
@@ -932,6 +921,11 @@ def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
     ):
         assert mitm_addon.requestheaders(flow) is None
 
+    expected_error = (
+        auth.AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR
+        if framing_case.kind == "too_large"
+        else auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR
+    )
     get_headers.assert_not_called()
     assert flow.error is not None
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error

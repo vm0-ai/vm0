@@ -1,5 +1,6 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -148,10 +149,11 @@ async function loadAgentPhoneChatDeliveryContext(
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -295,11 +297,13 @@ async function recordAgentPhoneChatDelivery(args: {
   readonly target: AgentPhoneDeliveryTarget;
   readonly sent: AgentPhoneSendResult;
   readonly body: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<void> {
   await storeOutboundAgentPhoneMessage(args.db, {
     agentphoneMessageId: args.sent.id,
     conversationId: args.target.conversationId,
     agentphoneAgentId: args.target.agentphoneAgentId,
+    publicBrand: args.publicBrand,
     userLinkId: args.target.userLinkId,
     phoneHandle: args.target.phoneHandle,
     fromNumber: args.sent.fromNumber ?? args.target.toNumber,
@@ -323,13 +327,18 @@ async function deliverClaimedAgentPhoneChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  // API/backend persisted-callback rollout compatibility: mixed versions have
+  // overlapped for up to about 102 minutes, and callbacks created by an old API
+  // have no snapshot. Remove with #27750 after old/rollback APIs are gone and
+  // all pre-rollout AgentPhone callbacks have drained from persisted state.
+  const publicBrand = payload.publicBrand ?? binding.publicBrand;
 
   const presentation = await resolveAgentPhonePresentation(
     {
       db: args.db,
       runId: args.callback.runId,
       run,
-      publicBrand: binding.publicBrand,
+      publicBrand,
     },
     signal,
   );
@@ -350,6 +359,7 @@ async function deliverClaimedAgentPhoneChatCallback(
     target: payload,
     sent,
     body,
+    publicBrand,
   });
   return "delivered";
 }
@@ -414,6 +424,7 @@ interface AgentPhoneChatAdmissionFailureArgs {
   readonly agentId: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 export async function deliverAgentPhoneChatAdmissionFailure(
@@ -466,6 +477,7 @@ export async function deliverAgentPhoneChatAdmissionFailure(
     agentphoneMessageId: sent.id,
     conversationId: args.target.conversationId,
     agentphoneAgentId: args.target.agentphoneAgentId,
+    publicBrand: args.publicBrand,
     userLinkId: args.target.userLinkId,
     phoneHandle: args.target.phoneHandle,
     fromNumber: sent.fromNumber ?? args.target.toNumber,

@@ -1,6 +1,6 @@
 {
   "name": "@okouai/core",
-  "version": "8.577.0",
+  "version": "8.588.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -35,6 +35,6 @@
   },
   "dependencies": {
     "@okouai/api-contracts": "workspace:*",
-    "yaml": "^2.8.1"
+    "yaml": "^2.9.0"
   }
 }

@@ -3,15 +3,18 @@ import { connectors } from "@okouai/db/schema/connector";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
+import { logger } from "../../lib/log";
 import { deleteConnectorOwnedCredentialRows } from "./connector-credential-storage-write.service";
 import type { ConnectorAccountMutation } from "./connector-account-mutation.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+
+const log = logger("api:connector-account-mutation");
 
 export interface StoredConnectorConnectionRow {
   readonly id: string;
   readonly authMethod: string;
   readonly displayName: string | null;
-  readonly isDefault: boolean | null;
+  readonly isDefault: boolean;
   readonly externalId: string | null;
   readonly externalUsername: string | null;
   readonly externalEmail: string | null;
@@ -55,6 +58,7 @@ export interface ConnectorConnectionMetadataArgs {
   readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly target: ConnectorConnectionTarget;
+  readonly insertConnectionId?: string;
 }
 
 interface ReplaceConnectorConnectionArgs extends ConnectorConnectionMetadataArgs {
@@ -74,6 +78,7 @@ export type ReadyConnectorConnectionMutation =
   | {
       readonly kind: "insert";
       readonly displayName: string | null;
+      readonly isDefault: boolean;
     }
   | {
       readonly kind: "update";
@@ -88,6 +93,51 @@ export type ConnectorConnectionMutationResolution =
   | { readonly kind: "missing" }
   | { readonly kind: "ambiguous" }
   | { readonly kind: "sibling-disabled" };
+
+type ConnectorConnectionMutationOutcome =
+  | ReadyConnectorConnectionMutation["kind"]
+  | Exclude<
+      ConnectorConnectionMutationResolution,
+      { readonly kind: "ready" }
+    >["kind"];
+
+type ConnectorConnectionSelectionCardinality = "zero" | "one" | "multiple";
+
+function connectorConnectionSelectionCardinality(
+  count: number,
+): ConnectorConnectionSelectionCardinality {
+  if (count === 0) {
+    return "zero";
+  }
+  return count === 1 ? "one" : "multiple";
+}
+
+function connectorConnectionMutationOutcome(
+  resolution: ConnectorConnectionMutationResolution,
+): ConnectorConnectionMutationOutcome {
+  return resolution.kind === "ready"
+    ? resolution.mutation.kind
+    : resolution.kind;
+}
+
+function observeConnectorConnectionMutation(
+  args: {
+    readonly targetKind: ConnectorAccountTarget["kind"];
+    readonly intent: ConnectorAccountMutation["intent"];
+    readonly selectedCount: number;
+  },
+  resolution: ConnectorConnectionMutationResolution,
+): ConnectorConnectionMutationResolution {
+  log.debug("Resolved connector account mutation", {
+    targetKind: args.targetKind,
+    intent: args.intent,
+    selectionCardinality: connectorConnectionSelectionCardinality(
+      args.selectedCount,
+    ),
+    outcome: connectorConnectionMutationOutcome(resolution),
+  });
+  return resolution;
+}
 
 function connectorConnectionSelection() {
   return {
@@ -129,6 +179,7 @@ export async function resolveConnectorConnectionMutation(
     readonly userId: string;
     readonly target: ConnectorAccountTarget;
     readonly mutation: ConnectorAccountMutation;
+    readonly allowSiblings: boolean;
   },
 ): Promise<ConnectorConnectionMutationResolution> {
   await lockConnectorAccountTarget(db, args);
@@ -147,9 +198,17 @@ export async function resolveConnectorConnectionMutation(
       )
       .for("update")
       .limit(1);
-    return existing
+    const resolution: ConnectorConnectionMutationResolution = existing
       ? { kind: "ready", mutation: { kind: "update", existing } }
       : { kind: "missing" };
+    return observeConnectorConnectionMutation(
+      {
+        targetKind: args.target.kind,
+        intent: args.mutation.intent,
+        selectedCount: existing ? 1 : 0,
+      },
+      resolution,
+    );
   }
 
   const existing = await db
@@ -165,27 +224,39 @@ export async function resolveConnectorConnectionMutation(
     .orderBy(connectors.id)
     .for("update")
     .limit(2);
+  let resolution: ConnectorConnectionMutationResolution;
   if (args.mutation.intent === "add") {
-    return existing.length === 0
-      ? {
-          kind: "ready",
-          mutation: {
-            kind: "insert",
-            displayName: args.mutation.displayName ?? null,
-          },
-        }
-      : { kind: "sibling-disabled" };
-  }
-  if (existing.length > 1) {
-    return { kind: "ambiguous" };
-  }
-  const [singleton] = existing;
-  return singleton
-    ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
-    : {
+    if (existing.length > 0 && !args.allowSiblings) {
+      resolution = { kind: "sibling-disabled" };
+    } else {
+      resolution = {
         kind: "ready",
-        mutation: { kind: "insert", displayName: null },
+        mutation: {
+          kind: "insert",
+          displayName: args.mutation.displayName ?? null,
+          isDefault: existing.length === 0,
+        },
       };
+    }
+  } else if (existing.length > 1) {
+    resolution = { kind: "ambiguous" };
+  } else {
+    const [singleton] = existing;
+    resolution = singleton
+      ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
+      : {
+          kind: "ready",
+          mutation: { kind: "insert", displayName: null, isDefault: true },
+        };
+  }
+  return observeConnectorConnectionMutation(
+    {
+      targetKind: args.target.kind,
+      intent: args.mutation.intent,
+      selectedCount: existing.length,
+    },
+    resolution,
+  );
 }
 
 export async function writeConnectorConnectionMetadata(
@@ -231,10 +302,11 @@ export async function writeConnectorConnectionMetadata(
       ? await db
           .insert(connectors)
           .values({
+            ...(args.insertConnectionId ? { id: args.insertConnectionId } : {}),
             orgId: args.orgId,
             userId: args.userId,
             displayName: args.resolution.displayName,
-            isDefault: true,
+            isDefault: args.resolution.isDefault,
             ...targetValues,
             ...replacementValues,
           })

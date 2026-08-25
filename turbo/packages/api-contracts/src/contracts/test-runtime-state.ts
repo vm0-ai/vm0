@@ -9,7 +9,7 @@ export const testRuntimeStateErrorSchema = z.object({
   error: z.string(),
 });
 
-const managedModelRuntimeRouteSchema = z.object({
+const builtInModelRuntimeRouteSchema = z.object({
   provider_type: z.string(),
   upstream_model: z.string(),
   model_key_id: z.uuid(),
@@ -17,37 +17,37 @@ const managedModelRuntimeRouteSchema = z.object({
 
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
-    action: z.literal("seed-vm0-managed-default-model-key"),
+    action: z.literal("seed-vm0-built-in-default-model-key"),
     fixture_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("seed-vm0-managed-model-key"),
-    fixture_id: z.uuid(),
-    selected_model: z.string(),
-  }),
-  z.object({
-    action: z.literal("delete-vm0-managed-model-key"),
-    fixture_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("seed-vm0-managed-model-candidate-keys"),
+    action: z.literal("seed-vm0-built-in-model-key"),
     fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("resolve-vm0-managed-model-route"),
+    action: z.literal("delete-vm0-built-in-model-key"),
+    fixture_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("seed-vm0-built-in-model-candidate-keys"),
+    fixture_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("resolve-vm0-built-in-model-route"),
     selected_model: z.string(),
     fallback_enabled: z.boolean(),
   }),
   z.object({
-    action: z.literal("set-vm0-managed-candidate-cooldown"),
+    action: z.literal("set-vm0-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
     unavailable_until: z.iso.datetime(),
   }),
   z.object({
-    action: z.literal("delete-vm0-managed-candidate-cooldown"),
+    action: z.literal("delete-vm0-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
@@ -60,6 +60,9 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-usage-pack-purchase-serialization-schema-state"),
+  }),
+  z.object({
+    action: z.literal("read-connector-catalog-runtime-projection-schema-state"),
   }),
   z.object({
     action: z.literal("set-run-autonomy-budget"),
@@ -186,11 +189,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("set-agent-compose-versionless"),
-    agent_id: z.uuid(),
+    action: z.literal("read-thread-session-binding"),
+    thread_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("read-thread-session-binding"),
+    action: z.literal("read-thread-session-conversation"),
     thread_id: z.uuid(),
   }),
   z.object({
@@ -244,10 +247,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
-  managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
+  built_in_model_route: builtInModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
+  connector_catalog_runtime_projection_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({
@@ -302,6 +306,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
       agent_session_id: z.uuid().nullable(),
       agent_session_run_id: z.uuid().nullable(),
       run_session_id: z.uuid().nullable(),
+    })
+    .optional(),
+  thread_session_conversation: z
+    .object({
+      agent_session_id: z.uuid().nullable(),
+      conversation_id: z.uuid().nullable(),
+      conversation_run_id: z.uuid().nullable(),
     })
     .optional(),
   file_id: z.uuid().optional(),

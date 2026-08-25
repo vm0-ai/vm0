@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { brandedApiNamespace } from "../api-namespaces";
@@ -67,29 +70,22 @@ const MINIMUM_DECLARED_ROUTES = 100;
  * The known declaration proving the walk reached real routes rather than an
  * accidentally empty barrel.
  *
- * `POST /api/okou/slack/events` is one of the eight
- * `FINAL_PROVIDER_CONSOLE_PATHS` in `apps/api`. A third-party provider console
- * holds each of those URLs, which is why #28278 excludes them and why they stay
- * branded under #26701: they keep their branded form after every migrating path
- * has left, making them the most stable branded declarations in the package.
- * Any of the eight works here.
- *
- * If those eight ever move as well, re-anchor this on a path the package still
- * declares — do not delete the sentinel. Without it, the legacy-namespace
- * guard below passes vacuously the moment the walk returns nothing.
+ * It used to be `POST /api/okou/slack/events`, anchored on the provider console
+ * paths that stayed branded the longest. #28600 moved the last four of those,
+ * so this is the same route at the path it declares now. Keep the sentinel
+ * pointed at a path the package still declares — without it, the guards below
+ * pass vacuously the moment the walk returns nothing.
  */
-const RETAINED_BRANDED_ROUTE = {
+const SENTINEL_DECLARED_ROUTE = {
   method: "POST",
-  path: "/api/okou/slack/events",
+  path: "/api/webhooks/slack/events",
 } as const;
 
-function declaresRetainedBrandedRoute(
-  routes: readonly DeclaredRoute[],
-): boolean {
+function declaresSentinelRoute(routes: readonly DeclaredRoute[]): boolean {
   return routes.some(({ method, path }) => {
     return (
-      method === RETAINED_BRANDED_ROUTE.method &&
-      path === RETAINED_BRANDED_ROUTE.path
+      method === SENTINEL_DECLARED_ROUTE.method &&
+      path === SENTINEL_DECLARED_ROUTE.path
     );
   });
 }
@@ -106,12 +102,49 @@ function legacyNamespaceDeclarations(
     });
 }
 
+const CONTRACTS_DIR = fileURLToPath(new URL("..", import.meta.url));
+
+/**
+ * Pairs with the barrel walk above, which reaches what `index.ts` re-exports by
+ * name rather than every file: around seventy contracts are imported by module
+ * path instead, and one of those could declare a branded path that no assertion
+ * here would ever load. Scanning the source closes that without importing
+ * seventy modules, and both assertions fail together, because a new branded
+ * declaration has to be written into some file.
+ */
+function contractSourcesDeclaringBrandedPath(): readonly string[] {
+  return readdirSync(CONTRACTS_DIR)
+    .filter((entry) => {
+      return entry.endsWith(".ts");
+    })
+    .filter((entry) => {
+      // Matches the namespace root as well as a path below it, because
+      // `brandedApiNamespace` treats a bare `/api/okou` as branded too.
+      return /path:\s*"\/api\/okou(?:\/|")/.test(
+        readFileSync(`${CONTRACTS_DIR}${entry}`, "utf8"),
+      );
+    })
+    .sort();
+}
+
+function brandedNamespaceDeclarations(
+  routes: readonly DeclaredRoute[],
+): readonly string[] {
+  return routes
+    .filter(({ path }) => {
+      return brandedApiNamespace(path) === "okou";
+    })
+    .map(({ declaration, method, path }) => {
+      return `${declaration} declares ${method} ${path}`;
+    });
+}
+
 describe("branded API namespace declarations", () => {
   const routes = declaredRoutes();
 
   it("enumerates contract routes through the package barrel", () => {
     expect(routes.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
-    expect(declaresRetainedBrandedRoute(routes)).toBe(true);
+    expect(declaresSentinelRoute(routes)).toBe(true);
   });
 
   it("declares every branded contract path in the Okou namespace", () => {
@@ -121,17 +154,32 @@ describe("branded API namespace declarations", () => {
     ).toStrictEqual([]);
   });
 
-  // Shows the floor above survives #28278 finishing, without waiting for it.
-  // A migrating route does not disappear, it becomes neutral, so the routes
-  // already neutral today are a lower bound on the total once the branded
-  // count reaches the eight retained paths. Clearing the floor on that subset
-  // alone means draining the branded set cannot reach it.
+  // Kept after #28278 drained the branded set in #28600: the floor is measured
+  // over every declaration, and this shows the neutral ones alone already clear
+  // it, so the total can never be propped up by a branded straggler.
   it("clears the floor on neutral routes alone", () => {
     const neutralRoutes = routes.filter(({ path }) => {
       return brandedApiNamespace(path) === undefined;
     });
 
     expect(neutralRoutes.length).toBeGreaterThan(MINIMUM_DECLARED_ROUTES);
+  });
+
+  it("declares no branded path at all", () => {
+    expect(
+      brandedNamespaceDeclarations(routes),
+      "A contract declares a neutral path — /api/<domain>/... — never a branded one. #28600 moved the last four, which were branded only because the Slack app configuration held those URLs; a path a provider console holds is served by a MIGRATED_BRANDED_PATHS row in apps/api rather than declared here. See #28278 for the classification and the migration a branded route needs.",
+    ).toStrictEqual([]);
+  });
+
+  // The assertion above only sees what the barrel walk loads, so this one
+  // covers the files it does not: a branded path written into a contract
+  // `index.ts` never re-exports fails here instead of shipping unnoticed.
+  it("declares a branded path in no contract module", () => {
+    expect(
+      contractSourcesDeclaringBrandedPath(),
+      "No contract module may declare a branded path. A new contract declares a neutral path — /api/<domain>/... — and #28278 records the classification; a URL a third-party console holds is kept reachable by a MIGRATED_BRANDED_PATHS row in apps/api, not by declaring it here.",
+    ).toStrictEqual([]);
   });
 
   it("reports a contract that declares a legacy namespace path", () => {
@@ -144,5 +192,34 @@ describe("branded API namespace declarations", () => {
         },
       ]),
     ).toStrictEqual(["legacyContract.get declares GET /api/zero/health"]);
+  });
+
+  // The regression the guard exists to catch, driven by a fixture rather than
+  // waiting for the next late contract: every branded declaration is reported
+  // now that nothing is exempt, including one on a path a provider console
+  // holds, and a neutral declaration beside it is not.
+  it("reports a contract that declares a branded path", () => {
+    expect(
+      brandedNamespaceDeclarations([
+        {
+          declaration: "lateContract.create",
+          method: "POST",
+          path: "/api/okou/late-feature",
+        },
+        {
+          declaration: "slackEventsContract.handle",
+          method: "POST",
+          path: "/api/okou/slack/events",
+        },
+        {
+          declaration: "lateContract.list",
+          method: "GET",
+          path: "/api/late-feature",
+        },
+      ]),
+    ).toStrictEqual([
+      "lateContract.create declares POST /api/okou/late-feature",
+      "slackEventsContract.handle declares POST /api/okou/slack/events",
+    ]);
   });
 });

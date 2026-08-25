@@ -1,8 +1,7 @@
 import { command, computed } from "ccstate";
 import { agentInstructionsContract } from "@okouai/api-contracts/contracts/agents";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -11,15 +10,11 @@ import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
-import {
-  requireAdminPermission,
-  requireAgentPermission,
-} from "../../lib/require-agent-permission";
-import { serverSideZeroAgentCompose$ } from "../services/agent-compose.service";
-import {
-  agentResponse,
-  defaultAgentResponse,
-} from "../services/agent-data.service";
+import { requireAgentPermission } from "../../lib/require-agent-permission";
+import { nowDate } from "../../lib/time";
+import { agentResponse } from "../services/agent-data.service";
+import { lockCanonicalAgentMutation } from "../services/agent-mutation-lock.service";
+import { writeAgentInstructionsStorage$ } from "../services/agent-instructions-storage.service";
 import { agentInstructions } from "../services/agent-instructions.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -68,86 +63,85 @@ const updateAgentInstructionsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const [compose] = await writeDb
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        owner: zeroAgents.owner,
-        visibility: zeroAgents.visibility,
-      })
-      .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(
-        and(
-          eq(agentComposes.orgId, auth.orgId),
-          eq(agentComposes.id, params.id),
-        ),
-      )
-      .limit(1);
+    const result = await writeDb.transaction(async (tx) => {
+      await lockCanonicalAgentMutation(tx, params.id);
+
+      const [current] = await tx
+        .select({
+          id: agents.id,
+          name: agents.name,
+          owner: agents.owner,
+          visibility: agents.visibility,
+        })
+        .from(agents)
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)))
+        .for("update")
+        .limit(1);
+      if (!current) {
+        return { kind: "missing" as const };
+      }
+
+      const permissionError = requireAgentPermission(
+        current.owner,
+        member,
+        "update agent instructions",
+        { visibility: current.visibility },
+      );
+      if (permissionError) {
+        return { kind: "forbidden" as const, response: permissionError };
+      }
+
+      await set(
+        writeAgentInstructionsStorage$,
+        {
+          orgId: auth.orgId,
+          agentName: current.name,
+          instructions: body.data.content,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      await tx
+        .update(agents)
+        .set({ updatedAt: nowDate() })
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, current.id)));
+
+      const [updated] = await tx
+        .select({
+          agentId: agents.id,
+          defaultAgentId: orgMetadata.defaultAgentId,
+          owner: agents.owner,
+          displayName: agents.displayName,
+          description: agents.description,
+          sound: agents.sound,
+          avatarUrl: agents.avatarUrl,
+          modelProviderId: agents.modelProviderId,
+          selectedModel: agents.selectedModel,
+          preferPersonalProvider: agents.preferPersonalProvider,
+          visibility: agents.visibility,
+        })
+        .from(agents)
+        .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, current.id)))
+        .limit(1);
+      if (!updated) {
+        throw new Error(`Canonical Agent missing after update: ${current.id}`);
+      }
+      return { kind: "updated" as const, agent: updated };
+    });
     signal.throwIfAborted();
 
-    if (!compose) {
+    if (result.kind === "missing") {
       return notFound(`Agent not found: ${params.id}`);
     }
-
-    const permissionError = compose.owner
-      ? requireAgentPermission(
-          compose.owner,
-          member,
-          "update agent instructions",
-          { visibility: compose.visibility },
-        )
-      : requireAdminPermission(member, "update agent instructions");
-    if (permissionError) {
-      return permissionError;
+    if (result.kind === "forbidden") {
+      return result.response;
     }
-
-    const result = await set(
-      serverSideZeroAgentCompose$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        agentComposeId: compose.id,
-        agentName: compose.name,
-        instructions: body.data.content,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const [agent] = await writeDb
-      .select({
-        agentId: zeroAgents.id,
-        defaultAgentId: orgMetadata.defaultAgentId,
-        owner: zeroAgents.owner,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-        avatarUrl: zeroAgents.avatarUrl,
-        modelProviderId: zeroAgents.modelProviderId,
-        selectedModel: zeroAgents.selectedModel,
-        preferPersonalProvider: zeroAgents.preferPersonalProvider,
-        visibility: zeroAgents.visibility,
-      })
-      .from(zeroAgents)
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
-      .where(
-        and(
-          eq(zeroAgents.orgId, auth.orgId),
-          eq(zeroAgents.name, compose.name),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
 
     return {
       status: 200 as const,
-      body: agent
-        ? agentResponse(agent, publicBrand)
-        : defaultAgentResponse({
-            agentId: result.composeId,
-            ownerId: auth.userId,
-          }),
+      body: agentResponse(result.agent, publicBrand),
     };
   },
 );

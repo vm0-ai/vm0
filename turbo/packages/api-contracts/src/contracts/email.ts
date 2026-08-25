@@ -7,7 +7,7 @@ const c = initContract();
 export const emailInboundContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/email/inbound",
+    path: "/api/email/inbound",
     headers: z.object({
       "svix-id": z.string().optional(),
       "svix-timestamp": z.string().optional(),

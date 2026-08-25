@@ -1,11 +1,14 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  type MockedMembership,
+  mockedClerk,
+} from "../../../__tests__/mock-auth.ts";
 import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
@@ -28,6 +31,57 @@ function okouBrandLink(): HTMLElement {
     throw new Error("Okou brand link not found");
   }
   return link;
+}
+
+function authV2ActionLink(name: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error("Auth v2 action link not found");
+  }
+  return link;
+}
+
+function authV2Button(name: string): HTMLButtonElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Auth v2 button not found");
+  }
+  return button;
+}
+
+function setupChooseOrganizationPage(
+  path: string,
+  organization: { readonly id: string; readonly name: string },
+): void {
+  const membership: MockedMembership = {
+    id: `membership_${organization.id}`,
+    organization,
+    role: "org:member",
+  };
+  detachedSetupPage({
+    context,
+    org: { activeOrg: null, memberships: [membership] },
+    path,
+    user: {
+      clientSessions: [
+        {
+          currentTask: { key: "choose-organization" },
+          id: "session_pending",
+          status: "pending",
+          user: {
+            fullName: "Test User",
+            organizationMemberships: [membership],
+          },
+        },
+      ],
+      fullName: "Test User",
+      id: "test-user-123",
+    },
+  });
 }
 
 function disableUrlCanParse(): void {
@@ -357,6 +411,103 @@ describe("app auth pages", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    {
+      action: "Use current sign-in",
+      documentTitle: "Sign in | VM0",
+      heading: "Sign in to VM0",
+      legacyPath: "/sign-in",
+      path: "/v2/sign-in",
+    },
+    {
+      action: "Use current sign-up",
+      documentTitle: "Sign up | VM0",
+      heading: "Create your VM0 account",
+      legacyPath: "/sign-up",
+      path: "/v2/sign-up",
+    },
+    {
+      action: "Use current sign-up",
+      documentTitle: "Sign up | VM0",
+      heading: "Create your VM0 account",
+      legacyPath: "/sign-up",
+      path: "/v2/sign-up/verify-email-address",
+    },
+  ])("renders the auth v2 scaffold at $path", async (routeCase) => {
+    setBrowserUrl(`https://app.vm0.ai${routeCase.path}`);
+
+    detachedSetupPage({ context, path: routeCase.path });
+
+    await expect(
+      screen.findByRole("region", { name: routeCase.heading }),
+    ).resolves.toBeVisible();
+    expect(screen.getByTestId("app-auth-v2")).toBeVisible();
+    const actionLink = authV2ActionLink(routeCase.action);
+    expect(actionLink).toHaveTextContent(routeCase.action);
+    expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(document.title).toBe(routeCase.documentTitle);
+  });
+
+  it("recovers forced organization selection on a nested v2 task route", async () => {
+    const path = "/v2/sign-in/tasks/choose-organization";
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    setupChooseOrganizationPage(path, {
+      id: "org_route",
+      name: "Route Organization",
+    });
+
+    await expect(
+      screen.findByRole("region", { name: "Choose an organization" }),
+    ).resolves.toBeVisible();
+    expect(authV2Button("Continue with Route Organization")).toBeVisible();
+    expect(
+      queryAllByRoleFast("link").some((candidate) => {
+        return candidate.textContent?.trim() === "Use current sign-in";
+      }),
+    ).toBeFalsy();
+    expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(document.title).toBe("Sign in | VM0");
+  });
+
+  it("preserves branded auth intent through v2 continuation", async () => {
+    const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
+    const hash = "#/?step=identifier";
+    const path = `/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent(redirectUrl)}${hash}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    setupChooseOrganizationPage(path, {
+      id: "org_okou",
+      name: "Okou Organization",
+    });
+
+    await expect(
+      screen.findByRole("region", { name: "Choose an organization" }),
+    ).resolves.toBeVisible();
+    expect(document.body).toHaveTextContent(
+      "Choose an organization to continue to Okou.",
+    );
+    expect(document.title).toBe("Sign in | Okou");
+    expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-title",
+      "Sign in to Okou",
+    );
+
+    fireEvent.click(authV2Button("Continue with Okou Organization"));
+
+    await waitFor(() => {
+      expect(location.href).toBe(redirectUrl);
+    });
+  });
+
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {
     const redirectUrl = PRESENTATION_ONBOARDING_URL;
     const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
@@ -573,6 +724,25 @@ describe("app auth pages", () => {
     const themeToggle = screen.getByLabelText("Toggle theme");
     expect(themeToggle.className).toContain("var(--sat)");
     expect(themeToggle.className).toContain("var(--sar)");
+  });
+
+  it("keeps Clerk checkboxes out of the shared text-input styling", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    const card = document.createElement("div");
+    card.className = "cl-card";
+    const checkbox = document.createElement("input");
+    checkbox.className = "cl-formFieldInput cl-checkbox";
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    card.append(checkbox);
+    clerkSurface.append(card);
+
+    expect(getComputedStyle(checkbox).width).toBe("16px");
+    expect(getComputedStyle(checkbox).height).toBe("16px");
   });
 
   it("routes ad-attributed sign-up visits through onboarding", async () => {

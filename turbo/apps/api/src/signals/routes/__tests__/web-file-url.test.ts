@@ -33,7 +33,7 @@ function mintOkouToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -122,7 +122,7 @@ function artifactKey(userId: string, fileId: string, filename: string): string {
   return `artifacts/${userId}/${fileId}/${filename}`;
 }
 
-describe("GET /api/okou/web/file-url", () => {
+describe("GET /api/web/file-url", () => {
   it("returns 401 when no auth token is provided", async () => {
     const response = await accept(
       client().fileUrl({ headers: {}, query: { file_id: "abc" } }),
@@ -133,7 +133,7 @@ describe("GET /api/okou/web/file-url", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 for a zero token without file:read capability", async () => {
+  it("returns 403 for an agent token without file:read capability", async () => {
     const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

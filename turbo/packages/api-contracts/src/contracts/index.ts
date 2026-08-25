@@ -79,20 +79,9 @@ export {
 export {
   AGENT_NAME_REGEX,
   agentNameSchema,
-  volumeConfigSchema,
-  artifactConfigSchema,
-  artifactsArraySchema,
   MOUNT_PATH_TEMPLATE,
   expandMountPath,
-  agentDefinitionSchema,
-  agentComposeContentSchema,
-  agentComposeApiContentSchema,
-  composeResponseSchema,
-  createComposeResponseSchema,
-  // Inferred types
-  type ComposeResponse,
-  type ArtifactConfig,
-} from "./composes";
+} from "./agents";
 export {
   ALL_RUN_STATUSES,
   runStatusSchema,
@@ -550,21 +539,21 @@ export {
   type SupportedRunModel,
   type ModelProviderCredentialScope,
   type DefaultOrgModelPolicySeed,
-  type Vm0ManagedRouteCandidate,
-  type Vm0ManagedRouteProviderType,
-  type Vm0ManagedRouteTarget,
+  type Vm0BuiltInModelRouteCandidate,
+  type Vm0BuiltInModelRouteProviderType,
+  type Vm0BuiltInModelRouteTarget,
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 managed provider
+  // VM0 built-in provider
   VM0_MODEL_TO_PROVIDER,
-  VM0_MANAGED_ROUTE_PROVIDERS,
+  VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS,
   VM0_MODEL_ALIAS_TO_MODEL,
-  getVm0ManagedRouteCandidates,
-  getVm0ManagedRouteVendors,
+  getVm0BuiltInModelRouteCandidates,
+  getVm0BuiltInModelRouteVendors,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
@@ -646,6 +635,9 @@ export {
   type ChatUserMessageEvent,
   type ChatUsageEvent,
   type PersistedAttachment,
+  type ImageAnnotation,
+  type ImageAnnotationMark,
+  type ImageAnnotationMarkShape,
   type AttachFile,
   type ResolvedAttachFile,
   type ChatThreadArtifactFile,
@@ -752,10 +744,15 @@ export {
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
   connectorAccountMutationIntentSchema,
+  connectorAccountTargetQuerySchema,
+  connectorAccountListQuerySchema,
+  connectorAccountSummarySchema,
+  connectorAccountsContract,
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
   type ConnectorAccountSelection,
   type ConnectorAccountMutationIntent,
+  type ConnectorAccountSummary,
 } from "./connector-accounts";
 
 export {
@@ -842,7 +839,7 @@ export {
   updateFeatureSwitchesRequestSchema,
   type FeatureSwitchesResponse,
   type UpdateFeatureSwitchesRequest,
-} from "./zero-feature-switches";
+} from "./feature-switches";
 export {
   orgRoleSchema,
   orgMemberSchema,
@@ -998,7 +995,7 @@ export {
   type UserConnectorsContract,
 } from "./user-connectors";
 export {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   userPermissionGrantScopeSchema,
   userPermissionGrantActionSchema,
   userPermissionGrantApplyModeSchema,
@@ -1013,24 +1010,24 @@ export {
   type ListUserPermissionGrantsQuery,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
-  type ZeroUserPermissionGrantsContract,
-} from "./zero-user-permission-grants";
+  type UserPermissionGrantsContract,
+} from "./user-permission-grants";
 export {
-  zeroConnectorsMainContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsSearchContract,
-  type ZeroConnectorsMainContract,
-  type ZeroConnectorsBySlugContract,
-  type ZeroConnectorScopeDiffContract,
-  type ZeroConnectorManualGrantContract,
-  type ZeroConnectorNoAuthGrantContract,
-  type ZeroConnectorOauthDeviceAuthSessionContract,
-  type ZeroConnectorsSearchContract,
-} from "./zero-connectors";
+  connectorsMainContract,
+  connectorsBySlugContract,
+  connectorScopeDiffContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorsSearchContract,
+  type ConnectorsMainContract,
+  type ConnectorsBySlugContract,
+  type ConnectorScopeDiffContract,
+  type ConnectorManualGrantContract,
+  type ConnectorNoAuthGrantContract,
+  type ConnectorOauthDeviceAuthSessionContract,
+  type ConnectorsSearchContract,
+} from "./connectors";
 export {
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
   publicConnectorCatalogIconSchema,
@@ -1121,33 +1118,36 @@ export {
   type RunRunnerResponse,
 } from "./run-routes";
 export {
+  builtInModelCooldownDiagnosticsSchema,
+  modelProviderCooldownDiagnosticsContract,
   modelProvidersMainContract,
   modelProvidersByTypeContract,
+  type BuiltInModelCooldownDiagnostics,
+  type ModelProviderCooldownDiagnosticsContract,
   type ModelProvidersMainContract,
   type ModelProvidersByTypeContract,
 } from "./model-provider-routes";
 export {
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProviderAccountsByIdContract,
-  type ZeroPersonalModelProvidersMainContract,
-  type ZeroPersonalModelProvidersByTypeContract,
-  type ZeroPersonalModelProviderAccountsByIdContract,
-} from "./zero-personal-model-providers";
+  personalModelProvidersMainContract,
+  personalModelProvidersByTypeContract,
+  personalModelProviderAccountsByIdContract,
+  type PersonalModelProvidersMainContract,
+  type PersonalModelProvidersByTypeContract,
+  type PersonalModelProviderAccountsByIdContract,
+} from "./personal-model-providers";
 export {
   userPreferencesContract,
   type UserPreferencesContract,
 } from "./user-preferences";
 export {
-  zeroFeatureSwitchesContract,
-  type ZeroFeatureSwitchesContract,
-} from "./zero-feature-switches";
+  featureSwitchesContract,
+  type FeatureSwitchesContract,
+} from "./feature-switches";
 export {
-  zeroCustomConnectorsContract,
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorConnectionContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorOAuth2Contract,
+  customConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
@@ -1160,11 +1160,10 @@ export {
   INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS,
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
-  type ZeroCustomConnectorsContract,
-  type ZeroCustomConnectorByIdContract,
-  type ZeroCustomConnectorConnectionContract,
-  type ZeroCustomConnectorValuesContract,
-  type ZeroCustomConnectorOAuth2Contract,
+  type CustomConnectorsContract,
+  type CustomConnectorByIdContract,
+  type CustomConnectorValuesContract,
+  type CustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
   type CustomConnectorAuthMode,
   type CustomConnectorOAuthProviderAdapter,
@@ -1174,17 +1173,17 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-} from "./zero-custom-connectors";
+} from "./custom-connectors";
 export {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   agentCustomConnectorGrantSchema,
   agentCustomConnectorGrantsSchema,
   agentCustomConnectorUpdateSchema,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
-  type ZeroAgentCustomConnectorsContract,
-} from "./zero-agent-custom-connectors";
+  type AgentCustomConnectorsContract,
+} from "./agent-custom-connectors";
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
@@ -1218,6 +1217,14 @@ export {
   type SendPhoneMessageResponse,
   integrationsPhoneDownloadFileContract,
   type IntegrationsPhoneDownloadFileContract,
+  integrationsGithubDownloadFileContract,
+  type IntegrationsGithubDownloadFileContract,
+  integrationsSlackDownloadFileContract,
+  type IntegrationsSlackDownloadFileContract,
+  integrationsTeamsDownloadFileContract,
+  type IntegrationsTeamsDownloadFileContract,
+  integrationsTelegramDownloadFileContract,
+  type IntegrationsTelegramDownloadFileContract,
   integrationsTelegramBotListContract,
   type IntegrationsTelegramBotListContract,
   type TelegramBotListItem,
@@ -1424,6 +1431,22 @@ export {
   type WebSearchResponse,
   type WebSearchResult,
 } from "./web-search";
+export {
+  MANAGED_SOCIALKIT_BILLING_CATEGORY,
+  MANAGED_SOCIALKIT_OPERATIONS,
+  SOCIALKIT_MAX_PATH_CHARS,
+  SOCIALKIT_MAX_QUERY_ENTRIES,
+  SOCIALKIT_MAX_QUERY_VALUE_CHARS,
+  findManagedSocialKitOperation,
+  socialContract,
+  socialKitRequestSchema,
+  socialKitResponseSchema,
+  type ManagedSocialKitOperation,
+  type SocialContract,
+  type SocialKitRequest,
+  type SocialKitRequestMethod,
+  type SocialKitResponse,
+} from "./social";
 export {
   usageMembersContract,
   type UsageMembersContract,

@@ -2,8 +2,8 @@ use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
 use crate::frame::encode_into;
 use crate::read::{
-    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
-    expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
+    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_count, ensure_u16_len,
+    ensure_u32_len, expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
 use crate::wire::{
     MSG_WRITE_FILE, MSG_WRITE_FILES, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
@@ -69,6 +69,16 @@ pub fn validate_write_file(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_WRITE_FILE, seq, &encode_write_file(...))` without allocating
 /// separate payload and frame vectors.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `path` or `content` cannot fit its wire length
+/// field, or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_write_file_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -103,6 +113,16 @@ pub fn validate_private_write_file(
 /// The resulting frame uses the same bytes as
 /// `encode(MSG_WRITE_FILE, seq, &encode_private_write_file(...))` without
 /// allocating separate payload and frame vectors.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `path` or `content` cannot fit its wire length
+/// field, or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_private_write_file_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -145,6 +165,17 @@ pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), Pro
 /// separate payload and frame vectors.
 ///
 /// This applies the same input constraints documented by [`encode_write_files`].
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `files` is empty, the file count exceeds its
+/// wire length field, a path or content length exceeds its wire length field,
+/// or the encoded payload exceeds the maximum message size.
+///
+/// `frame` is cleared before payload validation. Consequently, a validation
+/// error leaves the destination empty. After validation succeeds, the shared
+/// frame encoder also clears `frame` before checking the frame size and writing
+/// the encoded bytes.
 pub fn encode_write_files_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -165,7 +196,7 @@ fn validate_write_files_payload<'a>(
             "write_files file count must be positive",
         ));
     }
-    let file_count = ensure_u16_len("files", files.len())?;
+    let file_count = ensure_u16_count("file_count", files.len())?;
     let mut payload_len = 2;
     let mut encoded_entries = Vec::with_capacity(files.len());
     for file in files {
@@ -542,6 +573,24 @@ mod tests {
 
         assert_invalid_payload(err, "write_files file count must be positive");
         assert!(frame.is_empty());
+    }
+
+    #[test]
+    fn write_files_rejects_count_above_wire_limit() {
+        let files = vec![
+            WriteFileBatchEntry {
+                path: "/tmp/f",
+                content: b"",
+            };
+            usize::from(u16::MAX) + 1
+        ];
+        let err = encode_write_files(&files).unwrap_err();
+
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadCountTooLarge("file_count", count)
+                if count == usize::from(u16::MAX) + 1
+        ));
     }
 
     #[test]

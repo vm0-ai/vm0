@@ -331,6 +331,13 @@ describe("presentation template publish", () => {
       pageCount: 2,
     });
     expect(published.body.coverUrl).not.toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "presentationTemplatesChanged",
+      null,
+    );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `user:${actor.userId}`,
+    );
 
     // The row is usable immediately: nothing is pending on a later transition.
     const listed = await accept(
@@ -357,6 +364,140 @@ describe("presentation template publish", () => {
     ).toBeTruthy();
   });
 
+  it("shares a public template with workspace members while keeping management owner-only", async () => {
+    const owner = bdd.user();
+    if (!owner.orgId) {
+      throw new Error("Presentation template sharing requires an organization");
+    }
+    const member = bdd.user({
+      orgId: owner.orgId,
+      orgRole: "org:member",
+    });
+    await enablePresentationTemplates(owner);
+    await enablePresentationTemplates(member);
+    const fixture = installS3Fixture();
+    const inputs = await uploadInputs(owner, fixture, tarGz(guidance()));
+
+    mocks.clerk.session(owner.userId, owner.orgId);
+    const published = await accept(
+      templateClient().publish({
+        headers: webHeaders(),
+        body: { title: "Workspace brand", ...inputs },
+      }),
+      [200],
+    );
+    expect(published.body).toMatchObject({
+      visibility: "private",
+      canManage: true,
+    });
+
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockClear();
+    const shared = await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+    expect(shared.body).toMatchObject({
+      visibility: "public",
+      canManage: true,
+    });
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "presentationTemplatesChanged",
+      null,
+    );
+
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("workspace template invalidation failed"),
+    );
+    const renamed = await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { title: "Workspace brand refreshed" },
+      }),
+      [200],
+    );
+    expect(renamed.body.title).toBe("Workspace brand refreshed");
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
+
+    mocks.clerk.session(member.userId, member.orgId);
+    const listedForMember = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(listedForMember.body).toStrictEqual([
+      expect.objectContaining({
+        id: published.body.id,
+        title: "Workspace brand refreshed",
+        visibility: "public",
+        canManage: false,
+      }),
+    ]);
+    const detailForMember = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [200],
+    );
+    expect(detailForMember.body.pageUrls).toHaveLength(2);
+    expect(detailForMember.body.canManage).toBeFalsy();
+
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { title: "Member rename" },
+      }),
+      [404],
+    );
+    await accept(
+      templateClient().delete({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [404],
+    );
+
+    mocks.clerk.session(owner.userId, owner.orgId);
+    context.mocks.ably.channelGet.mockClear();
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "private" },
+      }),
+      [200],
+    );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
+
+    mocks.clerk.session(member.userId, member.orgId);
+    const privateList = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(privateList.body).toStrictEqual([]);
+    await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+      }),
+      [404],
+    );
+  });
+
   it("deletes a template exactly once when two requests race", async () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
@@ -371,6 +512,16 @@ describe("presentation template publish", () => {
       }),
       [200],
     );
+
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+    context.mocks.ably.channelGet.mockClear();
 
     const params = { templateId: published.body.id };
     const [first, second] = await Promise.all([
@@ -387,6 +538,10 @@ describe("presentation template publish", () => {
       return left - right;
     });
     expect(statuses).toStrictEqual([204, 404]);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${actor.orgId}`,
+    );
 
     const listed = await accept(
       templateClient().list({ headers: webHeaders() }),

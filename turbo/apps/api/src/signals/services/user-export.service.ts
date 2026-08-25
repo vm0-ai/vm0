@@ -20,7 +20,7 @@ import {
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -130,7 +130,6 @@ interface CollectedData {
 
 interface ExportRuntime {
   readonly db: Db;
-  readonly get: <T>(input: Computed<T>) => T;
   readonly bucket: string;
 }
 
@@ -415,246 +414,271 @@ function scopedExportPath(args: {
   return `${args.scope}/${folder}/${normalizeExportFilePath(args.filePath)}`;
 }
 
-async function loadStorageVolumeFiles(
+function loadStorageVolumeFiles(
   runtime: ExportRuntime,
   args: {
     readonly orgId: string;
     readonly storageName: string;
   },
   signal: AbortSignal,
-): Promise<readonly VolumeFile[]> {
-  const [storage] = await runtime.db
-    .select({ id: storages.id, headVersionId: storages.headVersionId })
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, args.orgId),
-        eq(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.name, args.storageName),
+): Computed<Promise<readonly VolumeFile[]>> {
+  return computed(async (get) => {
+    const [storage] = await runtime.db
+      .select({ id: storages.id, headVersionId: storages.headVersionId })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, args.orgId),
+          eq(storages.userId, VOLUME_ORG_USER_ID),
+          eq(storages.name, args.storageName),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!storage?.headVersionId) {
+      return [];
+    }
+
+    return await get(
+      loadStorageVersionFiles(
+        runtime,
+        {
+          storageId: storage.id,
+          headVersionId: storage.headVersionId,
+        },
+        signal,
       ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!storage?.headVersionId) {
-    return [];
-  }
-
-  return await loadStorageVersionFiles(
-    runtime,
-    {
-      storageId: storage.id,
-      headVersionId: storage.headVersionId,
-    },
-    signal,
-  );
+    );
+  });
 }
 
-async function loadStorageVersionFiles(
+function loadStorageVersionFiles(
   runtime: ExportRuntime,
   args: {
     readonly storageId: string;
     readonly headVersionId: string | null;
   },
   signal: AbortSignal,
-): Promise<readonly VolumeFile[]> {
-  if (!args.headVersionId) {
-    return [];
-  }
+): Computed<Promise<readonly VolumeFile[]>> {
+  return computed(async (get) => {
+    if (!args.headVersionId) {
+      return [];
+    }
 
-  const [version] = await runtime.db
-    .select({ s3Key: storageVersions.s3Key })
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, args.storageId),
-        eq(storageVersions.id, args.headVersionId),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
+    const [version] = await runtime.db
+      .select({ s3Key: storageVersions.s3Key })
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, args.storageId),
+          eq(storageVersions.id, args.headVersionId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
 
-  if (!version) {
-    return [];
-  }
+    if (!version) {
+      return [];
+    }
 
-  const manifest = await runtime.get(
-    downloadManifest(runtime.bucket, version.s3Key),
-  );
-  signal.throwIfAborted();
+    const manifest = await get(downloadManifest(runtime.bucket, version.s3Key));
+    signal.throwIfAborted();
 
-  const filesList = manifest.files.map((file) => {
-    return {
-      path: normalizeExportFilePath(file.path),
-      size: file.size,
-    };
+    const filesList = manifest.files.map((file) => {
+      return {
+        path: normalizeExportFilePath(file.path),
+        size: file.size,
+      };
+    });
+    const archiveBuffer = await get(
+      downloadS3Buffer(runtime.bucket, `${version.s3Key}/archive.tar.gz`),
+    );
+    signal.throwIfAborted();
+
+    const contents = extractFilesFromTarGz(
+      archiveBuffer,
+      filesList.map((file) => {
+        return file.path;
+      }),
+    );
+    const sizeByPath = new Map(
+      filesList.map((file) => {
+        return [file.path, file.size];
+      }),
+    );
+
+    return contents.map((file) => {
+      const path = normalizeExportFilePath(file.path);
+      return {
+        path,
+        content: file.content,
+        size: sizeByPath.get(path) ?? Buffer.byteLength(file.content, "utf8"),
+      };
+    });
   });
-  const archiveBuffer = await runtime.get(
-    downloadS3Buffer(runtime.bucket, `${version.s3Key}/archive.tar.gz`),
-  );
-  signal.throwIfAborted();
+}
 
-  const contents = extractFilesFromTarGz(
-    archiveBuffer,
-    filesList.map((file) => {
-      return file.path;
-    }),
-  );
-  const sizeByPath = new Map(
-    filesList.map((file) => {
-      return [file.path, file.size];
-    }),
-  );
+function collectAgentInstructionFiles(
+  runtime: ExportRuntime,
+  userId: string,
+  signal: AbortSignal,
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async (get) => {
+    const entries: ZipEntry[] = [];
 
-  return contents.map((file) => {
-    const path = normalizeExportFilePath(file.path);
-    return {
-      path,
-      content: file.content,
-      size: sizeByPath.get(path) ?? Buffer.byteLength(file.content, "utf8"),
-    };
+    const composes = await runtime.db
+      .select({
+        id: agents.id,
+        orgId: agents.orgId,
+        name: agents.name,
+      })
+      .from(agents)
+      .where(eq(agents.owner, userId))
+      .orderBy(asc(agents.orgId), asc(agents.name));
+    signal.throwIfAborted();
+
+    for (const compose of composes) {
+      const files = await get(
+        loadStorageVolumeFiles(
+          runtime,
+          {
+            orgId: compose.orgId,
+            storageName: getInstructionsStorageName(compose.name),
+          },
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
+
+      for (const file of files) {
+        entries.push({
+          path: scopedExportPath({
+            scope: "agents",
+            name: compose.name,
+            id: compose.id,
+            filePath: file.path,
+          }),
+          content: file.content,
+        });
+      }
+    }
+
+    return { entries, count: entries.length };
   });
 }
 
-async function collectAgentInstructionFiles(
+function collectWorkflowFiles(
   runtime: ExportRuntime,
   userId: string,
   signal: AbortSignal,
-): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
-  const entries: ZipEntry[] = [];
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async (get) => {
+    const entries: ZipEntry[] = [];
 
-  const composes = await runtime.db
-    .select({
-      id: agentComposes.id,
-      orgId: agentComposes.orgId,
-      name: agentComposes.name,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.userId, userId))
-    .orderBy(asc(agentComposes.orgId), asc(agentComposes.name));
-  signal.throwIfAborted();
-
-  for (const compose of composes) {
-    const files = await loadStorageVolumeFiles(
-      runtime,
-      {
-        orgId: compose.orgId,
-        storageName: getInstructionsStorageName(compose.name),
-      },
-      signal,
-    );
+    const workflowRows = await runtime.db
+      .select({
+        id: workflows.id,
+        orgId: workflows.orgId,
+        name: workflows.name,
+        createdAt: workflows.createdAt,
+      })
+      .from(workflows)
+      .where(eq(workflows.ownerUserId, userId))
+      .orderBy(
+        asc(workflows.orgId),
+        asc(workflows.name),
+        asc(workflows.createdAt),
+      );
     signal.throwIfAborted();
 
-    for (const file of files) {
-      entries.push({
-        path: scopedExportPath({
-          scope: "agents",
-          name: compose.name,
-          id: compose.id,
-          filePath: file.path,
-        }),
-        content: file.content,
-      });
-    }
-  }
+    for (const workflow of workflowRows) {
+      const files =
+        (await get(
+          loadWorkflowVolumeFiles({
+            orgId: workflow.orgId,
+            workflowId: workflow.id,
+          }),
+        )) ?? [];
+      signal.throwIfAborted();
 
-  return { entries, count: entries.length };
+      for (const file of files) {
+        entries.push({
+          path: scopedExportPath({
+            scope: "workflows",
+            name: workflow.name,
+            id: workflow.id,
+            filePath: file.path,
+          }),
+          content: file.content,
+        });
+      }
+    }
+
+    return { entries, count: entries.length };
+  });
 }
 
-async function collectWorkflowFiles(
+function collectMemoryFiles(
   runtime: ExportRuntime,
   userId: string,
   signal: AbortSignal,
-): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
-  const entries: ZipEntry[] = [];
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async (get) => {
+    const entries: ZipEntry[] = [];
 
-  const workflowRows = await runtime.db
-    .select({
-      id: workflows.id,
-      orgId: workflows.orgId,
-      name: workflows.name,
-      createdAt: workflows.createdAt,
-    })
-    .from(workflows)
-    .where(eq(workflows.ownerUserId, userId))
-    .orderBy(
-      asc(workflows.orgId),
-      asc(workflows.name),
-      asc(workflows.createdAt),
-    );
-  signal.throwIfAborted();
-
-  for (const workflow of workflowRows) {
-    const files =
-      (await loadWorkflowVolumeFiles(runtime.get, {
-        orgId: workflow.orgId,
-        workflowId: workflow.id,
-      })) ?? [];
+    const memoryStorages = await runtime.db
+      .select({
+        id: storages.id,
+        orgId: storages.orgId,
+        headVersionId: storages.headVersionId,
+        fileCount: storages.fileCount,
+      })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.userId, userId),
+          eq(storages.name, MEMORY_ARTIFACT_NAME),
+        ),
+      )
+      .orderBy(asc(storages.orgId));
     signal.throwIfAborted();
 
-    for (const file of files) {
-      entries.push({
-        path: scopedExportPath({
-          scope: "workflows",
-          name: workflow.name,
-          id: workflow.id,
-          filePath: file.path,
-        }),
-        content: file.content,
-      });
-    }
-  }
+    for (const memoryStorage of memoryStorages) {
+      if (memoryStorage.fileCount === 0) {
+        continue;
+      }
 
-  return { entries, count: entries.length };
-}
+      const files = await get(
+        loadStorageVersionFiles(
+          runtime,
+          {
+            storageId: memoryStorage.id,
+            headVersionId: memoryStorage.headVersionId,
+          },
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
 
-async function collectMemoryFiles(
-  runtime: ExportRuntime,
-  userId: string,
-  signal: AbortSignal,
-): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
-  const entries: ZipEntry[] = [];
-
-  const memoryStorages = await runtime.db
-    .select({
-      id: storages.id,
-      orgId: storages.orgId,
-      headVersionId: storages.headVersionId,
-      fileCount: storages.fileCount,
-    })
-    .from(storages)
-    .where(
-      and(eq(storages.userId, userId), eq(storages.name, MEMORY_ARTIFACT_NAME)),
-    )
-    .orderBy(asc(storages.orgId));
-  signal.throwIfAborted();
-
-  for (const memoryStorage of memoryStorages) {
-    if (memoryStorage.fileCount === 0) {
-      continue;
+      for (const file of files) {
+        entries.push({
+          path: `memory/${sanitizePathSegment(
+            memoryStorage.orgId,
+          )}/${normalizeExportFilePath(file.path)}`,
+          content: file.content,
+        });
+      }
     }
 
-    const files = await loadStorageVersionFiles(
-      runtime,
-      {
-        storageId: memoryStorage.id,
-        headVersionId: memoryStorage.headVersionId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    for (const file of files) {
-      entries.push({
-        path: `memory/${sanitizePathSegment(
-          memoryStorage.orgId,
-        )}/${normalizeExportFilePath(file.path)}`,
-        content: file.content,
-      });
-    }
-  }
-
-  return { entries, count: entries.length };
+    return { entries, count: entries.length };
+  });
 }
 
 interface ResolveSessionHistoryArgs {
@@ -665,35 +689,41 @@ interface ResolveSessionHistoryArgs {
   readonly encodedSize: number | null;
 }
 
-async function resolveSessionHistory(
+function resolveSessionHistory(
   runtime: ExportRuntime,
   args: ResolveSessionHistoryArgs,
   signal: AbortSignal,
-): Promise<Buffer> {
-  if (!args.hash) {
-    throw new Error(
-      `Session history invariant violated: agent session "${args.sessionId}" has no blob hash`,
+): Computed<Promise<Buffer>> {
+  return computed(async (get) => {
+    if (!args.hash) {
+      throw new Error(
+        `Session history invariant violated: agent session "${args.sessionId}" has no blob hash`,
+      );
+    }
+
+    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(
+      args.encoding,
     );
-  }
+    const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
+    const encodedSize =
+      args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
+    const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
+    const result = await get(
+      loadSessionHistoryBlob(runtime, {
+        encoding: normalizedEncoding,
+        encodedSize,
+        hash: args.hash,
+        key,
+        rawSize,
+      }),
+    );
+    signal.throwIfAborted();
 
-  const normalizedEncoding = normalizeSessionHistoryBlobEncoding(args.encoding);
-  const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
-  const encodedSize =
-    args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
-  const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
-  const result = await loadSessionHistoryBlob(runtime, {
-    encoding: normalizedEncoding,
-    encodedSize,
-    hash: args.hash,
-    key,
-    rawSize,
+    return result;
   });
-  signal.throwIfAborted();
-
-  return result;
 }
 
-async function loadSessionHistoryBlob(
+function loadSessionHistoryBlob(
   runtime: ExportRuntime,
   args: {
     readonly encodedSize: number | undefined;
@@ -702,21 +732,23 @@ async function loadSessionHistoryBlob(
     readonly key: string;
     readonly rawSize: number | undefined;
   },
-): Promise<Buffer> {
-  const encodedBuffer = await runtime.get(
-    downloadS3BufferWithMaxBytes(
-      runtime.bucket,
-      args.key,
-      args.encodedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
-    ),
-  );
-  const rawBuffer = await decodeSessionHistoryBuffer({
-    encodedBuffer,
-    encoding: args.encoding,
-    key: args.key,
-    maxRawBytes: args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+): Computed<Promise<Buffer>> {
+  return computed(async (get) => {
+    const encodedBuffer = await get(
+      downloadS3BufferWithMaxBytes(
+        runtime.bucket,
+        args.key,
+        args.encodedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+      ),
+    );
+    const rawBuffer = await decodeSessionHistoryBuffer({
+      encodedBuffer,
+      encoding: args.encoding,
+      key: args.key,
+      maxRawBytes: args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+    });
+    return verifySessionHistoryBuffer(args.hash, rawBuffer, args.rawSize);
   });
-  return verifySessionHistoryBuffer(args.hash, rawBuffer, args.rawSize);
 }
 
 async function decodeSessionHistoryBuffer(args: {
@@ -763,166 +795,174 @@ function verifySessionHistoryBuffer(
   return buffer;
 }
 
-async function collectConversationMessages(
+function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
   signal: AbortSignal,
-): Promise<{
-  readonly entries: readonly ZipEntry[];
-  readonly threadCount: number;
-  readonly sessionHistoryCount: number;
-}> {
-  const entries: ZipEntry[] = [];
-  let threadCount = 0;
-  let sessionHistoryCount = 0;
+): Computed<
+  Promise<{
+    readonly entries: readonly ZipEntry[];
+    readonly threadCount: number;
+    readonly sessionHistoryCount: number;
+  }>
+> {
+  return computed(async (get) => {
+    const entries: ZipEntry[] = [];
+    let threadCount = 0;
+    let sessionHistoryCount = 0;
 
-  const threads = await runtime.db
-    .select({ id: chatThreads.id, createdAt: chatThreads.createdAt })
-    .from(chatThreads)
-    .where(eq(chatThreads.userId, userId))
-    .orderBy(asc(chatThreads.createdAt));
-  signal.throwIfAborted();
-
-  for (const thread of threads) {
-    const rows = await readCurrentChatEventHistory(runtime, thread.id, signal);
+    const threads = await runtime.db
+      .select({ id: chatThreads.id, createdAt: chatThreads.createdAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.userId, userId))
+      .orderBy(asc(chatThreads.createdAt));
     signal.throwIfAborted();
 
-    const messages: ExportTextMessage[] = rows.flatMap((message) => {
-      const userMessage = canonicalArchivedChatEventUserMessage(message);
-      const content = canonicalArchivedChatEventContent(message);
-      if (
-        !(
-          (isChatEventUserMessageTextType(message.eventType) &&
-            userMessage !== null) ||
-          (isChatEventContentTextType(message.eventType) && content !== null)
-        )
-      ) {
-        return [];
-      }
-      const role = chatEventCompatibilityRole(message.eventType);
-      const requiredUserMessage =
-        requiredUserMessageForEvent(message.eventType, userMessage) ??
-        undefined;
-      const projectedContent = requiredUserMessage
-        ? projectUserMessage(requiredUserMessage).displayText
-        : content;
-      if (!projectedContent) {
-        return [];
-      }
-      return [
-        {
-          role,
-          content: projectedContent,
-          ...(requiredUserMessage ? { userMessage: requiredUserMessage } : {}),
-          createdAt: message.createdAt,
-        },
-      ];
-    });
+    for (const thread of threads) {
+      const rows = await get(
+        readCurrentChatEventHistory(runtime, thread.id, signal),
+      );
+      signal.throwIfAborted();
 
-    if (messages.length > 0) {
-      entries.push({
-        path: `conversations/chat-thread-${thread.id}.json`,
-        content: JSON.stringify(messages, null, 2),
+      const messages: ExportTextMessage[] = rows.flatMap((message) => {
+        const userMessage = canonicalArchivedChatEventUserMessage(message);
+        const content = canonicalArchivedChatEventContent(message);
+        if (
+          !(
+            (isChatEventUserMessageTextType(message.eventType) &&
+              userMessage !== null) ||
+            (isChatEventContentTextType(message.eventType) && content !== null)
+          )
+        ) {
+          return [];
+        }
+        const role = chatEventCompatibilityRole(message.eventType);
+        const requiredUserMessage =
+          requiredUserMessageForEvent(message.eventType, userMessage) ??
+          undefined;
+        const projectedContent = requiredUserMessage
+          ? projectUserMessage(requiredUserMessage).displayText
+          : content;
+        if (!projectedContent) {
+          return [];
+        }
+        return [
+          {
+            role,
+            content: projectedContent,
+            ...(requiredUserMessage
+              ? { userMessage: requiredUserMessage }
+              : {}),
+            createdAt: message.createdAt,
+          },
+        ];
       });
-      threadCount += 1;
+
+      if (messages.length > 0) {
+        entries.push({
+          path: `conversations/chat-thread-${thread.id}.json`,
+          content: JSON.stringify(messages, null, 2),
+        });
+        threadCount += 1;
+      }
     }
-  }
 
-  const sessionsWithHistory = await runtime.db
-    .select({
-      id: agentSessions.id,
-      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-      sessionHistoryBlobEncoding: blobs.encoding,
-      sessionHistoryBlobEncodedSize: blobs.encodedSize,
-      sessionHistoryBlobRawSize: blobs.rawSize,
-    })
-    .from(agentSessions)
-    .innerJoin(
-      conversations,
-      eq(conversations.id, agentSessions.conversationId),
-    )
-    .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
-    .where(
-      and(
-        eq(agentSessions.userId, userId),
-        or(
-          isNotNull(conversations.cliAgentSessionHistory),
-          isNotNull(conversations.cliAgentSessionHistoryHash),
+    const sessionsWithHistory = await runtime.db
+      .select({
+        id: agentSessions.id,
+        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+        sessionHistoryBlobEncoding: blobs.encoding,
+        sessionHistoryBlobEncodedSize: blobs.encodedSize,
+        sessionHistoryBlobRawSize: blobs.rawSize,
+      })
+      .from(agentSessions)
+      .innerJoin(
+        conversations,
+        eq(conversations.id, agentSessions.conversationId),
+      )
+      .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
+      .where(
+        and(
+          eq(agentSessions.userId, userId),
+          or(
+            isNotNull(conversations.cliAgentSessionHistory),
+            isNotNull(conversations.cliAgentSessionHistoryHash),
+          ),
         ),
-      ),
-    )
-    .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
-  signal.throwIfAborted();
+      )
+      .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
+    signal.throwIfAborted();
 
-  for (const session of sessionsWithHistory) {
-    const history = await resolveSessionHistory(
-      runtime,
-      {
-        sessionId: session.id,
-        hash: session.cliAgentSessionHistoryHash,
-        encoding: session.sessionHistoryBlobEncoding,
-        rawSize: session.sessionHistoryBlobRawSize,
-        encodedSize: session.sessionHistoryBlobEncodedSize,
-      },
-      signal,
-    );
+    for (const session of sessionsWithHistory) {
+      const history = await get(
+        resolveSessionHistory(
+          runtime,
+          {
+            sessionId: session.id,
+            hash: session.cliAgentSessionHistoryHash,
+            encoding: session.sessionHistoryBlobEncoding,
+            rawSize: session.sessionHistoryBlobRawSize,
+            encodedSize: session.sessionHistoryBlobEncodedSize,
+          },
+          signal,
+        ),
+      );
 
-    entries.push({
-      path: `conversations/${session.id}-history.jsonl`,
-      content: history,
-    });
-    sessionHistoryCount += 1;
-  }
+      entries.push({
+        path: `conversations/${session.id}-history.jsonl`,
+        content: history,
+      });
+      sessionHistoryCount += 1;
+    }
 
-  return { entries, threadCount, sessionHistoryCount };
+    return { entries, threadCount, sessionHistoryCount };
+  });
 }
 
-async function collectUserData(
+function collectUserData(
   runtime: ExportRuntime,
   userId: string,
   orgId: string,
   signal: AbortSignal,
-): Promise<CollectedData> {
-  const agentInstructions = await collectAgentInstructionFiles(
-    runtime,
-    userId,
-    signal,
-  );
-  const workflows = await collectWorkflowFiles(runtime, userId, signal);
-  const memory = await collectMemoryFiles(runtime, userId, signal);
-  const conversationsResult = await collectConversationMessages(
-    runtime,
-    userId,
-    signal,
-  );
-  const zipEntries: ZipEntry[] = [
-    ...agentInstructions.entries,
-    ...workflows.entries,
-    ...memory.entries,
-    ...conversationsResult.entries,
-  ];
+): Computed<Promise<CollectedData>> {
+  return computed(async (get) => {
+    const agentInstructions = await get(
+      collectAgentInstructionFiles(runtime, userId, signal),
+    );
+    const workflows = await get(collectWorkflowFiles(runtime, userId, signal));
+    const memory = await get(collectMemoryFiles(runtime, userId, signal));
+    const conversationsResult = await get(
+      collectConversationMessages(runtime, userId, signal),
+    );
+    const zipEntries: ZipEntry[] = [
+      ...agentInstructions.entries,
+      ...workflows.entries,
+      ...memory.entries,
+      ...conversationsResult.entries,
+    ];
 
-  zipEntries.push({
-    path: "export-manifest.json",
-    content: JSON.stringify(
-      {
-        exportedAt: nowDate().toISOString(),
-        userId,
-        requestOrgId: orgId,
-        counts: {
-          agentInstructionFiles: agentInstructions.count,
-          workflowFiles: workflows.count,
-          memoryFiles: memory.count,
-          conversationThreads: conversationsResult.threadCount,
-          sessionHistories: conversationsResult.sessionHistoryCount,
+    zipEntries.push({
+      path: "export-manifest.json",
+      content: JSON.stringify(
+        {
+          exportedAt: nowDate().toISOString(),
+          userId,
+          requestOrgId: orgId,
+          counts: {
+            agentInstructionFiles: agentInstructions.count,
+            workflowFiles: workflows.count,
+            memoryFiles: memory.count,
+            conversationThreads: conversationsResult.threadCount,
+            sessionHistories: conversationsResult.sessionHistoryCount,
+          },
         },
-      },
-      null,
-      2,
-    ),
-  });
+        null,
+        2,
+      ),
+    });
 
-  return { zipEntries };
+    return { zipEntries };
+  });
 }
 
 async function assembleZip(
@@ -986,65 +1026,67 @@ async function isUserUnsubscribed(db: Db, userId: string): Promise<boolean> {
   return row?.emailUnsubscribed ?? false;
 }
 
-async function getCachedUserEmail(
+function getCachedUserEmail(
   runtime: ExportRuntime,
   userId: string,
   signal: AbortSignal,
-): Promise<string> {
-  const [cached] = await runtime.db
-    .select({ email: userCache.email, cachedAt: userCache.cachedAt })
-    .from(userCache)
-    .where(eq(userCache.userId, userId))
-    .limit(1);
-  signal.throwIfAborted();
+): Computed<Promise<string>> {
+  return computed(async (get) => {
+    const [cached] = await runtime.db
+      .select({ email: userCache.email, cachedAt: userCache.cachedAt })
+      .from(userCache)
+      .where(eq(userCache.userId, userId))
+      .limit(1);
+    signal.throwIfAborted();
 
-  if (
-    cached &&
-    nowDate().getTime() - cached.cachedAt.getTime() < USER_CACHE_TTL_MS
-  ) {
-    return cached.email;
-  }
+    if (
+      cached &&
+      nowDate().getTime() - cached.cachedAt.getTime() < USER_CACHE_TTL_MS
+    ) {
+      return cached.email;
+    }
 
-  const client = runtime.get(clerk$);
-  const clerkUsers = await client.users.getUserList({ userId: [userId] });
-  signal.throwIfAborted();
+    const client = get(clerk$);
+    const clerkUsers = await client.users.getUserList({ userId: [userId] });
+    signal.throwIfAborted();
 
-  const user = clerkUsers.data.find((candidate: ClerkEmailProfile) => {
-    return candidate.id === userId;
-  });
-  if (!user) {
-    throw new Error(`No Clerk user found for user ${userId}`);
-  }
+    const user = clerkUsers.data.find((candidate: ClerkEmailProfile) => {
+      return candidate.id === userId;
+    });
+    if (!user) {
+      throw new Error(`No Clerk user found for user ${userId}`);
+    }
 
-  const email = primaryEmail(user);
-  if (!email) {
-    throw new Error(`No primary email found for user ${userId}`);
-  }
+    const email = primaryEmail(user);
+    if (!email) {
+      throw new Error(`No primary email found for user ${userId}`);
+    }
 
-  await runtime.db
-    .insert(userCache)
-    .values({
-      userId,
-      email,
-      name: displayName(user),
-      imageUrl: user.imageUrl ?? null,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: userCache.userId,
-      set: {
+    await runtime.db
+      .insert(userCache)
+      .values({
+        userId,
         email,
         name: displayName(user),
         imageUrl: user.imageUrl ?? null,
         cachedAt: nowDate(),
-      },
-    });
-  signal.throwIfAborted();
+      })
+      .onConflictDoUpdate({
+        target: userCache.userId,
+        set: {
+          email,
+          name: displayName(user),
+          imageUrl: user.imageUrl ?? null,
+          cachedAt: nowDate(),
+        },
+      });
+    signal.throwIfAborted();
 
-  return email;
+    return email;
+  });
 }
 
-async function enqueueExportReadyEmail(
+function enqueueExportReadyEmail(
   runtime: ExportRuntime,
   args: {
     readonly userId: string;
@@ -1054,49 +1096,51 @@ async function enqueueExportReadyEmail(
     readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
-): Promise<void> {
-  if (await isUserUnsubscribed(runtime.db, args.userId)) {
-    log.debug("export email skipped because user is unsubscribed", {
-      userId: args.userId,
-    });
-    return;
-  }
-  signal.throwIfAborted();
+): Computed<Promise<void>> {
+  return computed(async (get) => {
+    if (await isUserUnsubscribed(runtime.db, args.userId)) {
+      log.debug("export email skipped because user is unsubscribed", {
+        userId: args.userId,
+      });
+      return;
+    }
+    signal.throwIfAborted();
 
-  const email = await getCachedUserEmail(runtime, args.userId, signal);
-  const unsubscribeUrl = buildUnsubscribeUrl(args.userId, args.publicBrand);
-  const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(
-    args.userId,
-    args.publicBrand,
-  );
-  const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  await runtime.db.insert(emailOutbox).values({
-    fromAddress: buildFromAddress(
-      args.publicBrand === "okou" ? "okou" : "vm0",
+    const email = await get(getCachedUserEmail(runtime, args.userId, signal));
+    const unsubscribeUrl = buildUnsubscribeUrl(args.userId, args.publicBrand);
+    const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(
+      args.userId,
       args.publicBrand,
-    ),
-    toAddresses: email,
-    subject: DATA_EXPORT_READY_SUBJECT,
-    publicBrand: args.publicBrand,
-    headers: buildUnsubscribeHeaders(oneClickUnsubscribeUrl),
-    template: {
-      template: "data-export-ready",
-      props: {
-        downloadUrl: args.downloadUrl,
-        expiresAt: formattedExpiry,
-        artifactCount: args.artifactCount,
-        unsubscribeUrl,
+    );
+    const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    await runtime.db.insert(emailOutbox).values({
+      fromAddress: buildFromAddress(
+        args.publicBrand === "okou" ? "okou" : "vm0",
+        args.publicBrand,
+      ),
+      toAddresses: email,
+      subject: DATA_EXPORT_READY_SUBJECT,
+      publicBrand: args.publicBrand,
+      headers: buildUnsubscribeHeaders(oneClickUnsubscribeUrl),
+      template: {
+        template: "data-export-ready",
+        props: {
+          downloadUrl: args.downloadUrl,
+          expiresAt: formattedExpiry,
+          artifactCount: args.artifactCount,
+          unsubscribeUrl,
+        },
       },
-    },
-    status: "pending",
-    attempts: 0,
+      status: "pending",
+      attempts: 0,
+    });
+    signal.throwIfAborted();
   });
-  signal.throwIfAborted();
 }
 
 function exportStartResponse(
@@ -1111,7 +1155,8 @@ export function toUserExportStartResponse(
   return exportStartResponse(result);
 }
 
-async function runExportJob(
+const runExportJob$ = command(async function runExportJob(
+  { get },
   runtime: ExportRuntime,
   args: ExecuteUserExportJobArgs,
   signal: AbortSignal,
@@ -1125,11 +1170,8 @@ async function runExportJob(
   signal.throwIfAborted();
 
   const expiresAt = new Date(nowDate().getTime() + EXPORT_DOWNLOAD_EXPIRY_MS);
-  const { zipEntries } = await collectUserData(
-    runtime,
-    args.userId,
-    args.orgId,
-    signal,
+  const { zipEntries } = await get(
+    collectUserData(runtime, args.userId, args.orgId, signal),
   );
   signal.throwIfAborted();
 
@@ -1137,12 +1179,10 @@ async function runExportJob(
   signal.throwIfAborted();
 
   const s3Key = `exports/${args.userId}/${args.jobId}.zip`;
-  await runtime.get(
-    putS3Object(runtime.bucket, s3Key, zipBuffer, "application/zip"),
-  );
+  await get(putS3Object(runtime.bucket, s3Key, zipBuffer, "application/zip"));
   signal.throwIfAborted();
 
-  const downloadUrl = await runtime.get(
+  const downloadUrl = await get(
     generatePresignedGetUrl(
       runtime.bucket,
       s3Key,
@@ -1165,36 +1205,37 @@ async function runExportJob(
     .where(eq(exportJobs.id, args.jobId));
   signal.throwIfAborted();
 
-  await enqueueExportReadyEmail(
-    runtime,
-    {
-      userId: args.userId,
-      downloadUrl,
-      expiresAt,
-      artifactCount: 0,
-      publicBrand: args.publicBrand,
-    },
-    signal,
+  await get(
+    enqueueExportReadyEmail(
+      runtime,
+      {
+        userId: args.userId,
+        downloadUrl,
+        expiresAt,
+        artifactCount: 0,
+        publicBrand: args.publicBrand,
+      },
+      signal,
+    ),
   );
   signal.throwIfAborted();
 
   log.debug("export job completed", { jobId: args.jobId });
-}
+});
 
 export const executeUserExportJob$ = command(
   async (
-    { get, set },
+    { set },
     args: ExecuteUserExportJobArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
     const runtime: ExportRuntime = {
       db,
-      get,
       bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
     };
 
-    await tapError(runExportJob(runtime, args, signal), async (error) => {
+    await tapError(set(runExportJob$, runtime, args, signal), async (error) => {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
       log.error("export job failed", { jobId: args.jobId, error });

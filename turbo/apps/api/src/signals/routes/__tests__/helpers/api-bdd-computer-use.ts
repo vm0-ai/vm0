@@ -315,8 +315,8 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 
 /**
  * Mint a zero run token directly, the same auth boundary production crosses
- * when zero-runs-create issues a token whose chat thread granted a
- * computer-use host (`generateZeroToken`). Precedent: `zeroCapabilityToken`
+ * when agent-runs-create issues a token whose chat thread granted a
+ * computer-use host (`generateOkouToken`). Precedent: `zeroCapabilityToken`
  * in api-bdd-github.ts. Returns the runId so audit events created by the
  * token's commands can be read back through the audit-events list API.
  */
@@ -331,7 +331,7 @@ export function computerUseToken(args: {
   const seconds = Math.floor(now() / 1000);
   const runId = args.runId ?? `run_${randomUUID()}`;
   const token = signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId,

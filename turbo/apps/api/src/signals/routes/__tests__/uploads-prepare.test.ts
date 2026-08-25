@@ -45,7 +45,7 @@ function validBody() {
   return { filename: "hello.txt", contentType: "text/plain", size: 13 };
 }
 
-describe("POST /api/zero/uploads/prepare", () => {
+describe("POST /api/uploads/prepare", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context, routes: uploadsTestRoutes })(
       uploadsContract,
@@ -64,7 +64,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId,
@@ -94,14 +94,14 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("uses the zero token brand instead of the request origin", async () => {
+  it("uses the agent token brand instead of the request origin", async () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
     await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId,
@@ -131,7 +131,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
   });
 
-  it("uses the trusted request brand when no zero token is present", async () => {
+  it("uses the trusted request brand when no agent token is present", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);

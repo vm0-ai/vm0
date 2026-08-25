@@ -1894,7 +1894,7 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
 ///
 /// The executor calls this after workspace-image selection fixes the plan and
 /// before sandbox creation, allowing eligible full-archive fetches to overlap
-/// VM startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
+/// sandbox startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
 /// groups, admits at most `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each
 /// admission from the shared `FRESH_DELIVERY_RUNNER_LIMIT`.
 ///
@@ -3812,6 +3812,13 @@ mod tests {
             label: &'static str,
         ) -> sandbox::Result<sandbox::ExecResult> {
             self.inner.exec_with_diagnostic_label(request, label).await
+        }
+
+        async fn apply_storage_manifest(
+            &self,
+            request: &sandbox::StorageManifestRequest<'_>,
+        ) -> sandbox::Result<sandbox::ExecResult> {
+            self.inner.apply_storage_manifest(request).await
         }
 
         async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {

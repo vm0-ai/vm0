@@ -1,0 +1,163 @@
+def nested_for_break(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        if condition:
+            metadata = flow.metadata
+            break
+    metadata["sandbox_run_id"] = "run-1"
+
+
+async def nested_async_for_break(flow, rows, condition):
+    metadata = {}
+    async for _row in rows:
+        if condition:
+            metadata = flow.metadata
+            break
+    metadata["sandbox_token"] = "sandbox"
+
+
+def nested_while_break(flow, condition, stop):
+    metadata = {}
+    while condition:
+        if stop:
+            metadata = flow.metadata
+            break
+    metadata["capture_body"] = True
+
+
+def break_bypasses_for_else(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        if condition:
+            metadata = flow.metadata
+            break
+    else:
+        metadata = {}
+    metadata["firewall_name"] = "github"
+
+
+def break_alias_does_not_enter_for_else(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        if condition:
+            metadata = flow.metadata
+            break
+    else:
+        metadata["sandbox_run_id"] = "run-1"
+
+
+def inner_break_stays_in_inner_loop(flow, outer_rows, inner_rows, condition):
+    metadata = {}
+    for _outer in outer_rows:
+        for _inner in inner_rows:
+            if condition:
+                metadata = flow.metadata
+                break
+        metadata = {}
+    metadata["original_url"] = "https://api.example.com"
+
+
+def break_finally_rebinds(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            if condition:
+                metadata = flow.metadata
+                break
+        finally:
+            metadata = {}
+    metadata["sandbox_run_id"] = "run-1"
+
+
+def break_finally_aliases(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            if condition:
+                break
+        finally:
+            metadata = flow.metadata
+    metadata["firewall_permission"] = "read"
+
+
+def finally_raises_after_break(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            if condition:
+                metadata = flow.metadata
+                break
+        finally:
+            metadata = {}
+            raise RuntimeError()
+    metadata["sandbox_run_id"] = "run-1"
+
+
+def finally_reads_nested_break_alias(flow, rows, condition):
+    for _row in rows:
+        metadata = {}
+        try:
+            if condition:
+                metadata = flow.metadata
+                break
+        finally:
+            metadata["auth_cache_hit"] = True
+
+
+def reachable_handler_break(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            operation()
+        except Exception:
+            if condition:
+                metadata = flow.metadata
+                break
+    metadata["connector_diagnostic_slug"] = "handler"
+
+
+def try_else_break(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            pass
+        except Exception:
+            pass
+        else:
+            if condition:
+                metadata = flow.metadata
+                break
+    metadata["network_log_target"] = {}
+
+
+def unreachable_handler_break_does_not_escape(flow, rows, condition):
+    metadata = {}
+    for _row in rows:
+        try:
+            pass
+        except Exception:
+            if condition:
+                metadata = flow.metadata
+                break
+    metadata["sandbox_run_id"] = "run-1"
+
+
+def break_bypasses_while_else(flow, condition, stop):
+    metadata = {}
+    while condition:
+        if stop:
+            metadata = flow.metadata
+            break
+    else:
+        metadata = {}
+    metadata["suppress_request_body_capture"] = True
+
+
+def break_alias_does_not_enter_while_else(flow, condition, stop):
+    metadata = {}
+    while condition:
+        if stop:
+            metadata = flow.metadata
+            break
+    else:
+        metadata["sandbox_run_id"] = "run-1"

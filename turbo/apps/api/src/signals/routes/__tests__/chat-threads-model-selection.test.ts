@@ -77,14 +77,14 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -106,10 +106,10 @@ function metadataClient() {
   );
 }
 
-describe("POST /api/zero/chat-threads/:id/model-selection", () => {
+describe("POST /api/chat-threads/:id/model-selection", () => {
   it("updates thread model selection with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Launch plan");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -145,7 +145,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
 
   it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Launch plan");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read"],

@@ -6,12 +6,16 @@
  * runner state. Keep the exception at this narrow service boundary and assert
  * product behavior through the remaining production routes.
  */
-import { createStore } from "ccstate";
+import { randomUUID } from "node:crypto";
+
+import { createStore, state } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { blobs } from "@okouai/db/schema/blob";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
@@ -19,14 +23,301 @@ import { storages } from "@okouai/db/schema/storage";
 import { and, count, eq, inArray } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { badRequestMessage, notFound } from "../lib/error";
 import { now } from "../lib/time";
 import {
   createAgentRun$,
   type CreateAgentRunArgs,
 } from "../signals/services/agent-run-create.service";
+import { buildAgentExecutionConfig } from "../signals/services/agent-execution-config";
 import { agentRunList } from "../signals/services/agent-runs.service";
+import {
+  isCompressedSessionHistoryBlobEncoding,
+  normalizeSessionHistoryBlobEncoding,
+} from "../signals/services/session-history-blobs";
+import { projectLegacyWritebackArtifacts } from "../signals/services/storage-legacy-projection.service";
 
 const store = createStore();
+
+export async function clearRunLaunchSnapshotFixture(
+  runId: string,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ launchSnapshot: null })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run launch snapshot to clear");
+  }
+}
+
+type DirectRunResolver = NonNullable<
+  CreateAgentRunArgs["testOnlyResolveDirectRun"]
+>;
+type DirectRunResolution = Awaited<ReturnType<DirectRunResolver>>;
+type DirectRunResolverArgs = Parameters<DirectRunResolver>[0];
+type ResolvedDirectRun = Extract<
+  DirectRunResolution,
+  { readonly agentId: string }
+>;
+export type DirectAgentExecutionConfig = ResolvedDirectRun["content"];
+
+const directAgentExecutionConfigs$ = state<
+  ReadonlyMap<string, DirectAgentExecutionConfig>
+>(new Map());
+
+export async function createDirectAgentExecutionFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly content: DirectAgentExecutionConfig;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly agentId: string; readonly name: string }> {
+  const names = Object.keys(args.content.agents ?? {});
+  if (names.length !== 1 || !names[0]) {
+    throw new Error(
+      "Direct Agent execution fixtures require exactly one Agent",
+    );
+  }
+  const name = names[0].toLowerCase();
+  const [agent] = await db()
+    .insert(agents)
+    .values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      owner: args.userId,
+      name,
+      displayName: "Direct run fixture",
+      visibility: "private",
+    })
+    .onConflictDoUpdate({
+      target: [agents.orgId, agents.name],
+      set: {
+        owner: args.userId,
+        displayName: "Direct run fixture",
+        visibility: "private",
+      },
+    })
+    .returning({ id: agents.id });
+  if (!agent) {
+    throw new Error("Expected the direct Agent fixture to be persisted");
+  }
+  args.signal.throwIfAborted();
+  store.set(
+    directAgentExecutionConfigs$,
+    new Map(store.get(directAgentExecutionConfigs$)).set(
+      agent.id,
+      args.content,
+    ),
+  );
+  return { agentId: agent.id, name };
+}
+
+async function measureDirectResolution<T>(
+  timing: DirectRunResolverArgs["timing"],
+  actionType:
+    | "api_dispatch_resolve_agent_execution_lookup_agent"
+    | "api_dispatch_resolve_agent_execution_lookup_session_snapshot"
+    | "api_dispatch_resolve_agent_execution_resolve_session_history",
+  work: () => Promise<T> | T,
+): Promise<T> {
+  return timing
+    ? await timing.measure(actionType, "nested", work)
+    : await Promise.resolve(work());
+}
+
+function resumeSessionFromSnapshotFixture(snapshot: {
+  readonly runId: string;
+  readonly cliAgentSessionId: string;
+  readonly cliAgentSessionHistory: string | null;
+  readonly cliAgentSessionHistoryHash: string | null;
+  readonly sessionHistoryBlobEncoding: string | null;
+}): ResolvedDirectRun["resumeSession"] {
+  const hash = snapshot.cliAgentSessionHistoryHash;
+  let encoding;
+  if (snapshot.sessionHistoryBlobEncoding !== null) {
+    const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+      snapshot.sessionHistoryBlobEncoding,
+    );
+    if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
+      encoding = parsedEncoding;
+    }
+  }
+  if (hash) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      historyGenerationRunId: snapshot.runId,
+      historyRef: {
+        kind: "blob",
+        hash,
+        ...(encoding ? { encoding } : {}),
+      },
+    };
+  }
+  if (snapshot.cliAgentSessionHistory) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      sessionHistory: snapshot.cliAgentSessionHistory,
+    };
+  }
+  return undefined;
+}
+
+async function resolveDirectAgentRun(
+  args: DirectRunResolverArgs,
+  agentId: string,
+): Promise<DirectRunResolution> {
+  const [agent] = await measureDirectResolution(
+    args.timing,
+    "api_dispatch_resolve_agent_execution_lookup_agent",
+    async () => {
+      return await args.db
+        .select({
+          id: agents.id,
+          name: agents.name,
+          orgId: agents.orgId,
+          owner: agents.owner,
+        })
+        .from(agents)
+        .where(eq(agents.id, agentId))
+        .limit(1);
+    },
+  );
+  if (!agent) {
+    return notFound("Agent not found");
+  }
+  return {
+    agentId: agent.id,
+    ownerUserId: agent.owner,
+    agentName: agent.name || undefined,
+    orgId: agent.orgId,
+    content:
+      store.get(directAgentExecutionConfigs$).get(agent.id) ??
+      buildAgentExecutionConfig(agent.name),
+    artifacts: [],
+  };
+}
+
+async function loadDirectSessionSnapshot(
+  args: DirectRunResolverArgs,
+  sessionId: string,
+) {
+  return await measureDirectResolution(
+    args.timing,
+    "api_dispatch_resolve_agent_execution_lookup_session_snapshot",
+    async () => {
+      return await args.db
+        .select({
+          session: {
+            id: agentSessions.id,
+            storageMounts: agentSessions.storageMounts,
+          },
+          agent: {
+            id: agents.id,
+            name: agents.name,
+            orgId: agents.orgId,
+            owner: agents.owner,
+          },
+          conversation: {
+            id: conversations.id,
+            runId: conversations.runId,
+            cliAgentSessionId: conversations.cliAgentSessionId,
+            cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+            cliAgentSessionHistoryHash:
+              conversations.cliAgentSessionHistoryHash,
+          },
+          historyBlob: { hash: blobs.hash, encoding: blobs.encoding },
+          previousRun: {
+            id: agentRuns.id,
+            vars: agentRuns.vars,
+            modelProvider: agentRuns.modelProvider,
+            modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+            modelRuntimeModel: agentRuns.modelRuntimeModel,
+          },
+        })
+        .from(agentSessions)
+        .leftJoin(agents, eq(agentSessions.agentId, agents.id))
+        .leftJoin(
+          conversations,
+          eq(agentSessions.conversationId, conversations.id),
+        )
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
+        .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+        .where(
+          and(
+            eq(agentSessions.id, sessionId),
+            eq(agentSessions.userId, args.userId),
+            eq(agentSessions.orgId, args.orgId),
+          ),
+        )
+        .limit(1);
+    },
+  );
+}
+
+async function resolveDirectSessionRun(
+  args: DirectRunResolverArgs,
+  sessionId: string,
+): Promise<DirectRunResolution> {
+  const [snapshot] = await loadDirectSessionSnapshot(args, sessionId);
+  if (!snapshot) {
+    return notFound("Agent session not found");
+  }
+  if (!snapshot.agent) {
+    return notFound("Agent not found");
+  }
+  if (snapshot.session.storageMounts === null) {
+    throw new Error(
+      `Agent session "${snapshot.session.id}" is missing canonical Storage mounts`,
+    );
+  }
+
+  const conversation = snapshot.conversation;
+  const resumeSession = conversation
+    ? await measureDirectResolution(
+        args.timing,
+        "api_dispatch_resolve_agent_execution_resolve_session_history",
+        () => {
+          return resumeSessionFromSnapshotFixture({
+            ...conversation,
+            sessionHistoryBlobEncoding: snapshot.historyBlob?.encoding ?? null,
+          });
+        },
+      )
+    : undefined;
+  return {
+    agentId: snapshot.agent.id,
+    ownerUserId: snapshot.agent.owner,
+    agentName: snapshot.agent.name || undefined,
+    orgId: snapshot.agent.orgId,
+    content:
+      store.get(directAgentExecutionConfigs$).get(snapshot.agent.id) ??
+      buildAgentExecutionConfig(snapshot.agent.name),
+    artifacts: projectLegacyWritebackArtifacts(snapshot.session.storageMounts),
+    persistedStorageMounts: snapshot.session.storageMounts,
+    vars:
+      (snapshot.previousRun?.vars as Record<string, string> | null) ??
+      undefined,
+    agentSessionId: snapshot.session.id,
+    continuedFromAgentSessionId: snapshot.session.id,
+    resumeSession,
+    ...(snapshot.previousRun
+      ? { resumeSessionModelRoute: snapshot.previousRun }
+      : {}),
+  };
+}
+
+const resolveDirectRun: DirectRunResolver = async (args) => {
+  if (args.body.sessionId) {
+    return await resolveDirectSessionRun(args, args.body.sessionId);
+  }
+  return args.body.agentId
+    ? await resolveDirectAgentRun(args, args.body.agentId)
+    : badRequestMessage("Missing agentId or sessionId");
+};
 
 export type DirectRunFixtureRequest = Omit<
   CreateAgentRunArgs["body"],
@@ -107,6 +398,7 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: body.modelProviderType,
+      testOnlyResolveDirectRun: resolveDirectRun,
       connectorScope: connectorScope ?? {
         allowedConnectorSlugs: [],
         allowedCustomConnectorIds: [],
@@ -225,13 +517,13 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
       selectedModel: agentRuns.selectedModel,
       modelRuntimeProvider: agentRuns.modelRuntimeProvider,
       modelRuntimeModel: agentRuns.modelRuntimeModel,
-      vm0ModelKeyId: agentRuns.vm0ModelKeyId,
-      modelKeyVendor: builtInModelKeys.vendor,
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
+      builtInModelKeyVendor: builtInModelKeys.vendor,
     })
     .from(agentRuns)
     .leftJoin(
       builtInModelKeys,
-      eq(builtInModelKeys.id, agentRuns.vm0ModelKeyId),
+      eq(builtInModelKeys.id, agentRuns.builtInModelKeyId),
     )
     .where(eq(agentRuns.id, runId))
     .limit(1);
@@ -241,7 +533,7 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
   return run;
 }
 
-/** Simulate historical or alternate managed-route metadata not constructible through current policy. */
+/** Simulate historical or alternate built-in model route metadata not constructible through current policy. */
 export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;

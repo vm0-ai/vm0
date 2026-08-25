@@ -202,7 +202,7 @@ export const agentsLoading$ = computed((get) => get(agentsState$).loading);
 export const fetchAgentsList$ = command(async ({ get, set }, signal) => {
   set(agentsState$, (prev) => ({ ...prev, loading: true }));
   try {
-    const result = await get(zeroClient$)(contract).list();
+    const result = await get(apiClient$)(contract).list();
     set(agentsState$, { agents: result.body, loading: false, error: null });
   } catch (error) {
     set(agentsState$, (prev) => ({
@@ -222,7 +222,7 @@ const internalReload$ = state(0);
 export const agents$ = computed(async (get) => {
   get(internalReload$);
   const result = await accept(
-    get(zeroClient$)(contract).list(),
+    get(apiClient$)(contract).list(),
     [200],
   );
   return result.body;
@@ -252,7 +252,7 @@ const agents = useLastResolved(agents$) ?? [];
 
 ## HTTP Error Handling with `accept`
 
-All HTTP calls via `zeroClient$` must use the `accept` utility function. This is the **only** permitted way to handle API response status codes. Manual status checks, try-catch for HTTP errors, and direct `toast.error` calls for API failures are all forbidden in the signals layer.
+All HTTP calls via `apiClient$` must use the `accept` utility function. This is the **only** permitted way to handle API response status codes. Manual status checks, try-catch for HTTP errors, and direct `toast.error` calls for API failures are all forbidden in the signals layer.
 
 ### Core Pattern
 
@@ -269,7 +269,7 @@ import { accept } from "../../lib/accept.ts";
 // Signal: clean business logic, no manual error handling
 export const inviteMember$ = command(
   async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
-    const client = get(zeroClient$)(orgInviteContract);
+    const client = get(apiClient$)(orgInviteContract);
     const result = await accept(
       client.invite({ body: { email, role } }),
       [200],
@@ -285,7 +285,7 @@ export const inviteMember$ = command(
 
 ### accept is required — `accept` list must be explicit
 
-Every `zeroClient$` call must be wrapped in `accept`. You must declare at least one status code. This forces every call site to explicitly state what it considers success.
+Every `apiClient$` call must be wrapped in `accept`. You must declare at least one status code. This forces every call site to explicitly state what it considers success.
 
 ```typescript
 // ❌ Forbidden: raw status checks
@@ -311,7 +311,7 @@ When a specific error code has business meaning, include it in the accept list:
 
 ```typescript
 export const getAgent$ = computed(async (get) => {
-  const client = get(zeroClient$)(agentsByIdContract);
+  const client = get(apiClient$)(agentsByIdContract);
   const result = await accept(client.get({ params: { id } }), [200, 404]);
   if (result.status === 404) return null;
   return result.body;
@@ -324,7 +324,7 @@ For `computed` (background data fetching), call `accept` directly and let errors
 
 ```typescript
 export const billingStatus$ = computed(async (get) => {
-  const client = get(zeroClient$)(billingStatusContract);
+  const client = get(apiClient$)(billingStatusContract);
   const result = await accept(client.get(), [200]);
   return result.body;
 });
@@ -353,7 +353,7 @@ function ScheduleForm() {
 
 ### Summary of rules
 
-1. **All `zeroClient$` calls must use `accept`** — no exceptions
+1. **All `apiClient$` calls must use `accept`** — no exceptions
 2. **`accept` list is required and non-empty** — you must declare at least one status code
 3. **No manual `throw` / `try-catch` for HTTP errors in signals** — `accept` handles it
 4. **No application-level API error handling** — do not catch or replace `accept` errors
@@ -412,7 +412,7 @@ When the operation does not need to be tied to the page lifecycle and only needs
 **Example 1: Cancel button for file upload** (`chat-draft.ts`)
 
 ```typescript
-function createChatAttachment(file: File): ZeroChatAttachment {
+function createChatAttachment(file: File): ChatAttachment {
   const resetSignal$ = resetSignal();
 
   // Explicit cancel: no new task started, just abort the current upload
@@ -569,14 +569,14 @@ async function sendRequest(
   agentId: string,
   prompt: string,
 ): Promise<Result> {
-  const client = get(zeroClient$)(contract);
+  const client = get(apiClient$)(contract);
   return await client.send({ body: { agentId, prompt } });
 }
 
 // ✅ Sub-command — get/set stay inside the command callback
 const sendRequest$ = command(
   async ({ get }, agentId: string, prompt: string): Promise<Result> => {
-    const client = get(zeroClient$)(contract);
+    const client = get(apiClient$)(contract);
     return await client.send({ body: { agentId, prompt } });
   },
 );
@@ -608,7 +608,7 @@ const sendRequest$ = command(
     prompt: string,
     signal: AbortSignal,
   ): Promise<Result> => {
-    const client = get(zeroClient$)(contract);
+    const client = get(apiClient$)(contract);
     const result = await accept(
       client.send({
         body: { agentId, prompt },
@@ -751,7 +751,7 @@ Each factory call returns fresh `state()`/`computed()`/`command()` instances, so
 
 ```typescript
 // chat-message.ts
-const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+const internalLocalMessages$ = state<ChatEvent[]>([]);
 export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
@@ -810,7 +810,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef } from "../utils.ts";
 
 export interface ChatThreadSignals {
-  messages$: Computed<Promise<ZeroChatMessage[]>>;
+  messages$: Computed<Promise<ChatEvent[]>>;
   allFinished$: Computed<Promise<boolean>>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -822,7 +822,7 @@ export interface ChatThreadSignals {
 
 ```typescript
 function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
-  const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+  const internalLocalMessages$ = state<ChatEvent[]>([]);
 
   const messages$ = computed(async (get) => {
     const serverMsgs = (await get(threadData$))?.chatMessages ?? [];
@@ -911,7 +911,7 @@ export const setupChatPage$ = command(
 
     set(
       updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId, thread }),
+      createElement(ChatThreadPage, { key: threadId, thread }),
     );
     // ...
     await set(thread.loadMessages$, signal);
@@ -924,7 +924,7 @@ No manual cache needed — ccstate `computed` memoizes the last result. As long 
 **Step 5 — Components consume via props:**
 
 ```typescript
-export function ZeroChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
+export function ChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   // ... pass thread down to children ...

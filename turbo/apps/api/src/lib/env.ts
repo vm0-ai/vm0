@@ -35,6 +35,7 @@ const SCHEMA = {
   OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: z.string().min(1).optional(),
   OKOU_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   OKOU_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
+  OKOU_SOCIAL_SOCIALKIT_TOKEN: z.string().min(1).optional(),
   OKOU_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
   OKOU_SEO_DATAFORSEO_LOGIN: z.string().min(1).optional(),
   OKOU_SEO_DATAFORSEO_PASSWORD: z.string().min(1).optional(),
@@ -44,6 +45,7 @@ const SCHEMA = {
   FINICITY_APP_KEY: z.string().min(1).optional(),
   FINICITY_APP_SECRET: z.string().min(1).optional(),
   FINICITY_PARTNER_ID: z.string().min(1).optional(),
+  FINICITY_WEBHOOK_BASE_URL: z.url().optional(),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),
   ENV: z.enum(["production", "preview", "development"]),
@@ -88,8 +90,19 @@ const SCHEMA = {
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
   OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1),
+  // ZERO_HOST_DOMAIN and ZERO_HOST_SCHEME are not legacy aliases waiting to be
+  // drained. Here the ZERO_ prefix marks which brand a value belongs to, and
+  // both brands are live at the same time: host.service.ts picks the domain and
+  // scheme per request from the public brand, and artifact-preview.service.ts
+  // accepts both domains. These two hold the VM0-brand hosted-site
+  // configuration (sites.vm0.io); removing them breaks every VM0-brand hosted
+  // site URL. They retire with the VM0-brand host under #26701, not with the
+  // rest of the ZERO_* variables.
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
   OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),
+  // Brand-scoped live configuration, same as ZERO_HOST_DOMAIN above. It also
+  // serves as the one remaining OKOU_ENV_FALLBACKS source, for
+  // OKOU_HOST_SCHEME.
   ZERO_HOST_SCHEME: z.enum(["http", "https"]).default("https"),
   S3_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().min(1).optional(),
@@ -103,42 +116,17 @@ const SCHEMA = {
   ATOM_GRANT_PRICE: z.string().min(1).optional(),
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
   OKOU_PRICE_PRO: priceIdsSchema,
-  ZERO_PRICE_PRO: priceIdsSchema,
   OKOU_PRICE_TEAM: priceIdsSchema,
-  ZERO_PRICE_TEAM: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_PLAN_TEAM: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_PLAN_TEAM: priceIdsSchema,
   OKOU_PRICE_CUSTOM: priceIdsSchema,
-  ZERO_PRICE_CUSTOM: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_20: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_20: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_50: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_50: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_100: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_100: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_200: priceIdsSchema,
-  ZERO_PRICE_USAGE_PACK_200: priceIdsSchema,
   OKOU_PRICE_CUSTOM_CREDIT_UNIT: z.string().min(1).optional(),
-  ZERO_PRICE_CUSTOM_CREDIT_UNIT: z.string().min(1).optional(),
   OKOU_PRICE_CONCURRENCY: priceIdsSchema,
-  ZERO_PRICE_CONCURRENCY: priceIdsSchema,
   OKOU_ONE_TIME_CAMPAIGN: z
-    .string()
-    .optional()
-    .transform((val) => {
-      if (!val) {
-        return undefined;
-      }
-      return z
-        .record(
-          z.string(),
-          z.object({ priceId: z.string(), couponId: z.string() }),
-        )
-        .parse(JSON.parse(val));
-    }),
-  ZERO_ONE_TIME_CAMPAIGN: z
     .string()
     .optional()
     .transform((val) => {
@@ -193,18 +181,6 @@ type EnvName = keyof EnvShape;
 
 const OKOU_ENV_FALLBACKS = {
   OKOU_HOST_SCHEME: "ZERO_HOST_SCHEME",
-  OKOU_PRICE_PRO: "ZERO_PRICE_PRO",
-  OKOU_PRICE_TEAM: "ZERO_PRICE_TEAM",
-  OKOU_PRICE_USAGE_PACK_PLAN_PRO: "ZERO_PRICE_USAGE_PACK_PLAN_PRO",
-  OKOU_PRICE_USAGE_PACK_PLAN_TEAM: "ZERO_PRICE_USAGE_PACK_PLAN_TEAM",
-  OKOU_PRICE_CUSTOM: "ZERO_PRICE_CUSTOM",
-  OKOU_PRICE_USAGE_PACK_20: "ZERO_PRICE_USAGE_PACK_20",
-  OKOU_PRICE_USAGE_PACK_50: "ZERO_PRICE_USAGE_PACK_50",
-  OKOU_PRICE_USAGE_PACK_100: "ZERO_PRICE_USAGE_PACK_100",
-  OKOU_PRICE_USAGE_PACK_200: "ZERO_PRICE_USAGE_PACK_200",
-  OKOU_PRICE_CUSTOM_CREDIT_UNIT: "ZERO_PRICE_CUSTOM_CREDIT_UNIT",
-  OKOU_PRICE_CONCURRENCY: "ZERO_PRICE_CONCURRENCY",
-  OKOU_ONE_TIME_CAMPAIGN: "ZERO_ONE_TIME_CAMPAIGN",
 } as const satisfies Partial<Record<EnvName, EnvName>>;
 
 type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;

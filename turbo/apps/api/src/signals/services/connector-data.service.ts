@@ -9,7 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,
@@ -80,6 +80,7 @@ import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.servic
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
+import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
   replaceConnectorConnection,
@@ -87,7 +88,10 @@ import {
   type ConnectorConnectionMutationResolution,
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
-import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
+import {
+  connectorAccountSiblingWritesEnabled,
+  normalizeConnectorAccountMutation,
+} from "./connector-account-mutation.service";
 
 const log = logger("api:connector-data");
 const oauthScopesSchema = z.array(z.string());
@@ -825,7 +829,7 @@ async function loadConnectorAccountForDeletion(
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
       selection: args.sourceId
         ? { kind: "exact", sourceId: args.sourceId }
-        : { kind: "legacy-singleton" },
+        : { kind: "target-only-client-singleton" },
     },
   });
   signal.throwIfAborted();
@@ -850,6 +854,45 @@ async function loadConnectorAccountForDeletion(
   return connector ? { kind: "resolved", connector } : { kind: "missing" };
 }
 
+async function prepareBuiltinConnectorAccountDeletion(
+  db: Tx,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+    readonly connectionId: string;
+  },
+) {
+  return await prepareConnectorAccountDeletion(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "builtin", connectorSlug: args.connectorSlug },
+    connectionId: args.connectionId,
+  });
+}
+
+function completedConnectorDeletionResult(
+  exactAccount: boolean,
+  deletion: {
+    readonly resolvedSelectionCount: number;
+    readonly promotedDefaultConnectionId: string | null;
+  },
+) {
+  return exactAccount
+    ? { kind: "deleted" as const, ...deletion }
+    : ("deleted" as const);
+}
+
+type DeleteConnectorLocalStateResult =
+  | "deleted"
+  | "missing"
+  | "ambiguous"
+  | {
+      readonly kind: "deleted";
+      readonly resolvedSelectionCount: number;
+      readonly promotedDefaultConnectionId: string | null;
+    };
+
 export const deleteConnectorLocalState$ = command(
   async (
     { get, set },
@@ -861,7 +904,7 @@ export const deleteConnectorLocalState$ = command(
       readonly snapshot?: ConnectorRuntimeSnapshot | null;
     },
     signal: AbortSignal,
-  ): Promise<"deleted" | "missing" | "ambiguous"> => {
+  ): Promise<DeleteConnectorLocalStateResult> => {
     const writeDb = set(writeDb$);
     const snapshot =
       args.snapshot === undefined
@@ -895,6 +938,15 @@ export const deleteConnectorLocalState$ = command(
         return { kind: account.kind, pendingTokenRevoke: null };
       }
       const existing = account.connector;
+
+      const deletion = await prepareBuiltinConnectorAccountDeletion(tx, {
+        ...args,
+        connectionId: existing.id,
+      });
+      signal.throwIfAborted();
+      if (deletion.kind !== "ready") {
+        return { kind: deletion.kind, pendingTokenRevoke: null };
+      }
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
       if (snapshot !== null && featureSwitchContext !== null) {
@@ -942,7 +994,7 @@ export const deleteConnectorLocalState$ = command(
         signal,
       );
 
-      return { kind: "deleted" as const, pendingTokenRevoke };
+      return { kind: "deleted" as const, pendingTokenRevoke, deletion };
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -964,7 +1016,10 @@ export const deleteConnectorLocalState$ = command(
     );
     signal.throwIfAborted();
 
-    return "deleted";
+    return completedConnectorDeletionResult(
+      args.sourceId !== undefined,
+      deleteResult.deletion,
+    );
   },
 );
 
@@ -1134,6 +1189,9 @@ async function commitManualGrantConnector(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation: normalizeConnectorAccountMutation(args.account),
+    allowSiblings: connectorAccountSiblingWritesEnabled(
+      args.featureSwitchContext,
+    ),
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -1324,6 +1382,8 @@ export const connectNoAuthConnector$ = command(
           connectorSlug: args.runtimeMethod.connectorSlug,
         },
         mutation: normalizeConnectorAccountMutation(args.account),
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
       signal.throwIfAborted();
       if (resolution.kind !== "ready") {
@@ -1861,6 +1921,7 @@ async function commitConnectorTokenConnection(
     readonly oauthScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
     readonly account?: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -1882,6 +1943,9 @@ async function commitConnectorTokenConnection(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation,
+    allowSiblings: connectorAccountSiblingWritesEnabled(
+      args.featureSwitchContext,
+    ),
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -1946,6 +2010,7 @@ async function commitConnectorTokenConnection(
         },
       },
       resolution: resolution.mutation,
+      insertConnectionId: args.insertConnectionId,
       writeCredentials: async ({ db, connectorId }, writeSignal) => {
         await upsertPreparedConnectorTokenState(
           {
@@ -1985,6 +2050,7 @@ export const upsertConnectorTokenConnection$ = command(
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
       readonly account?: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     },
     signal: AbortSignal,
   ): Promise<
@@ -2049,6 +2115,7 @@ export const upsertConnectorTokenConnection$ = command(
           oauthScopes: args.oauthScopes,
           tokenExpiresAt,
           account: args.account,
+          insertConnectionId: args.insertConnectionId,
         },
         signal,
       );

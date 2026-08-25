@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -11,6 +12,7 @@ import {
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { manualHttpCustomConnectorCreateBody } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 
 /*
 helper gap:
@@ -37,6 +39,17 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
+}
+
+async function disableUsagePackPlans(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped actor");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    { [FeatureSwitchKey.UsagePackPlans]: false },
+  );
 }
 
 async function onboardAdmin(
@@ -180,7 +193,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       visibility: "private",
     });
 
-    await api.deleteVersionFreeAgent(admin, created.agentId);
+    await api.deleteAgent(admin, created.agentId);
     const deleted = await api.requestReadAgent(admin, created.agentId, [404]);
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
@@ -233,6 +246,7 @@ describe("ORG-01 and ORG-02", () => {
   it("projects direct invitation redirects by request brand", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const admin = api.user();
+    await disableUsagePackPlans(admin);
 
     const vm0Email = `vm0-invite-${shortId()}@example.test`;
     context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
@@ -267,6 +281,7 @@ describe("ORG-01 and ORG-02", () => {
 
   it("reads, updates, lists, invites, changes membership, handles requests, and leaves orgs through APIs", async () => {
     const admin = api.user();
+    await disableUsagePackPlans(admin);
     const member = api.user({
       orgId: admin.orgId,
       orgRole: "org:member",
@@ -668,7 +683,7 @@ describe("ORG-03 onboarding status mapping", () => {
       },
     });
 
-    await api.deleteVersionFreeAgent(admin, agentId);
+    await api.deleteAgent(admin, agentId);
     const orphaned = await api.readOnboardingStatus(admin);
     expect(orphaned).toMatchObject({
       needsOnboarding: false,
@@ -896,7 +911,7 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expect(cleared.grants).toStrictEqual([]);
 
-    await api.disconnectCustomConnector(admin, connector.id);
+    await api.disconnectSingleCustomConnectorAccount(admin, connector.id);
     const afterDisconnect = await api.listCustomConnectors(admin);
     expect(
       afterDisconnect.connectors.find((candidate) => {

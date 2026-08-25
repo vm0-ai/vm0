@@ -219,7 +219,7 @@ function wavBytesWithTrailingChunk(
   return bytes;
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -227,7 +227,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -380,7 +380,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("returns 401 from /stt when unauthenticated", async () => {
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       body: sttForm(),
     });
@@ -422,7 +422,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(),
@@ -447,7 +447,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(
@@ -478,7 +478,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(
@@ -510,7 +510,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(
@@ -570,7 +570,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(audioBytes)),
@@ -630,7 +630,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytes(1))),
@@ -672,7 +672,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytes(2))),
@@ -706,7 +706,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytesWithOversizedDataChunk(120))),
@@ -737,7 +737,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytesWithTrailingChunk(60))),
@@ -761,7 +761,7 @@ describe("POST /api/zero/voice-io/*", () => {
     mockBytePlusStt("hello from voice");
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(
@@ -785,7 +785,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
+    const response = await app.request("/api/voice-io/stt?verbose=true", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytes(2))),
@@ -800,7 +800,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
     const fixture = await seedVoiceFixture({});
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
@@ -808,7 +808,7 @@ describe("POST /api/zero/voice-io/*", () => {
     mockBytePlusStt("from agent");
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: sttForm(sttFile(wavBytes(2))),
@@ -824,7 +824,7 @@ describe("POST /api/zero/voice-io/*", () => {
     const fixture = await seedVoiceFixture({});
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
@@ -834,7 +834,7 @@ describe("POST /api/zero/voice-io/*", () => {
     });
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: sttForm(sttFile(wavBytes(2))),
@@ -850,7 +850,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
     const app = createVoiceIoTestApp();
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await app.request("/api/zero/voice-io/stt", {
+      const response = await app.request("/api/voice-io/stt", {
         method: "POST",
         headers: authHeaders(),
         body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
@@ -882,7 +882,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
       const app = createVoiceIoTestApp();
       for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
-        const response = await app.request("/api/zero/voice-io/stt", {
+        const response = await app.request("/api/voice-io/stt", {
           method: "POST",
           headers: authHeaders(),
           body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
@@ -916,7 +916,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile()),
@@ -969,7 +969,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytes(3))),
@@ -1001,7 +1001,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
@@ -1036,7 +1036,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
+    const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
       body: sttForm(sttFile(wavBytes(1))),
@@ -1178,7 +1178,7 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(calledOpenAi).toBeFalsy();
   });
 
-  it("generates /speech WAV files for run-scoped zero tokens", async () => {
+  it("generates /speech WAV files for run-scoped agent tokens", async () => {
     const fixture = await seedVoiceFixture({});
     const usagePricingResolution =
       await createSpeechPricingResolution("configured");
@@ -1210,7 +1210,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
@@ -1316,7 +1316,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,

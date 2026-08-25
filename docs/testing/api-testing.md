@@ -16,7 +16,7 @@ Place route tests under the API route test directory:
 
 ```text
 turbo/apps/api/src/signals/routes/__tests__/
-+-- zero-runs-runner.test.ts
++-- agents.test.ts
 ```
 
 ## Route Test Structure
@@ -38,8 +38,8 @@ function apiClient() {
   return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
-describe("GET /api/okou/agents", () => {
-  it("returns an agent created through POST /api/okou/agents", async () => {
+describe("GET /api/agents", () => {
+  it("returns an agent created through POST /api/agents", async () => {
     context.mocks.clerk.session("user_api_test", "org_api_test");
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -176,7 +176,7 @@ pre-existing shared state to make an assertion pass.
 Run route-focused tests from `turbo`:
 
 ```shell
-pnpm -F api exec vitest run src/signals/routes/__tests__/zero-runs-runner.test.ts
+pnpm -F api exec vitest run src/signals/routes/__tests__/agents.test.ts
 pnpm -F api lint
 pnpm -F api check-types
 ```

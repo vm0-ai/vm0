@@ -75,7 +75,7 @@ const mailDraftAttachmentPathParamsSchema = mailDraftPathParamsSchema.extend({
 export const mailContract = c.router({
   linkDraft: {
     method: "POST",
-    path: "/api/okou/mail/drafts/link",
+    path: "/api/mail/drafts/link",
     headers: authHeadersSchema,
     body: z.object({
       threadId: z.string().uuid(),
@@ -93,7 +93,7 @@ export const mailContract = c.router({
   },
   getDraft: {
     method: "GET",
-    path: "/api/okou/mail/drafts/:mailDraftId",
+    path: "/api/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
     pathParams: mailDraftPathParamsSchema,
     responses: {
@@ -107,7 +107,7 @@ export const mailContract = c.router({
   },
   getAttachment: {
     method: "GET",
-    path: "/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
+    path: "/api/mail/drafts/:mailDraftId/attachments/:partId",
     headers: authHeadersSchema,
     pathParams: mailDraftAttachmentPathParamsSchema,
     responses: {
@@ -124,7 +124,7 @@ export const mailContract = c.router({
   },
   deleteDraft: {
     method: "DELETE",
-    path: "/api/okou/mail/drafts/:mailDraftId",
+    path: "/api/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
     pathParams: mailDraftPathParamsSchema,
     body: c.noBody(),
@@ -139,7 +139,7 @@ export const mailContract = c.router({
   },
   sendDraft: {
     method: "POST",
-    path: "/api/okou/mail/drafts/:mailDraftId/send",
+    path: "/api/mail/drafts/:mailDraftId/send",
     headers: authHeadersSchema,
     pathParams: mailDraftPathParamsSchema,
     body: c.noBody(),

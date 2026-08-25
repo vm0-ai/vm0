@@ -249,11 +249,6 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   describe("environment field", () => {
-    const dol = "\x24";
-    const composeContent = JSON.parse(
-      `{"settings":{"api_key":"${dol}{{ secrets.SEC_A }}","region":"${dol}{{ vars.VAR_A }}"}}`,
-    ) as Record<string, unknown>;
-
     async function seedEnvironmentVersion(): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
@@ -261,7 +256,6 @@ describe("GET /api/zero/integrations/slack", () => {
         seed_default_agent: true,
         default_agent_name: "slack-bot",
         default_agent_display_name: "Slack Bot",
-        compose_content: composeContent,
       });
     }
 
@@ -297,7 +291,7 @@ describe("GET /api/zero/integrations/slack", () => {
       });
     }
 
-    it("includes environment when connected with head version and secrets/vars present", async () => {
+    it("reports no user requirements for application-owned runtime bindings", async () => {
       await seedEnvironmentVersion();
       await seedUserSecret("SEC_A");
       await seedUserVariable("VAR_A", "us-east-1");
@@ -316,15 +310,13 @@ describe("GET /api/zero/integrations/slack", () => {
       );
 
       expect(response.body.environment).toBeDefined();
-      expect(response.body.environment!.requiredSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([]);
+      expect(response.body.environment!.requiredVars).toStrictEqual([]);
       expect(response.body.environment!.missingSecrets).toStrictEqual([]);
       expect(response.body.environment!.missingVars).toStrictEqual([]);
     });
 
-    it("reports missing secrets and vars in environment", async () => {
+    it("does not report application-provided bindings as missing", async () => {
       await seedEnvironmentVersion();
 
       mockAdminAuth();
@@ -341,14 +333,10 @@ describe("GET /api/zero/integrations/slack", () => {
       );
 
       expect(response.body.environment).toBeDefined();
-      expect(response.body.environment!.requiredSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
-      expect(response.body.environment!.missingSecrets).toStrictEqual([
-        "SEC_A",
-      ]);
-      expect(response.body.environment!.missingVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([]);
+      expect(response.body.environment!.requiredVars).toStrictEqual([]);
+      expect(response.body.environment!.missingSecrets).toStrictEqual([]);
+      expect(response.body.environment!.missingVars).toStrictEqual([]);
     });
 
     it("omits environment when isConnected is false", async () => {
@@ -711,14 +699,14 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ("slack:write" | "file:read")[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -766,7 +754,7 @@ function requestDownloadFile(
     ? { authorization }
     : {};
   return Promise.resolve(
-    app.request(`/api/zero/integrations/slack/download-file${query}`, {
+    app.request(`/api/integrations/slack/download-file${query}`, {
       method: "GET",
       headers,
     }),
@@ -785,7 +773,7 @@ async function expectErrorResponse(
   expect(body.error?.code).toBe(code);
 }
 
-describe("GET /api/zero/integrations/slack/download-file", () => {
+describe("GET /api/integrations/slack/download-file", () => {
   const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
     (fixture) => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
@@ -809,7 +797,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
     }
 
     return {
-      token: zeroToken({ userId, orgId, capabilities: ["slack:write"] }),
+      token: okouToken({ userId, orgId, capabilities: ["slack:write"] }),
     };
   }
 
@@ -819,8 +807,8 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
-  it("rejects a zero token without slack:write capability", async () => {
-    const token = zeroToken({
+  it("rejects an agent token without slack:write capability", async () => {
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["file:read"],

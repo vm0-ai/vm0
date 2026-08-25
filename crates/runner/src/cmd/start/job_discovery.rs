@@ -318,8 +318,11 @@ pub(super) async fn handle_discovered_job(
         .await;
         return DiscoveredJobResult::completed(true);
     }
-    let mut pre_spawn_timing =
-        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_timing());
+    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(
+        claim_returned_at,
+        claimed.api_claim_timing(),
+        &ctx.spawn_ctx.pre_spawn_concurrency,
+    );
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
@@ -1177,7 +1180,7 @@ async fn acquire_local_admission_resource(
             profile = %retiring.profile_name(),
             vcpu = retiring.budget_vcpu(),
             memory_mb = retiring.budget_memory_mb(),
-            "evicting idle VM for candidate admission"
+            "evicting idle sandbox for candidate admission"
         );
         retiring_leases.push(retiring.into_budget_lease());
         ctx.spawn_ctx.reuse_state_notify.notify_one();
@@ -1348,13 +1351,23 @@ async fn rollback_exact_speculation_outcome(
                     destroy_job,
                     reason,
                     error,
+                    expected_capacity_rejection,
                 } => {
-                    warn!(
-                        run_id = %run_id,
-                        reason,
-                        error,
-                        "speculative exact-reuse rollback could not restore idle ownership"
-                    );
+                    if expected_capacity_rejection {
+                        info!(
+                            run_id = %run_id,
+                            reason,
+                            error,
+                            "speculative exact-reuse rollback rejected by idle capacity admission"
+                        );
+                    } else {
+                        warn!(
+                            run_id = %run_id,
+                            reason,
+                            error,
+                            "speculative exact-reuse rollback could not restore idle ownership"
+                        );
+                    }
                     Some(destroy_job)
                 }
             }
@@ -1528,7 +1541,7 @@ async fn activate_speculated_exact(
             run_id = %run_id,
             reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
             reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
-            "claimed reuse key does not match speculatively prepared idle VM"
+            "claimed reuse key does not match speculatively prepared idle sandbox"
         );
         return cleanup_reserved_for_fresh_fallback(
             sandbox.into_destroy_job("speculative_reuse_session_mismatch"),
@@ -1680,7 +1693,7 @@ async fn finish_exact_activation(
                 run_id = %run_id,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
                 reuse_key_kind = reuse_key_kind(&reuse_key),
-                "committing speculatively prepared exact-reuse VM"
+                "committing speculatively prepared exact-reuse sandbox"
             );
             ExactActivation::Ready {
                 reuse_entry: Some(Box::new(reuse_entry)),
@@ -1761,7 +1774,7 @@ pub(super) async fn activate_reserved_idle(
             reuse_key_fingerprint = %reuse_key_fingerprint,
             reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
             profile = %profile_name,
-            "reserved idle VM configuration does not match claimed job, destroying before fresh fallback"
+            "reserved idle sandbox configuration does not match claimed job, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
@@ -1784,7 +1797,7 @@ pub(super) async fn activate_reserved_idle(
             run_id = %run_id,
             reuse_key_fingerprint = %reuse_key_fingerprint,
             reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
-            "claimed reuse key does not match reserved idle VM, destroying before fresh fallback"
+            "claimed reuse key does not match reserved idle sandbox, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
@@ -1814,7 +1827,7 @@ pub(super) async fn activate_reserved_idle(
                 reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 profile = %profile_name,
                 mismatch = mismatch.as_str(),
-                "workspace promotion identity mismatch, destroying reserved idle VM before fresh fallback"
+                "workspace promotion identity mismatch, destroying reserved idle sandbox before fresh fallback"
             );
             return cleanup_reserved_for_fresh_fallback(
                 reservation.into_destroy_job_without_workspace_promotion_for_mismatch(),
@@ -1839,7 +1852,7 @@ pub(super) async fn activate_reserved_idle(
                 run_id = %run_id,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
                 reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
-                "reusing pre-claim reserved idle VM for reuse key"
+                "reusing pre-claim reserved idle sandbox for reuse key"
             );
             let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
             ReservedActivation::Ready {
@@ -1855,7 +1868,7 @@ pub(super) async fn activate_reserved_idle(
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
                 reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
                 error = %error,
-                "reserved idle VM unpark failed, destroying before fresh fallback"
+                "reserved idle sandbox unpark failed, destroying before fresh fallback"
             );
             cleanup_reserved_for_fresh_fallback(
                 *destroy_job,
@@ -2000,7 +2013,7 @@ async fn try_reuse_from_pool(
                         reuse_key_kind = reuse_key_kind(reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
-                        "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
+                        "workspace promotion identity mismatch, destroying idle sandbox and falling through to fresh create"
                     );
                     spawn_idle_destroy_job(
                         &ctx.spawn_ctx.idle_destroy_tracker,
@@ -2028,7 +2041,7 @@ async fn try_reuse_from_pool(
                         run_id = %run_id,
                         reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
                         reuse_key_kind = reuse_key_kind(reuse_key),
-                        "reusing idle VM for reuse key"
+                        "reusing idle sandbox for reuse key"
                     );
                     // Idle entry already holds budget. Drop the speculative
                     // fresh-job lease and move the idle lease to the outer job
@@ -2048,7 +2061,7 @@ async fn try_reuse_from_pool(
                         reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
                         reuse_key_kind = reuse_key_kind(reuse_key),
                         error = %error,
-                        "unpark failed, destroying idle VM and falling through to fresh create"
+                        "unpark failed, destroying idle sandbox and falling through to fresh create"
                     );
                     spawn_idle_destroy_job(
                         &ctx.spawn_ctx.idle_destroy_tracker,
@@ -2071,7 +2084,7 @@ async fn try_reuse_from_pool(
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
                 reuse_key_kind = reuse_key_kind(reuse_key),
                 profile = %profile_name,
-                "idle VM device rate limiter mismatch, destroying"
+                "idle sandbox device rate limiter mismatch, destroying"
             );
             spawn_idle_destroy_job(
                 &ctx.spawn_ctx.idle_destroy_tracker,
@@ -2093,7 +2106,7 @@ async fn try_reuse_from_pool(
                 reuse_key_kind = reuse_key_kind(reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
-                "idle VM profile mismatch, destroying"
+                "idle sandbox profile mismatch, destroying"
             );
             spawn_idle_destroy_job(
                 &ctx.spawn_ctx.idle_destroy_tracker,
@@ -2113,7 +2126,7 @@ async fn try_reuse_from_pool(
                 run_id = %run_id,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
                 reuse_key_kind = reuse_key_kind(reuse_key),
-                "no idle VM found for reuse key"
+                "no idle sandbox found for reuse key"
             );
             (
                 None,
@@ -2130,7 +2143,7 @@ async fn try_reuse_from_pool(
 mod tests {
     use super::*;
 
-    use crate::status::IdleVm;
+    use crate::status::IdleSandbox;
 
     fn read_active_run_phase(path: &std::path::Path) -> String {
         let raw = std::fs::read_to_string(path).unwrap();
@@ -2144,7 +2157,7 @@ mod tests {
     fn idle_snapshot() -> IdlePoolSnapshot {
         IdlePoolSnapshot {
             revision: 1,
-            idle_vms: vec![IdleVm {
+            idle_sandboxes: vec![IdleSandbox {
                 reuse_key: "sess-removed-from-pool".into(),
                 sandbox_id: SandboxId::new_v4(),
             }],

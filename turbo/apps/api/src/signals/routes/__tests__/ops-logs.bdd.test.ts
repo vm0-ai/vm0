@@ -355,12 +355,12 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
     const compactIdempotencyKey = randomUUID();
     const previousIdempotencyKey = randomUUID();
-    const zeroTokenIdempotencyKey = randomUUID();
+    const okouTokenIdempotencyKey = randomUUID();
     const currentHourIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(
       compactIdempotencyKey,
       previousIdempotencyKey,
-      zeroTokenIdempotencyKey,
+      okouTokenIdempotencyKey,
       currentHourIdempotencyKey,
     );
     await insertModelStatsObservations(context, [
@@ -380,7 +380,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         inputTokens: 80,
       }),
       modelStatsObservation({
-        idempotencyKey: zeroTokenIdempotencyKey,
+        idempotencyKey: okouTokenIdempotencyKey,
         model,
         observedAt: mainObservedAt,
       }),
@@ -413,7 +413,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const initialObservationStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
       previousIdempotencyKey,
-      zeroTokenIdempotencyKey,
+      okouTokenIdempotencyKey,
       currentHourIdempotencyKey,
     ]);
     expect(initialObservationStates).toHaveLength(3);
@@ -424,7 +424,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
           aggregatedAt: windowEndIso,
         },
         {
-          idempotencyKey: zeroTokenIdempotencyKey,
+          idempotencyKey: okouTokenIdempotencyKey,
           aggregatedAt: windowEndIso,
         },
         {
@@ -838,7 +838,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const cleanedStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
       previousIdempotencyKey,
-      zeroTokenIdempotencyKey,
+      okouTokenIdempotencyKey,
       currentHourIdempotencyKey,
       lateIdempotencyKey,
       oldPendingIdempotencyKey,

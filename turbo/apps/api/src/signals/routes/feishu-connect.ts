@@ -86,7 +86,7 @@ const checkAppId$ = computed(async (get) => {
   }
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -107,7 +107,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -144,6 +144,11 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   if (result.kind === "installation_not_found") {
     return notFound("Feishu integration not found");
+  }
+  if (result.kind === "app_identity_mismatch") {
+    return conflict(
+      "A configured Feishu installation cannot be changed to a different App ID. Add a separate installation instead.",
+    );
   }
   if (result.kind === "app_in_use") {
     return appIdInUse(publicBrand);
@@ -228,6 +233,11 @@ const updateInstallation$ = command(
     }
     if (updated.kind === "installation_not_found") {
       return notFound("Feishu integration not found");
+    }
+    if (updated.kind === "bot_identity_mismatch") {
+      return conflict(
+        "The Feishu app now resolves to a different bot identity. Restore the original app credentials or configure a separate installation.",
+      );
     }
     const status = await get(
       feishuConnectStatus({

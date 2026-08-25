@@ -9,10 +9,11 @@ import {
   uniqueIndex,
   index,
   check,
+  foreignKey,
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
 import type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
 export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
@@ -38,14 +39,7 @@ export const workflows = pgTable(
     orgId: text("org_id").notNull(),
     // Hard 1:N ownership: every workflow belongs to exactly one agent. Deleting
     // the agent cascades to its workflows and their volumes.
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     visibility: varchar("visibility", { length: 16 })
       .$type<WorkflowVisibility>()
@@ -65,6 +59,11 @@ export const workflows = pgTable(
   },
   (table) => {
     return {
+      canonicalAgentFk: foreignKey({
+        name: "zero_workflows_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
       // Public workflow slugs are the shared namespace for an agent. Private
       // workflows may duplicate public slugs as user-specific forks/overrides,

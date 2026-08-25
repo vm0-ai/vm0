@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use api_contracts::generated::types::runners::runs::{
+    CodexRuntimeConfig, PiLaunchConfig, PiModelConfig,
+};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
@@ -138,6 +140,80 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     Ok(prepared_run_payload)
 }
 
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+// Generated enums and explicit versions intentionally fail closed. A future
+// enum value or schema version must reach runners before the API emits it;
+// unknown additive object fields remain safe because the original JSON is
+// forwarded after this validation view is discarded.
+fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Result<(), String> {
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi launch config v2 is invalid: {error}"))?;
+    if value.pointer("/apiFirstTurn/baseSession/sha256").is_none() {
+        return Err("Pi H0 sha256 must be present".to_string());
+    }
+    if launch.schema_version != 2 {
+        return Err("Pi launch config schemaVersion must be 2".to_string());
+    }
+    let slot = launch.api_first_turn;
+    if slot.schema_version != 1 {
+        return Err("Pi API first-turn schemaVersion must be 1".to_string());
+    }
+    if !is_sha256(&slot.resource_snapshot_digest) {
+        return Err("Pi resource snapshot digest is invalid".to_string());
+    }
+    for (name, raw) in [
+        ("manifestUrl", &slot.manifest_url),
+        ("sessionUrl", &slot.session_url),
+    ] {
+        let parsed =
+            url::Url::parse(raw).map_err(|_| format!("Pi API first-turn {name} is invalid"))?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err(format!("Pi API first-turn {name} must use HTTP or HTTPS"));
+        }
+    }
+    if slot.deadline_at <= 0 {
+        return Err("Pi API first-turn deadlineAt must be positive".to_string());
+    }
+    if slot.sandbox_event_sequence_start != 1 {
+        return Err("Pi Sandbox event sequence must start at 1".to_string());
+    }
+    if slot.base_session.session_id != session_id {
+        return Err("Pi H0 session id does not match pi_session_id".to_string());
+    }
+    if let Some(hash) = slot.base_session.sha256
+        && !is_sha256(&hash)
+    {
+        return Err("Pi H0 sha256 must be null or a lowercase SHA-256".to_string());
+    }
+    Ok(())
+}
+
+fn is_pi_credential_secret_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(b'A'..=b'Z' | b'_'))
+        && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfig = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config is invalid: {error}"))?;
+    url::Url::parse(&model.base_url)
+        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
+    if model.model.is_empty() {
+        return Err("Pi model config model must not be empty".to_string());
+    }
+    if !is_pi_credential_secret_name(&model.credential_secret_name) {
+        return Err("Pi model config credentialSecretName is invalid".to_string());
+    }
+    Ok(())
+}
+
 fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), String> {
     if effective_cli_framework(&context.cli_agent_type) != EffectiveCliFramework::Pi {
         return Ok(());
@@ -149,12 +225,16 @@ fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), Strin
         .ok_or_else(|| "Pi execution context is missing pi_session_id".to_string())?;
     uuid::Uuid::parse_str(session_id)
         .map_err(|_| "Pi execution context has invalid pi_session_id".to_string())?;
-    if context.pi_launch_config.is_none() {
-        return Err("Pi execution context is missing pi_launch_config".to_string());
-    }
-    if context.pi_model_config.is_none() {
-        return Err("Pi execution context is missing pi_model_config".to_string());
-    }
+    let launch_config = context
+        .pi_launch_config
+        .as_ref()
+        .ok_or_else(|| "Pi execution context is missing pi_launch_config".to_string())?;
+    validate_pi_launch_config(launch_config, session_id)?;
+    let model_config = context
+        .pi_model_config
+        .as_ref()
+        .ok_or_else(|| "Pi execution context is missing pi_model_config".to_string())?;
+    validate_pi_model_config(model_config)?;
     if let Some(resume) = &context.resume_session
         && resume.cli_agent_session_id != session_id
     {
@@ -292,13 +372,20 @@ fn for_each_guest_user_env_entry<'a>(
     context: &'a ExecutionContext,
     mut visit: impl FnMut(&'a str, &'a str),
 ) {
-    if let Some(user_env) = &context.environment {
-        for (key, value) in user_env {
-            if !is_runner_owned_env_key(key) {
-                visit(key, value);
-            }
-        }
-    }
+    let is_untrusted_runner_owned: fn(&str) -> bool = if context.platform_environment.is_some() {
+        is_runner_owned_env_key
+    } else {
+        // Old API/stored context -> new runner: preserve the exact
+        // pre-platformEnvironment filter until prior API rollback targets,
+        // supported pre-field contexts, and old runners/sandboxes pass the
+        // #28914 drain gates.
+        guest_contracts::env::is_pre_platform_environment_runner_owned_env_key
+    };
+    for_each_filtered_environment_entry(
+        context.environment.as_ref(),
+        is_untrusted_runner_owned,
+        &mut visit,
+    );
 
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
@@ -307,6 +394,26 @@ fn for_each_guest_user_env_entry<'a>(
             .is_some_and(|env| env.contains_key("TZ"));
         if !has_tz {
             visit("TZ", tz);
+        }
+    }
+
+    if let Some(platform_environment) = &context.platform_environment {
+        for (key, value) in platform_environment {
+            visit(key, value);
+        }
+    }
+}
+
+fn for_each_filtered_environment_entry<'a>(
+    environment: Option<&'a HashMap<String, String>>,
+    is_runner_owned: fn(&str) -> bool,
+    visit: &mut impl FnMut(&'a str, &'a str),
+) {
+    if let Some(environment) = environment {
+        for (key, value) in environment {
+            if !is_runner_owned(key) {
+                visit(key, value);
+            }
         }
     }
 }
@@ -685,8 +792,8 @@ impl HostEnv {
 }
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
-    // The entire VM0_ namespace is runner-owned, including retired keys such
-    // as VM0_WORKING_DIR. Canonical keys outside it must stay explicit.
+    // The entire OKOU_ and VM0_ namespaces are runner-owned. Bootstrap keys
+    // outside them must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 

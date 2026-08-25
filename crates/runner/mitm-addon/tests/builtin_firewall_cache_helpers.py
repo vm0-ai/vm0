@@ -2,6 +2,8 @@
 
 import json
 
+from generated.builtin_firewall_cache import BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION
+
 
 def serialize_builtin_firewall_catalog_cache(
     *,
@@ -11,7 +13,7 @@ def serialize_builtin_firewall_catalog_cache(
 ) -> str:
     return json.dumps(
         {
-            "schemaVersion": 1,
+            "schemaVersion": BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
             "catalogDigest": digest,
             "catalogVersion": version,
             "updatedAt": "2026-07-07T00:00:00.000Z",

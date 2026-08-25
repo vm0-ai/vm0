@@ -3,7 +3,7 @@ use std::process::{ExitStatus, Output};
 use std::time::Duration;
 
 use crate::bounded_command::{
-    BoundedCommandError, BoundedCommandOutcome, CommandOutputCapture, run_bounded,
+    BoundedCommandError, BoundedCommandOutcome, CommandOutputPolicy, run_bounded,
     run_output_bounded,
 };
 use crate::error::{RunnerError, RunnerResult};
@@ -90,7 +90,7 @@ pub(super) async fn run_systemctl_output_bounded(
     match run_output_bounded(
         command,
         "systemctl",
-        CommandOutputCapture::StdoutAndStderr,
+        CommandOutputPolicy::semantic_stdout(),
         duration,
     )
     .await
@@ -113,6 +113,9 @@ fn bounded_command_error(program: &str, error: BoundedCommandError) -> RunnerErr
             RunnerError::Internal(format!("wait {program}: {error}"))
         }
         BoundedCommandError::Lifecycle(message) => RunnerError::Internal(message),
+        BoundedCommandError::OutputTooLarge { stream, limit } => RunnerError::Internal(format!(
+            "{program} {stream} exceeded output limit of {limit} bytes"
+        )),
     }
 }
 

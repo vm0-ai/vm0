@@ -48,6 +48,52 @@ fn handle_exec_control_forwards_to_connected_sink() {
 
     client.join().unwrap();
 }
+
+#[test]
+fn handle_exec_control_forwards_maximum_payload_to_connected_sink() {
+    let forward_nonce = unique_test_nonce(22);
+
+    let registry = ExecControlRegistry::default();
+    let registration = registry.register(22, forward_nonce, true).unwrap();
+    let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+    let control_payload = vec![0xA5; vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES];
+    let payload = vsock_proto::encode_exec_control(
+        22,
+        forward_nonce,
+        "msg-max-payload",
+        &control_payload,
+        5000,
+    )
+    .unwrap();
+    let client = std::thread::spawn(move || {
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        process_control_ipc::write_hello(&mut stream).unwrap();
+        let request = process_control_ipc::read_request(&mut stream).unwrap();
+        assert_eq!(request.message_id, "msg-max-payload");
+        assert_eq!(request.payload, control_payload);
+        process_control_ipc::write_response(
+            &mut stream,
+            &process_control_ipc::ControlResponse {
+                message_id: request.message_id,
+                status: process_control_ipc::ControlResponseStatus::Accepted,
+                diagnostic: String::new(),
+            },
+        )
+        .unwrap();
+    });
+
+    let (writer, mut host) = guest_writer_pair();
+    handle_exec_control(44, &payload, &registry, &writer).unwrap();
+
+    let (msg_type, seq, status, message_id, _) = read_exec_control_result(&mut host);
+    assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
+    assert_eq!(seq, 44);
+    assert_eq!(status, ExecControlStatus::Delivered);
+    assert_eq!(message_id, "msg-max-payload");
+
+    client.join().unwrap();
+}
+
 #[test]
 fn handle_exec_control_waits_for_sink_connection() {
     let forward_nonce = unique_test_nonce(9);

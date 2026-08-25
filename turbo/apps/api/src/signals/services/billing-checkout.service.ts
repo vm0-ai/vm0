@@ -19,6 +19,7 @@ import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
+  listAllStripeSubscriptions,
   type StripeClient,
   type StripeCheckoutSessionCreateParams,
   type StripeInvoice,
@@ -853,16 +854,15 @@ async function planPurchaseSubscriptionState(
   readonly existing: StripeSubscription | null;
   readonly hasCompetingPurchase: boolean;
 }> {
-  const subscriptions = await args.stripe.subscriptions.list({
-    customer: args.customerId,
-    status: "all",
-    limit: 100,
-  });
-  signal.throwIfAborted();
-  const exactPurchase = subscriptions.data.find((subscription) => {
+  const subscriptions = await listAllStripeSubscriptions(
+    args.stripe,
+    { customer: args.customerId, status: "all" },
+    signal,
+  );
+  const exactPurchase = subscriptions.find((subscription) => {
     return subscription.metadata?.billingPurchaseId === args.purchaseId;
   });
-  const resumablePurchase = subscriptions.data.find((subscription) => {
+  const resumablePurchase = subscriptions.find((subscription) => {
     return (
       subscription.metadata?.orgId === args.orgId &&
       subscription.metadata.billingPurchaseId !== undefined &&
@@ -872,7 +872,7 @@ async function planPurchaseSubscriptionState(
     );
   });
   const existingSummary = exactPurchase ?? resumablePurchase;
-  const hasCompetingPurchase = subscriptions.data.some((subscription) => {
+  const hasCompetingPurchase = subscriptions.some((subscription) => {
     const tier = tierForKnownPriceId(
       knownPlanPriceItem(subscription.items.data)?.price.id ?? "",
     );

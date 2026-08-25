@@ -1,5 +1,6 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
@@ -103,10 +104,11 @@ async function loadFeishuChatDeliveryContext(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -145,7 +147,7 @@ async function loadFeishuChatDeliveryContext(
   const [binding] = await args.db
     .select({
       feishuOpenId: feishuOrgConnections.feishuOpenId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatThreadRoutes)
@@ -205,6 +207,7 @@ async function loadFeishuAdmissionFailureContext(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -225,7 +228,7 @@ async function loadFeishuAdmissionFailureContext(
       )
       .limit(1),
     args.db
-      .select({ publicBrand: feishuOrgInstallations.publicBrand })
+      .select({ id: feishuOrgInstallations.id })
       .from(feishuChatThreadRoutes)
       .innerJoin(
         feishuOrgConnections,
@@ -257,7 +260,7 @@ async function loadFeishuAdmissionFailureContext(
   }
   return {
     messageContent: event.content,
-    publicBrand: bindingRows[0].publicBrand,
+    publicBrand: args.publicBrand,
   };
 }
 
@@ -269,6 +272,7 @@ export async function deliverFeishuChatAdmissionFailure(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -315,6 +319,10 @@ async function deliverClaimedFeishuChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  // Paired with feishuChatCallbackPayloadSchema's bounded #27750 rollout
+  // fallback; the binding brand is read only for callbacks from the previous
+  // API and is removable after those callbacks and rollback writers drain.
+  const publicBrand = payload.publicBrand ?? binding.publicBrand;
 
   const [mentionerCount, featureContext] = await Promise.all([
     countFeishuMentioners({
@@ -333,8 +341,8 @@ async function deliverClaimedFeishuChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: binding.publicBrand,
-      defaultAgentId: binding.defaultAgentId,
+      publicBrand,
+      defaultAgentId: binding.defaultAgentId ?? undefined,
       replyToMention:
         payload.replyInThread && mentionerCount > 1
           ? `<at id=${binding.feishuOpenId}></at>`
@@ -348,7 +356,7 @@ async function deliverClaimedFeishuChatCallback(
   signal.throwIfAborted();
   const message = buildFeishuAgentResponseMessage({
     text: messageContent,
-    publicBrand: binding.publicBrand,
+    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

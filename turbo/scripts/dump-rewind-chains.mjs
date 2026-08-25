@@ -7,7 +7,7 @@
  * path without guessing.
  *
  * Usage:
- *   node scripts/dump-rewind-chains.mjs <file.cpuprofile> --component ZeroSidebar [--max 5]
+ *   node scripts/dump-rewind-chains.mjs <file.cpuprofile> --component Sidebar [--max 5]
  */
 
 import { readFileSync } from "fs";
@@ -21,7 +21,7 @@ if (!file) {
   process.exit(1);
 }
 
-let filterComponent = "ZeroSidebar";
+let filterComponent = "Sidebar";
 let maxChains = 10;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--component" && args[i + 1]) filterComponent = args[++i];

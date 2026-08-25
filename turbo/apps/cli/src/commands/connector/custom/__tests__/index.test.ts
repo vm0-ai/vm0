@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { server } from "../../../../mocks/server";
 import {
@@ -50,7 +50,7 @@ describe("okou connector custom readers", () => {
     const connector = customConnector();
     server.use(
       stubCustomConnectors([connector]),
-      http.get(`http://localhost:3000/api/okou/agents/${AGENT_ID}`, () => {
+      http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
         return HttpResponse.json({
           agentId: AGENT_ID,
           ownerId: "owner-1",

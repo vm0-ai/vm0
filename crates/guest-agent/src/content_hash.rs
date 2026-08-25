@@ -7,8 +7,8 @@
 //! artifact is unchanged since mount (see issue #10967).
 //!
 //! The two implementations must stay byte-identical. The inline `#[cfg(test)]`
-//! suite below hardcodes fixture vectors for the Rust port; changes here must
-//! be checked against TS `computeContentHashFromHashes`.
+//! suite below shares its canonical fixture corpus with the TypeScript tests;
+//! changes here must be checked against TS `computeContentHashFromHashes`.
 
 use sha2::{Digest, Sha256};
 
@@ -96,119 +96,45 @@ fn formatted_entry_sort_key(entry: ContentHashEntry<'_>) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
 
-    // Fixtures below must stay aligned with TS `computeContentHashFromHashes` at
-    // `turbo/apps/api/src/signals/services/storage-content-hash.service.ts`.
-    const STORAGE_A: &str = "01234567-89ab-cdef-0123-456789abcdef";
-    const STORAGE_B: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    const CONTENT_HASH_CONTRACT: &str = include_str!(
+        "../../../turbo/apps/api/src/signals/services/__tests__/storage-content-hash-contract.json"
+    );
 
-    #[test]
-    fn empty_files_hashes_storage_prefix_only() {
-        let got = compute_content_hash(STORAGE_A, std::iter::empty());
-        assert_eq!(
-            got,
-            "4c679c352da0ad578c21cc413e4afa83c32d467424725129795dda25d1c5ea4e"
-        );
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ContentHashFixture {
+        name: String,
+        storage_id: String,
+        files: Vec<ContentHashFixtureFile>,
+        expected: String,
+    }
+
+    #[derive(Deserialize)]
+    struct ContentHashFixtureFile {
+        path: String,
+        hash: String,
     }
 
     #[test]
-    fn single_file() {
-        let got = compute_content_hash(STORAGE_A, [("a.txt", "deadbeef")]);
-        assert_eq!(
-            got,
-            "3d7165d60d7fd53858323feb1cc04b0116aee77858b4aea45beba855f7816fc0"
-        );
-    }
-
-    #[test]
-    fn multiple_files_sorted_regardless_of_input_order() {
-        let got = compute_content_hash(
-            STORAGE_A,
-            [("b.txt", "222"), ("a.txt", "111"), ("c.txt", "333")],
-        );
-        assert_eq!(
-            got,
-            "384d77579354ce230d8a7465343e1530e2561eab48a94d63e0bf80f90307e24c"
-        );
-    }
-
-    #[test]
-    fn different_storage_id_yields_different_hash() {
-        let got = compute_content_hash(STORAGE_B, std::iter::empty());
-        assert_eq!(
-            got,
-            "d87bf91de459004a9512e649c3484a8ced316fe5547149ec3f6b6ae669ac79ff"
-        );
-    }
-
-    #[test]
-    fn nested_paths_sort_lexicographically() {
-        let got = compute_content_hash(
-            STORAGE_A,
-            [
-                ("src/main.rs", "bbb"),
-                ("README.md", "ccc"),
-                ("src/lib.rs", "aaa"),
-            ],
-        );
-        assert_eq!(
-            got,
-            "e7158d0cbdae3793daa8352a6197eab9f772d8cb8784c941d921e81f5d4b09d6"
-        );
-    }
-
-    #[test]
-    fn colon_paths_sort_like_formatted_entries() {
-        let got = compute_content_hash(STORAGE_A, [("a", "b:1"), ("a:b", "0")]);
-
-        assert_eq!(
-            got,
-            sha256_hex(&format!("storage:{STORAGE_A}\na:b:0\na:b:1"))
-        );
-        assert_ne!(
-            got,
-            sha256_hex(&format!("storage:{STORAGE_A}\na:b:1\na:b:0"))
-        );
-    }
-
-    #[test]
-    fn path_prefix_with_colon_sorts_like_formatted_entries() {
-        let got = compute_content_hash(STORAGE_A, [("a", "z"), ("a:", "0")]);
-
-        assert_eq!(got, sha256_hex(&format!("storage:{STORAGE_A}\na::0\na:z")));
-        assert_ne!(got, sha256_hex(&format!("storage:{STORAGE_A}\na:z\na::0")));
-    }
-
-    #[test]
-    fn equal_formatted_entries_do_not_depend_on_stable_sorting() {
-        let got = compute_content_hash(STORAGE_A, [("a", "b:c"), ("a:b", "c")]);
-
-        assert_eq!(
-            got,
-            sha256_hex(&format!("storage:{STORAGE_A}\na:b:c\na:b:c"))
-        );
-    }
-
-    #[test]
-    fn non_bmp_paths_sort_like_javascript_default_string_sort() {
-        let got = compute_content_hash(
-            STORAGE_A,
-            [("\u{E000}.txt", "222"), ("\u{1F4A9}.txt", "111")],
+    fn matches_shared_content_hash_contract() {
+        let fixtures: Vec<ContentHashFixture> = serde_json::from_str(CONTENT_HASH_CONTRACT)
+            .expect("shared content hash contract should parse");
+        assert!(
+            !fixtures.is_empty(),
+            "shared content hash contract should contain fixtures"
         );
 
-        assert_eq!(
-            got,
-            "537ee6d2902093ce26bea40719e1236c99f1d5394e26445cfe9cd6d9ae228f61"
-        );
-        assert_ne!(
-            got,
-            "ca324bd07923a77d854946f3977a7fe57c5078d64f393a98e0c6e2b5dc4a30f0"
-        );
-    }
-
-    fn sha256_hex(input: &str) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(input.as_bytes());
-        hex::encode(hasher.finalize())
+        for fixture in fixtures {
+            let got = compute_content_hash(
+                &fixture.storage_id,
+                fixture
+                    .files
+                    .iter()
+                    .map(|file| (file.path.as_str(), file.hash.as_str())),
+            );
+            assert_eq!(got, fixture.expected, "fixture {:?}", fixture.name);
+        }
     }
 }

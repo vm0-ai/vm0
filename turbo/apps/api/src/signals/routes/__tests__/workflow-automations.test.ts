@@ -1296,7 +1296,7 @@ describe("okou workflow automations", () => {
     ];
 
     for (const brandCase of brandCases) {
-      const token = runs.zeroTokenForRunWithCapabilities(
+      const token = runs.okouTokenForRunWithCapabilities(
         actor,
         sourceRun.runId,
         ["agent:write"],
@@ -2445,7 +2445,7 @@ describe("okou workflow automations", () => {
     const response = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/workflows/${workflowId}/automations`, {
+    }).request(`/api/workflows/${workflowId}/automations`, {
       method: "POST",
       headers: {
         ...authHeaders(),
@@ -3061,7 +3061,7 @@ describe("okou workflow automations", () => {
           return;
         }
         deleteConnector = false;
-        await connectorsApi.deleteConnectorBySlug(
+        await connectorsApi.disconnectSingleBuiltinConnectorAccount(
           scenario.actor,
           "google-calendar",
         );
@@ -3084,7 +3084,7 @@ describe("okou workflow automations", () => {
     const failedEnable = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/workflow-automations/${created.body.id}/enable`, {
+    }).request(`/api/workflow-automations/${created.body.id}/enable`, {
       method: "POST",
       headers: authHeaders(),
     });
@@ -3491,10 +3491,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    await bdd.deleteVersionFreeAgent(
-      agentScenario.actor,
-      agentScenario.agentId,
-    );
+    await bdd.deleteAgent(agentScenario.actor, agentScenario.agentId);
     expect(watch.calls).toBe(2);
     expect(stop.calls).toBe(2);
   });
@@ -3520,7 +3517,10 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    await connectorsApi.deleteConnectorBySlug(scenario.actor, "gmail");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "gmail",
+    );
     expect(stop.calls).toBe(1);
   });
 
@@ -4190,7 +4190,7 @@ describe("okou workflow automations", () => {
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
           trigger_source: "automation-schedule",
-          zero_run_origin: "workflow_automation",
+          agent_run_origin: "workflow_automation",
         }),
       ]),
     );
@@ -4217,7 +4217,7 @@ describe("okou workflow automations", () => {
           op_type:
             "api_dispatch_pre_create_zero_workflow_automation_create_run",
           trigger_source: "automation-schedule",
-          zero_run_origin: "workflow_automation",
+          agent_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
@@ -4294,7 +4294,7 @@ describe("okou workflow automations", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, rootRun.body.runId),
     ).resolves.toBe(10);
-    const rootToken = runs.zeroTokenForRunWithCapabilities(
+    const rootToken = runs.okouTokenForRunWithCapabilities(
       actor,
       rootRun.body.runId,
       ["agent:write"],
@@ -4347,7 +4347,7 @@ describe("okou workflow automations", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, exhaustedRun.body.runId),
     ).resolves.toBe(0);
-    const exhaustedToken = runs.zeroTokenForRunWithCapabilities(
+    const exhaustedToken = runs.okouTokenForRunWithCapabilities(
       actor,
       exhaustedRun.body.runId,
       ["agent:write"],
@@ -4417,7 +4417,7 @@ describe("okou workflow automations", () => {
     await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
   });
 
-  it("derives manual run budgets from the source and rejects exhausted Zero callers", async () => {
+  it("derives manual run budgets from the source and rejects exhausted agent callers", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { actor, workflowId } = await setupFixture();
     const automation = await accept(
@@ -4445,7 +4445,7 @@ describe("okou workflow automations", () => {
     if (!sourceRun.body.runId) {
       throw new Error("Expected the source automation run to start");
     }
-    const sourceToken = runs.zeroTokenForRunWithCapabilities(
+    const sourceToken = runs.okouTokenForRunWithCapabilities(
       actor,
       sourceRun.body.runId,
       ["agent:write"],

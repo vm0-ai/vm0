@@ -16,10 +16,10 @@ import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import {
+  AgentAuth,
   CliAuth,
   ComposeJobAuth,
   SandboxAuth,
-  ZeroAuth,
 } from "../../types/auth";
 import { singleton } from "../../lib/singleton";
 
@@ -31,14 +31,14 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
+  ["social:read", FeatureSwitchKey.ManagedSocialKit],
 ] as const satisfies readonly (readonly [Capability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent:delete",
 ] as const satisfies readonly Capability[];
 
-interface ZeroTokenOptions {
-  readonly scope?: "zero" | "okou";
+interface OkouTokenOptions {
   readonly publicBrand?: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
@@ -58,7 +58,7 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-function isZeroCapability(value: string): value is Capability {
+function isAgentCapability(value: string): value is Capability {
   return CAPABILITIES.some((capability) => {
     return capability === value;
   });
@@ -67,18 +67,18 @@ function isZeroCapability(value: string): value is Capability {
 // Capability names are open-ended at the token boundary so tokens issued by a
 // newer API remain valid on an older API. The validated output remains closed
 // to known capabilities so unknown names cannot grant permissions.
-const zeroCapabilitiesSchema = z
+const agentCapabilitiesSchema = z
   .array(z.string().min(1))
   .transform((capabilities) => {
-    return capabilities.filter(isZeroCapability);
+    return capabilities.filter(isAgentCapability);
   })
   .readonly();
 
-const zeroTokenPayloadSchema = jwtBaseSchema.extend({
-  scope: z.enum(["zero", "okou"]),
+const okouTokenPayloadSchema = jwtBaseSchema.extend({
+  scope: z.literal("okou"),
   runId: z.string().min(1),
   orgId: z.string().min(1),
-  capabilities: zeroCapabilitiesSchema,
+  capabilities: agentCapabilitiesSchema,
   // The public brand is presentation-only. Tokens from before this claim and
   // intentionally unbranded callers keep the permanent VM0 presentation.
   publicBrand: publicBrandSchema.optional(),
@@ -86,7 +86,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   cloudBrowserEnabled: z.literal(true).optional(),
 });
 
-type ZeroTokenClaims = Omit<z.infer<typeof zeroTokenPayloadSchema>, "scope">;
+type OkouTokenClaims = Omit<z.infer<typeof okouTokenPayloadSchema>, "scope">;
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("cli"),
@@ -99,11 +99,22 @@ const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
   jobId: z.string().min(1),
 });
 
+// The `zero` scope is retired and no issuer produces it any more. The shape
+// stays reachable through the test signer alone so verification tests can
+// prove a legacy token is rejected.
+type RetiredZeroScopePayload = Omit<
+  z.input<typeof okouTokenPayloadSchema>,
+  "scope"
+> & {
+  readonly scope: "zero";
+};
+
 type JwtPayloadInput =
   | z.input<typeof sandboxTokenPayloadSchema>
-  | z.input<typeof zeroTokenPayloadSchema>
+  | z.input<typeof okouTokenPayloadSchema>
   | z.input<typeof cliTokenPayloadSchema>
-  | z.input<typeof composeJobTokenPayloadSchema>;
+  | z.input<typeof composeJobTokenPayloadSchema>
+  | RetiredZeroScopePayload;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
@@ -130,7 +141,7 @@ function featureSwitchForCapability(
   })?.[1];
 }
 
-function isZeroCapabilityEnabled(
+function isAgentCapabilityEnabled(
   capability: Capability,
   userId: string,
   orgId: string,
@@ -149,7 +160,7 @@ function isZeroCapabilityEnabled(
 
 function isCapabilityAvailableToAgent(
   capability: Capability,
-  options: ZeroTokenOptions | undefined,
+  options: OkouTokenOptions | undefined,
 ): boolean {
   if (
     AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
@@ -251,8 +262,8 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
   };
 }
 
-export function verifyZeroToken(token: string): ZeroAuth | null {
-  const parsed = zeroTokenPayloadSchema.safeParse(
+export function verifyOkouToken(token: string): AgentAuth | null {
+  const parsed = okouTokenPayloadSchema.safeParse(
     verifyPrefixedToken(token, SANDBOX_TOKEN_PREFIX),
   );
 
@@ -324,33 +335,32 @@ export function generateSandboxToken(
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 
-export function generateZeroToken(
+export function generateOkouToken(
   userId: string,
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: ZeroTokenOptions,
+  options?: OkouTokenOptions,
 ): string {
-  return signZeroToken(
-    options?.scope ?? "zero",
-    buildZeroTokenClaims(userId, runId, orgId, overrides, options),
+  return signOkouToken(
+    buildOkouTokenClaims(userId, runId, orgId, overrides, options),
   );
 }
 
-function buildZeroTokenClaims(
+function buildOkouTokenClaims(
   userId: string,
   runId: string,
   orgId: string,
   overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-  options: Omit<ZeroTokenOptions, "scope"> | undefined,
-): ZeroTokenClaims {
+  options: OkouTokenOptions | undefined,
+): OkouTokenClaims {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: Capability[] = [];
   for (const capability of CAPABILITIES) {
     if (!isCapabilityAvailableToAgent(capability, options)) {
       continue;
     }
-    if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {
+    if (isAgentCapabilityEnabled(capability, userId, orgId, overrides)) {
       capabilities.push(capability);
     }
   }
@@ -373,11 +383,11 @@ function buildZeroTokenClaims(
   };
 }
 
-function signZeroToken(
-  scope: "zero" | "okou",
-  claims: ZeroTokenClaims,
-): string {
-  const payload: z.infer<typeof zeroTokenPayloadSchema> = { scope, ...claims };
+function signOkouToken(claims: OkouTokenClaims): string {
+  const payload: z.infer<typeof okouTokenPayloadSchema> = {
+    scope: "okou",
+    ...claims,
+  };
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 

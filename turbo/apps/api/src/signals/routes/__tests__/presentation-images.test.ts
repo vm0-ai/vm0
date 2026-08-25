@@ -34,13 +34,13 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(
+function okouToken(
   fixture: PresentationImagesFixture,
   capabilities: readonly Capability[] = ["file:write"],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: fixture.userId,
     orgId: fixture.orgId,
     runId: fixture.runId,
@@ -338,7 +338,7 @@ describe("POST /api/presentation/images/resolve", () => {
     });
   });
 
-  it("requires file write capability for zero tokens", async () => {
+  it("requires file write capability for agent tokens", async () => {
     const fixture = createFixture();
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     const client = setupApp({ context, routes: presentationImagesRoutes })(
@@ -347,7 +347,7 @@ describe("POST /api/presentation/images/resolve", () => {
     const response = await accept(
       client.resolve({
         headers: {
-          authorization: `Bearer ${zeroToken(fixture, ["file:read"])}`,
+          authorization: `Bearer ${okouToken(fixture, ["file:read"])}`,
         },
         body: {
           items: [{ path: "$.pages[0].visual", query: "modern office" }],

@@ -47,7 +47,7 @@ function draftsClient() {
   return setupApp({ context, routes: agentDraftRoutes })(agentDraftContract);
 }
 
-describe("GET/PATCH /api/okou/agents/:id/draft", () => {
+describe("GET/PATCH /api/agents/:id/draft", () => {
   it("returns an empty draft when none is saved", async () => {
     const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);

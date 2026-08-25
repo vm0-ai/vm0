@@ -1,13 +1,13 @@
 import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
@@ -57,8 +57,6 @@ interface SharedThreadSourceRow {
   readonly runId: string | null;
   readonly runGroupId: string | null;
 }
-
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 function isShareableEventType(row: ChatEventRow): row is ChatEventRow & {
   readonly eventType: "input.prompt" | "input.automation" | "output.message";
@@ -134,67 +132,72 @@ function localIndex(
   return next;
 }
 
-async function loadSharedThreadSourceRows(
-  database: Db,
-  get: ComputedGetter,
-  threadId: string,
-  selectedEventIds: readonly string[],
+function loadSharedThreadSourceRows(
+  args: {
+    readonly database: Db;
+    readonly threadId: string;
+    readonly selectedEventIds: readonly string[];
+  },
   signal: AbortSignal,
-): Promise<readonly SharedThreadSourceRow[]> {
-  const hotSelectedRows = await database
-    .select({
-      id: chatEvents.id,
-      eventType: chatEvents.eventType,
-      content: canonicalChatEventContent(),
-      userMessage: canonicalChatEventUserMessage(),
-      runId: chatEvents.runId,
-      runGroupId: canonicalChatEventGoalId(),
-      isVisible: sql`COALESCE(
+): Computed<Promise<readonly SharedThreadSourceRow[]>> {
+  return computed(async (get) => {
+    const { database, threadId, selectedEventIds } = args;
+    const hotSelectedRows = await database
+      .select({
+        id: chatEvents.id,
+        eventType: chatEvents.eventType,
+        content: canonicalChatEventContent(),
+        userMessage: canonicalChatEventUserMessage(),
+        runId: chatEvents.runId,
+        runGroupId: canonicalChatEventGoalId(),
+        isVisible: sql`COALESCE(
         ${visibleChatEventCondition(database)},
         false
       )`.mapWith(pgBooleanDecoder),
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, threadId),
-        inArray(chatEvents.id, [...selectedEventIds]),
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId));
-  signal.throwIfAborted();
+      })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, threadId),
+          inArray(chatEvents.id, [...selectedEventIds]),
+        ),
+      )
+      .orderBy(asc(chatEvents.seqId));
+    signal.throwIfAborted();
 
-  if (hotSelectedRows.length !== selectedEventIds.length) {
-    const history = await readCurrentChatEventHistory(
-      {
-        db: database,
-        get,
-        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
-      },
-      threadId,
-      signal,
-    );
-    return archivedSharedThreadRows(history, new Set(selectedEventIds));
-  }
-
-  return hotSelectedRows.flatMap((row) => {
-    if (
-      !row.isVisible ||
-      (row.eventType !== "input.prompt" &&
-        row.eventType !== "input.automation" &&
-        row.eventType !== "output.message")
-    ) {
-      return [];
+    if (hotSelectedRows.length !== selectedEventIds.length) {
+      const history = await get(
+        readCurrentChatEventHistory(
+          {
+            db: database,
+            bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+          },
+          threadId,
+          signal,
+        ),
+      );
+      return archivedSharedThreadRows(history, new Set(selectedEventIds));
     }
-    return [
-      {
-        eventType: row.eventType,
-        content: row.content,
-        userMessage: row.userMessage,
-        runId: row.runId,
-        runGroupId: row.runGroupId,
-      },
-    ];
+
+    return hotSelectedRows.flatMap((row) => {
+      if (
+        !row.isVisible ||
+        (row.eventType !== "input.prompt" &&
+          row.eventType !== "input.automation" &&
+          row.eventType !== "output.message")
+      ) {
+        return [];
+      }
+      return [
+        {
+          eventType: row.eventType,
+          content: row.content,
+          userMessage: row.userMessage,
+          runId: row.runId,
+          runGroupId: row.runGroupId,
+        },
+      ];
+    });
   });
 }
 
@@ -208,15 +211,12 @@ export const createSharedThread$ = command(
     const [thread] = await database
       .select({ id: chatThreads.id })
       .from(chatThreads)
-      .innerJoin(
-        agentComposes,
-        eq(agentComposes.id, chatThreads.agentComposeId),
-      )
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(
         and(
           eq(chatThreads.id, args.threadId),
           eq(chatThreads.userId, args.userId),
-          eq(agentComposes.orgId, args.orgId),
+          eq(agents.orgId, args.orgId),
         ),
       )
       .limit(1);
@@ -226,13 +226,17 @@ export const createSharedThread$ = command(
     }
 
     const selectedEventIds = [...new Set(args.eventIds)];
-    const rows = await loadSharedThreadSourceRows(
-      database,
-      get,
-      args.threadId,
-      selectedEventIds,
-      signal,
+    const rows = await get(
+      loadSharedThreadSourceRows(
+        {
+          database,
+          threadId: args.threadId,
+          selectedEventIds,
+        },
+        signal,
+      ),
     );
+    signal.throwIfAborted();
 
     const runIndices = new Map<string, number>();
     const runGroupIndices = new Map<string, number>();

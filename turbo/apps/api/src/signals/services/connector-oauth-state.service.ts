@@ -23,8 +23,9 @@ const storedOAuthStateSelection = Object.freeze({
   authorizationUrl: connectorOauthStates.authorizationUrl,
   codeVerifier: connectorOauthStates.codeVerifier,
   oauthContext: connectorOauthStates.oauthContext,
-  accountMutation:
-    storedConnectorAccountMutationSelection(connectorOauthStates),
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorOauthStates.accountMutation,
+  ),
   createdAt: connectorOauthStates.createdAt,
   expiresAt: connectorOauthStates.expiresAt,
   consumedAt: connectorOauthStates.consumedAt,
@@ -86,6 +87,20 @@ type ConnectorOAuthStateStatus =
       readonly publicBrand: PublicBrand;
       readonly redirectUri: string;
     };
+
+export async function insertConnectorOAuthState(
+  db: Db,
+  values: typeof connectorOauthStates.$inferInsert,
+): Promise<string> {
+  const [oauthState] = await db
+    .insert(connectorOauthStates)
+    .values(values)
+    .returning({ id: connectorOauthStates.id });
+  if (!oauthState) {
+    throw new Error("Failed to create connector OAuth state");
+  }
+  return oauthState.id;
+}
 
 function oauthStateTargetConditions(
   target: OAuthStateTarget,

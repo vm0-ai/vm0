@@ -4,7 +4,8 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { getVm0BuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { MANAGED_SOCIALKIT_BILLING_CATEGORY } from "@okouai/api-contracts/contracts/social";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
   getSkillStorageName,
@@ -512,6 +513,11 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
   // Raw provider cost is $5 per 1,000 requests with no token charge.
   ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
+  // SocialKit Growth costs $95 per 50,000 requests. A 25% markup is
+  // $0.002375, rounded up to 3 whole vm0 credits per successful request.
+  ...usageGroup("social", "socialkit", [
+    [MANAGED_SOCIALKIT_BILLING_CATEGORY, usd(0.003), 1],
+  ]),
   // APIDojo Yahoo Finance — https://rapidapi.com/apidojo/api/yahoo-finance1/pricing
   // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
   ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),
@@ -579,8 +585,27 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/flux-pro/v1.1-ultra", [
     ["output_image", usd(0.06), 1],
   ]),
+  // FLUX.2 Pro charges $0.03 for the first processed megapixel and $0.015
+  // for each additional input/output megapixel.
+  ...usageGroup("image", "fal-ai/flux-2-pro", [
+    ["processed_megapixel.first", usd(0.03), 1],
+    ["processed_megapixel.additional", usd(0.015), 1],
+  ]),
   ...usageGroup("image", "fal-ai/qwen-image", [
     ["output_megapixel", usd(0.02), 1],
+  ]),
+  // Qwen Image 3 is billed per image in two resolution tiers, split at
+  // 2,250,000 output pixels.
+  ...usageGroup("image", "alibaba/qwen-image-3/text-to-image", [
+    ["output_image.1k", usd(0.04), 1],
+    ["output_image.2k", usd(0.075), 1],
+  ]),
+  // Ideogram 4 bills output megapixels by rendering speed. The fractional
+  // Turbo price is stored as 75 credits per 10 MP to preserve $0.0075/MP.
+  ...usageGroup("image", "ideogram/v4", [
+    ["output_megapixel.turbo", 75, 10],
+    ["output_megapixel.balanced", usd(0.015), 1],
+    ["output_megapixel.quality", usd(0.025), 1],
   ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],
@@ -597,6 +622,11 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
   ...usageGroup("image", "fal-ai/nano-banana-2", [
     ["output_image", usd(0.08), 1],
+  ]),
+  // Nano Banana 2 Lite is token billed at $37.50 per 1M output image tokens
+  // and always returns 1K images (1024x1024 = 1120 tokens): $0.042 per image.
+  ...usageGroup("image", "google/nano-banana-2-lite", [
+    ["output_image", usd(0.042), 1],
   ]),
   // Background removal transform (fal cost is $0).
   ...usageGroup("image", "fal-ai/birefnet/v2", [["output_image", usd(0), 1]]),
@@ -677,7 +707,7 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from all VM0 managed candidates so new providers are
+ * Vendors are derived from all VM0 built-in candidates so new providers are
  * automatically picked up.
  */
 export function buildVm0ApiKeys(
@@ -685,7 +715,7 @@ export function buildVm0ApiKeys(
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of getVm0ManagedRouteVendors()) {
+  for (const vendor of getVm0BuiltInModelRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {

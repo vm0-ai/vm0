@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 
 import { buildFeishuWelcomeMessage } from "../../lib/feishu-message-card";
 import { sendFeishuMessage } from "../external/feishu-client";
@@ -25,16 +25,25 @@ export async function notifyFeishuConnect(
 ): Promise<void> {
   const [installation] = await args.db
     .select({
-      agentName: zeroAgents.name,
-      agentDisplayName: zeroAgents.displayName,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      agentName: agents.name,
+      agentDisplayName: agents.displayName,
+      botName: feishuOrgInstallations.botName,
+      connectionPublicBrand: feishuOrgConnections.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
-    .from(feishuOrgInstallations)
-    .leftJoin(
-      zeroAgents,
-      eq(zeroAgents.id, feishuOrgInstallations.defaultComposeId),
+    .from(feishuOrgConnections)
+    .innerJoin(
+      feishuOrgInstallations,
+      eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
     )
-    .where(eq(feishuOrgInstallations.id, args.installationId))
+    .leftJoin(agents, eq(agents.id, feishuOrgInstallations.defaultAgentId))
+    .where(
+      and(
+        eq(feishuOrgConnections.id, args.connectionId),
+        eq(feishuOrgConnections.installationId, args.installationId),
+        eq(feishuOrgConnections.feishuOpenId, args.openId),
+      ),
+    )
     .limit(1);
   signal.throwIfAborted();
   if (!installation) {
@@ -48,7 +57,14 @@ export async function notifyFeishuConnect(
       receiveId: args.openId,
       message: buildFeishuWelcomeMessage({
         agentName: installation.agentDisplayName ?? installation.agentName,
-        publicBrand: installation.publicBrand,
+        botName: installation.botName,
+        // #27750 rollout fallback: bindings created by the previous API or
+        // retained from before #28935 have no connect-flow brand. Remove after
+        // legacy null bindings are gone and the previous API is outside the
+        // DB/API rollback window; current OAuth writers always set the field.
+        publicBrand:
+          installation.connectionPublicBrand ??
+          installation.installationPublicBrand,
       }),
       idempotencyKey: args.connectionId,
     },

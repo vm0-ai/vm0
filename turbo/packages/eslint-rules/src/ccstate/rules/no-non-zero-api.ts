@@ -60,8 +60,11 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/model-provider-connections",
   "/api/user-permission-grants",
   // #28464. The Slack, Teams, and Feishu connect and OAuth-start routes. The
-  // eight paths a provider console holds are not in this slice and stay
-  // branded, so they are deliberately absent here.
+  // paths a provider console holds were not in this slice; #28544, #28545 and
+  // #28600 moved them, and none of those needs an entry here: the platform
+  // reaches an OAuth callback through its contract rather than as a literal,
+  // and an inbound webhook has no platform caller at all — the provider posts
+  // to it.
   "/api/feishu/connect",
   "/api/feishu/oauth/connect",
   "/api/slack/channels",
@@ -81,6 +84,17 @@ const MIGRATED_NEUTRAL_API_PATHS: readonly string[] = [
   "/api/org",
   "/api/usage/members",
   "/api/usage/record",
+  // #28461
+  "/api/agents",
+  "/api/morning-brief",
+  "/api/workflow-automations",
+  "/api/workflows",
+  // #28463
+  "/api/mail/drafts",
+  "/api/uploads",
+  "/api/voice-io",
+  "/api/web/download-file",
+  "/api/web/file-url",
 ];
 
 /**

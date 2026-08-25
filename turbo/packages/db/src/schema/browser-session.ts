@@ -83,14 +83,7 @@ export const browserSessions = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    // DB/API rollout compatibility: the immediately preceding API omits this
-    // field when it creates a browser session. Keep the default while that API
-    // can still serve or be rolled back; remove it in a later release after the
-    // explicit writer has deployed and the prior API has drained. #28449.
-    publicBrand: text("public_brand")
-      .$type<PublicBrand>()
-      .default("vm0")
-      .notNull(),
+    publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     // Nullable compatibility references let the current API omit legacy
     // profile identity while preserving the previous API's statement shapes.

@@ -27,7 +27,7 @@ legacy zero-host.test.ts and zero-maps.test.ts route tests:
   billing-usage-media.bdd.test.ts BILL-02; the slug-suffix reuse and
   missing-index validations stay owned by chat-files.bdd.test.ts FILE-01.
 - "run token without maps:read -> 403" is dropped: every production Okou
-  token carries maps:read unconditionally (generateZeroToken), so the case is
+  token carries maps:read unconditionally (generateOkouToken), so the case is
   not API-constructible.
 */
 
@@ -273,7 +273,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         },
       ],
     });
-    const okouToken = runs.zeroTokenForRunWithCapabilities(
+    const okouToken = runs.okouTokenForRunWithCapabilities(
       actor,
       randomUUID(),
       ["host:write"],
@@ -559,49 +559,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expectApiError(tooLong.body);
     expect(tooLong.body.error.code).toBe("BAD_REQUEST");
     expect(tooLong.body.error.message).toContain("96");
-  });
-
-  // #28417 moved the maps contract to `/api/maps/**`, so the blanket expansion
-  // no longer derives either branded form and both exist only because
-  // `MIGRATED_BRANDED_PATHS` names them. Asserted through the endpoint rather
-  // than the route table: a registration entry cannot show that a request from
-  // a released CLI build actually reaches the maps handler and is charged.
-  it("serves geocode on the neutral path and both branded paths released CLI builds hold [MAPS-COMPAT]", async () => {
-    const bdd = createBddApi(context);
-    const billing = createMapsBillingApi(context);
-    const runs = createRunsApi(context);
-    const admin = bdd.user();
-    await runs.grantProEntitlement(admin);
-    billing.configureMapsProvider();
-
-    const geocodeRequests: URL[] = [];
-    server.use(geocodeOkHandler(geocodeRequests));
-
-    // Written out rather than derived from the contract or the table, so a
-    // deleted row fails this test instead of changing what it asserts.
-    const paths = [
-      "/api/maps/geocode",
-      "/api/okou/maps/geocode",
-      "/api/zero/maps/geocode",
-    ];
-
-    for (const path of paths) {
-      const response = await billing.requestMapsGeocodeAtPath(admin, path, {
-        address: "1 Infinite Loop, Cupertino",
-      });
-
-      expect(response.status, `Expected ${path} to be served`).toBe(200);
-      expect(response.body).toMatchObject({
-        operation: "geocode",
-        provider: "google-maps",
-        billingCategory: "geocoding",
-        billingQuantity: 1,
-      });
-    }
-
-    // Every path reached the provider, so none of them was answered by an
-    // unrelated route that happens to share the prefix.
-    expect(geocodeRequests).toHaveLength(paths.length);
   });
 
   it("charges marked-up Google Maps prices across geocode, directions, places, and details [MAPS-A]", async () => {
@@ -962,8 +919,8 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
   });
 });
 
-describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () => {
-  it("attributes maps usage and hosted-site artifacts to a claimed run through its real zero token [HOST-B/MAPS-B]", async () => {
+describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped agent-token attribution", () => {
+  it("attributes maps usage and hosted-site artifacts to a claimed run through its real agent token [HOST-B/MAPS-B]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const billing = createMapsBillingApi(context);

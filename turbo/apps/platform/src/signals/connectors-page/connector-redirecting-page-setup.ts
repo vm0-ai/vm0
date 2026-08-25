@@ -9,7 +9,7 @@ import {
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroConnectorRedirectingPage } from "../../views/zero-page/zero-connector-redirecting-page.tsx";
+import { ConnectorRedirectingPage } from "../../views/okou-page/connector-redirecting-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -62,7 +62,7 @@ export const setupConnectorRedirectingPage$ = command(
     set(resetConnectorRedirectingMobileWarning$);
     set(
       updatePage$,
-      createElement(ZeroConnectorRedirectingPage, {
+      createElement(ConnectorRedirectingPage, {
         connectorLabel,
         connectorIcon,
         status,

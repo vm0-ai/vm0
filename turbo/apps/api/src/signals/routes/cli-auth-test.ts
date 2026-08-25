@@ -17,11 +17,10 @@ import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
 } from "@okouai/connectors/connector-auth-method";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { userConnectors } from "@okouai/db/schema/user-connector";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
@@ -210,13 +209,6 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-async function testOrgForUser(
-  get: <T>(value: Computed<T>) => T,
-  userId: string,
-): Promise<string | null> {
-  return await get(testUserOrgId(userId));
-}
-
 const createTestConnector$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!testEndpointAllowed(get(request$))) {
@@ -261,7 +253,7 @@ const createTestConnector$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const orgId = await testOrgForUser(get, userId);
+    const orgId = await get(testUserOrgId(userId));
     signal.throwIfAborted();
     if (!orgId) {
       return stringError(400, "Test user has no org — run test-token first");
@@ -397,7 +389,7 @@ const enableTestConnectors$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const orgId = await testOrgForUser(get, userId);
+    const orgId = await get(testUserOrgId(userId));
     signal.throwIfAborted();
     if (!orgId) {
       return stringError(400, "Test user has no org — run test-token first");
@@ -418,25 +410,22 @@ const enableTestConnectors$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const [compose] = await writeDb
+    const [agent] = await writeDb
       .select({
-        id: agentComposes.id,
-        orgId: agentComposes.orgId,
-        userId: agentComposes.userId,
-        name: agentComposes.name,
+        id: agents.id,
       })
-      .from(agentComposes)
+      .from(agents)
       .where(
         and(
-          eq(agentComposes.id, bodyResult.data.composeId),
-          eq(agentComposes.orgId, orgId),
-          eq(agentComposes.userId, userId),
+          eq(agents.id, bodyResult.data.composeId),
+          eq(agents.orgId, orgId),
+          eq(agents.owner, userId),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
-    if (!compose) {
+    if (!agent) {
       return stringError(
         404,
         `Compose not found: ${bodyResult.data.composeId}`,
@@ -444,21 +433,9 @@ const enableTestConnectors$ = command(
     }
 
     await writeDb
-      .insert(zeroAgents)
-      .values({
-        id: compose.id,
-        orgId: compose.orgId,
-        owner: compose.userId,
-        name: compose.name,
-        visibility: "private",
-      })
-      .onConflictDoUpdate({
-        target: zeroAgents.id,
-        set: {
-          visibility: "private",
-          updatedAt: nowDate(),
-        },
-      });
+      .update(agents)
+      .set({ visibility: "private", updatedAt: nowDate() })
+      .where(and(eq(agents.orgId, orgId), eq(agents.id, agent.id)));
     signal.throwIfAborted();
 
     await writeDb.insert(userConnectors).values(
@@ -466,7 +443,7 @@ const enableTestConnectors$ = command(
         return {
           orgId,
           userId,
-          agentId: compose.id,
+          agentId: agent.id,
           connectorSlug,
         };
       }),
@@ -507,7 +484,7 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
-  const orgId = await testOrgForUser(get, userId);
+  const orgId = await get(testUserOrgId(userId));
   signal.throwIfAborted();
   if (!orgId) {
     return stringError(400, "Test user has no org — run test-token first");

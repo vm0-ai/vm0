@@ -26,8 +26,11 @@
 //! Runtime paths are opened component by component without following symlinks, and child opens and
 //! deletions are descriptor-relative. Recursive removal refuses to cross filesystem or mount
 //! boundaries, and protected entries are checked by both name and identity so replacement races
-//! cannot redirect deletion through protected state. A symlinked stale entry is unlinked without
-//! following its target. Unsafe path, identity, or mount changes fail closed.
+//! cannot redirect deletion through protected state. Cleanup copies bounded chunks from each live
+//! directory descriptor and verifies every mutating pass with a fresh pass from offset zero; one
+//! shared raw buffer, bounded copied chunks, and fixed traversal depth cap aggregate memory use. A
+//! symlinked stale entry is unlinked without following its target. Unsafe path, identity, mount, or
+//! cleanup resource-limit changes fail closed.
 //!
 //! Request validation and process-containment checks finish before filesystem mutation. Cleanup
 //! itself is not a rollback transaction: once deletion starts, a failure on a later entry,
@@ -67,9 +70,9 @@ const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_MAX_FILE: &str = "pids.max";
 const CODEX_AUTH_FILENAME: &str = "auth.json";
 #[cfg(debug_assertions)]
-const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
+const TEST_CONTAINMENT_ROOT_ENV: &str = "OKOU_TEST_PROCESS_CONTAINMENT_ROOT";
 #[cfg(debug_assertions)]
-const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
+const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV: &str = "VM0_TEST_CODEX_HOME_DIR";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
@@ -213,22 +216,9 @@ fn prepare(
         .iter()
         .map(|entry| entry.name.clone())
         .collect::<Vec<_>>();
-    let entries = parent
-        .read_dir()
-        .map_err(ReusePreparationError::Cleanup)?
-        .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<io::Result<Vec<_>>>()
+    let removed_entries = parent
+        .remove_children_except(&protected_names, parent_identity, &protected_identities)
         .map_err(ReusePreparationError::Cleanup)?;
-    let mut removed_entries = 0u64;
-    for name in entries {
-        if protected_names.contains(&name) {
-            continue;
-        }
-        parent
-            .remove_child_tree(&name, parent_identity, &protected_identities)
-            .map_err(ReusePreparationError::Cleanup)?;
-        removed_entries = removed_entries.saturating_add(1);
-    }
 
     for entry in &protected {
         let identity = parent

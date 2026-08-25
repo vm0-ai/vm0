@@ -7,7 +7,7 @@ import {
   customConnectorSlugSchema,
   type CustomConnectorResponse,
   type CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 import {
@@ -15,21 +15,26 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-} from "../zero-page/settings/connectors.ts";
+} from "../okou-page/settings/connectors.ts";
 import {
   customConnectorAuthorizedAgentsById$,
   customConnectors$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorAgentAuthorization$,
-} from "../zero-page/settings/custom-connectors.ts";
+} from "../okou-page/settings/custom-connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
-import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
+import { isAgentConnectorAuthorized } from "../okou-page/agent-connector-authorizations.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
   type ChatActionCallback,
 } from "./action-callback.ts";
+import {
+  chatActionIdMatches,
+  type ChatActionContext,
+  type ChatActionParseResult,
+} from "./chat-action-context.ts";
 import {
   createCardSignalsRegistry,
   type CardSignalsRegistry,
@@ -103,49 +108,62 @@ export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
 
 export function parseConnectorAuthorizeUrl(
   value: string,
-): ConnectorActionDescriptor | null {
+  context: ChatActionContext | undefined,
+): ChatActionParseResult<ConnectorActionDescriptor> {
   const appOrigin = window.location.origin;
   const canonicalAppOrigin = resolvePlatformOriginForTarget("app");
   if (!URL.canParse(value, appOrigin)) {
-    return null;
+    return { status: "unrelated" };
   }
   const url = new URL(value, appOrigin);
   if (url.origin !== appOrigin && url.origin !== canonicalAppOrigin) {
-    return null;
+    return { status: "unrelated" };
   }
 
   const match = url.pathname.match(
     /^\/connectors\/([^/]+)\/(authorize|connect)$/u,
   );
+  if (!match) {
+    return { status: "unrelated" };
+  }
   const connectorSlug = match?.[1]?.toLowerCase();
   const action = match?.[2];
   const agentId = url.searchParams.get("agentId");
-  if (!agentId) {
-    return null;
+  if (!context || !agentId || !chatActionIdMatches(agentId, context.agentId)) {
+    return { status: "invalid", originalUrl: value };
   }
 
-  const callback = chatActionCallbackFromUrl(url);
+  const callback = chatActionCallbackFromUrl(url, context);
+  if (!callback) {
+    return { status: "invalid", originalUrl: value };
+  }
   const parsedCatalogSlug = connectorSlugSchema.safeParse(connectorSlug);
   if (parsedCatalogSlug.success) {
     return {
-      kind: "catalog",
-      connectorSlug: parsedCatalogSlug.data,
-      agentId,
-      originalUrl: value,
-      ...callback,
+      status: "valid",
+      descriptor: {
+        kind: "catalog",
+        connectorSlug: parsedCatalogSlug.data,
+        agentId: context.agentId,
+        originalUrl: value,
+        ...callback,
+      },
     };
   }
 
   const parsedCustomSlug = customConnectorSlugSchema.safeParse(connectorSlug);
   if (!parsedCustomSlug.success || action !== "connect") {
-    return null;
+    return { status: "invalid", originalUrl: value };
   }
   return {
-    kind: "custom",
-    connectorSlug: parsedCustomSlug.data,
-    agentId,
-    originalUrl: value,
-    ...callback,
+    status: "valid",
+    descriptor: {
+      kind: "custom",
+      connectorSlug: parsedCustomSlug.data,
+      agentId: context.agentId,
+      originalUrl: value,
+      ...callback,
+    },
   };
 }
 

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { chatThreadComputerUseHostContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
@@ -113,14 +113,15 @@ const updateComputerUseHostInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentId: chatThreads.agentId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
         });
-      if (!thread) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -128,7 +129,7 @@ const updateComputerUseHostInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         computerUseHostId: hostId,
         cloudBrowserEnabled: thread.cloudBrowserEnabled,

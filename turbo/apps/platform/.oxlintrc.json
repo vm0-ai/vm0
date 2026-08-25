@@ -48,7 +48,7 @@
               {
                 "group": ["**/fetch", "**/fetch.ts"],
                 "importNames": ["fetch$"],
-                "message": "Use zeroClient$ from api-client.ts instead of raw fetch$. Only exception: FormData uploads (ts-rest cannot handle multipart)."
+                "message": "Use apiClient$ from api-client.ts instead of raw fetch$. Only exception: FormData uploads (ts-rest cannot handle multipart)."
               }
             ]
           }
@@ -123,7 +123,7 @@
     {
       "files": [
         "src/signals/zero-page/zero-chat.ts",
-        "src/signals/zero-page/chat-draft.ts",
+        "src/signals/okou-page/chat-draft.ts",
         "src/signals/voice-io/voice-io-tts.ts",
         "src/signals/voice-io/voice-io-stt.ts"
       ],

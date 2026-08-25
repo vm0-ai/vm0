@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -51,7 +52,7 @@ import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/mode
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   buildArtifactKeyV2,
   buildArtifactPrefixV2,
@@ -119,11 +120,13 @@ import {
   readRunAutonomyBudgetFixture,
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
-  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  readThreadSessionConversation,
+  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import {
@@ -132,10 +135,10 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { verifyZeroToken } from "../../auth/tokens";
+import { verifyOkouToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
-  createUnassociatedThreadBoundZeroRunFixture,
+  createUnassociatedThreadBoundAgentRunsServiceFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
   acquireBddVm0ApiKey,
@@ -152,6 +155,7 @@ import {
   releaseBddVm0ApiKey,
   removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
+  replacePiSessionHistoryJsonlFixture,
   replaceThreadSessionBindingFixture,
   setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
@@ -448,8 +452,8 @@ async function entitledChatActor(
   return { actor, agentId: agent.agentId, runnerGroup, providerId };
 }
 
-async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -574,7 +578,7 @@ async function expectRunPublicBrandTransport(args: {
   if (!token) {
     throw new Error("Expected the run context to contain an Okou token");
   }
-  expect(verifyZeroToken(token)).toMatchObject({
+  expect(verifyOkouToken(token)).toMatchObject({
     runId: args.runId,
     publicBrand: args.publicBrand,
   });
@@ -1042,7 +1046,9 @@ function chatThreadConnectorSelectionsClient() {
 
 describe("CHAT-02: thread run admission invariant", () => {
   it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
-    await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
+    await expect(
+      createUnassociatedThreadBoundAgentRunsServiceFixture(),
+    ).rejects.toThrow(
       "Thread-bound Zero run requires a queue-first association",
     );
 
@@ -1051,7 +1057,7 @@ describe("CHAT-02: thread run admission invariant", () => {
     ).rejects.toThrow("Thread-bound run requires a queue-first association");
 
     await expect(
-      createUnassociatedThreadBoundZeroRunFixture(""),
+      createUnassociatedThreadBoundAgentRunsServiceFixture(""),
     ).rejects.toThrow(
       "Thread-bound Zero run requires a queue-first association",
     );
@@ -4035,7 +4041,7 @@ describe("CHAT-02: admission without spendable credits", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: Zero Mail link delivery", () => {
+describe("CHAT-02: Okou Mail link delivery", () => {
   it("delivers a linked Gmail draft exactly once through the agent reply", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockGmailConnectorOAuth({
@@ -4151,6 +4157,277 @@ function s3GetObjectCommandCalls(): readonly unknown[] {
         .constructor?.name === "GetObjectCommand"
     );
   });
+}
+
+function piResponsesTextSse(text: string, sequence: number): string {
+  const responseId = `resp_pi_api_${sequence.toString()}`;
+  const messageId = `msg_pi_api_${sequence.toString()}`;
+  return [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: messageId,
+        role: "assistant",
+        status: "in_progress",
+        content: [],
+      },
+    },
+    {
+      type: "response.output_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: text,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: messageId,
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            id: messageId,
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ],
+        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      },
+    },
+  ]
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+}
+
+function piResponsesToolSse(args: {
+  readonly callId: string;
+  readonly name: string;
+  readonly arguments: Record<string, unknown>;
+  readonly sequence: number;
+}): string {
+  const responseId = `resp_pi_tool_${args.sequence.toString()}`;
+  const reasoningId = `rs_pi_tool_${args.sequence.toString()}`;
+  const itemId = `fc_pi_tool_${args.sequence.toString()}`;
+  const functionArguments = JSON.stringify(args.arguments);
+  const reasoningText = "API-first reasoning preserved for Sandbox resume";
+  const reasoningItem = {
+    type: "reasoning",
+    id: reasoningId,
+    content: [{ type: "reasoning_text", text: reasoningText }],
+    summary: [],
+  };
+  const item = {
+    type: "function_call",
+    id: itemId,
+    call_id: args.callId,
+    name: args.name,
+    arguments: functionArguments,
+    status: "completed",
+  };
+  return [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { ...reasoningItem, content: [] },
+    },
+    {
+      type: "response.reasoning_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: reasoningText,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: reasoningItem,
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 1,
+      item: { ...item, arguments: "", status: "in_progress" },
+    },
+    {
+      type: "response.function_call_arguments.delta",
+      output_index: 1,
+      item_id: itemId,
+      delta: functionArguments,
+    },
+    {
+      type: "response.function_call_arguments.done",
+      output_index: 1,
+      item_id: itemId,
+      arguments: functionArguments,
+    },
+    { type: "response.output_item.done", output_index: 1, item },
+    {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "completed",
+        output: [reasoningItem, item],
+        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      },
+    },
+  ]
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+}
+
+interface PiCheckpointS3Command {
+  readonly constructor?: { readonly name?: string };
+  readonly input?: {
+    readonly Body?: unknown;
+    readonly Bucket?: unknown;
+    readonly Delete?: {
+      readonly Objects?: readonly { readonly Key?: unknown }[];
+    };
+    readonly Key?: unknown;
+  };
+}
+
+function piCheckpointObjectKey(
+  candidate: PiCheckpointS3Command,
+): string | undefined {
+  const bucket = candidate.input?.Bucket;
+  const key = candidate.input?.Key;
+  return typeof bucket === "string" && typeof key === "string"
+    ? `${bucket}/${key}`
+    : undefined;
+}
+
+function mockPiPutObject(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const objectKey = piCheckpointObjectKey(candidate);
+  if (candidate.constructor?.name !== "PutObjectCommand" || !objectKey) {
+    return undefined;
+  }
+  const body = candidate.input?.Body;
+  if (typeof body === "string") {
+    objects.set(objectKey, Buffer.from(body, "utf8"));
+  } else if (body instanceof Uint8Array) {
+    objects.set(objectKey, Buffer.from(body));
+  } else {
+    throw new Error("Expected Pi S3 writes to use string or byte bodies");
+  }
+  return Promise.resolve({});
+}
+
+function mockPiGetObject(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const objectKey = piCheckpointObjectKey(candidate);
+  if (candidate.constructor?.name !== "GetObjectCommand" || !objectKey) {
+    return undefined;
+  }
+  const bytes = objects.get(objectKey);
+  return bytes
+    ? Promise.resolve({
+        ContentLength: bytes.length,
+        Body: (async function* () {
+          yield bytes;
+        })(),
+      })
+    : undefined;
+}
+
+function mockPiDeleteObjects(
+  objects: Map<string, Buffer>,
+  candidate: PiCheckpointS3Command,
+): Promise<unknown> | undefined {
+  const bucket = candidate.input?.Bucket;
+  if (
+    candidate.constructor?.name !== "DeleteObjectsCommand" ||
+    typeof bucket !== "string"
+  ) {
+    return undefined;
+  }
+  for (const object of candidate.input?.Delete?.Objects ?? []) {
+    if (typeof object.Key === "string") {
+      objects.delete(`${bucket}/${object.Key}`);
+    }
+  }
+  return Promise.resolve({});
+}
+
+function mockPiCheckpointObjectStore(): Map<string, Buffer> {
+  const objects = new Map<string, Buffer>();
+  const fallback = context.mocks.s3.send.getMockImplementation();
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const candidate = command as PiCheckpointS3Command;
+    return (
+      mockPiPutObject(objects, candidate) ??
+      mockPiGetObject(objects, candidate) ??
+      mockPiDeleteObjects(objects, candidate) ??
+      fallback?.(command) ??
+      Promise.resolve({})
+    );
+  });
+  return objects;
+}
+
+function latestStoredArchive(): Buffer {
+  for (const [command] of [...context.mocks.s3.send.mock.calls].reverse()) {
+    const candidate = command as {
+      readonly constructor?: { readonly name?: string };
+      readonly input?: { readonly Body?: unknown; readonly Key?: unknown };
+    };
+    if (
+      candidate.constructor?.name === "PutObjectCommand" &&
+      typeof candidate.input?.Key === "string" &&
+      candidate.input.Key.endsWith("/archive.tar.gz") &&
+      candidate.input.Body instanceof Uint8Array
+    ) {
+      return Buffer.from(candidate.input.Body);
+    }
+  }
+  throw new Error("Expected an uploaded Storage archive fixture");
+}
+
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
 }
 
 describe("CHAT-02: model-first provider policies", () => {
@@ -4353,8 +4630,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
-      expect(vm0Send.body.error.message).toContain(
-        "No model provider configured",
+      expect(vm0Send.body.error.message).toBe(
+        "No model provider configured: no built-in model key is configured",
       );
     } else {
       const vm0Body = vm0Send.body as { readonly runId: string | null };
@@ -4365,7 +4642,7 @@ describe("CHAT-02: model-first provider policies", () => {
   }, 90_000);
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "runs Pi for %s and resumes its thread-scoped JSONL session",
+    "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = actor.orgId;
@@ -4390,53 +4667,98 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
+      const discoveryArchive = latestStoredArchive();
+      server.use(
+        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+          return new HttpResponse(discoveryArchive, {
+            headers: { "content-type": "application/gzip" },
+          });
+        }),
+      );
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const modelRequests: {
+        readonly authorization: string | null;
+        readonly body: unknown;
+      }[] = [];
+      const modelAnswers = [
+        `first API answer for ${selectedModel}`,
+        `second API answer for ${selectedModel}`,
+      ];
+      server.use(
+        http.post("https://api.deepseek.com/responses", async ({ request }) => {
+          const sequence = modelRequests.length;
+          modelRequests.push({
+            authorization: request.headers.get("authorization"),
+            body: await request.json(),
+          });
+          const answer = modelAnswers[sequence];
+          if (!answer) {
+            return HttpResponse.json(
+              { error: "unexpected duplicate Pi model request" },
+              { status: 500 },
+            );
+          }
+          return new HttpResponse(piResponsesTextSse(answer, sequence), {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }),
+      );
       const firstPrompt = "persist this turn in the native Pi session";
       const first = await sendChatRun(actor, {
         agentId,
         prompt: firstPrompt,
         model: selectedModel,
       });
-      const firstClaim = await claimChatRun(runnerGroup, first.runId);
-      const firstContext = firstClaim.claim;
-
-      expect(firstContext.cliAgentType).toBe("pi");
+      await waitForRunStatus(actor, first.runId, "completed");
+      await flushWaitUntilForTest();
       await expect(
         readRunLaunchSnapshotFixture(context, first.runId),
       ).resolves.toStrictEqual({
         exists: true,
         launch_snapshot: {
           schemaVersion: 1,
-          framework: firstContext.cliAgentType,
+          framework: "pi",
           runnerProfile: DEFAULT_PROFILE,
         },
       });
-      expect(firstContext.piSessionId).toBe(first.threadId);
-      expect(firstContext.prompt).toBe(firstPrompt);
-      expect(firstContext.piLaunchConfig).not.toHaveProperty(
-        "appendSystemPrompt",
+      expect(modelRequests).toHaveLength(1);
+      expect(modelRequests[0]?.authorization).toBe(
+        "Bearer selected-pi-sandbox-key",
       );
-      expect(firstContext.piLaunchConfig).toStrictEqual({ schemaVersion: 2 });
-      expect(firstContext.storageManifest?.storageMounts).toStrictEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            mountPath: "/home/user/.pi/agent",
-            instructionsTargetFilename: "AGENTS.md",
-          }),
-        ]),
+      const firstModelInput = JSON.stringify(modelRequests[0]?.body);
+      expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
+      expect(occurrences(firstModelInput, modelAnswers[0] ?? "")).toBe(0);
+      // The first GET validates the just-written native H1 before canonical
+      // checkpoint promotion; there is no H0 to download on a new thread.
+      expect(s3GetObjectCommandCalls()).toHaveLength(1);
+      const firstManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/manifest.json`;
+      const firstSessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/session.jsonl`;
+      const firstSessionEntry = [...checkpointObjects.entries()].find(
+        ([key]) => {
+          return key.includes("/blobs/");
+        },
       );
-      expect(firstContext.piModelConfig).toStrictEqual({
-        provider: "deepseek",
-        baseUrl: "https://api.deepseek.com/",
-        model: selectedModel,
-        apiKeyEnv: "OPENAI_API_KEY",
+      const firstSessionBytes = firstSessionEntry?.[1];
+      expect(checkpointObjects.has(firstManifestKey)).toBeFalsy();
+      expect(checkpointObjects.has(firstSessionKey)).toBeFalsy();
+      expect(firstSessionBytes).toBeDefined();
+      const firstSessionHash = createHash("sha256")
+        .update(firstSessionBytes ?? Buffer.alloc(0))
+        .digest("hex");
+      expect(firstSessionBytes?.toString("utf8")).toContain(first.threadId);
+      expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+        `runner-group:${runnerGroup}`,
+      );
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+        runId: first.runId,
+        mode: "hard",
       });
-      expect(firstContext.resumeSession).toBeNull();
-      expect(firstContext).not.toHaveProperty("piExecutionMode");
-      expect(firstContext).not.toHaveProperty("runSkillSnapshot");
-      expect(s3GetObjectCommandCalls()).toHaveLength(0);
-      expect(claimEnvironment(firstContext).OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      const firstClaim = await api.requestClaimRunnerJob(
+        true,
+        first.runId,
+        [404],
       );
+      expect(firstClaim.status).toBe(404);
       const firstTimingEvents = apiDispatchTimingEventsForRun(first.runId);
       expectPiLaunchResourceTiming(firstTimingEvents, "required");
       expectApiDispatchTimingEventsNotToLeak(firstTimingEvents, [
@@ -4445,51 +4767,765 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
       ]);
 
-      const historyHash = createHash("sha256")
-        .update(`pi jsonl checkpoint ${first.runId}`)
-        .digest("hex");
-      await webhooks.requestAgentCheckpoint(
-        {
-          runId: first.runId,
-          cliAgentType: "pi",
-          cliAgentSessionId: first.threadId,
-          cliAgentSessionHistoryHash: historyHash,
-        },
-        firstClaim.sandboxHeaders,
-        [200],
-      );
-      await webhooks.requestAgentComplete(
-        { runId: first.runId, exitCode: 0 },
-        firstClaim.sandboxHeaders,
-        [200],
-      );
-
       const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(actor, {
         agentId,
         threadId: first.threadId,
         prompt: secondPrompt,
       });
-      const secondClaim = await claimChatRun(runnerGroup, second.runId);
-
-      expect(secondClaim.claim.cliAgentType).toBe("pi");
-      expect(secondClaim.claim.piSessionId).toBe(first.threadId);
-      expect(secondClaim.claim.resumeSession).toMatchObject({
-        sessionId: first.threadId,
-        historyRef: { kind: "blob", hash: historyHash },
+      await waitForRunStatus(actor, second.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(modelRequests).toHaveLength(2);
+      expect(modelRequests[1]?.authorization).toBe(
+        "Bearer selected-pi-sandbox-key",
+      );
+      const secondModelInput = JSON.stringify(modelRequests[1]?.body);
+      expect(occurrences(secondModelInput, firstPrompt)).toBe(1);
+      expect(occurrences(secondModelInput, modelAnswers[0] ?? "")).toBe(1);
+      expect(occurrences(secondModelInput, secondPrompt)).toBe(1);
+      expect(occurrences(secondModelInput, modelAnswers[1] ?? "")).toBe(0);
+      // Follow-up adds one H0 restore and one strict H1 promotion check.
+      expect(s3GetObjectCommandCalls()).toHaveLength(3);
+      const secondManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
+      expect(checkpointObjects.has(secondManifestKey)).toBeFalsy();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+        runId: second.runId,
+        mode: "hard",
       });
+      const secondClaim = await api.requestClaimRunnerJob(
+        true,
+        second.runId,
+        [404],
+      );
+      expect(secondClaim.status).toBe(404);
       const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
       expectPiLaunchResourceTiming(secondTimingEvents, "required");
       expectApiDispatchTimingEventsNotToLeak(secondTimingEvents, [
         secondPrompt,
         first.threadId,
         agentId,
-        historyHash,
+        firstSessionHash,
       ]);
-      await cancelChatRun(actor, second.runId);
     },
     90_000,
   );
+
+  it.each([
+    {
+      failure: "resource download",
+      expectedCode: "PI_API_RESOURCE_INVALID",
+      failResource: true,
+      expectedModelCalls: 0,
+    },
+    {
+      failure: "model request",
+      expectedCode: "PI_API_MODEL_FAILED",
+      failResource: false,
+      expectedModelCalls: 1,
+    },
+  ] as const)(
+    "fails Pi on $failure without claiming Sandbox or replaying the model",
+    async ({ expectedCode, failResource, expectedModelCalls }) => {
+      const { actor, agentId } = await entitledChatActor();
+      if (!actor.orgId) {
+        throw new Error("Expected entitled chat actor to have an org");
+      }
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "deepseek",
+        secret: "strict-pi-failure-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          defaultProviderType: "deepseek",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const archive = latestStoredArchive();
+      server.use(
+        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+          return failResource
+            ? HttpResponse.json(
+                { error: "archive unavailable" },
+                { status: 503 },
+              )
+            : new HttpResponse(archive, {
+                headers: { "content-type": "application/gzip" },
+              });
+        }),
+      );
+      let modelCalls = 0;
+      server.use(
+        http.post("https://api.deepseek.com/responses", () => {
+          modelCalls += 1;
+          return HttpResponse.json(
+            { error: "provider unavailable" },
+            { status: 503 },
+          );
+        }),
+      );
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const prompt = `strict ${expectedCode} prompt`;
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt,
+        model: "deepseek-v4-flash",
+      });
+
+      await waitForRunStatus(actor, run.runId, "failed");
+      await flushWaitUntilForTest();
+      const failed = await api.readRun(actor, run.runId);
+      expect(failed.error).toContain(`[${expectedCode}]`);
+      expect(modelCalls).toBe(expectedModelCalls);
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+        ),
+      ).toBeFalsy();
+      const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+      expect(claim.status).toBe(404);
+    },
+    90_000,
+  );
+
+  it("fails a corrupt Pi H0 before a second model call and preserves H0", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "strict-pi-h0-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const archive = latestStoredArchive();
+    server.use(
+      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+        return new HttpResponse(archive, {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesTextSse("canonical H0 answer", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "create canonical Pi H0",
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, first.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    const bindingBeforeFailure = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    const firstSessionBytes = checkpointObjects.get(
+      [...checkpointObjects.keys()].find((key) => {
+        return key.includes("/blobs/");
+      }) ?? "missing-canonical-pi-blob",
+    );
+    if (!firstSessionBytes) {
+      throw new Error("Expected the first Pi run to persist native H1");
+    }
+    const malformedH0 = `${firstSessionBytes.toString("utf8")}{malformed\n`;
+    const h0Hash = await replacePiSessionHistoryJsonlFixture({
+      runId: first.runId,
+      jsonl: malformedH0,
+    });
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h0Hash}.blob`,
+      Buffer.from(malformedH0, "utf8"),
+    );
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "must not reach the model",
+    });
+    await waitForRunStatus(actor, second.runId, "failed");
+    await flushWaitUntilForTest();
+    expect((await api.readRun(actor, second.runId)).error).toContain(
+      "[PI_H0_JSONL_INVALID]",
+    );
+    expect(modelCalls).toBe(1);
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toStrictEqual({
+      ...bindingBeforeFailure,
+      agent_session_run_id: second.runId,
+    });
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    const claim = await api.requestClaimRunnerJob(true, second.runId, [404]);
+    expect(claim.status).toBe(404);
+  }, 90_000);
+
+  it("publishes one H1 and hands an explicit Sandbox tool turn to H2", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "strict-pi-handoff-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const archive = latestStoredArchive();
+    server.use(
+      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+        return new HttpResponse(archive, {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesToolSse({
+            callId: "call_pi_read",
+            name: "read",
+            arguments: { path: "/home/user/workspace/handoff.txt" },
+            sequence: modelCalls,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompt = "read the Sandbox handoff fixture";
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      model: "deepseek-v4-flash",
+    });
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(manifestKey);
+      })
+      .toBe(true);
+    expect(modelCalls).toBe(1);
+    const manifest = JSON.parse(
+      checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
+    ) as {
+      readonly outcome?: unknown;
+      readonly baseSession?: unknown;
+      readonly session?: {
+        readonly sessionId?: unknown;
+        readonly sha256?: unknown;
+        readonly rawSize?: unknown;
+      };
+    };
+    expect(manifest).toMatchObject({
+      outcome: "handoff",
+      baseSession: { sessionId: run.threadId, sha256: null },
+      session: {
+        sessionId: run.threadId,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        rawSize: expect.any(Number),
+      },
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(claimed.claim.cliAgentType).toBe("pi");
+    expect(claimed.claim.piSessionId).toBe(run.threadId);
+    expect(claimed.claim.piLaunchConfig).toMatchObject({
+      schemaVersion: 2,
+      apiFirstTurn: {
+        schemaVersion: 1,
+        baseSession: { sessionId: run.threadId, sha256: null },
+        sandboxEventSequenceStart: 1,
+      },
+    });
+    expect(claimed.claim.prompt).toBe(prompt);
+    const h1 =
+      checkpointObjects
+        .get(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+        )
+        ?.toString("utf8") ?? "";
+    expect(h1).toContain('"type":"thinking_level_change"');
+    expect(h1).toContain('"thinkingLevel":"high"');
+    const h2Session = MemoryPiSession.fromJsonl(h1);
+    const h1Assistant = [...h2Session.buildSessionContext().messages]
+      .reverse()
+      .find((message) => {
+        return message.role === "assistant";
+      });
+    const h1Thinking =
+      h1Assistant?.role === "assistant"
+        ? h1Assistant.content.find((content) => {
+            return content.type === "thinking";
+          })
+        : undefined;
+    expect(h1Thinking?.type).toBe("thinking");
+    expect(
+      h1Thinking?.type === "thinking"
+        ? JSON.parse(h1Thinking.thinkingSignature ?? "{}")
+        : {},
+    ).toMatchObject({
+      type: "reasoning",
+      content: [
+        {
+          type: "reasoning_text",
+          text: "API-first reasoning preserved for Sandbox resume",
+        },
+      ],
+    });
+    h2Session.appendMessage({
+      role: "toolResult",
+      toolCallId: "call_pi_read|fc_pi_tool_1",
+      toolName: "read",
+      content: [{ type: "text", text: "Sandbox tool output" }],
+      details: {},
+      isError: false,
+      timestamp: 2,
+    });
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Sandbox H2 complete" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 3,
+    });
+    const h2 = h2Session.toJsonl();
+    const h2Hash = createHash("sha256").update(h2).digest("hex");
+    const preparedH2 = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: h2Hash,
+        rawSize: Buffer.byteLength(h2),
+        encodedSize: Buffer.byteLength(h2),
+        encoding: "identity",
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(preparedH2.body).toMatchObject({
+      existing: false,
+      encoding: "identity",
+    });
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
+      Buffer.from(h2, "utf8"),
+    );
+    const committedH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    const committedH2Body = committedH2.body;
+    if ("error" in committedH2Body) {
+      throw new Error(
+        `Expected H2 checkpoint success: ${committedH2Body.error.message}`,
+      );
+    }
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    expect(checkpointObjects.has(manifestKey)).toBeFalsy();
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+      ),
+    ).toBeFalsy();
+    const canonicalConversation = await readThreadSessionConversation(
+      context,
+      run.threadId,
+    );
+    expect(canonicalConversation).toMatchObject({
+      conversation_run_id: run.runId,
+    });
+
+    const idempotentH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(idempotentH2.body).toMatchObject({
+      checkpointId: committedH2Body.checkpointId,
+      conversationId: committedH2Body.conversationId,
+    });
+
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "late replacement H2" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+    const replacementH2 = h2Session.toJsonl();
+    expect(
+      MemoryPiSession.fromJsonl(replacementH2).isSettledCheckpoint(),
+    ).toBeTruthy();
+    const replacementH2Hash = createHash("sha256")
+      .update(replacementH2)
+      .digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: replacementH2Hash,
+        rawSize: Buffer.byteLength(replacementH2),
+        encodedSize: Buffer.byteLength(replacementH2),
+        encoding: "identity",
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${replacementH2Hash}.blob`,
+      Buffer.from(replacementH2, "utf8"),
+    );
+    const replacementCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: replacementH2Hash,
+      },
+      claimed.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(replacementCheckpoint.body)).toContain(
+      "[PI_H2_ALREADY_COMMITTED]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(1);
+
+    const failedHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "reject a non-native Sandbox H2",
+    });
+    const failedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${failedHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(failedManifestKey);
+      })
+      .toBe(true);
+    const failedClaim = await claimChatRun(runnerGroup, failedHandoff.runId);
+    const invalidH2 = Buffer.from(`${h2}{malformed\n`, "utf8");
+    const invalidH2Hash = createHash("sha256").update(invalidH2).digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: failedHandoff.runId,
+        hash: invalidH2Hash,
+        rawSize: invalidH2.length,
+        encodedSize: invalidH2.length,
+        encoding: "identity",
+      },
+      failedClaim.sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidH2Hash}.blob`,
+      invalidH2,
+    );
+    const invalidCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: failedHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: invalidH2Hash,
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(invalidCheckpoint.body)).toContain(
+      "[PI_H2_JSONL_INVALID]",
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: failedHandoff.runId,
+        exitCode: 1,
+        error: "[PI_H2_JSONL_INVALID] rejected native checkpoint",
+      },
+      failedClaim.sandboxHeaders,
+      [200],
+    );
+    await waitForRunStatus(actor, failedHandoff.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(2);
+    expect(checkpointObjects.has(failedManifestKey)).toBeFalsy();
+    const lateFailedH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: failedHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateFailedH2.body)).toContain("[PI_H2_RUN_TERMINAL]");
+    const spoofedFailedH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: failedHandoff.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(spoofedFailedH2.body)).toContain(
+      "[PI_H2_TYPE_MISMATCH]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(2);
+
+    if (!canonicalConversation.agent_session_id) {
+      throw new Error("Expected the completed Pi run to own an AgentSession");
+    }
+    const explicitResume = await api.createRun(actor, {
+      agentId,
+      sessionId: canonicalConversation.agent_session_id,
+      prompt: "explicitly resume the last completed Pi checkpoint",
+    });
+    const explicitResumeClaim = await api.claimRunnerJob(explicitResume.runId);
+    expect(explicitResumeClaim.resumeSession).toMatchObject({
+      sessionId: run.threadId,
+      historyRef: {
+        kind: "blob",
+        hash: h2Hash,
+      },
+    });
+    expect(modelCalls).toBe(2);
+    await api.requestCancelRun(actor, explicitResume.runId, [200]);
+    await waitForRunStatus(actor, explicitResume.runId, "cancelled");
+
+    const cancelledHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "reject H2 after an explicit Pi handoff is cancelled",
+    });
+    const cancelledManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${cancelledHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(cancelledManifestKey);
+      })
+      .toBe(true);
+    const cancelledClaim = await claimChatRun(
+      runnerGroup,
+      cancelledHandoff.runId,
+    );
+    await cancelChatRun(
+      actor,
+      cancelledHandoff.runId,
+      cancelledClaim.sandboxHeaders,
+    );
+    const lateCancelledH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: cancelledHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      cancelledClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateCancelledH2.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(3);
+
+    const racedHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "serialize H2 against an early successful completion",
+    });
+    const racedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${racedHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(racedManifestKey);
+      })
+      .toBe(true);
+    const racedClaim = await claimChatRun(runnerGroup, racedHandoff.runId);
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+    const racedCompletion = webhooks.requestAgentComplete(
+      { runId: racedHandoff.runId, exitCode: 0 },
+      racedClaim.sandboxHeaders,
+      [200],
+    );
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    const racedCheckpoint = webhooks.requestAgentCheckpoint(
+      {
+        runId: racedHandoff.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      racedClaim.sandboxHeaders,
+      [400],
+    );
+    checkpointGate.release();
+    await checkpointGate.done;
+    await expect(racedCompletion).resolves.toMatchObject({
+      body: { success: true, status: "failed" },
+    });
+    const racedCheckpointResponse = await racedCheckpoint;
+    expect(JSON.stringify(racedCheckpointResponse.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    await waitForRunStatus(actor, racedHandoff.runId, "failed");
+    await flushWaitUntilForTest();
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(4);
+
+    const retry = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "resume only the last completed Pi checkpoint",
+    });
+    const retryManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${retry.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(retryManifestKey);
+      })
+      .toBe(true);
+    const retryManifest = JSON.parse(
+      checkpointObjects.get(retryManifestKey)?.toString("utf8") ?? "{}",
+    ) as {
+      readonly baseSession?: {
+        readonly sessionId?: unknown;
+        readonly sha256?: unknown;
+      };
+    };
+    expect(retryManifest.baseSession).toStrictEqual({
+      sessionId: run.threadId,
+      sha256: h2Hash,
+    });
+    expect(modelCalls).toBe(5);
+    const timedOutClaim = await claimChatRun(runnerGroup, retry.runId);
+    await timeoutRunWithoutCallbacksFixture({ runId: retry.runId });
+    await waitForRunStatus(actor, retry.runId, "timeout");
+    const lateTimedOutH2 = await webhooks.requestAgentCheckpoint(
+      {
+        runId: retry.runId,
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+      timedOutClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(lateTimedOutH2.body)).toContain(
+      "[PI_H2_RUN_TERMINAL]",
+    );
+    const timedOutCompletion = await webhooks.requestAgentComplete(
+      { runId: retry.runId, exitCode: 0 },
+      timedOutClaim.sandboxHeaders,
+      [200],
+    );
+    expect(timedOutCompletion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await waitForRunStatus(actor, retry.runId, "failed");
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(5);
+  }, 90_000);
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -4720,7 +5756,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     await flushWaitUntilForTest();
 
-    await seedVm0ManagedModelKey("gpt-5.6-terra");
+    await seedVm0BuiltInModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-terra",
@@ -5023,7 +6059,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
-    await seedVm0ManagedModelKey("gpt-5.6-sol");
+    await seedVm0BuiltInModelKey("gpt-5.6-sol");
 
     await api.updateOrgModelPolicies(actor, [
       {
@@ -5107,7 +6143,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const environment = claimEnvironment(fastClaim.claim);
     expect(fastClaim.claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
+      environment.OKOU_CODEX_SERVICE_TIER,
+    );
     expect(environment.OPENAI_API_KEY).toBeTruthy();
     expect(environment.CHATGPT_ACCESS_TOKEN).toBeUndefined();
     await cancelChatRun(actor, fast.runId, fastClaim.sandboxHeaders);
@@ -5211,6 +6250,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const standardEnvironment = claimEnvironment(standardClaim);
     expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.6-luna");
+    expect(standardEnvironment.OKOU_CODEX_SERVICE_TIER).toBeUndefined();
     expect(standardEnvironment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     await cancelChatRun(actor, standard.runId);
 
@@ -5303,7 +6343,10 @@ describe("CHAT-02: model-first provider policies", () => {
       modelProviderSecretPlaceholder("openai-api-key", "OPENAI_API_KEY"),
     );
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-luna");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
+      environment.OKOU_CODEX_SERVICE_TIER,
+    );
     expect(
       (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBe("priority");
@@ -5399,15 +6442,14 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 DeepSeek through native Pi bindings", async () => {
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+  it("runs vm0 DeepSeek through the native Pi API credential", async () => {
+    const { actor, agentId } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
-    await seedVm0ManagedModelKey("deepseek-v4-flash");
+    await seedVm0BuiltInModelKey("deepseek-v4-flash");
     const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
@@ -5417,7 +6459,10 @@ describe("CHAT-02: model-first provider policies", () => {
     let runId: string | null = null;
     const cancelRunIfCreated = async () => {
       if (runId) {
-        await api.requestCancelRun(actor, runId, [200]);
+        const status = (await api.readRun(actor, runId)).status;
+        if (status === "pending" || status === "running") {
+          await api.requestCancelRun(actor, runId, [200]);
+        }
       }
     };
     const releaseVm0DeepSeekKey = async () => {
@@ -5445,6 +6490,31 @@ describe("CHAT-02: model-first provider policies", () => {
           modelProviderId: null,
         },
       ]);
+      const archive = latestStoredArchive();
+      server.use(
+        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+          return new HttpResponse(archive, {
+            headers: { "content-type": "application/gzip" },
+          });
+        }),
+      );
+      mockPiCheckpointObjectStore();
+      const modelRequests: {
+        readonly authorization: string | null;
+        readonly body: unknown;
+      }[] = [];
+      server.use(
+        http.post("https://api.deepseek.com/responses", async ({ request }) => {
+          modelRequests.push({
+            authorization: request.headers.get("authorization"),
+            body: await request.json(),
+          });
+          return new HttpResponse(
+            piResponsesTextSse("vm0 Pi API response", modelRequests.length),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }),
+      );
 
       const run = await sendChatRun(actor, {
         agentId,
@@ -5452,68 +6522,29 @@ describe("CHAT-02: model-first provider policies", () => {
         model: "deepseek-v4-flash",
       });
       runId = run.runId;
-
-      const { claim, sandboxHeaders } = await claimChatRun(
-        runnerGroup,
-        run.runId,
-      );
-      const environment = claimEnvironment(claim);
-      expect(claim.cliAgentType).toBe("pi");
-      expect(environment.OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
-      );
-      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
-      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
-      expect(claim.firewalls).toContainEqual(
-        expect.objectContaining({
-          kind: "builtin",
-          name: "model-provider:deepseek",
-        }),
-      );
-      expect(claim.billableFirewalls).toContain("model-provider:deepseek");
-      expect(claim.piModelConfig).toStrictEqual({
-        provider: "deepseek",
-        baseUrl: "https://api.deepseek.com/",
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(modelRequests).toHaveLength(1);
+      expect(modelRequests[0]?.authorization).toBe(`Bearer ${selectedApiKey}`);
+      expect(modelRequests[0]?.body).toMatchObject({
         model: "deepseek-v4-flash",
-        apiKeyEnv: "OPENAI_API_KEY",
+        stream: true,
       });
-      expect(claim.modelUsageProvider).toBe("deepseek-v4-flash");
-
-      if (!claim.encryptedSecrets) {
-        throw new Error("Expected DeepSeek claim to carry encrypted secrets");
-      }
-      const resolved = await fw.requestFirewallAuth(
-        sandboxHeaders,
-        {
-          encryptedSecrets: claim.encryptedSecrets,
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("DEEPSEEK_API_KEY")}`,
-          },
-          secretConnectorMap: claim.secretConnectorMap ?? undefined,
-          secretConnectorMetadataMap:
-            claim.secretConnectorMetadataMap ?? undefined,
-        },
-        [200],
-      );
-      if (resolved.status !== 200) {
-        throw new Error("Expected DeepSeek firewall auth to resolve");
-      }
-      expect(resolved.body.headers.Authorization).toBe(
-        `Bearer ${selectedApiKey}`,
-      );
-      expect(resolved.body.resolvedSecrets).toStrictEqual(["DEEPSEEK_API_KEY"]);
+      const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+      expect(claim.status).toBe(404);
+      runId = null;
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;
     });
   }, 90_000);
 
-  it("selects a vm0 managed key by vendor", async () => {
+  it("selects a vm0 built-in model key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
-    await seedVm0ManagedModelKey("claude-opus-4-8");
+    await seedVm0BuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
@@ -5998,7 +7029,7 @@ describe("CHAT-02: run-level model overrides", () => {
   it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const selectedModel = "claude-sonnet-5";
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     await api.updateOrgModelPolicies(actor, [
       {
         model: selectedModel,
@@ -6011,7 +7042,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const first = await sendChatRun(actor, {
       agentId,
-      prompt: "establish a managed runtime route",
+      prompt: "establish a built-in model runtime route",
       model: selectedModel,
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -6022,7 +7053,7 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
     );
     if (!firstBinding.agent_session_id) {
-      throw new Error("Expected the managed route to bind a session");
+      throw new Error("Expected the built-in model route to bind a session");
     }
     await expect(
       readRunModelRuntimeRouteFixture(first.runId),
@@ -6031,14 +7062,14 @@ describe("CHAT-02: run-level model overrides", () => {
       selectedModel,
       modelRuntimeProvider: "anthropic-api-key",
       modelRuntimeModel: selectedModel,
-      vm0ModelKeyId: expect.any(String),
-      modelKeyVendor: "anthropic",
+      builtInModelKeyId: expect.any(String),
+      builtInModelKeyVendor: "anthropic",
     });
 
     const reused = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "reuse the same managed route",
+      prompt: "reuse the same built-in model route",
     });
     const reusedBinding = await readThreadSessionBinding(
       context,
@@ -8630,7 +9661,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
     }
     expect(presentationPrompt).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
@@ -8776,6 +9807,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(websitePrompt).toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("use `seedream4` by default");
+    expect(websitePrompt).not.toContain("okou generate image-batch start");
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
 
@@ -8798,9 +9830,17 @@ describe("CHAT-02: generation templates and attachments", () => {
       "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(latestWebsitePrompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      "Image workflow: use supplied images first;",
     );
+    expect(latestWebsitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
+    );
+    expect(latestWebsitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(latestWebsitePrompt).not.toContain("tools/generate-images.mjs");
     expect(latestWebsitePrompt).not.toContain("resolve-images.mjs");
+    expect(latestWebsitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, latestWebsite.runId);
   }, 90_000);
 
@@ -9011,6 +10051,66 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
 
+  it("rejects a private presentation template the caller cannot read", async () => {
+    const actor = bdd.user();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Private template selection requires an organization");
+    }
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Private template agent",
+    });
+    // Well formed and syntactically a row id, but no such row exists for this
+    // owner. A deleted template and someone else's template are the same
+    // answer on purpose: neither may be distinguished from the outside.
+    const templateId = formatUserPresentationTemplateId(randomUUID());
+    const selection: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: { templateId },
+    };
+
+    const switchedOff = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(switchedOff.body);
+    // While the switch is off the private namespace does not exist at all, so
+    // the id is not a template this API knows about.
+    expect(switchedOff.body.error.message).toBe("Unknown generation template");
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PresentationTemplates]: true },
+    );
+
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "use my own deck",
+        userMessage: userMessageWithTemplate("use my own deck", selection),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe("Presentation template not found");
+
+    // Rejected before dispatch: no event is persisted and no run starts.
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(events.status).toBe(200);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
+  }, 60_000);
+
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -9135,9 +10235,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     const firstWaveStarted = createDeferredPromise<void>(context.signal);
     const releaseFirstWave = createDeferredPromise<void>(context.signal);
-    let startedLists = 0;
-    let activeLists = 0;
-    let peakActiveLists = 0;
+    let matchingListRequests = 0;
+    let startedHeads = 0;
+    let activeHeads = 0;
+    let peakActiveHeads = 0;
     context.mocks.s3.send.mockImplementation(
       async (command: unknown): Promise<unknown> => {
         if (command instanceof ListObjectsV2Command) {
@@ -9149,14 +10250,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           if (!object) {
             return { Contents: [] };
           }
-          startedLists += 1;
-          activeLists += 1;
-          peakActiveLists = Math.max(peakActiveLists, activeLists);
-          if (startedLists === 4) {
-            firstWaveStarted.resolve(undefined);
-          }
-          await releaseFirstWave.promise;
-          activeLists -= 1;
+          matchingListRequests += 1;
           return {
             Contents: [
               {
@@ -9174,6 +10268,14 @@ describe("CHAT-02: generation templates and attachments", () => {
           if (!object) {
             return {};
           }
+          startedHeads += 1;
+          activeHeads += 1;
+          peakActiveHeads = Math.max(peakActiveHeads, activeHeads);
+          if (startedHeads === 4) {
+            firstWaveStarted.resolve(undefined);
+          }
+          await releaseFirstWave.promise;
+          activeHeads -= 1;
           return {
             ContentLength: object.size,
             ContentType: object.contentType,
@@ -9223,9 +10325,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
 
     await firstWaveStarted.promise;
-    expect(startedLists).toBe(4);
-    expect(activeLists).toBe(4);
-    expect(peakActiveLists).toBe(4);
+    expect(startedHeads).toBe(4);
+    expect(activeHeads).toBe(4);
+    expect(peakActiveHeads).toBe(4);
     releaseFirstWave.resolve(undefined);
 
     const sent = await send;
@@ -9233,8 +10335,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (sent.status !== 201 || !sent.body.runId) {
       throw new Error("Expected the bounded attachment send to create a run");
     }
-    expect(startedLists).toBe(5);
-    expect(peakActiveLists).toBe(4);
+    expect(startedHeads).toBe(5);
+    expect(peakActiveHeads).toBe(4);
+    expect(matchingListRequests).toBe(0);
 
     const run = await api.readRun(actor, sent.body.runId);
     const promptPositions = files.map((file) => {
@@ -9282,9 +10385,186 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
   }, 60_000);
 
+  it("falls back to v2 listing when the attachment filename hint is stale", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const fileId = randomUUID();
+    const filenameSnapshot = "stale-extension.txt";
+    const storedFilename = "current-extension.png";
+    const exactKey = buildArtifactKeyV2(fileId, filenameSnapshot);
+    const storedKey = buildArtifactKeyV2(fileId, storedFilename);
+    const prefix = buildArtifactPrefixV2(fileId);
+    const operations: string[] = [];
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (command instanceof HeadObjectCommand) {
+          if (command.input.Key === exactKey) {
+            operations.push("head:exact");
+            const notFound = new Error("exact attachment key not found");
+            notFound.name = "NotFound";
+            return Promise.reject(notFound);
+          }
+          if (command.input.Key === storedKey) {
+            operations.push("head:listed");
+            return Promise.resolve({
+              ContentLength: 42,
+              ContentType: "image/png",
+              LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              Metadata: {
+                "artifact-id": fileId,
+                filename: encodeURIComponent(storedFilename),
+                "user-id": encodeURIComponent(actor.userId),
+              },
+            });
+          }
+          return Promise.resolve({});
+        }
+        if (
+          command instanceof ListObjectsV2Command &&
+          command.input.Prefix === prefix
+        ) {
+          operations.push("list:v2");
+          return Promise.resolve({
+            Contents: [
+              {
+                Key: storedKey,
+                Size: 42,
+                LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the stale filename attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot,
+            contentType: "image/png",
+          },
+          { type: "text", text: "read the stale filename attachment" },
+        ],
+      },
+    });
+
+    expect(operations).toStrictEqual(["head:exact", "list:v2", "head:listed"]);
+    const created = await api.readRun(actor, run.runId);
+    expect(created.prompt).toContain(`[Web file] ${filenameSnapshot}`);
+  }, 60_000);
+
+  it("falls back to v2 listing when the exact head lacks size", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const fileId = randomUUID();
+    const filename = "incomplete-head.txt";
+    const key = buildArtifactKeyV2(fileId, filename);
+    const prefix = buildArtifactPrefixV2(fileId);
+    const operations: string[] = [];
+    let headRequests = 0;
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (command instanceof HeadObjectCommand && command.input.Key === key) {
+          headRequests += 1;
+          operations.push(headRequests === 1 ? "head:exact" : "head:listed");
+          return Promise.resolve({
+            ContentType: "text/plain",
+            LastModified: new Date("2026-08-24T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": fileId,
+              filename: encodeURIComponent(filename),
+              "user-id": encodeURIComponent(actor.userId),
+            },
+          });
+        }
+        if (
+          command instanceof ListObjectsV2Command &&
+          command.input.Prefix === prefix
+        ) {
+          operations.push("list:v2");
+          return Promise.resolve({
+            Contents: [
+              {
+                Key: key,
+                Size: 73,
+                LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the incomplete head attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: filename,
+            contentType: "text/plain",
+          },
+          { type: "text", text: "read the incomplete head attachment" },
+        ],
+      },
+    });
+
+    expect(operations).toStrictEqual(["head:exact", "list:v2", "head:listed"]);
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: run.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    const summary = catalog.artifacts.find((artifact) => {
+      return artifact.title === filename;
+    });
+    if (!summary) {
+      throw new Error("Expected incomplete-head attachment in the catalog");
+    }
+    const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+    expect(detail.kind).toBe("file");
+    if (detail.kind !== "file") {
+      throw new Error("Expected incomplete-head file catalog entry");
+    }
+    expect(detail.file.size).toBe(73);
+  }, 60_000);
+
   it("does not create a run when an attachment is missing", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chat.mockEmptyObjectStorage();
+    const fileId = randomUUID();
+    const filename = "missing.txt";
+    const exactKey = buildArtifactKeyV2(fileId, filename);
+    let exactHeadRequests = 0;
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (
+          command instanceof HeadObjectCommand &&
+          command.input.Key === exactKey
+        ) {
+          exactHeadRequests += 1;
+          return Promise.resolve({
+            ContentLength: 42,
+            ContentType: "text/plain",
+            LastModified: new Date("2026-08-24T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": fileId,
+              filename: encodeURIComponent(filename),
+              "user-id": encodeURIComponent(`${actor.userId}-other`),
+            },
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
     const model = await chat.getDefaultCreateThreadModel(actor);
     const prompt = "reject the missing attachment";
     const response = await requestSendEventRaw(actor, {
@@ -9296,8 +10576,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         parts: [
           {
             type: "file",
-            fileId: randomUUID(),
-            filenameSnapshot: "missing.txt",
+            fileId,
+            filenameSnapshot: filename,
             contentType: "text/plain",
           },
           { type: "text", text: prompt },
@@ -9310,6 +10590,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       status: 500,
       body: { error: "Internal server error" },
     });
+    expect(exactHeadRequests).toBe(1);
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
       limit: 100,
@@ -9934,7 +11215,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       context,
       { ...actor, orgId },
       {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     );
     const installation = await github.installGithubApp(actor, agentId);
@@ -10012,7 +11293,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: run-scoped Zero-token chat launches", () => {
+describe("CHAT-02: run-scoped agent-token chat launches", () => {
   it("keeps immediate and queued runs agent-scoped without retired provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
@@ -10024,7 +11305,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
       agentId,
       prompt: "launch chat work from this run",
     });
-    const zeroToken = api.zeroTokenForRunWithCapabilities(actor, caller.runId, [
+    const okouToken = api.okouTokenForRunWithCapabilities(actor, caller.runId, [
       "chat-thread:read",
       "chat-thread:write",
       "chat-event:read",
@@ -10033,13 +11314,13 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
 
     const createdThread = await accept(
       chatThreadsClient().create({
-        headers: { authorization: `Bearer ${zeroToken}` },
+        headers: { authorization: `Bearer ${okouToken}` },
         body: { agentId, title: "Run-scoped handoff" },
       }),
       [201],
     );
     const immediate = await requestSendEventWithBearer(
-      zeroToken,
+      okouToken,
       {
         agentId,
         threadId: createdThread.body.id,
@@ -10089,7 +11370,7 @@ describe("CHAT-02: run-scoped Zero-token chat launches", () => {
 
     const queuedEventId = randomUUID();
     const queued = await requestSendEventWithBearer(
-      zeroToken,
+      okouToken,
       {
         agentId,
         clientEventId: queuedEventId,

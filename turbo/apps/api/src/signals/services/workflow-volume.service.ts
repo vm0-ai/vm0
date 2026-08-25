@@ -1,4 +1,4 @@
-import type { Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
@@ -54,88 +54,92 @@ function isMissingS3ObjectError(error: unknown): boolean {
  * head version's S3 objects are missing/empty. This is distinct from a volume
  * that loads successfully but contains no files (returns `[]`).
  */
-export async function loadWorkflowVolumeFiles(
-  get: <T>(computedValue: Computed<T>) => T,
-  args: { readonly orgId: string; readonly workflowId: string },
-): Promise<readonly WorkflowVolumeFile[] | null> {
-  const storageName = getCustomSkillStorageName(args.workflowId);
-  const [storage] = await get(db$)
-    .select({ id: storages.id, headVersionId: storages.headVersionId })
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, args.orgId),
-        eq(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.name, storageName),
-      ),
-    )
-    .limit(1);
+export function loadWorkflowVolumeFiles(args: {
+  readonly orgId: string;
+  readonly workflowId: string;
+}): Computed<Promise<readonly WorkflowVolumeFile[] | null>> {
+  return computed(async (get) => {
+    const storageName = getCustomSkillStorageName(args.workflowId);
+    const [storage] = await get(db$)
+      .select({ id: storages.id, headVersionId: storages.headVersionId })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, args.orgId),
+          eq(storages.userId, VOLUME_ORG_USER_ID),
+          eq(storages.name, storageName),
+        ),
+      )
+      .limit(1);
 
-  if (!storage?.headVersionId) {
-    return null;
-  }
-
-  const [version] = await get(db$)
-    .select({ s3Key: storageVersions.s3Key })
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, storage.id),
-        eq(storageVersions.id, storage.headVersionId),
-      ),
-    )
-    .limit(1);
-
-  if (!version) {
-    return null;
-  }
-
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  if (!bucket) {
-    return null;
-  }
-
-  const manifestResult = await settle(
-    get(downloadManifest(bucket, version.s3Key)),
-  );
-  if (!manifestResult.ok) {
-    if (isMissingS3ObjectError(manifestResult.error)) {
+    if (!storage?.headVersionId) {
       return null;
     }
-    throw manifestResult.error;
-  }
 
-  const filesList = manifestResult.value.files.map((f) => {
-    return { path: normalizePath(f.path), size: f.size };
-  });
+    const [version] = await get(db$)
+      .select({ s3Key: storageVersions.s3Key })
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, storage.id),
+          eq(storageVersions.id, storage.headVersionId),
+        ),
+      )
+      .limit(1);
 
-  const archiveKey = `${version.s3Key}/archive.tar.gz`;
-  const archiveResult = await settle(get(downloadS3Buffer(bucket, archiveKey)));
-  if (!archiveResult.ok) {
-    if (isMissingS3ObjectError(archiveResult.error)) {
+    if (!version) {
       return null;
     }
-    throw archiveResult.error;
-  }
 
-  const contents = extractFilesFromTarGz(
-    archiveResult.value,
-    filesList.map((file) => {
-      return file.path;
-    }),
-  );
-  const sizeByPath = new Map(
-    filesList.map((file) => {
-      return [file.path, file.size];
-    }),
-  );
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    if (!bucket) {
+      return null;
+    }
 
-  return contents.map((file) => {
-    const path = normalizePath(file.path);
-    return {
-      path,
-      content: file.content,
-      size: sizeByPath.get(path) ?? Buffer.byteLength(file.content, "utf8"),
-    };
+    const manifestResult = await settle(
+      get(downloadManifest(bucket, version.s3Key)),
+    );
+    if (!manifestResult.ok) {
+      if (isMissingS3ObjectError(manifestResult.error)) {
+        return null;
+      }
+      throw manifestResult.error;
+    }
+
+    const filesList = manifestResult.value.files.map((f) => {
+      return { path: normalizePath(f.path), size: f.size };
+    });
+
+    const archiveKey = `${version.s3Key}/archive.tar.gz`;
+    const archiveResult = await settle(
+      get(downloadS3Buffer(bucket, archiveKey)),
+    );
+    if (!archiveResult.ok) {
+      if (isMissingS3ObjectError(archiveResult.error)) {
+        return null;
+      }
+      throw archiveResult.error;
+    }
+
+    const contents = extractFilesFromTarGz(
+      archiveResult.value,
+      filesList.map((file) => {
+        return file.path;
+      }),
+    );
+    const sizeByPath = new Map(
+      filesList.map((file) => {
+        return [file.path, file.size];
+      }),
+    );
+
+    return contents.map((file) => {
+      const path = normalizePath(file.path);
+      return {
+        path,
+        content: file.content,
+        size: sizeByPath.get(path) ?? Buffer.byteLength(file.content, "utf8"),
+      };
+    });
   });
 }

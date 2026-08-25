@@ -53,7 +53,7 @@ export const startOrResumeRedemption$ = command(
     args: RedemptionArgs,
     signal: AbortSignal,
   ): Promise<RedemptionResult> => {
-    const outcome = await settle(runRedemption(args, set, signal));
+    const outcome = await settle(set(runRedemption$, args, signal));
     signal.throwIfAborted();
     if (outcome.ok) {
       return outcome.value;
@@ -78,9 +78,9 @@ export const startOrResumeRedemption$ = command(
   },
 );
 
-async function runRedemption(
+const runRedemption$ = command(async function runRedemption(
+  { set },
   args: RedemptionArgs,
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
   signal: AbortSignal,
 ): Promise<RedemptionResult> {
   // Fast path: row already exists — go straight to resume logic without
@@ -134,7 +134,7 @@ async function runRedemption(
     { args, stripeSessionId: winner.stripeSessionId },
     signal,
   );
-}
+});
 
 const selectRedemption$ = command(
   async (

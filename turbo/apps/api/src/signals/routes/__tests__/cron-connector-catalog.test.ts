@@ -11,16 +11,16 @@ import {
   type TestSystemStoragePresignedUrlCacheStateActionBody,
 } from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorsSearchContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorOpenIdStartContract,
+  connectorsSearchContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
   workflowAutomationsContract,
   workflowsCollectionContract,
@@ -51,9 +51,13 @@ import {
   apiTestConnectorCatalogValidationAuthority,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
+  deleteApiTestConnectorCatalogRuntimeProjectionSet,
+  expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
+  readApiTestConnectorCatalogRuntimeProjection,
+  readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
@@ -166,7 +170,11 @@ function createConnectorCleanup(
   return async () => {
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
     mockApiTestConnectorProviderConfiguration();
-    await connectorsApi.deleteConnectorBySlug(actor, connectorSlug, [204, 404]);
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      connectorSlug,
+      [204, 404],
+    );
   };
 }
 
@@ -1522,10 +1530,10 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
     setupApp({ context, routes: featureSwitchesRoutes })(
-      zeroFeatureSwitchesContract,
+      featureSwitchesContract,
     ).update({
       headers: { authorization: "Bearer clerk-session" },
-      body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+      body: { switches: { [FeatureSwitchKey.OkouDebug]: true } },
     }),
     [200],
   );
@@ -1533,7 +1541,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
     zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
       setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       ).delete({
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -1664,6 +1672,12 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
+    });
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
@@ -1680,6 +1694,10 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStatus);
 
     mockNow(new Date("2026-07-15T08:01:00.000Z"));
+    await deleteApiTestConnectorCatalogRuntimeProjectionSet();
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toBeNull();
     const callsBeforeUnchanged = context.mocks.s3.send.mock.calls.length;
     const unchanged = await syncCatalog();
     expect(unchanged.body).toMatchObject({
@@ -1704,17 +1722,52 @@ describe("connector catalog valid lifecycle", () => {
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(first.pointer),
     });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
+    });
+
+    await expireApiTestConnectorCatalogRuntimeProjectionAuthority();
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "999.0.0",
+      buildCommitSha: null,
+    });
+    mockNow(new Date("2026-07-15T08:02:00.000Z"));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "unchanged",
+      state: "current",
+      active: { catalogVersion: first.version },
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: second.version },
     });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [second.connectorSlug],
+    });
 
     serveObjects(catalogObjects([first, second], first));
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: first.version },
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjection(),
+    ).resolves.toStrictEqual({
+      connectorCount: 1,
+      connectorSlugs: [first.connectorSlug],
     });
 
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -1757,7 +1810,7 @@ describe("connector catalog valid lifecycle", () => {
       routes: connectorCatalogRoutes,
     })(connectorCatalogContract);
     const searchClient = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
@@ -2244,7 +2297,7 @@ describe("connector catalog valid lifecycle", () => {
     const featureClient = setupApp({
       context,
       routes: featureSwitchesRoutes,
-    })(zeroFeatureSwitchesContract);
+    })(featureSwitchesContract);
 
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
@@ -2554,7 +2607,7 @@ describe("connector catalog valid lifecycle", () => {
     const filtered = await syncCatalog();
     expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
 
-    await connectorsApi.deleteConnectorBySlug(actor, "agora");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "agora");
     const secretsAfterDelete = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2634,7 +2687,11 @@ describe("connector catalog valid lifecycle", () => {
       { statuses: [200] },
     );
     expect(replacement.status).toBe(200);
-    await connectorsApi.deleteConnectorBySlug(actor, "agora", [204]);
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "agora",
+      [204],
+    );
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -2765,7 +2822,7 @@ describe("connector catalog valid lifecycle", () => {
         await connectorsApi.deleteCustomConnector(actor, customConnectorId);
       }
       await cleanupConnector();
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     const connected = await connectorsApi.connectManualGrant(
       actor,
@@ -2818,7 +2875,7 @@ describe("connector catalog valid lifecycle", () => {
     ]);
     const grants = await accept(
       setupApp({ context, routes: userPermissionGrantsRoutes })(
-        zeroUserPermissionGrantsContract,
+        userPermissionGrantsContract,
       ).apply({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -2919,11 +2976,11 @@ describe("connector catalog valid lifecycle", () => {
     });
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const client = setupApp({ context, routes: userPermissionGrantsRoutes })(
-      zeroUserPermissionGrantsContract,
+      userPermissionGrantsContract,
     );
     await accept(
       client.apply({
@@ -3078,7 +3135,7 @@ describe("connector catalog valid lifecycle", () => {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
       }
       await connectorsApi.deleteCustomConnector(actor, custom.id);
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
@@ -3345,7 +3402,7 @@ describe("connector catalog valid lifecycle", () => {
           return skill.skill.storageId;
         }),
       );
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
 
     for (const [index, skill] of skills.entries()) {
@@ -3490,7 +3547,7 @@ describe("connector catalog valid lifecycle", () => {
         runtimeStorage.storageId,
       ]);
       await cleanupConnector();
-      await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+      await bdd.deleteAgent(actor, agent.agentId);
     });
     await connectorsApi.connectManualGrant(
       actor,
@@ -3736,11 +3793,14 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorOpenIdStartContract,
+        connectorOpenIdStartContract,
       ).start({
         params: { connectorSlug: "steam" },
         headers,
-        body: { authMethod: "openid" },
+        body: {
+          authMethod: "openid",
+          account: { intent: "single-account" },
+        },
       }),
       [200],
     );
@@ -3918,7 +3978,7 @@ describe("connector catalog valid lifecycle", () => {
       code: "catalog-slack-code",
       state,
     });
-    await connectorsApi.deleteConnectorBySlug(actor, "slack");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "slack");
     expect(revokeCalls).toBe(1);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
@@ -4122,7 +4182,7 @@ describe("connector catalog valid lifecycle", () => {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
       if (created.agentId) {
-        await bdd.deleteVersionFreeAgent(actor, created.agentId);
+        await bdd.deleteAgent(actor, created.agentId);
       }
       await deleteOrgPlanEntitlementFixture(orgId);
     });
@@ -4382,7 +4442,7 @@ describe("connector catalog valid lifecycle", () => {
         await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
       }
       if (created.agentId) {
-        await bdd.deleteVersionFreeAgent(actor, created.agentId);
+        await bdd.deleteAgent(actor, created.agentId);
       }
       await deleteOrgPlanEntitlementFixture(orgId);
     });
@@ -4674,7 +4734,7 @@ describe("connector catalog valid lifecycle", () => {
     );
     const searchResponse = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsSearchContract,
+        connectorsSearchContract,
       ).search({
         headers,
         query: {},
@@ -5699,7 +5759,7 @@ describe("connector catalog executable compatibility", () => {
     const featureClient = setupApp({
       context,
       routes: featureSwitchesRoutes,
-    })(zeroFeatureSwitchesContract);
+    })(featureSwitchesContract);
 
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,

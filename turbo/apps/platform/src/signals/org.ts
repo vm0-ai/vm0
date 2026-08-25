@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
-import { zeroClient$ } from "./api-client.ts";
+import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 
 const reloadOrg$ = state(0);
@@ -11,7 +11,7 @@ const reloadOrg$ = state(0);
  */
 export const org$ = computed(async (get) => {
   get(reloadOrg$);
-  const createClient = get(zeroClient$);
+  const createClient = get(apiClient$);
   const client = createClient(orgContract);
   // 404 is a valid response: a newly-signed-up user has no org yet.
   const result = await accept(client.get(), [200, 404]);

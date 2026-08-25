@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.23.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.20...guest-download-v0.23.21) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+
+## [0.23.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.19...guest-download-v0.23.20) (2026-08-24)
+
+## [0.23.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.18...guest-download-v0.23.19) (2026-08-24)
+
+## [0.23.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.17...guest-download-v0.23.18) (2026-08-24)
+
+## [0.23.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.16...guest-download-v0.23.17) (2026-08-23)
+
+## [0.23.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.15...guest-download-v0.23.16) (2026-08-21)
+
 ## [0.23.15](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.14...guest-download-v0.23.15) (2026-08-20)
 
 

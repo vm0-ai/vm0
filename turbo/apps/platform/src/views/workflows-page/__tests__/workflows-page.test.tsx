@@ -35,8 +35,8 @@ import {
   patchWorkflowMetadataForm$,
   setWorkflowFileDraft$,
 } from "../../../signals/workflows-page/workflows-signals.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../okou-page/workflow-automations-page.tsx";
 import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
@@ -672,7 +672,6 @@ function agent(id: string, displayName: string): TeamComposeItem {
     sound: null,
     avatarUrl: null,
     visibility: "public",
-    headVersionId: "version_2",
     updatedAt: "2026-06-01T00:00:00Z",
   };
 }
@@ -3320,7 +3319,7 @@ describe("workflow detail page", () => {
           id: integrationId,
           name: "Marketing CMS",
           baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/okou/strapi/events/${integrationId}`,
+          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
           secretLastFour: "abcd",
           lastTestedAt: "2026-07-28T04:00:00.000Z",
           lastReceivedAt: null,
@@ -3542,6 +3541,7 @@ describe("workflow detail page", () => {
       name: "Test Org",
       role: "admin",
     });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     const workflow = {
       ...salesResearch(),
       automations: [

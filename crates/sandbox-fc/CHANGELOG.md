@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.37.243](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.242...sandbox-fc-v0.37.243) (2026-08-24)
+
+## [0.37.242](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.241...sandbox-fc-v0.37.242) (2026-08-24)
+
+## [0.37.241](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.240...sandbox-fc-v0.37.241) (2026-08-24)
+
+## [0.37.240](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.239...sandbox-fc-v0.37.240) (2026-08-24)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound command cleanup after timeout ([#28975](https://github.com/vm0-ai/vm0/issues/28975)) ([13f87fd](https://github.com/vm0-ai/vm0/commit/13f87fd5c7967c5e09550418070b499917fc8c8c))
+
+## [0.37.239](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.238...sandbox-fc-v0.37.239) (2026-08-24)
+
+## [0.37.238](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.237...sandbox-fc-v0.37.238) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** unify runner exec capture limits ([#28812](https://github.com/vm0-ai/vm0/issues/28812)) ([25bfae0](https://github.com/vm0-ai/vm0/commit/25bfae001efedfcecc3b9d6aca5505ba5ab30263))
+
+## [0.37.237](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.236...sandbox-fc-v0.37.237) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
+## [0.37.236](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.235...sandbox-fc-v0.37.236) (2026-08-23)
+
+## [0.37.235](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.234...sandbox-fc-v0.37.235) (2026-08-23)
+
+
+### Documentation
+
+* **rust:** document the pre-reap contract of ChildExitNotifier ([#28690](https://github.com/vm0-ai/vm0/issues/28690)) ([eb4178f](https://github.com/vm0-ai/vm0/commit/eb4178f07909ea26cb6d05404a772e5a62ce5f83))
+
+## [0.37.234](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.233...sandbox-fc-v0.37.234) (2026-08-21)
+
+## [0.37.233](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.232...sandbox-fc-v0.37.233) (2026-08-21)
+
 ## [0.37.232](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.231...sandbox-fc-v0.37.232) (2026-08-21)
 
 ## [0.37.231](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.230...sandbox-fc-v0.37.231) (2026-08-20)

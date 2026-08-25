@@ -3,7 +3,6 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -26,7 +25,6 @@ import { artifactCatalogRoutes } from "../artifact-catalog";
 import { avatarVideoRoutes } from "../avatar-video";
 import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
@@ -77,7 +75,7 @@ function createAvatarVideoTestApp(
   });
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -85,7 +83,7 @@ function zeroToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -97,7 +95,6 @@ function zeroToken(args: {
 }
 
 async function seedAvatarVideoFixture(options?: {
-  readonly featureEnabled?: boolean;
   readonly withPricing?: boolean;
 }): Promise<AvatarVideoFixture> {
   const pricing = await createUsagePricingFixture(
@@ -121,11 +118,6 @@ async function seedAvatarVideoFixture(options?: {
     { ...fixture, role: "admin" },
     context.signal,
   );
-  if (options?.featureEnabled !== undefined) {
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.JoggAiBuiltIn]: options.featureEnabled,
-    });
-  }
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
 }
@@ -188,31 +180,6 @@ describe("JoggAI built-in avatar video routes", () => {
     });
   });
 
-  it("keeps the built-in capability behind its feature switch", async () => {
-    const fixture = await seedAvatarVideoFixture({ featureEnabled: false });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const response = await createAvatarVideoTestApp(
-      fixture.usagePricingResolution,
-    ).request("/api/zero/avatar-video/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        avatarId: 81,
-        voiceId: "en-US-ChristopherNeural",
-        script: "Hello",
-      }),
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message:
-          "Built-in JoggAI avatar video generation is not enabled for this workspace.",
-        code: "FEATURE_DISABLED",
-      },
-    });
-  });
-
   it("lists and normalizes public avatars and voices", async () => {
     const fixture = await seedAvatarVideoFixture();
     const observedUrls: string[] = [];
@@ -267,7 +234,7 @@ describe("JoggAI built-in avatar video routes", () => {
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatars = await app.request(
-      "/api/zero/avatar-video/avatars?page=2&pageSize=20&aspectRatio=portrait&style=professional",
+      "/api/avatar-video/avatars?page=2&pageSize=20&aspectRatio=portrait&style=professional",
       { headers: authHeaders() },
     );
     expect(avatars.status).toBe(200);
@@ -287,7 +254,7 @@ describe("JoggAI built-in avatar video routes", () => {
     });
 
     const voices = await app.request(
-      "/api/zero/avatar-video/voices?page=3&pageSize=25&language=english&gender=male",
+      "/api/avatar-video/voices?page=3&pageSize=25&language=english&gender=male",
       { headers: authHeaders() },
     );
     expect(voices.status).toBe(200);
@@ -349,7 +316,7 @@ describe("JoggAI built-in avatar video routes", () => {
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatarResponse = await app.request(
-      "/api/zero/avatar-video/avatars?page=2&pageSize=10",
+      "/api/avatar-video/avatars?page=2&pageSize=10",
       { headers: authHeaders() },
     );
     expect(avatarResponse.status).toBe(200);
@@ -363,7 +330,7 @@ describe("JoggAI built-in avatar video routes", () => {
     ).toStrictEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
 
     const voiceResponse = await app.request(
-      "/api/zero/avatar-video/voices?page=3&pageSize=10",
+      "/api/avatar-video/voices?page=3&pageSize=10",
       { headers: authHeaders() },
     );
     expect(voiceResponse.status).toBe(200);
@@ -433,7 +400,7 @@ describe("JoggAI built-in avatar video routes", () => {
       },
       context.signal,
     );
-    const token = zeroToken({ ...fixture, runId, publicBrand: "okou" });
+    const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
     const videoDownloadStarted = createDeferredPromise<void>(context.signal);
     const releaseVideoDownload = createDeferredPromise<void>(context.signal);
     let observedBody: unknown = null;
@@ -463,7 +430,7 @@ describe("JoggAI built-in avatar video routes", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
-    const response = await app.request("/api/zero/avatar-video/generate", {
+    const response = await app.request("/api/avatar-video/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -540,7 +507,7 @@ describe("JoggAI built-in avatar video routes", () => {
     await flushWaitUntilForTest();
 
     const status = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(status.status).toBe(200);
@@ -646,7 +613,7 @@ describe("JoggAI built-in avatar video routes", () => {
 
     const response = await createAvatarVideoTestApp(
       fixture.usagePricingResolution,
-    ).request("/api/zero/avatar-video/generate", {
+    ).request("/api/avatar-video/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({

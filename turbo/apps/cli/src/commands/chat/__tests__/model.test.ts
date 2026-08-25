@@ -133,7 +133,6 @@ describe("okou chat model command", () => {
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
     expect(output).toContain("provider: built-in (Built-in model; vm0)");
-    expect(output).not.toContain("VM0 Managed");
     expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 

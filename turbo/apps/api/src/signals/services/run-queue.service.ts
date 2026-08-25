@@ -34,13 +34,14 @@ import {
   loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { tapError } from "../utils";
 import type { Tx } from "../../lib/db-types";
-import {
-  activatePendingRun$,
-  type PendingRunActivation,
-} from "./agent-run-activation.service";
+import type { PendingRunActivation } from "./agent-run-activation.types";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
+import {
+  refreshPiApiFirstTurnDeadline,
+  requirePiApiFirstTurnExecutionContext,
+} from "./pi-api-first-turn-config";
+import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const L = logger("RunQueue");
 
@@ -78,12 +79,15 @@ interface QueueCandidate {
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
   readonly chatThreadId: string | null;
+  readonly prompt: string | null;
+  readonly appendSystemPrompt: string | null;
 }
 
 interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
   readonly profile: string;
+  readonly executionContext: QueuedRunnerJobPayload["executionContext"];
 }
 
 type PreparedPendingRunActivation = Omit<PendingRunActivation, "timing">;
@@ -191,6 +195,10 @@ async function insertPromotedRunnerJob(
 
   const timestamps = runnerJobQueueTimestamps();
   const profile = args.payload.profile;
+  const executionContext = refreshPiApiFirstTurnDeadline(
+    args.payload.executionContext,
+    promotedAt,
+  );
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -199,10 +207,7 @@ async function insertPromotedRunnerJob(
       profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       reuseKey: args.payload.reuseKey,
-      executionContext: {
-        ...args.payload.executionContext,
-        apiStartTime: promotedAt,
-      },
+      executionContext,
       ...timestamps,
     })
     .returning({ createdAt: runnerJobQueue.createdAt });
@@ -213,6 +218,7 @@ async function insertPromotedRunnerJob(
     createdAt: runnerJob.createdAt,
     apiStartedAt: promotedAt,
     profile,
+    executionContext,
   };
 }
 
@@ -233,11 +239,61 @@ async function loadDrainCandidates(
       encryptedParams: agentRunQueue.encryptedParams,
       runStatus: agentRuns.status,
       chatThreadId: agentRuns.chatThreadId,
+      prompt: agentRuns.prompt,
+      appendSystemPrompt: agentRuns.appendSystemPrompt,
     })
     .from(agentRunQueue)
     .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
     .where(eq(agentRunQueue.orgId, orgId))
     .orderBy(agentRunQueue.createdAt);
+}
+
+async function acquirePromotionAdmissionLock(
+  tx: DbTransaction,
+  orgId: string,
+  timing: ApiDispatchTimingCollector,
+): Promise<number> {
+  await timing.measure(
+    "api_dispatch_queue_promotion_lock_wait",
+    "nested",
+    async () => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+    },
+  );
+  return now();
+}
+
+function finalizePromoteQueuedCandidate(
+  timing: ApiDispatchTimingCollector,
+  committed: {
+    readonly result: PromotionResult;
+    readonly lockHeldAt: number;
+  },
+): PromoteQueuedCandidateResult {
+  const transactionReturnedAt = now();
+  timing.recordElapsed(
+    "api_dispatch_queue_promotion_lock_held",
+    "nested",
+    committed.lockHeldAt,
+    transactionReturnedAt,
+  );
+  const result = committed.result;
+  if (result.status !== "promoted") {
+    return result;
+  }
+  const runnerNotification = result.pendingActivation.runnerNotification;
+  // Promotion is durable now; later side-effect failures must not suppress it.
+  timing.flush({
+    runId: runnerNotification.runId,
+    runnerGroup: runnerNotification.runnerGroup,
+    profile: runnerNotification.profile,
+    dispatchPath: "direct",
+    dimensions: { activation_origin: "promotion" },
+  });
+  return {
+    ...result,
+    transactionReturnedAt,
+  };
 }
 
 async function promoteQueuedCandidate(
@@ -248,14 +304,20 @@ async function promoteQueuedCandidate(
     readonly payload: QueuedRunnerJobPayload | null;
   },
 ): Promise<PromoteQueuedCandidateResult> {
-  const result = await db.transaction(async (tx): Promise<PromotionResult> => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+  // Promotion may outlive the create-run collector, so buffer timing until commit.
+  const timing = new ApiDispatchTimingCollector();
+  const committed = await db.transaction(async (tx) => {
+    const lockHeldAt = await acquirePromotionAdmissionLock(
+      tx,
+      args.orgId,
+      timing,
     );
-
+    const complete = (result: PromotionResult) => {
+      return { result, lockHeldAt };
+    };
     const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
     if (concurrency.activeRunCount >= concurrency.limit) {
-      return { status: "full" };
+      return complete({ status: "full" });
     }
 
     const [lockedRun] = await tx
@@ -267,16 +329,16 @@ async function promoteQueuedCandidate(
       await tx
         .delete(agentRunQueue)
         .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
+      return complete({ status: "removed-stale" });
     }
     if (lockedRun.status !== "queued") {
       await tx
         .delete(agentRunQueue)
         .where(eq(agentRunQueue.runId, args.row.runId));
-      return { status: "removed-stale" };
+      return complete({ status: "removed-stale" });
     }
     if (args.row.runStatus !== "queued") {
-      return { status: "lost" };
+      return complete({ status: "lost" });
     }
 
     const [queueRow] = await tx
@@ -290,7 +352,7 @@ async function promoteQueuedCandidate(
       )
       .limit(1);
     if (!queueRow) {
-      return { status: "lost" };
+      return complete({ status: "lost" });
     }
 
     if (args.payload === null) {
@@ -312,7 +374,7 @@ async function promoteQueuedCandidate(
       )
       .returning({ id: agentRuns.id });
     if (!updated) {
-      return { status: "lost" };
+      return complete({ status: "lost" });
     }
 
     await tx
@@ -330,7 +392,7 @@ async function promoteQueuedCandidate(
       queuedAt: args.row.createdAt,
       payload,
     });
-    return {
+    return complete({
       status: "promoted",
       queueMarkerNotification,
       pendingActivation: {
@@ -345,17 +407,26 @@ async function promoteQueuedCandidate(
           historyGenerationRunId: payload.historyGenerationRunId,
           createdAt: runnerJob.createdAt,
         },
+        ...(runnerJob.executionContext.piLaunchConfig &&
+        args.row.prompt !== null
+          ? {
+              piApiFirstTurn: {
+                runId: args.row.runId,
+                runnerGroup: payload.runnerGroup,
+                userId: args.row.userId,
+                orgId: args.orgId,
+                prompt: args.row.prompt,
+                appendSystemPrompt: args.row.appendSystemPrompt,
+                executionContext: requirePiApiFirstTurnExecutionContext(
+                  runnerJob.executionContext,
+                ),
+              },
+            }
+          : {}),
       },
-    };
+    });
   });
-  const transactionReturnedAt = now();
-  if (result.status !== "promoted") {
-    return result;
-  }
-  return {
-    ...result,
-    transactionReturnedAt,
-  };
+  return finalizePromoteQueuedCandidate(timing, committed);
 }
 
 async function publishPromotedQueueSideEffects(args: {
@@ -422,15 +493,16 @@ async function promoteQueuedCandidateWithSideEffects(
  * `pg_advisory_xact_lock(hashtext(orgId))` and revalidates concurrency and
  * queue ownership before changing state.
  *
- * Returns the number of runs transitioned (0 if queue empty or
- * concurrency full).
+ * Returns the post-commit activation for the one promoted run, or null when
+ * the queue is empty or concurrency is full. The activation owner must finish
+ * runner notification even if its originating request was cancelled.
  */
-export const drainOrgQueue$ = command(
+export const promoteNextQueuedRun$ = command(
   async (
     { set },
     args: { readonly orgId: string },
     signal: AbortSignal,
-  ): Promise<number> => {
+  ): Promise<PendingRunActivation | null> => {
     const writeDb = set(writeDb$);
 
     const queueRows = await loadDrainCandidates(writeDb, args.orgId);
@@ -456,53 +528,15 @@ export const drainOrgQueue$ = command(
         });
       }
       if (result.status === "full") {
-        return 0;
+        return null;
       }
       if (result.status === "skipped") {
         continue;
       }
-      const activationScheduledAt = now();
-      await tapError(
-        set(activatePendingRun$, {
-          activation: result.pendingActivation,
-          activationScheduledAt,
-        }),
-        (error) => {
-          L.error("Failed to activate promoted queued run", {
-            runId: row.runId,
-            orgId: args.orgId,
-            error,
-          });
-        },
-      );
-      if (signal.aborted) {
-        L.debug("Request remained aborted after queued run activation", {
-          runId: row.runId,
-          orgId: args.orgId,
-        });
-      }
-      return 1;
+      return result.pendingActivation;
     }
 
-    return 0;
-  },
-);
-
-export const drainOrgQueueToCapacity$ = command(
-  async (
-    { set },
-    args: { readonly orgId: string },
-    signal: AbortSignal,
-  ): Promise<number> => {
-    let drained = 0;
-    while (true) {
-      const promoted = await set(drainOrgQueue$, args, signal);
-      signal.throwIfAborted();
-      if (promoted === 0) {
-        return drained;
-      }
-      drained += promoted;
-    }
+    return null;
   },
 );
 
@@ -706,12 +740,12 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
   },
 );
 
-export const drainStaleQueues$ = command(
+export const staleQueueOrgIds$ = command(
   async (
     { set },
     orgIds: readonly string[] | null,
     signal: AbortSignal,
-  ): Promise<number> => {
+  ): Promise<readonly string[]> => {
     const writeDb = set(writeDb$);
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
 
@@ -723,7 +757,7 @@ export const drainStaleQueues$ = command(
       );
     signal.throwIfAborted();
 
-    let drained = 0;
+    const staleOrgIds: string[] = [];
     for (const { orgId } of orgsWithQueued) {
       const [activeRow] = await writeDb
         .select({ count: count() })
@@ -744,13 +778,10 @@ export const drainStaleQueues$ = command(
 
       const activeCount = Number(activeRow?.count ?? 0);
       if (activeCount === 0) {
-        L.debug("Draining stale queue", { orgId });
-        await set(drainOrgQueue$, { orgId }, signal);
-        signal.throwIfAborted();
-        drained++;
+        staleOrgIds.push(orgId);
       }
     }
 
-    return drained;
+    return staleOrgIds;
   },
 );

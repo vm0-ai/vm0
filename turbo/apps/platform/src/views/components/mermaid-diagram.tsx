@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
-import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
 
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.

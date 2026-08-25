@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
-import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
+import {
+  presentationTemplatesContract,
+  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+} from "@okouai/api-contracts/contracts/presentation-templates";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
@@ -12,19 +15,21 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
+import {
+  publishPresentationTemplatesChangedForOrgSafely,
+  publishPresentationTemplatesChangedForUserSafely,
+} from "../external/realtime";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
-  listOwnedPresentationTemplates,
-  loadOwnedPresentationTemplate,
+  listAccessiblePresentationTemplates,
+  loadAccessiblePresentationTemplate,
   presentationTemplateSummary,
   type PresentationTemplateRow,
 } from "../services/presentation-template-data.service";
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
 import { publishPresentationTemplate$ } from "../services/presentation-template-publish.service";
 import type { RouteEntry } from "../route-entry";
-
-const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
 
 const templateReadAuth = {
   requireOrganization: true,
@@ -106,9 +111,9 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.kind === "rejected") {
     return result.response;
   }
-  const row = await loadOwnedPresentationTemplate(get(db$), {
+  const row = await loadAccessiblePresentationTemplate(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
     templateId: result.templateId,
   });
   signal.throwIfAborted();
@@ -121,15 +126,17 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         generatePresignedGetUrl(
           env("R2_USER_ARTIFACTS_BUCKET_NAME"),
           coverKey,
-          PRESIGNED_URL_TTL_SECONDS,
+          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
           presentationTemplatePageFilename(0),
           true,
         ),
       )
     : null;
+  await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  signal.throwIfAborted();
   return {
     status: 200 as const,
-    body: presentationTemplateSummary(row, coverUrl),
+    body: presentationTemplateSummary(row, coverUrl, auth.userId),
   };
 });
 
@@ -138,9 +145,9 @@ const listInner$ = computed(async (get) => {
   if (!(await get(presentationTemplatesEnabled$))) {
     return presentationTemplatesDisabled;
   }
-  const rows = await listOwnedPresentationTemplates(get(db$), {
+  const rows = await listAccessiblePresentationTemplates(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
   });
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const summaries = await Promise.all(
@@ -151,13 +158,13 @@ const listInner$ = computed(async (get) => {
             generatePresignedGetUrl(
               bucket,
               coverKey,
-              PRESIGNED_URL_TTL_SECONDS,
+              PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
               presentationTemplatePageFilename(0),
               true,
             ),
           )
         : null;
-      return presentationTemplateSummary(row, coverUrl);
+      return presentationTemplateSummary(row, coverUrl, auth.userId);
     }),
   );
   return { status: 200 as const, body: summaries };
@@ -170,9 +177,9 @@ const getInner$ = computed(async (get) => {
     return presentationTemplatesDisabled;
   }
   const params = get(getParams$);
-  const row = await loadOwnedPresentationTemplate(get(db$), {
+  const row = await loadAccessiblePresentationTemplate(get(db$), {
     orgId: auth.orgId,
-    ownerUserId: auth.userId,
+    userId: auth.userId,
     templateId: params.templateId,
   });
   if (!row) {
@@ -184,7 +191,7 @@ const getInner$ = computed(async (get) => {
       generatePresignedGetUrl(
         bucket,
         key,
-        PRESIGNED_URL_TTL_SECONDS,
+        PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
         presentationTemplatePageFilename(index),
         true,
       ),
@@ -193,7 +200,7 @@ const getInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      ...presentationTemplateSummary(row, pageUrls[0] ?? null),
+      ...presentationTemplateSummary(row, pageUrls[0] ?? null, auth.userId),
       pageUrls,
     },
   };
@@ -212,40 +219,68 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const [row] = await set(writeDb$)
-    .update(presentationTemplates)
-    .set({
-      title: bodyResult.data.title,
-      updatedAt: nowDate(),
-      updatedBy: auth.userId,
-    })
-    .where(
-      and(
-        eq(presentationTemplates.id, params.templateId),
-        eq(presentationTemplates.orgId, auth.orgId),
-        eq(presentationTemplates.ownerUserId, auth.userId),
-      ),
-    )
-    .returning();
+  const mutation = await set(writeDb$).transaction(async (tx) => {
+    const whereOwner = and(
+      eq(presentationTemplates.id, params.templateId),
+      eq(presentationTemplates.orgId, auth.orgId),
+      eq(presentationTemplates.ownerUserId, auth.userId),
+    );
+    const [previous] = await tx
+      .select({ visibility: presentationTemplates.visibility })
+      .from(presentationTemplates)
+      .where(whereOwner)
+      .for("update")
+      .limit(1);
+    if (!previous) {
+      return null;
+    }
+    const [row] = await tx
+      .update(presentationTemplates)
+      .set({
+        title: bodyResult.data.title,
+        visibility: bodyResult.data.visibility,
+        updatedAt: nowDate(),
+        updatedBy: auth.userId,
+      })
+      .where(whereOwner)
+      .returning();
+    if (!row) {
+      throw new Error(
+        `Presentation template disappeared: ${params.templateId}`,
+      );
+    }
+    return {
+      row,
+      workspaceVisible:
+        previous.visibility === "public" || row.visibility === "public",
+    };
+  });
   signal.throwIfAborted();
-  if (!row) {
+  if (!mutation) {
     return templateNotFound(params.templateId);
   }
+  const { row, workspaceVisible } = mutation;
   const coverKey = row.pageKeys[0];
   const coverUrl = coverKey
     ? await get(
         generatePresignedGetUrl(
           env("R2_USER_ARTIFACTS_BUCKET_NAME"),
           coverKey,
-          PRESIGNED_URL_TTL_SECONDS,
+          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
           presentationTemplatePageFilename(0),
           true,
         ),
       )
     : null;
+  if (workspaceVisible) {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
   return {
     status: 200 as const,
-    body: presentationTemplateSummary(row, coverUrl),
+    body: presentationTemplateSummary(row, coverUrl, auth.userId),
   };
 });
 
@@ -265,9 +300,16 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  return deleted
-    ? { status: 204 as const, body: undefined }
-    : templateNotFound(params.templateId);
+  if (!deleted) {
+    return templateNotFound(params.templateId);
+  }
+  if (deleted.visibility === "public") {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
+  return { status: 204 as const, body: undefined };
 });
 
 export const presentationTemplatesRoutes: readonly RouteEntry[] = [

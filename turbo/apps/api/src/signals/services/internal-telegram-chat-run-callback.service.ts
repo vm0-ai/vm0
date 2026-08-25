@@ -1,5 +1,6 @@
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
@@ -246,10 +247,11 @@ async function loadTelegramChatDeliveryContext(
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -452,7 +454,7 @@ async function resolveTelegramPresentation(
   ]);
   signal.throwIfAborted();
   return {
-    logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+    logsUrl: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
       ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
       : undefined,
     footerText,
@@ -542,7 +544,12 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
-      publicBrand: binding.publicBrand,
+      // Backend/runner rollout compatibility: callbacks created by the old
+      // API omit publicBrand and can finish while runner/sandbox instances
+      // drain for up to 2 hours. Remove under #27750 after old API rollback
+      // targets and runners have drained and no deliverable Telegram callback
+      // payload lacks publicBrand.
+      publicBrand: payload.publicBrand ?? binding.publicBrand,
     },
     signal,
   );

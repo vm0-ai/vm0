@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
@@ -35,14 +35,12 @@ export const chatThreads = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
-    agentComposeId: uuid("agent_compose_id")
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
+    agentId: uuid("agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     title: text("title"),
     /**
      * ID of the scheduled agent run this thread was started from, if any.
@@ -133,7 +131,7 @@ export const chatThreads = pgTable(
      * Timestamp at which the user pinned this thread to the top of the sidebar.
      * NULL means unpinned. Pinned threads sort above unpinned, both groups
      * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
-     * already carry `user_id` + `agent_compose_id`.
+     * already carry `user_id` + `agent_id`.
      */
     pinnedAt: timestamp("pinned_at"),
     /**
@@ -171,21 +169,21 @@ export const chatThreads = pgTable(
         sql`${table.draftUserMessage} IS NOT NULL
           OR COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb`,
       ),
-      index("idx_chat_threads_user_compose_updated").on(
+      index("idx_chat_threads_user_agent_updated").on(
         table.userId,
-        table.agentComposeId,
+        table.agentId,
         table.updatedAt.desc(),
       ),
       index("idx_chat_threads_user_last_read").on(
         table.userId,
         table.lastReadAt,
       ),
-      index("idx_chat_threads_user_compose_pinned")
-        .on(table.userId, table.agentComposeId)
+      index("idx_chat_threads_user_agent_pinned")
+        .on(table.userId, table.agentId)
         .where(sql`${table.pinnedAt} IS NOT NULL`),
-      index("idx_chat_threads_user_compose_last_message").on(
+      index("idx_chat_threads_user_agent_last_message").on(
         table.userId,
-        table.agentComposeId,
+        table.agentId,
         table.lastMessageAt.desc(),
       ),
     ];

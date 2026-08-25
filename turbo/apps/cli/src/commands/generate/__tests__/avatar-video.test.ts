@@ -6,9 +6,9 @@ import { server } from "../../../mocks/server";
 import { avatarVideoCommand } from "../avatar-video";
 import { generateCommand } from "../index";
 
-const AVATARS_URL = "http://localhost:3000/api/okou/avatar-video/avatars";
-const VOICES_URL = "http://localhost:3000/api/okou/avatar-video/voices";
-const GENERATE_URL = "http://localhost:3000/api/okou/avatar-video/generate";
+const AVATARS_URL = "http://localhost:3000/api/avatar-video/avatars";
+const VOICES_URL = "http://localhost:3000/api/avatar-video/voices";
+const GENERATE_URL = "http://localhost:3000/api/avatar-video/generate";
 
 const AVATAR_VIDEO_RESULT = {
   id: "avatar-video-file-id",

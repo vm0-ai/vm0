@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -29,7 +29,7 @@ function currentSecond(): number {
 
 function agentCustomConnectorsClient() {
   return setupApp({ context, routes: agentsRoutes })(
-    zeroAgentCustomConnectorsContract,
+    agentCustomConnectorsContract,
   );
 }
 
@@ -53,7 +53,7 @@ async function apiKeyHeaders(
   return bearerHeaders(key.token);
 }
 
-function zeroTokenFor(
+function okouTokenFor(
   actor: ApiTestUser,
   capabilities: readonly Capability[],
 ): string {
@@ -62,7 +62,7 @@ function zeroTokenFor(
   }
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: actor.userId,
     orgId: actor.orgId,
     runId: randomUUID(),
@@ -150,7 +150,7 @@ describe("GET /api/custom-connectors/:id/permissions", () => {
   });
 });
 
-describe("GET /api/zero/agents/:id/custom-connectors", () => {
+describe("GET /api/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestAgentCustomConnectors(
       null,
@@ -235,9 +235,9 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:read capability", async () => {
+  it("returns 403 for an agent token without agent:read capability", async () => {
     const actor = bdd.user();
-    const token = zeroTokenFor(actor, ["file:read"]);
+    const token = okouTokenFor(actor, ["file:read"]);
 
     const response = await accept(
       agentCustomConnectorsClient().get({
@@ -256,7 +256,7 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
   });
 });
 
-describe("PUT /api/zero/agents/:id/custom-connectors", () => {
+describe("PUT /api/agents/:id/custom-connectors", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await connectors.requestUpdateAgentCustomConnectors(
       null,
@@ -665,7 +665,10 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
       connector.id,
     ]);
-    await connectors.disconnectCustomConnector(actor, connector.id);
+    await connectors.disconnectSingleCustomConnectorAccount(
+      actor,
+      connector.id,
+    );
 
     const updated = await connectors.updateAgentCustomConnectors(
       actor,

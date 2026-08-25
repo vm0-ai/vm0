@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroCustomConnectorByIdContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorByIdContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -13,7 +13,7 @@ import type { RouteEntry } from "../route-entry";
 
 const getInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroCustomConnectorByIdContract.get));
+  const params = get(pathParamsOf(customConnectorByIdContract.get));
   const connector = await get(
     getCustomConnectorResponse({
       orgId: auth.orgId,
@@ -29,7 +29,7 @@ const getInner$ = computed(async (get) => {
 
 const getPermissionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroCustomConnectorByIdContract.permissions));
+  const params = get(pathParamsOf(customConnectorByIdContract.permissions));
   const permissions = await get(
     getCustomConnectorPermissionBundle({
       orgId: auth.orgId,
@@ -44,7 +44,7 @@ const getPermissionsInner$ = computed(async (get) => {
 
 export const customConnectorsGetRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorByIdContract.get,
+    route: customConnectorByIdContract.get,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -55,7 +55,7 @@ export const customConnectorsGetRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroCustomConnectorByIdContract.permissions,
+    route: customConnectorByIdContract.permissions,
     handler: authRoute(
       {
         requireOrganization: true,

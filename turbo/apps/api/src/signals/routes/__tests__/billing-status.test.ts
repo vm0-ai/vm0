@@ -37,14 +37,14 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -137,12 +137,12 @@ describe("GET /api/billing/status", () => {
     expect(response.body.currentPeriodEnd).toBeNull();
   });
 
-  it("returns billing status for zero tokens with billing read capability", async () => {
+  it("returns billing status for agent tokens with billing read capability", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
     );
     mockMemberRole(fixture);
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["billing:read"],
@@ -160,8 +160,8 @@ describe("GET /api/billing/status", () => {
     expect(response.body.credits).toBe(100_000);
   });
 
-  it("returns 403 for zero tokens without billing read capability", async () => {
-    const token = zeroToken({
+  it("returns 403 for agent tokens without billing read capability", async () => {
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: [],

@@ -374,11 +374,11 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+    auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const runImageModelDefault = await loadRunImageModelDefault(
     db,
     auth.orgId,

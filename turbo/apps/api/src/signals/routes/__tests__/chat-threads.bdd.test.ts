@@ -62,13 +62,14 @@ import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
+  mockGoogleDriveArtifactUpload,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
+import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -473,7 +474,7 @@ function zeroCapabilityHeaders(
   const seconds = Math.floor(now() / 1000);
   return {
     authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId,
@@ -529,28 +530,37 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "POST",
-    path: "/api/okou/chat-threads/:id/mark-unread",
+    path: "/api/chat-threads/:id/mark-unread",
     paramName: "id",
   },
+  // Neutral rather than branded, for the same reason as `rename` below: #28916
+  // retired this row's branded forms.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/model-selection",
+    path: "/api/chat-threads/:id/model-selection",
     paramName: "id",
   },
+  // Neutral rather than branded: #28917 retired this row's branded forms, so a
+  // branded request here would 404 before the parameter check it exists to
+  // exercise.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/computer-use-host",
+    path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
   { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
+  // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/unpin",
+    path: "/api/chat-threads/:id/unpin",
     paramName: "id",
   },
+  // Neutral rather than branded: #28711 retired this row's branded forms, so a
+  // branded request here would 404 before the parameter check it exists to
+  // exercise.
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/rename",
+    path: "/api/chat-threads/:id/rename",
     paramName: "id",
   },
   {
@@ -599,7 +609,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(unauthenticatedBody.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("allows chat-thread read zero tokens to sync snapshots and events", async () => {
+  it("allows chat-thread read agent tokens to sync snapshots and events", async () => {
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -614,7 +624,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         },
       ],
     });
-    const zeroClient = setupApp({ context, routes: chatThreadRoutes })(
+    const apiClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
     const zeroHeaders = zeroCapabilityHeaders(
@@ -624,7 +634,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
 
     const snapshot = await accept(
-      zeroClient.snapshot({ headers: zeroHeaders }),
+      apiClient.snapshot({ headers: zeroHeaders }),
       [200],
     );
     expect(snapshot.body).toStrictEqual({
@@ -633,7 +643,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: null,
     });
     const events = await accept(
-      zeroClient.events({ headers: zeroHeaders, query: {} }),
+      apiClient.events({ headers: zeroHeaders, query: {} }),
       [200],
     );
     expect(events.body).toStrictEqual({
@@ -642,7 +652,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     const missingCapability = await accept(
-      zeroClient.snapshot({
+      apiClient.snapshot({
         headers: goalHeaders(actor, randomUUID()),
       }),
       [403],
@@ -874,7 +884,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       userId: owner.userId,
       orgId: owner.orgId,
       chatThreadId: threadId,
-      agentComposeId: agent.agentId,
+      agentId: agent.agentId,
     } as const;
     const held = await holdChatThreadEventInsertTransactionFixture({
       ...fixture,
@@ -1052,7 +1062,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
 
     chat.mockObjectStorageObjectsExist();
-    await authOrg.deleteVersionFreeAgent(actor, deletedAgent.agentId);
+    await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
     mockNow(incrementalSnapshotAt + DAY_MS);
     await compactChatThreadSnapshots();
@@ -1108,6 +1118,20 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         code: "CHAT_THREAD_EVENTS_EXPIRED",
       },
     });
+
+    mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
+    await compactChatThreadSnapshots();
+    const retainedDeletedAgentAnchor = await chat.requestThreadEvents(
+      actor,
+      { sinceSeqId: deletedCreateEvent.seqId },
+      [200],
+    );
+    expect(retainedDeletedAgentAnchor.status).toBe(200);
+    expect(
+      (await allThreadEvents(actor)).some((event) => {
+        return event.agentId === deletedAgent.agentId;
+      }),
+    ).toBeFalsy();
 
     const retainedAnchorCursor = await chat.requestThreadEvents(
       actor,
@@ -2399,7 +2423,7 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const fixture = await seedVm0ManagedDefaultModelKey(context);
+    const fixture = await seedVm0BuiltInDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(fixture.selectedModel).toBe(selectedModel);
 
@@ -2500,17 +2524,17 @@ describe("CHAT-03 run usage events", () => {
       "Zero usage message agent",
     );
 
-    const zeroRun = await sendChatRun(actor, {
+    const agentRun = await sendChatRun(actor, {
       agentId,
       prompt: "record zero-credit usage",
     });
     const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
       runnerGroup,
-      zeroRun.runId,
+      agentRun.runId,
     );
     await webhooks.requestAgentUsageEvent(
       {
-        runId: zeroRun.runId,
+        runId: agentRun.runId,
         events: [
           {
             idempotencyKey: randomUUID(),
@@ -2524,13 +2548,13 @@ describe("CHAT-03 run usage events", () => {
       zeroSandboxHeaders,
       [200],
     );
-    await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
+    await completeChatRunOk(agentRun.runId, zeroSandboxHeaders);
     await flushWaitUntilForTest();
 
     const [zeroUsageEvent] = await usageEventsForRun(
       actor,
-      zeroRun.threadId,
-      zeroRun.runId,
+      agentRun.threadId,
+      agentRun.runId,
     );
     expect(zeroUsageEvent?.usage).toMatchObject({
       version: 1,
@@ -3301,7 +3325,7 @@ describe("CHAT-01 chat search index", () => {
       }),
     ).toStrictEqual([threadB, recentThreadA]);
 
-    // The agent scope comes from the projected agent_compose_id, so no join
+    // The Agent scope comes from the canonical Agent reference, so no join
     // takes part in selecting rows.
     const byAgent = await chat.searchChat(owner, "水豚", {
       agentId: agentB.agentId,
@@ -3454,6 +3478,34 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
 
     await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
+
+    const uploadRecorder = mockGoogleDriveArtifactUpload({
+      id: "drive-uploaded-file",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-uploaded-file/view",
+    });
+    const synced = await chat.requestSyncThreadArtifact(
+      actor,
+      run.threadId,
+      { runId: run.runId, fileId: csvId },
+      [200],
+    );
+    expect(synced.body).toStrictEqual({
+      id: "drive-uploaded-file",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-uploaded-file/view",
+    });
+    expect(uploadRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-ok",
+    ]);
+    expect(uploadRecorder.folderQueries).toHaveLength(2);
+    expect(uploadRecorder.contentTypeHeaders[0]).toMatch(
+      /^multipart\/related; boundary=vm0-/u,
+    );
+    // Fetch derives this forbidden request header from the Buffer body at the
+    // transport layer. Supplying it explicitly is rejected by instrumented
+    // Node/Undici and would be visible to MSW here.
+    expect(uploadRecorder.contentLengthHeaders).toStrictEqual([null]);
 
     // Drive lists one mirrored file: csv synced, pdf not synced.
     const listRecorder = mockGoogleDriveFilesList(() => {

@@ -1,0 +1,72 @@
+import {
+  createSyntheticSourceInfo,
+  type Skill,
+} from "@earendil-works/pi-coding-agent";
+
+export interface PiPreheatedAgentsFile {
+  readonly path: string;
+  readonly content: string;
+}
+
+export interface PiPreheatedSkill {
+  readonly name: string;
+  readonly description: string;
+  readonly filePath: string;
+  readonly baseDir: string;
+  readonly scope: "user" | "project" | "temporary";
+  readonly disableModelInvocation: boolean;
+}
+
+export interface PiPreheatedResourceSnapshot {
+  readonly schemaVersion: 1;
+  readonly agentsFiles: readonly PiPreheatedAgentsFile[];
+  readonly skills: readonly PiPreheatedSkill[];
+}
+
+function officialSkill(skill: PiPreheatedSkill): Skill {
+  return {
+    name: skill.name,
+    description: skill.description,
+    filePath: skill.filePath,
+    baseDir: skill.baseDir,
+    sourceInfo: createSyntheticSourceInfo(skill.filePath, {
+      source: "preheated",
+      scope: skill.scope,
+      baseDir: skill.baseDir,
+    }),
+    disableModelInvocation: skill.disableModelInvocation,
+  };
+}
+
+/**
+ * Feed a durable discovery snapshot through Pi's official resource loader.
+ * Neither override reads the local filesystem; skill bodies remain available
+ * only to sandbox tools at their canonical paths.
+ */
+export function piPreheatedResourceLoaderOptions(args: {
+  readonly snapshot: PiPreheatedResourceSnapshot;
+  readonly appendSystemPrompt: string | null;
+}) {
+  return {
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    appendSystemPrompt:
+      args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt],
+    agentsFilesOverride() {
+      return {
+        agentsFiles: args.snapshot.agentsFiles.map((file) => {
+          return { path: file.path, content: file.content };
+        }),
+      };
+    },
+    skillsOverride() {
+      return {
+        skills: args.snapshot.skills.map(officialSkill),
+        diagnostics: [],
+      };
+    },
+  };
+}

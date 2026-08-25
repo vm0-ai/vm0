@@ -138,7 +138,7 @@ const unifiedRunRequestSchema = z
 
     // Internal: pin provider type for direct CLI runs used by E2E.
     // vm0 is intentionally excluded here because only zero runs enforce
-    // vm0-managed-provider credits.
+    // vm0-built-in-provider credits.
     modelProviderType: directRunModelProviderTypeSchema.optional(),
   })
   .strict();
@@ -163,7 +163,6 @@ const createRunResponseSchema = z.object({
  */
 const getRunResponseSchema = z.object({
   runId: z.string(),
-  agentComposeVersionId: z.string().nullable(),
   status: runStatusSchema,
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),

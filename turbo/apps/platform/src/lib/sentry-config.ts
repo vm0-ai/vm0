@@ -109,7 +109,7 @@ export function createPlatformSentryOptions(
       "ResizeObserver loop",
       // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
       "Unable to authenticate the request",
-      // 401 responses thrown by accept() — fetch$/zeroClient$ already run
+      // 401 responses thrown by accept() — fetch$/apiClient$ already run
       // shared auth recovery, so the ApiError rejection is not actionable.
       "Not authenticated",
       "Authentication required",

@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  connectorAccountsContract,
   connectorAccountDisplayNameSchema,
+  connectorAccountListQuerySchema,
   connectorAccountMutationIntentSchema,
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
 } from "../connector-accounts";
+import {
+  connectorExternalCodeSessionContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorOauthStartContract,
+  connectorOpenIdStartContract,
+} from "../connectors";
+import {
+  customConnectorOAuth2Contract,
+  customConnectorValuesContract,
+} from "../custom-connectors";
 
 const connectionId = "00000000-0000-4000-8000-000000276861";
 const customConnectorId = "00000000-0000-4000-8000-000000276862";
@@ -45,7 +59,18 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("distinguishes add from exact reconnect intent", () => {
+  it("distinguishes single-account, add, and exact reconnect intent", () => {
+    expect(
+      connectorAccountMutationIntentSchema.parse({
+        intent: "single-account",
+      }),
+    ).toStrictEqual({ intent: "single-account" });
+    expect(
+      connectorAccountMutationIntentSchema.safeParse({
+        intent: "single-account",
+        connectionId,
+      }).success,
+    ).toBe(false);
     expect(
       connectorAccountMutationIntentSchema.parse({
         intent: "add",
@@ -65,6 +90,49 @@ describe("connector account contracts", () => {
     ).toStrictEqual({ intent: "reconnect", connectionId });
   });
 
+  it("requires account intent on app-owned connection mutations", () => {
+    expect(
+      connectorOauthStartContract.start.body.safeParse({
+        authMethod: "oauth",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorOpenIdStartContract.start.body.safeParse({
+        authMethod: "openid",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorNoAuthGrantContract.connect.body.safeParse({
+        authMethod: "none",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorOauthDeviceAuthSessionContract.create.body.safeParse({
+        authMethod: "oauth-device",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorExternalCodeSessionContract.create.body.safeParse({
+        authMethod: "external-code",
+      }).success,
+    ).toBe(false);
+    expect(customConnectorOAuth2Contract.start.body.safeParse({}).success).toBe(
+      false,
+    );
+    expect(
+      customConnectorValuesContract.set.body.safeParse({ values: [] }).success,
+    ).toBe(false);
+  });
+
+  it("keeps account intent optional for installed CLI manual grants", () => {
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+  });
+
   it("binds a selection to one exact connection and target", () => {
     expect(
       connectorAccountSelectionSchema.parse({
@@ -75,5 +143,88 @@ describe("connector account contracts", () => {
       connectionId,
       target: { kind: "custom", customConnectorId },
     });
+  });
+
+  it("requires one target for bounded account detail queries", () => {
+    expect(
+      connectorAccountListQuerySchema.parse({
+        kind: "builtin",
+        connectorSlug: "github",
+        limit: "100",
+        search: "  work  ",
+      }),
+    ).toStrictEqual({
+      kind: "builtin",
+      connectorSlug: "github",
+      limit: 100,
+      search: "work",
+    });
+    expect(
+      connectorAccountListQuerySchema.safeParse({
+        kind: "custom",
+        connectorSlug: "github",
+        customConnectorId,
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorAccountListQuerySchema.safeParse({
+        kind: "builtin",
+        connectorSlug: "github",
+        limit: 101,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires an exact target for one account read", () => {
+    expect(
+      connectorAccountsContract.connection.query.parse({
+        kind: "builtin",
+        connectorSlug: "github",
+      }),
+    ).toStrictEqual({ kind: "builtin", connectorSlug: "github" });
+    expect(
+      connectorAccountsContract.connection.query.safeParse({
+        kind: "builtin",
+        connectorSlug: "github",
+        customConnectorId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only an exact target for account deletion", () => {
+    expect(
+      connectorAccountsContract.delete.body.parse({
+        target: { kind: "builtin", connectorSlug: "github" },
+      }),
+    ).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "github" },
+    });
+    expect(
+      connectorAccountsContract.delete.body.safeParse({
+        target: { kind: "builtin", connectorSlug: "github" },
+        selectionResolution: { kind: "clear" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only a target for safe single-account disconnect", () => {
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "builtin", connectorSlug: "github" },
+      }),
+    ).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "github" },
+    });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.parse({
+        target: { kind: "custom", customConnectorId },
+      }),
+    ).toStrictEqual({ target: { kind: "custom", customConnectorId } });
+    expect(
+      connectorAccountsContract.disconnectSingleAccount.body.safeParse({
+        target: { kind: "builtin", connectorSlug: "github" },
+        connectionId,
+      }).success,
+    ).toBe(false);
   });
 });

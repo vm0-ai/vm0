@@ -123,9 +123,8 @@ describe("runner claim response contract", () => {
     expect(context).toMatchObject({
       runId: "00000000-0000-4000-8000-000000020985",
       reuseKey: "thread:00000000-0000-4000-8000-000000020986",
-      agentComposeVersionId:
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       modelUsageProvider: "fixture-model",
+      platformEnvironment: { OKOU_AGENT_ID: "fixture-agent-id" },
     });
     expect(context).not.toHaveProperty("experimentalProfile");
   });
@@ -140,6 +139,57 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+
+  it("keeps old API and old runner claim shapes compatible", () => {
+    const current = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const previousApiResponse: Record<string, unknown> = { ...current };
+    Reflect.deleteProperty(previousApiResponse, "platformEnvironment");
+    expect(
+      executionContextSchema.parse(previousApiResponse),
+    ).not.toHaveProperty("platformEnvironment");
+
+    const previousRunnerSchema = z
+      .object(executionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousRunnerSchema.parse(current)).not.toHaveProperty(
+      "platformEnvironment",
+    );
+  });
+
+  it("round-trips the optional trusted environment through stored contexts", () => {
+    const storedContext = storedExecutionContextSchema.parse({
+      storageMounts: [],
+      connectorRuntimeTargets: [],
+      environment: {
+        OKOU_AGENT_ID: "stored-agent-id",
+        USER_VALUE: "user-value",
+      },
+      platformEnvironment: { OKOU_AGENT_ID: "stored-agent-id" },
+      secretValueEnvironmentKeys: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "claude-code",
+    });
+    const roundTripped = compatibleStoredExecutionContextSchema.parse(
+      JSON.parse(JSON.stringify(storedContext)),
+    );
+
+    expect(roundTripped.platformEnvironment).toStrictEqual({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+    expect(roundTripped.environment).toMatchObject({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+
+    const previousStoredContextSchema = z
+      .object(storedExecutionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousStoredContextSchema.parse(storedContext)).not.toHaveProperty(
+      "platformEnvironment",
+    );
   });
 });
 
@@ -157,12 +207,25 @@ describe("Pi sandbox execution contract", () => {
     piSessionId: "22222222-2222-4222-8222-222222222222",
     piLaunchConfig: {
       schemaVersion: 2 as const,
+      apiFirstTurn: {
+        schemaVersion: 1 as const,
+        resourceSnapshotDigest: "a".repeat(64),
+        manifestUrl: "https://storage.example/manifest.json",
+        sessionUrl: "https://storage.example/session.jsonl",
+        deadlineAt: 2_000_000_000_000,
+        baseSession: {
+          sessionId: "22222222-2222-4222-8222-222222222222",
+          sha256: null,
+        },
+        sandboxEventSequenceStart: 1 as const,
+      },
     },
     piModelConfig: {
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",
       model: "deepseek-v4-flash",
       apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "DEEPSEEK_API_KEY",
     },
   };
   const piRunnerContext = {
@@ -174,7 +237,6 @@ describe("Pi sandbox execution contract", () => {
     runId: "22222222-2222-4222-8222-222222222222",
     prompt: "continue",
     appendSystemPrompt: null,
-    agentComposeVersionId: null,
     vars: null,
     experimentalProfile: "vm0/large",
     runnerPreference: {
@@ -204,6 +266,38 @@ describe("Pi sandbox execution contract", () => {
     expect(jobSchema.parse(pollJob)).not.toHaveProperty("piExecutionMode");
   });
 
+  it.each([
+    {
+      name: "missing API first-turn slot",
+      launchConfig: { schemaVersion: 2 },
+    },
+    {
+      name: "old launch config",
+      launchConfig: { schemaVersion: 1 },
+    },
+    {
+      name: "missing H0 descriptor",
+      launchConfig: {
+        schemaVersion: 2,
+        apiFirstTurn: {
+          schemaVersion: 1,
+          resourceSnapshotDigest: "a".repeat(64),
+          manifestUrl: "https://storage.example/manifest.json",
+          sessionUrl: "https://storage.example/session.jsonl",
+          deadlineAt: 2_000_000_000_000,
+        },
+      },
+    },
+  ])("rejects $name without a Sandbox compatibility path", (fixture) => {
+    expect(
+      storedExecutionContextSchema.safeParse({
+        ...storedContext,
+        ...piStoredContext,
+        piLaunchConfig: fixture.launchConfig,
+      }).success,
+    ).toBe(false);
+  });
+
   it.each(["piSessionId", "piLaunchConfig", "piModelConfig"])(
     "rejects a stored Pi context without %s",
     (missingField) => {
@@ -218,6 +312,15 @@ describe("Pi sandbox execution contract", () => {
       ).toBe(false);
     },
   );
+
+  it("rejects a stored Pi framework without the entire hard-cut bundle", () => {
+    expect(storedExecutionContextSchema.safeParse(storedContext).success).toBe(
+      false,
+    );
+    expect(
+      compatibleStoredExecutionContextSchema.safeParse(storedContext).success,
+    ).toBe(false);
+  });
 
   it.each(["piLaunchConfig", "piModelConfig"] as const)(
     "rejects stored %s without piSessionId",
@@ -596,7 +699,6 @@ describe("runner poll response contract", () => {
     runId: "22222222-2222-4222-8222-222222222222",
     prompt: "continue",
     appendSystemPrompt: null,
-    agentComposeVersionId: null,
     vars: null,
     runnerPreference: {
       kind: "noPreference" as const,
@@ -855,7 +957,6 @@ describe("runner resume session contract", () => {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
       historyGenerationRunId,
@@ -898,7 +999,6 @@ describe("runner resume session contract", () => {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };
@@ -931,7 +1031,6 @@ describe("runner resume session contract", () => {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };
@@ -999,7 +1098,6 @@ describe("runner resume session contract", () => {
       runId: "33333333-3333-4333-8333-333333333333",
       prompt: "continue",
       appendSystemPrompt: null,
-      agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
     };

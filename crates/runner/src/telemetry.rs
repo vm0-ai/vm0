@@ -1,3 +1,7 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::routes;
@@ -34,6 +38,45 @@ pub(crate) enum RunnerStartupPath {
     Cold,
 }
 
+/// Inclusive number of Runner jobs in post-claim work before guest process spawn.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(crate) enum RunnerPreSpawnConcurrencyBucket {
+    #[serde(rename = "1")]
+    One,
+    #[serde(rename = "2")]
+    Two,
+    #[serde(rename = "3_4")]
+    ThreeToFour,
+    #[serde(rename = "5_8")]
+    FiveToEight,
+    #[serde(rename = "9_plus")]
+    NinePlus,
+}
+
+/// Shared cohort label that becomes inactive when startup terminates before spawn.
+#[derive(Clone)]
+pub(crate) struct RunnerPreSpawnAttribution {
+    bucket: RunnerPreSpawnConcurrencyBucket,
+    active: Arc<AtomicBool>,
+}
+
+impl RunnerPreSpawnAttribution {
+    pub(crate) fn new(bucket: RunnerPreSpawnConcurrencyBucket) -> Self {
+        Self {
+            bucket,
+            active: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub(crate) fn deactivate(&self) {
+        self.active.store(false, Ordering::Relaxed);
+    }
+
+    fn active_bucket(&self) -> Option<RunnerPreSpawnConcurrencyBucket> {
+        self.active.load(Ordering::Relaxed).then_some(self.bucket)
+    }
+}
+
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
 ///
@@ -44,6 +87,7 @@ pub struct JobTelemetry {
     run_id: RunId,
     sandbox_token: String,
     runner_name: String,
+    runner_pre_spawn_attribution: Option<RunnerPreSpawnAttribution>,
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
     in_flight_flushes: Vec<JoinHandle<()>>,
@@ -65,6 +109,8 @@ struct SandboxOp {
     runner_startup_path: Option<RunnerStartupPath>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_reuse_result: Option<SandboxReuseResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_pre_spawn_concurrency_bucket: Option<RunnerPreSpawnConcurrencyBucket>,
     #[serde(flatten)]
     session_history: Option<SessionHistoryTelemetryFields>,
 }
@@ -92,10 +138,23 @@ impl JobTelemetry {
             run_id,
             sandbox_token,
             runner_name,
+            runner_pre_spawn_attribution: None,
             pending_ops: Vec::new(),
             oldest_pending: None,
             in_flight_flushes: Vec::new(),
         }
+    }
+
+    pub(crate) fn start_runner_pre_spawn_attribution(
+        &mut self,
+        attribution: RunnerPreSpawnAttribution,
+    ) {
+        self.runner_pre_spawn_attribution = Some(attribution);
+    }
+
+    /// Stop decorating operations after the success-only `api_to_spawn` boundary.
+    pub(crate) fn finish_runner_pre_spawn_attribution(&mut self) {
+        self.runner_pre_spawn_attribution = None;
     }
 
     /// Record a timed operation. Starts an owned auto-flush if the oldest
@@ -212,7 +271,11 @@ impl JobTelemetry {
         ));
     }
 
-    fn push_operation(&mut self, operation: SandboxOp) {
+    fn push_operation(&mut self, mut operation: SandboxOp) {
+        operation.runner_pre_spawn_concurrency_bucket = self
+            .runner_pre_spawn_attribution
+            .as_ref()
+            .and_then(RunnerPreSpawnAttribution::active_bucket);
         self.pending_ops.push(operation);
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
@@ -313,6 +376,7 @@ impl JobTelemetry {
                 action_type: op.action_type.clone(),
                 runner_startup_path: op.runner_startup_path,
                 sandbox_reuse_result: op.sandbox_reuse_result,
+                runner_pre_spawn_concurrency_bucket: op.runner_pre_spawn_concurrency_bucket,
             })
             .collect()
     }
@@ -417,6 +481,7 @@ pub(crate) struct RunnerStartupTelemetrySnapshot {
     pub(crate) action_type: String,
     pub(crate) runner_startup_path: Option<RunnerStartupPath>,
     pub(crate) sandbox_reuse_result: Option<SandboxReuseResult>,
+    pub(crate) runner_pre_spawn_concurrency_bucket: Option<RunnerPreSpawnConcurrencyBucket>,
 }
 
 fn sandbox_op(
@@ -457,6 +522,7 @@ fn sandbox_op_at(
         reason: None,
         runner_startup_path: None,
         sandbox_reuse_result: None,
+        runner_pre_spawn_concurrency_bucket: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
     }
 }
@@ -541,7 +607,7 @@ mod tests {
     fn sandbox_op_omits_optional_fields_without_session_history() {
         let op = SandboxOp {
             ts: "2026-01-15T10:00:00+00:00".to_string(),
-            action_type: "vm_create".to_string(),
+            action_type: "sandbox_create".to_string(),
             duration_ms: 1500,
             success: true,
             error: None,
@@ -549,6 +615,7 @@ mod tests {
             reason: None,
             runner_startup_path: None,
             sandbox_reuse_result: None,
+            runner_pre_spawn_concurrency_bucket: None,
             session_history: None,
         };
         let json = serde_json::to_value(&op).unwrap();
@@ -556,7 +623,7 @@ mod tests {
             json,
             serde_json::json!({
                 "ts": "2026-01-15T10:00:00+00:00",
-                "action_type": "vm_create",
+                "action_type": "sandbox_create",
                 "duration_ms": 1500,
                 "success": true,
             })
@@ -635,6 +702,9 @@ mod tests {
             "tok".to_string(),
             "test-runner".to_string(),
         );
+        telemetry.start_runner_pre_spawn_attribution(RunnerPreSpawnAttribution::new(
+            RunnerPreSpawnConcurrencyBucket::ThreeToFour,
+        ));
         telemetry.record_api_to_spawn(
             Duration::from_millis(125),
             RunnerStartupPath::Workspace,
@@ -650,6 +720,7 @@ mod tests {
                 "success": true,
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",
+                "runner_pre_spawn_concurrency_bucket": "3_4",
             })
         );
     }
@@ -676,6 +747,7 @@ mod tests {
                 reason: None,
                 runner_startup_path: None,
                 sandbox_reuse_result: None,
+                runner_pre_spawn_concurrency_bucket: None,
                 session_history: Some(metadata.into()),
             }],
         };
@@ -747,7 +819,7 @@ mod tests {
             "test-runner".to_string(),
         );
 
-        telemetry.record("vm_create", Duration::from_millis(500), true, None);
+        telemetry.record("sandbox_create", Duration::from_millis(500), true, None);
         telemetry.record(
             "agent_execute",
             Duration::from_secs(10),
@@ -756,7 +828,7 @@ mod tests {
         );
 
         assert_eq!(telemetry.pending_ops.len(), 2);
-        assert_eq!(telemetry.pending_ops[0].action_type, "vm_create");
+        assert_eq!(telemetry.pending_ops[0].action_type, "sandbox_create");
         assert_eq!(telemetry.pending_ops[0].duration_ms, 500);
         assert!(telemetry.pending_ops[0].success);
         assert!(telemetry.pending_ops[0].error.is_none());

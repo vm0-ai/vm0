@@ -9,17 +9,55 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nix::fcntl::Flock;
-use nix::sys::signal::Signal;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
 
-pub(super) const RUNTIME_MARKER_ENV: &str = "VM0_MITMDUMP_RUNTIME_DIR";
-const RUNTIME_MARKER_PREFIX: &[u8] = b"VM0_MITMDUMP_RUNTIME_DIR=";
+// Marker-bearing descendants can outlive their runner. Expansion Stage 1 keeps
+// both names so current runners can reconcile old launches and rollback runners
+// can reconcile current launches; removal remains gated by #28914.
+pub(super) const CANONICAL_RUNTIME_MARKER_ENV: &str = "OKOU_MITMDUMP_RUNTIME_DIR";
+pub(super) const LEGACY_RUNTIME_MARKER_ENV: &str = "VM0_MITMDUMP_RUNTIME_DIR";
+const CANONICAL_RUNTIME_MARKER_PREFIX: &[u8] = b"OKOU_MITMDUMP_RUNTIME_DIR=";
+const LEGACY_RUNTIME_MARKER_PREFIX: &[u8] = b"VM0_MITMDUMP_RUNTIME_DIR=";
 const LAUNCH_PREFIX: &str = "launch-";
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RuntimeMarkerSource {
+    LegacyOnly,
+    CanonicalOnly,
+    Dual,
+}
+
+impl RuntimeMarkerSource {
+    const ALL: [Self; 3] = [Self::LegacyOnly, Self::CanonicalOnly, Self::Dual];
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyOnly => "legacy-only",
+            Self::CanonicalOnly => "canonical-only",
+            Self::Dual => "dual",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct ResolvedRuntimeMarker<'a> {
+    value: &'a [u8],
+    source: RuntimeMarkerSource,
+}
+
+#[derive(Clone, Copy)]
+enum RuntimeMarkerResolution<'a> {
+    Resolved(ResolvedRuntimeMarker<'a>),
+    Conflict {
+        canonical: &'a [u8],
+        legacy: &'a [u8],
+    },
+}
 
 #[derive(Clone, Copy)]
 struct ProcessIdentity {
@@ -32,6 +70,7 @@ struct ProcessObservation {
     identity: ProcessIdentity,
     stat: ProcessStat,
     command: String,
+    marker_source: RuntimeMarkerSource,
 }
 
 struct ProcessSnapshot {
@@ -101,7 +140,7 @@ impl MitmdumpRuntime {
             )));
         }
         if let Err(error) = self.terminate_marked_processes(Some(&path)).await {
-            warn!(path = %path.display(), error = %error, "preserving mitmdump launch directory for later reconciliation");
+            warn!(error = %error, "preserving mitmdump launch directory for later reconciliation");
             return Err(error);
         }
         match tokio::fs::remove_dir_all(&path).await {
@@ -204,7 +243,7 @@ impl MitmdumpRuntime {
             } else {
                 consecutive_empty_scans = 0;
                 for process in &snapshot.processes {
-                    signal_stable_process(process.identity).await?;
+                    signal_stable_process(&self.root, exact_path, process.identity).await?;
                 }
                 wait_for_processes_exit(target, &snapshot).await?;
             }
@@ -272,10 +311,19 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         let Some(environ) = read_process_environ(pid)? else {
             continue;
         };
-        let Some(marker) = runtime_marker(&environ) else {
+        let Some(marker) = resolve_runtime_marker(&environ) else {
             continue;
         };
-        let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
+        let marker = match marker {
+            RuntimeMarkerResolution::Resolved(marker) => marker,
+            RuntimeMarkerResolution::Conflict { canonical, legacy } => {
+                if conflicting_runtime_marker_claims_target(root, exact_path, canonical, legacy) {
+                    return Err(runtime_marker_conflict_error());
+                }
+                continue;
+            }
+        };
+        let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker.value));
         if !is_launch_path(root, marker_path)
             || exact_path.is_some_and(|expected| marker_path != expected)
         {
@@ -299,7 +347,7 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         let Some(rechecked_environ) = read_process_environ(pid)? else {
             continue;
         };
-        if runtime_marker(&rechecked_environ) != Some(marker) {
+        if resolve_unambiguous_runtime_marker(&rechecked_environ)? != Some(marker) {
             continue;
         }
         let after = match crate::process::read_process_stat_checked_blocking(pid) {
@@ -317,7 +365,9 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
                 )));
             }
         };
-        if !same_process(&before, &after) || !seen.insert((pid, after.starttime)) {
+        if before.procfs_generation() != after.procfs_generation()
+            || !seen.insert((pid, after.starttime))
+        {
             continue;
         }
         let command = read_process_comm(pid);
@@ -328,6 +378,7 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
             },
             stat: after,
             command,
+            marker_source: marker.source,
         });
     }
     Ok(ProcessSnapshot {
@@ -375,14 +426,62 @@ fn process_disappeared(error: &std::io::Error) -> bool {
     error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(nix::libc::ESRCH)
 }
 
-fn runtime_marker(environ: &[u8]) -> Option<&[u8]> {
-    environ
+fn resolve_runtime_marker(environ: &[u8]) -> Option<RuntimeMarkerResolution<'_>> {
+    let canonical = environ
         .split(|byte| *byte == 0)
-        .find_map(|entry| entry.strip_prefix(RUNTIME_MARKER_PREFIX))
+        .find_map(|entry| entry.strip_prefix(CANONICAL_RUNTIME_MARKER_PREFIX));
+    let legacy = environ
+        .split(|byte| *byte == 0)
+        .find_map(|entry| entry.strip_prefix(LEGACY_RUNTIME_MARKER_PREFIX));
+
+    match (canonical, legacy) {
+        (None, None) => None,
+        (None, Some(value)) => Some(RuntimeMarkerResolution::Resolved(ResolvedRuntimeMarker {
+            value,
+            source: RuntimeMarkerSource::LegacyOnly,
+        })),
+        (Some(value), None) => Some(RuntimeMarkerResolution::Resolved(ResolvedRuntimeMarker {
+            value,
+            source: RuntimeMarkerSource::CanonicalOnly,
+        })),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            Some(RuntimeMarkerResolution::Resolved(ResolvedRuntimeMarker {
+                value: canonical,
+                source: RuntimeMarkerSource::Dual,
+            }))
+        }
+        (Some(canonical), Some(legacy)) => {
+            Some(RuntimeMarkerResolution::Conflict { canonical, legacy })
+        }
+    }
 }
 
-fn same_process(before: &ProcessStat, after: &ProcessStat) -> bool {
-    before.pgid == after.pgid && before.starttime == after.starttime
+fn resolve_unambiguous_runtime_marker(
+    environ: &[u8],
+) -> RunnerResult<Option<ResolvedRuntimeMarker<'_>>> {
+    match resolve_runtime_marker(environ) {
+        None => Ok(None),
+        Some(RuntimeMarkerResolution::Resolved(marker)) => Ok(Some(marker)),
+        Some(RuntimeMarkerResolution::Conflict { .. }) => Err(runtime_marker_conflict_error()),
+    }
+}
+
+fn conflicting_runtime_marker_claims_target(
+    root: &Path,
+    exact_path: Option<&Path>,
+    canonical: &[u8],
+    legacy: &[u8],
+) -> bool {
+    [canonical, legacy].into_iter().any(|value| {
+        let path = Path::new(std::ffi::OsStr::from_bytes(value));
+        is_launch_path(root, path) && exact_path.is_none_or(|expected| path == expected)
+    })
+}
+
+fn runtime_marker_conflict_error() -> RunnerError {
+    RunnerError::Internal(format!(
+        "conflicting mitmdump runtime marker environment keys {CANONICAL_RUNTIME_MARKER_ENV} and {LEGACY_RUNTIME_MARKER_ENV}"
+    ))
 }
 
 fn is_launch_path(root: &Path, path: &Path) -> bool {
@@ -393,6 +492,19 @@ fn is_launch_path(root: &Path, path: &Path) -> bool {
 }
 
 fn log_process_snapshot(target: &Path, snapshot: &ProcessSnapshot) {
+    for source in RuntimeMarkerSource::ALL {
+        let matched = snapshot
+            .processes
+            .iter()
+            .filter(|process| process.marker_source == source)
+            .count();
+        if matched > 0 {
+            info!(
+                marker_source = source.as_str(),
+                matched, "observed mitmdump runtime marker source during reconciliation"
+            );
+        }
+    }
     if snapshot.elapsed >= PROCESS_EXIT_TIMEOUT {
         let elapsed_ms = snapshot.elapsed.as_millis();
         let matched = snapshot.processes.len();
@@ -441,6 +553,7 @@ async fn observe_stable_process(
                 identity: process.identity,
                 stat,
                 command: process.command.clone(),
+                marker_source: process.marker_source,
             }))
         }
         ProcessStatRead::Found(_) | ProcessStatRead::Missing => Ok(None),
@@ -488,44 +601,298 @@ fn process_exit_timeout_error(
     ))
 }
 
-async fn signal_stable_process(process: ProcessIdentity) -> RunnerResult<()> {
-    let current = match crate::process::read_process_stat_checked(process.pid).await {
+async fn signal_stable_process(
+    root: &Path,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<()> {
+    let Some(pidfd) = open_pidfd(process.pid)? else {
+        return Ok(());
+    };
+    if !marked_process_matches_after_pidfd_open(root, exact_path, process).await? {
+        return Ok(());
+    }
+    match rustix::process::pidfd_send_signal(&pidfd, rustix::process::Signal::KILL) {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "pidfd signal mitmdump runtime owner pid {}: {error}",
+            process.pid
+        ))),
+    }
+}
+
+fn open_pidfd(pid: u32) -> RunnerResult<Option<std::os::fd::OwnedFd>> {
+    let raw_pid = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "convert mitmdump cleanup pid {pid} to a positive process id"
+            ))
+        })?;
+    match rustix::process::pidfd_open(raw_pid, rustix::process::PidfdFlags::empty()) {
+        Ok(pidfd) => Ok(Some(pidfd)),
+        Err(rustix::io::Errno::SRCH) => Ok(None),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "open pidfd for mitmdump runtime owner pid {pid}: {error}"
+        ))),
+    }
+}
+
+async fn marked_process_matches_after_pidfd_open(
+    root: &Path,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<bool> {
+    let before = match crate::process::read_process_stat_checked(process.pid).await {
         ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
-        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(()),
-        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(()),
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
         ProcessStatRead::Unreadable(error) => {
             return Err(RunnerError::Internal(format!(
-                "recheck /proc/{}/stat before mitmdump cleanup signal: {error}",
+                "recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
                 process.pid
             )));
         }
         ProcessStatRead::Invalid => {
             return Err(RunnerError::Internal(format!(
-                "reparse /proc/{}/stat before mitmdump cleanup signal",
+                "reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
                 process.pid
             )));
         }
     };
-    if current.starttime != process.starttime {
-        return Ok(());
+    if before.starttime != process.starttime {
+        return Ok(false);
     }
-    let pid = i32::try_from(process.pid).map_err(|error| {
-        RunnerError::Internal(format!(
-            "convert mitmdump cleanup pid {}: {error}",
-            process.pid
-        ))
-    })?;
-    match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), Signal::SIGKILL) {
-        Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(()),
-        Err(error) => Err(RunnerError::Internal(format!(
-            "kill mitmdump runtime owner pid {}: {error}",
-            process.pid
-        ))),
+
+    let environ = match tokio::fs::read(format!("/proc/{}/environ", process.pid)).await {
+        Ok(environ) => environ,
+        Err(error) if process_disappeared(&error) => return Ok(false),
+        Err(error) => {
+            return Err(RunnerError::Internal(format!(
+                "recheck /proc/{}/environ after opening mitmdump cleanup pidfd: {error}",
+                process.pid
+            )));
+        }
+    };
+    let Some(marker) = resolve_unambiguous_runtime_marker(&environ)? else {
+        return Ok(false);
+    };
+    let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker.value));
+    if !is_launch_path(root, marker_path)
+        || exact_path.is_some_and(|expected| marker_path != expected)
+    {
+        return Ok(false);
     }
+
+    let after = match crate::process::read_process_stat_checked(process.pid).await {
+        ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
+        ProcessStatRead::Unreadable(error) => {
+            return Err(RunnerError::Internal(format!(
+                "final recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
+                process.pid
+            )));
+        }
+        ProcessStatRead::Invalid => {
+            return Err(RunnerError::Internal(format!(
+                "final reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
+                process.pid
+            )));
+        }
+    };
+    Ok(before.procfs_generation() == after.procfs_generation()
+        && after.starttime == process.starttime)
 }
 
 pub(super) fn preserve_launch(launch: tempfile::TempDir, error: &impl std::fmt::Display) {
     let path = launch.path().to_path_buf();
     let _kept_path = launch.keep();
     warn!(path = %path.display(), error = %error, "preserving mitmdump launch directory for later reconciliation");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+    use super::*;
+
+    struct ProbeChild {
+        child: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    impl ProbeChild {
+        fn spawn(canonical_marker: Option<&Path>, legacy_marker: Option<&Path>) -> Self {
+            let mut command = Command::new("cat");
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
+                .env_remove(LEGACY_RUNTIME_MARKER_ENV);
+            if let Some(marker) = canonical_marker {
+                command.env(CANONICAL_RUNTIME_MARKER_ENV, marker);
+            }
+            if let Some(marker) = legacy_marker {
+                command.env(LEGACY_RUNTIME_MARKER_ENV, marker);
+            }
+            let mut child = command.spawn().unwrap();
+            let stdin = child.stdin.take().unwrap();
+            let stdout = BufReader::new(child.stdout.take().unwrap());
+            Self {
+                child,
+                stdin,
+                stdout,
+            }
+        }
+
+        fn pid(&self) -> u32 {
+            self.child.id()
+        }
+
+        fn assert_responds(&mut self) {
+            writeln!(self.stdin, "probe").unwrap();
+            self.stdin.flush().unwrap();
+            let mut response = String::new();
+            self.stdout.read_line(&mut response).unwrap();
+            assert_eq!(response, "probe\n");
+        }
+    }
+
+    fn marker_environment(canonical: Option<&[u8]>, legacy: Option<&[u8]>) -> Vec<u8> {
+        let mut environ = b"UNRELATED=value\0".to_vec();
+        if let Some(value) = canonical {
+            environ.extend_from_slice(CANONICAL_RUNTIME_MARKER_PREFIX);
+            environ.extend_from_slice(value);
+            environ.push(0);
+        }
+        if let Some(value) = legacy {
+            environ.extend_from_slice(LEGACY_RUNTIME_MARKER_PREFIX);
+            environ.extend_from_slice(value);
+            environ.push(0);
+        }
+        environ
+    }
+
+    #[test]
+    fn runtime_marker_resolver_accepts_supported_sources() {
+        let value = b"/runtime/launch-marker".as_slice();
+        for (canonical, legacy, source) in [
+            (None, Some(value), RuntimeMarkerSource::LegacyOnly),
+            (Some(value), None, RuntimeMarkerSource::CanonicalOnly),
+            (Some(value), Some(value), RuntimeMarkerSource::Dual),
+        ] {
+            let environ = marker_environment(canonical, legacy);
+            let RuntimeMarkerResolution::Resolved(marker) =
+                resolve_runtime_marker(&environ).unwrap()
+            else {
+                panic!("expected resolved runtime marker");
+            };
+
+            assert_eq!(marker.value, value);
+            assert_eq!(marker.source, source);
+        }
+        assert!(resolve_runtime_marker(&marker_environment(None, None)).is_none());
+        assert_eq!(RuntimeMarkerSource::LegacyOnly.as_str(), "legacy-only");
+        assert_eq!(
+            RuntimeMarkerSource::CanonicalOnly.as_str(),
+            "canonical-only"
+        );
+        assert_eq!(RuntimeMarkerSource::Dual.as_str(), "dual");
+    }
+
+    #[test]
+    fn runtime_marker_resolver_rejects_conflicts_without_values() {
+        let canonical = b"canonical-value-should-not-leak";
+        let legacy = b"legacy-value-should-not-leak";
+        let environ = marker_environment(Some(canonical), Some(legacy));
+        let error = match resolve_unambiguous_runtime_marker(&environ) {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("expected conflicting runtime markers"),
+        };
+
+        assert!(error.contains("conflicting mitmdump runtime marker"));
+        assert!(error.contains(CANONICAL_RUNTIME_MARKER_ENV));
+        assert!(error.contains(LEGACY_RUNTIME_MARKER_ENV));
+        assert!(!error.contains(std::str::from_utf8(canonical).unwrap()));
+        assert!(!error.contains(std::str::from_utf8(legacy).unwrap()));
+    }
+
+    impl Drop for ProbeChild {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    async fn process_identity(pid: u32) -> ProcessIdentity {
+        let ProcessStatRead::Found(stat) = crate::process::read_process_stat_checked(pid).await
+        else {
+            panic!("probe child process stat is unavailable");
+        };
+        ProcessIdentity {
+            pid,
+            starttime: stat.starttime,
+        }
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rejects_replacement_process_generation() {
+        let root = tempfile::tempdir().unwrap();
+        let launch = root.path().join("launch-stale-generation");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(None, Some(&launch));
+        let current = process_identity(replacement.pid()).await;
+        let stale = ProcessIdentity {
+            starttime: current.starttime.checked_add(1).unwrap(),
+            ..current
+        };
+
+        signal_stable_process(root.path(), Some(&launch), stale)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rechecks_runtime_marker() {
+        let root = tempfile::tempdir().unwrap();
+        let launch = root.path().join("launch-removed-marker");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(None, None);
+        let current = process_identity(replacement.pid()).await;
+
+        signal_stable_process(root.path(), Some(&launch), current)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rejects_conflicting_runtime_markers_without_values() {
+        let root = tempfile::tempdir().unwrap();
+        let canonical = root.path().join("launch-canonical-value-should-not-leak");
+        let legacy = root.path().join("launch-legacy-value-should-not-leak");
+        std::fs::create_dir(&canonical).unwrap();
+        std::fs::create_dir(&legacy).unwrap();
+        let mut replacement = ProbeChild::spawn(Some(&canonical), Some(&legacy));
+        let current = process_identity(replacement.pid()).await;
+
+        let error = signal_stable_process(root.path(), Some(&canonical), current)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains(CANONICAL_RUNTIME_MARKER_ENV));
+        assert!(error.contains(LEGACY_RUNTIME_MARKER_ENV));
+        assert!(!error.contains("canonical-value-should-not-leak"));
+        assert!(!error.contains("legacy-value-should-not-leak"));
+        replacement.assert_responds();
+    }
 }

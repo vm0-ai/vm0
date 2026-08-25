@@ -77,7 +77,7 @@ function stubAgent(
   displayName: string | null,
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/agents/${id}`, () => {
+  return http.get(`${origin}/api/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -94,7 +94,7 @@ function stubUserConnectors(
   enabledConnectorSlugs: string[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/okou/agents/${id}/user-connectors`, () => {
+  return http.get(`${origin}/api/agents/${id}/user-connectors`, () => {
     return HttpResponse.json({ enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
@@ -287,7 +287,6 @@ describe("okou connector status command", () => {
     it("prefers OKOU runtime context over legacy Zero values", async () => {
       const appOrigin = "https://okou-app.example.test";
       vi.stubEnv("OKOU_APP_URL", appOrigin);
-      vi.stubEnv("ZERO_APP_URL", "https://zero-app.example.test");
       vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
       vi.stubEnv("OKOU_CHAT_THREAD_ID", "okou-thread-123");
@@ -307,11 +306,9 @@ describe("okou connector status command", () => {
       expect(logCalls).toContain("threadId=okou-thread-123");
       expect(logCalls).not.toContain(ALT_AGENT_UUID);
       expect(logCalls).not.toContain("zero-thread-456");
-      expect(logCalls).not.toContain("zero-app.example.test");
     });
 
     it("ignores legacy Zero runtime context without canonical values", async () => {
-      vi.stubEnv("ZERO_APP_URL", "https://zero-app.example.test");
       vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
       vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
       server.use(stubConnector(connectedGithub));
@@ -322,7 +319,6 @@ describe("okou connector status command", () => {
       expect(logCalls).not.toContain("Authorized:");
       expect(logCalls).not.toContain(ALT_AGENT_UUID);
       expect(logCalls).not.toContain("zero-thread-456");
-      expect(logCalls).not.toContain("zero-app.example.test");
     });
 
     it("uses the production app origin in authorization links", async () => {
@@ -492,15 +488,12 @@ describe("okou connector status command", () => {
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, ["github"]),
-        http.get(
-          `http://localhost:3000/api/okou/agents/${ALT_AGENT_UUID}`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "should not be called", code: "ERR" } },
-              { status: 500 },
-            );
-          },
-        ),
+        http.get(`http://localhost:3000/api/agents/${ALT_AGENT_UUID}`, () => {
+          return HttpResponse.json(
+            { error: { message: "should not be called", code: "ERR" } },
+            { status: 500 },
+          );
+        }),
       );
 
       await statusCommand.parseAsync([

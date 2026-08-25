@@ -7,10 +7,6 @@ import { integrationsSlackMessageContract } from "@okouai/api-contracts/contract
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import {
@@ -26,7 +22,7 @@ const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -34,7 +30,7 @@ function zeroToken(args: {
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -105,9 +101,8 @@ describe("POST /api/integrations/slack/message", () => {
    * Creates a real run for an agent named "My Assistant" through the product
    * agent + run APIs, so the message footer can resolve the agent label from
    * the run. Run admission needs org credits (Stripe webhook grant); the
-   * current Agent API cannot express the legacy inline ANTHROPIC_API_KEY
-   * state, so a narrow historical Compose fixture supplies it. This keeps the
-   * run free of a selected model, matching providers without model selection.
+   * provider-only fixture keeps the run free of a selected model, matching
+   * providers without model selection without reading legacy Compose content.
    */
   async function seedAgentRun(base: {
     readonly orgId: string;
@@ -125,25 +120,16 @@ describe("POST /api/integrations/slack/message", () => {
       displayName: "My Assistant",
       visibility: "private",
     });
-    const compose = await readHistoricalAgentComposeHeadFixture(agent.agentId);
-    await createHistoricalAgentComposeFixture({
-      actor: { userId: base.userId, orgId: base.orgId },
-      content: {
-        version: "1.0",
-        agents: {
-          [compose.name]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-          },
-        },
-      },
-      signal: context.signal,
+    await api.createOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
       prompt: "send slack message",
+      modelProvider: "openrouter-api-key",
     });
     // Product run creation authenticates through the Clerk session mocks;
     // restore the membership-list mock the zero-token auth path relies on.
@@ -177,7 +163,7 @@ describe("POST /api/integrations/slack/message", () => {
 
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -217,7 +203,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when no Slack installation exists for org", async () => {
     const { orgId, userId } = await seedBaseContext();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -235,7 +221,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("sends message successfully and returns Slack response", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -266,7 +252,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("forwards Slack API error with 400 status", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
       Object.assign(new Error("channel_not_found"), {
@@ -291,7 +277,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("sends DM via user field using conversations.open", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -319,7 +305,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when conversations.open fails with user_not_found", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     context.mocks.slack.conversations.open.mockRejectedValueOnce(
       Object.assign(new Error("user_not_found"), {
@@ -349,7 +335,7 @@ describe("POST /api/integrations/slack/message", () => {
       { slackWorkspaceId, userId: userId },
       context.signal,
     );
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -371,7 +357,7 @@ describe("POST /api/integrations/slack/message", () => {
 
   it("returns 404 when 'me' is used but no Slack connection exists", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const token = zeroToken({ userId, orgId, runId: "run-1" });
+    const token = okouToken({ userId, orgId, runId: "run-1" });
 
     const client = setupApp({
       context,
@@ -390,7 +376,7 @@ describe("POST /api/integrations/slack/message", () => {
   it("appends 'Sent via' footer when agent is resolvable from run", async () => {
     const { orgId, userId } = await seedWithInstallation();
     const { runId } = await seedAgentRun({ orgId, userId });
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,
@@ -435,7 +421,7 @@ describe("POST /api/integrations/slack/message", () => {
       context.signal,
     );
 
-    const token = zeroToken({ userId, orgId, runId });
+    const token = okouToken({ userId, orgId, runId });
 
     const client = setupApp({
       context,

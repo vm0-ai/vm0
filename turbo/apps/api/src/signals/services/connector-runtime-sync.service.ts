@@ -6,7 +6,7 @@ import {
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
 } from "@okouai/api-contracts/contracts/runners";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -90,20 +90,21 @@ async function loadCustomSnapshot(args: {
       const accountResolutions = await resolveConnectorAccounts(tx, {
         orgId: args.scope.orgId,
         userId: args.scope.userId,
-        requests: args.registrations.map((registration) => {
-          return {
-            target: {
-              kind: "custom" as const,
-              customConnectorId: registration.customConnectorId,
-            },
-            selection:
-              registration.sourceId === undefined
-                ? { kind: "legacy-singleton" as const }
-                : {
+        requests: args.registrations.flatMap((registration) => {
+          return registration.sourceId === undefined
+            ? []
+            : [
+                {
+                  target: {
+                    kind: "custom" as const,
+                    customConnectorId: registration.customConnectorId,
+                  },
+                  selection: {
                     kind: "exact" as const,
                     sourceId: registration.sourceId,
                   },
-          };
+                },
+              ];
         }),
       });
       const resolvedAccountIds =
@@ -291,20 +292,18 @@ export async function resolveConnectorRuntimeTargets(args: {
         orgId: args.scope.orgId,
         userId: args.scope.userId,
         requests: args.targets.flatMap((registration) => {
-          return registration.kind === "builtin"
+          return registration.kind === "builtin" &&
+            registration.sourceId !== undefined
             ? [
                 {
                   target: {
                     kind: "builtin" as const,
                     connectorSlug: registration.connectorSlug,
                   },
-                  selection:
-                    registration.sourceId === undefined
-                      ? { kind: "legacy-singleton" as const }
-                      : {
-                          kind: "exact" as const,
-                          sourceId: registration.sourceId,
-                        },
+                  selection: {
+                    kind: "exact" as const,
+                    sourceId: registration.sourceId,
+                  },
                 },
               ]
             : [];

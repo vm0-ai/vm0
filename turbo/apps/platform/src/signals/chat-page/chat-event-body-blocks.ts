@@ -2,7 +2,7 @@ import {
   chatEventCompatibilityRole,
   isChatEventContentTextType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import { messageDocumentToDisplayText } from "../zero-page/user-message-document-codec.ts";
+import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import {
   isFollowupsEvent,
   isGoalMarkerEvent,
@@ -13,10 +13,9 @@ import {
 } from "./chat-event-state.ts";
 import {
   eventBodyPlan,
-  parseBodyBlocks,
   type CardDescriptorBlock,
-  type ParsedBodyBlock,
 } from "./parse-body-blocks.ts";
+import type { ChatActionContext } from "./chat-action-context.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 
 function chatEventBodyContent(event: ChatEvent): string {
@@ -41,17 +40,6 @@ function chatEventBodyContent(event: ChatEvent): string {
     return content.trim();
   }
   return event.content?.trim() ?? "";
-}
-
-export function parseChatEventBodyBlocks(
-  event: ChatEvent,
-  threadId: string,
-): ParsedBodyBlock[] {
-  const content = chatEventBodyContent(event);
-  return parseBodyBlocks(content, {
-    previews: chatEventCompatibilityRole(event.eventType) === "assistant",
-    browserThreadId: threadId,
-  }).blocks;
 }
 
 function skipsEventBodyRendering(event: ChatEvent): boolean {
@@ -99,7 +87,7 @@ interface ChatEventTreePlan {
  */
 export function chatEventTreePlan(
   event: ChatEvent,
-  threadId: string,
+  chatActionContext: ChatActionContext,
 ): ChatEventTreePlan | null {
   const content = chatEventTreeContent(event);
   if (content === null) {
@@ -107,7 +95,7 @@ export function chatEventTreePlan(
   }
   const plan = eventBodyPlan(content, {
     previews: true,
-    browserThreadId: threadId,
+    chatActionContext,
   });
   return {
     content,

@@ -117,6 +117,7 @@ describe("okou generate website command", () => {
     expect(stdout).not.toContain("use `seedream4` by default");
     expect(stdout).not.toContain("Keep at most 3 image generations");
     expect(stdout).not.toContain("Embed this URL in HTML");
+    expect(stdout).not.toContain("okou generate image-batch start");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -156,21 +157,38 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "https://static.okou.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+      "https://static.okou.io/html-resources/website/v1/480d0e4a000be6df09698005009fa5a0bf3c02a904b8fd70adfc83655b411a12/website.json",
     );
     expect(stdout).toContain("Built-in Website template release: latest");
-    expect(stdout).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+    const imageWorkflowLines = stdout.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow: use supplied images first;");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain(
+      "one outside-site TSV row per selected real slot",
     );
-    expect(stdout).toContain(
-      "Keep at most 3 image generations in flight at once",
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
     );
-    expect(stdout).toContain(
-      "Embed the `Embed this URL in HTML` value returned by the generator",
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
     );
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("<state-dir>/results.tsv");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain("keep its state outside the site");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(imageWorkflow).toContain("never call `okou generate image`");
+    expect(imageWorkflow).toContain("or a template image wrapper directly");
+    expect(imageWorkflow).not.toContain("a fourth is rejected");
   });
 
-  it("should keep seedream4 inside a run with a default image model", async () => {
+  it("should let the image batch own its settings with a default image model", async () => {
     vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
     vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "qwen-image");
 
@@ -184,7 +202,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      "let the command own generation settings/concurrency/retry",
     );
     expect(stdout).not.toContain("use `qwen-image` by default");
     expect(stdout).not.toContain("run default image model");
@@ -276,7 +294,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template archive SHA-256: cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+      "Selected template archive SHA-256: 9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
     );
   });
 

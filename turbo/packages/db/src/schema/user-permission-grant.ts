@@ -1,5 +1,6 @@
 import {
   check,
+  foreignKey,
   index,
   pgTable,
   text,
@@ -9,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 
 export type UserPermissionGrantAction = "allow" | "deny";
 
@@ -26,14 +27,7 @@ export const userPermissionGrants = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })
@@ -45,6 +39,11 @@ export const userPermissionGrants = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "user_permission_grants_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("uq_user_permission_grants_slug_permission").on(
         table.orgId,
         table.userId,

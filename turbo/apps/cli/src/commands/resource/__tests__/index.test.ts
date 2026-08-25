@@ -67,7 +67,7 @@ describe("okou resource pull registry resolver", () => {
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+              "9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
           }),
         }),
       }),
@@ -201,6 +201,53 @@ describe("okou resource pull command", () => {
     expect(skill).toContain("# vm0 Illustration");
     expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
       "✓ Pulled image-style:vm0-illustration",
+    );
+  });
+
+  it("resolves the pull-only presentation reverse-template guide through the command", async () => {
+    const reverseTemplateSha256 =
+      "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5";
+    server.use(
+      http.get(
+        "http://localhost:3000/api/registry/resources/download",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("id")).toBe(
+            "skill:presentation-reverse-template",
+          );
+          expect(url.searchParams.get("expectedSha256")).toBe(
+            reverseTemplateSha256,
+          );
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          return HttpResponse.json({
+            url: downloadUrl,
+            id: "skill:presentation-reverse-template",
+            type: "tar.gz",
+            sha256: "0".repeat(64),
+            expiresInSeconds: 900,
+            versionId,
+            fileCount: 17,
+            size: 270_821,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      resourceCommand.parseAsync([
+        "node",
+        "cli",
+        "pull",
+        "skill:presentation-reverse-template",
+        "--dir",
+        outputDir,
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Resource archive digest metadata mismatch",
     );
   });
 

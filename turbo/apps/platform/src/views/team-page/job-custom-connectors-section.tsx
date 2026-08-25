@@ -8,28 +8,28 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
+import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
   agentCustomConnectorToggleSaving$,
   agentCustomConnectorGrants$,
   agentAddedCustomConnectors$,
   toggleAgentCustomConnector$,
-} from "../../signals/zero-page/job-detail/custom-connectors.ts";
+} from "../../signals/okou-page/job-detail/custom-connectors.ts";
 import {
   closeCustomConnectorPermissions$,
   customConnectorPermissionBundle$,
   customConnectorPermissionDraft$,
   openCustomConnectorPermissions$,
-} from "../../signals/zero-page/settings/custom-connector-permissions.ts";
-import { agentDetail$ } from "../../signals/zero-page/job-detail/detail.ts";
+} from "../../signals/okou-page/settings/custom-connector-permissions.ts";
+import { agentDetail$ } from "../../signals/okou-page/job-detail/detail.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
-import { ConnectorPermissionRow } from "../zero-page/components/settings/connector-permission-row.tsx";
-import { CustomConnectorPermissionsDrawer } from "../zero-page/components/settings/custom-connector-permissions-drawer.tsx";
-import { customConnectorTarget } from "../zero-page/components/settings/custom-connector-display.ts";
+import { CustomConnectorIcon } from "../okou-page/components/settings/custom-connector-icon.tsx";
+import { ConnectorPermissionRow } from "../okou-page/components/settings/connector-permission-row.tsx";
+import { CustomConnectorPermissionsDrawer } from "../okou-page/components/settings/custom-connector-permissions-drawer.tsx";
+import { customConnectorTarget } from "../okou-page/components/settings/custom-connector-display.ts";
 import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function JobCustomConnectorRow({

@@ -62,7 +62,10 @@ teardown() {
     local values_payload
     values_payload=$(jq -nc \
         --arg secret "$probe_secret" \
-        '{values: [{key: "probe_secret", kind: "secret", value: $secret}]}')
+        '{
+            account: {intent: "single-account"},
+            values: [{key: "probe_secret", kind: "secret", value: $secret}]
+        }')
     run runner_api_curl \
         "/api/custom-connectors/${CUSTOM_CONNECTOR_ID}/values" \
         -X PUT \
@@ -85,7 +88,7 @@ teardown() {
                 permissionNames: []
             }]
         }')
-    run runner_api_curl "/api/okou/agents/${AGENT_ID}/custom-connectors" \
+    run runner_api_curl "/api/agents/${AGENT_ID}/custom-connectors" \
         -X PUT \
         -d "$grants_payload"
     echo "$output"

@@ -74,8 +74,8 @@ async fn drain_then_resume_keeps_jobs_running() {
 /// Regression guard for the unified reactor's Draining-entry state.
 ///
 /// The first SIGUSR1 drains the idle pool, then SIGUSR2 resumes Running.
-/// A later job completion parks a VM, and the second SIGUSR1 must drain
-/// that newly parked VM. If `draining_idle_pool_drained` is not reset on
+/// A later job completion parks a sandbox, and the second SIGUSR1 must drain
+/// that newly parked sandbox. If `draining_idle_pool_drained` is not reset on
 /// Running, the second drain skips idle-pool cleanup and leaks budget.
 #[tokio::test]
 async fn drain_resume_then_second_drain_drains_idle_pool() {
@@ -116,11 +116,11 @@ async fn drain_resume_then_second_drain_drains_idle_pool() {
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
     assert!(completion.is_some(), "job should complete after resume");
-    assert_eq!(idle_pool.lock().await.len(), 1, "job should park a VM");
+    assert_eq!(idle_pool.lock().await.len(), 1, "job should park a sandbox");
     assert_eq!(
         budget.allocated().2,
         1,
-        "parked VM should hold a budget slot"
+        "parked sandbox should hold a budget slot"
     );
 
     env.drain();
@@ -139,7 +139,7 @@ async fn drain_resume_then_second_drain_drains_idle_pool() {
     assert_eq!(
         budget.allocated().2,
         0,
-        "second drain must release the parked VM budget",
+        "second drain must release the parked sandbox budget",
     );
 }
 

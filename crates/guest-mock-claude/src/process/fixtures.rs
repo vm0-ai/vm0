@@ -8,6 +8,7 @@ use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,7 @@ const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_re
 const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
+const TRANSCRIPT_FENCE_PADDING_BYTES: usize = 16 * 1024;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const TOOL_OOM_PARENT_HEADROOM_BYTES: u64 = 192 * 1024 * 1024;
 const TOOL_OOM_READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -164,9 +166,18 @@ fn emit_termination_ready_fence() {
 }
 
 fn emit_stream_event_fence(event_type: &str) {
+    // These mock-only events are consumption fences for integration tests.
+    // Keep each record larger than guest-agent's transcript buffer so seeing
+    // the marker on disk proves that all preceding events were ingested.
     println!(
         "{}",
-        json!({"type": "stream_event", "event": {"type": event_type}})
+        json!({
+            "type": "stream_event",
+            "event": {
+                "type": event_type,
+                "padding": "x".repeat(TRANSCRIPT_FENCE_PADDING_BYTES),
+            }
+        })
     );
     let _ = std::io::stdout().flush();
 }
@@ -410,6 +421,116 @@ pub(super) fn run_write_env_json_scenario(output_format: &str, path: &str) -> Ex
 
     emit_post_result_pair();
     ExitCode::SUCCESS
+}
+
+pub(super) fn run_append_prompt_transport_scenario(output_format: &str, payload: &str) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    match verify_append_prompt_transport(payload) {
+        Ok(summary) => {
+            emit_result_pair(false, &summary);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            let message = format!("append prompt transport fixture failed: {error}");
+            emit_result_pair(true, &message);
+            eprintln!("{message}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn verify_append_prompt_transport(payload: &str) -> Result<String, String> {
+    let payload: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|error| format!("parse scenario payload: {error}"))?;
+    let expected_prompt = payload
+        .get("expectedPrompt")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "scenario payload requires expectedPrompt".to_string())?;
+    let capture_path = payload
+        .get("capturePath")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "scenario payload requires capturePath".to_string())?;
+    if capture_path.is_empty() {
+        return Err("scenario capturePath must not be empty".to_string());
+    }
+
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(parent) = Path::new(capture_path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create argv capture parent: {error}"))?;
+    }
+    let capture =
+        serde_json::to_vec(&args).map_err(|error| format!("serialize argv capture: {error}"))?;
+    std::fs::write(capture_path, capture)
+        .map_err(|error| format!("write argv capture: {error}"))?;
+
+    let file_flag_positions: Vec<usize> = args
+        .iter()
+        .enumerate()
+        .filter_map(|(index, arg)| (arg == "--append-system-prompt-file").then_some(index))
+        .collect();
+    if expected_prompt.is_empty() {
+        if args
+            .iter()
+            .any(|arg| arg == "--append-system-prompt" || arg == "--append-system-prompt-file")
+        {
+            return Err("empty appended prompt emitted an append flag".to_string());
+        }
+        return Ok("empty appended prompt omitted both append flags".to_string());
+    }
+
+    let status = bash_tool_command()
+        .args([
+            "-c",
+            "pkill -9 -f -- \"$1\"; exit 97",
+            "vm0-pkill-f-collision-shell",
+            expected_prompt,
+        ])
+        .status()
+        .map_err(|error| format!("spawn broad pkill shell: {error}"))?;
+    if status.signal() != Some(libc::SIGKILL) {
+        return Err(format!(
+            "broad pkill shell exited with {status}, expected SIGKILL"
+        ));
+    }
+
+    if args.iter().any(|arg| arg == "--append-system-prompt") {
+        return Err("inline --append-system-prompt remained in argv".to_string());
+    }
+    if args.iter().any(|arg| arg.contains(expected_prompt)) {
+        return Err("raw appended prompt remained in argv".to_string());
+    }
+    let [file_flag_index] = file_flag_positions.as_slice() else {
+        return Err(format!(
+            "expected one --append-system-prompt-file flag, found {}",
+            file_flag_positions.len()
+        ));
+    };
+    let prompt_path = args
+        .get(file_flag_index + 1)
+        .ok_or_else(|| "append prompt file flag is missing its path".to_string())?;
+    let prompt_bytes = std::fs::read(prompt_path)
+        .map_err(|error| format!("read append prompt file {prompt_path}: {error}"))?;
+    if prompt_bytes != expected_prompt.as_bytes() {
+        return Err("append prompt file contents did not match".to_string());
+    }
+    let mode = std::fs::metadata(prompt_path)
+        .map_err(|error| format!("stat append prompt file {prompt_path}: {error}"))?
+        .permissions()
+        .mode()
+        & 0o777;
+    if mode != 0o600 {
+        return Err(format!(
+            "append prompt file mode was {mode:o}, expected 600"
+        ));
+    }
+
+    Ok("file-backed appended prompt survived broad pkill".to_string())
 }
 
 pub(super) fn run_parallel_shell_tool_oom_scenario(output_format: &str) -> ExitCode {

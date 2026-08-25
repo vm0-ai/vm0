@@ -183,7 +183,7 @@ function fileWriteToken(owner: ArtifactActor, runId: string): string {
   }
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: owner.actor.userId,
     orgId: owner.actor.orgId,
     runId,

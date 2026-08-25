@@ -4,7 +4,7 @@ import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -58,6 +58,7 @@ function buildSlackInstallUrl(args: {
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   if (args.reinstall) {
     url.searchParams.set("reinstall", "1");
   }
@@ -78,6 +79,7 @@ function buildSlackConnectUrl(args: {
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   return url.toString();
 }
 
@@ -121,11 +123,11 @@ export function slackOrgStatus(args: {
       if (orgMeta?.defaultAgentId) {
         const [agent] = await db
           .select({
-            displayName: zeroAgents.displayName,
-            name: zeroAgents.name,
+            displayName: agents.displayName,
+            name: agents.name,
           })
-          .from(zeroAgents)
-          .where(eq(zeroAgents.id, orgMeta.defaultAgentId))
+          .from(agents)
+          .where(eq(agents.id, orgMeta.defaultAgentId))
           .limit(1);
         defaultAgentName = agent?.displayName ?? agent?.name ?? null;
       }

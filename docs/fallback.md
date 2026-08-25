@@ -144,7 +144,7 @@ to be nullable.
 
 Once a producer is gone, its reader is dead weight. Delete the reader in the
 same PR that retires the producer, or in an explicit follow-up PR that names
-the rollout window it waited for.
+the rollout gate it waited for.
 
 This includes retired runner event shapes, superseded API routes, old storage
 prefixes, previous OAuth callback metadata, obsolete IndexedDB cache versions,
@@ -156,10 +156,10 @@ teaching the reader to accept both.
 
 Keep a fallback only when it belongs to one of these:
 
-1. **Time-boxed cross-version rollout compatibility.** Frontend, backend, and
+1. **Bounded cross-version rollout compatibility.** Frontend, backend, and
    runner deploy independently, so a briefly-mixed fleet is a real reachable
-   state. See `docs/deployment-compatibility.md`. This fallback must be
-   time-boxed to a known rollout window (see sections 7 and 8).
+   state. See `docs/deployment-compatibility.md`. This fallback must have a
+   verifiable removal gate (see sections 7 and 8).
 2. **Genuinely optional external data.** Third-party API fields that the
    provider documents as optional, or that runtime inspection proves absent
    despite the TypeScript declaration.
@@ -170,37 +170,24 @@ Keep a fallback only when it belongs to one of these:
 
 Everything else is slop.
 
-## 7. Rolling Update Windows
+## 7. Rollout Removal Gates
 
-A rollout fallback is only justified for the duration that an old version can
-still be live. Size every compatibility branch against the surface it protects.
+A rollout fallback is justified only while the incompatible state it protects
+is reachable. Use the removal gate for the owning surface.
 
-Two different numbers matter, and confusing them is how compatibility code gets
-deleted too early:
-
-- the **nominal deploy gap**, how far apart the pipeline intends to promote two
-  surfaces, and
-- the **observed maximum exposure**, how long the two versions have actually
-  overlapped in production, including promotion drift, rollback, and draining
-  instances.
-
-Only the second number bounds a fallback.
-
-| Surface                   | Nominal deploy gap | Observed maximum exposure | What resolves it                                                                    |
-| ------------------------- | ------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
-| DB vs API                 | ~4 seconds         | ~102 minutes              | API and DB converge only after promotion completes without drift or rollback.       |
-| Existing runner / sandbox | none               | up to 2 hours             | Old instances drain; newly created ones match immediately.                          |
-| Old web / app clients     | none               | ~2 days                   | A refresh loads the current version; a `426` response can force the prompt earlier. |
+| Surface                   | Removal gate                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| DB vs API                 | Release and schema state; see `docs/deployment-compatibility.md`.                |
+| Existing runner / sandbox | Old instances finish draining.                                                   |
+| Old web/app -> API        | The replacement app is live and the client-version floor excludes the old build. |
+| New web/app -> old API    | The old API is no longer serving or retained as a rollback target.               |
 
 How to use them:
 
-- **DB vs API.** `docs/deployment-compatibility.md` is the source of truth for
-  this surface; treat the numbers above as a summary of it, not a replacement.
-  The pipeline promotes migrations before API traffic, nominally within a few
-  seconds, but intended ordering is not compatibility. Recorded incidents ran
-  far longer: migration `0697` exposed new readers for **102 minutes**, `0723`
-  for **12 minutes**, `0700` for **10 minutes**, and `0722` for **2 minutes**.
-  Never size a DB/API compatibility branch by the nominal gap.
+- **DB vs API.** The normal production release migrates the production database
+  before promoting the corresponding API artifact. A successful release closes
+  the new-code-before-migration gate; a failed, cancelled, or incomplete run
+  does not.
 
   This surface also has **two independent directions**, and a fallback that
   covers one does not cover the other:
@@ -212,31 +199,32 @@ How to use them:
     `42P01` in production. New readers and writers must not require the new
     column, enum value, relation, or constraint until the migration lands.
 
-- **Old runner or sandbox (up to 2h).** The backend must accept the old runner
-  protocol for the full drain. The bound is the guest runtime budget,
-  `JOB_TIMEOUT = Duration::from_secs(7200)` in
-  `crates/runner/src/executor/mod.rs`: a draining runner can still be finishing
-  a claimed run for that long. Runner-facing endpoints, payload variants, and
-  event shapes cannot be deleted in the same PR that stops emitting them; the
-  removal is a follow-up after the window closes. Newly created runners and
-  sandboxes are already on the new version, so no fallback is needed for them.
-- **Old web or app clients (~2 days).** Frontend-to-API compatibility branches
-  are sized by this window. It is the longest one, so a client-facing rollout
-  fallback is the one most worth writing — and the one most often left behind.
-  A raised client-version floor can end it earlier by returning `426 Upgrade
-Required`, but only once an open page makes a handled API request; an idle
-  page never discovers it.
+  Remove a fallback only after its direction is safe. New-code fallbacks require
+  a successful release and the expected schema. Old-code fallbacks require the
+  outgoing API to finish draining and retained rollback targets to remain
+  compatible without the fallback; rollback does not restore the database
+  schema.
 
-State the applicable surface and its observed maximum exposure in the code
-comment and in the PR summary, so the removal condition is a bounded fact rather
-than a judgment call. If a fallback protects more than one surface, state every
-relevant window; the removal waits for the longest one.
+- **Old runner or sandbox.** The backend must accept the old runner protocol
+  until old instances finish draining. A claimed run has a two-hour guest
+  runtime budget plus bounded finalization. Remove runner-facing endpoints,
+  payload variants, and event shapes only after the drain completes.
+- **Old web or app clients.** Keep their API contract until the replacement app
+  is live and the client-version floor excludes the old build. An open page
+  discovers the floor on its next handled API request and receives `426 Upgrade
+Required`; an idle page makes no request that needs compatibility.
+- **Old API targets.** A new app may need a fallback while an older API remains
+  reachable. Remove it after that API is no longer serving or retained for
+  rollback.
 
-These windows apply only to GA behavior. A feature still behind a non-GA
-feature switch has no old external client to protect, so none of these windows
-create an obligation (see section 2).
+State the surface and removal gate in the code comment and PR summary. If a
+fallback protects more than one surface, every gate must pass before removal.
 
-## 8. Writing a Time-Boxed Rollout Fallback
+These gates apply only to GA behavior. A feature still behind a non-GA feature
+switch has no old external client to protect, so none of these gates create an
+obligation (see section 2).
+
+## 8. Writing a Bounded Rollout Fallback
 
 A legitimate rollout fallback is introduced with its removal already planned.
 
@@ -267,7 +255,7 @@ so it dies with the fallback rather than becoming a tombstone.
 
 Requirements for this pattern:
 
-- a comment naming the surface, its window from section 7, and the condition
+- a comment naming the surface, its gate from section 7, and the condition
   that makes the branch removable,
 - an entry in the PR summary (see section 9),
 - a follow-up issue or PR that removes it,
@@ -294,7 +282,7 @@ in the diff. For each fallback give:
 
 - the file and symbol,
 - what old/new interaction it protects,
-- the surface and its window from section 7 (or `none — non-GA feature
+- the surface and its gate from section 7 (or `none — non-GA feature
 switch`),
 - the removal condition and the follow-up issue or PR.
 
@@ -302,9 +290,8 @@ switch`),
 ## Fallbacks
 
 - `sidebar-unread-threads.ts:allUnreadThreadIds$` — accepts `404` from an API
-  that predates the additive `unreadIds` route. Surface: old app clients,
-  ~2 days. Remove after the API is outside the rollback window; follow-up
-  #25694.
+  that predates the additive `unreadIds` route. Surface: new app -> old API.
+  Remove after that API is outside the rollback window; follow-up #25694.
 ```
 
 PRs that do not introduce a fallback need no `Fallbacks` section. This includes
@@ -313,7 +300,7 @@ PRs that only keep or remove existing fallbacks; do not require
 
 **Reviewer — in the review comment.** The review must list every fallback the
 diff introduces, in the same shape, and state whether each one is justified
-under section 6, correctly time-boxed under section 7, and declared in the PR
+under section 6, correctly bounded under section 7, and declared in the PR
 summary. Raise each undeclared one as a P1 finding asking the author to record
 it in the summary, and request changes until it is recorded. A review that says
 nothing about fallbacks in a PR that adds one is not a completed review.
@@ -330,8 +317,7 @@ must show why the removed branch is unreachable:
 - **Production evidence** — a read-only query against the masked production
   branch showing zero rows in the old shape. PR #24888 removed an unreachable
   claim-time fallback only after confirming `pending_automation = 0`.
-- **Rollout evidence** — the deploy that made the old version unreachable is
-  past its rollback window.
+- **Rollout evidence** — the applicable gate in section 7 has passed.
 
 The evidence can come from the diff, tests, or linked production or rollout
 data. Removing a fallback does not require a `Fallbacks` section or a separate
@@ -347,10 +333,10 @@ surfaces a violation if the assumption ever breaks.
   cutover is acceptable.
 - Does the PR add a test that asserts removed behavior stays removed? Request
   removal unless it is a fail-closed security boundary.
-- Does a new rollout fallback name its surface, its window from section 7, a
+- Does a new rollout fallback name its surface, its gate from section 7, a
   removal condition, and a follow-up?
-- Is the window the right one? A runner-protocol branch sized to the ~4 second
-  DB window, or a client branch sized to the ~2 hour runner window, is wrong.
+- Is it the right gate? Check release and schema state, runner drain, client
+  floor, or retained API targets as applicable.
 - If the PR adds a fallback, does its summary contain a `Fallbacks` section
   listing every new fallback? Every introduced fallback that the summary omits
   is a P1 finding and blocks the verdict: ask the author to record it there and

@@ -146,6 +146,13 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.exec(request).await
     }
 
+    async fn apply_storage_manifest(
+        &self,
+        request: &sandbox::StorageManifestRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.apply_storage_manifest(request).await
+    }
+
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         self.inner.read_file(path, max_bytes).await
     }
@@ -228,6 +235,13 @@ impl Sandbox for PanicExecSandbox {
 
     async fn exec(&self, _request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
         panic!("simulated exec panic");
+    }
+
+    async fn apply_storage_manifest(
+        &self,
+        _request: &sandbox::StorageManifestRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        panic!("unused apply_storage_manifest");
     }
 
     async fn read_file(&self, _path: &str, _max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
@@ -372,6 +386,10 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert_eq!(
+        exec_calls[0].env_keys,
+        vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
+    );
     assert!(exec_calls[1].cmd.contains("rm -f --"));
     assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
     assert!(exec_calls[2].sudo);

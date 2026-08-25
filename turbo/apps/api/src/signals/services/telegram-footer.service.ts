@@ -4,13 +4,12 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { isOfficialTelegramBotId } from "../external/telegram-official";
@@ -60,13 +59,12 @@ async function resolveComposeLabel(
 ): Promise<string | undefined> {
   const [row] = await db
     .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
+      agentDisplayName: agents.displayName,
+      agentName: agents.name,
+      composeName: agents.name,
     })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return row ? displayLabel(row) : undefined;
 }
@@ -81,12 +79,12 @@ async function resolveTelegramRespondedByLabel(args: {
   }
 
   const [installation] = await args.db
-    .select({ defaultComposeId: telegramInstallations.defaultComposeId })
+    .select({ defaultAgentId: telegramInstallations.defaultAgentId })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.telegramBotId, args.installationId))
     .limit(1);
 
-  if (installation?.defaultComposeId === args.composeId) {
+  if (installation?.defaultAgentId === args.composeId) {
     return undefined;
   }
 
@@ -170,17 +168,13 @@ async function resolveRunAgentLabel(
 ): Promise<string | undefined> {
   const [row] = await db
     .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
+      agentDisplayName: agents.displayName,
+      agentName: agents.name,
+      composeName: agents.name,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-    .innerJoin(
-      agentComposes,
-      eq(agentSessions.agentComposeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
+    .innerJoin(agents, eq(agentSessions.agentId, agents.id))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return row ? displayLabel(row) : undefined;

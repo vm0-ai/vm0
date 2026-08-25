@@ -14,7 +14,10 @@ import {
   publicBrandSchema,
   type PublicBrand,
 } from "@okouai/api-contracts/contracts/public-brand";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -26,7 +29,7 @@ import {
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import {
   and,
   asc,
@@ -48,7 +51,7 @@ import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   generatePresignedGetUrl,
   generatePresignedPutUrl,
@@ -163,7 +166,7 @@ import {
   loadChatThreadRecommendedFollowupContext,
   scheduleChatThreadTitleGeneration,
 } from "./chat-title.service";
-import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
+import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
@@ -216,6 +219,13 @@ import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+import {
+  additionalVolumesForRun,
+  authorizedUserPresentationTemplateIds,
+  selectedUserPresentationTemplateIds,
+  userPresentationTemplateVolumes,
+  type PresentationTemplateVolume,
+} from "./presentation-template-data.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -318,8 +328,8 @@ export class ChatCallbackPreCreateTimingCollector {
           dimensions: {
             span_kind: record.spanKind,
             trigger_source: triggerSource,
-            zero_run_origin: "zero_run",
-            zero_pre_create_source: "chat_callback_auto_send",
+            agent_run_origin: "direct",
+            agent_run_pre_create_source: "chat_callback_auto_send",
           },
         };
       }),
@@ -540,6 +550,7 @@ interface ChatCallbackDependencies {
       readonly threadTs: string;
       readonly routeThreadTs?: string;
       readonly chatEventId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -552,6 +563,7 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly publicBrand: PublicBrand;
       readonly target: FeishuDeliveryTarget;
       readonly chatEventId: string;
     },
@@ -605,6 +617,7 @@ interface ChatCallbackDependencies {
       readonly agentId: string;
       readonly target: AgentPhoneDeliveryTarget;
       readonly chatEventId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -657,6 +670,11 @@ interface CreateQueuedChatRunInput {
   readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  /**
+   * Guidance packages to mount for this run, one per uploaded template the
+   * queued message selected and its sender may still access.
+   */
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
   readonly publicBrand?: PublicBrand;
   readonly threadId: string;
   readonly connectorSourceId?: string;
@@ -867,7 +885,16 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildQueuedCreateZeroRunArgs(
+function requiredQueuedFeishuPublicBrand(
+  input: Pick<CreateQueuedChatRunInput, "publicBrand" | "feishuDelivery">,
+): PublicBrand {
+  if (!input.feishuDelivery || !input.publicBrand) {
+    throw new Error("Queued Feishu delivery is missing its public brand");
+  }
+  return input.publicBrand;
+}
+
+function buildQueuedCreateAgentRunArgs(
   input: CreateQueuedChatRunInput,
   admissionTime: number,
   dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
@@ -934,13 +961,14 @@ function buildQueuedCreateZeroRunArgs(
                 replyInThread: input.feishuDelivery.replyInThread,
                 files: input.feishuDelivery.files,
                 canonicalChatDelivery: true,
+                publicBrand: requiredQueuedFeishuPublicBrand(input),
               },
             },
           ]
         : []),
     ],
     triggerSource: input.triggerSource,
-    zeroPreCreateSource: "chat_callback_auto_send" as const,
+    agentRunPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
     publicBrand: input.publicBrand,
     userInfoExtras: input.userInfoExtras,
@@ -956,13 +984,13 @@ function buildQueuedCreateZeroRunArgs(
           }
         : {}),
     },
-    zeroRunModelPin: {
+    agentRunModelPin: {
       modelProvider: input.effectiveModelProvider ?? null,
       modelProviderId: input.modelPin.modelProviderId,
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
     },
-    zeroRunMetadata: { autonomyBudget: input.autonomyBudget },
+    agentRunMetadata: { autonomyBudget: input.autonomyBudget },
     ...(input.builtInModelRuntimeRoute
       ? { builtInModelRuntimeRoute: input.builtInModelRuntimeRoute }
       : {}),
@@ -982,6 +1010,7 @@ function buildQueuedCreateZeroRunArgs(
         ? { modelProvider: input.effectiveModelProvider }
         : {}),
       ...(input.realAgentInPreview ? { realAgentInPreview: true } : {}),
+      ...additionalVolumesForRun(input.presentationTemplateVolumes),
     },
   };
 }
@@ -1178,6 +1207,7 @@ async function insertSlackChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: SlackDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1207,6 +1237,7 @@ async function insertSlackChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1222,6 +1253,7 @@ async function insertFeishuChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: FeishuDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1251,6 +1283,7 @@ async function insertFeishuChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1310,6 +1343,7 @@ async function insertTelegramChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: TelegramDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1339,6 +1373,7 @@ async function insertTelegramChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1354,6 +1389,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1383,6 +1419,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1481,6 +1518,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.slackDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const feishuDeliveryCallbackId = args.feishuDelivery
@@ -1490,6 +1528,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.feishuDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const teamsDeliveryCallbackId = args.teamsDelivery
@@ -1508,6 +1547,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.telegramDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const agentphoneDeliveryCallbackId = args.agentphoneDelivery
@@ -1517,6 +1557,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.agentphoneDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     const githubDeliveryCallbackId = args.githubDelivery
@@ -1748,6 +1789,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.slackDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const feishuDeliveryCallbackId =
@@ -1758,6 +1800,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.feishuDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const teamsDeliveryCallbackId =
@@ -1778,6 +1821,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.telegramDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const agentphoneDeliveryCallbackId =
@@ -1788,6 +1832,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.agentphoneDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   const githubDeliveryCallbackId =
@@ -2500,11 +2545,12 @@ async function chatThreadForRunFromDb(
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       title: chatThreads.title,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
 
@@ -2537,9 +2583,9 @@ async function loadAgentForAutoSend(
   agentId: string,
 ): Promise<AgentForAutoSend | null> {
   const [agent] = await db
-    .select({ id: zeroAgents.id, orgId: zeroAgents.orgId })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, agentId))
+    .select({ id: agents.id, orgId: agents.orgId })
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
   return agent ?? null;
 }
@@ -2637,8 +2683,8 @@ async function resolveQueuedMessageModelRoute(args: {
           ? "MODEL_PROVIDER_UNAVAILABLE"
           : "PROVIDER_UNAVAILABLE",
         message: args.fallbackEnabled
-          ? "Every managed route for this model is temporarily unavailable"
-          : "No model provider configured: no VM0 managed model key is configured",
+          ? "Every built-in model route for this model is temporarily unavailable"
+          : "No model provider configured: no built-in model key is configured",
       },
     };
   }
@@ -2680,7 +2726,7 @@ function loadQueuedMessageSessionState(
         threadId: args.threadId,
         userId: args.userId,
         orgId: args.agent.orgId,
-        agentComposeId: args.agent.id,
+        agentId: args.agent.id,
         route: {
           selectedModel: modelRoute.modelPin.selectedModel,
           modelProvider: modelRoute.effectiveModelProvider ?? null,
@@ -3047,6 +3093,9 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly latestPresentationTemplatesEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
+  readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3057,9 +3106,72 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+        latestPresentationTemplatesEnabled:
+          args.latestPresentationTemplatesEnabled,
+        presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+        mountedUserPresentationTemplateIds:
+          args.mountedUserPresentationTemplateIds,
       });
     },
   );
+}
+
+/**
+ * What a queued message's own selections contribute to the run this dispatch
+ * is about to create: the guidance block and the packages that back it.
+ *
+ * Access is re-checked here rather than trusted from the send that queued the
+ * message. The row can be deleted or made private while the message waits, and
+ * a volume this user may not read must never be assembled — so the same lookup
+ * decides both what is mounted and what the prompt is allowed to mention.
+ */
+async function resolveQueuedMessageTemplateContext(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly input: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["input"];
+  readonly userMessageProjection: Parameters<
+    typeof resolveQueuedMessageGenerationTemplatePrompt
+  >[0]["userMessageProjection"];
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<{
+  readonly generationTemplatePrompt: string;
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
+}> {
+  const mountedUserPresentationTemplateIds =
+    await authorizedUserPresentationTemplateIds(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      templateIds: selectedUserPresentationTemplateIds(
+        args.userMessageProjection?.templates ?? [],
+      ),
+    });
+  const generationTemplatePrompt =
+    await resolveQueuedMessageGenerationTemplatePrompt({
+      input: args.input,
+      userMessageProjection: args.userMessageProjection,
+      latestWebsiteTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.LatestWebsiteTemplates,
+        args.featureSwitchContext,
+      ),
+      latestPresentationTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.LatestPresentationTemplates,
+        args.featureSwitchContext,
+      ),
+      presentationTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PresentationTemplates,
+        args.featureSwitchContext,
+      ),
+      mountedUserPresentationTemplateIds,
+    });
+  return {
+    generationTemplatePrompt,
+    presentationTemplateVolumes: userPresentationTemplateVolumes(
+      mountedUserPresentationTemplateIds,
+    ),
+  };
 }
 
 async function loadQueuedRunMaterial(
@@ -3094,6 +3206,24 @@ function queuedIntegrationLaunchFields(launchMaterial: QueuedLaunchMaterial) {
   };
 }
 
+function resolveQueuedMessageComputerUseHostGrant(
+  args: CreateQueuedChatRunInputArgs,
+) {
+  return measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "nested",
+    () => {
+      return loadComputerUseHostGrantForAutoSend({
+        db: args.db,
+        threadId: args.threadId,
+        orgId: args.agent.orgId,
+        userId: args.userId,
+      });
+    },
+  );
+}
+
 async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
   signal: AbortSignal,
@@ -3111,7 +3241,7 @@ async function buildCreateQueuedChatRunInput(
     contextType: args.queuedMessage.contextType,
     timing: args.timing,
     fallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ManagedModelProviderFallback,
+      FeatureSwitchKey.BuiltInModelProviderFallback,
       featureSwitchContext,
     ),
   });
@@ -3163,28 +3293,17 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const generationTemplatePrompt =
-    await resolveQueuedMessageGenerationTemplatePrompt({
+  const { generationTemplatePrompt, presentationTemplateVolumes } =
+    await resolveQueuedMessageTemplateContext({
+      db: args.db,
+      orgId: args.agent.orgId,
+      userId: args.userId,
       input: args,
       userMessageProjection,
-      latestWebsiteTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.LatestWebsiteTemplates,
-        featureSwitchContext,
-      ),
+      featureSwitchContext,
     });
-  const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
-    "nested",
-    () => {
-      return loadComputerUseHostGrantForAutoSend({
-        db: args.db,
-        threadId: args.threadId,
-        orgId: args.agent.orgId,
-        userId: args.userId,
-      });
-    },
-  );
+  const computerUseHostGrant =
+    await resolveQueuedMessageComputerUseHostGrant(args);
   const prompt = queuedMessagePrompt({
     launchMaterial,
   });
@@ -3206,6 +3325,7 @@ async function buildCreateQueuedChatRunInput(
       generationTemplatePrompt,
       computerUseHostGrant?.displayName ?? null,
     ),
+    presentationTemplateVolumes,
     publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
@@ -3433,6 +3553,7 @@ async function handleFeishuQueuedMessageAdmissionFailure(
         chatThreadId: args.failure.threadId,
         userId: args.failure.userId,
         orgId: args.failure.orgId,
+        publicBrand: args.failure.publicBrand,
         target: args.failure.feishuDelivery,
         chatEventId: failed.assistantEventId,
       },
@@ -3509,6 +3630,7 @@ async function handleSlackQueuedMessageAdmissionFailure(
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
         chatEventId: failed.assistantEventId,
+        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),
@@ -3692,6 +3814,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
         agentId: args.failure.agentId,
         target: args.failure.agentphoneDelivery,
         chatEventId: failed.assistantEventId,
+        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),
@@ -4911,6 +5034,9 @@ function buildQueuedChatDispatchFailedCallbacks(
     const payload = {
       threadId: args.runInput.threadId,
       agentId: args.runInput.agentId,
+      publicBrand: args.runInput.feishuDelivery
+        ? requiredQueuedFeishuPublicBrand(args.runInput)
+        : (args.runInput.publicBrand ?? "vm0"),
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,
@@ -5317,13 +5443,13 @@ const buildChatCallbackDependencies$ = command(
           runInput,
           inputSignal,
         );
-        const createArgs = buildQueuedCreateZeroRunArgs(
+        const createArgs = buildQueuedCreateAgentRunArgs(
           runInput,
           admissionTime,
           dispatchFailedCallbacks,
         );
         const settledRunResult = await settle(
-          set(createQueueFirstZeroRun$, createArgs, inputSignal),
+          set(createQueueFirstAgentRun$, createArgs, inputSignal),
         );
         if (!settledRunResult.ok) {
           if (
@@ -5392,9 +5518,10 @@ export const drainQueuedUserMessagesForThread$ = command(
         return db
           .select({
             userId: chatThreads.userId,
-            agentId: chatThreads.agentComposeId,
+            agentId: agents.id,
           })
           .from(chatThreads)
+          .innerJoin(agents, eq(agents.id, chatThreads.agentId))
           .where(eq(chatThreads.id, args.chatThreadId))
           .limit(1);
       },

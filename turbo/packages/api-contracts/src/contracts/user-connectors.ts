@@ -26,12 +26,12 @@ export const userConnectorUpdateSchema = z
 export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
 
 /**
- * Contract for GET/PUT /api/okou/agents/:id/user-connectors
+ * Contract for GET/PUT /api/agents/:id/user-connectors
  */
 export const userConnectorsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/okou/agents/:id/user-connectors",
+    path: "/api/agents/:id/user-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -44,7 +44,7 @@ export const userConnectorsContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/okou/agents/:id/user-connectors",
+    path: "/api/agents/:id/user-connectors",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: userConnectorUpdateSchema,

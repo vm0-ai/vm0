@@ -1,17 +1,12 @@
 import { computed, type Computed } from "ccstate";
-import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   getInstructionsStorageName,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
 import { getInstructionsFilename } from "@okouai/core/frameworks";
 import { stripMetadataFrontmatter } from "@okouai/core/instructions-frontmatter";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -19,6 +14,7 @@ import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
 import { extractFileFromTarGz } from "../../lib/tar";
 import { visibleJoinedAgentCondition } from "./agent-data.service";
+import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "./agent-execution-plan";
 
 interface AgentInstructionsResult {
   readonly content: string | null;
@@ -38,43 +34,30 @@ export function agentInstructions(args: {
   readonly agentId: string;
 }): Computed<Promise<AgentInstructionsResult | null>> {
   return computed(async (get): Promise<AgentInstructionsResult | null> => {
-    const [compose] = await get(db$)
+    const [agent] = await get(db$)
       .select({
-        name: agentComposes.name,
-        orgId: agentComposes.orgId,
-        content: agentComposeVersions.content,
+        name: agents.name,
+        orgId: agents.orgId,
       })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .from(agents)
       .where(
         and(
-          eq(agentComposes.orgId, args.orgId),
-          eq(agentComposes.id, args.agentId),
+          eq(agents.orgId, args.orgId),
+          eq(agents.id, args.agentId),
           visibleJoinedAgentCondition(args.userId),
         ),
       )
       .limit(1);
 
-    if (!compose) {
+    if (!agent) {
       return null;
     }
 
-    const parsed = agentComposeApiContentSchema.safeParse(compose.content);
-    if (!parsed.success) {
-      return { content: null, filename: null };
-    }
+    const instructionsFilename = getInstructionsFilename(
+      APPLICATION_OWNED_AGENT_EXECUTION_PLAN.framework.fallback,
+    );
 
-    const agentKeys = Object.keys(parsed.data.agents);
-    const firstKey = agentKeys[0];
-    const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
-    const instructionsFilename =
-      agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
-
-    const storageName = getInstructionsStorageName(compose.name);
+    const storageName = getInstructionsStorageName(agent.name);
     const [storage] = await get(db$)
       .select({
         headVersionId: storages.headVersionId,
@@ -82,7 +65,7 @@ export function agentInstructions(args: {
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, compose.orgId),
+          eq(storages.orgId, agent.orgId),
           eq(storages.userId, VOLUME_ORG_USER_ID),
           eq(storages.name, storageName),
         ),
@@ -109,9 +92,8 @@ export function agentInstructions(args: {
       return p.replace(/^\.\//, "");
     };
 
-    const canonicalFilename = getInstructionsFilename(agentDef?.framework);
     const instructionFile = manifest.files.find((f) => {
-      return normalize(f.path) === normalize(canonicalFilename);
+      return normalize(f.path) === normalize(instructionsFilename);
     });
 
     if (!instructionFile) {

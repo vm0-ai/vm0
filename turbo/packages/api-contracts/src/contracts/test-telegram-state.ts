@@ -42,6 +42,7 @@ export const testTelegramStateActionBodySchema = z
       "seed-org-credits",
       "get-selected-model",
       "seed-pending-user-link",
+      "redrive-legacy-chat-callback",
       "update-run-callback",
       "update-run",
       "get-run",
@@ -51,11 +52,6 @@ export const testTelegramStateActionBodySchema = z
   })
   .passthrough();
 
-export const testTelegramStateComposeVersionSchema = z.object({
-  id: z.string(),
-  content_keys: z.array(z.string()),
-});
-
 export const testTelegramStateResponseSchema = z.object({
   installation: z.unknown().nullable(),
   links: z.array(z.unknown()),
@@ -63,8 +59,6 @@ export const testTelegramStateResponseSchema = z.object({
   recent_runs: z.array(z.unknown()),
   org_metadata: z.unknown().nullable(),
   default_agent: z.unknown().nullable(),
-  default_compose: z.unknown().nullable(),
-  default_compose_version: testTelegramStateComposeVersionSchema.nullable(),
   messages: z.array(z.unknown()),
   official_messages: z.array(z.unknown()),
   routes: z.array(z.unknown()),

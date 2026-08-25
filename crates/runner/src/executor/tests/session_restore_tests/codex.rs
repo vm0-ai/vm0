@@ -1,4 +1,3 @@
-use super::super::super::session_restore::restore_session;
 use super::super::support::sandbox_write_file_error;
 use super::*;
 use sandbox::{ExecResult, ExecTermination};
@@ -23,6 +22,54 @@ fn restore_session_writes_codex_session() {
     );
     assert_eq!(writes[0].content, session.history_bytes());
     assert_eq!(diagnostics.bytes_in, history.len());
+}
+
+#[test]
+fn restore_session_skips_codex_cleanup_in_fresh_sandbox() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let session = materialized_text_session(CODEX_SESSION_ID, history.clone());
+
+    let diagnostics =
+        run_restore_session(restore_session_in_fresh_sandbox(&sandbox, &ctx, &session)).unwrap();
+
+    assert!(sandbox.exec_calls().is_empty());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].path, CODEX_CANONICAL_ROLLOUT_PATH);
+    assert_eq!(writes[0].content, history.as_bytes());
+    assert_eq!(diagnostics.bytes_in, history.len());
+}
+
+#[test]
+fn restore_session_keeps_agent_environment_out_of_codex_cleanup() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = codex_context();
+    ctx.environment = Some(std::collections::HashMap::from([
+        (
+            "OKOU_CODEX_RESTORE_SESSION_ID".to_string(),
+            "user-session-id".to_string(),
+        ),
+        (
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
+            "user-filename-key".to_string(),
+        ),
+        (
+            "OKOU_CODEX_RESTORE_SESSION_PATH".to_string(),
+            "/tmp/user-restore-path".to_string(),
+        ),
+        (
+            "OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET".to_string(),
+            "1".to_string(),
+        ),
+        ("USER_ENV_MARKER".to_string(), "user-value".to_string()),
+    ]));
+    let session = materialized_text_session(CODEX_SESSION_ID, "{}\n");
+
+    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
 }
 
 #[test]

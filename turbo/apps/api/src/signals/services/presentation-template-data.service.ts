@@ -1,14 +1,125 @@
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/presentation-templates";
+import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
+import {
+  parseUserPresentationTemplateId,
+  userPresentationTemplateDirectory,
+} from "@okouai/core/presentation-template-selection";
+import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
 export type PresentationTemplateRow = typeof presentationTemplates.$inferSelect;
 
+export interface PresentationTemplateVolume {
+  readonly name: string;
+  readonly mountPath: string;
+}
+
+/**
+ * Row ids for the uploaded templates a message selected, in selection order.
+ *
+ * Deduplicated: one row is one package and one mount, so attaching the same
+ * template twice must not ask the run to mount it at the same path twice.
+ *
+ * Syntax only. A well-formed id says nothing about whether that row exists or
+ * whether the sender may read it; that is decided by
+ * {@link authorizedUserPresentationTemplateIds}.
+ */
+export function selectedUserPresentationTemplateIds(
+  generationTemplates: readonly GenerationTemplateRequest[],
+): readonly string[] {
+  const templateIds = new Set<string>();
+  for (const template of generationTemplates) {
+    if (template.type !== "presentation") {
+      continue;
+    }
+    const rowId = parseUserPresentationTemplateId(
+      template.selection.templateId,
+    );
+    if (rowId !== undefined) {
+      templateIds.add(rowId);
+    }
+  }
+  return [...templateIds];
+}
+
+/**
+ * The subset of those ids this caller may access, in selection order.
+ *
+ * The row is the authority for its own existence and visibility. An id that
+ * does not come back is indistinguishable from an inaccessible template and
+ * from a deleted one on purpose, so a caller cannot use the answer to probe
+ * which case it was.
+ */
+export async function authorizedUserPresentationTemplateIds(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly templateIds: readonly string[];
+  },
+): Promise<readonly string[]> {
+  if (args.templateIds.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({ id: presentationTemplates.id })
+    .from(presentationTemplates)
+    .where(
+      and(
+        inArray(presentationTemplates.id, [...args.templateIds]),
+        eq(presentationTemplates.orgId, args.orgId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
+      ),
+    );
+  const accessible = new Set(
+    rows.map((row) => {
+      return row.id;
+    }),
+  );
+  return args.templateIds.filter((templateId) => {
+    return accessible.has(templateId);
+  });
+}
+
+/**
+ * The storage volumes that carry those templates' guidance packages.
+ *
+ * Mounted under the working directory rather than the skills root because the
+ * skills root is chosen per framework inside run creation, while the prompt
+ * naming this path is built before a framework exists.
+ */
+export function userPresentationTemplateVolumes(
+  templateIds: readonly string[],
+): readonly PresentationTemplateVolume[] {
+  return templateIds.map((templateId) => {
+    return {
+      name: getPresentationTemplateStorageName(templateId),
+      mountPath: `${CANONICAL_WORKING_DIR}/${userPresentationTemplateDirectory(templateId)}`,
+    };
+  });
+}
+
+/**
+ * Shape the optional run-body field, so a run with no uploaded template keeps
+ * the compose-resolved volume list it would otherwise have had.
+ */
+export function additionalVolumesForRun(
+  volumes: readonly PresentationTemplateVolume[],
+): { additionalVolumes?: PresentationTemplateVolume[] } {
+  return volumes.length === 0 ? {} : { additionalVolumes: [...volumes] };
+}
+
 export function presentationTemplateSummary(
   row: PresentationTemplateRow,
   coverUrl: string | null,
+  userId: string,
 ): PresentationTemplateSummary {
   return {
     id: row.id,
@@ -16,16 +127,18 @@ export function presentationTemplateSummary(
     sourceFilename: row.sourceFilename,
     coverUrl,
     pageCount: row.pageKeys.length,
+    visibility: row.visibility,
+    canManage: row.ownerUserId === userId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-export async function loadOwnedPresentationTemplate(
+export async function loadAccessiblePresentationTemplate(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
-    readonly ownerUserId: string;
+    readonly userId: string;
     readonly templateId: string;
   },
 ): Promise<PresentationTemplateRow | null> {
@@ -36,16 +149,19 @@ export async function loadOwnedPresentationTemplate(
       and(
         eq(presentationTemplates.id, args.templateId),
         eq(presentationTemplates.orgId, args.orgId),
-        eq(presentationTemplates.ownerUserId, args.ownerUserId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
       ),
     )
     .limit(1);
   return row ?? null;
 }
 
-export async function listOwnedPresentationTemplates(
+export async function listAccessiblePresentationTemplates(
   db: ReadonlyDb,
-  args: { readonly orgId: string; readonly ownerUserId: string },
+  args: { readonly orgId: string; readonly userId: string },
 ): Promise<readonly PresentationTemplateRow[]> {
   return await db
     .select()
@@ -53,8 +169,14 @@ export async function listOwnedPresentationTemplates(
     .where(
       and(
         eq(presentationTemplates.orgId, args.orgId),
-        eq(presentationTemplates.ownerUserId, args.ownerUserId),
+        or(
+          eq(presentationTemplates.ownerUserId, args.userId),
+          eq(presentationTemplates.visibility, "public"),
+        ),
       ),
     )
-    .orderBy(desc(presentationTemplates.createdAt));
+    .orderBy(
+      desc(eq(presentationTemplates.ownerUserId, args.userId)),
+      desc(presentationTemplates.createdAt),
+    );
 }

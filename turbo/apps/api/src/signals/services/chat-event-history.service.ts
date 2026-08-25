@@ -4,7 +4,7 @@ import { gunzip } from "node:zlib";
 
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import type { Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
@@ -17,11 +17,8 @@ import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
 const gunzipAsync = promisify(gunzip);
 const CHAT_EVENT_HISTORY_PAGE_SIZE = 1000;
 
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
 interface ChatEventHistoryRuntime {
   readonly db: Db;
-  readonly get: ComputedGetter;
   readonly bucket: string;
 }
 
@@ -107,68 +104,70 @@ function snapshotObjectDigest(objectKey: string): string {
   return digest;
 }
 
-async function readCurrentChatEventHistoryAtSnapshot(
+function readCurrentChatEventHistoryAtSnapshot(
   runtime: Omit<ChatEventHistoryRuntime, "db"> & {
     readonly db: ChatEventHistoryQueryDb;
   },
   chatThreadId: string,
   signal: AbortSignal,
-): Promise<readonly ChatEventRow[]> {
-  const [head] = await runtime.db
-    .select({
-      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      lastSeqId: chatEventSnapshots.lastSeqId,
-      lastEventId: chatEventSnapshots.lastEventId,
-      objectKey: chatEventSnapshots.objectKey,
-    })
-    .from(chatEventSnapshots)
-    .where(
-      and(
-        eq(chatEventSnapshots.chatThreadId, chatThreadId),
-        eq(
-          chatEventSnapshots.archiveSchemaVersion,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+): Computed<Promise<readonly ChatEventRow[]>> {
+  return computed(async (get) => {
+    const [head] = await runtime.db
+      .select({
+        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        lastEventId: chatEventSnapshots.lastEventId,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, chatThreadId),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
         ),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
+      )
+      .limit(1);
+    signal.throwIfAborted();
 
-  if (head === undefined) {
-    return await readPostgresTail(runtime.db, chatThreadId, 0, signal);
-  }
-  if (
-    head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
-    head.lastSeqId <= 0 ||
-    head.objectKey.trim().length === 0
-  ) {
-    throw new Error("Chat event snapshot head is not reusable");
-  }
+    if (head === undefined) {
+      return await readPostgresTail(runtime.db, chatThreadId, 0, signal);
+    }
+    if (
+      head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
+      head.lastSeqId <= 0 ||
+      head.objectKey.trim().length === 0
+    ) {
+      throw new Error("Chat event snapshot head is not reusable");
+    }
 
-  const compressed = await runtime.get(
-    downloadS3Buffer(runtime.bucket, head.objectKey),
-  );
-  signal.throwIfAborted();
-  if (
-    createHash("sha256").update(compressed).digest("hex") !==
-    snapshotObjectDigest(head.objectKey)
-  ) {
-    throw new Error("Chat event snapshot checksum is invalid");
-  }
-  const snapshot = decodeSnapshotRows(
-    await gunzipAsync(compressed),
-    chatThreadId,
-    head.lastSeqId,
-    head.lastEventId,
-  );
-  signal.throwIfAborted();
-  const tail = await readPostgresTail(
-    runtime.db,
-    chatThreadId,
-    head.lastSeqId,
-    signal,
-  );
-  return [...snapshot, ...tail];
+    const compressed = await get(
+      downloadS3Buffer(runtime.bucket, head.objectKey),
+    );
+    signal.throwIfAborted();
+    if (
+      createHash("sha256").update(compressed).digest("hex") !==
+      snapshotObjectDigest(head.objectKey)
+    ) {
+      throw new Error("Chat event snapshot checksum is invalid");
+    }
+    const snapshot = decodeSnapshotRows(
+      await gunzipAsync(compressed),
+      chatThreadId,
+      head.lastSeqId,
+      head.lastEventId,
+    );
+    signal.throwIfAborted();
+    const tail = await readPostgresTail(
+      runtime.db,
+      chatThreadId,
+      head.lastSeqId,
+      signal,
+    );
+    return [...snapshot, ...tail];
+  });
 }
 
 /**
@@ -176,19 +175,23 @@ async function readCurrentChatEventHistoryAtSnapshot(
  * PostgreSQL row after its watermark. A thread without a pointer is still a
  * cold thread, so its current PostgreSQL rows are the complete history.
  */
-export async function readCurrentChatEventHistory(
+export function readCurrentChatEventHistory(
   runtime: ChatEventHistoryRuntime,
   chatThreadId: string,
   signal: AbortSignal,
-): Promise<readonly ChatEventRow[]> {
-  return await runtime.db.transaction(
-    async (tx) => {
-      return await readCurrentChatEventHistoryAtSnapshot(
-        { ...runtime, db: tx },
-        chatThreadId,
-        signal,
-      );
-    },
-    { isolationLevel: "repeatable read", accessMode: "read only" },
-  );
+): Computed<Promise<readonly ChatEventRow[]>> {
+  return computed(async (get) => {
+    return await runtime.db.transaction(
+      async (tx) => {
+        return await get(
+          readCurrentChatEventHistoryAtSnapshot(
+            { ...runtime, db: tx },
+            chatThreadId,
+            signal,
+          ),
+        );
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+  });
 }

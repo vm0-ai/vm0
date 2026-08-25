@@ -11,8 +11,8 @@ import {
   type AppendOptimisticEventCommand,
 } from "./chat-event-storage-signals.ts";
 import { nowDate } from "../../lib/time.ts";
-import { zeroClient$ } from "../api-client.ts";
-import { reloadBillingStatus$ } from "../zero-page/billing.ts";
+import { apiClient$ } from "../api-client.ts";
+import { reloadBillingStatus$ } from "../okou-page/billing.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -180,7 +180,7 @@ function createSendInputChatEvent({
       });
       input.onOptimisticSend?.();
       const result = await sendChatEvent(
-        get(zeroClient$),
+        get(apiClient$),
         {
           agentId: input.agentId,
           prompt: input.prompt,
@@ -252,7 +252,7 @@ function createSendRevokeChatEvent({
       );
       signal.throwIfAborted();
       const result = await sendChatEvent(
-        get(zeroClient$),
+        get(apiClient$),
         {
           agentId: input.agentId,
           threadId,
@@ -297,7 +297,7 @@ function createSendInterruptChatEvent({
       );
       signal.throwIfAborted();
       const result = await sendChatEvent(
-        get(zeroClient$),
+        get(apiClient$),
         {
           agentId: input.agentId,
           threadId,

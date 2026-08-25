@@ -9,7 +9,7 @@ import {
   BrowserSessionNotFound,
   BrowserSessionPanel,
   BrowserSessionUnavailable,
-} from "../zero-page/browser-session-panel.tsx";
+} from "../okou-page/browser-session-panel.tsx";
 
 function BrowserSessionPageContent({
   signals,

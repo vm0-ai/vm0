@@ -9,7 +9,7 @@ import {
   insertChatSearchProjectionCoverageFixture,
   insertSearchablePromptFixture,
   removeChatSearchSourceEventsFixture,
-  renameChatSearchAgentComposeFixture,
+  renameChatSearchAgentFixture,
   updateChatSearchSourceThreadFixture,
 } from "../../../test-fixtures/chat-event-search";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -48,7 +48,7 @@ async function createSearchThread(
   return { agentId: agent.agentId, threadId: thread.id };
 }
 
-describe("GET /api/okou/chat/search durable reader", () => {
+describe("GET /api/chat/search durable reader", () => {
   it("serves message identities and context after source events are deleted", async () => {
     const owner = bdd.user();
     const source = await createSearchThread(
@@ -153,14 +153,14 @@ describe("GET /api/okou/chat/search durable reader", () => {
     await projectChatSearchMessages([primary.threadId]);
 
     const currentAgentName = `current-${randomUUID().slice(0, 8)}`;
-    await renameChatSearchAgentComposeFixture({
-      agentComposeId: primary.agentId,
+    await renameChatSearchAgentFixture({
+      agentId: primary.agentId,
       name: currentAgentName,
     });
     await updateChatSearchSourceThreadFixture({
       chatThreadId: primary.threadId,
       userId: peer.userId,
-      agentComposeId: replacement.agentId,
+      agentId: replacement.agentId,
     });
 
     const byProjectedAgent = await chat.searchChat(owner, keyword, {

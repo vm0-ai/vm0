@@ -71,14 +71,18 @@ use std::time::{Duration, Instant};
 use termination::{
     CliTerminationRuntime, ControlTerminationLog, PostResultCleanupPolicy, TerminationReason,
 };
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::oneshot;
 use tokio::time::Sleep;
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const AGENT_LOG_BUFFER_BYTES: usize = 8 * 1024;
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
+const CODEX_SERVICE_TIER_CANONICAL_ENV: &str = "OKOU_CODEX_SERVICE_TIER";
+const CODEX_SERVICE_TIER_LEGACY_ENV: &str = "VM0_CODEX_SERVICE_TIER";
+const CODEX_SERVICE_TIER_RESOLUTION_EVENT: &str = "codex_service_tier_environment_resolution";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
@@ -91,6 +95,23 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CodexServiceTierSource {
+    CanonicalOnly,
+    LegacyOnly,
+    Dual,
+}
+
+impl CodexServiceTierSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CanonicalOnly => "canonical_only",
+            Self::LegacyOnly => "legacy_only",
+            Self::Dual => "dual",
+        }
+    }
+}
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -342,6 +363,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_launch_source: SessionHistoryLaunchSource,
+    claude_append_system_prompt_file: Cow<'a, str>,
     pi_session_id: Cow<'a, str>,
     pi_launch_config: Cow<'a, str>,
     pi_launch_payload_file: Cow<'a, str>,
@@ -360,6 +382,18 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
+        let codex_service_tier = if matches!(config.framework, env::Framework::Codex) {
+            resolve_codex_service_tier(&config.user_env)?
+        } else {
+            None
+        };
+        if let Some((_, source)) = codex_service_tier {
+            log_info!(
+                LOG_TAG,
+                "{CODEX_SERVICE_TIER_RESOLUTION_EVENT} source={}",
+                source.as_str()
+            );
+        }
         let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
@@ -408,7 +442,7 @@ impl<'a> CliRuntimeConfig<'a> {
             )),
             codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
-            codex_fast_mode: user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
+            codex_fast_mode: codex_service_tier.is_some_and(|(value, _)| value == "fast"),
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
@@ -420,6 +454,9 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_launch_source: SessionHistoryLaunchSource::for_config(config),
+            claude_append_system_prompt_file: Cow::Borrowed(
+                paths.claude_append_system_prompt_file(),
+            ),
             pi_session_id: Cow::Borrowed(&config.pi_session_id),
             pi_launch_config: Cow::Borrowed(&config.pi_launch_config),
             pi_launch_payload_file: Cow::Borrowed(paths.pi_launch_payload_file()),
@@ -470,6 +507,28 @@ impl<'a> CliRuntimeConfig<'a> {
         let mut user_env = self.user_env.clone();
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
+    }
+}
+
+/// Stage 1 compatibility for the API-authored Codex service tier environment.
+/// Remove the legacy reader only after #28914 cuts the API writer over and
+/// observes zero legacy-only use through the supported rollback window.
+fn resolve_codex_service_tier(
+    user_env: &HashMap<String, String>,
+) -> Result<Option<(&str, CodexServiceTierSource)>, AgentError> {
+    match (
+        user_env.get(CODEX_SERVICE_TIER_CANONICAL_ENV),
+        user_env.get(CODEX_SERVICE_TIER_LEGACY_ENV),
+    ) {
+        (None, None) => Ok(None),
+        (Some(value), None) => Ok(Some((value, CodexServiceTierSource::CanonicalOnly))),
+        (None, Some(value)) => Ok(Some((value, CodexServiceTierSource::LegacyOnly))),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            Ok(Some((canonical, CodexServiceTierSource::Dual)))
+        }
+        (Some(_), Some(_)) => Err(AgentError::Execution(format!(
+            "conflicting Codex service-tier environment keys: {CODEX_SERVICE_TIER_CANONICAL_ENV} and {CODEX_SERVICE_TIER_LEGACY_ENV}"
+        ))),
     }
 }
 
@@ -531,6 +590,43 @@ fn write_pi_launch_payload_file(runtime: &CliRuntimeConfig<'_>) -> Result<(), Ag
     Ok(())
 }
 
+fn write_claude_append_system_prompt_file(
+    runtime: &CliRuntimeConfig<'_>,
+) -> Result<(), AgentError> {
+    if runtime.append_system_prompt.is_empty() {
+        return Ok(());
+    }
+
+    let path = runtime.claude_append_system_prompt_file.as_ref();
+    paths::ensure_parent_dir(path)?;
+    paths::write_private(path, runtime.append_system_prompt.as_bytes())?;
+    Ok(())
+}
+
+fn pi_sandbox_event_sequence_start(runtime: &CliRuntimeConfig<'_>) -> Result<u32, AgentError> {
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|error| AgentError::Execution(format!("parse Pi launch config: {error}")))?;
+    let sequence = launch_config
+        .pointer("/apiFirstTurn/sandboxEventSequenceStart")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            AgentError::Execution(
+                "Pi launch config requires apiFirstTurn.sandboxEventSequenceStart".to_string(),
+            )
+        })?;
+    let sequence = u32::try_from(sequence).map_err(|_| {
+        AgentError::Execution(
+            "Pi launch config apiFirstTurn.sandboxEventSequenceStart exceeds u32".to_string(),
+        )
+    })?;
+    if sequence != 1 {
+        return Err(AgentError::Execution(
+            "Pi Sandbox event sequence must start at 1".to_string(),
+        ));
+    }
+    Ok(sequence)
+}
+
 fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
     [
         (
@@ -575,14 +671,17 @@ enum ParsedEventAction {
 }
 
 struct BestEffortAgentLog {
-    file: Option<tokio::fs::File>,
+    file: Option<BufWriter<tokio::fs::File>>,
 }
 
 impl BestEffortAgentLog {
     fn open(path: &str) -> Self {
         match guest_contracts::runtime_paths::create_private(path) {
             Ok(file) => Self {
-                file: Some(tokio::fs::File::from_std(file)),
+                file: Some(BufWriter::with_capacity(
+                    AGENT_LOG_BUFFER_BYTES,
+                    tokio::fs::File::from_std(file),
+                )),
             },
             Err(error) => {
                 Self::warn_failure("open", &error);
@@ -634,6 +733,7 @@ struct CliEventIngestor<'a> {
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
+    first_event_seen: bool,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
     codex_startup: Option<&'a CodexStartupTiming>,
@@ -644,12 +744,14 @@ impl<'a> CliEventIngestor<'a> {
         runtime: &CliRuntimeConfig<'_>,
         codex_startup: Option<&'a CodexStartupTiming>,
         session_metadata: SessionMetadataStore,
+        initial_sequence: u32,
     ) -> Self {
         Self {
             framework: runtime.framework,
-            seq: 0,
+            seq: initial_sequence,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
+            first_event_seen: false,
             session_metadata_capture: events::SessionMetadataCapture::new(
                 runtime.session_history_launch_source.clone(),
                 session_metadata,
@@ -687,8 +789,9 @@ impl<'a> CliEventIngestor<'a> {
             return ParsedEventAction::Skip;
         }
         self.last_read_event_at = Some(Instant::now());
-        if self.seq == 0 {
+        if !self.first_event_seen {
             timing::record_e2e_from_api_start("api_to_cli_init", &self.api_start_time);
+            self.first_event_seen = true;
         }
         self.session_metadata_capture.capture_event(event);
 
@@ -895,6 +998,12 @@ async fn execute_cli_inner(
         .await;
     }
 
+    let initial_event_sequence = if matches!(runtime.framework, env::Framework::Pi) {
+        pi_sandbox_event_sequence_start(runtime)?
+    } else {
+        0
+    };
+
     let CliExecutionControls {
         active_input,
         user_cancellation,
@@ -910,6 +1019,10 @@ async fn execute_cli_inner(
         "Starting {} execution...",
         runtime.framework.agent_type()
     );
+
+    if matches!(runtime.framework, env::Framework::ClaudeCode) {
+        write_claude_append_system_prompt_file(runtime)?;
+    }
 
     let cmd = if matches!(runtime.framework, env::Framework::Pi) {
         build_pi_command_for_runtime(runtime)?
@@ -1111,7 +1224,8 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
+    let event_delivery =
+        EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_event_sequence)?;
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
@@ -1119,8 +1233,12 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor =
-        CliEventIngestor::new_with_session_metadata(runtime, None, session_metadata);
+    let mut event_ingestor = CliEventIngestor::new_with_session_metadata(
+        runtime,
+        None,
+        session_metadata,
+        initial_event_sequence,
+    );
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1638,9 +1756,8 @@ async fn execute_cli_inner(
         }
     };
 
-    // `tokio::fs::File` may still own an in-flight blocking write after
-    // `write_all` returns. Wait for it before callers observe the completed
-    // execution and read the run log.
+    // Publish buffered transcript bytes and finish any in-flight file write
+    // before callers observe the completed execution and read the run log.
     agent_log.flush().await;
 
     active_input_controller.close_terminal();
@@ -1960,8 +2077,9 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, command, exec_boundary,
-        pi_child_env_values, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason, write_pi_launch_payload_file,
+        pi_child_env_values, pi_sandbox_event_sequence_start, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
@@ -1975,6 +2093,21 @@ mod tests {
     use std::os::unix::process::ExitStatusExt;
     use std::path::Path;
     use std::time::{Duration, Instant};
+
+    struct SystemLogOverrideGuard;
+
+    impl SystemLogOverrideGuard {
+        fn set(path: &Path) -> Self {
+            guest_common::log::set_system_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SystemLogOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::log::clear_system_log_file();
+        }
+    }
 
     fn guest_config_for_agent_context(user_env: HashMap<String, String>) -> env::GuestConfig {
         env::GuestConfig {
@@ -2019,6 +2152,26 @@ mod tests {
                 constants::POST_RESULT_SIGKILL_GRACE_SECS,
             ),
         }
+    }
+
+    fn assert_codex_service_tier_resolution(
+        user_env: HashMap<String, String>,
+        expected: Option<(&str, super::CodexServiceTierSource)>,
+        expected_fast_mode: bool,
+    ) {
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        guest_common::log::clear_system_log_file();
+        assert_eq!(
+            super::resolve_codex_service_tier(&user_env).unwrap(),
+            expected
+        );
+
+        let config = guest_config_for_agent_context(user_env);
+        let paths =
+            crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-resolution-test");
+        let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
+
+        assert_eq!(runtime.codex_fast_mode, expected_fast_mode);
     }
 
     fn runtime_for_command_test<'a>(
@@ -2071,6 +2224,7 @@ mod tests {
                 },
                 env::Framework::Pi => SessionHistoryLaunchSource::Pi,
             },
+            claude_append_system_prompt_file: Cow::Borrowed("/tmp/claude-append-system-prompt"),
             pi_session_id: Cow::Borrowed(""),
             pi_launch_config: Cow::Borrowed(""),
             pi_launch_payload_file: Cow::Borrowed("/tmp/pi-launch-payload/payload.json"),
@@ -2207,6 +2361,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_event_sequence_continues_after_the_api_first_turn() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config =
+            Cow::Borrowed(r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#);
+
+        assert_eq!(pi_sandbox_event_sequence_start(&runtime).unwrap(), 1);
+    }
+
+    #[test]
+    fn pi_event_sequence_rejects_a_missing_handoff_boundary() {
+        let user_env = HashMap::new();
+        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+
+        assert_eq!(
+            pi_sandbox_event_sequence_start(&runtime)
+                .unwrap_err()
+                .to_string(),
+            "execution: Pi launch config requires apiFirstTurn.sandboxEventSequenceStart"
+        );
+    }
+
+    #[test]
     fn codex_runtime_accepts_okou_agent_context() {
         let config = guest_config_for_agent_context(HashMap::from([(
             super::OKOU_AGENT_ID_ENV_KEY.to_string(),
@@ -2222,6 +2400,172 @@ mod tests {
                 .codex_startup_config_overrides()
                 .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
         );
+    }
+
+    #[test]
+    fn codex_service_tier_resolver_preserves_absence() {
+        assert_codex_service_tier_resolution(HashMap::new(), None, false);
+    }
+
+    #[test]
+    fn codex_service_tier_resolver_accepts_canonical_only() {
+        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
+            assert_codex_service_tier_resolution(
+                HashMap::from([(
+                    super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                    value.to_string(),
+                )]),
+                Some((value, super::CodexServiceTierSource::CanonicalOnly)),
+                expected_fast_mode,
+            );
+        }
+    }
+
+    #[test]
+    fn codex_service_tier_resolver_accepts_legacy_only() {
+        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
+            assert_codex_service_tier_resolution(
+                HashMap::from([(
+                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                    value.to_string(),
+                )]),
+                Some((value, super::CodexServiceTierSource::LegacyOnly)),
+                expected_fast_mode,
+            );
+        }
+    }
+
+    #[test]
+    fn codex_service_tier_resolver_accepts_equal_dual() {
+        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
+            assert_codex_service_tier_resolution(
+                HashMap::from([
+                    (
+                        super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                        value.to_string(),
+                    ),
+                    (
+                        super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                        value.to_string(),
+                    ),
+                ]),
+                Some((value, super::CodexServiceTierSource::Dual)),
+                expected_fast_mode,
+            );
+        }
+    }
+
+    #[test]
+    fn codex_service_tier_resolver_rejects_conflicting_dual_without_values() {
+        let canonical_value = "canonical-value-must-not-leak";
+        let legacy_value = "legacy-value-must-not-leak";
+        let user_env = HashMap::from([
+            (
+                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                canonical_value.to_string(),
+            ),
+            (
+                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                legacy_value.to_string(),
+            ),
+        ]);
+
+        let resolver_error = super::resolve_codex_service_tier(&user_env)
+            .expect_err("conflicting aliases must fail")
+            .to_string();
+        let config = guest_config_for_agent_context(user_env);
+        let paths =
+            crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-conflict-test");
+        let config_error = CliRuntimeConfig::from_config(&config, &paths, Instant::now())
+            .err()
+            .expect("conflicting aliases must fail before Codex startup")
+            .to_string();
+
+        assert_eq!(resolver_error, config_error);
+        assert!(
+            resolver_error.contains(super::CODEX_SERVICE_TIER_CANONICAL_ENV)
+                && resolver_error.contains(super::CODEX_SERVICE_TIER_LEGACY_ENV)
+        );
+        assert!(!resolver_error.contains(canonical_value));
+        assert!(!resolver_error.contains(legacy_value));
+    }
+
+    #[test]
+    fn codex_service_tier_resolution_log_is_fixed_shape_and_value_free() {
+        let _system_log_state_guard = crate::lock_system_log_test_state();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let paths = crate::paths::GuestPaths::from_runtime_dir(tmp.path());
+        let successful_cases = [
+            HashMap::from([(
+                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                "canonical-value-must-not-log".to_string(),
+            )]),
+            HashMap::from([(
+                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                "legacy-value-must-not-log".to_string(),
+            )]),
+            HashMap::from([
+                (
+                    super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                    "dual-value-must-not-log".to_string(),
+                ),
+                (
+                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                    "dual-value-must-not-log".to_string(),
+                ),
+            ]),
+        ];
+
+        for user_env in successful_cases {
+            let config = guest_config_for_agent_context(user_env);
+            CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
+        }
+        let absent_config = guest_config_for_agent_context(HashMap::new());
+        CliRuntimeConfig::from_config(&absent_config, &paths, Instant::now()).unwrap();
+        let conflict_config = guest_config_for_agent_context(HashMap::from([
+            (
+                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+                "conflicting-canonical-value-must-not-log".to_string(),
+            ),
+            (
+                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
+                "conflicting-legacy-value-must-not-log".to_string(),
+            ),
+        ]));
+        assert!(CliRuntimeConfig::from_config(&conflict_config, &paths, Instant::now()).is_err());
+
+        drop(system_log_guard);
+        let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+        let event_prefix = format!("[{}] ", super::LOG_TAG);
+        let evidence = system_log
+            .lines()
+            .filter(|line| line.contains(super::CODEX_SERVICE_TIER_RESOLUTION_EVENT))
+            .map(|line| {
+                line.rsplit_once(&event_prefix)
+                    .expect("resolution evidence must use the guest logger tag")
+                    .1
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            evidence,
+            [
+                "codex_service_tier_environment_resolution source=canonical_only",
+                "codex_service_tier_environment_resolution source=legacy_only",
+                "codex_service_tier_environment_resolution source=dual",
+            ]
+        );
+        for value in [
+            "canonical-value-must-not-log",
+            "legacy-value-must-not-log",
+            "dual-value-must-not-log",
+            "conflicting-canonical-value-must-not-log",
+            "conflicting-legacy-value-must-not-log",
+        ] {
+            assert!(!system_log.contains(value));
+        }
     }
 
     #[test]

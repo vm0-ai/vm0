@@ -1,9 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
-
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -75,68 +70,6 @@ function boundaryFromPid(args: {
   };
 }
 
-export async function removeAgentLegacyVersionsFixture(
-  agentId: string,
-): Promise<readonly string[]> {
-  const rows = await db().transaction(async (tx) => {
-    // The Stage 0 production DELETE veto is intentionally bypassed only for
-    // this test-only fixture so the legacy-version-free cohort remains
-    // constructible. SET LOCAL keeps the bypass scoped to this transaction.
-    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-    return await tx
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, agentId))
-      .returning({ id: agentComposeVersions.id });
-  });
-  return rows.map((row) => {
-    return row.id;
-  });
-}
-
-async function agentHeadVersionId(agentId: string): Promise<string> {
-  const [agent] = await db()
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentId))
-    .limit(1);
-  if (!agent?.headVersionId) {
-    throw new Error("Expected an agent head version");
-  }
-  return agent.headVersionId;
-}
-
-export async function referenceAgentRunVersionFixture(args: {
-  readonly runId: string;
-  readonly versionAgentId: string;
-}): Promise<string> {
-  const versionId = await agentHeadVersionId(args.versionAgentId);
-  const rows = await db()
-    .update(agentRuns)
-    .set({ agentComposeVersionId: versionId })
-    .where(eq(agentRuns.id, args.runId))
-    .returning({ id: agentRuns.id });
-  if (rows.length !== 1) {
-    throw new Error("Expected one agent Run version reference to change");
-  }
-  return versionId;
-}
-
-export async function referenceAgentHeadFixture(args: {
-  readonly agentId: string;
-  readonly versionAgentId: string;
-}): Promise<string> {
-  const versionId = await agentHeadVersionId(args.versionAgentId);
-  const rows = await db()
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, args.agentId))
-    .returning({ id: agentComposes.id });
-  if (rows.length !== 1) {
-    throw new Error("Expected one agent head reference to change");
-  }
-  return versionId;
-}
-
 export async function readAgentLifecycleIdsFixture(agentId: string): Promise<{
   readonly sessionIds: readonly string[];
   readonly runIds: readonly string[];
@@ -144,7 +77,7 @@ export async function readAgentLifecycleIdsFixture(agentId: string): Promise<{
   const sessions = await db()
     .select({ id: agentSessions.id })
     .from(agentSessions)
-    .where(eq(agentSessions.agentComposeId, agentId))
+    .where(eq(agentSessions.agentId, agentId))
     .orderBy(asc(agentSessions.id));
   const sessionIds = sessions.map((session) => {
     return session.id;
@@ -174,8 +107,8 @@ export async function readAgentLifecycleCountsFixture(
 }> {
   const [agentCount] = await db()
     .select({ value: count() })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentId));
+    .from(agents)
+    .where(eq(agents.id, agentId));
   const lifecycle = await readAgentLifecycleIdsFixture(agentId);
   return {
     agents: agentCount?.value ?? 0,
@@ -231,9 +164,9 @@ export async function holdAgentDeletionRowLockFixture(args: {
     const rows =
       args.kind === "agent"
         ? await tx
-            .select({ id: agentComposes.id })
-            .from(agentComposes)
-            .where(eq(agentComposes.id, args.id))
+            .select({ id: agents.id })
+            .from(agents)
+            .where(eq(agents.id, args.id))
             .for("update")
         : args.kind === "session"
           ? await tx
@@ -286,36 +219,6 @@ export async function holdAgentRunLocksFixture(args: {
   });
 }
 
-export async function holdAgentVersionInsertFixture(args: {
-  readonly agentId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<HeldDatabaseBoundary> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const versionId = createHash("sha256")
-    .update(`agent-delete-version-${randomUUID()}`)
-    .digest("hex");
-  const done = db().transaction(async (tx) => {
-    await tx.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: args.agentId,
-      content: {
-        version: "1",
-        agents: { fixture: { framework: "claude-code" } },
-      },
-      createdBy: args.userId,
-    });
-    started.resolve(await transactionBackendPid(tx));
-    await released.promise;
-  });
-  return boundaryFromPid({
-    pid: await started.promise,
-    released,
-    done,
-  });
-}
-
 export async function holdAgentSessionInsertFixture(args: {
   readonly agentId: string;
   readonly orgId: string;
@@ -326,7 +229,7 @@ export async function holdAgentSessionInsertFixture(args: {
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
     await tx.insert(agentSessions).values({
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       orgId: args.orgId,
       userId: args.userId,
     });

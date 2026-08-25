@@ -3,7 +3,7 @@ import type {
   ModelProviderListResponse,
   ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -64,7 +64,7 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const meModelProvidersListRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPersonalModelProvidersMainContract.list,
+    route: personalModelProvidersMainContract.list,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listInner$,

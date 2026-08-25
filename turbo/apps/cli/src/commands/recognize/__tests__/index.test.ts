@@ -13,8 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../mocks/server";
 import { recognizeCommand } from "../index";
 
-const PREPARE_URL = "http://localhost:3000/api/okou/uploads/prepare";
-const COMPLETE_URL = "http://localhost:3000/api/okou/uploads/complete";
+const PREPARE_URL = "http://localhost:3000/api/uploads/prepare";
+const COMPLETE_URL = "http://localhost:3000/api/uploads/complete";
 const RECOGNIZE_URL = "http://localhost:3000/api/recognize";
 const PUT_URL = "https://mock-r2.test/recognition-upload";
 

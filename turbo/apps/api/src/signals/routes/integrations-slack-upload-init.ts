@@ -66,7 +66,7 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         size: body.length,
         checksumSha256: body.canonical.checksumSha256,
         publicBrand:
-          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
         destination: {
           channelId: body.canonical.channel,
           ...(body.canonical.threadTs

@@ -1,5 +1,6 @@
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   feishuChatIngress,
   type FeishuChatIngressStatus,
@@ -56,7 +57,7 @@ export async function ensureFeishuChatThreadRoute(
   db: Db,
   args: FeishuChatThreadRouteKey & {
     readonly orgId: string;
-    readonly agentComposeId: string;
+    readonly agentId: string;
     readonly selectedModel: string | null;
     readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
@@ -76,7 +77,7 @@ export async function ensureFeishuChatThreadRoute(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentComposeId,
+        agentId: args.agentId,
         selectedModel: args.selectedModel,
         codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
@@ -84,7 +85,8 @@ export async function ensureFeishuChatThreadRoute(
         lastMessageAt: args.currentTime,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -134,7 +136,7 @@ export async function ensureFeishuChatThreadRoute(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
@@ -158,6 +160,7 @@ export async function admitFeishuChatEvent(
     readonly installationId: string;
     readonly eventId: string;
     readonly payload: string;
+    readonly publicBrand: PublicBrand;
     readonly currentTime: Date;
   },
 ): Promise<FeishuChatIngressAdmission | null> {
@@ -181,6 +184,7 @@ export async function admitFeishuChatEvent(
           installationId: args.installationId,
           eventId: args.eventId,
           payload: args.payload,
+          publicBrand: args.publicBrand,
           status: "pending",
           createdAt: args.currentTime,
           updatedAt: args.currentTime,

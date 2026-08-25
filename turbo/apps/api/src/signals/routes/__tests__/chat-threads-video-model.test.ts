@@ -66,14 +66,14 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
   return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -112,7 +112,7 @@ function rawVideoModelRequest(
   return setupRawAppRequest({
     context,
     routes: chatThreadVideoModelRoutes,
-  })(`/api/okou/chat-threads/${threadId}/video-model`, {
+  })(`/api/chat-threads/${threadId}/video-model`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
@@ -149,10 +149,10 @@ async function readVideoModelEvents(token: string) {
   });
 }
 
-describe("POST /api/okou/chat-threads/:id/video-model", () => {
+describe("POST /api/chat-threads/:id/video-model", () => {
   it("pins a video model and records one event", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -177,7 +177,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
 
   it("clears the pin so resolution falls through to the defaults", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -210,7 +210,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
 
   it("leaves the run model untouched", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -235,7 +235,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
 
   it("reuses a caller-supplied event id so a retry appends once", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -258,7 +258,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
 
   it("rejects a model outside the catalog", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -275,7 +275,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
   it("returns 404 for a thread the caller does not own", async () => {
     const fixture = await seedChatThread("Product launch clip");
     const other = await seedChatThread("Someone else's clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
@@ -290,7 +290,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
       [404],
     );
 
-    const otherToken = zeroToken({
+    const otherToken = okouToken({
       userId: other.userId,
       orgId: other.orgId,
       capabilities: ["chat-thread:read"],
@@ -300,7 +300,7 @@ describe("POST /api/okou/chat-threads/:id/video-model", () => {
 
   it("rejects a ZERO_TOKEN without chat-thread:write", async () => {
     const fixture = await seedChatThread("Product launch clip");
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read"],

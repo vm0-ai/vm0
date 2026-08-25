@@ -237,7 +237,7 @@ def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
         body=b"not json",
         rule="GET /2/tweets/search/recent",
     )
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = ""
 
     with mitm_ctx(api_url="https://api.vm0.ai") as log:
         usage.report_connector_usage(flow, "run-abc-123")

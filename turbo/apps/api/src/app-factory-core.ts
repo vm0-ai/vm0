@@ -16,7 +16,7 @@ import {
 import { serializeError } from "@okouai/core/log-utils";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
-import { Hono, type Context, type Handler, type Next } from "hono";
+import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { matchedRoutes } from "hono/route";
 
@@ -41,10 +41,10 @@ import {
 import {
   type RouteEntry,
   withApiNamespaceAliases,
-  withFinalProviderConsolePaths,
   withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
+import { configurePiApiFirstTurnDispatcher } from "./signals/services/pi-api-first-turn-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
@@ -59,7 +59,6 @@ const AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
 const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
-const NAMESPACE_ALIAS_FALLBACK_TYPE = "api_namespace_alias_fallback" as const;
 const REQUEST_LOG_DATASET = "request-log";
 const ERROR_CHAIN_MAX_DEPTH = 32;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
@@ -554,44 +553,6 @@ function handleError(error: unknown, context: Context): Response {
   return context.json({ error: "Internal server error" }, 500);
 }
 
-/**
- * Reports the first request that reaches a legacy `/api/zero/**` path the
- * compatibility table in `route-entry.ts` does not list, so a caller the
- * three-day request log missed is named before the fallback is removed.
- *
- * Deduplicated by path, which is the granularity the table is keyed at and so
- * the granularity a report is actionable at. One log per path per reporter,
- * and `createProductionApp` builds one app per process, so a busy unlisted
- * caller costs a single log line rather than one per request.
- */
-function createNamespaceAliasFallbackReporter(): (path: string) => void {
-  const reported = new Set<string>();
-  return (path) => {
-    if (reported.has(path)) {
-      return;
-    }
-    reported.add(path);
-    L.warn(`Unlisted legacy API namespace path served by fallback: ${path}`, {
-      type: NAMESPACE_ALIAS_FALLBACK_TYPE,
-      route: path,
-    });
-  };
-}
-
-function namespaceAliasFallbackHandler(
-  entry: RouteEntry,
-  handler: Handler,
-  report: (path: string) => void,
-): Handler {
-  if (!entry.viaNamespaceAliasFallback) {
-    return handler;
-  }
-  return (context, next) => {
-    report(entry.route.path);
-    return handler(context, next);
-  };
-}
-
 interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
@@ -604,6 +565,7 @@ export function createAppWithRoutes({
   usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
+  configurePiApiFirstTurnDispatcher();
   const app = new Hono();
   app.onError(handleError);
 
@@ -646,17 +608,16 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // Console paths first, then the namespace expansion, then the branded paths
-  // migrated routes owe: each stage consumes the declared path, so the last one
-  // produces finished registrations rather than input to another derivation.
-  // Uniqueness over this composition is asserted against the production route
-  // table in `__tests__/migrated-branded-paths.test.ts`, not here — test apps
+  // The namespace expansion first, then the branded paths migrated routes owe:
+  // the expansion consumes the declared path, so the second stage produces
+  // finished registrations rather than input to another derivation. Uniqueness
+  // over this composition is asserted against the production route table in
+  // `__tests__/migrated-branded-paths.test.ts`, not here — test apps
   // deliberately compose overlapping route slices.
   const registeredRoutes = withMigratedBrandedPaths(
-    withApiNamespaceAliases(withFinalProviderConsolePaths(routes)),
+    withApiNamespaceAliases(routes),
   );
 
-  const reportNamespaceAliasFallback = createNamespaceAliasFallbackReporter();
   for (const entry of registeredRoutes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(
@@ -665,12 +626,7 @@ export function createAppWithRoutes({
       signal,
       usagePricingResolution,
     );
-    const registeredHandler = namespaceAliasFallbackHandler(
-      entry,
-      routeHandler,
-      reportNamespaceAliasFallback,
-    );
-    app.on(route.method, route.path, registeredHandler);
+    app.on(route.method, route.path, routeHandler);
   }
 
   app.notFound((context) => {

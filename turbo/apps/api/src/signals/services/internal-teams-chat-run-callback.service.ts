@@ -6,7 +6,7 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -108,10 +108,11 @@ async function loadTeamsChatDeliveryContext(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       chatThreadId: agentRuns.chatThreadId,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(chatThreads.id, agentRuns.chatThreadId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(agentRuns.id, args.callback.runId),
@@ -150,7 +151,6 @@ async function loadTeamsChatDeliveryContext(
   const [binding] = await args.db
     .select({
       serviceUrl: teamsOrgInstallations.serviceUrl,
-      publicBrand: teamsOrgInstallations.publicBrand,
     })
     .from(teamsChatThreadRoutes)
     .innerJoin(
@@ -297,7 +297,7 @@ async function deliverClaimedTeamsChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: binding.publicBrand,
+      publicBrand: payload.publicBrand,
       replyToMention:
         payload.conversationType !== "personal" && mentionerCount > 1
           ? replyTo
@@ -411,7 +411,6 @@ interface TeamsChatAdmissionFailureArgs {
 interface TeamsAdmissionFailureContext {
   readonly messageContent: string;
   readonly installationServiceUrl: string | null;
-  readonly publicBrand: PublicBrand;
 }
 
 async function loadTeamsAdmissionFailureContext(
@@ -434,7 +433,6 @@ async function loadTeamsAdmissionFailureContext(
     args.db
       .select({
         serviceUrl: teamsOrgInstallations.serviceUrl,
-        publicBrand: teamsOrgInstallations.publicBrand,
       })
       .from(teamsChatThreadRoutes)
       .innerJoin(
@@ -470,7 +468,6 @@ async function loadTeamsAdmissionFailureContext(
   return {
     messageContent: event.content,
     installationServiceUrl: binding.serviceUrl,
-    publicBrand: binding.publicBrand,
   };
 }
 
@@ -499,9 +496,9 @@ async function resolveTeamsAdmissionFailurePresentation(
         .where(eq(orgMetadata.orgId, args.orgId))
         .limit(1),
       args.db
-        .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, args.agentId))
+        .select({ displayName: agents.displayName, name: agents.name })
+        .from(agents)
+        .where(eq(agents.id, args.agentId))
         .limit(1),
     ]);
   signal.throwIfAborted();
@@ -520,7 +517,7 @@ async function resolveTeamsAdmissionFailurePresentation(
       }`,
     );
   }
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities`
     : undefined;
   return {
@@ -569,7 +566,7 @@ export async function deliverTeamsChatAdmissionFailure(
   }
   const presentation = await resolveTeamsAdmissionFailurePresentation(
     args,
-    context.publicBrand,
+    args.target.publicBrand,
     signal,
   );
   const serviceUrl =

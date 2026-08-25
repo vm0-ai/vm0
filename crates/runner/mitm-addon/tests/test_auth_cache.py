@@ -503,7 +503,7 @@ class TestFirewallHeaderCache:
         cache_key = auth_cache_key(run_id="run-old")
         set_cached_headers(cache_key, headers={}, expires_at=None)
 
-        registry = {"vms": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
+        registry = {"sandboxes": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
@@ -581,8 +581,8 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    async def test_cache_evicted_when_ttl_expired(self, headers):
-        """Cached entry with expiresAt in the past should trigger a re-fetch."""
+    async def test_expired_cache_entry_triggers_refetch(self, headers):
+        """An expired entry is a cache miss and is replaced after a successful refetch."""
         cache_key = auth_cache_key()
         set_cached_headers(
             cache_key,
@@ -602,6 +602,44 @@ class TestGetFirewallHeaders:
         # Pin the TTL-expiry-to-refetch contract independently of the client transport.
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
+        assert require_cached_headers(cache_key).headers == fresh_headers
+
+    async def test_expired_cache_entry_is_retained_when_refetch_fails(self, headers):
+        """Expired headers are not served, but a failed refetch retains the stored entry."""
+        cache_key = auth_cache_key()
+        stale_headers = {"Authorization": "Bearer stale-token"}
+        expired_at = time.time() - 10
+        set_cached_headers(
+            cache_key,
+            headers=stale_headers,
+            expires_at=expired_at,
+        )
+
+        failed_fetch = AsyncMock(side_effect=ConnectionError("server unreachable"))
+        with (
+            patch.object(auth_cache, "fetch_firewall_headers", failed_fetch),
+            pytest.raises(ConnectionError, match=r"^server unreachable$"),
+        ):
+            await auth_cache.get_firewall_headers(cache_key, firewall_auth_request())
+
+        failed_fetch.assert_awaited_once()
+        retained = require_cached_headers(cache_key)
+        assert retained.headers == stale_headers
+        assert retained.expires_at == expired_at
+
+        fresh_headers = {"Authorization": "Bearer fresh-token"}
+        successful_fetch = AsyncMock(
+            return_value=firewall_auth_success(
+                headers=fresh_headers,
+                expires_at=time.time() + 3600,
+            )
+        )
+        with patch.object(auth_cache, "fetch_firewall_headers", successful_fetch):
+            result = await auth_cache.get_firewall_headers(cache_key, firewall_auth_request())
+
+        assert result["headers"] == fresh_headers
+        assert result["cache_hit"] is False
+        successful_fetch.assert_awaited_once()
         assert require_cached_headers(cache_key).headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):

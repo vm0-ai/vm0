@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { config, oxlint } from "@okouai/eslint-config/base";
 import { apiLintPlugin } from "@okouai/eslint-rules/api";
+import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -208,6 +209,7 @@ export default [
     files: ["src/**/*.ts"],
     plugins: {
       api: apiLintPlugin,
+      ccstate: ccstatePlugin,
     },
     rules: {
       "api/no-catch-abort": "error",
@@ -222,6 +224,7 @@ export default [
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
+      "ccstate/no-accessor-escape": "error",
     },
   },
   {
@@ -371,10 +374,10 @@ export default [
         {
           patterns: [
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -386,12 +389,19 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Exact pre-redaction classification and bucket boundaries are a finite,
-      // security-sensitive matrix that cannot be exhaustively observed through
-      // the product Run route without leaking the compared environment maps.
-      "src/signals/services/__tests__/agent-environment-shadow.test.ts",
+      // Content hashes are a byte-identical cryptographic contract shared with
+      // guest-agent; route behavior cannot pin the serializer's full corpus.
+      "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Pi resource snapshots are a byte-identical discovery contract shared
+      // with the sandbox runtime; route output cannot expose its full virtual
+      // filesystem, ignore-rule, and precedence matrix.
+      "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
+      // Preview job-ref aliases are process environment state, and both Stripe
+      // metadata entry points must share one value-free resolution matrix that
+      // cannot be observed completely through a single production API route.
+      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.
@@ -448,10 +458,10 @@ export default [
               message: productionRouteTestImportMessage,
             },
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -493,10 +503,10 @@ export default [
               message: lowerLayerRouteImportMessage,
             },
             {
-              group: ["**/zero-runs-create.service"],
-              importNames: ["createTestFixtureZeroRun$"],
+              group: ["**/agent-runs-create.service"],
+              importNames: ["createTestFixtureAgentRun$"],
               message:
-                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+                "Production run sources must use createQueueFirstAgentRun$ so every run is bound to a chat thread.",
             },
           ],
         },
@@ -513,6 +523,17 @@ export default [
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // Content hashes are a byte-identical cryptographic contract shared with
+      // guest-agent; route behavior cannot pin the serializer's full corpus.
+      "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Pi resource snapshots are a byte-identical discovery contract shared
+      // with the sandbox runtime; route output cannot expose its full virtual
+      // filesystem, ignore-rule, and precedence matrix.
+      "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
+      // Preview job-ref aliases are process environment state, and both Stripe
+      // metadata entry points must share one value-free resolution matrix that
+      // cannot be observed completely through a single production API route.
+      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A pre-migration schema cannot be constructed through a production API.
       // This focused transaction validates the rollout contract against real
       // PostgreSQL tables before and after the autonomy-budget columns exist.

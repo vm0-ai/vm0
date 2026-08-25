@@ -1,0 +1,1 @@
+ALTER TABLE "browser_sessions" ALTER COLUMN "public_brand" DROP DEFAULT;

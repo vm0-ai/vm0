@@ -29,6 +29,7 @@ import {
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
@@ -42,6 +43,7 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   lt,
   lte,
   notInArray,
@@ -81,9 +83,9 @@ import {
 } from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
-import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
-import { extendManagedModelCandidateCooldown } from "../services/built-in-model-runtime-route.service";
+import { extendBuiltInModelCandidateCooldown } from "../services/built-in-model-runtime-route.service";
 import {
   recordActiveInputDeliveryReceipt,
   reserveActiveInputDelivery,
@@ -132,7 +134,8 @@ const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
-const DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS = 60;
+const DEFAULT_BUILT_IN_MODEL_PROVIDER_COOLDOWN_SECONDS = 5 * 60;
+const BUILT_IN_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS = 30 * 60;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
@@ -699,7 +702,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId: runnerJobQueue.runId,
       prompt: agentRuns.prompt,
       appendSystemPrompt: agentRuns.appendSystemPrompt,
-      agentComposeVersionId: agentRuns.agentComposeVersionId,
       vars: agentRuns.vars,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
@@ -758,7 +760,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         runId: pendingJob.runId,
         prompt: pendingJob.prompt,
         appendSystemPrompt: pendingJob.appendSystemPrompt,
-        agentComposeVersionId: pendingJob.agentComposeVersionId,
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
@@ -796,7 +797,6 @@ interface ClaimedRun {
   readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
-  readonly agentComposeVersionId: string | null;
   readonly vars: unknown;
 }
 
@@ -824,11 +824,12 @@ async function getRunNetworkPolicyScope(
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       status: agentRuns.status,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
@@ -879,10 +880,9 @@ async function getClaimableJob(
         id: agentRuns.id,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
-        agentId: agentSessions.agentComposeId,
+        agentId: agentSessions.agentId,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
       },
     })
@@ -893,13 +893,17 @@ async function getClaimableJob(
       and(
         eq(runnerJobQueue.runId, runId),
         gt(runnerJobQueue.expiresAt, sql`now()`),
+        isNotNull(agentSessions.agentId),
       ),
     )
     .limit(1);
   signal.throwIfAborted();
 
-  if (jobWithRun) {
-    return jobWithRun;
+  if (jobWithRun?.run.agentId) {
+    return {
+      ...jobWithRun,
+      run: { ...jobWithRun.run, agentId: jobWithRun.run.agentId },
+    };
   }
   return notFound("Job not found in queue");
 }
@@ -1833,7 +1837,6 @@ async function buildClaimResponseBody(
         reuseKey: args.reuseKey,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
-        agentComposeVersionId: args.run.agentComposeVersionId,
         vars: mergeClaimVars({
           runVars: (args.run.vars as Record<string, string> | null) ?? null,
           connectorVars: args.storedContext.vars,
@@ -2592,7 +2595,7 @@ const modelProviderFailureInner$ = command(
         selectedModel: agentRuns.selectedModel,
         modelRuntimeProvider: agentRuns.modelRuntimeProvider,
         modelRuntimeModel: agentRuns.modelRuntimeModel,
-        vm0ModelKeyId: agentRuns.vm0ModelKeyId,
+        builtInModelKeyId: agentRuns.builtInModelKeyId,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
@@ -2605,29 +2608,32 @@ const modelProviderFailureInner$ = command(
       !run.selectedModel ||
       !run.modelRuntimeProvider ||
       !run.modelRuntimeModel ||
-      !run.vm0ModelKeyId
+      !run.builtInModelKeyId
     ) {
-      L.debug("Managed model provider failure report ignored", { runId });
+      L.debug("Built-in model provider failure report ignored", { runId });
       return { status: 200 as const, body: { outcome: "ignored" as const } };
     }
 
-    const retryAfterSeconds =
-      body.data.retryAfterSeconds ??
-      DEFAULT_MANAGED_MODEL_PROVIDER_COOLDOWN_SECONDS;
-    const unavailableUntil = await extendManagedModelCandidateCooldown(db, {
+    const cooldownSeconds =
+      body.data.failureKind === "authentication" ||
+      body.data.failureKind === "billing"
+        ? BUILT_IN_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS
+        : (body.data.retryAfterSeconds ??
+          DEFAULT_BUILT_IN_MODEL_PROVIDER_COOLDOWN_SECONDS);
+    const unavailableUntil = await extendBuiltInModelCandidateCooldown(db, {
       selectedModel: run.selectedModel,
       providerType: run.modelRuntimeProvider,
       upstreamModel: run.modelRuntimeModel,
-      retryAfterSeconds,
+      retryAfterSeconds: cooldownSeconds,
     });
     signal.throwIfAborted();
-    L.debug("Managed model provider failure report recorded", {
+    L.debug("Built-in model provider failure report recorded", {
       runId,
       selectedModel: run.selectedModel,
       providerType: run.modelRuntimeProvider,
       upstreamModel: run.modelRuntimeModel,
       failureKind: body.data.failureKind,
-      retryAfterSeconds,
+      retryAfterSeconds: cooldownSeconds,
       unavailableUntil: unavailableUntil.toISOString(),
     });
     return { status: 200 as const, body: { outcome: "recorded" as const } };

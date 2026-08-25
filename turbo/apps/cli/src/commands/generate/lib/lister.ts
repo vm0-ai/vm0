@@ -10,6 +10,20 @@ import {
 } from "../../shared/billing-capabilities";
 import { planUpgradeUrl } from "../../shared/billing-links";
 import { getOkouAgentId } from "../../../lib/okou-env";
+import {
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_CONFIGS,
+  VIDEO_MODELS,
+} from "@okouai/core/video-model-catalog";
+
+/**
+ * Derived from the catalog so the summary cannot keep marking a model the
+ * default after the catalog stops using it.
+ */
+const BUILT_IN_VIDEO_MODEL_SUMMARY = VIDEO_MODELS.map((model) => {
+  const { alias } = VIDEO_MODEL_CONFIGS[model];
+  return model === DEFAULT_VIDEO_MODEL ? `${alias} (default)` : alias;
+}).join(", ");
 
 type ConnectorGenerationType =
   | "audio"
@@ -84,8 +98,27 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     },
     {
       label: "Built-in fal.ai",
+      model: "fal-ai/flux-2-pro",
+      command: "okou generate image --provider built-in --model flux-2-pro -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
       model: "fal-ai/qwen-image",
       command: "okou generate image --provider built-in --model qwen-image -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "alibaba/qwen-image-3/text-to-image",
+      command:
+        "okou generate image --provider built-in --model qwen-image-3 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "ideogram/v4",
+      command: "okou generate image --provider built-in --model ideogram-4 -h",
       reason: "available without connector setup",
     },
     {
@@ -113,6 +146,13 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       model: "fal-ai/nano-banana-2",
       command:
         "okou generate image --provider built-in --model nano-banana-2 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "google/nano-banana-2-lite",
+      command:
+        "okou generate image --provider built-in --model nano-banana-2-lite -h",
       reason: "available without connector setup",
     },
   ],
@@ -193,13 +233,12 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "okou generate image --provider built-in -h",
     models:
-      "fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, flux-2-pro, ideogram-4, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, qwen-image-3, seedream4, nano-banana-2, nano-banana-2-lite; BytePlus: seedream5-pro, seedream5-lite",
   },
   video: {
     label: "Built-in video generation",
     command: "okou generate video --provider built-in -h",
-    models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
+    models: BUILT_IN_VIDEO_MODEL_SUMMARY,
   },
   presentation: {
     label: "Built-in presentation generation",

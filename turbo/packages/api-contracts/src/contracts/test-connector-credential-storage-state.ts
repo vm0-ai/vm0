@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { connectorAccountMutationIntentSchema } from "./connector-accounts";
 
 const c = initContract();
 
@@ -51,6 +52,10 @@ export const testConnectorCredentialStorageStateActionBodySchema =
     }),
     z.object({
       action: z.literal("read-custom-oauth-state"),
+      state: z.string(),
+    }),
+    z.object({
+      action: z.literal("read-oauth-state-account-mutation"),
       state: z.string(),
     }),
     z.object({
@@ -143,6 +148,14 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       external_id: z.string().nullable(),
     }),
     z.object({
+      action: z.literal("set-connector-account-state"),
+      org_id: z.string(),
+      user_id: z.string(),
+      connector_id: z.uuid(),
+      needs_reconnect: z.boolean(),
+      storage_version: z.number().int().positive().optional(),
+    }),
+    z.object({
       action: z.literal("seed-builtin-thread-selection"),
       chat_thread_id: z.uuid(),
       connector_id: z.uuid(),
@@ -189,6 +202,9 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
+    account_mutation: connectorAccountMutationIntentSchema
+      .nullable()
+      .optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     feishu_member_connection: feishuMemberConnectionStateSchema
       .nullable()

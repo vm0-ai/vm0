@@ -234,6 +234,23 @@ async function readCustomOAuthState(
   });
 }
 
+async function readOAuthStateAccountMutation(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-oauth-state-account-mutation">,
+  signal: AbortSignal,
+) {
+  const [state] = await db
+    .select({ accountMutation: connectorOauthStates.accountMutation })
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, body.state))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!state) {
+    throw new Error("Expected connector OAuth state");
+  }
+  return actionOk({ account_mutation: state.accountMutation });
+}
+
 async function deleteCustomCredentialValues(
   db: Db,
   body: ConnectorCredentialStorageAction<"delete-custom-credential-values">,
@@ -391,6 +408,7 @@ async function seedLegacyCustomFeishuOAuthState(
         completionTarget: "custom",
       },
     }),
+    accountMutation: { intent: "single-account" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
@@ -603,6 +621,36 @@ async function setConnectorExternalId(
       };
 }
 
+async function setConnectorAccountState(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-connector-account-state">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({
+      needsReconnect: body.needs_reconnect,
+      ...(body.storage_version === undefined
+        ? {}
+        : { storageVersion: body.storage_version }),
+    })
+    .where(
+      and(
+        eq(connectors.id, body.connector_id),
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector account test fixture was not found" },
+      };
+}
+
 async function seedBuiltinThreadSelection(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-builtin-thread-selection">,
@@ -751,6 +799,9 @@ async function mutateConnectorAccountCompatibilityState(
     case "set-connector-external-id": {
       return await setConnectorExternalId(db, body, signal);
     }
+    case "set-connector-account-state": {
+      return await setConnectorAccountState(db, body, signal);
+    }
     case "seed-builtin-thread-selection": {
       return await seedBuiltinThreadSelection(db, body, signal);
     }
@@ -797,6 +848,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "read-custom-oauth-state": {
         return await readCustomOAuthState(db, body, signal);
+      }
+      case "read-oauth-state-account-mutation": {
+        return await readOAuthStateAccountMutation(db, body, signal);
       }
       case "delete-custom-credential-values": {
         return await deleteCustomCredentialValues(db, body, signal);

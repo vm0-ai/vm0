@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { exportJobs } from "@okouai/db/schema/export-job";
@@ -15,11 +15,13 @@ import {
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
 import { settle, tapError } from "../utils";
-import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
+import {
+  dispatchCompleteSideEffects$,
+  drainStaleQueues$,
+} from "./agent-run-lifecycle.service";
 import {
   cleanupExpiredQueueEntries$,
   cleanupQueuedRunLaunchOrphans$,
-  drainStaleQueues$,
   type QueuedRunMaintenanceTimeout,
 } from "./run-queue.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
@@ -32,6 +34,7 @@ import {
   cleanupThreadlessRuns$,
   type ThreadlessRunCleanupResult,
 } from "./threadless-run-cleanup.service";
+import { cleanupExpiredPiApiFirstTurnData$ } from "./pi-api-first-turn-cleanup.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -453,7 +456,7 @@ function logQueueMaintenance(args: {
   L.debug("Queue maintenance completed", args);
 }
 
-const cleanupGlobalIngress$ = command(
+const cleanupGlobalMaintenance$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     await set(
       drainStaleChatThreadQueues$,
@@ -472,6 +475,8 @@ const cleanupGlobalIngress$ = command(
     await tapError(set(retryPendingFeishuConnectWelcomes$, signal), (error) => {
       L.error("Failed to retry Feishu connect welcomes", { error });
     });
+    signal.throwIfAborted();
+    await set(cleanupExpiredPiApiFirstTurnData$, signal);
     signal.throwIfAborted();
   },
 );
@@ -523,14 +528,11 @@ export const cleanupSandboxes$ = command(
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
         createdAt: agentRuns.createdAt,
-        composeName: agentComposes.name,
+        composeName: agents.name,
       })
       .from(agentRuns)
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
+      .leftJoin(agents, eq(agentSessions.agentId, agents.id))
       .where(
         and(
           inArray(agentRuns.status, ["pending", "running"]),
@@ -571,7 +573,7 @@ export const cleanupSandboxes$ = command(
     const drainedCount = await set(drainStaleQueues$, orgIds, signal);
     signal.throwIfAborted();
     if (scope.kind === "global") {
-      await set(cleanupGlobalIngress$, signal);
+      await set(cleanupGlobalMaintenance$, signal);
     } else {
       await set(cleanupFixtureChatThreadQueues$, scope.chatThreadIds, signal);
     }

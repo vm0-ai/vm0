@@ -57,7 +57,9 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::{ExecutorConfig, SessionHistoryCpuPool, SessionHistoryProbe};
+use crate::executor::{
+    ExecutorConfig, RunnerPreSpawnConcurrency, SessionHistoryCpuPool, SessionHistoryProbe,
+};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -67,6 +69,7 @@ use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::pre_spawn_admission::PreSpawnAdmission;
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
@@ -260,12 +263,23 @@ pub struct StartArgs {
     /// vm0 API URL (overrides config)
     #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config)
-    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
+    #[arg(
+        long,
+        env = crate::runner_token::clap_environment_name(),
+        hide_env_values = true
+    )]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
+}
+
+#[cfg(test)]
+impl StartArgs {
+    pub(crate) fn token_for_test(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
 }
 
 struct LiveRunnerPublishResources<'a> {
@@ -396,7 +410,7 @@ async fn run_start_with_home(
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
         ));
     }
 
@@ -547,6 +561,7 @@ async fn run_start_with_home(
         runtime_lock_path: paths.mitmdump_runtime_lock(),
         api_url: Some(server.url.clone()),
         client_session_id: runner_client_session_id,
+        runner_token: local_group_dir.is_none().then(|| server.token.clone()),
     })
     .await?;
     mitm.start().await?;
@@ -562,6 +577,8 @@ async fn run_start_with_home(
     // Resource budget from host resources + config.
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
+    let pre_spawn_vcpu_tokens = host::pre_spawn_cpu_capacity()?;
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
         host_memory_mb as u32,
@@ -579,6 +596,11 @@ async fn run_start_with_home(
         effective_memory_mb = budget.effective_memory_mb(),
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
+    );
+    info!(
+        pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+        host_logical_cpus = host_cpus,
+        "pre-spawn admission initialized"
     );
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
@@ -605,7 +627,7 @@ async fn run_start_with_home(
         }
     }
 
-    // Idle sandbox pool for VM reuse across conversation turns.
+    // Idle sandbox pool for sandbox reuse across conversation turns.
     let parking_gate = ParkingGate::new_open();
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
         IdlePoolConfig { max_idle },
@@ -770,6 +792,7 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill,
+        pre_spawn_admission,
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
@@ -985,7 +1008,7 @@ enum StartLoopEvent {
     FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, reuse_key: String },
+    SandboxParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -1166,7 +1189,7 @@ impl StartLoopTestObserver {
     }
 
     fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
+        self.record(StartLoopEvent::SandboxParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1252,8 +1275,8 @@ impl StartLoopTestObserver {
     }
 
     async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
-        self.wait_for(timeout, "VM parked for reuse", |event| match event {
-            StartLoopEvent::VmParkedForReuse {
+        self.wait_for(timeout, "sandbox parked for reuse", |event| match event {
+            StartLoopEvent::SandboxParkedForReuse {
                 run_id: observed_run_id,
                 reuse_key,
             } if *observed_run_id == run_id => Some(reuse_key.clone()),
@@ -1733,6 +1756,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
         active_runs: active_runs.clone(),
+        pre_spawn_concurrency: RunnerPreSpawnConcurrency::default(),
         budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
@@ -2154,8 +2178,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.event("drop_discover_fut");
     drop(workspace_cache_change_fut);
 
-    // Drain idle pool first — these VMs hold budget reservations. This
-    // also clears `idle_vms` in status.json so the final snapshot is
+    // Drain idle pool first — these sandboxes hold budget reservations. This
+    // also clears `idle_sandboxes` in status.json so the final snapshot is
     // consistent with the empty pool.
     lifecycle.close_parking();
     let phase = teardown.phase_start("drain_idle_pool");

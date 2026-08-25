@@ -18,6 +18,39 @@ async fn guest_projects_pi_rpc_events_and_exposes_canonical_run_id()
     std::fs::create_dir_all(&bin_dir)?;
     let capture_path = tmp.path().join("canonical-run-id.txt");
     let payload_capture_path = tmp.path().join("pi-launch-payload-path.txt");
+    let final_assistant_event_path = tmp.path().join("pi-final-assistant-event.jsonl");
+    let large_tool_payload = "x".repeat(1024 * 1024);
+    std::fs::write(
+        &final_assistant_event_path,
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        { "type": "text", "text": "official rpc projection" },
+                        {
+                            "type": "toolCall",
+                            "id": "tool-4",
+                            "name": "large_payload",
+                            "arguments": { "payload": large_tool_payload },
+                        },
+                    ],
+                    "model": "deepseek-v4-flash",
+                    "responseId": "response-3",
+                    "usage": {
+                        "input": 13,
+                        "output": 7,
+                        "cacheRead": 2,
+                        "cacheWrite": 1,
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 6,
+                },
+            })
+        ),
+    )?;
     let npx = bin_dir.join("npx");
     std::fs::write(
         &npx,
@@ -26,6 +59,7 @@ set -eu
 test -n "${OKOU_RUN_ID:-}"
 test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
 test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
+test -n "${PI_FINAL_ASSISTANT_EVENT_PATH:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
 IFS= read -r state_command
@@ -49,7 +83,7 @@ printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId"
 printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"checking both"},{"type":"toolCall","id":"tool-2","name":"read_file","arguments":{"path":"README.md"}},{"type":"text","text":"and"},{"type":"toolCall","id":"tool-3","name":"render_image","arguments":{"format":"png"}}],"model":"deepseek-v4-flash","responseId":"response-2","usage":{"input":8,"output":5,"cacheRead":2,"cacheWrite":1},"stopReason":"toolUse","timestamp":3}}'
 printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId":"tool-2","toolName":"read_file","content":[{"type":"text","text":"file contents"}],"isError":false,"timestamp":4}}'
 printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId":"tool-3","toolName":"render_image","content":[{"type":"text","text":"render failed"},{"type":"image","data":"aW1hZ2U=","mimeType":"image/png"}],"isError":true,"timestamp":5}}'
-printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"official rpc projection"}],"model":"deepseek-v4-flash","responseId":"response-3","usage":{"input":13,"output":7,"cacheRead":2,"cacheWrite":1},"stopReason":"stop","timestamp":6}}'
+cat "$PI_FINAL_ASSISTANT_EVENT_PATH"
 printf '%s\n' '{"type":"agent_settled"}'
 if IFS= read -r unexpected; then
   exit 23
@@ -84,7 +118,9 @@ fi
             &guest_contracts::env::RunPayload {
                 prompt: "verify canonical Pi run identity".to_string(),
                 append_system_prompt: "Your name is Okou.".to_string(),
-                pi_launch_config: r#"{"schemaVersion":2}"#.to_string(),
+                pi_launch_config:
+                    r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#
+                        .to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
                 ..guest_contracts::env::RunPayload::default()
@@ -105,6 +141,10 @@ fi
                     "PI_PAYLOAD_CAPTURE_PATH".to_string(),
                     payload_capture_path.to_string_lossy().into_owned(),
                 ),
+                (
+                    "PI_FINAL_ASSISTANT_EVENT_PATH".to_string(),
+                    final_assistant_event_path.to_string_lossy().into_owned(),
+                ),
             ]),
         )?;
     }
@@ -124,7 +164,7 @@ fi
     .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
-    assert_eq!(result.last_event_sequence, Some(7));
+    assert_eq!(result.last_event_sequence, Some(8));
     assert_eq!(
         result.claude_result.map(|summary| summary.status),
         Some(guest_agent::cli::ClaudeResultStatus::Success)
@@ -154,7 +194,7 @@ fi
             .iter()
             .map(|event| event["sequenceNumber"].as_u64())
             .collect::<Vec<_>>(),
-        (0..8).map(Some).collect::<Vec<_>>()
+        (1..9).map(Some).collect::<Vec<_>>()
     );
     assert!(
         delivered_events
@@ -253,6 +293,30 @@ fi
     assert_eq!(
         delivered_events[6].pointer("/message/content/0/text"),
         Some(&Value::String("official rpc projection".to_string()))
+    );
+    assert_eq!(
+        delivered_events[6].pointer("/message/content/1/type"),
+        Some(&Value::String("tool_use".to_string()))
+    );
+    assert_eq!(delivered_events[6]["message"]["content"][1]["id"], "tool-4");
+    assert_eq!(
+        delivered_events[6]["message"]["content"][1]["name"],
+        "large_payload"
+    );
+    assert_eq!(
+        delivered_events[6]["message"]["content"][1]["input"]["payload"]
+            .as_str()
+            .map(str::len),
+        Some(1024 * 1024)
+    );
+    assert_eq!(
+        delivered_events[6]["message"]["usage"],
+        serde_json::json!({
+            "input_tokens": 13,
+            "output_tokens": 7,
+            "cache_read_input_tokens": 2,
+            "cache_creation_input_tokens": 1,
+        })
     );
     assert_eq!(delivered_events[7]["type"], "result");
     assert_eq!(delivered_events[7]["subtype"], "success");

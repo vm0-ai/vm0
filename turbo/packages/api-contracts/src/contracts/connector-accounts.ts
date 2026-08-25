@@ -1,10 +1,17 @@
 import { z } from "zod";
 
-import { connectorSlugSchema } from "./connector-identity";
+import { authHeadersSchema, initContract } from "./base";
+import {
+  connectorAuthMethodIdSchema,
+  connectorSlugSchema,
+} from "./connector-identity";
 import {
   connectorReconnectReasonSchema,
   connectorResponseConnectionStatusSchema,
 } from "./connector-schemas";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
 
 export const connectorAccountDisplayNameSchema = z
   .string()
@@ -31,6 +38,7 @@ export const connectorAccountConnectionSchema = z
   .object({
     id: z.uuid(),
     target: connectorAccountTargetSchema,
+    authMethod: connectorAuthMethodIdSchema,
     displayName: z.string().min(1).max(255).nullable(),
     isDefault: z.boolean(),
     externalId: z.string().nullable(),
@@ -57,6 +65,11 @@ export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   [
     z
       .object({
+        intent: z.literal("single-account"),
+      })
+      .strict(),
+    z
+      .object({
         intent: z.literal("add"),
         displayName: connectorAccountDisplayNameSchema.optional(),
       })
@@ -70,6 +83,196 @@ export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   ],
 );
 
+export const connectorAccountTargetQuerySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("builtin"),
+      connectorSlug: connectorSlugSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom"),
+      customConnectorId: z.uuid(),
+    })
+    .strict(),
+]);
+
+const connectorAccountListQueryFields = {
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  search: z.string().trim().min(1).max(255).optional(),
+} as const;
+
+export const connectorAccountListQuerySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("builtin"),
+      connectorSlug: connectorSlugSchema,
+      ...connectorAccountListQueryFields,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom"),
+      customConnectorId: z.uuid(),
+      ...connectorAccountListQueryFields,
+    })
+    .strict(),
+]);
+
+export const connectorAccountSummarySchema = z
+  .object({
+    target: connectorAccountTargetSchema,
+    accountCount: z.number().int().nonnegative(),
+    attentionCount: z.number().int().nonnegative(),
+    defaultConnection: connectorAccountConnectionSchema.nullable(),
+  })
+  .strict();
+
+const connectorAccountPathParamsSchema = z.object({
+  connectionId: z.uuid(),
+});
+
+const connectorAccountExactTargetBodySchema = z
+  .object({ target: connectorAccountTargetSchema })
+  .strict();
+
+export const connectorAccountsContract = c.router({
+  summaries: {
+    method: "GET",
+    path: "/api/connector-accounts",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({ summaries: z.array(connectorAccountSummarySchema) }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List connector account summaries",
+  },
+  connections: {
+    method: "GET",
+    path: "/api/connector-accounts/connections",
+    headers: authHeadersSchema,
+    query: connectorAccountListQuerySchema,
+    responses: {
+      200: z.object({
+        connections: z.array(connectorAccountConnectionSchema),
+        nextCursor: z.string().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List one target's connector accounts",
+  },
+  connection: {
+    method: "GET",
+    path: "/api/connector-accounts/:connectionId",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    query: connectorAccountTargetQuerySchema,
+    responses: {
+      200: connectorAccountConnectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get one exact connector account",
+  },
+  rename: {
+    method: "PATCH",
+    path: "/api/connector-accounts/:connectionId",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    body: z
+      .object({
+        target: connectorAccountTargetSchema,
+        displayName: connectorAccountDisplayNameSchema.nullable(),
+      })
+      .strict(),
+    responses: {
+      200: connectorAccountConnectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Rename an exact connector account",
+  },
+  setDefault: {
+    method: "POST",
+    path: "/api/connector-accounts/:connectionId/default",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    body: connectorAccountExactTargetBodySchema,
+    responses: {
+      200: connectorAccountConnectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set the default connector account",
+  },
+  deletionImpact: {
+    method: "GET",
+    path: "/api/connector-accounts/:connectionId/deletion-impact",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    query: connectorAccountTargetQuerySchema,
+    responses: {
+      200: z.object({
+        connectionId: z.uuid(),
+        explicitSelectionCount: z.number().int().nonnegative(),
+        hasSibling: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Plan deletion of an exact connector account",
+  },
+  disconnectSingleAccount: {
+    method: "DELETE",
+    path: "/api/connector-accounts/single-account",
+    headers: authHeadersSchema,
+    body: connectorAccountExactTargetBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Disconnect a safe single connector account",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/connector-accounts/:connectionId",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    body: connectorAccountExactTargetBodySchema,
+    responses: {
+      200: z.object({
+        deletedConnectionId: z.uuid(),
+        resolvedSelectionCount: z.number().int().nonnegative(),
+        promotedDefaultConnectionId: z.uuid().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete an exact connector account",
+  },
+});
+
 export type ConnectorAccountTarget = z.infer<
   typeof connectorAccountTargetSchema
 >;
@@ -81,4 +284,7 @@ export type ConnectorAccountSelection = z.infer<
 >;
 export type ConnectorAccountMutationIntent = z.infer<
   typeof connectorAccountMutationIntentSchema
+>;
+export type ConnectorAccountSummary = z.infer<
+  typeof connectorAccountSummarySchema
 >;

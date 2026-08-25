@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from mitmproxy import tcp
@@ -38,7 +39,7 @@ def _run_scheduled_tcp_drains(scheduled: list[_ScheduledTcpDrain]) -> None:
 
 
 class TestTcpStart:
-    def test_sets_metadata_for_registered_vm(self, registry_file, mitm_ctx, real_tcp_flow):
+    def test_sets_metadata_for_registered_sandbox(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")
 
         with (
@@ -46,22 +47,38 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
-        assert flow.metadata[metadata_keys.VM_RUN_ID] == "run-abc-123"
-        assert metadata_keys.VM_NETWORK_LOG_PATH in flow.metadata
+        assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == "run-abc-123"
+        assert metadata_keys.SANDBOX_NETWORK_LOG_PATH in flow.metadata
         assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
-    def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
+    @pytest.mark.parametrize(
+        "client_peername",
+        [
+            pytest.param(None, id="missing"),
+            pytest.param(
+                cast(tuple[str, int], ("10.200.0.1", "12345")),
+                id="string-port",
+            ),
+        ],
+    )
+    def test_skips_when_client_ip_is_unavailable(
+        self,
+        registry_file,
+        mitm_ctx,
+        real_tcp_flow,
+        client_peername: tuple[str, int] | None,
+    ):
         flow = real_tcp_flow()
-        flow.client_conn.peername = None
+        flow.client_conn.peername = client_peername
 
         with (
             mitm_ctx(registry_path=str(registry_file)),
         ):
             mitm_addon.tcp_start(flow)
 
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
-    def test_skips_when_vm_not_registered(self, registry_file, mitm_ctx, real_tcp_flow):
+    def test_skips_when_sandbox_not_registered(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="192.168.99.99")
 
         with (
@@ -69,7 +86,7 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
     def test_registry_unavailable_kills_flow(self, registry_file, mitm_ctx, real_tcp_flow):
         registry.load_registry(str(registry_file))
@@ -82,11 +99,13 @@ class TestTcpStart:
         assert flow.error is not None
         assert flow.error.msg == Error.KILLED_MESSAGE
         assert not flow.live
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
-    def test_invalid_registered_vm_kills_flow(self, tmp_path, mitm_ctx, real_tcp_flow):
+    def test_invalid_registered_sandbox_kills_flow(self, tmp_path, mitm_ctx, real_tcp_flow):
         registry_file = tmp_path / "registry.json"
-        registry_file.write_text(json.dumps({"vms": {"10.200.0.9": {"runId": ""}}, "updatedAt": 0}))
+        registry_file.write_text(
+            json.dumps({"sandboxes": {"10.200.0.9": {"runId": ""}}, "updatedAt": 0})
+        )
         flow = real_tcp_flow(client_ip="10.200.0.9")
 
         with mitm_ctx(registry_path=str(registry_file)):
@@ -95,15 +114,15 @@ class TestTcpStart:
         assert flow.error is not None
         assert flow.error.msg == Error.KILLED_MESSAGE
         assert not flow.live
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
 
 class TestTcpLog:
     def test_logs_tcp_connection(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic() - 0.05
 
         with mitm_ctx():
@@ -124,8 +143,8 @@ class TestTcpLog:
     def test_logs_tcp_error(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
 
@@ -139,7 +158,7 @@ class TestTcpLog:
     def test_skips_when_no_run_id(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -150,8 +169,8 @@ class TestTcpLog:
     def test_handles_missing_server_addr(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.server_conn = None
 
@@ -165,8 +184,8 @@ class TestTcpLog:
     def test_handles_missing_start_time(self, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -184,8 +203,8 @@ class TestTcpLog:
         ]
         flow = real_tcp_flow(messages=messages)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -215,8 +234,8 @@ class TestTcpLog:
         ]
         flow = real_tcp_flow(messages=messages)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -238,8 +257,8 @@ class TestTcpLog:
         first_server = tcp.TCPMessage(False, b"first-server")
         flow = real_tcp_flow(messages=[first_client, first_server])
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():
@@ -288,8 +307,8 @@ class TestTcpLog:
         second_client = tcp.TCPMessage(True, b"later")
         flow = real_tcp_flow(messages=[first_client])
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         monkeypatch.setattr(logging_utils, "NETWORK_LOG_MAX_SAFE_SIZE", max_log_size)
         scheduled = _capture_tcp_drains(monkeypatch)
 

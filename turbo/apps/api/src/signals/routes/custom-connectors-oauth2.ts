@@ -1,5 +1,6 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
@@ -42,7 +43,6 @@ import {
   clearConnectorOAuthCookies,
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
@@ -96,8 +96,8 @@ function callbackResultFromRedirect(
 
 const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroCustomConnectorOAuth2Contract.start));
-  const body = await get(bodyResultOf(zeroCustomConnectorOAuth2Contract.start));
+  const params = get(pathParamsOf(customConnectorOAuth2Contract.start));
+  const body = await get(bodyResultOf(customConnectorOAuth2Contract.start));
   signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
@@ -218,9 +218,8 @@ async function persistCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
-    readonly account?: ReturnType<
-      typeof parseStoredConnectorAccountMutationIntent
-    >;
+    readonly account: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -281,7 +280,7 @@ async function codeLessCustomOAuthCallbackResponse(
 
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
+    const query = get(queryOf(customConnectorOAuth2Contract.callback));
     const defaultOrigin = new URL(env("APP_URL")).origin;
     const oauthState = query.state;
     const authorizationCode = query.code ?? "";
@@ -377,9 +376,11 @@ const completeOAuth2Callback$ = command(
             storageVersion: connector.storageVersion,
             token,
             featureContext,
-            account: parseStoredConnectorAccountMutationIntent(
-              claimed.state.accountMutation,
-            ),
+            account: claimed.state.accountMutation,
+            insertConnectionId:
+              claimed.state.accountMutation.intent === "add"
+                ? claimed.state.id
+                : undefined,
           },
           signal,
         );
@@ -408,7 +409,7 @@ const completeOAuth2Callback$ = command(
 );
 
 const callbackOAuth2$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
+  const query = get(queryOf(customConnectorOAuth2Contract.callback));
   const response = await set(completeOAuth2Callback$, signal);
   signal.throwIfAborted();
   if (query.responseMode !== "json") {
@@ -423,7 +424,7 @@ const callbackOAuth2$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const customConnectorOAuth2Routes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorOAuth2Contract.start,
+    route: customConnectorOAuth2Contract.start,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -434,7 +435,7 @@ export const customConnectorOAuth2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroCustomConnectorOAuth2Contract.callback,
+    route: customConnectorOAuth2Contract.callback,
     handler: callbackOAuth2$,
   },
 ];

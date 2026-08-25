@@ -1,5 +1,6 @@
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import { agents } from "@okouai/db/schema/agent";
 import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread-route";
 import { and, eq } from "drizzle-orm";
 
@@ -27,7 +28,7 @@ interface TelegramChatThreadBinding {
 
 interface LoadedTelegramChatThreadRoute extends TelegramChatThreadBinding {
   readonly id: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly selectedModel: string | null;
   readonly codexServiceTier: "fast" | null;
   readonly computerUseHostId: string | null;
@@ -36,7 +37,7 @@ interface LoadedTelegramChatThreadRoute extends TelegramChatThreadBinding {
 interface TelegramChatThreadCreateArgs {
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly currentTime: Date;
@@ -81,7 +82,7 @@ async function loadRoute(
     .select({
       id: telegramChatThreadRoutes.id,
       chatThreadId: telegramChatThreadRoutes.chatThreadId,
-      agentComposeId: chatThreads.agentComposeId,
+      agentId: agents.id,
       selectedModel: chatThreads.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
       computerUseHostId: chatThreads.computerUseHostId,
@@ -91,6 +92,7 @@ async function loadRoute(
       chatThreads,
       eq(chatThreads.id, telegramChatThreadRoutes.chatThreadId),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(routeWhere(key))
     .limit(1)
     .for("update");
@@ -116,7 +118,7 @@ async function createCanonicalTelegramChatThread(
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       computerUseHostId,
       selectedModel: args.selectedModel,
       codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
@@ -125,7 +127,8 @@ async function createCanonicalTelegramChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -145,7 +148,7 @@ async function appendCanonicalTelegramChatThreadCreatedEvent(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentComposeId,
+    agentId: args.agentId,
     title: null,
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
@@ -160,7 +163,7 @@ async function reconcileExistingRoute(
   args: TelegramChatThreadRouteKey & TelegramChatThreadCreateArgs,
   existing: LoadedTelegramChatThreadRoute,
 ): Promise<TelegramChatThreadBinding> {
-  if (existing.agentComposeId !== args.agentComposeId) {
+  if (existing.agentId !== args.agentId) {
     const thread = await createCanonicalTelegramChatThread(
       tx,
       args,
@@ -217,7 +220,7 @@ async function reconcileExistingRoute(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: existing.chatThreadId,
-        agentComposeId: existing.agentComposeId,
+        agentId: existing.agentId,
         selectedModel: args.selectedModel,
         createdAt: args.currentTime,
       });
@@ -228,7 +231,7 @@ async function reconcileExistingRoute(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: existing.chatThreadId,
-        agentComposeId: existing.agentComposeId,
+        agentId: existing.agentId,
         serviceTier: args.serviceTier,
         createdAt: args.currentTime,
       });

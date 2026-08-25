@@ -39,7 +39,7 @@ pub(super) struct IdleSandboxMetadata {
     pub(super) guest_timezone_intent: GuestTimezoneIntent,
     /// Local terminal timestamp for this parked sandbox.
     ///
-    /// `None` is reserved for synthetic test entries and means the VM is not
+    /// `None` is reserved for synthetic test entries and means the sandbox is not
     /// advertised as reusable.
     pub(super) last_completed_at: Option<String>,
 }
@@ -93,7 +93,7 @@ pub(super) enum WorkspacePromotionPolicy {
 /// ownership is accepted.
 ///
 /// This state proves only same-reuse-key idle park. It does not imply clean
-/// cross-run reuse, snapshot readiness, or any broader VM correctness.
+/// cross-run reuse, snapshot readiness, or any broader sandbox correctness.
 #[must_use = "parked idle candidates must be accepted by the idle pool or explicitly destroyed"]
 pub struct ParkedIdleCandidate {
     pub(super) resources: IdleSandboxResources,
@@ -375,7 +375,7 @@ impl ReusableIdleSandbox {
     }
 }
 
-/// Physical resources needed to destroy an idle VM, without its budget lease.
+/// Physical resources needed to destroy an idle sandbox, without its budget lease.
 pub(crate) struct IdleDestroyPayload {
     pub(super) resources: IdleSandboxResources,
     pub(super) workspace_promotion_policy: WorkspacePromotionPolicy,
@@ -567,6 +567,11 @@ pub enum IdleUnparkResult {
     },
 }
 
+enum IdleActivationFailure {
+    Returned(String),
+    Panicked,
+}
+
 impl IdleEntry {
     pub(super) fn reuse_key(&self) -> &str {
         self.metadata.reuse_key()
@@ -594,6 +599,30 @@ impl IdleEntry {
     /// idle entry. On failure the entry becomes an idle-owned destroy job so
     /// callers cannot keep using a partially unparked sandbox.
     pub async fn try_unpark_for_run(mut self, run_id: RunId) -> IdleUnparkResult {
+        match self.activate_for_run(run_id).await {
+            Ok(()) => {
+                let (sandbox, budget_lease) = self.into_reuse_parts();
+                IdleUnparkResult::Reused {
+                    sandbox: Box::new(sandbox),
+                    budget_lease,
+                }
+            }
+            Err(IdleActivationFailure::Returned(error)) => IdleUnparkResult::Failed {
+                destroy_job: Box::new(
+                    self.into_destroy_job_abandoning_workspace_promotion("unpark_failed"),
+                ),
+                error,
+            },
+            Err(IdleActivationFailure::Panicked) => IdleUnparkResult::Failed {
+                destroy_job: Box::new(
+                    self.into_destroy_job_abandoning_workspace_promotion("unpark_panicked"),
+                ),
+                error: "sandbox unpark panicked".into(),
+            },
+        }
+    }
+
+    async fn activate_for_run(&mut self, run_id: RunId) -> Result<(), IdleActivationFailure> {
         let activation = async {
             self.resources
                 .sandbox
@@ -601,25 +630,9 @@ impl IdleEntry {
             self.resources.sandbox.unpark().await
         };
         match AssertUnwindSafe(activation).catch_unwind().await {
-            Ok(Ok(())) => {
-                let (sandbox, budget_lease) = self.into_reuse_parts();
-                IdleUnparkResult::Reused {
-                    sandbox: Box::new(sandbox),
-                    budget_lease,
-                }
-            }
-            Ok(Err(e)) => IdleUnparkResult::Failed {
-                destroy_job: Box::new(
-                    self.into_destroy_job_abandoning_workspace_promotion("unpark_failed"),
-                ),
-                error: e.to_string(),
-            },
-            Err(_) => IdleUnparkResult::Failed {
-                destroy_job: Box::new(
-                    self.into_destroy_job_abandoning_workspace_promotion("unpark_panicked"),
-                ),
-                error: "sandbox unpark panicked".into(),
-            },
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(IdleActivationFailure::Returned(error.to_string())),
+            Err(_) => Err(IdleActivationFailure::Panicked),
         }
     }
 
@@ -738,30 +751,24 @@ impl ReservedIdleSandbox {
     }
 
     pub(crate) async fn try_unpark_for_speculation(
-        mut self,
+        self,
         run_id: RunId,
     ) -> SpeculativeIdleUnparkResult {
-        let activation = async {
-            self.entry
-                .resources
-                .sandbox
-                .bind_run_control(&run_id.to_string())?;
-            self.entry.resources.sandbox.unpark().await
-        };
-        match AssertUnwindSafe(activation).catch_unwind().await {
-            Ok(Ok(())) => SpeculativeIdleUnparkResult::Ready(Box::new(SpeculativeIdleSandbox {
-                entry: self.entry,
-            })),
-            Ok(Err(error)) => SpeculativeIdleUnparkResult::Failed {
-                destroy_job: Box::new(
-                    self.entry.into_destroy_job_abandoning_workspace_promotion(
+        let mut entry = self.entry;
+        match entry.activate_for_run(run_id).await {
+            Ok(()) => {
+                SpeculativeIdleUnparkResult::Ready(Box::new(SpeculativeIdleSandbox { entry }))
+            }
+            Err(IdleActivationFailure::Returned(error)) => {
+                SpeculativeIdleUnparkResult::Failed {
+                    destroy_job: Box::new(entry.into_destroy_job_abandoning_workspace_promotion(
                         "speculative_unpark_failed",
-                    ),
-                ),
-                error: error.to_string(),
-            },
-            Err(_) => SpeculativeIdleUnparkResult::Failed {
-                destroy_job: Box::new(self.entry.into_destroy_job_abandoning_workspace_promotion(
+                    )),
+                    error,
+                }
+            }
+            Err(IdleActivationFailure::Panicked) => SpeculativeIdleUnparkResult::Failed {
+                destroy_job: Box::new(entry.into_destroy_job_abandoning_workspace_promotion(
                     "speculative_unpark_panicked",
                 )),
                 error: "sandbox unpark panicked".into(),

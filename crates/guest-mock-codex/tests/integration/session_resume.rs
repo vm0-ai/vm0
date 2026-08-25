@@ -1,16 +1,28 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use chrono::{DateTime, Utc};
+use guest_contracts::{
+    codex_session_path::codex_rollout_relative_path, codex_thread_id::CodexThreadId,
+};
 use guest_mock_codex::{read_session_file, session_files};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-use crate::app_server::{initialize_params, spawn_app_server, text_input};
+use crate::app_server::{
+    MOCK_CODEX_SESSION_TIMESTAMP_ENV, initialize_params, spawn_app_server_with_env, text_input,
+};
 
 const THREAD_ID: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+const SESSION_TIMESTAMP: &str = "2026-06-09T12:34:56Z";
 
 fn persist_resume_turn(codex_home: &Path, thread_id: &str, prompt: &str) -> std::io::Result<()> {
-    let mut server = spawn_app_server(codex_home, &["app-server", "--stdio"], None)?;
+    let mut server = spawn_app_server_with_env(
+        codex_home,
+        &["app-server", "--stdio"],
+        None,
+        &[(MOCK_CODEX_SESSION_TIMESTAMP_ENV, SESSION_TIMESTAMP)],
+    )?;
     server.request(1, "initialize", initialize_params())?;
     let resumed = server.request(
         2,
@@ -38,6 +50,35 @@ fn persist_resume_turn(codex_home: &Path, thread_id: &str, prompt: &str) -> std:
             .is_some()
     );
     assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+fn expected_fallback_path(codex_home: &Path) -> std::io::Result<std::path::PathBuf> {
+    let timestamp = DateTime::parse_from_rfc3339(SESSION_TIMESTAMP)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?
+        .with_timezone(&Utc);
+    let thread_id = CodexThreadId::parse(THREAD_ID).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid test thread id")
+    })?;
+    Ok(codex_home.join(codex_rollout_relative_path(&thread_id, timestamp)))
+}
+
+#[test]
+fn app_server_resume_creates_canonical_rollout_for_unknown_thread() -> std::io::Result<()> {
+    let dir = TempDir::new()?;
+    let session_path = expected_fallback_path(dir.path())?;
+
+    persist_resume_turn(dir.path(), THREAD_ID, "turn-1")?;
+
+    assert_eq!(session_files(dir.path())?, vec![session_path.clone()]);
+    let events = read_session_file(&session_path)?;
+    assert_eq!(
+        events
+            .iter()
+            .filter_map(|event| event.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>(),
+        vec!["turn-1"]
+    );
     Ok(())
 }
 
@@ -70,9 +111,9 @@ fn app_server_resume_appends_restored_rollout_without_parsing_history() -> std::
 #[test]
 fn concurrent_app_server_resume_writes_preserve_all_inputs() -> std::io::Result<()> {
     let dir = TempDir::new()?;
-    let session_path = dir
-        .path()
-        .join(format!("sessions/2001/01/01/{THREAD_ID}.jsonl"));
+    let session_path = dir.path().join(format!(
+        "sessions/2001/01/01/rollout-2001-01-01T00-00-00-{THREAD_ID}.jsonl"
+    ));
     if let Some(parent) = session_path.parent() {
         std::fs::create_dir_all(parent)?;
     }

@@ -8,14 +8,14 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setLoop } from "../utils.ts";
-import { billingStatusAsync$ } from "../zero-page/billing.ts";
+import { billingStatusAsync$ } from "../okou-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { reloadOnboardingStatus$ } from "../okou-page/onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
   onboardingDraft$,
@@ -34,7 +34,7 @@ export const completeOnboarding$ = command(
     redeemCode: string | null,
     signal: AbortSignal,
   ): Promise<void> => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const draft = get(onboardingDraft$);
     const role = draft.choice === "workflow" ? draft.categoryId : null;
     if (redeemCode) {
@@ -124,7 +124,7 @@ export const prepareOnboardingVideoRun$ = command(
     if (get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
       const { userId } = await get(authenticatedIdentity$);
       signal.throwIfAborted();
-      const client = get(zeroClient$)(billingUsagePackCheckoutContract);
+      const client = get(apiClient$)(billingUsagePackCheckoutContract);
       const result = await accept(
         client.create({
           body: {
@@ -144,7 +144,7 @@ export const prepareOnboardingVideoRun$ = command(
       }
       checkoutUrl = result.body.url;
     } else {
-      const client = get(zeroClient$)(billingCheckoutContract);
+      const client = get(apiClient$)(billingCheckoutContract);
       const result = await accept(
         client.create({
           body: {
@@ -175,7 +175,7 @@ const CHECKOUT_POLL_INTERVAL_MS = 1000;
 
 export const completeOnboardingCheckoutReturn$ = command(
   async ({ get }, sessionId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(billingCheckoutContract);
+    const client = get(apiClient$)(billingCheckoutContract);
     let attempts = 0;
     await setLoop(
       async (loopSignal) => {

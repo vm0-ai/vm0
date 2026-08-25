@@ -56,12 +56,11 @@ import {
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
 import {
-  normalizeConnectorAccountMutation,
-  parseStoredConnectorAccountMutationIntent,
+  connectorAccountSiblingWritesEnabled,
   storedConnectorAccountMutationSelection,
-  storedConnectorAccountMutationWrite,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES = ["pending"] as const;
 const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
@@ -82,7 +81,7 @@ const externalCodeSessionSelection = Object.freeze({
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
   encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorExternalCodeSessions,
+    connectorExternalCodeSessions.accountMutation,
   ),
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
   errorCode: connectorExternalCodeSessions.errorCode,
@@ -822,7 +821,8 @@ async function createExternalCodeSession(
     readonly authorizeAgent: true | undefined;
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
+    readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly authorizationUrl: string;
@@ -843,7 +843,8 @@ async function createExternalCodeSession(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
+      allowSiblings: args.allowSiblings,
     });
     signal.throwIfAborted();
     if (mutationResolution.kind !== "ready") {
@@ -869,7 +870,7 @@ async function createExternalCodeSession(
         status: "pending",
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
-        ...storedConnectorAccountMutationWrite(args.account),
+        accountMutation: args.account,
         authorizationUrl: args.authorizationUrl,
         createdAt: args.now,
         updatedAt: args.now,
@@ -893,7 +894,7 @@ export const startConnectorExternalCodeSession$ = command(
       readonly authorizeAgent: true | undefined;
       readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ) => {
@@ -951,6 +952,10 @@ export const startConnectorExternalCodeSession$ = command(
     );
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     const sessionResult = await createExternalCodeSession(
       set(writeDb$),
       {
@@ -961,6 +966,8 @@ export const startConnectorExternalCodeSession$ = command(
         agentId: args.agentId,
         authorizeAgent: args.authorizeAgent,
         account: args.account,
+        allowSiblings:
+          connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
         authorizationUrl: startResult.authorizationUrl,
@@ -1105,9 +1112,7 @@ export const completeConnectorExternalCodeSession$ = command(
               oauthScopes: token.scopes,
               expiresIn: token.expiresIn,
               extraConnectorSecrets: token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              account: claimedSession.accountMutation,
             },
             persistSignal,
           );

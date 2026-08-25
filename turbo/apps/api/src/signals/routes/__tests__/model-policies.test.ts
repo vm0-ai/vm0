@@ -317,12 +317,12 @@ describe("GET/PUT /api/model-policies", () => {
     );
   });
 
-  it("allows zero tokens to read policy controls without a model-provider capability", async () => {
+  it("allows agent tokens to read policy controls without a model-provider capability", async () => {
     const fixture = await seedFixture();
     authOrgApi.mockClerkOrg(fixture);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,

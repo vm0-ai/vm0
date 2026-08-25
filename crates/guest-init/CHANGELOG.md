@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.16.184](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.183...guest-init-v0.16.184) (2026-08-25)
+
+## [0.16.183](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.182...guest-init-v0.16.183) (2026-08-24)
+
+## [0.16.182](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.181...guest-init-v0.16.182) (2026-08-24)
+
+## [0.16.181](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.180...guest-init-v0.16.181) (2026-08-24)
+
+## [0.16.180](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.179...guest-init-v0.16.180) (2026-08-24)
+
+## [0.16.179](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.178...guest-init-v0.16.179) (2026-08-24)
+
+## [0.16.178](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.177...guest-init-v0.16.178) (2026-08-24)
+
+## [0.16.177](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.176...guest-init-v0.16.177) (2026-08-23)
+
+## [0.16.176](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.175...guest-init-v0.16.176) (2026-08-21)
+
+## [0.16.175](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.174...guest-init-v0.16.175) (2026-08-21)
+
 ## [0.16.174](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.173...guest-init-v0.16.174) (2026-08-21)
 
 ## [0.16.173](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.172...guest-init-v0.16.173) (2026-08-20)

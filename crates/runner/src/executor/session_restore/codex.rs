@@ -8,27 +8,16 @@ use api_contracts::generated::constants::runners::paths::{
 
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
-use guest_contracts::codex_thread_id::CodexThreadId;
+use guest_contracts::{
+    codex_session_path::codex_rollout_relative_path, codex_thread_id::CodexThreadId,
+};
 
 const CODEX_SESSION_CLEANUP_SCRIPT: &str =
     include_str!("../../../scripts/codex-session-cleanup.sh");
 const INVALID_CODEX_CLEANUP_OUTPUT: &str = "invalid codex session cleanup output";
-
-fn codex_restore_logical_rollout_path(
-    session_id: &str,
-    timestamp: chrono::DateTime<chrono::Utc>,
-) -> String {
-    format!(
-        "{CANONICAL_CODEX_SESSIONS_DIR}/{}/{}/{}/rollout-{}-{session_id}.jsonl",
-        timestamp.format("%Y"),
-        timestamp.format("%m"),
-        timestamp.format("%d"),
-        timestamp.format("%Y-%m-%dT%H-%M-%S"),
-    )
-}
 
 fn codex_restore_rollout_timestamp(
     session: &MaterializedResumeSession,
@@ -47,6 +36,7 @@ pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
+    sandbox_reuse_result: SandboxReuseResult,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
@@ -60,17 +50,30 @@ pub(super) async fn restore_codex_session(
     } else {
         (session.history_bytes(), "")
     };
-    let fallback_logical_path = codex_restore_logical_rollout_path(session_id, timestamp);
+    let fallback_logical_path = format!(
+        "{CANONICAL_CODEX_HOME_DIR}/{}",
+        codex_rollout_relative_path(&thread_id, timestamp)
+    );
 
-    let logical_path = cleanup_existing_codex_session_files(
-        sandbox,
-        context,
-        session_id,
-        &session_filename_key,
-        &fallback_logical_path,
-    )
-    .await?
-    .unwrap_or(fallback_logical_path);
+    // Only an idle-reused sandbox can retain a prior framework home. Fresh
+    // sandboxes may attach a cached workspace drive, but that drive contains
+    // only the working directory and cannot contain Codex session rollouts.
+    let logical_path = match sandbox_reuse_result {
+        SandboxReuseResult::Reused => cleanup_existing_codex_session_files(
+            sandbox,
+            context,
+            session_id,
+            &session_filename_key,
+            &fallback_logical_path,
+        )
+        .await?
+        .unwrap_or(fallback_logical_path),
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::PoolMiss
+        | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::DeviceLimitMismatch
+        | SandboxReuseResult::UnparkFailed => fallback_logical_path,
+    };
     let session_path = format!("{logical_path}{physical_suffix}");
 
     write_session_history_file(sandbox, &session_path, session_history).await?;
@@ -99,12 +102,12 @@ async fn cleanup_existing_codex_session_files(
 ) -> RunnerResult<Option<String>> {
     let cleanup_cmd = codex_session_cleanup_command(CANONICAL_CODEX_HOME_DIR);
     let env = [
-        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("OKOU_CODEX_RESTORE_SESSION_ID", session_id),
         (
-            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
             session_filename_key,
         ),
-        ("VM0_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
+        ("OKOU_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
     ];
     let result = sandbox
         .exec_with_diagnostic_label(
@@ -301,7 +304,7 @@ mod tests {
 
     fn run_cleanup_with_budget(codex_home: &Path, restore_path: &Path, budget: &str) -> Output {
         cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
-            .env("VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
+            .env("OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
             .output()
             .unwrap()
     }
@@ -318,13 +321,13 @@ mod tests {
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
-            .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
+            .env("OKOU_CODEX_RESTORE_SESSION_ID", session_id)
             .env(
-                "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+                "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
                 session_filename_key,
             )
             .env(
-                "VM0_CODEX_RESTORE_SESSION_PATH",
+                "OKOU_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
             );
         command

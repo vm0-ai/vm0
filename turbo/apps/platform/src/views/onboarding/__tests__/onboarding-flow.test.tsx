@@ -17,9 +17,9 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
 
 import {
   click,
@@ -37,7 +37,7 @@ import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onb
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -182,9 +182,11 @@ function mockCatalogItem({
   });
 }
 
-async function openMakePage(): Promise<void> {
+async function openMakePage(
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding" });
+  detachedSetupPage({ context, path: "/onboarding", featureSwitches });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -804,7 +806,7 @@ describe("onboarding flow", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("github");
         return respond(200, {
@@ -896,10 +898,11 @@ describe("onboarding flow", () => {
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");
+        expect(body.account).toStrictEqual({ intent: "single-account" });
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {
@@ -1167,7 +1170,7 @@ describe("onboarding flow", () => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage();
+    await openMakePage({ [FeatureSwitchKey.UsagePackPlans]: false });
     chooseMakeOption("Video production");
 
     await expect(

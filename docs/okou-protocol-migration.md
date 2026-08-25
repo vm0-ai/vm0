@@ -48,10 +48,17 @@ templates from that new context's runtime projection so unresolved template
 text and legacy environment keys cannot reach the sandbox.
 
 Already-stored queued, active, and finalizing execution contexts remain
-byte-for-byte unchanged. Their stored `ZERO_*` environment, Zero-scoped token,
-and historical `CLI_PKG_URL` continue through the historical CLI artifact and
-normal runner and API compatibility readers. Both HTTP namespaces remain
-routed, and the API continues to accept both token scopes.
+byte-for-byte unchanged. Their stored `ZERO_*` environment and historical
+`CLI_PKG_URL` continue through the historical CLI artifact and normal runner
+and API compatibility readers. Both HTTP namespaces remain routed.
+
+## Retired `zero` token scope
+
+The API accepts run tokens with `scope: "okou"` only. The writer stop above
+made `scope: "okou"` the sole issued value on 2026-08-12, run tokens live two
+hours, and no table stores one, so the issuing side had drained by construction
+and the retirement needed no separate window. A token presenting the legacy
+`zero` scope now fails verification.
 
 The current CLI defaults to `https://api.okou.ai` and sends branded requests
 through `/api/okou/**`. Merging that host change requires the custom domain to
@@ -60,10 +67,10 @@ redirects, and an unreachable hostname do not pass the gate. The existing
 `VM0_API_BACKEND_URL` override remains available for development, previews,
 and operational rollback.
 
-Removing any other fallback reader, `/api/zero/**` route, server-side Zero
-token-scope verifier, historical artifact, callback, Desktop identity, or
-persisted object requires a separate drain gate. The focused current-CLI slice
-is safe only because old contexts keep their stored commit-addressed artifact
+Removing any other fallback reader, `/api/zero/**` route, historical artifact,
+callback, Desktop identity, or persisted object requires a separate drain gate.
+The focused current-CLI slice is safe only because old contexts keep their
+stored commit-addressed artifact
 while the released writer stop makes new contexts canonical-only. Production
 verification must inspect names and token scope without exposing values;
 declining Zero request volume alone is not proof that all legacy contexts have
@@ -74,7 +81,8 @@ drained.
 Roll the writer stop back to the Phase B release target above to restore dual
 emission. Roll the current CLI source back by selecting the last verified
 dual-reader commit-addressed artifact and restoring the previous API origin.
-Leave both namespace routes, server-side environment readers and token-scope
-verifiers, both Desktop identities, stored callbacks, queued contexts, and
-immutable historical artifacts in place. Release and production verification
+Leave both namespace routes, server-side environment readers, both Desktop
+identities, stored callbacks, queued contexts, and immutable historical
+artifacts in place. Restoring the `zero` token scope is not part of that
+rollback; nothing has issued one since the writer stop. Release and production verification
 remain separate from implementation changes.

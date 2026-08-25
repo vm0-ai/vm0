@@ -24,12 +24,13 @@ use super::support::{
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
-    RUNNER_CONCURRENCY_FACTOR_ENV, RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV, RUNNER_DISK_IOPS_ENV,
-    RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV, LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_DISK_IOPS_ENV, LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+    LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{ExecutionContext, PiModelConfig, ResumeSession, SandboxReuseResult};
+use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -54,6 +55,45 @@ fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> Co
         supports_websockets: false,
         model_catalog,
     }
+}
+
+fn pi_launch_config_for_test(session_id: &str) -> serde_json::Value {
+    json!({
+        "schemaVersion": 2,
+        "apiFirstTurn": {
+            "schemaVersion": 1,
+            "resourceSnapshotDigest": "a".repeat(64),
+            "manifestUrl": "https://storage.example/manifest.json",
+            "sessionUrl": "https://storage.example/session.jsonl",
+            "deadlineAt": 2_000_000_000_000_u64,
+            "baseSession": {
+                "sessionId": session_id,
+                "sha256": null
+            },
+            "sandboxEventSequenceStart": 1
+        }
+    })
+}
+
+fn pi_model_config_for_test() -> serde_json::Value {
+    json!({
+        "provider": "deepseek",
+        "baseUrl": "https://api.deepseek.com/",
+        "model": "deepseek-v4-flash",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "credentialSecretName": "DEEPSEEK_API_KEY"
+    })
+}
+
+fn pi_context_for_test() -> ExecutionContext {
+    let mut context = minimal_context();
+    context.cli_agent_type = "pi".to_string();
+    context.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    context.pi_launch_config = Some(pi_launch_config_for_test(
+        "22222222-2222-4222-8222-222222222222",
+    ));
+    context.pi_model_config = Some(pi_model_config_for_test());
+    context
 }
 
 #[test]
@@ -414,10 +454,11 @@ fn build_env_json_required_keys() {
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
+    assert!(!env.contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV));
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
-    // checkpoint lands before VM teardown.
+    // checkpoint lands before sandbox teardown.
     assert!(
         env.get("VM0_SANDBOX_ID")
             .unwrap()
@@ -425,6 +466,26 @@ fn build_env_json_required_keys() {
             .is_ok()
     );
     assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
+    assert_eq!(
+        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
+            .unwrap(),
+        "sandboxReused"
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::API_START_TIME_ENV).unwrap(),
+        ""
+    );
+    for canonical_key in [
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    ] {
+        assert!(
+            !env.contains_key(canonical_key),
+            "reader Stage 1 must not emit canonical key {canonical_key}"
+        );
+    }
 }
 
 #[test]
@@ -554,12 +615,73 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 }
 
 #[test]
-fn build_env_json_scrubs_user_provided_runner_owned_env() {
+fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_last() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        ("CUSTOM_ENV".into(), "kept".into()),
+        ("DUPLICATE".into(), "untrusted".into()),
+        ("OKOU_TOKEN".into(), "untrusted-token".into()),
+        ("OKOU_FUTURE_PLATFORM_KEY".into(), "untrusted".into()),
+        ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "untrusted-bypass".into(),
+        ),
+    ]));
+    ctx.platform_environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "trusted".into()),
+        ("OKOU_TOKEN".into(), "trusted-token".into()),
+        ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
+        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+        (
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            "trusted-bypass".into(),
+        ),
+    ]));
+
+    assert_eq!(
+        build_user_env_json(&ctx),
+        HashMap::from([
+            ("CUSTOM_ENV".into(), "kept".into()),
+            ("DUPLICATE".into(), "trusted".into()),
+            ("OKOU_TOKEN".into(), "trusted-token".into()),
+            ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
+            ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
+            (
+                guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+                "trusted-bypass".into(),
+            ),
+        ])
+    );
+}
+
+#[test]
+fn platform_environment_overlays_legacy_environment() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "legacy".into()),
+        ("LEGACY_ONLY".into(), "legacy-only".into()),
+    ]));
+    ctx.platform_environment = Some(HashMap::from([
+        ("DUPLICATE".into(), "trusted".into()),
+        ("PLATFORM_ONLY".into(), "platform-only".into()),
+    ]));
+
+    let environment = build_user_env_json(&ctx);
+
+    assert_eq!(environment["DUPLICATE"], "trusted");
+    assert_eq!(environment["LEGACY_ONLY"], "legacy-only");
+    assert_eq!(environment["PLATFORM_ONLY"], "platform-only");
+}
+
+#[test]
+fn fieldless_context_preserves_pre_platform_environment_filtering() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_ENV".into(), "kept".into()),
         ("OKOU_TOKEN".into(), "legitimate-okou-token".into()),
+        ("OKOU_UNRELATED".into(), "legacy-okou-value".into()),
         (
             guest_contracts::env::RUN_ID_ENV.into(),
             "user-controlled-run-id".into(),
@@ -594,11 +716,14 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             r#"{"bad":true}"#.into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
-        (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
-        (RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
-        (RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
+        (
+            LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(),
+            "999".into(),
+        ),
+        (LEGACY_RUNNER_DISK_IOPS_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
+        (LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
         (
             guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
             "claude-code".into(),
@@ -656,9 +781,14 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
+    assert!(
+        !bootstrap_env
+            .contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
+    );
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
+    assert_eq!(user_env.get("OKOU_UNRELATED").unwrap(), "legacy-okou-value");
     for key in [
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::PI_SESSION_ID_ENV,
@@ -670,11 +800,11 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
-        RUNNER_CONCURRENCY_FACTOR_ENV,
-        RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-        RUNNER_DISK_IOPS_ENV,
-        RUNNER_NET_RX_MIB_PER_SEC_ENV,
-        RUNNER_NET_TX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
+        LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_DISK_IOPS_ENV,
+        LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
+        LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
@@ -756,8 +886,8 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
             "explicit runner key {key} should be runner-owned"
         );
     }
-    assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
-    assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
+    assert!(is_runner_owned_env_key("OKOU_TOKEN"));
+    assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
 }
 
 #[test]
@@ -794,9 +924,11 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert_eq!(payload.append_system_prompt, "Use terse answers.");
     assert_eq!(
-        env.get("VM0_RESUME_SESSION_ID").unwrap(),
+        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+            .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
+    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
@@ -972,7 +1104,12 @@ fn build_env_json_with_resume_session() {
     ctx.resume_session = Some(ResumeSession::inline("sess-123".into(), "{}".into()));
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
+    assert_eq!(
+        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+            .unwrap(),
+        "sess-123"
+    );
+    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
 }
 
 #[test]
@@ -1279,20 +1416,22 @@ fn non_pi_execution_contexts_do_not_require_pi_resources() {
 }
 
 #[test]
-fn build_run_payload_for_run_preserves_pi_resources() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "pi".to_string();
-    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
-    ctx.pi_launch_config = Some(serde_json::json!({
-        "schemaVersion": 2
-    }));
-    ctx.pi_model_config = Some(PiModelConfig {
-        provider: "deepseek".to_string(),
-        base_url: "https://api.deepseek.com/".to_string(),
-        model: "deepseek-v4-flash".to_string(),
-        api_key_env: "OPENAI_API_KEY".to_string(),
-    });
-    let payload = build_run_payload_for_run(&ctx).unwrap();
+fn pi_execution_context_preserves_additive_fields_in_run_payload() {
+    let mut ctx = pi_context_for_test();
+    ctx.pi_launch_config.as_mut().unwrap()["futureLaunchField"] = json!("launch-root");
+    ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
+        json!("first-turn");
+    ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
+    let sandbox_id = SandboxId::new_v4().to_string();
+    let payload = validate_execution_context_before_sandbox(
+        &ctx,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+    .unwrap()
+    .into_run_payload(&ctx)
+    .unwrap();
 
     assert_eq!(
         payload.pi_session_id,
@@ -1300,9 +1439,155 @@ fn build_run_payload_for_run_preserves_pi_resources() {
     );
     let launch: serde_json::Value = serde_json::from_str(&payload.pi_launch_config).unwrap();
     assert_eq!(launch["schemaVersion"], 2);
+    assert_eq!(launch["futureLaunchField"], "launch-root");
+    assert_eq!(launch["apiFirstTurn"]["futureFirstTurnField"], "first-turn");
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
+    assert_eq!(model["credentialSecretName"], "DEEPSEEK_API_KEY");
+    assert_eq!(model["futureModelField"], "model-root");
+}
+
+#[test]
+fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "pi".to_string();
+    ctx.pi_session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
+    ctx.pi_launch_config = Some(json!({ "schemaVersion": 2 }));
+    ctx.pi_model_config = Some(pi_model_config_for_test());
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("apiFirstTurn"));
+}
+
+#[test]
+fn pi_execution_context_rejects_mismatched_h0_before_sandbox() {
+    let mut ctx = pi_context_for_test();
+    ctx.pi_launch_config = Some(pi_launch_config_for_test(
+        "33333333-3333-4333-8333-333333333333",
+    ));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("H0 session id"));
+}
+
+#[test]
+fn pi_execution_context_rejects_missing_required_base_hash_before_sandbox() {
+    let mut context = pi_context_for_test();
+    context
+        .pi_launch_config
+        .as_mut()
+        .unwrap()
+        .pointer_mut("/apiFirstTurn/baseSession")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("sha256");
+
+    let error = validate_context_for_test(&context).unwrap_err();
+
+    assert!(error.contains("H0 sha256 must be present"));
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_launch_fields_before_sandbox() {
+    let cases = [
+        ("/schemaVersion", json!(3), "schemaVersion must be 2"),
+        (
+            "/apiFirstTurn/schemaVersion",
+            json!(2),
+            "schemaVersion must be 1",
+        ),
+        (
+            "/apiFirstTurn/resourceSnapshotDigest",
+            json!("not-a-digest"),
+            "resource snapshot digest",
+        ),
+        (
+            "/apiFirstTurn/manifestUrl",
+            json!("ftp://storage.example/manifest.json"),
+            "manifestUrl must use HTTP or HTTPS",
+        ),
+        (
+            "/apiFirstTurn/sessionUrl",
+            json!("not a URL"),
+            "sessionUrl is invalid",
+        ),
+        (
+            "/apiFirstTurn/deadlineAt",
+            json!(-1),
+            "deadlineAt must be positive",
+        ),
+        (
+            "/apiFirstTurn/sandboxEventSequenceStart",
+            json!(2),
+            "event sequence must start at 1",
+        ),
+        (
+            "/apiFirstTurn/baseSession/sha256",
+            json!("not-a-digest"),
+            "H0 sha256",
+        ),
+    ];
+
+    for (pointer, value, expected) in cases {
+        let mut context = pi_context_for_test();
+        *context
+            .pi_launch_config
+            .as_mut()
+            .unwrap()
+            .pointer_mut(pointer)
+            .unwrap() = value;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{pointer} produced unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
+    let cases = [
+        (
+            "/provider",
+            json!("future-provider"),
+            "Pi model config is invalid",
+        ),
+        (
+            "/apiKeyEnv",
+            json!("FUTURE_API_KEY"),
+            "Pi model config is invalid",
+        ),
+        ("/baseUrl", json!("not a URL"), "baseUrl is invalid"),
+        ("/model", json!(""), "model must not be empty"),
+        (
+            "/credentialSecretName",
+            json!("lowercase-secret"),
+            "credentialSecretName is invalid",
+        ),
+    ];
+
+    for (pointer, value, expected) in cases {
+        let mut context = pi_context_for_test();
+        *context
+            .pi_model_config
+            .as_mut()
+            .unwrap()
+            .pointer_mut(pointer)
+            .unwrap() = value;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{pointer} produced unexpected error: {error}"
+        );
+    }
 }
 
 #[test]

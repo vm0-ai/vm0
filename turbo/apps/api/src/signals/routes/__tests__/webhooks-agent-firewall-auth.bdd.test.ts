@@ -5,6 +5,7 @@ import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import {
@@ -90,6 +91,48 @@ async function firewallRun(): Promise<{
     actor,
     runId: run.runId,
     headers: fw.sandboxHeaders(actor, run.runId),
+  };
+}
+
+async function exactSecretConnectorSources(
+  actor: ApiTestUser,
+  sources: Readonly<Record<string, ConnectorSlug>>,
+  platformSecretNames: readonly string[] = [],
+): Promise<{
+  readonly secretConnectorMap: Readonly<Record<string, ConnectorSlug>>;
+  readonly secretConnectorMetadataMap: Readonly<
+    Record<
+      string,
+      | { readonly sourceType: "connector"; readonly sourceId: string }
+      | { readonly sourceType: "platform-secret" }
+    >
+  >;
+}> {
+  const connectors = createConnectorBddApi(context);
+  const entries = await Promise.all(
+    Object.entries(sources).map(async ([secretName, connectorSlug]) => {
+      const metadata = !platformSecretNames.includes(secretName)
+        ? {
+            sourceType: "connector" as const,
+            sourceId: (
+              await connectors.readConnectorBySlug(actor, connectorSlug)
+            ).id,
+          }
+        : { sourceType: "platform-secret" as const };
+      return [secretName, { connectorSlug, metadata }] as const;
+    }),
+  );
+  return {
+    secretConnectorMap: Object.fromEntries(
+      entries.map(([secretName, source]) => {
+        return [secretName, source.connectorSlug];
+      }),
+    ),
+    secretConnectorMetadataMap: Object.fromEntries(
+      entries.map(([secretName, source]) => {
+        return [secretName, source.metadata];
+      }),
+    ),
   };
 }
 
@@ -273,11 +316,16 @@ describe("FW-2: template resolution without connector refresh", () => {
     const fw = createFirewallApi(context);
     const connectorsApi = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
-    await connectorsApi.connectManualGrant(actor, "jira", "api-token", {
-      apiToken: "current-jira-token",
-      domain: "current.atlassian.net",
-      email: "current@example.test",
-    });
+    const jiraConnection = await connectorsApi.connectManualGrant(
+      actor,
+      "jira",
+      "api-token",
+      {
+        apiToken: "current-jira-token",
+        domain: "current.atlassian.net",
+        email: "current@example.test",
+      },
+    );
     const body = {
       encryptedSecrets: fw.encryptedSecretsBody({}),
       authHeaders: {
@@ -292,6 +340,7 @@ describe("FW-2: template resolution without connector refresh", () => {
         name: "jira",
         apiId: "jira:0",
         connectorSlug: "jira" as const,
+        sourceId: jiraConnection.id,
         routingVariables: {
           JIRA_DOMAIN: "run-start.atlassian.net",
         },
@@ -307,7 +356,7 @@ describe("FW-2: template resolution without connector refresh", () => {
       "X-Email": "current@example.test",
     });
 
-    await connectorsApi.deleteConnectorBySlug(actor, "jira");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "jira");
     const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
     if (disconnected.status !== 424) {
       throw new Error("Expected disconnected builtin connector auth to fail");
@@ -474,7 +523,9 @@ describe("FW-3: billable firewall lease", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
         firewallBillable: true,
       },
       [402],
@@ -536,7 +587,9 @@ describe("FW-3: billable firewall lease", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
       firewallBillable: true,
     };
     const leaseBefore = Math.floor(now() / 1000);
@@ -741,7 +794,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
       },
       [424],
     );
@@ -776,7 +831,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
       },
       [200],
     );
@@ -814,7 +871,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
         forceRefresh: true,
       },
       [200],
@@ -844,7 +903,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
       },
       [200],
     );
@@ -885,6 +946,11 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
 
     await connectAws();
     const decryptGate = gateFirstStoredSecretDecrypt();
+    const awsSecretSources = await exactSecretConnectorSources(actor, {
+      AWS_ACCESS_KEY_ID: "aws",
+      AWS_SECRET_ACCESS_KEY: "aws",
+      AWS_SESSION_TOKEN: "aws",
+    });
     const pendingAuth = fw.requestFirewallAuth(
       headers,
       {
@@ -894,11 +960,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
           "X-AWS-Secret-Access-Key": secretTemplate("AWS_SECRET_ACCESS_KEY"),
           "X-AWS-Session-Token": secretTemplate("AWS_SESSION_TOKEN"),
         },
-        secretConnectorMap: {
-          AWS_ACCESS_KEY_ID: "aws",
-          AWS_SECRET_ACCESS_KEY: "aws",
-          AWS_SESSION_TOKEN: "aws",
-        },
+        ...awsSecretSources,
       },
       [200],
     );
@@ -920,7 +982,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       "X-AWS-Session-Token": oldCredentials.sessionToken,
     });
 
-    await connectors.deleteConnectorBySlug(actor, "aws");
+    await connectors.disconnectSingleBuiltinConnectorAccount(actor, "aws");
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {
@@ -944,7 +1006,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1017,7 +1081,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1084,7 +1150,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     context.mocks.axiomLogging.warn.mockClear();
@@ -1143,7 +1211,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1190,7 +1260,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1235,7 +1307,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
       },
       [502],
     );
@@ -1263,7 +1337,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1323,7 +1399,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const timedOut = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1372,7 +1450,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1419,7 +1499,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
       },
-      secretConnectorMap: { LARK_TOKEN: "lark" },
+      ...(await exactSecretConnectorSources(actor, {
+        LARK_TOKEN: "lark",
+      })),
     };
 
     const malformed = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1473,7 +1555,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_TOKEN: "test-oauth",
+      })),
     };
 
     const refreshed = await fw.requestFirewallAuth(headers, body, [200]);
@@ -1517,7 +1601,9 @@ describe("FW-6: manual-grant api-token refresh without a provider client", () =>
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_API_TOKEN: "test-oauth" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_API_TOKEN: "test-oauth",
+        })),
       },
       [200],
     );
@@ -1553,7 +1639,9 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
         },
-        secretConnectorMap: { NOTION_TOKEN: "notion" },
+        ...(await exactSecretConnectorSources(actor, {
+          NOTION_TOKEN: "notion",
+        })),
       },
       [502],
     );
@@ -1597,10 +1685,10 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
           Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           "X-Test": `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        secretConnectorMap: {
+        ...(await exactSecretConnectorSources(actor, {
           NOTION_TOKEN: "notion",
           TEST_OAUTH_TOKEN: "test-oauth",
-        },
+        })),
       },
       [502],
     );
@@ -1631,7 +1719,9 @@ describe("FW-8: static access tokens and unavailable sources", () => {
       authHeaders: {
         Authorization: `Bearer ${secretTemplate("TEST_OAUTH_DEVICE_TOKEN")}`,
       },
-      secretConnectorMap: { TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device" },
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device",
+      })),
     };
 
     const expired = await fw.requestFirewallAuth(headers, body, [502]);
@@ -1671,7 +1761,9 @@ describe("FW-8: static access tokens and unavailable sources", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("TEST_OAUTH_DEVICE_TOKEN")}`,
         },
-        secretConnectorMap: { TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device" },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device",
+        })),
       },
       [200],
     );
@@ -2221,15 +2313,14 @@ describe("FW-10: platform connector secrets", () => {
           Authorization: `Bearer ${secretTemplate("GOOGLE_ADS_TOKEN")}`,
           "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
         },
-        secretConnectorMap: {
-          GOOGLE_ADS_TOKEN: "google-ads",
-          GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
-        },
-        secretConnectorMetadataMap: {
-          GOOGLE_ADS_DEVELOPER_TOKEN: {
-            sourceType: "platform-secret" as const,
+        ...(await exactSecretConnectorSources(
+          actor,
+          {
+            GOOGLE_ADS_TOKEN: "google-ads",
+            GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
           },
-        },
+          ["GOOGLE_ADS_DEVELOPER_TOKEN"],
+        )),
       },
       [200],
     );

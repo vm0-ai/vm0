@@ -115,7 +115,7 @@ async function loadRuntimeSurfaces() {
   ] = await Promise.all([
     import("../signals/api-base.ts"),
     import("../signals/auth.ts"),
-    import("../views/zero-page/zero-attachment-url.ts"),
+    import("../views/okou-page/attachment-url.ts"),
     import("../signals/chat-page/user-message-files.ts"),
     import("../lib/platform-host.ts"),
     import("../lib/plausible.ts"),
@@ -158,7 +158,7 @@ describe("portable platform runtime environment", () => {
     expect(
       runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
     ).toBe(
-      "https://api.okou.ai/api/okou/web/download-file?file_id=attachment-photo",
+      "https://api.okou.ai/api/web/download-file?file_id=attachment-photo",
     );
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");

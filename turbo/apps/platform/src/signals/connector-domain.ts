@@ -1,9 +1,13 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
+  ConnectorAccountConnection,
+  ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type {
   WorkflowConnectorReadinessEntry,
   WorkflowConnectorReadinessResponse,
@@ -19,3 +23,20 @@ export type PlatformWorkflowConnectorReadinessEntry =
   WorkflowConnectorReadinessEntry;
 export type PlatformWorkflowConnectorReadinessResponse =
   WorkflowConnectorReadinessResponse;
+
+export const singleAccountConnectorMutation = {
+  intent: "single-account",
+} satisfies ConnectorAccountMutationIntent;
+
+export function connectorAccountEffectiveLabel(
+  account: ConnectorAccountConnection,
+  connectorLabel: string,
+): string {
+  return (
+    account.displayName ??
+    account.externalEmail ??
+    account.externalUsername ??
+    account.externalId ??
+    `${connectorLabel} · ${account.id.slice(0, 8)}`
+  );
+}

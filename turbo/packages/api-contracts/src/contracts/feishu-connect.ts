@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -48,6 +49,12 @@ export const FEISHU_OAUTH_SCOPES = [
 
 const feishuInstallationStatusSchema = z.object({
   id: z.string().uuid(),
+  /**
+   * #27750 rollout fallback for new app clients reading the previous API.
+   * Make required after that API is no longer serving or retained for
+   * rollback.
+   */
+  publicBrand: publicBrandSchema.optional(),
   isConnected: z.boolean(),
   connectedUserName: z.string().nullable().optional(),
   appId: z.string(),
@@ -67,6 +74,12 @@ const feishuInstallationStatusSchema = z.object({
 });
 
 const feishuConnectStatusSchema = z.object({
+  /**
+   * Product brand of the Host that initiated this status flow. Optional only
+   * for the #27750 new-app-to-previous-API rollout; make required after that
+   * API is no longer serving or retained for rollback.
+   */
+  publicBrand: publicBrandSchema.optional(),
   isInstalled: z.boolean(),
   isConnected: z.boolean(),
   connectedUserName: z.string().nullable().optional(),
@@ -152,6 +165,7 @@ export const feishuConnectContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Update a Feishu custom app",
   },

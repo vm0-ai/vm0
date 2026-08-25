@@ -21,7 +21,7 @@ import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/chat-thread.service";
-import { agentComposeExists } from "../services/compose-data.service";
+import { agentExistsInOrg } from "../services/agent-deletion.service";
 import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
   resolveModelSelectionPin,
@@ -29,7 +29,6 @@ import {
 } from "../services/model-selection.service";
 import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
 import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
-import { prepareChatThreadConnectorSelections } from "../services/chat-thread-connector-selection.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -95,9 +94,9 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const exists = await get(
-    agentComposeExists({
+    agentExistsInOrg({
       orgId: auth.orgId,
-      composeId: body.data.agentId,
+      agentId: body.data.agentId,
     }),
   );
   signal.throwIfAborted();
@@ -121,19 +120,8 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return notFound("Resource not found");
     }
   }
-  const preparedConnectorSelections =
-    await prepareChatThreadConnectorSelections(writeDb, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      agentId: body.data.agentId,
-      selections: connectorSelections,
-    });
-  signal.throwIfAborted();
-  if (preparedConnectorSelections.kind === "invalid") {
-    return badRequestMessage(preparedConnectorSelections.message);
-  }
   const callerRunId =
-    auth.tokenType === "sandbox" || auth.tokenType === "zero"
+    auth.tokenType === "sandbox" || auth.tokenType === "agent"
       ? auth.runId
       : undefined;
   const inherited = await inheritedRunChatSettings(writeDb, callerRunId);
@@ -192,7 +180,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       orgId: auth.orgId,
-      agentComposeId: body.data.agentId,
+      agentId: body.data.agentId,
       title: body.data.title,
       clientThreadId: body.data.clientThreadId,
       eventId: body.data.eventId,
@@ -200,11 +188,14 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       codexServiceTier,
       selectedVideoModel,
       selectedImageModel,
-      connectorSelections: preparedConnectorSelections.selections,
+      connectorSelections,
     },
     signal,
   );
   signal.throwIfAborted();
+  if (thread.kind === "invalid_connector_selection") {
+    return badRequestMessage(thread.message);
+  }
 
   await publishThreadListChanged(auth.userId);
   signal.throwIfAborted();

@@ -656,6 +656,18 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "box",
+    label: "Box",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "box",
+        prefix: "BOX",
+        tokenEnvironmentNames: ["BOX_TOKEN"],
+        scopes: ["root_readwrite"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "bentoml",
     label: "BentoML",
     authMethods: [
@@ -1029,6 +1041,18 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "hubspot",
+    label: "HubSpot",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "hubspot",
+        prefix: "HUBSPOT",
+        tokenEnvironmentNames: ["HUBSPOT_TOKEN"],
+        scopes: ["oauth"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "insforge",
     label: "InsForge",
     authMethods: [
@@ -1149,6 +1173,26 @@ const connectors = [
         prefix: "LINEAR",
         tokenEnvironmentNames: ["LINEAR_TOKEN"],
         scopes: ["read", "write"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "meta-ads",
+    label: "Meta Ads",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "meta-ads",
+        prefix: "META_ADS",
+        tokenEnvironmentNames: ["META_ADS_TOKEN"],
+        scopes: [
+          "ads_management",
+          "ads_read",
+          "business_management",
+          "pages_manage_ads",
+          "pages_read_engagement",
+          "pages_show_list",
+          "public_profile",
+        ],
       }),
     ],
   }),
@@ -1687,6 +1731,22 @@ const connectors = [
           ),
         },
         startOptions: [selectStartOption("environment")],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "tiktok-ads",
+    label: "TikTok Ads",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "tiktok-ads",
+        authMethodId: "oauth",
+        values: {
+          accessToken: secret("TIKTOK_ADS_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          TIKTOK_ADS_TOKEN: secret("TIKTOK_ADS_ACCESS_TOKEN"),
+        },
       }),
     ],
   }),

@@ -10,10 +10,13 @@ import {
   findImageStyle,
   findWebsiteTemplatePackage,
 } from "@okouai/core/resource-registry";
+import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
 } from "../../../lib/generation-template-prompt";
+
+const USER_TEMPLATE_ROW_ID = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
 
 describe("buildGenerationTemplatePrompt", () => {
   it("builds one shared context for multiple ordered templates", () => {
@@ -96,10 +99,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).toContain('"colorSystem": "carnival"');
     expect(result.prompt).toContain(
-      "all user-visible slide content, with the first slide visible before JavaScript runs",
-    );
-    expect(result.prompt).toContain(
-      "Do not store slide content in JavaScript data",
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
     expect(result.prompt).toContain(
       "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
@@ -107,6 +107,228 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
     expect(result.prompt).not.toContain("okou generate presentation");
+    expect(result.prompt).not.toContain("presentation-images.sh");
+  });
+
+  it("switches the built-in presentation package to direct-HTML authoring and the VM0 image batch command", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: item.templateId,
+          colorSystemId: item.colorSystemId,
+        },
+      },
+      { latestPresentationTemplatesEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
+    expect(result.prompt).toContain("Color system token: carnival");
+    expect(result.prompt).toContain(
+      "follow its template, authoring, and verification instructions",
+    );
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow:");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch start <manifest.tsv>"),
+    ).toBeLessThan(imageWorkflow.indexOf("author the deck while it runs"));
+    expect(imageWorkflow.indexOf("author the deck while it runs")).toBeLessThan(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    );
+    expect(
+      imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
+    ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
+    // The package this side pulls carries no renderer, so naming the previous
+    // entrypoint or its deck JSON would send the run down a path that does not
+    // exist in the archive it just downloaded.
+    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    expect(result.prompt).not.toContain("presentation-images.sh");
+    expect(result.prompt).not.toContain('"colorSystem"');
+    expect(result.prompt).not.toContain("color-systems/");
+    expect(result.prompt).not.toContain("data-color-system");
+    expect(result.prompt).not.toContain("design-system.md");
+    expect(result.prompt).not.toContain("layouts/_shell.html");
+    expect(result.prompt).not.toContain("decoration/PLACEMENT.md");
+    expect(result.prompt).not.toContain("tools/run.sh");
+  });
+
+  it("points a private template at its mounted package and forbids an intermediate representation", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+        },
+      },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [USER_TEMPLATE_ROW_ID],
+      },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("# Artifact Template Context");
+    const packageDir = `./generated/presentation-template/${USER_TEMPLATE_ROW_ID}`;
+    expect(result.prompt).toContain(`mounted at ${packageDir}.`);
+    expect(result.prompt).toContain(
+      `Read ${packageDir}/SKILL.md fully and follow only the files and assets it names`,
+    );
+    expect(result.prompt).toContain(
+      "Author the finished deck directly as semantic HTML, CSS, and SVG",
+    );
+    expect(result.prompt).toContain(
+      "okou generate image-batch start <manifest.tsv> <state-dir>",
+    );
+    expect(result.prompt).toContain(
+      "okou generate image-batch wait <state-dir>",
+    );
+    // The package is a visual language, not a renderer: an agent that reaches
+    // for slide JSON produces something the guidance cannot inform.
+    expect(result.prompt).toContain("Do not produce slide JSON");
+    expect(result.prompt).toContain("tokens.json");
+    expect(result.prompt).toContain(
+      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
+    );
+    // A private package has no registry resource to pull.
+    expect(result.prompt).not.toContain("okou resource pull");
+    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
+    expect(result.prompt).not.toContain("design-system.md");
+    expect(result.prompt).not.toContain("color-systems/");
+    expect(result.prompt).not.toContain("data-color-system");
+    // The raw row id may name the mount, but no storage key may leak.
+    expect(result.prompt).not.toContain("presentation-template@");
+  });
+
+  it("rejects a private template while the switch is off", () => {
+    const result = buildGenerationTemplatePrompt({
+      type: "presentation",
+      selection: {
+        templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+      },
+    });
+
+    expect(result.status).toBe("invalid");
+  });
+
+  it("emits no guidance for a private template the run does not mount", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
+        },
+      },
+      // A prompt steered into an already-running run cannot add a volume to
+      // it, so naming the package would send the agent to a path that is not
+      // there.
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
+    );
+
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
+  it("emits guidance only for the mounted one when several are selected", () => {
+    const mounted = USER_TEMPLATE_ROW_ID;
+    const unmounted = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
+
+    const result = buildGenerationTemplatesPrompt(
+      [
+        {
+          type: "presentation",
+          selection: { templateId: formatUserPresentationTemplateId(mounted) },
+        },
+        {
+          type: "presentation",
+          selection: {
+            templateId: formatUserPresentationTemplateId(unmounted),
+          },
+        },
+      ],
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [mounted],
+      },
+    );
+
+    // One unmountable selection invalidates the whole message rather than
+    // silently dropping a template the user attached on purpose.
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Presentation template not found");
+  });
+
+  it("rejects a private template id that is not a row id", () => {
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: { templateId: "user-template:not-a-uuid" },
+      },
+      {
+        presentationTemplatesEnabled: true,
+        mountedUserPresentationTemplateIds: [],
+      },
+    );
+
+    // Distinct from an unknown built-in: the caller named the private
+    // namespace, so it is not silently retried as a registry slug.
+    expect(result.status).toBe("invalid");
+    if (result.status !== "invalid") {
+      return;
+    }
+    expect(result.message).toBe("Malformed presentation template");
+  });
+
+  it("still resolves a built-in template while the switch is on", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          templateId: item.templateId,
+          colorSystemId: item.colorSystemId,
+        },
+      },
+      { presentationTemplatesEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
   });
 
   it("falls back to the default color token when none is selected", () => {
@@ -263,6 +485,23 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
+  it("keeps workflow template guidance brand-neutral", () => {
+    for (const item of WORKFLOW_TEMPLATE_ITEMS) {
+      const result = buildGenerationTemplatePrompt({
+        type: "workflow",
+        selection: {
+          workflowTemplateId: item.id,
+        },
+      });
+
+      expect(result.status).toBe("resolved");
+      if (result.status !== "resolved") {
+        return;
+      }
+      expect(result.prompt).not.toMatch(/\b(?:Zero|Okou)\b/u);
+    }
+  });
+
   it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
     const resourceId = item.resourceId;
@@ -298,18 +537,42 @@ describe("buildGenerationTemplatePrompt", () => {
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
     expect(result.prompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      `Read ./generated/resources/${item.sourcePath}/SKILL.md before authoring`,
     );
     expect(result.prompt).toContain(
-      "Keep at most 3 image generations in flight at once",
+      "Assemble the page once with `node tools/compose.mjs <section-ids...>`",
     );
-    expect(result.prompt).toContain(
-      "Embed the `Embed this URL in HTML` value returned by the generator",
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow: use supplied images first;");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain(
+      "one outside-site TSV row per selected real slot",
     );
-    expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/render.mjs`,
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
     );
-    expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("<state-dir>/results.tsv");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain("keep its state outside the site");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(imageWorkflow).toContain("never call `okou generate image`");
+    expect(imageWorkflow).toContain("or a template image wrapper directly");
+    expect(imageWorkflow).not.toContain("a fourth is rejected");
+    expect(result.prompt).toContain("until it prints QA_READY");
+    expect(result.prompt).toContain("okou host ./publish --site <slug>");
+    expect(result.prompt).toContain("checks/verify-published.sh <url>");
+    expect(result.prompt).not.toContain("render.mjs");
+    expect(result.prompt).not.toContain("tools/generate-images.mjs");
     expect(result.prompt).toContain("built-in R2-backed package");
     expect(result.prompt).not.toContain("okou generate website --template");
   });
@@ -339,8 +602,12 @@ describe("buildGenerationTemplatePrompt", () => {
       expect(result.prompt).toContain(`Template package id: ${resourceId}`);
       expect(result.prompt).toContain(`Package resource: ${resourceId}`);
       expect(result.prompt).toContain(
-        `./generated/resources/${item.sourcePath}/render.mjs`,
+        `Read ./generated/resources/${item.sourcePath}/SKILL.md before authoring`,
       );
+      expect(result.prompt).toContain(
+        "okou generate image-batch start <manifest.tsv> <state-dir>",
+      );
+      expect(result.prompt).not.toContain("tools/generate-images.mjs");
     }
   });
 
@@ -371,9 +638,13 @@ describe("buildGenerationTemplatePrompt", () => {
       `Template archive SHA-256: ${previousPackage.source.archive.sha256}`,
     );
     expect(result.prompt).toContain("resolve-images.mjs");
-    expect(result.prompt).not.toContain("use `seedream4` by default");
-    expect(result.prompt).not.toContain("Keep at most 3 image generations");
-    expect(result.prompt).not.toContain("Embed this URL in HTML");
+    expect(result.prompt).toContain(
+      `./generated/resources/${item.sourcePath}/render.mjs`,
+    );
+    expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
+    expect(result.prompt).not.toContain("tools/compose.mjs");
+    expect(result.prompt).not.toContain("tools/generate-images.mjs");
+    expect(result.prompt).not.toContain("okou generate image-batch start");
   });
 
   it("rejects unknown workflow templates", () => {

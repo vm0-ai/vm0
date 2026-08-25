@@ -1,8 +1,20 @@
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+
 import type { z } from "zod";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@okouai/api-contracts/contracts/runs";
+import { PI_API_FIRST_TURN_SESSION_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
 } from "@okouai/api-contracts/contracts/webhooks";
+import {
+  MemoryPiSession,
+  UnsupportedPiSessionVersionError,
+} from "@okouai/pi-agent-runtime/node";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -16,14 +28,27 @@ import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
+import {
+  downloadS3BufferWithMaxBytes,
+  generatePresignedPutUrl,
+  s3ObjectExists,
+} from "../external/s3";
+import {
+  gunzipSessionHistoryBufferWithMaxBytes,
+  unzstdSessionHistoryBufferWithMaxBytes,
+} from "./session-history-decompression";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
+  SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_ZSTD,
 } from "./session-history-blobs";
+import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
+import { safeSync, settle } from "../utils";
 
 type CheckpointCreateBody = z.infer<
   typeof webhookCheckpointsContract.create.body
@@ -38,6 +63,10 @@ interface CheckpointAuthInput<TBody> {
 }
 
 interface CheckpointRunContext {
+  readonly agentSessionConversationId: string | null;
+  readonly chatThreadId: string | null;
+  readonly launchSnapshot: typeof agentRuns.$inferSelect.launchSnapshot;
+  readonly status: RunStatus;
   readonly storageMounts: typeof agentRuns.$inferSelect.storageMounts;
   readonly sessionId: string;
 }
@@ -54,6 +83,12 @@ interface PreparedSessionHistoryBlob {
 }
 
 const L = logger("webhooks:agent:checkpoints");
+
+class PiCheckpointValidationError extends Error {}
+
+function piCheckpointError(code: string, message: string): never {
+  throw new PiCheckpointValidationError(`[${code}] ${message}`);
+}
 
 function responseArtifacts(
   snapshots: CheckpointCreateBody["artifactSnapshots"],
@@ -107,6 +142,10 @@ async function loadCheckpointRunContext(
 ): Promise<CheckpointRunContext | undefined> {
   const [run] = await db
     .select({
+      agentSessionConversationId: agentSessions.conversationId,
+      chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
+      status: agentRuns.status,
       storageMounts: agentRuns.storageMounts,
       sessionId: agentRuns.sessionId,
     })
@@ -120,8 +159,260 @@ async function loadCheckpointRunContext(
     )
     .limit(1);
 
-  return run;
+  return run
+    ? { ...run, status: runStatusSchema.parse(run.status) }
+    : undefined;
 }
+
+async function lockCheckpointRunContext(
+  tx: Tx,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+): Promise<CheckpointRunContext | undefined> {
+  const [run] = await tx
+    .select({
+      agentSessionConversationId: agentSessions.conversationId,
+      chatThreadId: agentRuns.chatThreadId,
+      launchSnapshot: agentRuns.launchSnapshot,
+      status: agentRuns.status,
+      storageMounts: agentRuns.storageMounts,
+      sessionId: agentRuns.sessionId,
+    })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .for("update", { of: agentRuns })
+    .limit(1);
+
+  return run
+    ? { ...run, status: runStatusSchema.parse(run.status) }
+    : undefined;
+}
+
+async function decodePiCheckpointHistory(args: {
+  readonly encoded: Buffer;
+  readonly encoding: string;
+  readonly key: string;
+}): Promise<Buffer> {
+  switch (args.encoding) {
+    case SESSION_HISTORY_ENCODING_IDENTITY: {
+      return args.encoded;
+    }
+    case SESSION_HISTORY_ENCODING_GZIP: {
+      return await gunzipSessionHistoryBufferWithMaxBytes(
+        args.key,
+        args.encoded,
+        PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+      );
+    }
+    case SESSION_HISTORY_ENCODING_ZSTD: {
+      return await unzstdSessionHistoryBufferWithMaxBytes(
+        args.key,
+        args.encoded,
+        PI_API_FIRST_TURN_SESSION_MAX_BYTES,
+      );
+    }
+    default: {
+      return piCheckpointError(
+        "PI_H2_METADATA_INVALID",
+        "Pi H2 uses an unsupported history encoding",
+      );
+    }
+  }
+}
+
+interface PiCheckpointValidationArgs {
+  readonly db: Db;
+  readonly run: CheckpointRunContext;
+  readonly historyHash: string | undefined;
+  readonly sessionId: string | undefined;
+}
+
+function validatePiCheckpointIdentity(args: PiCheckpointValidationArgs): {
+  readonly historyHash: string;
+  readonly sessionId: string;
+} {
+  if (!args.historyHash) {
+    return piCheckpointError(
+      "PI_H2_HISTORY_REQUIRED",
+      "Pi H2 requires a native session history hash",
+    );
+  }
+  if (
+    !args.run.chatThreadId ||
+    !args.sessionId ||
+    args.sessionId !== args.run.chatThreadId
+  ) {
+    return piCheckpointError(
+      "PI_H2_SESSION_MISMATCH",
+      "Pi H2 session id does not match the Chat Thread",
+    );
+  }
+  return { historyHash: args.historyHash, sessionId: args.sessionId };
+}
+
+function validatePiCheckpointMetadata(
+  metadata: SessionHistoryBlobMetadata | undefined,
+): ReturnType<typeof normalizeSessionHistoryBlobEncoding> {
+  if (!metadata || metadata.rawSize <= 0 || metadata.encodedSize <= 0) {
+    return piCheckpointError(
+      "PI_H2_METADATA_INVALID",
+      "Pi H2 blob metadata is unavailable or invalid",
+    );
+  }
+  if (
+    metadata.rawSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES ||
+    metadata.encodedSize > PI_API_FIRST_TURN_SESSION_MAX_BYTES
+  ) {
+    return piCheckpointError(
+      "PI_H2_TOO_LARGE",
+      "Pi H2 exceeds the native session size limit",
+    );
+  }
+  const normalized = safeSync(() => {
+    return normalizeSessionHistoryBlobEncoding(metadata.encoding);
+  });
+  if ("error" in normalized) {
+    return piCheckpointError(
+      "PI_H2_METADATA_INVALID",
+      "Pi H2 uses an unsupported history encoding",
+    );
+  }
+  return normalized.ok;
+}
+
+const downloadAndDecodePiCheckpoint$ = command(
+  async function downloadAndDecodePiCheckpoint(
+    { get },
+    args: {
+      readonly historyHash: string;
+      readonly metadata: SessionHistoryBlobMetadata;
+    },
+    signal: AbortSignal,
+  ): Promise<Buffer> {
+    const encoding = validatePiCheckpointMetadata(args.metadata);
+    const key = resumeSessionHistoryBlobKey(args.historyHash, encoding);
+    const downloaded = await settle(
+      get(
+        downloadS3BufferWithMaxBytes(
+          env("R2_USER_STORAGES_BUCKET_NAME"),
+          key,
+          args.metadata.encodedSize,
+          signal,
+        ),
+      ),
+      signal,
+    );
+    if (!downloaded.ok) {
+      return piCheckpointError(
+        "PI_H2_DOWNLOAD_FAILED",
+        "Pi H2 could not be downloaded",
+      );
+    }
+    const encoded = downloaded.value;
+    if (encoded.length !== args.metadata.encodedSize) {
+      return piCheckpointError(
+        "PI_H2_HASH_MISMATCH",
+        "Pi H2 encoded size does not match its metadata",
+      );
+    }
+    const decoded = await settle(
+      decodePiCheckpointHistory({ encoded, encoding, key }),
+      signal,
+    );
+    if (!decoded.ok) {
+      if (decoded.error instanceof PiCheckpointValidationError) {
+        throw decoded.error;
+      }
+      return piCheckpointError(
+        "PI_H2_DECOMPRESSION_FAILED",
+        "Pi H2 could not be decompressed",
+      );
+    }
+    return decoded.value;
+  },
+);
+
+function validatePiCheckpointSession(
+  raw: Buffer,
+  historyHash: string,
+  sessionId: string,
+  metadata: SessionHistoryBlobMetadata,
+): void {
+  if (
+    raw.length !== metadata.rawSize ||
+    createHash("sha256").update(raw).digest("hex") !== historyHash
+  ) {
+    return piCheckpointError(
+      "PI_H2_HASH_MISMATCH",
+      "Pi H2 failed its raw size or hash check",
+    );
+  }
+  const parsed = safeSync(() => {
+    const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    return MemoryPiSession.fromJsonl(jsonl);
+  });
+  if ("error" in parsed) {
+    return piCheckpointError(
+      parsed.error instanceof UnsupportedPiSessionVersionError
+        ? "PI_H2_SESSION_UNSUPPORTED"
+        : "PI_H2_JSONL_INVALID",
+      parsed.error instanceof UnsupportedPiSessionVersionError
+        ? "Pi H2 uses an unsupported native session version"
+        : "Pi H2 is not a valid native Pi session",
+    );
+  }
+  const session = parsed.ok;
+  if (session.getSessionId() !== sessionId) {
+    return piCheckpointError(
+      "PI_H2_SESSION_MISMATCH",
+      "Pi H2 native session id does not match the launch session",
+    );
+  }
+  if (!session.isSettledCheckpoint()) {
+    return piCheckpointError(
+      "PI_H2_NOT_SETTLED",
+      "Pi H2 is not a settled native session checkpoint",
+    );
+  }
+}
+
+const validatePiCheckpoint$ = command(async function validatePiCheckpoint(
+  { set },
+  args: PiCheckpointValidationArgs,
+  signal: AbortSignal,
+): Promise<void> {
+  const identity = validatePiCheckpointIdentity(args);
+  const metadata = await loadSessionHistoryBlobMetadata(
+    args.db,
+    identity.historyHash,
+  );
+  signal.throwIfAborted();
+  if (!metadata) {
+    return piCheckpointError(
+      "PI_H2_METADATA_INVALID",
+      "Pi H2 blob metadata is unavailable or invalid",
+    );
+  }
+  const raw = await set(
+    downloadAndDecodePiCheckpoint$,
+    {
+      historyHash: identity.historyHash,
+      metadata,
+    },
+    signal,
+  );
+  validatePiCheckpointSession(
+    raw,
+    identity.historyHash,
+    identity.sessionId,
+    metadata,
+  );
+});
 
 async function loadSessionHistoryBlobMetadata(
   db: Db,
@@ -312,6 +603,360 @@ export const prepareCheckpointHistoryUpload$ = command(
   },
 );
 
+const validatePiH2$ = command(async function validatePiH2(
+  { set },
+  db: Db,
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (body.cliAgentType !== "pi") {
+    return null;
+  }
+  const validated = await settle(
+    set(
+      validatePiCheckpoint$,
+      {
+        db,
+        run,
+        historyHash: body.cliAgentSessionHistoryHash,
+        sessionId: body.cliAgentSessionId,
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!validated.ok) {
+    if (validated.error instanceof PiCheckpointValidationError) {
+      return validated.error.message;
+    }
+    throw validated.error;
+  }
+  return null;
+});
+
+interface CheckpointSuccessIdentity {
+  readonly agentSessionId: string;
+  readonly checkpointId: string;
+  readonly conversationId: string;
+}
+
+function checkpointSuccessResponse(
+  identity: CheckpointSuccessIdentity,
+  body: CheckpointCreateBody,
+) {
+  return {
+    status: 200 as const,
+    body: {
+      checkpointId: identity.checkpointId,
+      agentSessionId: identity.agentSessionId,
+      conversationId: identity.conversationId,
+      artifacts: responseArtifacts(body.artifactSnapshots),
+      volumes: body.volumeVersionsSnapshot?.versions,
+    },
+  };
+}
+
+function isActivePiCheckpointStatus(status: RunStatus): boolean {
+  return status === "pending" || status === "running";
+}
+
+function isPiCheckpointRun(run: CheckpointRunContext): boolean {
+  return run.launchSnapshot?.framework === "pi";
+}
+
+function piCheckpointTypeError(
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+): string | null {
+  if (isPiCheckpointRun(run) === (body.cliAgentType === "pi")) {
+    return null;
+  }
+  return "[PI_H2_TYPE_MISMATCH] Checkpoint type does not match the run launch framework";
+}
+
+function piCheckpointRunStateError(status: RunStatus): string {
+  const code =
+    status === "queued" ? "PI_H2_RUN_NOT_ACTIVE" : "PI_H2_RUN_TERMINAL";
+  return `[${code}] Pi H2 cannot become canonical while the run status is ${status}`;
+}
+
+interface ExistingPiCheckpoint {
+  readonly checkpointId: string;
+  readonly conversationId: string;
+  readonly historyHash: string | null;
+  readonly sessionId: string | null;
+  readonly storageMounts: typeof checkpoints.$inferSelect.storageMounts;
+  readonly type: string | null;
+}
+
+async function loadExistingPiCheckpoint(
+  tx: Tx,
+  runId: string,
+): Promise<ExistingPiCheckpoint | undefined> {
+  const [existing] = await tx
+    .select({
+      checkpointId: checkpoints.id,
+      conversationId: conversations.id,
+      historyHash: conversations.cliAgentSessionHistoryHash,
+      sessionId: conversations.cliAgentSessionId,
+      storageMounts: checkpoints.storageMounts,
+      type: conversations.cliAgentType,
+    })
+    .from(conversations)
+    .innerJoin(
+      checkpoints,
+      and(
+        eq(checkpoints.runId, runId),
+        eq(checkpoints.conversationId, conversations.id),
+      ),
+    )
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  return existing;
+}
+
+type PiCheckpointAdmission =
+  | { readonly kind: "write" }
+  | {
+      readonly kind: "response";
+      readonly response: ReturnType<typeof checkpointSuccessResponse>;
+    }
+  | { readonly kind: "error"; readonly message: string };
+
+async function admitPiCheckpoint(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+  storageMounts: readonly PersistedStorageMount[],
+): Promise<PiCheckpointAdmission> {
+  const active = isActivePiCheckpointStatus(run.status);
+  if (!active && run.status !== "completed") {
+    return { kind: "error", message: piCheckpointRunStateError(run.status) };
+  }
+
+  const existing = await loadExistingPiCheckpoint(tx, body.runId);
+  if (!existing) {
+    return active
+      ? { kind: "write" }
+      : { kind: "error", message: piCheckpointRunStateError(run.status) };
+  }
+
+  const exactRetry =
+    existing.type === "pi" &&
+    existing.sessionId === body.cliAgentSessionId &&
+    existing.historyHash === body.cliAgentSessionHistoryHash &&
+    isDeepStrictEqual(existing.storageMounts, storageMounts) &&
+    (active || run.agentSessionConversationId === existing.conversationId);
+  if (!exactRetry) {
+    return {
+      kind: "error",
+      message:
+        "[PI_H2_ALREADY_COMMITTED] Pi H2 does not exactly match the existing checkpoint",
+    };
+  }
+
+  return {
+    kind: "response",
+    response: checkpointSuccessResponse(
+      {
+        agentSessionId: run.sessionId,
+        checkpointId: existing.checkpointId,
+        conversationId: existing.conversationId,
+      },
+      body,
+    ),
+  };
+}
+
+async function persistAgentCheckpoint(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: CheckpointCreateBody,
+  options: {
+    storageMounts: PersistedStorageMount[];
+    deferSessionPromotion: boolean;
+  },
+  signal: AbortSignal,
+) {
+  const { deferSessionPromotion, storageMounts } = options;
+  const historyHash = body.cliAgentSessionHistoryHash;
+  const [existingConversation] = await tx
+    .select({ historyHash: conversations.cliAgentSessionHistoryHash })
+    .from(conversations)
+    .where(eq(conversations.runId, body.runId))
+    .limit(1);
+  signal.throwIfAborted();
+  const previousHistoryHash = existingConversation?.historyHash ?? null;
+  const historyChanged = previousHistoryHash !== (historyHash ?? null);
+
+  if (historyHash !== undefined && historyChanged) {
+    await tx
+      .insert(blobs)
+      .values({
+        hash: historyHash,
+        rawSize: 0,
+        encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+        encodedSize: 0,
+        refCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: blobs.hash,
+        set: { refCount: sql`${blobs.refCount} + 1` },
+      });
+    signal.throwIfAborted();
+  }
+
+  const historyFields =
+    historyHash === undefined
+      ? {
+          cliAgentSessionHistory: null,
+          cliAgentSessionHistoryHash: null,
+        }
+      : { cliAgentSessionHistoryHash: historyHash };
+
+  const [conversation] = await tx
+    .insert(conversations)
+    .values({
+      runId: body.runId,
+      cliAgentType: body.cliAgentType,
+      cliAgentSessionId: body.cliAgentSessionId,
+      ...historyFields,
+    })
+    .onConflictDoUpdate({
+      target: conversations.runId,
+      set: {
+        cliAgentType: body.cliAgentType,
+        cliAgentSessionId: body.cliAgentSessionId,
+        ...historyFields,
+      },
+    })
+    .returning({ id: conversations.id });
+  signal.throwIfAborted();
+
+  if (!conversation) {
+    throw new Error("Failed to upsert conversation record");
+  }
+
+  if (previousHistoryHash !== null && historyChanged) {
+    await tx
+      .update(blobs)
+      .set({ refCount: sql`greatest(${blobs.refCount} - 1, 0)` })
+      .where(eq(blobs.hash, previousHistoryHash));
+    signal.throwIfAborted();
+  }
+
+  const checkpointFields = {
+    conversationId: conversation.id,
+    storageMounts,
+  };
+  const [checkpoint] = await tx
+    .insert(checkpoints)
+    .values({
+      runId: body.runId,
+      ...checkpointFields,
+    })
+    .onConflictDoUpdate({
+      target: checkpoints.runId,
+      set: checkpointFields,
+    })
+    .returning({ id: checkpoints.id });
+  signal.throwIfAborted();
+
+  if (!checkpoint) {
+    throw new Error("Failed to upsert checkpoint record");
+  }
+
+  if (!deferSessionPromotion) {
+    const [agentSession] = await tx
+      .update(agentSessions)
+      .set({
+        conversationId: conversation.id,
+        updatedAt: nowDate(),
+      })
+      .where(eq(agentSessions.id, run.sessionId))
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+
+    if (!agentSession) {
+      return notFound("AgentSession not found");
+    }
+  }
+
+  L.debug("Checkpoint created", {
+    runId: body.runId,
+    checkpointId: checkpoint.id,
+    conversationId: conversation.id,
+  });
+
+  return checkpointSuccessResponse(
+    {
+      agentSessionId: run.sessionId,
+      checkpointId: checkpoint.id,
+      conversationId: conversation.id,
+    },
+    body,
+  );
+}
+
+async function commitAgentCheckpoint(
+  db: Db,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+  piValidated: boolean,
+  signal: AbortSignal,
+) {
+  return await db.transaction(async (tx) => {
+    await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+    signal.throwIfAborted();
+    const run = await lockCheckpointRunContext(tx, input);
+    signal.throwIfAborted();
+    if (!run) {
+      return notFound("Agent run not found");
+    }
+
+    const storageMounts = checkpointStorageMounts({
+      runStorageMounts: run.storageMounts,
+      artifactSnapshots: input.body.artifactSnapshots,
+    });
+    const typeError = piCheckpointTypeError(run, input.body);
+    if (typeError) {
+      return badRequestMessage(typeError);
+    }
+    const piRun = isPiCheckpointRun(run);
+    if (piRun) {
+      const admission = await admitPiCheckpoint(
+        tx,
+        run,
+        input.body,
+        storageMounts,
+      );
+      signal.throwIfAborted();
+      if (admission.kind === "error") {
+        return badRequestMessage(admission.message);
+      }
+      if (admission.kind === "response") {
+        return admission.response;
+      }
+      if (!piValidated) {
+        return badRequestMessage(
+          "[PI_H2_RUN_STATE_CHANGED] Pi H2 must be retried after the run became active",
+        );
+      }
+    }
+
+    return await persistAgentCheckpoint(
+      tx,
+      run,
+      input.body,
+      {
+        storageMounts,
+        deferSessionPromotion: piRun,
+      },
+      signal,
+    );
+  });
+}
+
 export const createAgentCheckpoint$ = command(
   async (
     { set },
@@ -326,110 +971,19 @@ export const createAgentCheckpoint$ = command(
       return notFound("Agent run not found");
     }
 
-    const storageMounts = checkpointStorageMounts({
-      runStorageMounts: run.storageMounts,
-      artifactSnapshots: input.body.artifactSnapshots,
-    });
-    const historyHash = input.body.cliAgentSessionHistoryHash;
-
-    if (historyHash !== undefined) {
-      await db
-        .insert(blobs)
-        .values({
-          hash: historyHash,
-          rawSize: 0,
-          encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-          encodedSize: 0,
-          refCount: 1,
-        })
-        .onConflictDoUpdate({
-          target: blobs.hash,
-          set: { refCount: sql`${blobs.refCount} + 1` },
-        });
-      signal.throwIfAborted();
+    const typeError = piCheckpointTypeError(run, input.body);
+    if (typeError) {
+      return badRequestMessage(typeError);
+    }
+    const piRun = isPiCheckpointRun(run);
+    const piNeedsValidation = piRun && isActivePiCheckpointStatus(run.status);
+    if (piNeedsValidation) {
+      const piError = await set(validatePiH2$, db, run, input.body, signal);
+      if (piError) {
+        return badRequestMessage(piError);
+      }
     }
 
-    const historyFields =
-      historyHash === undefined
-        ? {
-            cliAgentSessionHistory: null,
-            cliAgentSessionHistoryHash: null,
-          }
-        : { cliAgentSessionHistoryHash: historyHash };
-
-    const [conversation] = await db
-      .insert(conversations)
-      .values({
-        runId: input.body.runId,
-        cliAgentType: input.body.cliAgentType,
-        cliAgentSessionId: input.body.cliAgentSessionId,
-        ...historyFields,
-      })
-      .onConflictDoUpdate({
-        target: conversations.runId,
-        set: {
-          cliAgentType: input.body.cliAgentType,
-          cliAgentSessionId: input.body.cliAgentSessionId,
-          ...historyFields,
-        },
-      })
-      .returning({ id: conversations.id });
-    signal.throwIfAborted();
-
-    if (!conversation) {
-      throw new Error("Failed to upsert conversation record");
-    }
-
-    const checkpointFields = {
-      conversationId: conversation.id,
-      storageMounts,
-    };
-    const [checkpoint] = await db
-      .insert(checkpoints)
-      .values({
-        runId: input.body.runId,
-        ...checkpointFields,
-      })
-      .onConflictDoUpdate({
-        target: checkpoints.runId,
-        set: checkpointFields,
-      })
-      .returning({ id: checkpoints.id });
-    signal.throwIfAborted();
-
-    if (!checkpoint) {
-      throw new Error("Failed to upsert checkpoint record");
-    }
-
-    const [agentSession] = await db
-      .update(agentSessions)
-      .set({
-        conversationId: conversation.id,
-        updatedAt: nowDate(),
-      })
-      .where(eq(agentSessions.id, run.sessionId))
-      .returning({ id: agentSessions.id });
-    signal.throwIfAborted();
-
-    if (!agentSession) {
-      return notFound("AgentSession not found");
-    }
-
-    L.debug("Checkpoint created", {
-      runId: input.body.runId,
-      checkpointId: checkpoint.id,
-      conversationId: conversation.id,
-    });
-
-    return {
-      status: 200 as const,
-      body: {
-        checkpointId: checkpoint.id,
-        agentSessionId: agentSession.id,
-        conversationId: conversation.id,
-        artifacts: responseArtifacts(input.body.artifactSnapshots),
-        volumes: input.body.volumeVersionsSnapshot?.versions,
-      },
-    };
+    return await commitAgentCheckpoint(db, input, piNeedsValidation, signal);
   },
 );

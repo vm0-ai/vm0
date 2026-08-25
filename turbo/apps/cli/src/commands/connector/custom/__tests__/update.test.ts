@@ -12,7 +12,7 @@ import { updateCustomConnectorCommand } from "../update";
 
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
 
-function buildZeroToken(): string {
+function buildOkouToken(): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -114,7 +114,7 @@ describe("okou connector custom update", () => {
     chalk.level = 0;
     tempDir = mkdtempSync(join(tmpdir(), "custom-connector-update-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", buildZeroToken());
+    vi.stubEnv("OKOU_TOKEN", buildOkouToken());
   });
 
   afterEach(() => {

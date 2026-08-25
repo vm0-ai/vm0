@@ -1947,7 +1947,6 @@ jobs:
           PLAYWRIGHT_PROJECT: ${{ matrix.project }}
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -2471,11 +2470,12 @@ jobs:
       runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Install pnpm
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Generate runner E2E shard matrix
@@ -2503,7 +2503,6 @@ jobs:
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -2596,7 +2595,7 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
+            "${E2E_API_URL}/api/model-providers" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap mock Claude account
@@ -2623,7 +2622,7 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/okou/model-providers")
+            "${api_url}/api/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
@@ -2714,9 +2713,12 @@ jobs:
 
           curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"switches":{"realAgentInPreview":true}}' \
+            -d '{"switches":{"realAgentInPreview":true,"builtInModelProviderFallback":true}}' \
             "${api_url}/api/okou/feature-switches" \
-            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            | jq -e '
+                .effectiveSwitches.realAgentInPreview == true and
+                .effectiveSwitches.builtInModelProviderFallback == true
+              ' \
             >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2764,11 +2766,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Install pnpm
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
       - name: Download runner E2E API tokens
@@ -2840,6 +2843,7 @@ jobs:
             "${test_files[@]}"
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          OKOU_MITM_RUNNER_TOKEN: ${{ contains(matrix.files, 'tests/03-runner/run-t24-built-in-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}
       - name: Print runner E2E trace log
         if: always()
         shell: bash
@@ -2900,13 +2904,14 @@ jobs:
         run: echo "Retaining runner E2E accounts until a successful rerun or fallback cleanup"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.cleanup-scope.outputs.scope != 'retain'
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        if: steps.cleanup-scope.outputs.scope != 'retain'
+        with:
+          version: 10.33.4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: steps.cleanup-scope.outputs.scope != 'retain'
         with:
           node-version: 22
-      - name: Install pnpm
-        if: steps.cleanup-scope.outputs.scope != 'retain'
-        run: corepack enable pnpm
       - name: Install E2E dependencies
         if: steps.cleanup-scope.outputs.scope != 'retain'
         run: cd e2e && pnpm install --frozen-lockfile

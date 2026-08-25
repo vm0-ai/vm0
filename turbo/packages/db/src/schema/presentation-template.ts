@@ -12,8 +12,7 @@ import {
 
 /**
  * Who can see a template. Private templates are visible only to their owner;
- * organization sharing is a later change that flips this column and widens the
- * list query, not a migration.
+ * public templates are available to every member of the owning organization.
  */
 export const PRESENTATION_TEMPLATE_VISIBILITIES = [
   "private",
@@ -70,7 +69,8 @@ export const presentationTemplates = pgTable(
   },
   (table) => {
     return [
-      // The picker lists one owner's templates, newest first.
+      // Owner catalogs remain the dominant access path; workspace-public rows
+      // share the same organization prefix and are expected to stay sparse.
       index("idx_presentation_templates_owner_created").on(
         table.orgId,
         table.ownerUserId,

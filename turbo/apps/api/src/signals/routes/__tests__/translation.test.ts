@@ -60,11 +60,11 @@ interface TranslationActor extends ApiTestUser {
   readonly runId: string;
 }
 
-function zeroToken(
+function okouToken(
   actor: TranslationActor,
   capabilities: readonly Capability[] = ["translation:write"],
 ): string {
-  return createRunsApi(context).zeroTokenForRunWithCapabilities(
+  return createRunsApi(context).okouTokenForRunWithCapabilities(
     actor,
     actor.runId,
     capabilities,
@@ -83,7 +83,7 @@ async function seedActor(): Promise<TranslationActor> {
   });
   const api = createRunsApi(context);
   const name = `translation-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createHistoricalCompose(actor, {
+  const compose = await api.createDirectAgent(actor, {
     version: "1.0",
     agents: {
       [name]: {
@@ -93,7 +93,7 @@ async function seedActor(): Promise<TranslationActor> {
     },
   });
   const run = await api.createDirectRun(actor, {
-    agentId: compose.composeId,
+    agentId: compose.agentId,
     prompt: "Translate text",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
@@ -208,7 +208,7 @@ describe("POST /api/translate", () => {
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestTranslation({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         text: "Hello, world",
         sourceLanguage: "English",
         targetLanguage: "Simplified Chinese",
@@ -271,7 +271,7 @@ describe("POST /api/translate", () => {
     const pricing = await seedBilling(actor);
 
     const response = await requestTranslation({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       text: "Bonjour",
       targetLanguage: "English",
       usagePricingResolution: pricing.resolution,
@@ -285,14 +285,14 @@ describe("POST /api/translate", () => {
     });
   });
 
-  it("enforces Zero-only capability authorization before provider work", async () => {
+  it("enforces agent-only capability authorization before provider work", async () => {
     const actor = await seedActor();
 
     const unauthenticated = await requestTranslation({});
     expect(unauthenticated.status).toBe(401);
 
     const missingCapability = await requestTranslation({
-      token: zeroToken(actor, ["file:write"]),
+      token: okouToken(actor, ["file:write"]),
     });
     expect(missingCapability.status).toBe(403);
 
@@ -319,7 +319,7 @@ describe("POST /api/translate", () => {
       "x".repeat(TRANSLATION_MAX_SOURCE_TEXT_CHARS + 1),
     ]) {
       const response = await requestTranslation({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         text,
       });
       expect(response.status).toBe(400);
@@ -342,7 +342,7 @@ describe("POST /api/translate", () => {
     const pricing = await createConfiguredTranslationPricing();
 
     const noCredits = await requestTranslation({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       usagePricingResolution: pricing.resolution,
     });
     expect(noCredits.status).toBe(402);
@@ -357,7 +357,7 @@ describe("POST /api/translate", () => {
     });
     onTestFinished(missingPricing.cleanup);
     const noPricing = await requestTranslation({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       usagePricingResolution: missingPricing.resolution,
     });
     expect(noPricing.status).toBe(503);
@@ -379,7 +379,7 @@ describe("POST /api/translate", () => {
     const pricing = await seedBilling(actor);
 
     const response = await requestTranslation({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       usagePricingResolution: pricing.resolution,
     });
 
@@ -423,7 +423,7 @@ describe("POST /api/translate", () => {
 
     for (const _usage of usages) {
       const response = await requestTranslation({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(502);
@@ -458,7 +458,7 @@ describe("POST /api/translate", () => {
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestTranslation({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(502);
@@ -498,7 +498,7 @@ describe("POST /api/translate", () => {
     );
 
     const response = await requestTranslation({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       usagePricingResolution: pricing.resolution,
     });
 

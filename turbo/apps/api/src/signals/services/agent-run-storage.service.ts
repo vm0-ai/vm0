@@ -58,7 +58,6 @@ import {
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StorageManifestEntryKind = "compose" | "additional" | "artifact";
 export type StorageManifestSource =
   | "system_skill"
@@ -108,7 +107,7 @@ interface AgentConfig {
   readonly instructions?: unknown;
 }
 
-interface AgentComposeContent {
+interface AgentExecutionConfig {
   readonly agent?: AgentConfig;
   readonly agents?: Record<string, AgentConfig | undefined>;
   readonly volumes?: Record<string, VolumeConfig | undefined>;
@@ -116,7 +115,7 @@ interface AgentComposeContent {
 
 interface PrepareAgentRunStorageManifestArgs {
   readonly db: Db;
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly agentOrgId: string;
   readonly runtimeOrgId: string;
@@ -984,7 +983,7 @@ function instructionsFilename(framework: SupportedFramework | "pi"): string {
 }
 
 function firstAgentEntry(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
 ): { readonly name: string | undefined; readonly agent: AgentConfig } | null {
   if (content.agent) {
     return { name: undefined, agent: content.agent };
@@ -1031,7 +1030,7 @@ function expandTemplate(
 }
 
 function resolveComposeVolumes(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly volumeVersionOverrides: Record<string, string> | undefined;
   readonly framework: SupportedFramework | "pi";
@@ -2055,85 +2054,91 @@ function buildSystemStorageEntry(args: {
   });
 }
 
-async function buildStorageEntriesFromPlans(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly bucket: string;
-    readonly plans: readonly ResolvedManifestStoragePlan[];
-    readonly stats?: StorageManifestBuildStats;
-  },
-): Promise<readonly PreparedReadOnlyStorageEntry[]> {
-  const systemPlans = args.plans.filter(isSystemOwnedStoragePlan);
-  args.stats?.recordSystemResolvedStorage(systemPlans.length);
+function buildStorageEntriesFromPlans(args: {
+  readonly db: Db;
+  readonly bucket: string;
+  readonly plans: readonly ResolvedManifestStoragePlan[];
+  readonly stats?: StorageManifestBuildStats;
+}): Computed<Promise<readonly PreparedReadOnlyStorageEntry[]>> {
+  return computed(async (get) => {
+    const systemPlans = args.plans.filter(isSystemOwnedStoragePlan);
+    args.stats?.recordSystemResolvedStorage(systemPlans.length);
 
-  const systemUrlsByCacheKeyPromise = resolveSystemStoragePresignedUrls({
-    db: args.db,
-    get,
-    requests: systemPlans.map((plan) => {
-      return systemStoragePresignedUrlRequest({ bucket: args.bucket, plan });
-    }),
-  });
-  const workflowSkillUrlsByCacheKeyPromise =
-    resolveWorkflowSkillStoragePresignedUrls({
-      db: args.db,
-      get,
-      requests: args.plans
-        .filter((plan) => {
-          return (
-            !isSystemOwnedStoragePlan(plan) && isWorkflowSkillStoragePlan(plan)
-          );
-        })
-        .map((plan) => {
-          return workflowSkillStoragePresignedUrlRequest({
+    const systemUrlsByCacheKeyPromise = get(
+      resolveSystemStoragePresignedUrls({
+        db: args.db,
+        requests: systemPlans.map((plan) => {
+          return systemStoragePresignedUrlRequest({
             bucket: args.bucket,
             plan,
           });
         }),
-    });
-  const readOnlyUrlsByCacheKeyPromise = resolveReadOnlyStoragePresignedUrls({
-    db: args.db,
-    get,
-    requests: args.plans
-      .filter((plan) => {
-        return (
-          !isSystemOwnedStoragePlan(plan) && !isWorkflowSkillStoragePlan(plan)
-        );
-      })
-      .map((plan) => {
-        return readOnlyStoragePresignedUrlRequest({
+      }),
+    );
+    const workflowSkillUrlsByCacheKeyPromise = get(
+      resolveWorkflowSkillStoragePresignedUrls({
+        db: args.db,
+        requests: args.plans
+          .filter((plan) => {
+            return (
+              !isSystemOwnedStoragePlan(plan) &&
+              isWorkflowSkillStoragePlan(plan)
+            );
+          })
+          .map((plan) => {
+            return workflowSkillStoragePresignedUrlRequest({
+              bucket: args.bucket,
+              plan,
+            });
+          }),
+      }),
+    );
+    const readOnlyUrlsByCacheKeyPromise = get(
+      resolveReadOnlyStoragePresignedUrls({
+        db: args.db,
+        requests: args.plans
+          .filter((plan) => {
+            return (
+              !isSystemOwnedStoragePlan(plan) &&
+              !isWorkflowSkillStoragePlan(plan)
+            );
+          })
+          .map((plan) => {
+            return readOnlyStoragePresignedUrlRequest({
+              bucket: args.bucket,
+              resolved: plan.resolved,
+            });
+          }),
+      }),
+    );
+
+    return await Promise.all(
+      args.plans.map(async (plan) => {
+        if (isSystemOwnedStoragePlan(plan)) {
+          return buildSystemStorageEntry({
+            bucket: args.bucket,
+            plan,
+            urlsByCacheKey: await systemUrlsByCacheKeyPromise,
+            stats: args.stats,
+          });
+        }
+        if (isWorkflowSkillStoragePlan(plan)) {
+          return buildWorkflowSkillStorageEntry({
+            bucket: args.bucket,
+            plan,
+            urlsByCacheKey: await workflowSkillUrlsByCacheKeyPromise,
+            stats: args.stats,
+          });
+        }
+        return buildReadOnlyStorageEntry({
           bucket: args.bucket,
-          resolved: plan.resolved,
+          plan,
+          urlsByCacheKey: await readOnlyUrlsByCacheKeyPromise,
+          stats: args.stats,
         });
       }),
+    );
   });
-
-  return await Promise.all(
-    args.plans.map(async (plan) => {
-      if (isSystemOwnedStoragePlan(plan)) {
-        return buildSystemStorageEntry({
-          bucket: args.bucket,
-          plan,
-          urlsByCacheKey: await systemUrlsByCacheKeyPromise,
-          stats: args.stats,
-        });
-      }
-      if (isWorkflowSkillStoragePlan(plan)) {
-        return buildWorkflowSkillStorageEntry({
-          bucket: args.bucket,
-          plan,
-          urlsByCacheKey: await workflowSkillUrlsByCacheKeyPromise,
-          stats: args.stats,
-        });
-      }
-      return buildReadOnlyStorageEntry({
-        bucket: args.bucket,
-        plan,
-        urlsByCacheKey: await readOnlyUrlsByCacheKeyPromise,
-        stats: args.stats,
-      });
-    }),
-  );
 }
 
 function buildPreparedWritebackStorageEntry(args: {
@@ -2322,46 +2327,45 @@ async function resolveStorageManifestInputs(
   );
 }
 
-async function ensureStorageManifestArtifacts(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly runtimeOrgId: string;
-    readonly userId: string;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly timing?: ApiDispatchTimingCollector;
-    readonly stats?: StorageManifestBuildStats;
-  },
-): Promise<void> {
-  const artifactEnsureTiming = new StorageManifestArtifactEnsureTiming(
-    args.timing,
-  );
-  await measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_prepare_storage_manifest_ensure_artifacts",
-    "nested",
-    async () => {
-      await Promise.all(
-        args.artifacts.map((artifact) => {
-          return get(
-            ensureArtifactStorage({
-              db: args.db,
-              orgId: args.runtimeOrgId,
-              userId: args.userId,
-              name: artifact.name,
-              timing: artifactEnsureTiming,
-              stats: args.stats,
-            }),
-          );
-        }),
-      ).finally(() => {
-        artifactEnsureTiming.flush();
-      });
-    },
-    () => {
-      return args.stats?.artifactEnsureDimensions();
-    },
-  );
+function ensureStorageManifestArtifacts(args: {
+  readonly db: Db;
+  readonly runtimeOrgId: string;
+  readonly userId: string;
+  readonly artifacts: readonly ContextArtifact[];
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
+}): Computed<Promise<void>> {
+  return computed(async (get) => {
+    const artifactEnsureTiming = new StorageManifestArtifactEnsureTiming(
+      args.timing,
+    );
+    await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+      "nested",
+      async () => {
+        await Promise.all(
+          args.artifacts.map((artifact) => {
+            return get(
+              ensureArtifactStorage({
+                db: args.db,
+                orgId: args.runtimeOrgId,
+                userId: args.userId,
+                name: artifact.name,
+                timing: artifactEnsureTiming,
+                stats: args.stats,
+              }),
+            );
+          }),
+        ).finally(() => {
+          artifactEnsureTiming.flush();
+        });
+      },
+      () => {
+        return args.stats?.artifactEnsureDimensions();
+      },
+    );
+  });
 }
 
 async function loadTimedStorageIndex(args: {
@@ -2574,132 +2578,140 @@ async function resolveStorageManifestEntryPlans(args: {
   };
 }
 
-async function generatePreparedStorageEntriesFromPlans(args: {
-  readonly get: ComputedGetter;
+function generatePreparedStorageEntriesFromPlans(args: {
   readonly input: BuildStorageManifestEntriesArgs;
   readonly phaseTimings: StorageManifestEntryPhaseTimings;
   readonly resolved: ResolvedStorageManifestEntryPlans;
-}): Promise<PreparedStorageEntries> {
-  const finalStoragePlans = mergeStorageEntries({
-    composeEntries: args.resolved.composePlans,
-    additionalEntries: args.resolved.additionalPlans,
-    mountPath(plan) {
-      return plan.mountPath;
-    },
-  });
-  const finalComposePlans = finalStoragePlans.filter((plan) => {
-    return plan.entryKind === "compose";
-  });
-  const finalAdditionalPlans = finalStoragePlans.filter((plan) => {
-    return plan.entryKind === "additional";
-  });
+}): Computed<Promise<PreparedStorageEntries>> {
+  return computed(async (get) => {
+    const finalStoragePlans = mergeStorageEntries({
+      composeEntries: args.resolved.composePlans,
+      additionalEntries: args.resolved.additionalPlans,
+      mountPath(plan) {
+        return plan.mountPath;
+      },
+    });
+    const finalComposePlans = finalStoragePlans.filter((plan) => {
+      return plan.entryKind === "compose";
+    });
+    const finalAdditionalPlans = finalStoragePlans.filter((plan) => {
+      return plan.entryKind === "additional";
+    });
 
-  const [composeEntries, additionalEntries, writebackEntries] =
-    await Promise.all([
-      args.phaseTimings.compose.measureGenerate(() => {
-        return buildStorageEntriesFromPlans(args.get, {
-          db: args.input.db,
-          bucket: args.input.bucket,
-          plans: finalComposePlans,
-          stats: args.input.stats,
-        });
-      }),
-      args.phaseTimings.additional.measureGenerate(() => {
-        return buildStorageEntriesFromPlans(args.get, {
-          db: args.input.db,
-          bucket: args.input.bucket,
-          plans: finalAdditionalPlans,
-          stats: args.input.stats,
-        });
-      }),
-      args.phaseTimings.artifact.measureGenerate(async () => {
-        const requests = args.resolved.artifactInputs.flatMap((input) => {
-          return input.resolved.fileCount === 0
-            ? []
-            : [
-                readOnlyStoragePresignedUrlRequest({
-                  bucket: args.input.bucket,
-                  resolved: input.resolved,
-                }),
-              ];
-        });
-        const urlsByCacheKey = await resolveReadOnlyStoragePresignedUrls({
-          db: args.input.db,
-          get: args.get,
-          requests,
-        });
-        return args.resolved.artifactInputs.map((input) => {
-          if (input.resolved.fileCount === 0) {
+    const [composeEntries, additionalEntries, writebackEntries] =
+      await Promise.all([
+        args.phaseTimings.compose.measureGenerate(() => {
+          return get(
+            buildStorageEntriesFromPlans({
+              db: args.input.db,
+              bucket: args.input.bucket,
+              plans: finalComposePlans,
+              stats: args.input.stats,
+            }),
+          );
+        }),
+        args.phaseTimings.additional.measureGenerate(() => {
+          return get(
+            buildStorageEntriesFromPlans({
+              db: args.input.db,
+              bucket: args.input.bucket,
+              plans: finalAdditionalPlans,
+              stats: args.input.stats,
+            }),
+          );
+        }),
+        args.phaseTimings.artifact.measureGenerate(async () => {
+          const requests = args.resolved.artifactInputs.flatMap((input) => {
+            return input.resolved.fileCount === 0
+              ? []
+              : [
+                  readOnlyStoragePresignedUrlRequest({
+                    bucket: args.input.bucket,
+                    resolved: input.resolved,
+                  }),
+                ];
+          });
+          const urlsByCacheKey = await get(
+            resolveReadOnlyStoragePresignedUrls({
+              db: args.input.db,
+              requests,
+            }),
+          );
+          return args.resolved.artifactInputs.map((input) => {
+            if (input.resolved.fileCount === 0) {
+              return buildPreparedWritebackStorageEntry({
+                bucket: args.input.bucket,
+                input,
+                archiveUrl: undefined,
+                cacheStatus: undefined,
+                stats: args.input.stats,
+              });
+            }
+            const request = readOnlyStoragePresignedUrlRequest({
+              bucket: args.input.bucket,
+              resolved: input.resolved,
+            });
+            const result = urlsByCacheKey.get(
+              readOnlyStoragePresignedUrlCacheKey(request),
+            );
             return buildPreparedWritebackStorageEntry({
               bucket: args.input.bucket,
               input,
-              archiveUrl: undefined,
-              cacheStatus: undefined,
+              archiveUrl: result?.url,
+              cacheStatus: result?.status,
               stats: args.input.stats,
             });
-          }
-          const request = readOnlyStoragePresignedUrlRequest({
-            bucket: args.input.bucket,
-            resolved: input.resolved,
           });
-          const result = urlsByCacheKey.get(
-            readOnlyStoragePresignedUrlCacheKey(request),
-          );
-          return buildPreparedWritebackStorageEntry({
-            bucket: args.input.bucket,
-            input,
-            archiveUrl: result?.url,
-            cacheStatus: result?.status,
-            stats: args.input.stats,
-          });
-        });
-      }),
-    ]);
+        }),
+      ]);
 
-  return {
-    composeEntries,
-    additionalEntries,
-    writebackEntries,
-    resolvedComposeEntryCount: args.resolved.composePlans.length,
-    resolvedAdditionalEntryCount: args.resolved.additionalPlans.length,
-  };
+    return {
+      composeEntries,
+      additionalEntries,
+      writebackEntries,
+      resolvedComposeEntryCount: args.resolved.composePlans.length,
+      resolvedAdditionalEntryCount: args.resolved.additionalPlans.length,
+    };
+  });
 }
 
-async function buildPreparedStorageEntries(
-  get: ComputedGetter,
+function buildPreparedStorageEntries(
   args: BuildStorageManifestEntriesArgs,
-): Promise<PreparedStorageEntries> {
-  const phaseTimings = createStorageManifestEntryPhaseTimings({
-    timing: args.timing,
-    stats: args.stats,
-  });
+): Computed<Promise<PreparedStorageEntries>> {
+  return computed(async (get) => {
+    const phaseTimings = createStorageManifestEntryPhaseTimings({
+      timing: args.timing,
+      stats: args.stats,
+    });
 
-  return await measureApiDispatchTiming(
-    args.timing,
-    "api_dispatch_prepare_storage_manifest_build_entries",
-    "nested",
-    async () => {
-      return await (async () => {
-        const resolved = await resolveStorageManifestEntryPlans({
-          input: args,
-          phaseTimings,
+    return await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest_build_entries",
+      "nested",
+      async () => {
+        return await (async () => {
+          const resolved = await resolveStorageManifestEntryPlans({
+            input: args,
+            phaseTimings,
+          });
+          return await get(
+            generatePreparedStorageEntriesFromPlans({
+              input: args,
+              phaseTimings,
+              resolved,
+            }),
+          );
+        })().finally(() => {
+          phaseTimings.compose.flush();
+          phaseTimings.additional.flush();
+          phaseTimings.artifact.flush();
         });
-        return await generatePreparedStorageEntriesFromPlans({
-          get,
-          input: args,
-          phaseTimings,
-          resolved,
-        });
-      })().finally(() => {
-        phaseTimings.compose.flush();
-        phaseTimings.additional.flush();
-        phaseTimings.artifact.flush();
-      });
-    },
-    () => {
-      return args.stats?.buildEntriesDimensions();
-    },
-  );
+      },
+      () => {
+        return args.stats?.buildEntriesDimensions();
+      },
+    );
+  });
 }
 
 function persistedMountIdentity(
@@ -2796,72 +2808,72 @@ async function resolvePersistedStorageMounts(args: {
   return { composePlans: [], additionalPlans, artifactInputs };
 }
 
-async function buildEntriesFromPersistedStorageMounts(
-  get: ComputedGetter,
-  args: {
-    readonly db: Db;
-    readonly bucket: string;
-    readonly mounts: readonly PersistedStorageMount[];
-    readonly timing?: ApiDispatchTimingCollector;
-    readonly stats?: StorageManifestBuildStats;
-  },
-): Promise<PreparedStorageEntries> {
-  assertUniquePersistedMountPaths(args.mounts);
-  const storageIndex = await loadTimedStorageIndex({
-    db: args.db,
-    requests: args.mounts.map((mount) => {
-      return {
-        lookup: {
-          orgId: mount.orgId,
-          userId: mount.userId,
-          name: mount.name,
-        },
-        version: mount.version,
-      };
-    }),
-    timing: args.timing,
-  });
-  const phaseTimings = createStorageManifestEntryPhaseTimings(args);
-  return await (async () => {
-    const input: BuildStorageManifestEntriesArgs = {
+function buildEntriesFromPersistedStorageMounts(args: {
+  readonly db: Db;
+  readonly bucket: string;
+  readonly mounts: readonly PersistedStorageMount[];
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly stats?: StorageManifestBuildStats;
+}): Computed<Promise<PreparedStorageEntries>> {
+  return computed(async (get) => {
+    assertUniquePersistedMountPaths(args.mounts);
+    const storageIndex = await loadTimedStorageIndex({
       db: args.db,
-      bucket: args.bucket,
-      storageIndex,
-      agentOrgId: "",
-      runtimeOrgId: "",
-      userId: "",
-      composeVolumes: [],
-      additionalVolumes: undefined,
-      additionalVolumeSources: undefined,
-      artifacts: [],
+      requests: args.mounts.map((mount) => {
+        return {
+          lookup: {
+            orgId: mount.orgId,
+            userId: mount.userId,
+            name: mount.name,
+          },
+          version: mount.version,
+        };
+      }),
       timing: args.timing,
-      stats: args.stats,
-    };
-    const resolved = await resolvePersistedStorageMounts({
-      db: args.db,
-      index: storageIndex,
-      mounts: args.mounts,
     });
-    args.stats?.recordResolvedEntry(
-      "additional",
-      "unknown",
-      resolved.additionalPlans.length,
-    );
-    args.stats?.recordResolvedEntry(
-      "artifact",
-      "artifact",
-      resolved.artifactInputs.length,
-    );
-    return await generatePreparedStorageEntriesFromPlans({
-      get,
-      input,
-      phaseTimings,
-      resolved,
+    const phaseTimings = createStorageManifestEntryPhaseTimings(args);
+    return await (async () => {
+      const input: BuildStorageManifestEntriesArgs = {
+        db: args.db,
+        bucket: args.bucket,
+        storageIndex,
+        agentOrgId: "",
+        runtimeOrgId: "",
+        userId: "",
+        composeVolumes: [],
+        additionalVolumes: undefined,
+        additionalVolumeSources: undefined,
+        artifacts: [],
+        timing: args.timing,
+        stats: args.stats,
+      };
+      const resolved = await resolvePersistedStorageMounts({
+        db: args.db,
+        index: storageIndex,
+        mounts: args.mounts,
+      });
+      args.stats?.recordResolvedEntry(
+        "additional",
+        "unknown",
+        resolved.additionalPlans.length,
+      );
+      args.stats?.recordResolvedEntry(
+        "artifact",
+        "artifact",
+        resolved.artifactInputs.length,
+      );
+      return await get(
+        generatePreparedStorageEntriesFromPlans({
+          input,
+          phaseTimings,
+          resolved,
+        }),
+      );
+    })().finally(() => {
+      phaseTimings.compose.flush();
+      phaseTimings.additional.flush();
+      phaseTimings.artifact.flush();
     });
-  })().finally(() => {
-    phaseTimings.compose.flush();
-    phaseTimings.additional.flush();
-    phaseTimings.artifact.flush();
   });
 }
 
@@ -2992,99 +3004,108 @@ function resolveSessionStorageOverlay(args: {
   return { canonicalWritebackMounts, remainingArtifacts };
 }
 
-async function buildPreparedStorageEntriesForRequest(
-  get: ComputedGetter,
+function buildPreparedStorageEntriesForRequest(
   args: PrepareAgentRunStorageManifestArgs,
   bucket: string,
   composeVolumes: readonly ResolvedVolume[],
   artifacts: readonly ContextArtifact[],
-): Promise<PreparedStorageEntries> {
-  const additionalVolumeSources = normalizeAdditionalVolumeSources({
-    volumes: args.additionalVolumes,
-    sources: args.additionalVolumeSources,
-  });
-  args.stats?.recordRequestedInputs({
-    composeCount: composeVolumes.length,
-    additionalCount: args.additionalVolumes?.length ?? 0,
-    artifactCount: args.artifacts.length,
-    dedupedArtifactCount: artifacts.length,
-  });
+): Computed<Promise<PreparedStorageEntries>> {
+  return computed(async (get) => {
+    const additionalVolumeSources = normalizeAdditionalVolumeSources({
+      volumes: args.additionalVolumes,
+      sources: args.additionalVolumeSources,
+    });
+    args.stats?.recordRequestedInputs({
+      composeCount: composeVolumes.length,
+      additionalCount: args.additionalVolumes?.length ?? 0,
+      artifactCount: args.artifacts.length,
+      dedupedArtifactCount: artifacts.length,
+    });
 
-  await ensureStorageManifestArtifacts(get, {
-    db: args.db,
-    runtimeOrgId: args.runtimeOrgId,
-    userId: args.userId,
-    artifacts,
-    timing: args.timing,
-    stats: args.stats,
-  });
+    await get(
+      ensureStorageManifestArtifacts({
+        db: args.db,
+        runtimeOrgId: args.runtimeOrgId,
+        userId: args.userId,
+        artifacts,
+        timing: args.timing,
+        stats: args.stats,
+      }),
+    );
 
-  const storageIndex = await loadTimedStorageIndex({
-    db: args.db,
-    requests: storageManifestRequests({
-      agentOrgId: args.agentOrgId,
-      runtimeOrgId: args.runtimeOrgId,
-      userId: args.userId,
-      composeVolumes,
-      additionalVolumes: args.additionalVolumes,
-      additionalVolumeSources,
-      artifacts,
-    }),
-    timing: args.timing,
-  });
+    const storageIndex = await loadTimedStorageIndex({
+      db: args.db,
+      requests: storageManifestRequests({
+        agentOrgId: args.agentOrgId,
+        runtimeOrgId: args.runtimeOrgId,
+        userId: args.userId,
+        composeVolumes,
+        additionalVolumes: args.additionalVolumes,
+        additionalVolumeSources,
+        artifacts,
+      }),
+      timing: args.timing,
+    });
 
-  return await buildPreparedStorageEntries(get, {
-    db: args.db,
-    bucket,
-    storageIndex,
-    agentOrgId: args.agentOrgId,
-    runtimeOrgId: args.runtimeOrgId,
-    userId: args.userId,
-    composeVolumes,
-    additionalVolumes: args.additionalVolumes,
-    additionalVolumeSources,
-    artifacts,
-    timing: args.timing,
-    stats: args.stats,
+    return await get(
+      buildPreparedStorageEntries({
+        db: args.db,
+        bucket,
+        storageIndex,
+        agentOrgId: args.agentOrgId,
+        runtimeOrgId: args.runtimeOrgId,
+        userId: args.userId,
+        composeVolumes,
+        additionalVolumes: args.additionalVolumes,
+        additionalVolumeSources,
+        artifacts,
+        timing: args.timing,
+        stats: args.stats,
+      }),
+    );
   });
 }
 
-async function prepareStorageWithSessionOverlay(
-  get: ComputedGetter,
+function prepareStorageWithSessionOverlay(
   args: PrepareAgentRunStorageManifestArgs,
   bucket: string,
-): Promise<PreparedAgentRunStorage> {
-  const { artifacts, composeVolumes } =
-    await resolveStorageManifestInputs(args);
-  const { canonicalWritebackMounts, remainingArtifacts } =
-    resolveSessionStorageOverlay({
-      artifacts,
-      persistedStorageMounts: args.persistedStorageMounts,
+): Computed<Promise<PreparedAgentRunStorage>> {
+  return computed(async (get) => {
+    const { artifacts, composeVolumes } =
+      await resolveStorageManifestInputs(args);
+    const { canonicalWritebackMounts, remainingArtifacts } =
+      resolveSessionStorageOverlay({
+        artifacts,
+        persistedStorageMounts: args.persistedStorageMounts,
+      });
+    const requestedEntries = await get(
+      buildPreparedStorageEntriesForRequest(
+        args,
+        bucket,
+        composeVolumes,
+        remainingArtifacts,
+      ),
+    );
+    const entries =
+      canonicalWritebackMounts.length === 0
+        ? requestedEntries
+        : combinePreparedStorageEntries({
+            requested: requestedEntries,
+            sessionWriteback: await get(
+              buildEntriesFromPersistedStorageMounts({
+                db: args.db,
+                bucket,
+                mounts: canonicalWritebackMounts,
+                timing: args.timing,
+                stats: args.stats,
+              }),
+            ),
+          });
+    return await finalizePreparedStorage({
+      entries,
+      timing: args.timing,
+      stats: args.stats,
     });
-  const requestedEntries = await buildPreparedStorageEntriesForRequest(
-    get,
-    args,
-    bucket,
-    composeVolumes,
-    remainingArtifacts,
-  );
-  const entries =
-    canonicalWritebackMounts.length === 0
-      ? requestedEntries
-      : combinePreparedStorageEntries({
-          requested: requestedEntries,
-          sessionWriteback: await buildEntriesFromPersistedStorageMounts(get, {
-            db: args.db,
-            bucket,
-            mounts: canonicalWritebackMounts,
-            timing: args.timing,
-            stats: args.stats,
-          }),
-        });
-  return await finalizePreparedStorage({
-    entries,
-    timing: args.timing,
-    stats: args.stats,
   });
 }
 
@@ -3093,6 +3114,6 @@ export function prepareAgentRunStorage(
 ): Computed<Promise<PreparedAgentRunStorage>> {
   return computed(async (get): Promise<PreparedAgentRunStorage> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    return await prepareStorageWithSessionOverlay(get, args, bucket);
+    return await get(prepareStorageWithSessionOverlay(args, bucket));
   });
 }

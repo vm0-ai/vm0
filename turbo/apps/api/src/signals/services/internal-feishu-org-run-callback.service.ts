@@ -4,6 +4,7 @@ import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contract
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agents } from "@okouai/db/schema/agent";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -69,11 +70,12 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
-      agentId: agentSessions.agentComposeId,
+      agentId: agents.id,
       chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .innerJoin(agents, eq(agents.id, agentSessions.agentId))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return run;
@@ -191,7 +193,7 @@ async function handleFeishuCallback(
   const [installation] = await args.db
     .select({
       orgId: feishuOrgInstallations.orgId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
       publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgInstallations)
@@ -206,6 +208,11 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
+  // Paired with feishuOrgCallbackPayloadSchema's bounded #27750 rollout
+  // fallback; the installation brand is read only for callbacks from the
+  // previous API and is removable after those callbacks and rollback writers
+  // drain.
+  const publicBrand = payload.publicBrand ?? installation.publicBrand;
   const connection = await loadFeishuCallbackConnection(args.db, payload);
   signal.throwIfAborted();
   if (!connection) {
@@ -229,7 +236,7 @@ async function handleFeishuCallback(
           runId: args.callback.runId,
           chatThreadId: run.chatThreadId,
           errorMessage: args.callback.error ?? "Agent execution failed.",
-          publicBrand: installation.publicBrand,
+          publicBrand,
         })
       : undefined;
   signal.throwIfAborted();
@@ -240,8 +247,8 @@ async function handleFeishuCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: payload.agentId ?? run.agentId,
-      publicBrand: installation.publicBrand,
-      defaultAgentId: installation.defaultAgentId,
+      publicBrand,
+      defaultAgentId: installation.defaultAgentId ?? undefined,
       getFeatureOverrides: args.getFeatureOverrides,
     },
     signal,
@@ -253,7 +260,7 @@ async function handleFeishuCallback(
       : (output ?? "Task completed successfully.");
   const responseMessage = buildFeishuAgentResponseMessage({
     text: responseText,
-    publicBrand: installation.publicBrand,
+    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

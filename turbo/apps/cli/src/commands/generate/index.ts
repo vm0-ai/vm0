@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { imageCommand } from "./image";
+import { imageBatchCommand } from "./image-batch";
 import {
   dashboardDesignCommand,
   docsDesignCommand,
@@ -42,6 +43,7 @@ const documentCommand = createListerOnlyCommand({
 function buildGenerateHelpText(): string {
   const examples = [
     '  Generate image:        okou generate image --raw-prompt "A watercolor fox"',
+    "  Batch artifact images: okou generate image-batch start images.tsv .image-batch",
     '  Generate deck:         okou generate presentation --prompt "A product roadmap"',
     '  Generate report:       okou generate report --prompt "A Q2 usage report"',
     '  Generate docs:         okou generate docs-design --prompt "A setup guide"',
@@ -69,6 +71,7 @@ export const generateCommand = new Command()
     "Generate assets via Okou's built-in pipelines or get connector skill-invocation guidance",
   )
   .addCommand(imageCommand)
+  .addCommand(imageBatchCommand)
   .addCommand(presentationCommand)
   .addCommand(reportCommand)
   .addCommand(docsDesignCommand)

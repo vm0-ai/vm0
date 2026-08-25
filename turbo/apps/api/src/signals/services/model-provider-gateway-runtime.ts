@@ -83,6 +83,7 @@ export function compileModelProviderGatewayRuntime(
   const modelCatalog = getModelProviderCodexCatalogForModel(
     args.logicalModel,
     args.upstreamModel,
+    type,
   );
 
   return {

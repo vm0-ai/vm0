@@ -14,7 +14,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEventsResponse,
   LogDetail,
-} from "../../../signals/zero-page/log-types.ts";
+} from "../../../signals/okou-page/log-types.ts";
 
 const context = testContext();
 
@@ -102,7 +102,7 @@ describe("activity paged events", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await secondPageStarted.promise;
@@ -372,7 +372,7 @@ describe("activity paged events", () => {
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await expect(

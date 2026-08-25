@@ -6,7 +6,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
-import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
@@ -27,15 +27,12 @@ export const telegramInstallations = pgTable(
     // Secret token for webhook verification (X-Telegram-Bot-Api-Secret-Token)
     webhookSecret: varchar("webhook_secret", { length: 255 }).notNull(),
     // Bot default agent — always set at registration time.
-    // Must reference a compose whose orgId matches this row's orgId.
-    defaultComposeId: uuid("default_compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    defaultAgentId: uuid("default_agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     // Owner: the VM0 user who registered the bot (Clerk user ID).
     ownerUserId: text("owner_user_id").notNull(),
     // Org anchor: snapshot of the owner's current org at registration time.

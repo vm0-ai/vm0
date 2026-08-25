@@ -6,7 +6,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
@@ -27,6 +27,7 @@ import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -142,14 +143,11 @@ async function loadOwnedChatThread(
   },
 ): Promise<OwnedChatThread | undefined> {
   const [thread] = await db
-    .select({ agentId: chatThreads.agentComposeId })
+    .select({ agentId: agents.id })
     .from(chatThreads)
     .innerJoin(
-      agentComposes,
-      and(
-        eq(agentComposes.id, chatThreads.agentComposeId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
+      agents,
+      and(eq(agents.id, chatThreads.agentId), eq(agents.orgId, args.orgId)),
     )
     .where(
       and(
@@ -158,7 +156,7 @@ async function loadOwnedChatThread(
       ),
     )
     .limit(1);
-  return thread;
+  return thread?.agentId ? { agentId: thread.agentId } : undefined;
 }
 
 async function loadSelectionRows(
@@ -226,7 +224,7 @@ export async function listChatThreadConnectorSelections(
 }
 
 export async function prepareChatThreadConnectorSelections(
-  db: ReadonlyDb,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
@@ -250,6 +248,17 @@ export async function prepareChatThreadConnectorSelections(
   }
 
   const selections = [...byTarget.values()];
+  for (const selection of [...selections].sort((left, right) => {
+    return connectorAccountTargetKey(left.target).localeCompare(
+      connectorAccountTargetKey(right.target),
+    );
+  })) {
+    await lockConnectorAccountTarget(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: selection.target,
+    });
+  }
   const scope = await loadAgentConnectorScope(db, args);
   const snapshot = await loadSnapshotForBuiltinTargets(db, selections);
   for (const selection of byTarget.values()) {

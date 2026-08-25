@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  zeroConnectorOpenIdStartContract,
-  zeroConnectorsBySlugContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorOpenIdStartContract,
+  connectorsBySlugContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import { http, HttpResponse } from "msw";
@@ -53,12 +53,12 @@ function mockSteamRuntimeEnv(): void {
 
 async function startSteamOpenId(
   actor: TestActor,
-  account?: ConnectorAccountMutationIntent,
+  account: ConnectorAccountMutationIntent = { intent: "single-account" },
 ): Promise<URL> {
   mockSession(actor);
   const response = await accept(
     setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorOpenIdStartContract,
+      connectorOpenIdStartContract,
     ).start({
       params: { connectorSlug: "steam" },
       headers: authHeaders(),
@@ -360,7 +360,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const connector = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
@@ -385,7 +385,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const initial = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
@@ -397,7 +397,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const whilePending = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
@@ -427,7 +427,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const connector = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
@@ -437,14 +437,13 @@ describe("Steam OpenID connector", () => {
     expect(connector.body).toStrictEqual(initial.body);
 
     const replacementAuthorizationUrl = await startSteamOpenId(actor, {
-      intent: "reconnect",
-      connectionId: initial.body.id,
+      intent: "single-account",
     });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);
     const replaced = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       ).get({
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
@@ -461,11 +460,11 @@ describe("Steam OpenID connector", () => {
 
     const response = await accept(
       setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorOpenIdStartContract,
+        connectorOpenIdStartContract,
       ).start({
         params: { connectorSlug: "github" },
         headers: authHeaders(),
-        body: { authMethod: "oauth" },
+        body: { authMethod: "oauth", account: { intent: "single-account" } },
       }),
       [400],
     );

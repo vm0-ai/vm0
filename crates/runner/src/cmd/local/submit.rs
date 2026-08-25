@@ -46,7 +46,7 @@ pub struct SubmitArgs {
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
-    /// VM profile to use (e.g. "vm0/default")
+    /// Sandbox profile to use (e.g. "vm0/default")
     #[arg(long)]
     profile: Option<String>,
     /// Chat thread ID for sandbox and workspace reuse across turns
@@ -589,6 +589,11 @@ impl SubmitPlan {
             if !guest_contracts::env::is_shell_identifier_env_key(key) {
                 return Err(RunnerError::Config(format!(
                     "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
+                )));
+            }
+            if key.starts_with("OKOU_") {
+                return Err(RunnerError::Config(format!(
+                    "invalid {flag} key '{key}': the OKOU_ environment variable namespace is platform-reserved"
                 )));
             }
             let is_guest_agent_tuning_key =

@@ -1,16 +1,15 @@
 import { command } from "ccstate";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNotNull, ne } from "drizzle-orm";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
-import type { StoredConnectorAccountMutation } from "@okouai/db/jsonb-contracts/connector-account-mutation";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 import { logger } from "../../lib/log";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -78,7 +77,8 @@ interface FeishuConnectionState {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly accountMutation?: StoredConnectorAccountMutation | null;
+  readonly publicBrand: PublicBrand;
+  readonly accountMutation: ConnectorAccountMutationIntent;
 }
 
 interface FeishuInstallationOAuthRow {
@@ -306,6 +306,7 @@ async function upsertFeishuConnection(
       .update(feishuOrgConnections)
       .set({
         feishuUserName: args.userInfo.name,
+        publicBrand: args.state.publicBrand,
         updatedAt: nowDate(),
       })
       .where(eq(feishuOrgConnections.id, existing.id));
@@ -320,6 +321,7 @@ async function upsertFeishuConnection(
         feishuOpenId: args.userInfo.openId,
         userId: args.state.userId,
         feishuUserName: args.userInfo.name,
+        publicBrand: args.state.publicBrand,
       })
       .onConflictDoNothing({
         target: [
@@ -364,6 +366,7 @@ async function loadInstallationForConnector(args: {
   const conditions = [
     eq(feishuOrgInstallations.orgId, args.orgId),
     eq(feishuOrgInstallations.appId, args.appId),
+    isNotNull(feishuOrgInstallations.defaultAgentId),
   ];
   if (args.installationId) {
     conditions.push(eq(feishuOrgInstallations.id, args.installationId));
@@ -375,12 +378,15 @@ async function loadInstallationForConnector(args: {
       tenantKey: feishuOrgInstallations.feishuTenantKey,
       setupCompletedAt: feishuOrgInstallations.setupCompletedAt,
       ownerUserId: feishuOrgInstallations.ownerUserId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
     })
     .from(feishuOrgInstallations)
     .where(and(...conditions))
     .limit(1);
-  return installation ?? null;
+  if (!installation?.defaultAgentId) {
+    return null;
+  }
+  return { ...installation, defaultAgentId: installation.defaultAgentId };
 }
 
 async function persistFeishuOAuthConnection(
@@ -446,9 +452,7 @@ async function persistFeishuOAuthConnection(
               intent: "reconnect",
               connectionId: connection.memberConnectorId,
             }
-          : parseStoredConnectorAccountMutationIntent(
-              args.state.accountMutation ?? null,
-            ),
+          : args.state.accountMutation,
       },
       signal,
     );
@@ -649,6 +653,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       connectorId,
       redirectUri: oauthRedirectUri(query.callbackTarget),
       publicBrand: state.publicBrand,
+      account: { intent: "single-account" },
       feishuContext: {
         installationId: state.installationId,
       },
@@ -766,7 +771,10 @@ const completeLegacyFeishuOAuth$ = command(
     const completed = await finishFeishuOAuthConnection(
       {
         db,
-        state,
+        state: {
+          ...state,
+          accountMutation: { intent: "single-account" },
+        },
         installation,
         connector,
         ...exchanged,
@@ -882,6 +890,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
       installationId: installation.installationId,
       orgId: args.state.orgId,
       userId: args.state.userId,
+      publicBrand: args.state.publicBrand,
       accountMutation: args.state.accountMutation,
     };
     const completed = await finishFeishuOAuthConnection(

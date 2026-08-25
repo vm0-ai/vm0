@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -8,6 +9,7 @@ import { createInterface, type Interface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 
 import {
   piSandboxAgentConfigFromEnv,
@@ -26,7 +28,18 @@ const CONFIG: PiSandboxAgentConfig = {
   launchPayload: {
     schemaVersion: 1,
     appendSystemPrompt: "exact immutable Pi append prompt",
-    launchConfig: { schemaVersion: 2 },
+    launchConfig: {
+      schemaVersion: 2,
+      apiFirstTurn: {
+        schemaVersion: 1,
+        resourceSnapshotDigest: "a".repeat(64),
+        manifestUrl: "https://handoff.example/manifest.json",
+        sessionUrl: "https://handoff.example/session.jsonl",
+        deadlineAt: 2_000_000_000_000,
+        baseSession: { sessionId: SESSION_ID, sha256: null },
+        sandboxEventSequenceStart: 1,
+      },
+    },
   },
   model: {
     provider: "deepseek",
@@ -344,27 +357,14 @@ function piEnv(runIdEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
       baseUrl: "https://api.deepseek.com/",
       model: "deepseek-v4-flash",
       apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "DEEPSEEK_API_KEY",
     }),
     OPENAI_API_KEY: "test-api-key",
   };
 }
 
-function toolNames(body: unknown): string[] {
-  const tools = (body as { tools?: unknown }).tools;
-  if (!Array.isArray(tools)) {
-    return [];
-  }
-  return tools.flatMap((tool) => {
-    if (!tool || typeof tool !== "object") {
-      return [];
-    }
-    const candidate = tool as {
-      name?: unknown;
-      function?: { name?: unknown };
-    };
-    const name = candidate.name ?? candidate.function?.name;
-    return typeof name === "string" ? [name] : [];
-  });
+function occurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
 }
 
 describe("sandbox Pi agent loop", () => {
@@ -388,6 +388,21 @@ describe("sandbox Pi agent loop", () => {
     );
   });
 
+  it("rejects a launch payload without the required handoff slot", async () => {
+    await writeFile(
+      launchPayloadFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        appendSystemPrompt: null,
+        launchConfig: { schemaVersion: 2 },
+      }),
+    );
+
+    await expect(
+      piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
+    ).rejects.toThrow();
+  });
+
   it("does not echo malformed model config", async () => {
     const invalidModelConfig = "credential-like-model-config{";
     const env = piEnv({ OKOU_RUN_ID: RUN_ID });
@@ -403,33 +418,141 @@ describe("sandbox Pi agent loop", () => {
     }
   });
 
-  it("uses official discovery, tools, steer, compaction defaults, and JSONL resume", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-rpc-host-"));
+  it("restores API H1, executes its pending tool, and continues without replaying the prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-handoff-rpc-"));
     const agentDir = join(root, ".pi", "agent");
     const sessionDir = join(agentDir, "sessions", "--test--");
-    const skillName = "rpc-integration";
-    const skillDirectory = join(agentDir, "skills", skillName);
+    const sourceFile = join(root, "handoff-source.txt");
+    const prompt = "read the handoff source exactly once";
     const provider = await ProviderHarness.start();
+    const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    memory.prepareModelTurn({
+      id: "deepseek-v4-flash",
+      name: "DeepSeek V4 Flash",
+      api: "openai-responses",
+      provider: "deepseek",
+      baseUrl: provider.baseUrl,
+      reasoning: true,
+      thinkingLevelMap: {
+        minimal: null,
+        low: null,
+        medium: null,
+        high: "high",
+        max: "max",
+      },
+      input: ["text"],
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      contextWindow: 1_000_000,
+      maxTokens: 384_000,
+    });
+    memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
+    memory.appendMessage({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "API-first reasoning preserved for the tool handoff",
+          thinkingSignature: JSON.stringify({
+            type: "reasoning",
+            id: "rs_api_handoff",
+            content: [
+              {
+                type: "reasoning_text",
+                text: "API-first reasoning preserved for the tool handoff",
+              },
+            ],
+            summary: [],
+          }),
+        },
+        {
+          type: "toolCall",
+          id: "api-read-call",
+          name: "read",
+          arguments: { path: sourceFile },
+        },
+      ],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: 2,
+    });
+    const h1 = memory.toJsonl();
+    const manifest = {
+      schemaVersion: 1,
+      outcome: "handoff",
+      baseSession: { sessionId: SESSION_ID, sha256: null },
+      session: {
+        sessionId: SESSION_ID,
+        sha256: createHash("sha256").update(h1).digest("hex"),
+        rawSize: Buffer.byteLength(h1),
+      },
+    };
+    const handoffServer = createServer((request, response) => {
+      if (request.url === "/manifest.json") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(manifest));
+        return;
+      }
+      if (request.url === "/session.jsonl") {
+        response.writeHead(200, {
+          "content-type": "application/x-ndjson",
+          "content-length": String(Buffer.byteLength(h1)),
+        });
+        response.end(h1);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
     let host: RpcHost | undefined;
-    let resumedHost: RpcHost | undefined;
 
     try {
-      await mkdir(skillDirectory, { recursive: true });
-      await writeFile(
-        join(agentDir, "AGENTS.md"),
-        "Mounted official Pi agent instructions.",
-      );
-      await writeFile(
-        join(skillDirectory, "SKILL.md"),
-        `---\nname: ${skillName}\ndescription: Mounted official Pi integration skill.\n---\nRead the official Pi skill body before answering.\n`,
-      );
+      await mkdir(agentDir, { recursive: true });
+      await writeFile(sourceFile, "tool output from the sandbox filesystem");
+      await new Promise<void>((resolve, reject) => {
+        handoffServer.once("error", reject);
+        handoffServer.listen(0, "127.0.0.1", () => {
+          handoffServer.off("error", reject);
+          resolve();
+        });
+      });
+      const address = handoffServer.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Pi handoff test server has no TCP address");
+      }
+      const handoffBaseUrl = `http://127.0.0.1:${address.port}`;
       const payloadFile = join(root, "launch-payload.json");
       await writeFile(
         payloadFile,
         JSON.stringify({
           schemaVersion: 1,
-          appendSystemPrompt: "Mounted official Pi append prompt.",
-          launchConfig: { schemaVersion: 2 },
+          appendSystemPrompt: null,
+          launchConfig: {
+            schemaVersion: 2,
+            apiFirstTurn: {
+              schemaVersion: 1,
+              resourceSnapshotDigest: "a".repeat(64),
+              manifestUrl: `${handoffBaseUrl}/manifest.json`,
+              sessionUrl: `${handoffBaseUrl}/session.jsonl`,
+              deadlineAt: Date.now() + 10_000,
+              baseSession: { sessionId: SESSION_ID, sha256: null },
+              sandboxEventSequenceStart: 1,
+            },
+          },
         }),
         { mode: 0o600 },
       );
@@ -443,95 +566,52 @@ describe("sandbox Pi agent loop", () => {
           baseUrl: provider.baseUrl,
           model: "deepseek-v4-flash",
           apiKeyEnv: "OPENAI_API_KEY",
+          credentialSecretName: "DEEPSEEK_API_KEY",
         }),
-        OPENAI_API_KEY: "pi-rpc-test-key",
+        OPENAI_API_KEY: "pi-handoff-test-key",
       };
 
       host = new RpcHost({ cwd: root, agentDir, sessionDir, env });
-      const initialState = await host.state("initial-state");
-      expect(initialState).toMatchObject({
+      const state = await host.state("handoff-state");
+      expect(state).toMatchObject({
         sessionId: SESSION_ID,
-        autoCompactionEnabled: true,
-        messageCount: 0,
+        messageCount: 2,
       });
-      const sessionFile = initialState.sessionFile;
-      expect(typeof sessionFile).toBe("string");
-      expect(String(sessionFile).startsWith(`${sessionDir}/`)).toBe(true);
-      expect(String(sessionFile)).toContain(SESSION_ID);
-      expect(String(sessionFile).endsWith(".jsonl")).toBe(true);
+      expect(String(state.sessionFile)).toContain("api-first-turn-");
 
-      host.send({
-        id: "initial",
-        type: "prompt",
-        message: `/skill:${skillName} complete the initial turn`,
-      });
-      await host.waitFor((record) => {
-        return record.type === "response" && record.id === "initial";
-      });
-      const initialRequest = await provider.nextRequest();
-
-      host.send({
-        id: "steer",
-        type: "steer",
-        message: "steer this official turn",
-      });
-      const steerResponse = await host.waitFor((record) => {
-        return record.type === "response" && record.id === "steer";
-      });
-      expect(steerResponse).toMatchObject({
-        command: "steer",
-        success: true,
-      });
-      initialRequest.respond("first official answer");
-      const steeredRequest = await provider.nextRequest();
-      steeredRequest.respond("steered official answer");
+      host.send({ id: "handoff", type: "prompt", message: prompt });
+      const continuationRequest = await provider.nextRequest();
+      const continuationBody = JSON.stringify(continuationRequest.body);
+      expect(continuationBody).toContain(
+        "tool output from the sandbox filesystem",
+      );
+      expect(continuationBody).toContain("rs_api_handoff");
+      expect(continuationBody).toContain("reasoning_text");
+      expect(occurrences(continuationBody, prompt)).toBe(1);
+      continuationRequest.respond("handoff continuation complete");
       await host.waitFor((record) => {
         return record.type === "agent_settled";
       });
       await host.close();
       host = undefined;
 
-      const initialBody = JSON.stringify(initialRequest.body);
-      expect(initialBody).toContain("Mounted official Pi append prompt.");
-      expect(initialBody).toContain("Mounted official Pi agent instructions.");
-      expect(initialBody).toContain("Mounted official Pi integration skill.");
-      expect(initialBody).toContain(
-        "Read the official Pi skill body before answering.",
-      );
-      expect(toolNames(initialRequest.body).sort()).toEqual(
-        ["bash", "edit", "read", "write"].sort(),
-      );
-      expect(JSON.stringify(steeredRequest.body)).toContain(
-        "steer this official turn",
-      );
-
-      const persisted = await readFile(String(sessionFile), "utf8");
-      const entries = persisted
-        .trim()
-        .split("\n")
-        .map((line) => {
-          return JSON.parse(line) as Record<string, unknown>;
-        });
-      expect(entries[0]).toMatchObject({
-        type: "session",
-        id: SESSION_ID,
-        cwd: root,
-      });
-      expect(persisted).toContain("complete the initial turn");
-      expect(persisted).toContain("steer this official turn");
-      expect(persisted).toContain("steered official answer");
-
-      resumedHost = new RpcHost({ cwd: root, agentDir, sessionDir, env });
-      const resumedState = await resumedHost.state("resumed-state");
-      expect(resumedState.sessionFile).toBe(sessionFile);
-      expect(Number(resumedState.messageCount)).toBeGreaterThan(0);
-      expect(resumedState.autoCompactionEnabled).toBe(true);
-      await resumedHost.close();
-      resumedHost = undefined;
+      expect(provider.requests).toHaveLength(1);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      expect(persisted).toContain("api-read-call");
+      expect(persisted).toContain("handoff continuation complete");
     } finally {
       await host?.terminate();
-      await resumedHost?.terminate();
       await provider.close();
+      await new Promise<void>((resolve, reject) => {
+        handoffServer.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
       await rm(root, { recursive: true, force: true });
     }
   }, 20_000);

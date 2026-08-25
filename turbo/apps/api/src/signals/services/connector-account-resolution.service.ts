@@ -20,10 +20,7 @@ const L = logger("connector-account-resolution");
 export type ConnectorAccountSelectionMode =
   | { readonly kind: "exact"; readonly sourceId: string }
   | { readonly kind: "default" }
-  // Target-only callers may act only while one account exists. Source-less
-  // runtime call sites are temporary and tracked for removal in #27695;
-  // legacy target-only mutation APIs keep this fail-closed singleton semantic.
-  | { readonly kind: "legacy-singleton" };
+  | { readonly kind: "target-only-client-singleton" };
 
 export interface ConnectorAccountResolutionRequest {
   readonly target: ConnectorAccountTarget;
@@ -196,7 +193,7 @@ async function loadDefaultRows(
     );
 }
 
-async function loadLegacyRows(
+async function loadTargetOnlyClientSingletonRows(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
@@ -205,14 +202,14 @@ async function loadLegacyRows(
   },
 ): Promise<readonly ConnectorAccountIdentityRow[]> {
   const targets = args.requests.flatMap((request) => {
-    return request.selection.kind === "legacy-singleton"
+    return request.selection.kind === "target-only-client-singleton"
       ? [request.target]
       : [];
   });
   if (targets.length === 0) {
     return [];
   }
-  const ranked = db.$with("legacy_connector_account_candidates").as(
+  const ranked = db.$with("target_only_connector_account_candidates").as(
     db
       .select({
         ...identitySelection(),
@@ -285,18 +282,24 @@ export async function resolveConnectorAccounts(
     return new Map();
   }
   const normalizedRequests = [...requests.values()];
-  const [exactRows, defaultRows, legacyRows] = await Promise.all([
-    loadExactRows(db, { ...args, requests: normalizedRequests }),
-    loadDefaultRows(db, { ...args, requests: normalizedRequests }),
-    loadLegacyRows(db, { ...args, requests: normalizedRequests }),
-  ]);
+  const [exactRows, defaultRows, targetOnlyClientSingletonRows] =
+    await Promise.all([
+      loadExactRows(db, { ...args, requests: normalizedRequests }),
+      loadDefaultRows(db, { ...args, requests: normalizedRequests }),
+      loadTargetOnlyClientSingletonRows(db, {
+        ...args,
+        requests: normalizedRequests,
+      }),
+    ]);
   const exactById = new Map(
     exactRows.map((row) => {
       return [row.connectorId, row] as const;
     }),
   );
   const defaultByTarget = rowsByTarget(defaultRows);
-  const legacyByTarget = rowsByTarget(legacyRows);
+  const targetOnlyClientSingletonByTarget = rowsByTarget(
+    targetOnlyClientSingletonRows,
+  );
   const resolutions = new Map<string, ConnectorAccountResolution>();
   for (const [key, request] of requests) {
     if (request.selection.kind === "exact") {
@@ -315,7 +318,7 @@ export async function resolveConnectorAccounts(
     const rows =
       request.selection.kind === "default"
         ? defaultByTarget.get(key)
-        : legacyByTarget.get(key);
+        : targetOnlyClientSingletonByTarget.get(key);
     if (!rows || rows.length === 0) {
       resolutions.set(
         key,
@@ -372,9 +375,11 @@ export async function resolveConnectorAccounts(
     defaultRequestCount: normalizedRequests.filter((request) => {
       return request.selection.kind === "default";
     }).length,
-    legacyRequestCount: normalizedRequests.filter((request) => {
-      return request.selection.kind === "legacy-singleton";
-    }).length,
+    targetOnlyClientSingletonRequestCount: normalizedRequests.filter(
+      (request) => {
+        return request.selection.kind === "target-only-client-singleton";
+      },
+    ).length,
     ...outcomeCounts,
   });
   return resolutions;

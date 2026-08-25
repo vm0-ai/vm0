@@ -1,5 +1,6 @@
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   slackChatIngress,
   type SlackChatIngressStatus,
@@ -29,12 +30,12 @@ export function slackSessionThreadTs(args: {
   readonly channelType: "channel" | "dm" | "group_dm";
   readonly messageTs: string;
   readonly threadTs?: string;
-  readonly agentComposeId?: string;
+  readonly agentId?: string;
   readonly selectedModel?: string | null;
   readonly serviceTier?: ChatThreadServiceTier | null;
 }): string {
-  if (args.channelType === "dm" && !args.threadTs && args.agentComposeId) {
-    const session = `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentComposeId}:${args.selectedModel ?? "default"}`;
+  if (args.channelType === "dm" && !args.threadTs && args.agentId) {
+    const session = `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentId}:${args.selectedModel ?? "default"}`;
     return args.serviceTier === "priority" ? `${session}:priority` : session;
   }
   return args.threadTs ?? args.messageTs;
@@ -94,7 +95,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
   db: Db,
   args: SlackChatThreadRouteKey & {
     readonly orgId: string;
-    readonly agentComposeId: string;
+    readonly agentId: string;
     readonly selectedModel: string | null;
     readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
@@ -114,7 +115,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentComposeId,
+        agentId: args.agentId,
         selectedModel: args.selectedModel,
         codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
@@ -122,7 +123,8 @@ export async function ensureCanonicalSlackChatThreadRoute(
         lastMessageAt: args.currentTime,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -166,7 +168,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
@@ -190,6 +192,7 @@ export async function admitCanonicalSlackChatEvent(
     readonly routeId: string;
     readonly eventId: string;
     readonly payload: string;
+    readonly publicBrand: PublicBrand;
     readonly isRetry: boolean;
     readonly currentTime: Date;
   },
@@ -201,6 +204,7 @@ export async function admitCanonicalSlackChatEvent(
         routeId: args.routeId,
         eventId: args.eventId,
         payload: args.payload,
+        publicBrand: args.publicBrand,
         status: "pending",
         retryCount: args.isRetry ? 1 : 0,
         createdAt: args.currentTime,

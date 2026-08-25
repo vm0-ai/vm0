@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,7 +10,6 @@ import { customConnectorsDeleteRoutes } from "./custom-connectors-delete";
 import { customConnectorsGetRoutes } from "./custom-connectors-get";
 import { customConnectorsUpdateRoutes } from "./custom-connectors-update";
 import { customConnectorProposalRoutes } from "./custom-connectors-proposal";
-import { customConnectorDisconnectRoutes } from "./custom-connectors-disconnect";
 import { customConnectorOAuth2Routes } from "./custom-connectors-oauth2";
 import { customConnectorsValuesSetRoutes } from "./custom-connectors-values-set";
 
@@ -24,7 +23,7 @@ const listCustomConnectorsInner$ = computed(async (get) => {
 
 export const customConnectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorsContract.list,
+    route: customConnectorsContract.list,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -39,7 +38,6 @@ export const customConnectorsRoutes: readonly RouteEntry[] = [
   ...customConnectorsDeleteRoutes,
   ...customConnectorsUpdateRoutes,
   ...customConnectorProposalRoutes,
-  ...customConnectorDisconnectRoutes,
   ...customConnectorsValuesSetRoutes,
   ...customConnectorOAuth2Routes,
 ];

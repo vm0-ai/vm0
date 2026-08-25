@@ -1,5 +1,9 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::device_lock::{self, NbdDeviceClaim};
@@ -8,11 +12,22 @@ use crate::netlink;
 
 use super::DeviceFreeCheck;
 
+/// One process-local demand scan shared by concurrent blocking workers.
+///
+/// The shared cursor issues every logical offset at most once. Host-global
+/// ownership still comes from the per-index lock and post-lock sysfs recheck.
+#[derive(Clone)]
 pub(super) struct ScanRequest {
-    pub(super) max_devices: u32,
-    pub(super) exclude: HashSet<u32>,
-    pub(super) lock_dir: PathBuf,
-    pub(super) device_appears_free: DeviceFreeCheck,
+    shared: Arc<SharedScan>,
+}
+
+struct SharedScan {
+    max_devices: u32,
+    start: u32,
+    next_offset: AtomicU32,
+    exclude: HashSet<u32>,
+    lock_dir: PathBuf,
+    device_appears_free: DeviceFreeCheck,
 }
 
 pub(super) struct ScannedDeviceClaim {
@@ -31,15 +46,69 @@ impl ScannedDeviceClaim {
 }
 
 impl ScanRequest {
+    pub(super) fn new(
+        max_devices: u32,
+        exclude: HashSet<u32>,
+        lock_dir: PathBuf,
+        device_appears_free: DeviceFreeCheck,
+    ) -> Self {
+        Self {
+            shared: Arc::new(SharedScan {
+                max_devices,
+                start: netlink::random_offset(max_devices),
+                next_offset: AtomicU32::new(0),
+                exclude,
+                lock_dir,
+                device_appears_free,
+            }),
+        }
+    }
+
     pub(super) fn run(self) -> Result<ScannedDeviceClaim> {
         let started_at = Instant::now();
-        let claim = scan_and_claim_with(
-            self.max_devices,
-            &self.exclude,
-            &self.lock_dir,
-            self.device_appears_free,
-        )?;
+        let claim = self.scan_and_claim()?;
         Ok(ScannedDeviceClaim::new(claim, started_at.elapsed()))
+    }
+
+    fn scan_and_claim(&self) -> Result<NbdDeviceClaim> {
+        while let Some(index) = self.next_index() {
+            if self.shared.exclude.contains(&index) {
+                continue;
+            }
+            if !(self.shared.device_appears_free)(index) {
+                continue;
+            }
+            match device_lock::try_acquire_device_claim_in(index, &self.shared.lock_dir) {
+                Ok(Some(claim)) => {
+                    if (self.shared.device_appears_free)(index) {
+                        return Ok(claim);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        device_index = index,
+                        error = %e,
+                        "cannot acquire NBD device lock, skipping index"
+                    );
+                }
+            }
+        }
+
+        Err(NbdCowError::NoFreeDevice)
+    }
+
+    fn next_index(&self) -> Option<u32> {
+        let offset = self
+            .shared
+            .next_offset
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |offset| {
+                (offset < self.shared.max_devices).then(|| offset + 1)
+            })
+            .ok()?;
+        let index =
+            (u64::from(self.shared.start) + u64::from(offset)) % u64::from(self.shared.max_devices);
+        Some(index as u32)
     }
 }
 
@@ -48,45 +117,18 @@ impl ScanRequest {
 /// Starts from a random offset to distribute usage across runners. The first
 /// sysfs check is a cheap precheck; the post-lock sysfs check is the correctness
 /// gate that prevents stale observations from becoming leases.
-pub(super) fn scan_and_claim_with<F>(
+#[cfg(test)]
+pub(super) fn scan_and_claim_with(
     max_devices: u32,
     exclude: &HashSet<u32>,
     lock_dir: &Path,
-    device_appears_free: F,
-) -> Result<NbdDeviceClaim>
-where
-    F: Fn(u32) -> bool,
-{
-    if max_devices == 0 {
-        return Err(NbdCowError::NoFreeDevice);
-    }
-
-    let start = netlink::random_offset(max_devices);
-
-    for n in 0..max_devices {
-        let i = (start + n) % max_devices;
-        if exclude.contains(&i) {
-            continue;
-        }
-        if !device_appears_free(i) {
-            continue;
-        }
-        match device_lock::try_acquire_device_claim_in(i, lock_dir) {
-            Ok(Some(claim)) => {
-                if device_appears_free(i) {
-                    return Ok(claim);
-                }
-            }
-            Ok(None) => {}
-            Err(e) => {
-                tracing::warn!(
-                    device_index = i,
-                    error = %e,
-                    "cannot acquire NBD device lock, skipping index"
-                );
-            }
-        }
-    }
-
-    Err(NbdCowError::NoFreeDevice)
+    device_appears_free: DeviceFreeCheck,
+) -> Result<NbdDeviceClaim> {
+    let request = ScanRequest::new(
+        max_devices,
+        exclude.clone(),
+        lock_dir.to_path_buf(),
+        device_appears_free,
+    );
+    request.scan_and_claim()
 }

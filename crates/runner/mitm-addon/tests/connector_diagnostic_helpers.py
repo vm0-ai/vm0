@@ -6,7 +6,7 @@ from mitmproxy import http
 
 import mitm_addon
 from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import _sandbox_without_firewalls, _write_registry
 
 CONNECTOR_DIAGNOSTIC_REQUEST_CHUNK = b"partial request"
 
@@ -145,9 +145,9 @@ def write_connector_diagnostic_capture_registry(tmp_path: Path) -> Path:
     write_connector_diagnostic_catalog_cache(tmp_path)
     return _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(
+        sandbox_info=_sandbox_without_firewalls(
             tmp_path,
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
 

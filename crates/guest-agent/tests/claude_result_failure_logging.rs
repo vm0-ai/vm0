@@ -7,7 +7,7 @@ mod common;
 
 use common::SystemLogOverrideGuard;
 use guest_agent::masker::SecretMasker;
-use guest_contracts::diagnostics::FailureDetailSource;
+use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
 use std::time::Duration;
 
 #[tokio::test]
@@ -15,13 +15,14 @@ async fn claude_error_result_is_written_to_system_log() -> Result<(), Box<dyn st
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let system_log_path = tmp.path().join("system.log");
-    let failure_reason = "permission denied while running command";
+    let failure_message =
+        "Failed to authenticate. API Error: 401 OAuth access token has been revoked.";
 
     unsafe {
         common::setup_env(
             &mock,
             tmp.path(),
-            &format!("printf '{failure_reason}'; exit 2"),
+            &format!("printf '{failure_message}'; exit 2"),
             3,
             1,
         )?;
@@ -45,7 +46,7 @@ async fn claude_error_result_is_written_to_system_log() -> Result<(), Box<dyn st
             .failure_diagnostic
             .as_ref()
             .map(|diagnostic| diagnostic.message.as_str()),
-        Some(failure_reason)
+        Some(failure_message)
     );
     assert_eq!(
         cli_result
@@ -54,12 +55,22 @@ async fn claude_error_result_is_written_to_system_log() -> Result<(), Box<dyn st
             .map(|diagnostic| diagnostic.source),
         Some(FailureDetailSource::ClaudeResult)
     );
+    let terminal_failure = guest_agent::failure_diagnostics::cli_nonzero_failure_for_config(
+        &runtime.config,
+        None,
+        &cli_result,
+    );
+    assert_eq!(terminal_failure.message, failure_message);
+    assert_eq!(
+        terminal_failure.diagnostic.failure_reason,
+        Some(FailureReason::ReconnectRequired)
+    );
 
     let system_log = std::fs::read_to_string(&system_log_path)?;
     assert!(
-        system_log.contains(
-            "Claude JSONL failure result seq=4 subtype=error: permission denied while running command"
-        ),
+        system_log.contains(&format!(
+            "Claude JSONL failure result seq=4 subtype=error: {failure_message}"
+        )),
         "system log should include Claude JSONL failure reason: {system_log}"
     );
 

@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { testComputerUseStateContract } from "@okouai/api-contracts/contracts/test-computer-use-state";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -25,13 +25,13 @@ const deleteQuery$ = queryOf(testComputerUseStateContract.delete);
 interface RunState {
   readonly id: string;
   readonly sessionId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly triggerSource: string | null;
   readonly chatThreadId: string | null;
 }
 
 interface BaseComputerUseRunSeed {
-  readonly composeId: string;
+  readonly agentId: string;
   readonly sessionId: string;
   readonly runId: string;
   readonly threadId: string | null;
@@ -44,13 +44,19 @@ async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
     .select({
       id: agentRuns.id,
       sessionId: agentRuns.sessionId,
-      agentComposeId: agentSessions.agentComposeId,
+      agentId: sql`${agentSessions.agentId}`.mapWith(agentSessions.id),
       triggerSource: agentRuns.triggerSource,
       chatThreadId: agentRuns.chatThreadId,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        isNotNull(agentRuns.triggerSource),
+        isNotNull(agentSessions.agentId),
+      ),
+    )
     .limit(1);
   return run ?? null;
 }
@@ -79,7 +85,7 @@ async function seedBaseComputerUseRun(args: {
   readonly canonicalThread: boolean;
   readonly signal: AbortSignal;
 }): Promise<BaseComputerUseRunSeed> {
-  const composeId = randomUUID();
+  const agentId = randomUUID();
   const sessionId = randomUUID();
   const runId = randomUUID();
   const threadId =
@@ -89,11 +95,12 @@ async function seedBaseComputerUseRun(args: {
     chatThreadId: threadId,
   });
 
-  await args.db.insert(agentComposes).values({
-    id: composeId,
-    userId: args.userId,
+  await args.db.insert(agents).values({
+    id: agentId,
+    owner: args.userId,
     orgId: args.orgId,
-    name: `computer-use-auth-${composeId.slice(0, 8)}`,
+    name: `computer-use-auth-${agentId.slice(0, 8)}`,
+    visibility: "private",
   });
   args.signal.throwIfAborted();
 
@@ -101,7 +108,7 @@ async function seedBaseComputerUseRun(args: {
     await args.db.insert(chatThreads).values({
       id: threadId,
       userId: args.userId,
-      agentComposeId: composeId,
+      agentId,
       title: "Computer Use authorization test",
     });
     args.signal.throwIfAborted();
@@ -111,7 +118,7 @@ async function seedBaseComputerUseRun(args: {
     id: sessionId,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeId: composeId,
+    agentId,
   });
   args.signal.throwIfAborted();
 
@@ -126,7 +133,7 @@ async function seedBaseComputerUseRun(args: {
   });
   args.signal.throwIfAborted();
 
-  return { composeId, sessionId, runId, threadId };
+  return { agentId, sessionId, runId, threadId };
 }
 
 const postComputerUseState$ = command(
@@ -168,7 +175,7 @@ const postComputerUseState$ = command(
       status: 200 as const,
       body: {
         ok: true as const,
-        compose_id: seed.composeId,
+        compose_id: seed.agentId,
         run_id: seed.runId,
         session_id: seed.sessionId,
         thread_id: seed.threadId,
@@ -247,9 +254,7 @@ const deleteComputerUseState$ = command(
       await db.delete(chatThreads).where(eq(chatThreads.id, run.chatThreadId));
       signal.throwIfAborted();
     }
-    await db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, run.agentComposeId));
+    await db.delete(agents).where(eq(agents.id, run.agentId));
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true as const } };

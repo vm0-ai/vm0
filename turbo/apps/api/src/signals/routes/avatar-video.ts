@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -14,10 +12,8 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
-  avatarVideoFeatureDisabled,
   avatarVideoInsufficientCredits,
   avatarVideoPricing$,
   avatarVideoRequiresPaidPlan,
@@ -46,18 +42,6 @@ import {
 const generateBody$ = bodyResultOf(avatarVideoContract.generate);
 const avatarsQuery$ = queryOf(avatarVideoContract.avatars);
 const voicesQuery$ = queryOf(avatarVideoContract.voices);
-
-const avatarVideoEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
 
 function avatarVideoRequestRecord(
   options: AvatarVideoOptions,
@@ -140,11 +124,6 @@ const submitAvatarVideoJob$ = command(
 
 const postGenerateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(avatarVideoEnabled$))) {
-      return avatarVideoFeatureDisabled();
-    }
-    signal.throwIfAborted();
-
     const auth = get(organizationAuthContext$);
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
@@ -192,11 +171,11 @@ const postGenerateInner$ = command(
     );
     signal.throwIfAborted();
     const runId =
-      auth.tokenType === "zero" || auth.tokenType === "sandbox"
+      auth.tokenType === "agent" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
     const publicBrand =
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const admission = await set(
       startRunBuiltInAdmission$,
       { runId, kind: "video" },
@@ -241,10 +220,6 @@ const postGenerateInner$ = command(
 );
 
 const getAvatarsInner$ = command(async ({ get }, signal: AbortSignal) => {
-  if (!(await get(avatarVideoEnabled$))) {
-    return avatarVideoFeatureDisabled();
-  }
-  signal.throwIfAborted();
   const apiKey = env("JOGGAI_API_KEY");
   if (!apiKey) {
     return avatarVideoServiceUnavailable(
@@ -263,10 +238,6 @@ const getAvatarsInner$ = command(async ({ get }, signal: AbortSignal) => {
 });
 
 const getVoicesInner$ = command(async ({ get }, signal: AbortSignal) => {
-  if (!(await get(avatarVideoEnabled$))) {
-    return avatarVideoFeatureDisabled();
-  }
-  signal.throwIfAborted();
   const apiKey = env("JOGGAI_API_KEY");
   if (!apiKey) {
     return avatarVideoServiceUnavailable(

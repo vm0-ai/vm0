@@ -6,13 +6,13 @@ import {
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { agents$ } from "../agent.ts";
 import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
-} from "../zero-page/agent-connector-authorizations.ts";
+} from "../okou-page/agent-connector-authorizations.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/authorize` route params.
@@ -100,7 +100,7 @@ export const authorizeConnector$ = command(
     agentId: string,
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(userConnectorsContract);
 
     await withCleanup(

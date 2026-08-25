@@ -13,7 +13,7 @@ import { bodyResultOf } from "../context/request";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { createTestFixtureZeroRun$ } from "../services/zero-runs-create.service";
+import { createTestFixtureAgentRun$ } from "../services/agent-runs-create.service";
 
 const c = initContract();
 
@@ -36,9 +36,9 @@ export const runFixtureContract = c.router({
   },
 });
 
-const zeroRunFixtureBody$ = bodyResultOf(runFixtureContract.create);
+const agentRunFixtureBody$ = bodyResultOf(runFixtureContract.create);
 
-const createZeroRunFixture$ = command(
+const createAgentRunFixture$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
@@ -46,7 +46,7 @@ const createZeroRunFixture$ = command(
       "api_dispatch_pre_create_zero_parse_body",
       "nested",
       async () => {
-        return await get(zeroRunFixtureBody$);
+        return await get(agentRunFixtureBody$);
       },
     );
     signal.throwIfAborted();
@@ -69,7 +69,7 @@ const createZeroRunFixture$ = command(
       },
     );
     signal.throwIfAborted();
-    return await set(createTestFixtureZeroRun$, args, signal);
+    return await set(createTestFixtureAgentRun$, args, signal);
   },
 );
 
@@ -86,7 +86,7 @@ export const runFixtureRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
       },
-      createZeroRunFixture$,
+      createAgentRunFixture$,
     ),
   },
 ];

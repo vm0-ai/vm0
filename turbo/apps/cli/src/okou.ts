@@ -67,6 +67,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   scrape: "scrape:read",
   "people-search": "people-search:read",
   "web-search": "web-search:read",
+  social: "social:read",
   recognize: "image-recognition:write",
   translate: "translation:write",
   finance: "finance:read",
@@ -329,6 +330,13 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "social",
+    description: "Retrieve public social data through managed Okou services",
+    load: async () => {
+      return (await import("./commands/social")).socialCommand;
+    },
+  },
+  {
     name: "recognize",
     description: "Recognize one image through a managed multimodal model",
     load: async () => {
@@ -532,6 +540,11 @@ export function buildHelpText(
     ...commandExampleIfVisible(
       "web-search",
       '  Search the public web? okou web-search "latest news" --json',
+      payload,
+    ),
+    ...commandExampleIfVisible(
+      "social",
+      "  Analyze social data?   okou social request /youtube/transcript --query url=https://youtu.be/dQw4w9WgXcQ --json",
       payload,
     ),
     ...commandExampleIfVisible(

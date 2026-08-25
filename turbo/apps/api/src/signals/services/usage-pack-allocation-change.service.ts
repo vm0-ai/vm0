@@ -29,6 +29,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
@@ -45,6 +46,7 @@ import {
   type StripeSubscription,
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
+import { settle } from "../utils";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import {
   assertUsagePackMemberCreditRefundReady,
@@ -68,6 +70,7 @@ const CHANGE_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const STRIPE_INVOICE_LINE_PAGE_SIZE = 100;
 const CREDITS_PER_DOLLAR = 1000;
 const CREDITS_PER_CENT = CREDITS_PER_DOLLAR / 100;
+const L = logger("UsagePackAllocationChange");
 const OPEN_CHANGE_STATUSES = [
   "previewed",
   "applying",
@@ -3708,6 +3711,86 @@ async function usagePackChangeCandidateSubscriptionIds(
   ];
 }
 
+async function reconcileUsagePackAllocationChangeCandidate(
+  db: Db,
+  usagePackSubscriptionId: string,
+  at: Date,
+  signal: AbortSignal,
+): Promise<{
+  readonly reconciled: number;
+  readonly orgIds: readonly string[];
+}> {
+  let reconciled = 0;
+  const orgIds = new Set<string>();
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  signal.throwIfAborted();
+  if (!context?.subscription.stripeSubscriptionId) {
+    return { reconciled, orgIds: [...orgIds] };
+  }
+  const subscription = await getStripeClient().subscriptions.retrieve(
+    context.subscription.stripeSubscriptionId,
+    { expand: ["latest_invoice"] },
+  );
+  signal.throwIfAborted();
+  const result = await reconcileUsagePackAllocationChangeSubscription(
+    db,
+    subscription,
+  );
+  reconciled += result.reconciled;
+  if (result.orgId) {
+    orgIds.add(result.orgId);
+  }
+  signal.throwIfAborted();
+
+  const refreshed = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  if (!refreshed) {
+    return { reconciled, orgIds: [...orgIds] };
+  }
+  reconciled += await retryApplyingDeferredUsagePackChange(
+    db,
+    refreshed,
+    subscription,
+    signal,
+  );
+  const hasOpenUpgrade = refreshed.changes.some((change) => {
+    return change.subscriptionChangeId === null && change.kind === "upgrade";
+  });
+  if (hasOpenUpgrade) {
+    const invoice = await paidUpgradeInvoiceForSubscription(subscription);
+    signal.throwIfAborted();
+    if (invoice) {
+      const outcome = await handleUsagePackAllocationChangeInvoicePaid(
+        db,
+        invoice,
+      );
+      reconciled += outcome.handled ? 1 : 0;
+      if (outcome.orgId) {
+        orgIds.add(outcome.orgId);
+      }
+    }
+  }
+  const afterInvoice = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    usagePackSubscriptionId,
+  );
+  if (afterInvoice) {
+    reconciled += await failExpiredUsagePackUpgrade(
+      db,
+      afterInvoice,
+      subscription,
+      at,
+    );
+  }
+  signal.throwIfAborted();
+  return { reconciled, orgIds: [...orgIds] };
+}
+
 export async function reconcileUsagePackAllocationChanges(
   db: Db,
   scope: BillingReconciliationScope | undefined,
@@ -3752,72 +3835,26 @@ export async function reconcileUsagePackAllocationChanges(
   const orgIds = new Set<string>();
   let reconciled = expiredPreviews.length;
   for (const usagePackSubscriptionId of subscriptionIds) {
-    const context = await loadUsagePackChangeContextBySubscriptionId(
-      db,
-      usagePackSubscriptionId,
-    );
-    signal.throwIfAborted();
-    if (!context?.subscription.stripeSubscriptionId) {
-      continue;
-    }
-    const subscription = await getStripeClient().subscriptions.retrieve(
-      context.subscription.stripeSubscriptionId,
-      { expand: ["latest_invoice"] },
-    );
-    signal.throwIfAborted();
-    const result = await reconcileUsagePackAllocationChangeSubscription(
-      db,
-      subscription,
-    );
-    reconciled += result.reconciled;
-    if (result.orgId) {
-      orgIds.add(result.orgId);
-    }
-    signal.throwIfAborted();
-
-    const refreshed = await loadUsagePackChangeContextBySubscriptionId(
-      db,
-      usagePackSubscriptionId,
-    );
-    if (!refreshed) {
-      continue;
-    }
-    reconciled += await retryApplyingDeferredUsagePackChange(
-      db,
-      refreshed,
-      subscription,
+    const result = await settle(
+      reconcileUsagePackAllocationChangeCandidate(
+        db,
+        usagePackSubscriptionId,
+        at,
+        signal,
+      ),
       signal,
     );
-    const hasOpenUpgrade = refreshed.changes.some((change) => {
-      return change.subscriptionChangeId === null && change.kind === "upgrade";
-    });
-    if (hasOpenUpgrade) {
-      const invoice = await paidUpgradeInvoiceForSubscription(subscription);
-      signal.throwIfAborted();
-      if (invoice) {
-        const outcome = await handleUsagePackAllocationChangeInvoicePaid(
-          db,
-          invoice,
-        );
-        reconciled += outcome.handled ? 1 : 0;
-        if (outcome.orgId) {
-          orgIds.add(outcome.orgId);
-        }
-      }
+    if (!result.ok) {
+      L.error("usage pack allocation change reconciliation failed", {
+        usagePackSubscriptionId,
+        error: result.error,
+      });
+      continue;
     }
-    const afterInvoice = await loadUsagePackChangeContextBySubscriptionId(
-      db,
-      usagePackSubscriptionId,
-    );
-    if (afterInvoice) {
-      reconciled += await failExpiredUsagePackUpgrade(
-        db,
-        afterInvoice,
-        subscription,
-        at,
-      );
+    reconciled += result.value.reconciled;
+    for (const orgId of result.value.orgIds) {
+      orgIds.add(orgId);
     }
-    signal.throwIfAborted();
   }
   return { reconciled, orgIds: [...orgIds] };
 }

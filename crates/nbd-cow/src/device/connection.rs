@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use uuid::Uuid;
+
 use crate::error::{self, Result};
 use crate::{netlink, pool};
 
@@ -140,17 +142,21 @@ impl ConnectDeviceOutcome {
             }),
         }
     }
-}
 
-impl Drop for ConnectDeviceOutcome {
-    fn drop(&mut self) {
+    fn cleanup_unobserved_with(
+        &mut self,
+        ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
+        disconnect: impl FnOnce(u32) -> Result<()>,
+    ) {
         let Some(result) = self.result.take() else {
             return;
         };
 
-        let connect_tid = match result {
-            Ok(success) => success.connect_tid,
-            Err(netlink::ConnectDeviceError::AmbiguousAfterSend { connect_tid, .. }) => connect_tid,
+        let connection_id = match result {
+            Ok(success) => success.connection_id,
+            Err(netlink::ConnectDeviceError::AmbiguousAfterSend { connection_id, .. }) => {
+                connection_id
+            }
             Err(
                 netlink::ConnectDeviceError::NotSent { .. }
                 | netlink::ConnectDeviceError::DefiniteAfterSend { .. },
@@ -159,13 +165,22 @@ impl Drop for ConnectDeviceOutcome {
 
         tracing::warn!(
             device_index = self.device_index,
-            connect_tid,
             "NBD connect result dropped before observation; disconnecting owned device"
         );
-        disconnect_connected_if_owned(ConnectedDevice {
-            index: self.device_index,
-            connect_tid,
-        });
+        disconnect_connected_if_owned_with(
+            ConnectedDevice {
+                index: self.device_index,
+                connection_id,
+            },
+            ownership,
+            disconnect,
+        );
+    }
+}
+
+impl Drop for ConnectDeviceOutcome {
+    fn drop(&mut self) {
+        self.cleanup_unobserved_with(device_ownership, netlink::disconnect);
     }
 }
 
@@ -213,67 +228,6 @@ pub(super) async fn connect_device_with_state_critical_section(
     ConnectDeviceCriticalSectionResult { timing, result }
 }
 
-pub(super) struct DisconnectOutcome {
-    device_index: u32,
-    lease: Option<DeferredLease>,
-    result: Option<Result<()>>,
-}
-
-impl DisconnectOutcome {
-    fn with_lease(device_index: u32, lease: DeferredLease, result: Result<()>) -> Self {
-        Self {
-            device_index,
-            lease: Some(lease),
-            result: Some(result),
-        }
-    }
-
-    pub(super) fn into_parts(mut self) -> Result<(pool::DeviceLease, Result<()>)> {
-        let result = match self.result.take() {
-            Some(result) => result,
-            None => Err(error::NbdCowError::Io(std::io::Error::other(
-                "disconnect outcome consumed twice",
-            )))?,
-        };
-        let lease = match self.lease.as_mut().and_then(DeferredLease::take) {
-            Some(lease) => lease,
-            None => {
-                return Err(error::NbdCowError::Io(std::io::Error::other(
-                    "disconnect outcome lease consumed twice",
-                )));
-            }
-        };
-        Ok((lease, result))
-    }
-}
-
-impl Drop for DisconnectOutcome {
-    fn drop(&mut self) {
-        if let Some(result) = self.result.as_ref() {
-            observe_detached_disconnect_result(
-                self.device_index,
-                DetachedDisconnectResult::Unconditional(result),
-            );
-        }
-    }
-}
-
-pub(super) async fn disconnect_device_with_lease_critical_section(
-    device_index: u32,
-    pool: pool::DevicePoolHandle,
-    lease: pool::DeviceLease,
-) -> Result<DisconnectOutcome> {
-    let deferred_lease = DeferredLease::new(pool, lease);
-    run_netlink_critical_section("NBD disconnect", move || {
-        DisconnectOutcome::with_lease(
-            device_index,
-            deferred_lease,
-            netlink::disconnect(device_index),
-        )
-    })
-    .await
-}
-
 pub(super) struct OwnedDisconnectResultOutcome {
     device_index: u32,
     lease: DeferredLease,
@@ -309,10 +263,7 @@ impl OwnedDisconnectResultOutcome {
 impl Drop for OwnedDisconnectResultOutcome {
     fn drop(&mut self) {
         if let Some(result) = self.result.as_ref() {
-            observe_detached_disconnect_result(
-                self.device_index,
-                DetachedDisconnectResult::Owned(result),
-            );
+            observe_detached_disconnect_result(self.device_index, result);
         }
     }
 }
@@ -346,12 +297,12 @@ pub(super) async fn disconnect_connected_if_owned_result_with_lease_critical_sec
     .await
 }
 
-/// Result of checking NBD device ownership via sysfs PID.
+/// Result of checking NBD device ownership via its sysfs backend identifier.
 pub(super) enum DeviceOwnership {
-    /// We own the device (sysfs PID matches our PID).
+    /// We own the device (the backend identifier matches our connection UUID).
     Ours,
-    /// Another process owns the device (with its PID).
-    Foreign(u32),
+    /// Another connection owns the device.
+    Foreign,
     /// Cannot determine ownership (sysfs read failed).
     Unknown(std::io::Error),
 }
@@ -359,66 +310,46 @@ pub(super) enum DeviceOwnership {
 #[derive(Clone, Copy)]
 pub(super) struct ConnectedDevice {
     pub(super) index: u32,
-    pub(super) connect_tid: u32,
+    pub(super) connection_id: Uuid,
 }
 
 pub(super) enum OwnedDisconnectState {
     Disconnected,
-    Foreign(u32),
+    Foreign,
 }
 
-enum DetachedDisconnectResult<'a> {
-    Unconditional(&'a Result<()>),
-    Owned(&'a Result<OwnedDisconnectState>),
-}
-
-fn observe_detached_disconnect_result(device_index: u32, result: DetachedDisconnectResult<'_>) {
+fn observe_detached_disconnect_result(device_index: u32, result: &Result<OwnedDisconnectState>) {
     match result {
-        DetachedDisconnectResult::Unconditional(Err(e))
-        | DetachedDisconnectResult::Owned(Err(e)) => {
+        Err(e) => {
             tracing::warn!(
                 device_index,
                 error = %e,
                 "detached NBD disconnect failed"
             );
         }
-        DetachedDisconnectResult::Owned(Ok(OwnedDisconnectState::Foreign(pid))) => {
+        Ok(OwnedDisconnectState::Foreign) => {
             tracing::warn!(
                 device_index,
-                foreign_pid = pid,
-                "detached owned NBD disconnect skipped: device recycled by another process"
+                "detached owned NBD disconnect skipped: device belongs to a different connection"
             );
         }
-        DetachedDisconnectResult::Unconditional(Ok(()))
-        | DetachedDisconnectResult::Owned(Ok(OwnedDisconnectState::Disconnected)) => {}
+        Ok(OwnedDisconnectState::Disconnected) => {}
     }
 }
 
-pub(super) fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
-    let pid_path = format!("/sys/block/nbd{device_index}/pid");
-    match std::fs::read_to_string(&pid_path) {
-        Ok(contents) => device_ownership_from_pid_contents(device_index, connect_tid, &contents),
+pub(super) fn device_ownership(device_index: u32, connection_id: Uuid) -> DeviceOwnership {
+    let backend_path = format!("/sys/block/nbd{device_index}/backend");
+    match std::fs::read_to_string(&backend_path) {
+        Ok(contents) => device_ownership_from_backend_contents(connection_id, &contents),
         Err(e) => DeviceOwnership::Unknown(e),
     }
 }
 
-fn device_ownership_from_pid_contents(
-    device_index: u32,
-    connect_tid: u32,
-    contents: &str,
-) -> DeviceOwnership {
-    let pid = contents.trim();
-    if pid == "-1" || pid == "0" || pid.is_empty() {
-        return DeviceOwnership::Foreign(0);
-    }
-
-    match pid.parse::<u32>() {
-        Ok(tid) if tid == connect_tid => DeviceOwnership::Ours,
-        Ok(tid) => DeviceOwnership::Foreign(tid),
-        Err(e) => DeviceOwnership::Unknown(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("invalid NBD device pid for nbd{device_index}: {e}"),
-        )),
+fn device_ownership_from_backend_contents(connection_id: Uuid, contents: &str) -> DeviceOwnership {
+    if contents.trim() == connection_id.to_string() {
+        DeviceOwnership::Ours
+    } else {
+        DeviceOwnership::Foreign
     }
 }
 
@@ -428,15 +359,15 @@ pub(super) fn disconnect_connected_if_owned(connected: ConnectedDevice) -> bool 
 
 fn disconnect_connected_if_owned_result_with(
     connected: ConnectedDevice,
-    ownership: impl FnOnce(u32, u32) -> DeviceOwnership,
+    ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
     disconnect: impl FnOnce(u32) -> Result<()>,
 ) -> Result<OwnedDisconnectState> {
-    match ownership(connected.index, connected.connect_tid) {
+    match ownership(connected.index, connected.connection_id) {
         DeviceOwnership::Ours => {
             disconnect(connected.index)?;
             Ok(OwnedDisconnectState::Disconnected)
         }
-        DeviceOwnership::Foreign(pid) => Ok(OwnedDisconnectState::Foreign(pid)),
+        DeviceOwnership::Foreign => Ok(OwnedDisconnectState::Foreign),
         DeviceOwnership::Unknown(err) => Err(error::NbdCowError::Io(std::io::Error::new(
             err.kind(),
             format!(
@@ -449,10 +380,10 @@ fn disconnect_connected_if_owned_result_with(
 
 fn disconnect_connected_if_owned_with(
     connected: ConnectedDevice,
-    ownership: impl FnOnce(u32, u32) -> DeviceOwnership,
+    ownership: impl FnOnce(u32, Uuid) -> DeviceOwnership,
     disconnect: impl FnOnce(u32) -> Result<()>,
 ) -> bool {
-    match ownership(connected.index, connected.connect_tid) {
+    match ownership(connected.index, connected.connection_id) {
         DeviceOwnership::Ours => {
             if let Err(e) = disconnect(connected.index) {
                 tracing::warn!(
@@ -465,11 +396,10 @@ fn disconnect_connected_if_owned_with(
                 true
             }
         }
-        DeviceOwnership::Foreign(pid) => {
+        DeviceOwnership::Foreign => {
             tracing::warn!(
                 device_index = connected.index,
-                foreign_pid = pid,
-                "skipping cancelled-create disconnect: device recycled by another process"
+                "skipping cancelled-create disconnect: device belongs to a different connection"
             );
             false
         }
@@ -477,7 +407,7 @@ fn disconnect_connected_if_owned_with(
             tracing::warn!(
                 device_index = connected.index,
                 error = %err,
-                "skipping cancelled-create disconnect: cannot read device pid"
+                "skipping cancelled-create disconnect: cannot read device backend identity"
             );
             false
         }
@@ -503,6 +433,14 @@ mod tests {
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     const TEST_DEVICE_INDEX: u32 = 0;
+    const MISSING_DEVICE_INDEX: u32 = u32::MAX;
+
+    const CONNECT_RESULT_DROPPED_MESSAGE: &str =
+        "NBD connect result dropped before observation; disconnecting owned device";
+
+    fn test_connection_id() -> Uuid {
+        Uuid::from_u128(42)
+    }
 
     async fn acquired_test_lease() -> (pool::DevicePoolHandle, pool::DeviceLease, tempfile::TempDir)
     {
@@ -530,10 +468,10 @@ mod tests {
         let mut matching = entries
             .iter()
             .filter(|event| event.fields.get("message").map(String::as_str) == Some(message));
-        let event = matching.next().expect("expected detached disconnect event");
+        let event = matching.next().expect("expected tracing event");
         assert!(
             matching.next().is_none(),
-            "duplicate detached disconnect events: {entries:#?}"
+            "duplicate tracing events: {entries:#?}"
         );
         event.clone()
     }
@@ -551,6 +489,16 @@ mod tests {
         );
     }
 
+    fn assert_no_event_with_message(captured: &CapturedEvents, message: &str) {
+        let entries = captured.entries();
+        assert!(
+            entries
+                .iter()
+                .all(|event| event.fields.get("message").map(String::as_str) != Some(message)),
+            "unexpected tracing event: {entries:#?}"
+        );
+    }
+
     async fn assert_single_lease_returned(pool: &pool::DevicePoolHandle) {
         let snapshot = pool.snapshot().await;
         assert!(snapshot.in_flight.is_empty());
@@ -558,29 +506,161 @@ mod tests {
         pool.cleanup().await;
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn dropped_unconditional_disconnect_error_is_observed() {
+    async fn assert_connect_cleanup(
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+        expected_connection_id: Uuid,
+    ) {
         let (pool, lease, _lock_dir) = acquired_test_lease().await;
-        let outcome = DisconnectOutcome::with_lease(
+        let mut outcome = ConnectDeviceOutcome::new(
             TEST_DEVICE_INDEX,
             DeferredLease::new(pool.clone(), lease),
-            Err(error::NbdCowError::Io(std::io::Error::other(
-                "unconditional disconnect failed",
-            ))),
+            result,
         );
+        let ownership_calls = std::cell::Cell::new(0);
+        let disconnect_calls = std::cell::Cell::new(0);
 
-        let ((), captured) = capture_events(|| drop(outcome));
+        let ((), captured) = capture_events(|| {
+            outcome.cleanup_unobserved_with(
+                |index, connection_id| {
+                    ownership_calls.set(ownership_calls.get() + 1);
+                    assert_eq!(index, TEST_DEVICE_INDEX);
+                    assert_eq!(connection_id, expected_connection_id);
+                    DeviceOwnership::Ours
+                },
+                |index| {
+                    disconnect_calls.set(disconnect_calls.get() + 1);
+                    assert_eq!(index, TEST_DEVICE_INDEX);
+                    Ok(())
+                },
+            );
+            drop(outcome);
+        });
 
-        let event = event_with_message(&captured, "detached NBD disconnect failed");
+        assert_eq!(ownership_calls.get(), 1);
+        assert_eq!(disconnect_calls.get(), 1);
+        let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
         assert_eq!(event.level, Level::WARN);
         assert_eq!(
             event.fields.get("device_index").map(String::as_str),
             Some("0")
         );
-        assert_eq!(
-            event.fields.get("error").map(String::as_str),
-            Some("I/O error: unconditional disconnect failed")
+        assert_single_lease_returned(&pool).await;
+    }
+
+    async fn assert_connect_cleanup_skipped(
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+    ) {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let mut outcome = ConnectDeviceOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            result,
         );
+
+        let ((), captured) = capture_events(|| {
+            outcome.cleanup_unobserved_with(
+                |_, _| panic!("non-committed connect must not check ownership"),
+                |_| panic!("non-committed connect must not disconnect"),
+            );
+            drop(outcome);
+        });
+
+        assert_no_event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_successful_and_ambiguous_connects_cleanup_exact_owner() {
+        let successful_connection_id = Uuid::from_u128(43);
+        assert_connect_cleanup(
+            Ok(netlink::ConnectDeviceSuccess {
+                connection_id: successful_connection_id,
+            }),
+            successful_connection_id,
+        )
+        .await;
+
+        let ambiguous_connection_id = Uuid::from_u128(44);
+        assert_connect_cleanup(
+            Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
+                connection_id: ambiguous_connection_id,
+                source: error::NbdCowError::Io(std::io::Error::other(
+                    "connect completion unavailable",
+                )),
+            }),
+            ambiguous_connection_id,
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_not_sent_and_definite_connect_failures_skip_cleanup() {
+        assert_connect_cleanup_skipped(Err(netlink::ConnectDeviceError::NotSent {
+            source: error::NbdCowError::Io(std::io::Error::other("connect was not sent")),
+        }))
+        .await;
+
+        assert_connect_cleanup_skipped(Err(netlink::ConnectDeviceError::DefiniteAfterSend {
+            source: error::NbdCowError::NetlinkErrno {
+                errno: libc::EINVAL,
+                message: "test connect rejected".to_string(),
+            },
+        }))
+        .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_connect_outcome_delegates_cleanup_and_retires_lease() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let outcome = ConnectDeviceOutcome::new(
+            MISSING_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Ok(netlink::ConnectDeviceSuccess {
+                connection_id: test_connection_id(),
+            }),
+        );
+
+        let ((), captured) = capture_events(|| drop(outcome));
+
+        let event = event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        assert_eq!(event.level, Level::WARN);
+        let expected_device_index = MISSING_DEVICE_INDEX.to_string();
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some(expected_device_index.as_str())
+        );
+        let ownership_event = event_with_message(
+            &captured,
+            "skipping cancelled-create disconnect: cannot read device backend identity",
+        );
+        assert_eq!(ownership_event.level, Level::WARN);
+        assert_eq!(
+            ownership_event
+                .fields
+                .get("device_index")
+                .map(String::as_str),
+            Some(expected_device_index.as_str())
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn consumed_connect_outcome_returns_lease_without_drop_cleanup() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let connection_id = test_connection_id();
+        let outcome = ConnectDeviceOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Ok(netlink::ConnectDeviceSuccess { connection_id }),
+        );
+
+        let (parts, captured) = capture_events(|| outcome.into_parts().unwrap());
+
+        assert_no_event_with_message(&captured, CONNECT_RESULT_DROPPED_MESSAGE);
+        let (lease, result) = parts;
+        assert_eq!(lease.index(), TEST_DEVICE_INDEX);
+        assert_eq!(result.unwrap().connection_id, connection_id);
+        pool.release_clean(lease).await;
         assert_single_lease_returned(&pool).await;
     }
 
@@ -616,86 +696,52 @@ mod tests {
         let outcome = OwnedDisconnectResultOutcome::new(
             TEST_DEVICE_INDEX,
             DeferredLease::new(pool.clone(), lease),
-            Ok(OwnedDisconnectState::Foreign(41)),
+            Ok(OwnedDisconnectState::Foreign),
         );
 
         let ((), captured) = capture_events(|| drop(outcome));
 
         let event = event_with_message(
             &captured,
-            "detached owned NBD disconnect skipped: device recycled by another process",
+            "detached owned NBD disconnect skipped: device belongs to a different connection",
         );
         assert_eq!(event.level, Level::WARN);
         assert_eq!(
             event.fields.get("device_index").map(String::as_str),
             Some("0")
         );
-        assert_eq!(
-            event.fields.get("foreign_pid").map(String::as_str),
-            Some("41")
-        );
+        assert!(!event.fields.contains_key("foreign_pid"));
         assert_single_lease_returned(&pool).await;
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn successful_and_consumed_disconnect_outcomes_are_not_observed() {
-        let (unconditional_pool, unconditional_lease, _unconditional_lock_dir) =
-            acquired_test_lease().await;
         let (owned_pool, owned_lease, _owned_lock_dir) = acquired_test_lease().await;
-        let (consumed_unconditional_pool, consumed_unconditional_lease, _consumed_lock_dir) =
-            acquired_test_lease().await;
         let (consumed_owned_pool, consumed_owned_lease, _consumed_owned_lock_dir) =
             acquired_test_lease().await;
 
         let (consumed, captured) = capture_events(|| {
-            drop(DisconnectOutcome::with_lease(
-                TEST_DEVICE_INDEX,
-                DeferredLease::new(unconditional_pool.clone(), unconditional_lease),
-                Ok(()),
-            ));
             drop(OwnedDisconnectResultOutcome::new(
                 TEST_DEVICE_INDEX,
                 DeferredLease::new(owned_pool.clone(), owned_lease),
                 Ok(OwnedDisconnectState::Disconnected),
             ));
 
-            let unconditional = DisconnectOutcome::with_lease(
-                TEST_DEVICE_INDEX,
-                DeferredLease::new(
-                    consumed_unconditional_pool.clone(),
-                    consumed_unconditional_lease,
-                ),
-                Err(error::NbdCowError::Io(std::io::Error::other(
-                    "consumed unconditional error",
-                ))),
-            )
-            .into_parts()
-            .unwrap();
-            let owned = OwnedDisconnectResultOutcome::new(
+            OwnedDisconnectResultOutcome::new(
                 TEST_DEVICE_INDEX,
                 DeferredLease::new(consumed_owned_pool.clone(), consumed_owned_lease),
-                Ok(OwnedDisconnectState::Foreign(42)),
+                Ok(OwnedDisconnectState::Foreign),
             )
             .into_parts()
-            .unwrap();
-            (unconditional, owned)
+            .unwrap()
         });
 
         assert_no_detached_disconnect_events(&captured);
-        let ((unconditional_lease, unconditional_result), (owned_lease, owned_result)) = consumed;
-        assert!(unconditional_result.is_err());
-        assert!(matches!(
-            owned_result,
-            Ok(OwnedDisconnectState::Foreign(42))
-        ));
-        consumed_unconditional_pool
-            .release_clean(unconditional_lease)
-            .await;
+        let (owned_lease, owned_result) = consumed;
+        assert!(matches!(owned_result, Ok(OwnedDisconnectState::Foreign)));
         consumed_owned_pool.release_clean(owned_lease).await;
 
-        assert_single_lease_returned(&unconditional_pool).await;
         assert_single_lease_returned(&owned_pool).await;
-        assert_single_lease_returned(&consumed_unconditional_pool).await;
         assert_single_lease_returned(&consumed_owned_pool).await;
     }
 
@@ -875,47 +921,37 @@ mod tests {
     }
 
     #[test]
-    fn device_ownership_parses_matching_pid_as_ours() {
-        let ownership = device_ownership_from_pid_contents(7, 42, "42\n");
+    fn device_ownership_matches_backend_identity() {
+        let connection_id = test_connection_id();
+        let ownership =
+            device_ownership_from_backend_contents(connection_id, &format!("{connection_id}\n"));
 
         assert!(matches!(ownership, DeviceOwnership::Ours));
     }
 
     #[test]
-    fn device_ownership_treats_empty_or_nonpositive_pid_as_released() {
-        for contents in ["", "0\n", "-1\n"] {
-            let ownership = device_ownership_from_pid_contents(7, 42, contents);
+    fn device_ownership_rejects_empty_or_different_backend_identity() {
+        for contents in ["", "different\n", "00000000-0000-0000-0000-000000000000\n"] {
+            let ownership = device_ownership_from_backend_contents(test_connection_id(), contents);
 
-            assert!(matches!(ownership, DeviceOwnership::Foreign(0)));
-        }
-    }
-
-    #[test]
-    fn device_ownership_reports_malformed_pid_as_unknown() {
-        let ownership = device_ownership_from_pid_contents(7, 42, "not-a-pid\n");
-
-        match ownership {
-            DeviceOwnership::Unknown(e) => {
-                assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
-                assert!(e.to_string().contains("invalid NBD device pid for nbd7"));
-            }
-            _ => panic!("malformed pid must not be treated as released or foreign"),
+            assert!(matches!(ownership, DeviceOwnership::Foreign));
         }
     }
 
     #[test]
     fn disconnect_connected_if_owned_disconnects_matching_owner() {
         let calls = std::cell::Cell::new(0);
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let disconnected = disconnect_connected_if_owned_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
+                assert_eq!(observed_connection_id, connection_id);
                 DeviceOwnership::Ours
             },
             |index| {
@@ -932,16 +968,17 @@ mod tests {
     #[test]
     fn disconnect_connected_if_owned_result_disconnects_matching_owner() {
         let calls = std::cell::Cell::new(0);
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let result = disconnect_connected_if_owned_result_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
+                assert_eq!(observed_connection_id, connection_id);
                 DeviceOwnership::Ours
             },
             |index| {
@@ -958,17 +995,18 @@ mod tests {
 
     #[test]
     fn disconnect_connected_if_owned_skips_foreign_owner() {
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let disconnected = disconnect_connected_if_owned_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
-                DeviceOwnership::Foreign(100)
+                assert_eq!(observed_connection_id, connection_id);
+                DeviceOwnership::Foreign
             },
             |_| panic!("foreign device must not be disconnected"),
         );
@@ -978,37 +1016,39 @@ mod tests {
 
     #[test]
     fn disconnect_connected_if_owned_result_skips_foreign_owner() {
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let result = disconnect_connected_if_owned_result_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
-                DeviceOwnership::Foreign(100)
+                assert_eq!(observed_connection_id, connection_id);
+                DeviceOwnership::Foreign
             },
             |_| panic!("foreign device must not be disconnected"),
         )
         .expect("foreign owner should be reported");
 
-        assert!(matches!(result, OwnedDisconnectState::Foreign(100)));
+        assert!(matches!(result, OwnedDisconnectState::Foreign));
     }
 
     #[test]
     fn disconnect_connected_if_owned_skips_unknown_owner() {
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let disconnected = disconnect_connected_if_owned_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
+                assert_eq!(observed_connection_id, connection_id);
                 DeviceOwnership::Unknown(std::io::Error::other("sysfs unavailable"))
             },
             |_| panic!("unknown ownership must not be disconnected"),
@@ -1019,16 +1059,17 @@ mod tests {
 
     #[test]
     fn disconnect_connected_if_owned_result_errors_on_unknown_owner() {
+        let connection_id = test_connection_id();
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id,
         };
 
         let result = disconnect_connected_if_owned_result_with(
             connected,
-            |index, tid| {
+            |index, observed_connection_id| {
                 assert_eq!(index, 7);
-                assert_eq!(tid, 42);
+                assert_eq!(observed_connection_id, connection_id);
                 DeviceOwnership::Unknown(std::io::Error::other("sysfs unavailable"))
             },
             |_| panic!("unknown ownership must not be disconnected"),
@@ -1047,7 +1088,7 @@ mod tests {
     fn disconnect_connected_if_owned_reports_disconnect_error() {
         let connected = ConnectedDevice {
             index: 7,
-            connect_tid: 42,
+            connection_id: test_connection_id(),
         };
 
         let disconnected = disconnect_connected_if_owned_with(

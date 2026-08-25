@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.21.82](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.81...guest-mock-claude-v0.21.82) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+
+## [0.21.81](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.80...guest-mock-claude-v0.21.81) (2026-08-24)
+
+## [0.21.80](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.79...guest-mock-claude-v0.21.80) (2026-08-24)
+
+## [0.21.79](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.78...guest-mock-claude-v0.21.79) (2026-08-24)
+
+## [0.21.78](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.77...guest-mock-claude-v0.21.78) (2026-08-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+
+## [0.21.77](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.76...guest-mock-claude-v0.21.77) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+
+## [0.21.76](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.75...guest-mock-claude-v0.21.76) (2026-08-23)
+
+## [0.21.75](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.74...guest-mock-claude-v0.21.75) (2026-08-23)
+
+## [0.21.74](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.73...guest-mock-claude-v0.21.74) (2026-08-21)
+
+## [0.21.73](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.72...guest-mock-claude-v0.21.73) (2026-08-21)
+
+
+### Bug Fixes
+
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
 ## [0.21.72](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.71...guest-mock-claude-v0.21.72) (2026-08-21)
 
 

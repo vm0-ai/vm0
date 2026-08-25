@@ -1,28 +1,27 @@
 import { command, computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import { extractAndGroupVariables } from "@okouai/core/variable-expander";
 import {
   apiUrlForPublicBrand,
   appUrlForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
+import {
+  OFFICIAL_TEAMS_PUBLIC_BRAND,
+  teamsBotDisplayName,
+} from "../../lib/teams-official-app";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import {
@@ -31,6 +30,7 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../../lib/time";
+import { userConfiguredAgentEnvironmentRequirements } from "./agent-execution-config";
 import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
 
@@ -121,6 +121,7 @@ function buildTeamsBrowserConnectUrl(args: {
   readonly channelId?: string | null;
   readonly threadId?: string | null;
   readonly orgId?: string | null;
+  readonly botName?: string | null;
 }): string {
   const params = new URLSearchParams({
     tenantId: args.tenantId,
@@ -143,6 +144,7 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "channelId", args.channelId);
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
+  setOptionalParam(params, "botName", args.botName);
   return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/settings/teams?${params.toString()}`;
 }
 
@@ -185,6 +187,7 @@ export function isTeamsInstallationActive(
 
 export function buildTeamsConnectUrlForActivity(args: {
   readonly activity: TeamsInboundActivity;
+  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): string | null {
   if (
@@ -196,7 +199,7 @@ export function buildTeamsConnectUrlForActivity(args: {
   }
 
   return buildTeamsBrowserConnectUrl({
-    publicBrand: args.installation?.publicBrand ?? "vm0",
+    publicBrand: args.publicBrand,
     tenantId: args.activity.tenantId,
     tenantName: args.activity.tenantName,
     teamsUserId: args.activity.sender.id,
@@ -212,6 +215,7 @@ export function buildTeamsConnectUrlForActivity(args: {
     channelId: args.activity.channelId,
     threadId: args.activity.threadId,
     orgId: args.installation?.orgId,
+    botName: teamsBotDisplayName(args.installation?.botName),
   });
 }
 
@@ -354,7 +358,7 @@ async function getUserAgentPreference(
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
-    .select({ selectedComposeId: teamsUserAgentPreferences.selectedComposeId })
+    .select({ selectedAgentId: teamsUserAgentPreferences.selectedAgentId })
     .from(teamsUserAgentPreferences)
     .where(
       and(
@@ -363,7 +367,7 @@ async function getUserAgentPreference(
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function resolveEffectiveComposeId(
@@ -374,9 +378,9 @@ async function resolveEffectiveComposeId(
   const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .select({ id: agents.id })
+      .from(agents)
+      .where(and(eq(agents.id, override), eq(agents.orgId, orgId)))
       .limit(1);
     if (agent?.id) {
       return override;
@@ -390,10 +394,9 @@ async function getTeamsAgentName(
   composeId: string,
 ): Promise<string | undefined> {
   const [agent] = await db
-    .select({ name: zeroAgents.name, displayName: zeroAgents.displayName })
-    .from(agentComposes)
-    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.id, composeId))
+    .select({ name: agents.name, displayName: agents.displayName })
+    .from(agents)
+    .where(eq(agents.id, composeId))
     .limit(1);
   return agent?.displayName ?? agent?.name;
 }
@@ -424,6 +427,7 @@ interface TeamsConnectStatus {
   readonly tenantName?: string | null;
   readonly teamId?: string | null;
   readonly teamName?: string | null;
+  readonly botName?: string | null;
   readonly defaultAgentName?: string | null;
   readonly permissionMismatch?: boolean | null;
   readonly reinstallUrl?: string | null;
@@ -456,33 +460,20 @@ async function resolveTeamsEnvironment(args: {
     return emptyTeamsEnvironment();
   }
 
-  const [compose] = await args.db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, meta.defaultAgentId))
+  const [agent] = await args.db
+    .select({ name: agents.name })
+    .from(agents)
+    .where(
+      and(eq(agents.id, meta.defaultAgentId), eq(agents.orgId, args.orgId)),
+    )
     .limit(1);
 
-  if (!compose?.headVersionId) {
+  if (!agent) {
     return emptyTeamsEnvironment();
   }
 
-  const [version] = await args.db
-    .select({ content: agentComposeVersions.content })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, compose.headVersionId))
-    .limit(1);
-
-  if (!version) {
-    return emptyTeamsEnvironment();
-  }
-
-  const grouped = extractAndGroupVariables(version.content);
-  const requiredSecrets = grouped.secrets.map((secret) => {
-    return secret.name;
-  });
-  const requiredVars = grouped.vars.map((variable) => {
-    return variable.name;
-  });
+  const { secrets: requiredSecrets, vars: requiredVars } =
+    userConfiguredAgentEnvironmentRequirements(agent.name);
   const [userSecretNames, userVarNames, connectorBindings] = await Promise.all([
     args.loadUserSecretNames(),
     args.loadUserVarNames(),
@@ -629,6 +620,7 @@ function activeTeamsStatus(args: {
     tenantName: args.installation.teamsTenantName,
     teamId: args.installation.teamsTeamId,
     teamName: args.installation.teamsTeamName,
+    botName: teamsBotDisplayName(args.installation.botName),
     defaultAgentName: args.connectedFields?.defaultAgentName ?? null,
     ...teamsPermissionStatus({
       installation: args.installation,
@@ -714,7 +706,6 @@ function installationMetadataPatch(args: {
   readonly botId?: string | null;
   readonly botName?: string | null;
   readonly serviceUrl?: string | null;
-  readonly publicBrand?: PublicBrand;
 }): Partial<typeof teamsOrgInstallations.$inferInsert> {
   return {
     ...(nonEmpty(args.tenantName) ? { teamsTenantName: args.tenantName } : {}),
@@ -724,7 +715,7 @@ function installationMetadataPatch(args: {
     ...(nonEmpty(args.botId) ? { botId: args.botId } : {}),
     ...(nonEmpty(args.botName) ? { botName: args.botName } : {}),
     ...(nonEmpty(args.serviceUrl) ? { serviceUrl: args.serviceUrl } : {}),
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
+    publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
     updatedAt: nowDate(),
   };
 }
@@ -769,9 +760,10 @@ type BindTeamsInstallationResult =
 
 function buildTeamsWelcomeCard(
   installation: TeamsInstallation,
+  publicBrand: PublicBrand,
 ): TeamsAdaptiveCard {
-  const { assistantName } = publicBrandPresentation(installation.publicBrand);
-  const mentionName = installation.botName ?? assistantName;
+  const { assistantName } = publicBrandPresentation(publicBrand);
+  const mentionName = teamsBotDisplayName(installation.botName);
   return {
     type: "AdaptiveCard",
     version: "1.4",
@@ -836,6 +828,7 @@ async function notifyTeamsConnect(
     readonly conversationType: string | undefined;
     readonly teamsUserId: string | undefined;
     readonly teamsUserDisplayName: string | undefined;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -875,9 +868,9 @@ async function notifyTeamsConnect(
       conversationId,
       tenantId: args.tenantId,
       text: `You're connected to ${
-        publicBrandPresentation(args.installation.publicBrand).assistantName
+        publicBrandPresentation(args.publicBrand).assistantName
       }!`,
-      card: buildTeamsWelcomeCard(args.installation),
+      card: buildTeamsWelcomeCard(args.installation, args.publicBrand),
     },
     signal,
   );
@@ -912,7 +905,7 @@ async function bindUnclaimedTeamsInstallation(
     .set({
       orgId: args.connectArgs.orgId,
       installedByUserId: args.connectArgs.userId,
-      publicBrand: args.connectArgs.publicBrand,
+      publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
       updatedAt: nowDate(),
     })
     .where(
@@ -976,6 +969,7 @@ async function finalizeTeamsConnection(
       conversationType: connectArgs.conversationType,
       teamsUserId: connectArgs.teamsUserId,
       teamsUserDisplayName: connectArgs.teamsUserDisplayName,
+      publicBrand: connectArgs.publicBrand,
     },
     signal,
   );
@@ -1029,7 +1023,7 @@ export const prepareTeamsInstallation$ = command(
         teamsTenantName: args.tenantName,
         orgId: args.orgId,
         installedByUserId: args.userId,
-        publicBrand: args.publicBrand,
+        publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
       })
       .onConflictDoUpdate({
         target: teamsOrgInstallations.teamsTenantId,
@@ -1037,7 +1031,7 @@ export const prepareTeamsInstallation$ = command(
           orgId: args.orgId,
           teamsTenantName: sql`coalesce(excluded.teams_tenant_name, ${teamsOrgInstallations.teamsTenantName})`,
           installedByUserId: args.userId,
-          publicBrand: args.publicBrand,
+          publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
           updatedAt: nowDate(),
         },
       })
@@ -1090,7 +1084,6 @@ export const connectTeamsInstallation$ = command(
         teamId: args.teamId,
         teamName: args.teamName,
         serviceUrl: args.serviceUrl,
-        publicBrand: args.publicBrand,
       });
       signal.throwIfAborted();
 
@@ -1125,7 +1118,6 @@ export const connectTeamsInstallation$ = command(
       teamId: args.teamId,
       teamName: args.teamName,
       serviceUrl: args.serviceUrl,
-      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
 
@@ -1133,7 +1125,10 @@ export const connectTeamsInstallation$ = command(
       {
         db: writeDb,
         connectArgs: args,
-        installation: { ...installation, publicBrand: args.publicBrand },
+        installation: {
+          ...installation,
+          publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
+        },
         role: args.orgRole,
       },
       signal,
@@ -1304,10 +1299,7 @@ function activityRecipient(activity: TeamsInboundActivity): {
 export const recordTeamsInstallationActivity$ = command(
   async (
     { set },
-    args: {
-      readonly activity: TeamsInboundActivity;
-      readonly publicBrand: PublicBrand;
-    },
+    args: { readonly activity: TeamsInboundActivity },
     signal: AbortSignal,
   ): Promise<TeamsInstallationActivityResult> => {
     const { activity } = args;
@@ -1373,7 +1365,7 @@ export const recordTeamsInstallationActivity$ = command(
         botId: recipient.id,
         botName: recipient.name,
         serviceUrl: activity.serviceUrl,
-        publicBrand: args.publicBrand,
+        publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
       })
       .onConflictDoUpdate({
         target: teamsOrgInstallations.teamsTenantId,
@@ -1385,6 +1377,7 @@ export const recordTeamsInstallationActivity$ = command(
           botId: sql`coalesce(excluded.bot_id, ${teamsOrgInstallations.botId})`,
           botName: sql`coalesce(excluded.bot_name, ${teamsOrgInstallations.botName})`,
           serviceUrl: sql`coalesce(excluded.service_url, ${teamsOrgInstallations.serviceUrl})`,
+          publicBrand: OFFICIAL_TEAMS_PUBLIC_BRAND,
           updatedAt: nowDate(),
         },
       })

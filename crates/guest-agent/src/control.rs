@@ -70,10 +70,10 @@ impl Drop for StreamSlotCleanup {
 impl ControlHandle {
     /// Starts the process-control worker when process control is bootstrapped.
     ///
-    /// The bootstrap endpoint is read from [`process_control_ipc::BOOTSTRAP_ENV`],
-    /// whose environment variable name is `VM0_PROCESS_CONTROL_ENDPOINT`.
-    /// Missing or empty values mean this guest-agent run has no process-control
-    /// endpoint, so this method returns `None`.
+    /// The bootstrap endpoint is supplied from the once-resolved canonical or
+    /// legacy process environment. Missing or empty values mean this
+    /// guest-agent run has no process-control endpoint, so this method returns
+    /// `None`.
     ///
     /// This method also returns `None` if the worker thread cannot be spawned.
     /// A returned `Some(ControlHandle)` only means the worker thread was
@@ -85,14 +85,12 @@ impl ControlHandle {
     /// [`ActiveInputController`], and its outcome is mapped back to a local
     /// process-control response.
     pub fn spawn(
+        endpoint: Option<&str>,
         shutdown: CancellationToken,
         active_input: ActiveInputController,
         cli_cancellation: CancellationToken,
     ) -> Option<Self> {
-        let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
-            Ok(endpoint) if !endpoint.is_empty() => endpoint,
-            _ => return None,
-        };
+        let endpoint = endpoint.filter(|endpoint| !endpoint.is_empty())?.to_owned();
         Self::spawn_endpoint(endpoint, shutdown, active_input, cli_cancellation)
     }
 

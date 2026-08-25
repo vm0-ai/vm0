@@ -12,7 +12,7 @@ import {
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { feishuUserAgentPreferences } from "@okouai/db/schema/feishu-user-agent-preference";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import {
   buildFeishuHelpMessage,
   buildFeishuLoginMessage,
@@ -96,6 +96,7 @@ export interface FeishuDispatchInstallation {
   readonly orgId: string;
   readonly ownerUserId: string | null;
   readonly defaultAgentId: string;
+  readonly botName: string | null;
   readonly messageReceivedAt: Date | null;
   readonly publicBrand: PublicBrand;
 }
@@ -211,6 +212,7 @@ export async function replyToUnconnectedFeishuMessage(
     readonly db: Db;
     readonly message: FeishuInboundMessage;
     readonly publicBrand: PublicBrand;
+    readonly botName: string | null;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -220,7 +222,10 @@ export async function replyToUnconnectedFeishuMessage(
       {
         db: args.db,
         message: args.message,
-        outbound: buildFeishuHelpMessage(args.publicBrand),
+        outbound: buildFeishuHelpMessage({
+          publicBrand: args.publicBrand,
+          botName: args.botName,
+        }),
       },
       signal,
     );
@@ -268,19 +273,16 @@ async function getVisibleAgent(args: {
 }): Promise<FeishuAgent | undefined> {
   const [agent] = await args.db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.id, args.composeId),
-        eq(zeroAgents.orgId, args.orgId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.id, args.composeId),
+        eq(agents.orgId, args.orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
     .limit(1);
@@ -294,21 +296,18 @@ async function getVisibleAgents(args: {
 }): Promise<readonly FeishuAgent[]> {
   return await args.db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
+      id: agents.id,
+      name: agents.name,
+      displayName: agents.displayName,
     })
-    .from(zeroAgents)
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, args.orgId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.orgId, args.orgId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
-    .orderBy(desc(zeroAgents.updatedAt))
+    .orderBy(desc(agents.updatedAt))
     .limit(FEISHU_AGENT_PICKER_MAX_OPTIONS);
 }
 
@@ -319,7 +318,7 @@ async function getUserAgentPreference(args: {
 }): Promise<string | null> {
   const [preference] = await args.db
     .select({
-      selectedComposeId: feishuUserAgentPreferences.selectedComposeId,
+      selectedAgentId: feishuUserAgentPreferences.selectedAgentId,
     })
     .from(feishuUserAgentPreferences)
     .where(
@@ -329,7 +328,7 @@ async function getUserAgentPreference(args: {
       ),
     )
     .limit(1);
-  return preference?.selectedComposeId ?? null;
+  return preference?.selectedAgentId ?? null;
 }
 
 async function setUserAgentPreference(args: {
@@ -343,7 +342,7 @@ async function setUserAgentPreference(args: {
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      selectedComposeId: args.composeId,
+      selectedAgentId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
@@ -351,7 +350,7 @@ async function setUserAgentPreference(args: {
         feishuUserAgentPreferences.orgId,
       ],
       set: {
-        selectedComposeId: args.composeId,
+        selectedAgentId: args.composeId,
         updatedAt: nowDate(),
       },
     });
@@ -389,13 +388,10 @@ export async function resolveEffectiveFeishuAgent(args: {
     return { status: "resolved", agent };
   }
   const [existing] = await args.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
+    .select({ id: agents.id })
+    .from(agents)
     .where(
-      and(
-        eq(zeroAgents.id, composeId),
-        eq(zeroAgents.orgId, args.installation.orgId),
-      ),
+      and(eq(agents.id, composeId), eq(agents.orgId, args.installation.orgId)),
     )
     .limit(1);
   return { status: existing ? "not_accessible" : "not_found" };
@@ -1086,7 +1082,10 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
+            outbound: buildFeishuHelpMessage({
+              publicBrand: args.installation.publicBrand,
+              botName: args.installation.botName,
+            }),
           },
           signal,
         );
@@ -1122,7 +1121,10 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
+            outbound: buildFeishuHelpMessage({
+              publicBrand: args.installation.publicBrand,
+              botName: args.installation.botName,
+            }),
           },
           signal,
         );

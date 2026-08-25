@@ -1,9 +1,189 @@
 import { command, state } from "ccstate";
-import { posthog } from "posthog-js";
+import { posthog, type CaptureResult } from "posthog-js";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
+
+export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
+const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
+
+export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
+
+export type AuthV2DiagnosticMethod =
+  | "email-code"
+  | "google-oauth"
+  | "google-one-tap"
+  | "identifier"
+  | "organization"
+  | "passkey"
+  | "password"
+  | "password-reset"
+  | "session"
+  | "unknown";
+
+export type AuthV2DiagnosticStep =
+  | "choose-factor"
+  | "choose-organization"
+  | "choose-session"
+  | "details"
+  | "email-code"
+  | "identifier"
+  | "initialize"
+  | "new-password"
+  | "oauth-callback"
+  | "password"
+  | "password-reset-code"
+  | "recovery"
+  | "restart"
+  | "unknown";
+
+export type AuthV2DiagnosticOutcome = "failure" | "success" | "unknown";
+
+export type AuthV2DiagnosticErrorCategory =
+  | "cancelled"
+  | "captcha"
+  | "configuration"
+  | "invalid-code"
+  | "invalid-credentials"
+  | "invalid-input"
+  | "method-unavailable"
+  | "none"
+  | "organization-unavailable"
+  | "provider-error"
+  | "session-unavailable"
+  | "unknown"
+  | "unsupported-state";
+
+export interface AuthV2DiagnosticProperties {
+  readonly error_category: AuthV2DiagnosticErrorCategory;
+  readonly flow: AuthV2DiagnosticFlow;
+  readonly method: AuthV2DiagnosticMethod;
+  readonly outcome: AuthV2DiagnosticOutcome;
+  readonly step: AuthV2DiagnosticStep;
+}
+
+function authV2DiagnosticFlow(value: unknown): AuthV2DiagnosticFlow {
+  switch (value) {
+    case "sign-in":
+    case "sign-up":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticMethod(value: unknown): AuthV2DiagnosticMethod {
+  switch (value) {
+    case "email-code":
+    case "google-oauth":
+    case "google-one-tap":
+    case "identifier":
+    case "organization":
+    case "passkey":
+    case "password":
+    case "password-reset":
+    case "session":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticStep(value: unknown): AuthV2DiagnosticStep {
+  switch (value) {
+    case "choose-factor":
+    case "choose-organization":
+    case "choose-session":
+    case "details":
+    case "email-code":
+    case "identifier":
+    case "initialize":
+    case "new-password":
+    case "oauth-callback":
+    case "password":
+    case "password-reset-code":
+    case "recovery":
+    case "restart":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticOutcome(value: unknown): AuthV2DiagnosticOutcome {
+  switch (value) {
+    case "failure":
+    case "success":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticErrorCategory(
+  value: unknown,
+): AuthV2DiagnosticErrorCategory {
+  switch (value) {
+    case "cancelled":
+    case "captcha":
+    case "configuration":
+    case "invalid-code":
+    case "invalid-credentials":
+    case "invalid-input":
+    case "method-unavailable":
+    case "none":
+    case "organization-unavailable":
+    case "provider-error":
+    case "session-unavailable":
+    case "unknown":
+    case "unsupported-state": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function sanitizePostHogCaptureResult(
+  captureResult: CaptureResult | null,
+): CaptureResult | null {
+  if (
+    captureResult === null ||
+    captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT
+  ) {
+    return captureResult;
+  }
+  const properties = captureResult.properties;
+  return {
+    event: AUTH_V2_DIAGNOSTIC_EVENT,
+    properties: {
+      $process_person_profile: false,
+      distinct_id: AUTH_V2_DIAGNOSTIC_DISTINCT_ID,
+      error_category: authV2DiagnosticErrorCategory(properties.error_category),
+      flow: authV2DiagnosticFlow(properties.flow),
+      method: authV2DiagnosticMethod(properties.method),
+      outcome: authV2DiagnosticOutcome(properties.outcome),
+      step: authV2DiagnosticStep(properties.step),
+      token: POSTHOG_KEY,
+    },
+    ...(captureResult.timestamp ? { timestamp: captureResult.timestamp } : {}),
+    uuid: captureResult.uuid,
+  };
+}
 
 function runPostHog(action: (key: string) => void): void {
   if (!POSTHOG_KEY) {
@@ -22,6 +202,7 @@ export function initPostHog(): void {
       ui_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
+      before_send: sanitizePostHogCaptureResult,
       disable_session_recording: true,
       session_recording: {
         maskAllInputs: true,
@@ -86,6 +267,20 @@ export function clearPostHogUser(): void {
 export function captureTaskCompletedSuccessfully(): void {
   runPostHog(() => {
     posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+  });
+}
+
+export function captureAuthV2DiagnosticEvent(
+  properties: AuthV2DiagnosticProperties,
+): void {
+  runPostHog(() => {
+    posthog.capture(AUTH_V2_DIAGNOSTIC_EVENT, {
+      error_category: properties.error_category,
+      flow: properties.flow,
+      method: properties.method,
+      outcome: properties.outcome,
+      step: properties.step,
+    });
   });
 }
 

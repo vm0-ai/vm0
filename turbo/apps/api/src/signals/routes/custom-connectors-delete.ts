@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorByIdContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorByIdContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -22,7 +22,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.orgRole !== "admin") {
     return adminRequired;
   }
-  const params = get(pathParamsOf(zeroCustomConnectorByIdContract.delete));
+  const params = get(pathParamsOf(customConnectorByIdContract.delete));
   signal.throwIfAborted();
 
   const result = await set(
@@ -40,7 +40,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const customConnectorsDeleteRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorByIdContract.delete,
+    route: customConnectorByIdContract.delete,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       deleteInner$,

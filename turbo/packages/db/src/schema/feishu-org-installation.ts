@@ -8,8 +8,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-
-import { agentComposes } from "./agent-compose";
+import { agents } from "./agent";
 import { orgCustomConnectors } from "./org-custom-connector";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
@@ -31,14 +30,12 @@ export const feishuOrgInstallations = pgTable(
     encryptedAppSecret: text("encrypted_app_secret").notNull(),
     encryptedVerificationToken: text("encrypted_verification_token").notNull(),
     encryptedEncryptKey: text("encrypted_encrypt_key").notNull(),
-    defaultComposeId: uuid("default_compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    defaultAgentId: uuid("default_agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     feishuTenantKey: varchar("feishu_tenant_key", { length: 255 }),
     feishuTenantName: varchar("feishu_tenant_name", { length: 255 }),
     encryptedTenantAccessToken: text("encrypted_tenant_access_token"),

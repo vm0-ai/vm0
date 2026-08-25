@@ -11,9 +11,9 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-direct-fetch", rule, {
   valid: [
     {
-      // Allowed: using zeroClient$ instead
+      // Allowed: using apiClient$ instead
       code: `
-        const client = get(zeroClient$)(someContract);
+        const client = get(apiClient$)(someContract);
         await client.doSomething();
       `,
     },

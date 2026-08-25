@@ -59,7 +59,7 @@ function configureProvider(): void {
 }
 
 describe("okou finance routes", () => {
-  it("rejects zero tokens without finance:read capability", async () => {
+  it("rejects agent tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Finance test actor must belong to an organization");
@@ -68,7 +68,7 @@ describe("okou finance routes", () => {
     expect(completed.status).toBe(200);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_finance_missing_capability",

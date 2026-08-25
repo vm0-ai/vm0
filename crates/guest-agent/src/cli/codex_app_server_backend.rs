@@ -196,7 +196,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
+    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id, 0)?;
 
     let run_result = run_codex_app_server(
         masker,
@@ -245,7 +245,7 @@ async fn run_codex_app_server(
     } = controls;
     let mut agent_log = BestEffortAgentLog::open(runtime.agent_log_file.as_ref());
     let mut ingestor =
-        CliEventIngestor::new_with_session_metadata(runtime, codex_startup, session_metadata);
+        CliEventIngestor::new_with_session_metadata(runtime, codex_startup, session_metadata, 0);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(
@@ -459,8 +459,8 @@ async fn run_codex_app_server(
     }
     let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
-    // Complete the final event-log write after the child is stopped and
-    // before callers observe the finished app-server execution.
+    // Publish buffered event-log bytes after the child is stopped and before
+    // callers observe the finished app-server execution.
     agent_log.flush().await;
     let active_input_delivery_ids = match active_input_delivery_ids {
         Ok(delivery_ids) => delivery_ids,
@@ -1220,7 +1220,7 @@ fn resume_thread_id_from_runtime(
     }
     canonical_codex_thread_id(
         resume_id,
-        "VM0_RESUME_SESSION_ID is not a valid Codex thread id",
+        "resume session id is not a valid Codex thread id",
     )
     .map(Some)
 }

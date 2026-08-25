@@ -70,11 +70,11 @@ interface StoredObject {
   readonly size: number;
 }
 
-function zeroToken(
+function okouToken(
   actor: RecognitionActor,
   capabilities: readonly Capability[] = ["image-recognition:write"],
 ): string {
-  return createRunsApi(context).zeroTokenForRunWithCapabilities(
+  return createRunsApi(context).okouTokenForRunWithCapabilities(
     actor,
     actor.runId,
     capabilities,
@@ -93,7 +93,7 @@ async function seedActor(): Promise<RecognitionActor> {
   });
   const api = createRunsApi(context);
   const name = `recognition-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createHistoricalCompose(actor, {
+  const compose = await api.createDirectAgent(actor, {
     version: "1.0",
     agents: {
       [name]: {
@@ -103,7 +103,7 @@ async function seedActor(): Promise<RecognitionActor> {
     },
   });
   const run = await api.createDirectRun(actor, {
-    agentId: compose.composeId,
+    agentId: compose.agentId,
     prompt: "Recognize an uploaded image",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
@@ -252,7 +252,7 @@ describe("POST /api/recognize", () => {
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestRecognition({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         fileId,
         prompt: "Read the warning",
         clientRequestId,
@@ -300,7 +300,7 @@ describe("POST /api/recognize", () => {
     ]);
   });
 
-  it("enforces Zero-only capability authorization before object access", async () => {
+  it("enforces agent-only capability authorization before object access", async () => {
     const actor = await seedActor();
     const fileId = randomUUID();
 
@@ -308,7 +308,7 @@ describe("POST /api/recognize", () => {
     expect(unauthenticated.status).toBe(401);
 
     const missingCapability = await requestRecognition({
-      token: zeroToken(actor, ["file:write"]),
+      token: okouToken(actor, ["file:write"]),
       fileId,
     });
     expect(missingCapability.status).toBe(403);
@@ -344,7 +344,7 @@ describe("POST /api/recognize", () => {
         size: IMAGE_RECOGNITION_MAX_FILE_BYTES + 1,
       },
     ]);
-    const token = zeroToken(actor);
+    const token = okouToken(actor);
 
     const cases = [
       { fileId: otherUserFileId, status: 404, code: "NOT_FOUND" },
@@ -383,7 +383,7 @@ describe("POST /api/recognize", () => {
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
 
     const noCredits = await requestRecognition({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       fileId,
       usagePricingResolution: configuredPricing.resolution,
     });
@@ -396,7 +396,7 @@ describe("POST /api/recognize", () => {
     });
     const missingPricing = await createMissingRecognitionPricing();
     const noPricing = await requestRecognition({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       fileId,
       usagePricingResolution: missingPricing.resolution,
     });
@@ -435,7 +435,7 @@ describe("POST /api/recognize", () => {
     ]);
 
     const response = await requestRecognition({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,
     });
@@ -445,7 +445,7 @@ describe("POST /api/recognize", () => {
     expect(responseText).not.toContain("raw-provider-secret-detail");
 
     const malformedType = await requestRecognition({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,
     });
@@ -483,7 +483,7 @@ describe("POST /api/recognize", () => {
         }),
       );
       const response = await requestRecognition({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         fileId,
         usagePricingResolution: pricing.resolution,
       });
@@ -532,7 +532,7 @@ describe("POST /api/recognize", () => {
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestRecognition({
-        token: zeroToken(actor),
+        token: okouToken(actor),
         fileId,
         usagePricingResolution: pricing.resolution,
       });
@@ -582,7 +582,7 @@ describe("POST /api/recognize", () => {
     ]);
 
     const response = await requestRecognition({
-      token: zeroToken(actor),
+      token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,
     });

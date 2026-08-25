@@ -192,7 +192,7 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             return OrphanTargetValidation::Changed;
         }
     };
-    if !process_stat_matches_identity(identity, &stat) {
+    if identity.procfs_generation() != stat.procfs_generation() {
         tracing::warn!(
             pid = target.pid,
             expected_pgid = identity.pgid,
@@ -264,7 +264,7 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             return OrphanTargetValidation::Changed;
         }
     };
-    if !process_stat_matches_identity(identity, &final_stat) {
+    if identity.procfs_generation() != final_stat.procfs_generation() {
         tracing::warn!(
             pid = target.pid,
             expected_pgid = identity.pgid,
@@ -295,12 +295,14 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
 ) -> OrphanTargetValidation {
     match process::read_process_stat_checked(pid).await {
         ProcessStatRead::Found(stat)
-            if process_stat_matches_identity(identity, &stat)
+            if identity.procfs_generation() == stat.procfs_generation()
                 && !process::process_stat_is_live(&stat) =>
         {
             OrphanTargetValidation::AlreadyGone
         }
-        ProcessStatRead::Found(stat) if process_stat_matches_identity(identity, &stat) => {
+        ProcessStatRead::Found(stat)
+            if identity.procfs_generation() == stat.procfs_generation() =>
+        {
             OrphanTargetValidation::Changed
         }
         ProcessStatRead::Found(_) => OrphanTargetValidation::Changed,
@@ -376,7 +378,9 @@ fn classify_orphan_exit_observation(
     read: ProcessStatRead,
 ) -> OrphanExitObservation {
     match read {
-        ProcessStatRead::Found(stat) if !process_stat_matches_identity(identity, &stat) => {
+        ProcessStatRead::Found(stat)
+            if identity.procfs_generation() != stat.procfs_generation() =>
+        {
             OrphanExitObservation::IdentityChanged {
                 expected_pgid: identity.pgid,
                 observed_pgid: stat.pgid,
@@ -451,20 +455,13 @@ where
     }
 }
 
-fn process_stat_matches_identity(
-    identity: &FirecrackerProcessIdentity,
-    stat: &ProcessStat,
-) -> bool {
-    stat.pgid == identity.pgid && stat.starttime == identity.starttime
-}
-
 fn orphan_identity_matches_facts(
     identity: &FirecrackerProcessIdentity,
     stat: &ProcessStat,
     is_firecracker_cmdline: bool,
     cwd_info: Option<&(String, PathBuf)>,
 ) -> bool {
-    process_stat_matches_identity(identity, stat)
+    identity.procfs_generation() == stat.procfs_generation()
         && is_firecracker_cmdline
         && workspace_identity_matches(identity, cwd_info)
 }
@@ -540,7 +537,7 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
 
-    const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
+    const ORPHAN_KILL_CHILD_ENV: &str = "OKOU_RUNNER_ORPHAN_KILL_TEST_CHILD";
     const ORPHAN_KILL_READY_LINE: &str = "vm0 orphan kill test ready";
 
     fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
@@ -725,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn process_stat_identity_match_requires_stable_pgid_and_starttime() {
+    fn firecracker_identity_projects_to_procfs_generation() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
         let matching = process_stat(identity);
@@ -748,10 +745,19 @@ mod tests {
             starttime: identity.starttime,
         };
 
-        assert!(process_stat_matches_identity(identity, &matching));
-        assert!(process_stat_matches_identity(identity, &changed_ppid));
-        assert!(!process_stat_matches_identity(identity, &changed_starttime));
-        assert!(!process_stat_matches_identity(identity, &changed_pgid));
+        assert_eq!(identity.procfs_generation(), matching.procfs_generation());
+        assert_eq!(
+            identity.procfs_generation(),
+            changed_ppid.procfs_generation()
+        );
+        assert_ne!(
+            identity.procfs_generation(),
+            changed_starttime.procfs_generation()
+        );
+        assert_ne!(
+            identity.procfs_generation(),
+            changed_pgid.procfs_generation()
+        );
     }
 
     #[test]
@@ -806,7 +812,7 @@ mod tests {
             starttime: identity.starttime,
         };
 
-        assert!(process_stat_matches_identity(identity, &zombie));
+        assert_eq!(identity.procfs_generation(), zombie.procfs_generation());
         assert!(!process::process_stat_is_live(&zombie));
     }
 
@@ -821,7 +827,7 @@ mod tests {
             starttime: identity.starttime,
         };
 
-        assert!(process_stat_matches_identity(identity, &dead));
+        assert_eq!(identity.procfs_generation(), dead.procfs_generation());
         assert!(!process::process_stat_is_live(&dead));
     }
 

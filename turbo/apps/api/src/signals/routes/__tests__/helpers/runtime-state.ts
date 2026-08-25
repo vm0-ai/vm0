@@ -53,23 +53,23 @@ async function postAction(
   return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
-interface Vm0ManagedModelKeyFixture {
+interface Vm0BuiltInModelKeyFixture {
   readonly selectedModel: string;
   release(): Promise<void>;
 }
 
-function vm0ManagedModelKeyFixture(
+function vm0BuiltInModelKeyFixture(
   context: TestContext,
   fixtureId: string,
   selectedModel: string,
-): Vm0ManagedModelKeyFixture {
+): Vm0BuiltInModelKeyFixture {
   let released = false;
   const release = async (): Promise<void> => {
     if (released) {
       return;
     }
     await postAction(context, {
-      action: "delete-vm0-managed-model-key",
+      action: "delete-vm0-built-in-model-key",
       fixture_id: fixtureId,
     });
     released = true;
@@ -78,97 +78,109 @@ function vm0ManagedModelKeyFixture(
   return { selectedModel, release };
 }
 
-export async function seedVm0ManagedDefaultModelKey(
+export async function seedVm0BuiltInDefaultModelKey(
   context: TestContext,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-default-model-key",
+    action: "seed-vm0-built-in-default-model-key",
     fixture_id: fixtureId,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
+    throw new Error("seedVm0BuiltInDefaultModelKey missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0ManagedModelKey(
+export async function seedVm0BuiltInModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-model-key",
+    action: "seed-vm0-built-in-model-key",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedModelKey missing selected_model");
+    throw new Error("seedVm0BuiltInModelKey missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0ManagedModelCandidateKeys(
+export async function seedVm0BuiltInModelCandidateKeys(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-model-candidate-keys",
+    action: "seed-vm0-built-in-model-candidate-keys",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedModelCandidateKeys missing selected_model");
+    throw new Error("seedVm0BuiltInModelCandidateKeys missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-type ManagedModelRuntimeRouteFixture = NonNullable<
-  TestRuntimeStateActionResponse["managed_model_route"]
+type BuiltInModelRuntimeRouteFixture = NonNullable<
+  TestRuntimeStateActionResponse["built_in_model_route"]
 >;
 
-export async function resolveVm0ManagedModelRouteFixture(
+export async function resolveVm0BuiltInModelRouteFixture(
   context: TestContext,
   selectedModel: string,
   fallbackEnabled: boolean,
-): Promise<ManagedModelRuntimeRouteFixture | null> {
+): Promise<BuiltInModelRuntimeRouteFixture | null> {
   const response = await postAction(context, {
-    action: "resolve-vm0-managed-model-route",
+    action: "resolve-vm0-built-in-model-route",
     selected_model: selectedModel,
     fallback_enabled: fallbackEnabled,
   });
-  return response.managed_model_route ?? null;
+  return response.built_in_model_route ?? null;
 }
 
-export async function setVm0ManagedCandidateCooldownFixture(
+export async function setVm0BuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
-  route: ManagedModelRuntimeRouteFixture,
+  route: BuiltInModelRuntimeRouteFixture,
   unavailableUntil: Date,
 ): Promise<void> {
   await postAction(context, {
-    action: "set-vm0-managed-candidate-cooldown",
+    action: "set-vm0-built-in-candidate-cooldown",
     selected_model: selectedModel,
     provider_type: route.provider_type,
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
-  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+  registerVm0BuiltInCandidateCooldownCleanup(context, selectedModel, route);
 }
 
-export function registerVm0ManagedCandidateCooldownCleanup(
+export async function deleteVm0BuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
-  route: ManagedModelRuntimeRouteFixture,
+  route: BuiltInModelRuntimeRouteFixture,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-vm0-built-in-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+  });
+}
+
+export function registerVm0BuiltInCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: BuiltInModelRuntimeRouteFixture,
 ): void {
   onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-candidate-cooldown",
-      selected_model: selectedModel,
-      provider_type: route.provider_type,
-      upstream_model: route.upstream_model,
-    });
+    await deleteVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      route,
+    );
   });
 }
 
@@ -198,6 +210,22 @@ export async function readUsagePackInvitationSchemaAvailable(
     );
   }
   return response.usage_pack_invitation_schema_available;
+}
+
+export async function readConnectorCatalogRuntimeProjectionSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-connector-catalog-runtime-projection-schema-state",
+  });
+  if (
+    response.connector_catalog_runtime_projection_schema_available === undefined
+  ) {
+    throw new Error(
+      "readConnectorCatalogRuntimeProjectionSchemaAvailable missing schema availability",
+    );
+  }
+  return response.connector_catalog_runtime_projection_schema_available;
 }
 
 export async function readUsagePackPurchaseSerializationSchemaAvailable(
@@ -354,20 +382,6 @@ export async function readThreadGoalAutonomyBudgetFixture(
 
 export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
-}
-
-/**
- * Versionless Agent composes are partial historical state that current public
- * APIs cannot create. Keep this test-only mutation scoped to the owned Agent.
- */
-export async function setAgentComposeVersionlessFixture(
-  context: TestContext,
-  agentId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-agent-compose-versionless",
-    agent_id: agentId,
-  });
 }
 
 export async function mutateRunnerJobSecretValueEnvironmentKeys(
@@ -677,6 +691,24 @@ export async function readThreadSessionBinding(
     throw new Error("readThreadSessionBinding missing thread_session_binding");
   }
   return response.thread_session_binding;
+}
+
+export async function readThreadSessionConversation(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["thread_session_conversation"]>
+> {
+  const response = await postAction(context, {
+    action: "read-thread-session-conversation",
+    thread_id: threadId,
+  });
+  if (!response.thread_session_conversation) {
+    throw new Error(
+      "readThreadSessionConversation missing thread_session_conversation",
+    );
+  }
+  return response.thread_session_conversation;
 }
 
 export async function clearThreadSessionBinding(

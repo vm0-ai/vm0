@@ -21,6 +21,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
@@ -224,6 +225,32 @@ async function entitledChatMemberActor(): Promise<EntitledChatActor> {
   return { ...adminFixture, actor, agentId: agent.agentId };
 }
 
+async function configureClaudeCodeSubscriptionProvider(
+  fixture: EntitledChatActor,
+): Promise<void> {
+  await misc.upsertPersonalModelProvider(
+    fixture.actor,
+    { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
+    [200, 201],
+  );
+  await api.updateOrgModelPolicies(fixture.actor, [
+    {
+      model: "claude-sonnet-5",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: fixture.providerId,
+    },
+    {
+      model: "claude-opus-4-8",
+      isDefault: false,
+      defaultProviderType: "claude-code-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+    },
+  ]);
+}
+
 async function startChatRun(
   actor: ApiTestUser,
   body: {
@@ -343,7 +370,7 @@ function goalHeaders(
   const seconds = Math.floor(now() / 1000);
   return {
     authorization: `Bearer ${signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId,
@@ -865,7 +892,7 @@ async function expectGoalDrainPreCreateTiming(args: {
         run_id: args.runId,
         span_kind: "nested",
         trigger_source: "goal",
-        zero_run_origin: "goal_continuation",
+        agent_run_origin: "goal_continuation",
         goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
           ? "waiting"
           : "phase",
@@ -898,7 +925,7 @@ async function expectGoalDrainPreCreateTiming(args: {
       run_id: args.runId,
       span_kind: "nested",
       trigger_source: "goal",
-      zero_run_origin: "goal_continuation",
+      agent_run_origin: "goal_continuation",
       goal_drain_attempt: "initial",
       goal_drain_timing_role: "aggregate",
     }),
@@ -922,7 +949,7 @@ async function expectGoalDrainPreCreateTiming(args: {
     expect.objectContaining({
       span_kind: "top_level",
       trigger_source: "goal",
-      zero_run_origin: "goal_continuation",
+      agent_run_origin: "goal_continuation",
     }),
   );
 
@@ -982,7 +1009,7 @@ function expectNoChatCallbackPreCreateTimingActions(
   }
 }
 
-async function expectZeroPreCreateSource(
+async function expectAgentRunPreCreateSource(
   runId: string,
   source: string,
 ): Promise<void> {
@@ -994,7 +1021,7 @@ async function expectZeroPreCreateSource(
       expect.arrayContaining([
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
-          zero_pre_create_source: source,
+          agent_run_pre_create_source: source,
         }),
       ]),
     );
@@ -1163,6 +1190,10 @@ describe("CHAT-02: completed chat callback", () => {
         'The "prompt" values are shown as plain text, not rendered as Markdown',
       ),
     ]);
+    expect(followupSystemPrompts[0]).toContain(
+      "Supported built-in generation tasks:",
+    );
+    expect(followupSystemPrompts[0]).not.toContain("VM0");
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -1659,7 +1690,10 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to auto-send");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectAgentRunPreCreateSource(
+      claimed.runId,
+      "chat_callback_auto_send",
+    );
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
@@ -4094,6 +4128,94 @@ describe("CHAT-02: drain-time admission failure", () => {
     },
     90_000,
   );
+
+  it("terminalizes a queued Web message with neutral built-in model copy when the key is unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before queued built-in model admission",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedPrompt = "reject this queued message without a built-in key";
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: queuedPrompt,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    await chat.updateThreadModelSelection(
+      actor,
+      anchor.threadId,
+      "claude-sonnet-5",
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+
+    await withBuiltInModelRuntimeRouteUnavailableForTest(
+      "claude-sonnet-5",
+      async () => {
+        await completeChatRunOk(anchor.runId, anchorHeaders);
+        await flushWaitUntilForTest();
+      },
+    );
+
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "provider_unavailable"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "provider_unavailable"
+            );
+          })
+        );
+      },
+    );
+    const rejected = userMessages(terminal.events).find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === queuedEventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the queued Web message to be rejected");
+    }
+    expect(rejected.error).toBe("provider_unavailable");
+    const errors = assistantMessages(terminal.events).filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "provider_unavailable"
+      );
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toBe(
+      "No model provider configured: no built-in model key is configured",
+    );
+    expect(errors[0]?.content).not.toContain("VM0");
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+  }, 90_000);
 });
 
 describe("CHAT-02: failed chat callbacks", () => {
@@ -4276,9 +4398,12 @@ describe("CHAT-02: failed chat callbacks", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
+    const revokedOAuthError =
+      "Failed to authenticate. API Error: 401 OAuth access token has been revoked.";
 
     async function failAndReadError(params: {
       readonly prompt: string;
+      readonly errorMessage?: string;
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
       readonly publicBrand?: PublicBrand;
@@ -4314,7 +4439,11 @@ describe("CHAT-02: failed chat callbacks", () => {
           params.orgRole === "admin" ? "org:admin" : "org:member",
         );
       }
-      await failChatRun(run.runId, sandboxHeaders, upstreamAuthError);
+      await failChatRun(
+        run.runId,
+        sandboxHeaders,
+        params.errorMessage ?? upstreamAuthError,
+      );
 
       const page = await waitForThreadMessages(
         fixture.actor,
@@ -4341,33 +4470,28 @@ describe("CHAT-02: failed chat callbacks", () => {
         prompt: "subscription credential failed",
         selectedModel: "claude-opus-4-8",
         publicBrand: "okou",
-        async configureProvider(fixture) {
-          await misc.upsertPersonalModelProvider(
-            fixture.actor,
-            { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
-            [200, 201],
-          );
-          await api.updateOrgModelPolicies(fixture.actor, [
-            {
-              model: "claude-sonnet-5",
-              isDefault: true,
-              defaultProviderType: "anthropic-api-key",
-              credentialScope: "org",
-              modelProviderId: fixture.providerId,
-            },
-            {
-              model: "claude-opus-4-8",
-              isDefault: false,
-              defaultProviderType: "claude-code-oauth-token",
-              credentialScope: "member",
-              modelProviderId: null,
-            },
-          ]);
-        },
+        configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
       "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
+    await expect(
+      failAndReadError({
+        prompt: "revoked subscription credential failed",
+        errorMessage: revokedOAuthError,
+        selectedModel: "claude-opus-4-8",
+        configureProvider: configureClaudeCodeSubscriptionProvider,
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "revoked OAuth text with an Anthropic API key",
+        errorMessage: revokedOAuthError,
+        selectedModel: "claude-sonnet-5",
+      }),
+    ).resolves.toBe("Oops, something went wrong. Please try again later.");
     await expect(
       failAndReadError({
         prompt: "legacy callback without public brand failed for admin",
@@ -4749,7 +4873,10 @@ describe("CHAT-02: auto-send after failures", () => {
       );
     }
     expect(claimed.runId).not.toBe(second.runId);
-    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectAgentRunPreCreateSource(
+      claimed.runId,
+      "chat_callback_auto_send",
+    );
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [

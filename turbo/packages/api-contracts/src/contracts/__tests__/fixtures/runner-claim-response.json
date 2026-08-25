@@ -3,7 +3,6 @@
   "reuseKey": "thread:00000000-0000-4000-8000-000000020986",
   "prompt": "Inspect the fixture repository",
   "appendSystemPrompt": "Use the shared contract fixture",
-  "agentComposeVersionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "vars": {
     "FIXTURE_REGION": "test-region"
   },
@@ -29,7 +28,11 @@
   },
   "environment": {
     "FIXTURE_API_KEY": "fixture-placeholder-not-a-secret",
-    "FIXTURE_MODEL": "fixture-model"
+    "FIXTURE_MODEL": "fixture-model",
+    "OKOU_AGENT_ID": "fixture-agent-id"
+  },
+  "platformEnvironment": {
+    "OKOU_AGENT_ID": "fixture-agent-id"
   },
   "resumeSession": {
     "sessionId": "fixture-session-id",

@@ -97,7 +97,7 @@ const completeResponseSchema = z.object({
 export const uploadsContract = c.router({
   prepare: {
     method: "POST",
-    path: "/api/okou/uploads/prepare",
+    path: "/api/uploads/prepare",
     headers: authHeadersSchema,
     body: prepareRequestSchema,
     responses: {
@@ -112,7 +112,7 @@ export const uploadsContract = c.router({
   },
   completeMultipart: {
     method: "POST",
-    path: "/api/okou/uploads/multipart/complete",
+    path: "/api/uploads/multipart/complete",
     headers: authHeadersSchema,
     body: multipartCompleteRequestSchema,
     responses: {
@@ -127,7 +127,7 @@ export const uploadsContract = c.router({
   },
   abortMultipart: {
     method: "POST",
-    path: "/api/okou/uploads/multipart/abort",
+    path: "/api/uploads/multipart/abort",
     headers: authHeadersSchema,
     body: multipartUploadIdentitySchema,
     responses: {
@@ -141,7 +141,7 @@ export const uploadsContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/okou/uploads/complete",
+    path: "/api/uploads/complete",
     headers: authHeadersSchema,
     body: completeRequestSchema,
     responses: {

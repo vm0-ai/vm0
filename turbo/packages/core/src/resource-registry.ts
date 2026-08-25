@@ -3,6 +3,15 @@ import {
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
 } from "./website-template-items";
+import {
+  PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+  PRESENTATION_STATIC_HTML_INSTRUCTION,
+} from "./presentation-generation-instructions";
+import {
+  PRESENTATION_REVERSE_TEMPLATE_ARCHIVE_SHA256,
+  PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID,
+  PRESENTATION_REVERSE_TEMPLATE_RESOURCE_PATH,
+} from "./presentation-reverse-template-resource";
 
 export type GenerationTarget =
   | "image"
@@ -3037,7 +3046,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Notion Illustration",
     description:
-      "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
+      "Hand-drawn product spot illustration style with simple ink contours and soft backgrounds.",
     desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
     source: vm0ImageStyleSource("notion-illustration"),
   },
@@ -3172,8 +3181,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Flat Poster",
     description:
-      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, wordmark pinned bottom-right.",
-    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; a short wordmark (default VM0) pinned bottom-right; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
+      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, and an optional user-supplied wordmark pinned bottom-right.",
+    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; an optional short wordmark supplied by the user pinned bottom-right and omitted when none is supplied; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
     source: vm0ImageStyleSource("flat-poster"),
   },
   {
@@ -3322,6 +3331,32 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 ];
 
+// ── Presentation reverse-template guide ─────────────────────────────────────
+// This is a pull-only authoring resource. Keep it out of RESOURCE_REGISTRY so
+// it does not appear as a presentation-generation skill candidate: it is used
+// only when an uploaded deck is being reverse-engineered into a new template.
+
+const PRESENTATION_REVERSE_TEMPLATE_RESOURCE: RegistryEntry = {
+  id: PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID,
+  kind: "skill",
+  name: "Presentation Reverse Template",
+  description:
+    "Extract reusable presentation identity guidance and high-fidelity visual assets from an uploaded deck.",
+  source: privateR2ArchiveSource(
+    PRESENTATION_REVERSE_TEMPLATE_RESOURCE_PATH,
+    PRESENTATION_REVERSE_TEMPLATE_ARCHIVE_SHA256,
+  ),
+  targets: ["presentation"],
+};
+
+export function findPresentationReverseTemplateResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  return resourceId === PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID
+    ? PRESENTATION_REVERSE_TEMPLATE_RESOURCE
+    : undefined;
+}
+
 // ── Presentation runbook packages ────────────────────────────────────────────
 // Self-contained per-template presentation packages (agent runbook + renderer)
 // uploaded to private R2 as one archive each. When a selected template ships one
@@ -3349,9 +3384,63 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
+export type PresentationRunbookArchiveVersion = "latest" | "previous";
+
+export const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV =
+  "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION";
+
 // Archive digests for uploaded private R2 presentation runbook packages. Keep
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
+  bloom: "78b25da48ce0a9658e70c975ac3630f5a793e1e12e1e0e9f3fcc48ce3e1b9f1c",
+  "blueprint-academy":
+    "9ca169e49def41e486db9f04d51641dc3d0b611a3741c05d55c097571015fdeb",
+  "botane-organic":
+    "0848c35df394c9a0e861a6ee7bd0b6ed36e82c2ed7bf054812e174efbdb33c19",
+  "business-data":
+    "d617bd4a0bf25b36864bc89556282450439cd22e3b04d88bb636596f1bc27744",
+  crayon: "ea812a2006b5f041d10602e03ee402a6f48ecceeb4dc073b133418e33dd0a804",
+  "creative-agency":
+    "aceb5c0d50741189f7d29ad71492564e5b7b942ecae915ceb118355bca514d9f",
+  "data-report":
+    "951a5029fe1ad143a9743216b616c8f8c0fee4e210510c085578ba660a959f35",
+  "editorial-magazine":
+    "6049cb913083974544d105ef9193c85152b3a254eeda5a9d780cf396345327d2",
+  "landing-consulting":
+    "8e0e39b3bf2cef62ac851543ea337629f8c7b4ad43695aa475e62ce2b3d05e6b",
+  lumina: "929aca31b768f10d608e3b5ce781446cc6410812d949594907bdddd0319f82c7",
+  meridian: "4d102cea089238d720ce5dddb93a4c79ca100885d2f4c059277841f221c48546",
+  "mosaic-geometric":
+    "d6c220434cb99ced6e59dfb7243b3f49757bc31dd76e85672ce3941c81a24a57",
+  "neo-brutalism":
+    "b47099663859eaa3ed685da8c693852366afbe77401442771960489d8a03f1d8",
+  nocturne: "b89485d9dfd0ca8ad710d34008bd498c8fc50c0ff4d725fd70dc9a97197cc1a0",
+  "pixel-glitch":
+    "5246518e9ce280728854510f502c5db0a3f2b57177628d91543b81f1760d0b0d",
+  "playful-launch":
+    "799d7cc18c5929557f860bb43271c79d0d1d6d9ec86caa40e37ba032c357e187",
+  "playful-pop":
+    "c621b3ed592886049965b6b7a05be8abe2a04a7ad97c2b6f347e6aea78f226a6",
+  prospectus:
+    "7d6cb8ea55a0a884484aedbf34cf9ce82bc84839cf5f75555d96f3888d15f3b0",
+  schoolhouse:
+    "dcffcf12b3fc735922a3868b4279dd13989b6514ab54e4a24e0581a3cff9fc23",
+  "sticker-scrapbook":
+    "b46861798d82f3952e030d5b3a2525468fcb5c94c53bce56baa6fb39404178dc",
+  strata: "aa17a1177fb1fcb426e966f388c534957cdb73cfeac98adbb2bd45992041277d",
+  "taped-consulting":
+    "74324f0edd1245bc0c8863d79d503da1a74bff5785888e36e1e8755d9a0ec958",
+  vantage: "25e0cd60c7b23432c6ec412ee961ddc5dc85229377a53d4d5aa55241b8732577",
+};
+
+// The disabled side of LatestPresentationTemplates deliberately keeps the
+// runbook package ids on their pre-cutover immutable R2 versions, whose
+// archives carry a deck-JSON renderer instead of the direct-HTML guidance.
+// This is the switch's off branch, not a compatibility fallback: it is the
+// behavior every run has today. Remove it with the switch under
+// vm0-ai/vm0#28672; historical R2 objects stay immutable and must not be
+// deleted.
+const PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
   bloom: "7f05f31603d2ad3055b23147cc2b41e047c5969b6640502489b34bd33a837d62",
@@ -3393,10 +3482,18 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   vantage: "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed",
 };
 
-function presentationRunbookArchiveSha256(slug: string): string {
-  const sha256 = PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
+function presentationRunbookArchiveSha256(
+  slug: string,
+  archiveVersion: PresentationRunbookArchiveVersion,
+): string {
+  const sha256 =
+    archiveVersion === "latest"
+      ? PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug]
+      : PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
   if (!sha256) {
-    throw new Error(`Missing presentation runbook archive sha256 for ${slug}`);
+    throw new Error(
+      `Missing ${archiveVersion} presentation runbook archive sha256 for ${slug}`,
+    );
   }
   return sha256;
 }
@@ -3596,8 +3693,10 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
   },
 ];
 
-const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
-  PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
+function presentationRunbookPackages(
+  archiveVersion: PresentationRunbookArchiveVersion,
+): readonly PresentationRunbookPackage[] {
+  return PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
     return {
       templateId: def.templateId,
       resourceId: `${def.templateId}-runbook`,
@@ -3607,20 +3706,38 @@ const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
       description: def.description,
       source: privateR2ArchiveSource(
         def.slug,
-        presentationRunbookArchiveSha256(def.slug),
+        presentationRunbookArchiveSha256(def.slug, archiveVersion),
       ),
     };
   });
+}
 
-export function listPresentationRunbookPackages(): readonly PresentationRunbookPackage[] {
-  return PRESENTATION_RUNBOOK_PACKAGES;
+const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
+  presentationRunbookPackages("latest");
+
+const PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
+  presentationRunbookPackages("previous");
+
+function presentationRunbookPackagesFor(
+  archiveVersion: PresentationRunbookArchiveVersion,
+): readonly PresentationRunbookPackage[] {
+  return archiveVersion === "latest"
+    ? PRESENTATION_RUNBOOK_PACKAGES
+    : PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES;
+}
+
+export function listPresentationRunbookPackages(
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
+): readonly PresentationRunbookPackage[] {
+  return presentationRunbookPackagesFor(archiveVersion);
 }
 
 /** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
   templateId: string,
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PresentationRunbookPackage | undefined {
-  return PRESENTATION_RUNBOOK_PACKAGES.find((pkg) => {
+  return presentationRunbookPackagesFor(archiveVersion).find((pkg) => {
     return pkg.templateId === templateId;
   });
 }
@@ -3632,8 +3749,9 @@ export function findPresentationRunbookPackage(
  */
 export function findPresentationRunbookResource(
   resourceId: string,
+  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): RegistryEntry | undefined {
-  const pkg = PRESENTATION_RUNBOOK_PACKAGES.find((entry) => {
+  const pkg = presentationRunbookPackagesFor(archiveVersion).find((entry) => {
     return entry.resourceId === resourceId;
   });
   if (!pkg) {
@@ -3678,27 +3796,27 @@ export const WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV =
 // in sync with the private R2 version ids served by the API download route.
 const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
-    "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+    "44126993be4b2932a270efcc21dbc855e60ccc0b280fadedc6ce2c90399f7e17",
   "blueprint-grid":
-    "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+    "9fdf8c7555e85072b9c92526b098edbe90c3230a71f6a1ec08ec3fa902ebabf0",
   "coastal-hotel":
-    "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+    "b285b649b73c0b526734ce63b01de5f3f6704ed89f5e71a96f953484a882f979",
   "dot-matrix":
-    "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+    "9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
   "frame-stack":
-    "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+    "182a63e7b268779b2d45a81651a99da6004873162b1a98d5da27f15be6338d15",
   "frosted-scatter":
-    "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+    "32fb6fc4ebc85ffa3ea1672cd75005048519dfd1fbc3c1d4c254363d89ebb14e",
   "gallery-wall":
-    "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+    "401854b89ea8b8ce98880309a190fa19e03647b564e64bc082ae481f3cb9c8fc",
   "glass-bloom":
-    "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+    "ed9f6ef684cc89d5e6653b7f35a62988665a63993ca69305334399652cb7f586",
   "serif-stack":
-    "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+    "55034642b7becda0da90d202c689e79938844142144fef15b5371706bdb3ef46",
   "sticker-pop":
-    "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+    "d6a8fc7658fe0709a089d819fa745af461e99a1f1759040b60e8b0e4d4eb8ef4",
   "warm-cards":
-    "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+    "30a7ce127311bcba581793c47f234c043474b9b7bdfca2ba0732bd35e065cee3",
 };
 
 function websiteTemplateArchiveSha256(slug: string): string {
@@ -3943,20 +4061,31 @@ export function resolvePresentationRunbookColorToken(
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
   readonly colorSystemToken: string;
+  readonly archiveVersion?: PresentationRunbookArchiveVersion;
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
+  const packageDir = `./generated/resources/${pkg.slug}`;
+  // Previous archives use deck JSON; latest archives require direct HTML.
+  const packageLines =
+    args.archiveVersion === "previous"
+      ? [
+          `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+        ]
+      : [
+          `- Read ${packageDir}/SKILL.md fully and follow its template, authoring, and verification instructions.`,
+          PRESENTATION_IMAGE_BATCH_INSTRUCTION,
+        ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
     `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
-    `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
-    "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
-    "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
-    "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
+    ...packageLines,
+    "- Use the requested slide count; default to 8.",
+    PRESENTATION_STATIC_HTML_INSTRUCTION,
     "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
-    "- Return only the generated HTML deck as the final deliverable.",
+    "- Return only the HTML deck.",
   ];
 }
 

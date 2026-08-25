@@ -17,13 +17,13 @@ import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
 } from "@okouai/db/schema/connector-catalog";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, asc, eq, gt, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishConnectorPermissionUpdatedSafely } from "../external/realtime";
@@ -154,7 +154,7 @@ function validationError(message: string): ValidationErrorResponse {
 }
 
 function visibleAgentCondition(userId: string) {
-  return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
+  return or(eq(agents.visibility, "public"), eq(agents.owner, userId));
 }
 
 async function findVisibleAgent(
@@ -162,12 +162,12 @@ async function findVisibleAgent(
   scope: UserPermissionGrantBaseScope & { readonly agentId: string },
 ): Promise<{ readonly id: string } | null> {
   const [agent] = await db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
+    .select({ id: agents.id })
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, scope.orgId),
-        eq(zeroAgents.id, scope.agentId),
+        eq(agents.orgId, scope.orgId),
+        eq(agents.id, scope.agentId),
         visibleAgentCondition(scope.userId),
       ),
     )
@@ -651,12 +651,12 @@ async function lockVisibleAgentForUpdate(
   scope: UserPermissionGrantBaseScope & { readonly agentId: string },
 ): Promise<{ readonly id: string } | null> {
   const [agent] = await db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
+    .select({ id: agents.id })
+    .from(agents)
     .where(
       and(
-        eq(zeroAgents.orgId, scope.orgId),
-        eq(zeroAgents.id, scope.agentId),
+        eq(agents.orgId, scope.orgId),
+        eq(agents.id, scope.agentId),
         visibleAgentCondition(scope.userId),
       ),
     )

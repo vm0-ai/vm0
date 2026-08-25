@@ -20,7 +20,7 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
   const [thread] = await db
     .select({
       id: chatThreads.id,
-      agentId: chatThreads.agentComposeId,
+      agentId: chatThreads.agentId,
       title: chatThreads.title,
       selectedModel: chatThreads.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,

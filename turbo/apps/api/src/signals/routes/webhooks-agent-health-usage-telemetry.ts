@@ -4,6 +4,7 @@ import {
   webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
+  type RunnerPreSpawnConcurrencyBucket,
   type RunnerStartupPath,
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
@@ -50,6 +51,7 @@ interface SandboxOperationDimensionInput {
   readonly reason?: string;
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
+  readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
   readonly encoding?: string;
   readonly session_history_raw_size_bucket?: string;
   readonly session_history_encoded_size_bucket?: string;
@@ -77,6 +79,12 @@ function sandboxOperationDimensions(
       : {}),
     ...(op.sandbox_reuse_result
       ? { sandbox_reuse_result: op.sandbox_reuse_result }
+      : {}),
+    ...(op.runner_pre_spawn_concurrency_bucket
+      ? {
+          runner_pre_spawn_concurrency_bucket:
+            op.runner_pre_spawn_concurrency_bucket,
+        }
       : {}),
     ...(op.encoding ? { encoding: op.encoding } : {}),
     ...(op.session_history_raw_size_bucket

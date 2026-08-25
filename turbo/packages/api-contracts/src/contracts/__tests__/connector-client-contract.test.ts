@@ -13,22 +13,20 @@ import {
   userConnectorUpdateSchema,
 } from "../user-connectors";
 import { connectorCatalogContract } from "../connector-catalog";
+import { connectorAccountsContract } from "../connector-accounts";
 import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
 } from "../connector-check";
-import {
-  zeroConnectorsBySlugContract,
-  zeroConnectorsSearchContract,
-} from "../zero-connectors";
+import { connectorsSearchContract } from "../connectors";
 import {
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
-} from "../zero-custom-connectors";
+} from "../custom-connectors";
 import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
-} from "../zero-user-permission-grants";
+} from "../user-permission-grants";
 import { workflowConnectorReadinessResponseSchema } from "../workflows";
 import { initClient } from "../trpc-contract";
 
@@ -154,7 +152,7 @@ describe("connector client response contracts", () => {
       }),
     ).toMatchObject({ connectorSlug: "aws" });
     expect(
-      zeroConnectorsSearchContract.search.responses[200].parse({
+      connectorsSearchContract.search.responses[200].parse({
         connectors: [
           {
             slug: "github",
@@ -365,10 +363,12 @@ describe("connector path parameter contracts", () => {
       },
     };
 
-    await initClient(zeroConnectorsBySlugContract, config).delete({
-      params: { connectorSlug: "github" },
-      headers: {},
-    });
+    await initClient(connectorAccountsContract, config).disconnectSingleAccount(
+      {
+        headers: {},
+        body: { target: { kind: "builtin", connectorSlug: "github" } },
+      },
+    );
     await initClient(connectorCatalogContract, config).permissions({
       params: { connectorSlug: "github" },
       headers: {},
@@ -380,7 +380,7 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/connectors/github",
+      "https://api.example.test/api/connector-accounts/single-account",
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",
     ]);

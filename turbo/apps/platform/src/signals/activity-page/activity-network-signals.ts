@@ -5,7 +5,7 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -27,7 +27,7 @@ interface RunNetworkLogsPage extends NetworkLogsPage {
   runId: string;
 }
 
-interface ZeroActivityNetworkLogs {
+interface ActivityNetworkLogs {
   runId: string | null;
   networkLogs: NetworkLogEntry[];
   hasMore: boolean;
@@ -106,7 +106,7 @@ const firstPage$ = computed(async (get) => {
   if (!runId) {
     return null;
   }
-  const client = get(zeroClient$)(runNetworkLogsContract);
+  const client = get(apiClient$)(runNetworkLogsContract);
   return {
     runId,
     ...(await fetchPage(client, runId)),
@@ -136,7 +136,7 @@ const pagination$ = state<PaginationState>({
  * Combined signal for the UI. Merges auto-loaded first page with
  * any extra pages loaded via loadNetworkLogsNextPage$.
  */
-export const zeroActivityNetworkLogs$ = computed(async (get) => {
+export const activityNetworkLogs$ = computed(async (get) => {
   const first = await get(firstPage$);
   if (!first) {
     return {
@@ -144,7 +144,7 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
       networkLogs: [] as NetworkLogEntry[],
       hasMore: false,
       loading: false,
-    } satisfies ZeroActivityNetworkLogs;
+    } satisfies ActivityNetworkLogs;
   }
 
   const currentRunId = get(currentRunId$);
@@ -161,7 +161,7 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
     networkLogs: [...first.logs, ...extra],
     hasMore,
     loading,
-  } satisfies ZeroActivityNetworkLogs;
+  } satisfies ActivityNetworkLogs;
 });
 
 /**
@@ -213,7 +213,7 @@ export const loadNetworkLogsNextPage$ = command(
       });
     };
 
-    const client = get(zeroClient$)(runNetworkLogsContract);
+    const client = get(apiClient$)(runNetworkLogsContract);
     const { logs, hasMore, nextCursor } = await fetchPage(
       client,
       runId,

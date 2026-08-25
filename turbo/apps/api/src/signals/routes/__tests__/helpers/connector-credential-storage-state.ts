@@ -85,6 +85,16 @@ export async function readCustomConnectorOAuthStorageState(
   });
 }
 
+export async function readConnectorOAuthAccountMutation(
+  context: TestContext,
+  state: string,
+): Promise<TestConnectorCredentialStorageStateActionResponse> {
+  return await postAction(context, {
+    action: "read-oauth-state-account-mutation",
+    state,
+  });
+}
+
 export async function deleteCustomConnectorCredentialValues(
   context: TestContext,
   args: {
@@ -308,6 +318,28 @@ export async function setConnectorExternalIdState(
     user_id: args.userId,
     connector_id: args.connectorId,
     external_id: args.externalId,
+  });
+}
+
+export async function setConnectorAccountState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly needsReconnect: boolean;
+    readonly storageVersion?: number;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-connector-account-state",
+    org_id: args.orgId,
+    user_id: args.userId,
+    connector_id: args.connectorId,
+    needs_reconnect: args.needsReconnect,
+    ...(args.storageVersion === undefined
+      ? {}
+      : { storage_version: args.storageVersion }),
   });
 }
 

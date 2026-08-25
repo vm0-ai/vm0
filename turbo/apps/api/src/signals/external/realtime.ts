@@ -1,4 +1,4 @@
-import Ably from "ably";
+import Ably, { type CapabilityOp } from "ably";
 import type {
   BrowserSessionChangedPayload,
   UserPreferenceChangedPayload,
@@ -27,11 +27,15 @@ function getUserChannelName(userId: string): string {
   return `user:${userId}`;
 }
 
+function getOrgChannelName(orgId: string): string {
+  return `org:${orgId}`;
+}
+
 function getBuiltInGenerationEventName(generationId: string): string {
   return `built-in-generation:${generationId}`;
 }
 
-export async function createPlatformUserRealtimeToken(
+async function createPlatformUserRealtimeToken(
   userId: string,
 ): Promise<Ably.TokenRequest> {
   const channelName = getUserChannelName(userId);
@@ -43,6 +47,27 @@ export async function createPlatformUserRealtimeToken(
     clientId: userId,
   });
   L.debug(`Generated platform realtime token for user:${userId}`);
+  return tokenRequest;
+}
+
+export async function createPlatformRealtimeToken(
+  userId: string,
+  orgId: string | undefined,
+): Promise<Ably.TokenRequest> {
+  const capability: Record<string, CapabilityOp[]> = {
+    [getUserChannelName(userId)]: ["subscribe"],
+  };
+  if (orgId !== undefined) {
+    capability[getOrgChannelName(orgId)] = ["subscribe"];
+  }
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability,
+    ttl: 60 * 60 * 1000,
+    clientId: userId,
+  });
+  L.debug(
+    `Generated platform realtime token for user:${userId}${orgId === undefined ? "" : `/org:${orgId}`}`,
+  );
   return tokenRequest;
 }
 
@@ -125,6 +150,26 @@ export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
   await publishThreadListChanged(userId);
+}
+
+/**
+ * Notify the owner that a runner published a reusable presentation template.
+ * The catalog is server-owned, so every open client re-fetches it instead of
+ * trying to reconstruct the new entry from the notification payload.
+ */
+export async function publishPresentationTemplatesChangedForUserSafely(
+  userId: string,
+): Promise<void> {
+  await publishUserSignal([userId], "presentationTemplatesChanged");
+}
+
+export function publishPresentationTemplatesChangedForOrgSafely(
+  orgId: string,
+): Promise<void> {
+  waitUntil(
+    bestEffort(publishOrgSignal(orgId, "presentationTemplatesChanged")),
+  );
+  return Promise.resolve();
 }
 
 /**
@@ -246,7 +291,7 @@ export async function publishOrgSignal(
   payload: unknown = null,
 ): Promise<void> {
   const client = ablyClient();
-  const channel = client.channels.get(`org:${orgId}`);
+  const channel = client.channels.get(getOrgChannelName(orgId));
   await channel.publish(topic, payload);
   L.debug(`Published "${topic}" to org:${orgId}`);
 }

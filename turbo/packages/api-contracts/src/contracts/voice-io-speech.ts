@@ -30,7 +30,7 @@ export type VoiceIoSpeechResponse = z.infer<typeof voiceIoSpeechResponseSchema>;
 export const voiceIoSpeechContract = c.router({
   post: {
     method: "POST",
-    path: "/api/okou/voice-io/speech",
+    path: "/api/voice-io/speech",
     headers: authHeadersSchema,
     body: voiceIoSpeechRequestSchema,
     responses: {

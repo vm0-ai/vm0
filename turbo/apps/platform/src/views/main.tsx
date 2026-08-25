@@ -11,12 +11,13 @@ import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { handleInvitationRedirect$ } from "../signals/invitation-redirect.ts";
-import { handleBillingRedirect$ } from "../signals/zero-page/billing.ts";
+import { handleBillingRedirect$ } from "../signals/okou-page/billing.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import {
   isStandalonePwa,
   setupKeyboardDismissGesture,
 } from "../lib/keyboard-dismiss-gesture.ts";
+import { ImageAnnotationEditor } from "./okou-page/image-annotation-editor.tsx";
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
 
@@ -75,6 +76,10 @@ export const setupRouter = (
           </VM0ClerkProvider>
           <InspectLogFileInput />
           <ForceUpgradeDialog />
+          {/* The lightbox is mounted by three different pages, and opening the
+              editor closes it — so the editor lives at the root instead, or it
+              would only exist on whichever page happened to mount it. */}
+          <ImageAnnotationEditor />
         </ErrorBoundary>
         <AppToaster />
       </StoreProvider>

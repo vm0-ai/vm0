@@ -17,7 +17,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const load$ = command(async ({ get }, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(client.get({ fetchOptions: { signal } }), [200]);
         });
@@ -27,7 +27,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const save$ = command(async ({ get }, value: string, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(
             client.update({
@@ -43,7 +43,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const helper = async (signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           return accept(client.list({ query: { q: "x" }, fetchOptions: { signal } }), [200]);
         };
@@ -54,7 +54,7 @@ ruleTester.run("require-client-signal", rule, {
       code: `
         const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
           const signal = set(resetSignal$, parentSignal);
-          const client = get(zeroClient$)(someContract);
+          const client = get(apiClient$)(someContract);
           await accept(
             client.create({
               body: {},
@@ -69,7 +69,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const value$ = computed(async (get) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           return accept(client.get(), [200]);
         });
@@ -79,7 +79,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const load$ = command(async ({ get }) => {
-          const client = get(zeroClient$)(someContract);
+          const client = get(apiClient$)(someContract);
           await accept(client.get(), [200]);
         });
       `,
@@ -88,7 +88,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: TEST_FILE,
       code: `
         const load$ = command(async ({ get }, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(client.get(), [200]);
         });
@@ -96,11 +96,24 @@ ruleTester.run("require-client-signal", rule, {
     },
   ],
   invalid: [
+    // The rule recognises the client factory by its identifier text, so a
+    // rename of the factory that misses the literal makes it stop matching —
+    // and stop reporting — without failing anything. This case pins the
+    // current name against that silent regression.
     {
       filename: SIGNALS_FILE,
       code: `
         const load$ = command(async ({ get }, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          await accept(get(apiClient$)(someContract).get(), [200]);
+        });
+      `,
+      errors: [{ messageId: "missingFetchOptions" }],
+    },
+    {
+      filename: SIGNALS_FILE,
+      code: `
+        const load$ = command(async ({ get }, signal: AbortSignal) => {
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(client.get(), [200]);
         });
@@ -111,7 +124,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const load$ = command(async ({ get }, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(client.get({ query: { q: "x" } }), [200]);
         });
@@ -122,7 +135,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const load$ = command(async ({ get }, signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(client.get({ fetchOptions: {} }), [200]);
         });
@@ -133,7 +146,7 @@ ruleTester.run("require-client-signal", rule, {
       filename: SIGNALS_FILE,
       code: `
         const helper = async (signal: AbortSignal) => {
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           return accept(client.delete({ params: { id: "123" } }), [204]);
         };
@@ -146,7 +159,7 @@ ruleTester.run("require-client-signal", rule, {
         const load$ = command(async ({ get }, signal: AbortSignal) => {
           const controller = new AbortController();
           const otherSignal = controller.signal;
-          const createClient = get(zeroClient$);
+          const createClient = get(apiClient$);
           const client = createClient(someContract);
           await accept(
             client.get({

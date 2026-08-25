@@ -314,7 +314,7 @@ async function linkDraft(
   );
 }
 
-describe("POST /api/zero/mail/drafts/link", () => {
+describe("POST /api/mail/drafts/link", () => {
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();
@@ -367,7 +367,10 @@ describe("POST /api/zero/mail/drafts/link", () => {
       "Connect and authorize Gmail for this agent first",
     );
 
-    await connectors.deleteConnectorBySlug(fixture.actor, "gmail");
+    await connectors.disconnectSingleBuiltinConnectorAccount(
+      fixture.actor,
+      "gmail",
+    );
     await expect(
       readThreadConnectorSelectionState(context, {
         chatThreadId: fixture.thread.id,
@@ -375,7 +378,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
       }),
     ).resolves.toBeFalsy();
 
-    const disconnectCustomConnectorId = randomUUID();
+    const disconnectSingleCustomConnectorAccountId = randomUUID();
     const deleteCustomConnectorId = randomUUID();
     await seedCustomConnectorRuntimeConnectors(context, {
       orgId: fixture.actor.orgId ?? "",
@@ -383,7 +386,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
       agentId: fixture.agent.agentId,
       customConnectors: [
         {
-          id: disconnectCustomConnectorId,
+          id: disconnectSingleCustomConnectorAccountId,
           slug: "_disconnect-selection-cleanup",
           displayName: "Disconnect selection cleanup",
           prefixTemplate: "https://disconnect-selection.example.com/",
@@ -400,7 +403,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
       await readCustomConnectorCredentialStorageParent(context, {
         orgId: fixture.actor.orgId ?? "",
         userId: fixture.actor.userId,
-        customConnectorId: disconnectCustomConnectorId,
+        customConnectorId: disconnectSingleCustomConnectorAccountId,
       });
     const disconnectMemberConnectorId = disconnectCustomStorage.connector?.id;
     if (!disconnectMemberConnectorId) {
@@ -409,11 +412,11 @@ describe("POST /api/zero/mail/drafts/link", () => {
     await seedCustomThreadConnectorSelection(context, {
       chatThreadId: fixture.thread.id,
       connectorId: disconnectMemberConnectorId,
-      customConnectorId: disconnectCustomConnectorId,
+      customConnectorId: disconnectSingleCustomConnectorAccountId,
     });
-    await connectors.disconnectCustomConnector(
+    await connectors.disconnectSingleCustomConnectorAccount(
       fixture.actor,
-      disconnectCustomConnectorId,
+      disconnectSingleCustomConnectorAccountId,
     );
     await expect(
       readThreadConnectorSelectionState(context, {
@@ -449,7 +452,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     ).resolves.toBeFalsy();
     await connectors.deleteCustomConnector(
       fixture.actor,
-      disconnectCustomConnectorId,
+      disconnectSingleCustomConnectorAccountId,
     );
   });
 
@@ -458,7 +461,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
 
-    const okouToken = runs.zeroTokenForRunWithCapabilities(
+    const okouToken = runs.okouTokenForRunWithCapabilities(
       fixture.actor,
       randomUUID(),
       ["connector:read"],
@@ -678,7 +681,10 @@ describe("POST /api/zero/mail/drafts/link", () => {
     const gmail = mockGmailDraftApi();
     const linked = await linkDraft(fixture);
 
-    await connectors.deleteConnectorBySlug(fixture.actor, "gmail");
+    await connectors.disconnectSingleBuiltinConnectorAccount(
+      fixture.actor,
+      "gmail",
+    );
     const start = await connectors.startOauth(fixture.actor, "gmail", "oauth");
     const state = new URL(start.authorizationUrl).searchParams.get("state");
     if (!state) {

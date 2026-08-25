@@ -14,7 +14,7 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 const context = testContext();
 const store = createStore();
 const BUCKET = "test-user-artifacts";
-const ROUTE = "/api/zero/web/download-file";
+const ROUTE = "/api/web/download-file";
 
 interface S3FixtureObject {
   readonly key: string;
@@ -33,7 +33,7 @@ function mintOkouToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -154,14 +154,14 @@ async function expectErrorResponse(
   expect(body.error?.code).toBe(code);
 }
 
-describe("GET /api/zero/web/download-file", () => {
+describe("GET /api/web/download-file", () => {
   it("returns 401 when no auth token is provided", async () => {
     const response = await requestDownload({ fileId: "abc" });
 
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
-  it("returns 403 for a zero token without file:read capability", async () => {
+  it("returns 403 for an agent token without file:read capability", async () => {
     const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

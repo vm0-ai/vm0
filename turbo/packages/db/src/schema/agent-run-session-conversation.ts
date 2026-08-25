@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes, agentComposeVersions } from "./agent-compose";
+import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 import { chatThreads } from "./chat-thread";
 import { threadGoals } from "./thread-goal";
@@ -31,21 +31,13 @@ import type {
 /**
  * Agent Runs table
  * Created when developer executes agent via SDK
- * References immutable compose version for reproducibility
+ * Stores an immutable launch snapshot for reproducibility.
  */
 export const agentRuns = pgTable(
   "agent_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    agentComposeVersionId: varchar("agent_compose_version_id", {
-      length: 64,
-    }).references(
-      () => {
-        return agentComposeVersions.id;
-      },
-      { onDelete: "set null" },
-    ),
     continuedFromSessionId: uuid("continued_from_session_id"),
     sessionId: uuid("session_id")
       .notNull()
@@ -120,7 +112,7 @@ export const agentRuns = pgTable(
     selectedModel: varchar("selected_model", { length: 255 }),
     modelRuntimeProvider: varchar("model_runtime_provider", { length: 100 }),
     modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
-    vm0ModelKeyId: uuid("vm0_model_key_id"),
+    builtInModelKeyId: uuid("built_in_model_key_id"),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
@@ -191,7 +183,7 @@ export const agentRuns = pgTable(
             ${table.selectedModel} IS NULL AND
             ${table.modelRuntimeProvider} IS NULL AND
             ${table.modelRuntimeModel} IS NULL AND
-            ${table.vm0ModelKeyId} IS NULL AND
+            ${table.builtInModelKeyId} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
             ${table.selectedImageModel} IS NULL AND
@@ -241,8 +233,7 @@ export const agentRuns = pgTable(
 
 /**
  * Agent Sessions table
- * Lightweight compose to conversation association for continue operations
- * Sessions always use HEAD compose version at runtime, with no snapshotting.
+ * Lightweight Agent-to-conversation association for continue operations.
  */
 export const agentSessions = pgTable(
   "agent_sessions",
@@ -250,14 +241,12 @@ export const agentSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentComposeId: uuid("agent_compose_id")
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
+    agentId: uuid("agent_id").references(
+      () => {
+        return agents.id;
+      },
+      { onDelete: "cascade" },
+    ),
     conversationId: uuid("conversation_id").references(
       (): AnyPgColumn => {
         return conversations.id;
@@ -273,10 +262,7 @@ export const agentSessions = pgTable(
   },
   (table) => {
     return [
-      index("idx_agent_sessions_user_compose").on(
-        table.userId,
-        table.agentComposeId,
-      ),
+      index("idx_agent_sessions_user_agent").on(table.userId, table.agentId),
       index("idx_agent_sessions_org").on(table.orgId),
     ];
   },

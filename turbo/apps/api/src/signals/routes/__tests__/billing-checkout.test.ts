@@ -166,20 +166,20 @@ interface SubscriptionFixture extends BillingOrgFixture {
   readonly subscriptionId: string;
 }
 
-function setZeroPrice(): void {
-  mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-  mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
-  mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", TEST_PRICE_CUSTOM_CREDIT_UNIT);
-  mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
+function setTierPrices(): void {
+  mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+  mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", TEST_PRICE_CUSTOM_CREDIT_UNIT);
+  mockEnv("OKOU_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
 }
 
 function setUsagePackPrices(): void {
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PLAN_PRO);
-  mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_PLAN_TEAM);
-  mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
-  mockEnv("ZERO_PRICE_USAGE_PACK_50", TEST_PRICE_USAGE_PACK_50);
-  mockEnv("ZERO_PRICE_USAGE_PACK_100", TEST_PRICE_USAGE_PACK_100);
-  mockEnv("ZERO_PRICE_USAGE_PACK_200", TEST_PRICE_USAGE_PACK_200);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PLAN_PRO);
+  mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_PLAN_TEAM);
+  mockEnv("OKOU_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
+  mockEnv("OKOU_PRICE_USAGE_PACK_50", TEST_PRICE_USAGE_PACK_50);
+  mockEnv("OKOU_PRICE_USAGE_PACK_100", TEST_PRICE_USAGE_PACK_100);
+  mockEnv("OKOU_PRICE_USAGE_PACK_200", TEST_PRICE_USAGE_PACK_200);
 }
 
 function usagePackPriceConfiguration(priceId: string): {
@@ -305,14 +305,14 @@ function mockStatefulUsagePackCheckoutSessions(): Map<
   return sessionStates;
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
@@ -345,11 +345,11 @@ function authenticateOrg(
   mocks.clerk.session(fixture.userId, fixture.orgId, role);
 }
 
-async function enableSavedBillingPurchasePreview(
+async function disableUsagePackPlans(
   fixture: BillingOrgFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    [FeatureSwitchKey.UsagePackPlans]: false,
   });
 }
 
@@ -448,32 +448,6 @@ async function prepareUsagePackCheckoutOrg(
   context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
     { data: [] },
   );
-}
-
-async function seedPreviousUsagePackCheckoutWriter(
-  fixture: BillingOrgFixture,
-  customerId: string,
-): Promise<string> {
-  const seeded = await usagePackStateAction({
-    action: "seed",
-    orgId: fixture.orgId,
-    tier: "pro",
-    stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
-    stripeCustomerId: customerId,
-    stripeCheckoutSessionId: null,
-    allocations: [
-      {
-        userId: fixture.userId,
-        invitationId: null,
-        usagePackUsd: 20,
-        stripePriceId: TEST_PRICE_USAGE_PACK_20,
-      },
-    ],
-  });
-  if (seeded.action !== "seeded") {
-    throw new Error("Failed to seed the previous writer snapshot");
-  }
-  return seeded.usagePackSubscriptionId;
 }
 
 function cleanupUsagePackSnapshotOnTestFinished(
@@ -905,7 +879,7 @@ async function seedMemberRole(args: {
 describe("POST /api/billing/checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
   });
 
@@ -1077,7 +1051,6 @@ describe("POST /api/billing/checkout", () => {
   it("returns checkout URL on success", async () => {
     const okouPricePro = "price_okou_pro";
     mockEnv("OKOU_PRICE_PRO", okouPricePro);
-    mockEnv("ZERO_PRICE_PRO", "price_ignored_zero_pro");
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -1135,7 +1108,6 @@ describe("POST /api/billing/checkout", () => {
   it("pays a saved-card Plan preview through the rollout-safe checkout route", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
@@ -1301,7 +1273,6 @@ describe("POST /api/billing/checkout", () => {
       tier: "pro",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const periodStart = currentSecond();
@@ -1481,7 +1452,6 @@ describe("POST /api/billing/checkout", () => {
       tier: "pro",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const previewPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const replacementPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
@@ -1607,7 +1577,6 @@ describe("POST /api/billing/checkout", () => {
   it("refreshes an invalid Plan preview through the rollout-safe checkout route", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const initialPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const currentPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
@@ -1686,7 +1655,6 @@ describe("POST /api/billing/checkout", () => {
   it("allows only one of two Plan previews to create a subscription", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
@@ -1794,7 +1762,6 @@ describe("POST /api/billing/checkout", () => {
   it("uses hosted Checkout when an opted-in plan purchase has no saved card", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
@@ -2287,9 +2254,9 @@ describe("POST /api/billing/checkout", () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    // Override the beforeEach setZeroPrice() so activePriceId(tier) returns
+    // Override the beforeEach setTierPrices() so activePriceId(tier) returns
     // undefined and the route falls into the "Price not configured" branch.
-    mockEnv("ZERO_PRICE_PRO", undefined);
+    mockEnv("OKOU_PRICE_PRO", undefined);
 
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
       billingCheckoutContract,
@@ -2319,7 +2286,7 @@ describe("POST /api/billing/checkout", () => {
 describe("POST /api/billing/usage-pack-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
   });
@@ -2327,6 +2294,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
   it("keeps the usage pack catalog behind the same feature switch", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
+    await disableUsagePackPlans(fixture);
 
     const response = await accept(
       setupApp({ context, routes: billingCheckoutRoutes })(
@@ -2399,6 +2367,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
   it("keeps usage pack checkout behind its feature switch", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
+    await disableUsagePackPlans(fixture);
     const before = await readUsagePackState(fixture.orgId);
 
     const response = await accept(
@@ -2623,7 +2592,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3359,105 +3327,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     });
   });
 
-  it("waits when the previous writer claims a fresh Checkout snapshot", async () => {
-    const fixture = createOrgFixture();
-    const customerId = `cus_${randomUUID()}`;
-    await prepareUsagePackCheckoutOrg(fixture, customerId);
-    const sessionStates = mockStatefulUsagePackCheckoutSessions();
-    const legacySessionId = `cs_legacy_${randomUUID()}`;
-    // The previous API has created this payable Session but is paused before
-    // its unconditional snapshot correlation.
-    sessionStates.set(legacySessionId, "open");
-    const legacySnapshotId = await seedPreviousUsagePackCheckoutWriter(
-      fixture,
-      customerId,
-    );
-    cleanupUsagePackSnapshotOnTestFinished(fixture, legacySnapshotId);
-    // The previous API can claim a snapshot created by another writer. Keep
-    // its freshness timestamp distinct from creation so ownership never
-    // depends on timestamp equality.
-    await usagePackStateAction({
-      action: "set-updated-at",
-      orgId: fixture.orgId,
-      usagePackSubscriptionId: legacySnapshotId,
-      updatedAt: new Date(now() - 1000).toISOString(),
-    });
-    const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      billingUsagePackCheckoutContract,
-    );
-    const request = () => {
-      return client.create({
-        body: {
-          tier: "pro",
-          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 50 }],
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      });
-    };
-    const blocked = await accept(request(), [409]);
-
-    expect(blocked.body).toStrictEqual({
-      error: {
-        message: "Another usage pack purchase is still being prepared",
-        code: "CONFLICT",
-      },
-    });
-    expect(
-      context.mocks.stripe.checkout.sessions.create,
-    ).not.toHaveBeenCalled();
-    expect(sessionStates.get(legacySessionId)).toBe("open");
-    const blockedState = await readUsagePackState(
-      fixture.orgId,
-      legacySnapshotId,
-    );
-    expect(blockedState.subscriptionCount).toBe(1);
-    expect(blockedState.subscription).toMatchObject({
-      stripeCheckoutSessionId: null,
-      subscriptionStatus: "checkout_pending",
-    });
-
-    await usagePackStateAction({
-      action: "correlate-legacy-checkout-session",
-      orgId: fixture.orgId,
-      usagePackSubscriptionId: legacySnapshotId,
-      stripeCheckoutSessionId: legacySessionId,
-      updatedAt: new Date(now()).toISOString(),
-    });
-    const replaced = await accept(request(), [200]);
-
-    expect(replaced.body).toStrictEqual({
-      url: expect.stringMatching(/^https:\/\/checkout\.stripe\.test\//),
-    });
-    expect(sessionStates.get(legacySessionId)).toBe("expired");
-    expect(
-      [...sessionStates.values()].filter((status) => {
-        return status === "open";
-      }),
-    ).toHaveLength(1);
-    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(context.mocks.stripe.checkout.sessions.expire).toHaveBeenCalledWith(
-      legacySessionId,
-    );
-    expect(
-      (await readUsagePackState(fixture.orgId, legacySnapshotId)).subscription,
-    ).toMatchObject({
-      stripeCheckoutSessionId: legacySessionId,
-      subscriptionStatus: "checkout_expired",
-    });
-    const [createInput] = context.mocks.stripe.checkout.sessions.create.mock
-      .calls[0] ?? [undefined];
-    const replacementSnapshotId =
-      stripeInputMetadata(createInput).usagePackSubscriptionId;
-    if (!replacementSnapshotId) {
-      throw new Error("Replacement Checkout did not expose its snapshot ID");
-    }
-    cleanupUsagePackSnapshotOnTestFinished(fixture, replacementSnapshotId);
-  });
-
   it("keeps a reused purchase preview snapshot until its latest token expires", async () => {
     const startedAt = new Date("2035-05-15T00:00:00.000Z");
     mockNow(startedAt);
@@ -3470,7 +3339,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     authenticateOrg(fixture);
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3913,7 +3781,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const paymentMethodId = `pm_${randomUUID()}`;
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -4005,7 +3872,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
       "https://invoice.stripe.com/usage-pack-authentication";
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -4119,7 +3985,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const paymentMethodId = `pm_${randomUUID()}`;
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -4271,7 +4136,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const checkoutUrl = "https://checkout.stripe.com/session/usage-pack-retry";
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
-      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -5213,7 +5077,7 @@ describe("legacy subscription usage pack migration", () => {
 
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
@@ -5226,6 +5090,7 @@ describe("legacy subscription usage pack migration", () => {
       orgId: `org_non_staff_${randomUUID()}`,
     });
     expect(isStaffOrg(fixture.orgId)).toBeFalsy();
+    await disableUsagePackPlans(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       legacyMigrationSubscription(fixture),
     );
@@ -7138,7 +7003,7 @@ describe("usage pack allocation management", () => {
 
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
     setUsagePackPrices();
     mockUsagePackCatalog();
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
@@ -8707,7 +8572,6 @@ describe("usage pack allocation management", () => {
   it("retries a grouped subscription change after a Stripe failure", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const sourceSubscription = managedUsagePackSubscription(
       fixture,
       new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
@@ -8807,7 +8671,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -10893,7 +10756,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -10995,7 +10857,6 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const oldSubscription = {
       ...managedUsagePackSubscription(
@@ -11730,6 +11591,31 @@ describe("usage pack allocation management", () => {
       post_payment_amount: 2500,
       refunds: [],
     });
+    const invoicePaymentIntentId = "pi_usage_pack_removal";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_usage_pack_removal",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 5000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: invoicePaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({
+        id: "re_usage_pack_removal_failed",
+        status: "failed",
+      })
+      .mockResolvedValueOnce({
+        id: "re_usage_pack_removal",
+        status: "succeeded",
+      });
     context.mocks.stripe.creditNotes.create.mockResolvedValue({
       id: "cn_usage_pack_removal",
       status: "issued",
@@ -11741,10 +11627,6 @@ describe("usage pack allocation management", () => {
           refund: "re_usage_pack_removal",
         },
       ],
-    });
-    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
-      id: "re_usage_pack_removal",
-      status: "succeeded",
     });
 
     const responsePromise = setupApp({ context, routes: orgMembersRoutes })(
@@ -11774,6 +11656,22 @@ describe("usage pack allocation management", () => {
 
     const response = await accept(responsePromise, [200]);
     expect(response.body.message).toBe(`Removed ${targetEmail} from org`);
+    const retryPending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(retryPending.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        status: "pending",
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+
+    await runBillingReconciliation(fixture.orgId);
+
     const duplicateEvent = {
       type: "organizationMembership.deleted",
       data: {
@@ -11842,6 +11740,31 @@ describe("usage pack allocation management", () => {
       context.mocks.stripe.subscriptionSchedules.create,
     ).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:refund$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:refund$/u,
+        ),
+      }),
+    );
     expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(1);
     expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -11853,11 +11776,16 @@ describe("usage pack allocation management", () => {
             amount: 2500,
           }),
         ],
-        refund_amount: 2500,
+        refunds: [
+          {
+            refund: "re_usage_pack_removal",
+            amount_refunded: 2500,
+          },
+        ],
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringMatching(
-          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:credit-note$/u,
         ),
       }),
     );
@@ -11959,6 +11887,26 @@ describe("usage pack allocation management", () => {
       post_payment_amount: 2000,
       refunds: [],
     });
+    const invoicePaymentIntentId = "pi_last_usage_pack_removal";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_last_usage_pack_removal",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: invoicePaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_last_usage_pack_removal",
+      status: "succeeded",
+    });
     context.mocks.stripe.creditNotes.create.mockResolvedValue({
       id: "cn_last_usage_pack_removal",
       status: "issued",
@@ -11970,10 +11918,6 @@ describe("usage pack allocation management", () => {
           refund: "re_last_usage_pack_removal",
         },
       ],
-    });
-    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
-      id: "re_last_usage_pack_removal",
-      status: "succeeded",
     });
 
     await accept(
@@ -12017,11 +11961,27 @@ describe("usage pack allocation management", () => {
       expect.objectContaining({
         invoice: expect.stringMatching(/^in_/u),
         amount: 2000,
-        refund_amount: 2000,
+        refunds: [
+          {
+            refund: "re_last_usage_pack_removal",
+            amount_refunded: 2000,
+          },
+        ],
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringMatching(
-          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:credit-note$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: invoicePaymentIntentId,
+        amount: 2000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1:refund$/u,
         ),
       }),
     );
@@ -12117,6 +12077,295 @@ describe("usage pack allocation management", () => {
     expect(state.changes[0]).toStrictEqual(
       expect.objectContaining({ kind: "removal", status: "scheduled" }),
     );
+  });
+
+  it("recovers a failed refund from an already-issued invoice credit note", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+      refundState: {
+        status: "failed",
+        refundedAmountCents: 1000,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: "re_historical_failed",
+        attempt: 1,
+        failureReason: "stripe_refund_failed",
+      },
+    });
+    context.mocks.stripe.creditNotes.retrieve.mockResolvedValue({
+      id: "cn_historical_failed",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [{ amount_refunded: 1000, refund: "re_historical_failed" }],
+    });
+    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
+      id: "re_historical_failed",
+      status: "failed",
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const retryPending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(retryPending.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "pending",
+        attempt: 2,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: null,
+      }),
+    );
+
+    const recoveryPaymentIntentId = "pi_historical_recovery";
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_historical_recovery",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: recoveryPaymentIntentId,
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_historical_recovery",
+      status: "succeeded",
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const recovered = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(recovered.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "succeeded",
+        attempt: 2,
+        stripeCreditNoteId: "cn_historical_failed",
+        stripeRefundId: "re_historical_recovery",
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: recoveryPaymentIntentId,
+        amount: 1000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:2:refund$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("stops retrying an invoice refund after the third failed attempt", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+    });
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_terminal_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_terminal_refund",
+      payments: {
+        data: [
+          {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: "pi_terminal_refund",
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({ id: "re_failed_1", status: "failed" })
+      .mockResolvedValueOnce({ id: "re_failed_2", status: "canceled" })
+      .mockResolvedValueOnce({
+        id: "re_failed_3",
+        status: "failed",
+        failure_reason: "declined",
+      });
+
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+    await runBillingReconciliation(fixture.orgId);
+
+    const failed = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(failed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "failed",
+        attempt: 3,
+        failureReason: "stripe_refund_failed:declined",
+        stripeCreditNoteId: null,
+        stripeRefundId: "re_failed_3",
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(3);
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an invoice has multiple refundable PaymentIntents", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 10_000,
+      prepareRefund: true,
+    });
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_ambiguous_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+      id: "in_ambiguous_refund",
+      payments: {
+        data: ["first", "second"].map((suffix) => {
+          return {
+            status: "paid",
+            amount_paid: 2000,
+            payment: {
+              type: "payment_intent",
+              payment_intent: `pi_ambiguous_${suffix}`,
+            },
+          };
+        }),
+      },
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const failed = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(failed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "failed",
+        attempt: 1,
+        failureReason: "invoice_refund_payment_intent_count_2",
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+  });
+
+  it("continues reconciling refunds after one candidate throws", async () => {
+    const firstUserId = `user_${randomUUID()}`;
+    const secondUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: firstUserId, usagePackUsd: 20 },
+      { userId: secondUserId, usagePackUsd: 20 },
+    ]);
+    for (const userId of [firstUserId, secondUserId]) {
+      await usagePackStateAction({
+        action: "set-grant-remaining",
+        orgId: fixture.orgId,
+        userId,
+        grantType: "purchased",
+        remainingAmount: 10_000,
+        prepareRefund: true,
+      });
+    }
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_isolated_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [],
+    });
+    context.mocks.stripe.invoices.retrieve
+      .mockRejectedValueOnce(new Error("bad Stripe invoice"))
+      .mockResolvedValueOnce({
+        id: "in_isolated_refund",
+        payments: {
+          data: [
+            {
+              status: "paid",
+              amount_paid: 4000,
+              payment: {
+                type: "payment_intent",
+                payment_intent: "pi_isolated_refund",
+              },
+            },
+          ],
+        },
+      });
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: "re_isolated_refund",
+      status: "succeeded",
+    });
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: "cn_isolated_refund",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 1000,
+      refunds: [{ amount_refunded: 1000, refund: "re_isolated_refund" }],
+    });
+
+    await runBillingReconciliation(fixture.orgId);
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(
+      state.refunds.filter((refund) => {
+        return refund.status === "processing";
+      }),
+    ).toHaveLength(1);
+    expect(
+      state.refunds.filter((refund) => {
+        return refund.status === "succeeded";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(1);
   });
 
   it.each(["pro", "team"] as const)(
@@ -12925,7 +13174,6 @@ describe("usage pack allocation management", () => {
     const paymentMethodId = `pm_invite_${randomUUID()}`;
     const invoiceId = `in_invite_${randomUUID()}`;
     const hostedInvoiceUrl = `https://invoice.stripe.test/${invoiceId}`;
-    await enableSavedBillingPurchasePreview(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       ...managedUsagePackSubscription(
         fixture,
@@ -13048,7 +13296,6 @@ describe("usage pack allocation management", () => {
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
     ]);
-    await enableSavedBillingPurchasePreview(fixture);
     const email = `setup-invite-${randomUUID()}@example.test`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -14553,7 +14800,7 @@ describe("usage pack allocation management", () => {
 
 describe("POST /api/billing/checkout/complete", () => {
   beforeEach(() => {
-    setZeroPrice();
+    setTierPrices();
   });
 
   async function trackedSeed(values?: {
@@ -14872,7 +15119,7 @@ describe("POST /api/billing/checkout/complete", () => {
 describe("POST /api/billing/concurrency-checkout", () => {
   beforeEach(() => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    setZeroPrice();
+    setTierPrices();
   });
 
   async function trackedSeed(
@@ -14960,7 +15207,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       expiresAt: periodEnd,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     const allowanceItem = {
       id: `si_${TEST_PRICE_USAGE_ALLOWANCE}`,
@@ -15157,7 +15403,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       expiresAt: allowanceEnd,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
 
     const periodStartUnix = Math.floor(periodStart.getTime() / 1000);
     const allowanceEndUnix = Math.floor(allowanceEnd.getTime() / 1000);
@@ -17130,7 +17375,6 @@ describe("POST /api/billing/concurrency-checkout", () => {
       tier: "team",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_${randomUUID()}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subscriptionId,
@@ -18649,7 +18893,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
     ]);
   });
 
-  it("adds concurrency to the Plan subscription for a zero token with billing write capability", async () => {
+  it("adds concurrency to the Plan subscription for an agent token with billing write capability", async () => {
     context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
       data: [],
       has_more: false,
@@ -18703,7 +18947,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
         ],
       },
     });
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["billing:write"],
@@ -18776,7 +19020,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
   it("returns 400 when concurrency price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("ZERO_PRICE_CONCURRENCY", undefined);
+    mockEnv("OKOU_PRICE_CONCURRENCY", undefined);
 
     const client = setupApp({
       context,
@@ -19774,7 +20018,7 @@ describe("POST /api/billing/concurrency-checkout", () => {
 
 describe("POST /api/billing/credit-checkout", () => {
   beforeEach(() => {
-    setZeroPrice();
+    setTierPrices();
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
       discount: null,
@@ -19885,8 +20129,8 @@ describe("POST /api/billing/credit-checkout", () => {
     });
   });
 
-  it("returns 403 for zero tokens without billing write capability", async () => {
-    const token = zeroToken({
+  it("returns 403 for agent tokens without billing write capability", async () => {
+    const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       capabilities: ["billing:read"],
@@ -20031,7 +20275,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("applies a customer coupon without including subscription renewal", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const couponId = `coupon_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -20196,7 +20439,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("uses a legacy subscription source when no higher-priority card exists", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const subscriptionSourceId = `card_${randomUUID().slice(0, 8)}`;
     const customerSourceId = `card_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -20307,7 +20549,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("rejects payment when the finalized invoice amount differs from the preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20415,7 +20656,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns completed when customer balance pays the invoice during finalization", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20514,7 +20754,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns the hosted invoice when saved-billing payment requires authentication", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -20632,7 +20871,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("falls back to Stripe checkout when saved billing is unavailable", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
       default_payment_method: null,
@@ -20669,7 +20907,6 @@ describe("POST /api/billing/credit-checkout", () => {
 
   it("returns Checkout when all saved cards are removed after preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
-    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
@@ -20765,7 +21002,7 @@ describe("POST /api/billing/credit-checkout", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("creates credit checkout for zero tokens with billing write capability", async () => {
+  it("creates credit checkout for agent tokens with billing write capability", async () => {
     const fixture = await trackedSeed();
     await seedMemberRole({
       orgId: fixture.orgId,
@@ -20778,7 +21015,7 @@ describe("POST /api/billing/credit-checkout", () => {
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/zero-credit",
     });
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["billing:write"],
@@ -20884,7 +21121,7 @@ describe("POST /api/billing/credit-checkout", () => {
   it("returns 400 when credit price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", undefined);
+    mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", undefined);
 
     const client = setupApp({
       context,

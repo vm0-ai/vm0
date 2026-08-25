@@ -18,7 +18,7 @@ import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const CONNECT_PATH = "http://api.test/api/zero/teams/connect";
+const CONNECT_PATH = "http://api.test/api/teams/connect";
 const APP_ORIGIN = "https://app.vm0.test";
 
 function connectUrl(params: {
@@ -168,7 +168,7 @@ async function expectTeamsConnected(
   });
 }
 
-describe("GET /api/zero/teams/connect", () => {
+describe("GET /api/teams/connect", () => {
   const track = createFixtureTracker<TeamsConnectFixture>((fixture) => {
     return removeTeamsForTest(context.signal, fixture);
   });
@@ -252,6 +252,7 @@ describe("GET /api/zero/teams/connect", () => {
     expect(redirectUrl.searchParams.get("serviceUrl")).toBe(fixture.serviceUrl);
     expect(redirectUrl.searchParams.get("activityId")).toBe(linkedActivityId);
     expect(redirectUrl.searchParams.get("teamName")).toBe("Team From Link");
+    expect(redirectUrl.searchParams.get("botName")).toBe("Zero");
     await expectTeamsConnected(fixture, {
       tenantName: "Tenant From Link",
       teamId: linkedTeamId,

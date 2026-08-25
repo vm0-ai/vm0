@@ -1,6 +1,6 @@
 use super::super::super::*;
 use super::super::support::{
-    SpeculativeIdleSeedSpec, context_with_session, mock_run_config,
+    SpeculativeIdleSeedSpec, context_with_session, mock_run_config, mock_run_config_with_overrides,
     seed_idle_pool_with_speculative_timezone, shutdown, status_idle_reuse_keys_and_active_runs,
     test_profiles, test_runner_identity, wait_budget_count, wait_cancel_handle,
     wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
@@ -1052,7 +1052,7 @@ async fn duplicate_repark_keeps_newer_idle_sandbox_and_destroys_speculation() {
     wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert_eq!(
-        env.idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
+        env.idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id,
         replacement_id
     );
     assert_eq!(original_overrides.park_call_count(), 1);
@@ -1117,11 +1117,11 @@ async fn assert_speculation_failure_falls_back_to_fresh(
     claimed: Option<&str>,
     configure_failure: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
 ) {
-    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
-    let budget = Arc::clone(&config.capacity.budget);
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     configure_failure(&overrides);
-    add_healthy_reuse_preparation_matcher(&overrides);
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
     let reuse_key = RunId::new_v4().to_string();
     let generation_run_id = RunId::new_v4();
     let idle_sandbox_id = seed_idle_pool_with_speculative_timezone(
@@ -1158,11 +1158,17 @@ async fn assert_speculation_failure_falls_back_to_fresh(
         .wait_completion(run_id, Duration::from_secs(30))
         .await
         .expect("valid claim should use fresh fallback after speculation failure");
+    assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
+    let fresh_sandbox_id = completion
+        .sandbox_id
+        .expect("fresh fallback should complete with a sandbox");
+    assert_ne!(fresh_sandbox_id, idle_sandbox_id);
     assert_eq!(
         completion.reuse_result,
         Some(SandboxReuseResult::UnparkFailed)
     );
-    assert_ne!(completion.sandbox_id, Some(idle_sandbox_id));
+    assert_eq!(overrides.start_process_calls().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
@@ -1178,6 +1184,18 @@ async fn speculative_unpark_failure_destroys_before_fresh_fallback() {
                 transition: sandbox::SandboxIdleTransition::Unpark,
                 message: "simulated speculative unpark failure".into(),
             }));
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn speculative_unpark_panic_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.push_unpark_panic("simulated speculative unpark panic");
         },
     )
     .await;

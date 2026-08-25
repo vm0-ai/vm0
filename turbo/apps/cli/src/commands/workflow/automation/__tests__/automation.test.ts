@@ -30,7 +30,7 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const THREAD_METADATA_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/model-policies";
 
-function zeroToken(orgId: string): string {
+function okouToken(orgId: string): string {
   const payload = Buffer.from(
     JSON.stringify({
       userId: "user-123",
@@ -397,7 +397,7 @@ describe("okou workflow automation commands", () => {
       {};
     server.use(
       http.post(
-        "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+        "http://localhost:3000/api/workflows/:workflowId/automations",
         async ({ request, params }) => {
           captured.workflowId = params.workflowId as string;
           captured.body = (await request.json()) as Record<string, unknown>;
@@ -409,7 +409,7 @@ describe("okou workflow automation commands", () => {
   }
 
   async function runStripeEnabledAdd(...args: string[]): Promise<void> {
-    vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+    vi.stubEnv("OKOU_TOKEN", okouToken("org-stripe-enabled"));
     await createAutomationAddCommand({
       featureSwitchOverrides: {
         [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
@@ -420,7 +420,7 @@ describe("okou workflow automation commands", () => {
   function mockWorkflowList() {
     let capturedUrl: string | undefined;
     server.use(
-      http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
+      http.get("http://localhost:3000/api/workflows", ({ request }) => {
         capturedUrl = request.url;
         return HttpResponse.json([workflowSummary]);
       }),
@@ -726,7 +726,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a GitHub pull request automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const captured = captureCreateAutomation(githubPullRequestAutomation);
 
       await automationCommand.parseAsync([
@@ -767,7 +767,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should reject --merged for non-closed GitHub pull request actions", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       await expect(async () => {
         await automationCommand.parseAsync([
           "node",
@@ -872,7 +872,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a GitHub issue comment automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const response = {
         ...automationBase,
         kind: "event",
@@ -949,7 +949,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should add a Strapi entry-published automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken(STAFF_ORG_ID));
+      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
       const captured = captureCreateAutomation(strapiAutomation);
 
       await automationCommand.parseAsync([
@@ -1173,7 +1173,7 @@ describe("okou workflow automation commands", () => {
     ])("should surface Stripe readiness failure: %s", async (message) => {
       server.use(
         http.post(
-          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          "http://localhost:3000/api/workflows/:workflowId/automations",
           () => {
             return HttpResponse.json(
               { error: { code: "BAD_REQUEST", message } },
@@ -1232,7 +1232,7 @@ describe("okou workflow automation commands", () => {
     });
 
     it("should show Stripe creation in help when the feature is enabled", async () => {
-      vi.stubEnv("OKOU_TOKEN", zeroToken("org-stripe-enabled"));
+      vi.stubEnv("OKOU_TOKEN", okouToken("org-stripe-enabled"));
       const addCommand = createAutomationAddCommand({
         featureSwitchOverrides: {
           [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
@@ -1857,7 +1857,7 @@ describe("okou workflow automation commands", () => {
     function mockExistingAutomation(existing: object) {
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
@@ -1870,14 +1870,14 @@ describe("okou workflow automation commands", () => {
       const captured: { id?: string; body?: Record<string, unknown> } = {};
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
           },
         ),
         http.patch(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           async ({ request, params }) => {
             captured.id = params.id as string;
             captured.body = (await request.json()) as Record<string, unknown>;
@@ -2266,7 +2266,7 @@ describe("okou workflow automation commands", () => {
     it("should display workflow automations", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          "http://localhost:3000/api/workflows/:workflowId/automations",
           ({ params }) => {
             expect(params.workflowId).toBe(WORKFLOW_ID);
             return HttpResponse.json([
@@ -2331,7 +2331,7 @@ describe("okou workflow automation commands", () => {
       };
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          "http://localhost:3000/api/workflows/:workflowId/automations",
           () => {
             return HttpResponse.json([failedAutomation]);
           },
@@ -2357,7 +2357,7 @@ describe("okou workflow automation commands", () => {
     it("should display an empty state with an add hint", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
+          "http://localhost:3000/api/workflows/:workflowId/automations",
           () => {
             return HttpResponse.json([]);
           },
@@ -2375,13 +2375,10 @@ describe("okou workflow automation commands", () => {
   describe("show", () => {
     it("should display automation details", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
-          () => {
-            return HttpResponse.json({ ...gmailAutomation, enabled: false });
-          },
-        ),
-        http.get("http://localhost:3000/api/okou/workflow-automations", () => {
+        http.get("http://localhost:3000/api/workflow-automations/:id", () => {
+          return HttpResponse.json({ ...gmailAutomation, enabled: false });
+        }),
+        http.get("http://localhost:3000/api/workflow-automations", () => {
           return HttpResponse.json([
             {
               workflow: workflowSummary,
@@ -2417,13 +2414,13 @@ describe("okou workflow automation commands", () => {
       };
       server.use(
         http.get(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           ({ params }) => {
             expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(sharedAutomation);
           },
         ),
-        http.get("http://localhost:3000/api/okou/workflow-automations", () => {
+        http.get("http://localhost:3000/api/workflow-automations", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -2472,20 +2469,14 @@ describe("okou workflow automation commands", () => {
           },
         };
         server.use(
-          http.get(
-            "http://localhost:3000/api/okou/workflow-automations/:id",
-            () => {
-              return HttpResponse.json(automation);
-            },
-          ),
-          http.get(
-            "http://localhost:3000/api/okou/workflow-automations",
-            () => {
-              return HttpResponse.json([
-                { workflow: workflowSummary, automation },
-              ]);
-            },
-          ),
+          http.get("http://localhost:3000/api/workflow-automations/:id", () => {
+            return HttpResponse.json(automation);
+          }),
+          http.get("http://localhost:3000/api/workflow-automations", () => {
+            return HttpResponse.json([
+              { workflow: workflowSummary, automation },
+            ]);
+          }),
         );
 
         await automationCommand.parseAsync([
@@ -2540,7 +2531,7 @@ describe("okou workflow automation commands", () => {
       let removedId: string | undefined;
       server.use(
         http.delete(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           ({ params }) => {
             removedId = params.id as string;
             return new HttpResponse(null, { status: 204 });
@@ -2562,14 +2553,14 @@ describe("okou workflow automation commands", () => {
       const actions: string[] = [];
       server.use(
         http.post(
-          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
+          "http://localhost:3000/api/workflow-automations/:id/enable",
           () => {
             actions.push("enable");
             return HttpResponse.json(stripeInvoicePaidAutomation);
           },
         ),
         http.post(
-          "http://localhost:3000/api/okou/workflow-automations/:id/disable",
+          "http://localhost:3000/api/workflow-automations/:id/disable",
           () => {
             actions.push("disable");
             return HttpResponse.json({
@@ -2579,7 +2570,7 @@ describe("okou workflow automation commands", () => {
           },
         ),
         http.delete(
-          "http://localhost:3000/api/okou/workflow-automations/:id",
+          "http://localhost:3000/api/workflow-automations/:id",
           () => {
             actions.push("delete");
             return new HttpResponse(null, { status: 204 });
@@ -2614,7 +2605,7 @@ describe("okou workflow automation commands", () => {
         "The Stripe connection no longer matches this automation; delete and recreate the automation to bind the current Live-mode Stripe account";
       server.use(
         http.post(
-          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
+          "http://localhost:3000/api/workflow-automations/:id/enable",
           () => {
             return HttpResponse.json(
               { error: { code: "BAD_REQUEST", message } },
@@ -2642,7 +2633,7 @@ describe("okou workflow automation commands", () => {
     it("should enable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/okou/workflow-automations/:id/enable",
+          "http://localhost:3000/api/workflow-automations/:id/enable",
           () => {
             return HttpResponse.json(cronAutomation);
           },
@@ -2667,7 +2658,7 @@ describe("okou workflow automation commands", () => {
     it("should disable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/okou/workflow-automations/:id/disable",
+          "http://localhost:3000/api/workflow-automations/:id/disable",
           () => {
             return HttpResponse.json({ ...cronAutomation, enabled: false });
           },
@@ -2694,7 +2685,7 @@ describe("okou workflow automation commands", () => {
       async (command) => {
         server.use(
           http.post(
-            `http://localhost:3000/api/okou/workflow-automations/:id/${command}`,
+            `http://localhost:3000/api/workflow-automations/:id/${command}`,
             () => {
               return HttpResponse.json({
                 ...cronAutomation,

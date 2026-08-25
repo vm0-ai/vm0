@@ -102,7 +102,7 @@ function instructionsClient() {
   );
 }
 
-/** Creates an agent through POST /api/zero/agents with the user as owner. */
+/** Creates an agent through POST /api/agents with the user as owner. */
 async function createAgentAs(
   user: OrgUser,
   body: AgentRequest = {},
@@ -116,7 +116,7 @@ async function createAgentAs(
   return { agentId: response.body.agentId };
 }
 
-/** Binds a workflow to the agent through POST /api/zero/workflows. */
+/** Binds a workflow to the agent through POST /api/workflows. */
 async function createWorkflowFor(
   user: OrgUser,
   agentId: string,
@@ -153,7 +153,7 @@ function s3PutInputs(): readonly Record<string, unknown>[] {
   });
 }
 
-describe("PUT /api/zero/agents/:id", () => {
+describe("PUT /api/agents/:id", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().update({
@@ -172,7 +172,7 @@ describe("PUT /api/zero/agents/:id", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,
@@ -330,7 +330,7 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 });
 
-describe("PATCH /api/zero/agents/:id", () => {
+describe("PATCH /api/agents/:id", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().updateMetadata({
@@ -349,7 +349,7 @@ describe("PATCH /api/zero/agents/:id", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,
@@ -595,7 +595,7 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 });
 
-describe("PUT /api/zero/agents/:id/instructions", () => {
+describe("PUT /api/agents/:id/instructions", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       instructionsClient().update({
@@ -614,7 +614,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
   it("returns 403 for a sandbox token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,

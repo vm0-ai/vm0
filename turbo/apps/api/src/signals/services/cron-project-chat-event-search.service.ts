@@ -11,7 +11,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import {
   chatEventSearchMessages,
   chatEventSearchMessageWatermarks,
@@ -48,7 +48,7 @@ interface CandidateThread {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }
 
 interface ThreadProjectionStats {
@@ -69,7 +69,7 @@ interface ThreadProjectionProgress {
 }
 
 interface SearchProjectionBatch {
-  readonly messages: SearchMessageInsert[];
+  readonly messages: CanonicalSearchMessageInsert[];
   readonly revokedEventIds: string[];
 }
 
@@ -87,7 +87,18 @@ interface ChatEventSearchTestProjectionOptions {
 }
 
 type SearchableRole = "user" | "assistant";
-type SearchMessageInsert = typeof chatEventSearchMessages.$inferInsert;
+interface CanonicalSearchMessageInsert {
+  readonly chatThreadId: string;
+  readonly seqId: number;
+  readonly runId: string | null;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly role: SearchableRole;
+  readonly createdAt: Date;
+  readonly text: string;
+  readonly textBigram: string;
+}
 
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const THREAD_EVENT_LIMIT = 1000;
@@ -264,7 +275,7 @@ function searchMessage(
   thread: CandidateThread,
   projections: ReadonlyMap<string, SearchMessageProjection>,
   visibleEventIds: ReadonlySet<string>,
-): SearchMessageInsert | null {
+): CanonicalSearchMessageInsert | null {
   const projection = projections.get(row.id);
   if (!projection || !visibleEventIds.has(row.id)) {
     return null;
@@ -275,7 +286,7 @@ function searchMessage(
     runId: row.runId,
     orgId: thread.orgId,
     userId: thread.userId,
-    agentComposeId: thread.agentComposeId,
+    agentId: thread.agentId,
     role: projection.role,
     createdAt: row.createdAt,
     text: projection.text,
@@ -311,7 +322,7 @@ async function buildSearchProjectionBatch(
 
 async function insertSearchMessages(
   tx: Tx,
-  messages: readonly SearchMessageInsert[],
+  messages: readonly CanonicalSearchMessageInsert[],
 ): Promise<number> {
   if (messages.length === 0) {
     return 0;
@@ -449,11 +460,11 @@ async function loadCandidateThreads(
     .select({
       chatThreadId: chatThreads.id,
       userId: chatThreads.userId,
-      orgId: agentComposes.orgId,
-      agentComposeId: chatThreads.agentComposeId,
+      orgId: agents.orgId,
+      agentId: agents.id,
     })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .innerJoin(agents, eq(chatThreads.agentId, agents.id))
     .leftJoin(
       chatEventSearchMessageWatermarks,
       eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),

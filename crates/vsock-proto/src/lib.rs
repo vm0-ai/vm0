@@ -20,7 +20,7 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x17`
+//! Non-error message types currently occupy the contiguous range `0x00..=0x19`
 //! in allocation order. Existing values are stable wire assignments: do not
 //! renumber or reuse them. Allocate new non-error messages at the next unused
 //! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
@@ -53,11 +53,14 @@
 //! | 0x15 | G→H       | memory_snapshot_result | eighteen big-endian `[8B counter_bytes]` fields; see [`MemorySnapshot`] |
 //! | 0x16 | H→G       | guest_dns_readiness | `[4B positive timeout_ms][2B hostname_len][hostname]` |
 //! | 0x17 | G→H       | guest_dns_readiness_result | `[termination][4B duration_ms][1B flags][2B answer_len][answer][2B diagnostic_len][diagnostic]` |
+//! | 0x18 | H→G       | guest_storage_manifest | `[4B positive timeout_ms][2B run_id_len][run_id][2B runtime_dir_len][runtime_dir][4B manifest_len][manifest]` |
+//! | 0x19 | G→H       | guest_storage_manifest_result | same payload as `exec_result`, with both streams captured and bounded to 1 MiB each |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
 //! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`,
-//! `exec_control`, and `guest_dns_readiness`; operation replies reuse the
+//! `exec_control`, `guest_dns_readiness`, and `guest_storage_manifest`;
+//! operation replies reuse the
 //! original non-zero request sequence. `exec_output.output_seq` is per exec
 //! operation and starts at 0, incrementing by 1 for each output frame across
 //! stdout and stderr.
@@ -130,6 +133,17 @@
 //!
 //! Present stdin is bounded by `MAX_EXEC_STDIN_BYTES`.
 //!
+//! ### Process termination
+//!
+//! Exec, guest DNS readiness, and guest storage-manifest results share the same
+//! process termination encoding:
+//!
+//! - `0x00`: exited, followed by signed `[4B exit_code]`.
+//! - `0x01`: timed out.
+//! - `0x02`: cancelled.
+//! - `0x03`: start failed.
+//! - `0x04`: wait failed.
+//!
 //! ### `exec_result`
 //!
 //! ```text
@@ -140,13 +154,7 @@
 //! [2B diagnostic_len][diagnostic]
 //! ```
 //!
-//! `termination` values:
-//!
-//! - `0x00`: exited, followed by signed `[4B exit_code]`.
-//! - `0x01`: timed out.
-//! - `0x02`: cancelled.
-//! - `0x03`: start failed.
-//! - `0x04`: wait failed.
+//! `termination` uses the shared process termination encoding above.
 //!
 //! `stdout` and `stderr` use the same tagged captured-output payload:
 //!
@@ -165,13 +173,8 @@
 //! [2B diagnostic_len][diagnostic]
 //! ```
 //!
-//! `termination` values:
-//!
-//! - `0x00`: exited, followed by signed `[4B exit_code]`.
-//! - `0x01`: timed out.
-//! - `0x02`: cancelled by connection teardown.
-//! - `0x03`: start failed.
-//! - `0x04`: wait failed.
+//! `termination` uses the shared process termination encoding above. For DNS
+//! readiness, `cancelled` means cancellation by connection teardown.
 //!
 //! Result `flags` currently uses `OUTPUT_TRUNCATED=0x01`. `answer` is raw
 //! resolver stdout bounded by [`GUEST_DNS_READINESS_MAX_ANSWER_BYTES`], while
@@ -211,6 +214,13 @@ pub use payloads::guest_dns_readiness::{
     encode_guest_dns_readiness_request, encode_guest_dns_readiness_request_frame_into,
     encode_guest_dns_readiness_result,
 };
+pub use payloads::guest_storage_manifest::{
+    DecodedGuestStorageManifestRequest, GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES,
+    GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
+    decode_guest_storage_manifest_request, decode_guest_storage_manifest_result,
+    encode_guest_storage_manifest_request, encode_guest_storage_manifest_request_frame_into,
+    encode_guest_storage_manifest_result, encode_guest_storage_manifest_result_frame_into,
+};
 pub use payloads::memory_snapshot::{
     MEMORY_SNAPSHOT_PAYLOAD_SIZE, MemorySnapshot, decode_memory_snapshot,
 };
@@ -225,10 +235,10 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT,
-    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING,
-    MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
-    MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
-    MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
-    WRITE_FILE_FLAG_SUDO,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STORAGE_MANIFEST,
+    MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
+    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

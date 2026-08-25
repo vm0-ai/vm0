@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadMarkUnreadContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -22,18 +22,22 @@ const markUnreadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .update(chatThreads)
     .set({ lastReadAt: null })
     .where(
-      and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
+      and(
+        eq(chatThreads.id, params.id),
+        eq(chatThreads.userId, auth.userId),
+        isNotNull(chatThreads.agentId),
+      ),
     )
-    .returning({ agentComposeId: chatThreads.agentComposeId });
+    .returning({ agentId: chatThreads.agentId });
   signal.throwIfAborted();
 
-  if (!thread) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
 
   await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
     threadId: params.id,
-    agentId: thread.agentComposeId,
+    agentId: thread.agentId,
     lastReadAt: null,
   });
   signal.throwIfAborted();
@@ -41,7 +45,7 @@ const markUnreadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const unreads = await get(
     chatThreadUnreads({
       userId: auth.userId,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
     }),
   );
   signal.throwIfAborted();

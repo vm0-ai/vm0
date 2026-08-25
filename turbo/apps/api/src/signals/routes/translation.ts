@@ -11,7 +11,7 @@ const translationBody$ = bodyResultOf(translationContract.translate);
 
 const translateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     throw new Error("Translation route requires run authentication");
   }
   const bodyResult = await get(translationBody$);
@@ -27,7 +27,7 @@ export const translationRoutes: readonly RouteEntry[] = [
     route: translationContract.translate,
     handler: authRoute(
       {
-        accept: ["zero"],
+        accept: ["agent"],
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "translation:write",

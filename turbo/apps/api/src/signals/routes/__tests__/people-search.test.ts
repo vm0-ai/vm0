@@ -275,7 +275,7 @@ async function successfulRequest(
 }
 
 describe("okou people-search route", () => {
-  it("rejects zero tokens without people-search capability", async () => {
+  it("rejects agent tokens without people-search capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("People Search test actor must have an organization");
@@ -283,7 +283,7 @@ describe("okou people-search route", () => {
     await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
       runId: "run_missing_people_search_capability",
@@ -793,7 +793,7 @@ describe("okou people-search route", () => {
       webSearchPricing(),
     ]);
     configureProvider();
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [`people-search-${randomUUID().slice(0, 8)}`]: {
@@ -803,10 +803,10 @@ describe("okou people-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "Find a public professional profile",
     });
-    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+    const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "people-search:read",
       "web-search:read",
     ]);

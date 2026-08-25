@@ -47,7 +47,7 @@ interface ConnectedFixture {
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
   async (fixture) => {
-    await connectorsApi.deleteConnectorBySlug(
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
       fixture.actor,
       fixture.connectorSlug,
     );
@@ -130,14 +130,14 @@ async function seedZeroMembership(actor: ApiTestUser): Promise<void> {
   );
 }
 
-function zeroToken(
+function okouToken(
   actor: ApiTestUser,
   runId: string,
   capabilities: readonly string[],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: actor.userId,
     orgId: requireOrgId(actor),
     runId,
@@ -193,7 +193,7 @@ beforeEach(() => {
 });
 
 describe("POST /api/connectors/diagnostics/check", () => {
-  it("requires organization auth and both Zero capabilities", async () => {
+  it("requires organization auth and both agent capabilities", async () => {
     const body = {
       mode: "url" as const,
       method: "POST",
@@ -221,7 +221,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     const withoutConnectorRead = await accept(
       client().check({
         headers: {
-          authorization: `Bearer ${zeroToken(actor, runId, ["agent-run:read"])}`,
+          authorization: `Bearer ${okouToken(actor, runId, ["agent-run:read"])}`,
         },
         body,
       }),
@@ -235,7 +235,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     const withoutRunRead = await accept(
       client().check({
         headers: {
-          authorization: `Bearer ${zeroToken(actor, runId, ["connector:read"])}`,
+          authorization: `Bearer ${okouToken(actor, runId, ["connector:read"])}`,
         },
         body,
       }),
@@ -264,7 +264,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
       },
     ]);
     const allowed = await checkWithToken(
-      zeroToken(actor, runId, ["connector:read", "agent-run:read"]),
+      okouToken(actor, runId, ["connector:read", "agent-run:read"]),
       body,
     );
     expect(allowed.body).toMatchObject({
@@ -695,11 +695,11 @@ describe("POST /api/connectors/diagnostics/check", () => {
     }
   });
 
-  it("uses only an owned Zero snapshot, including dynamic bases and final policies", async () => {
+  it("uses only an owned agent run snapshot, including dynamic bases and final policies", async () => {
     const owner = bdd.user();
     const runId = await createOwnedRun(owner);
     await seedZeroMembership(owner);
-    const token = zeroToken(owner, runId, ["connector:read", "agent-run:read"]);
+    const token = okouToken(owner, runId, ["connector:read", "agent-run:read"]);
     const runBase = "https://prod.api.reap.global/v1";
     const secondRunBase = "https://sandbox.api.reap.global/v1";
     context.mocks.axiom.query.mockResolvedValue([
@@ -867,7 +867,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     const wrongOwner = await accept(
       client().check({
         headers: {
-          authorization: `Bearer ${zeroToken(intruder, runId, [
+          authorization: `Bearer ${okouToken(intruder, runId, [
             "connector:read",
             "agent-run:read",
           ])}`,
@@ -889,7 +889,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     const actor = bdd.user();
     const runId = await createOwnedRun(actor);
     await seedZeroMembership(actor);
-    const token = zeroToken(actor, runId, ["connector:read", "agent-run:read"]);
+    const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
     const inlineBase = "https://legacy-github.example.com";
     context.mocks.axiom.query.mockResolvedValue([
       {

@@ -1,5 +1,6 @@
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -38,6 +39,7 @@ type TelegramLaunchContextRow = Pick<
   | "threadContext"
   | "rootMessageId"
   | "thinkingMessageId"
+  | "publicBrand"
   | "userLinkId"
   | "userLinkKind"
   | "chatType"
@@ -105,6 +107,7 @@ async function loadTelegramLaunchContext(
       threadContext: chatTelegramContext.threadContext,
       rootMessageId: chatTelegramContext.rootMessageId,
       thinkingMessageId: chatTelegramContext.thinkingMessageId,
+      publicBrand: chatTelegramContext.publicBrand,
       userLinkId: chatTelegramContext.userLinkId,
       userLinkKind: chatTelegramContext.userLinkKind,
       chatType: chatTelegramContext.chatType,
@@ -112,7 +115,7 @@ async function loadTelegramLaunchContext(
       senderDisplayName: chatTelegramContext.senderDisplayName,
       senderUsername: chatTelegramContext.senderUsername,
       senderLanguage: chatTelegramContext.senderLanguage,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       customUserLinkId: telegramUserLinks.id,
       customInstallationId: telegramInstallations.telegramBotId,
       customBotUsername: telegramInstallations.botUsername,
@@ -135,6 +138,7 @@ async function loadTelegramLaunchContext(
         eq(chatThreads.userId, args.userId),
       ),
     )
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .leftJoin(
       telegramUserLinks,
       and(
@@ -206,21 +210,34 @@ export async function loadTelegramQueuedLaunchMaterial(
     return null;
   }
   const officialBotConfig = getOfficialTelegramBotConfig();
-  const installationId =
+  const deliveryInstallationId =
     context.userLinkKind === "custom"
       ? context.customInstallationId
       : OFFICIAL_TELEGRAM_BOT_ID;
-  if (installationId === null) {
+  if (deliveryInstallationId === null) {
+    return null;
+  }
+  const providerBotId =
+    context.userLinkKind === "custom"
+      ? context.customInstallationId
+      : officialBotConfig.botId;
+  if (providerBotId === null) {
     return null;
   }
   const botUsername =
     context.userLinkKind === "custom"
       ? context.customBotUsername
       : officialBotConfig.botUsername;
+  // DB/API rollout compatibility: an old API can leave this additive column
+  // null during the observed ~102-minute skew, and its queued run can outlive
+  // that writer while a runner/sandbox drains for up to 2 hours. Remove under
+  // #27750 only after old API rollback targets and runners have drained and
+  // production has no pending Telegram context with a null public_brand.
   const publicBrand =
-    context.userLinkKind === "custom"
+    context.publicBrand ??
+    (context.userLinkKind === "custom"
       ? context.customPublicBrand
-      : context.officialPublicBrand;
+      : context.officialPublicBrand);
   if (!publicBrand) {
     return null;
   }
@@ -228,7 +245,7 @@ export async function loadTelegramQueuedLaunchMaterial(
     prompt: context.messageText,
     appendSystemPrompt: buildTelegramPrompt(
       {
-        botId: installationId,
+        botId: providerBotId,
         botUsername,
         chatId: context.chatId,
         chatType: context.chatType,
@@ -240,7 +257,7 @@ export async function loadTelegramQueuedLaunchMaterial(
     ),
     publicBrand,
     telegramDelivery: telegramDeliveryTargetSchema.parse({
-      installationId,
+      installationId: deliveryInstallationId,
       chatId: context.chatId,
       messageId: context.messageId,
       rootMessageId: context.rootMessageId,

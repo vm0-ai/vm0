@@ -394,10 +394,16 @@ async def get_firewall_headers(
     Uses a state-owned per-key task so concurrent requests for the same
     auth identity coalesce even if an individual waiter is cancelled.
 
-    Cache is evicted when:
-    - The run is removed from the registry (see registry.load_registry)
-    - A 401 response is received (see response handler)
-    - The expiresAt timestamp from the auth endpoint has passed
+    Cached headers are physically cleared when:
+    - The run is removed from the registry (see registry.load_registry; its
+      auth state is evicted)
+    - A 401 response is received (see response handler; refresh lifecycle state
+      is preserved)
+
+    TTL expiry is different: once the expiresAt timestamp from the auth
+    endpoint has passed, the entry is treated as a cache miss and its headers
+    are never served. A successful refetch replaces the expired entry, while a
+    failed refetch leaves the expired entry stored for a later retry.
     """
     state = _get_auth_state(cache_key)
 

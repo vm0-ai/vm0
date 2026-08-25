@@ -111,6 +111,7 @@ suites before committing the upgrade.
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
 | `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
 | `test_content_length.py`                                | Shared bounded Content-Length field parsing contract                                                                 |
+| `buffered_auth_body_framing_cases.py`                   | Shared rejected framing cases for auth.base and AWS SigV4 request integration tests                                  |
 | `codex_model_catalog_cache_helpers.py`                  | Shared Codex catalog flow, response, and cache lifecycle test builders                                               |
 | `test_codex_model_catalog_cache_coordination.py`        | Codex catalog prefetch, single-flight, wait, cancellation, and active-request capacity behavior                      |
 | `test_codex_model_catalog_cache_hooks.py`               | Codex catalog request admission, firewall hook integration, telemetry, and cleanup                                   |
@@ -122,7 +123,7 @@ suites before committing the upgrade.
 | `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
 | `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                           |
 | `test_request_handler_tls_admission.py`                 | Request-hook connection-scoped TLS admission revalidation and cleanup                                                |
-| `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and VM entry admission                                                      |
+| `test_request_handler_registry_admission.py`            | Request-hook proxy-registry availability and sandbox entry admission                                                 |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_firewall_auth.py`                 | Request-hook firewall auth identity, credential guards, upstream-binding lifetime, and cancellation                  |
 | `test_request_handler_firewall_auth_revalidation.py`    | Registry authorization revalidation across request and requestheaders firewall-auth waits                            |
@@ -155,7 +156,7 @@ suites before committing the upgrade.
 | `test_state_file.py`                                    | Shared safe-open, descriptor identity, bounded-read, and cleanup contracts                                           |
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
-| `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
+| `test_registry_context.py`                              | Sandbox lookup and public compiled context API behavior                                                              |
 | `test_registry_builtin_catalog_resolution.py`           | Built-in catalog resolution and resolver contracts                                                                   |
 | `test_registry_builtin_snapshot.py`                     | Built-in catalog snapshot identity and invalidation                                                                  |
 | `test_registry_builtin_catalog_validation.py`           | Built-in catalog payload and file-trust validation                                                                   |
@@ -221,7 +222,7 @@ suites before committing the upgrade.
 | `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
 | `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
-| `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                               |
+| `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                                |
 | `test_model_provider_sse_usage_openai_responses.py`     | OpenAI Responses-shaped model-provider SSE usage pipeline                                                            |
 | `test_model_provider_sse_usage_anthropic.py`            | Anthropic Messages SSE recovery, usage, accounting, retention, and diagnostics pipeline                              |
 | `test_model_provider_websocket_prewarm.py`              | Model provider WebSocket prewarm intent, response correlation, and ignored-source diagnostics                        |
@@ -232,7 +233,7 @@ suites before committing the upgrade.
 | `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
 | `test_provider_output_timing.py`                        | Cross-provider output-timing store capacity and lifecycle independence                                               |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
-| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing and valid-frame recovery                                              |
+| `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing and valid-frame recovery                                             |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
 | `x_connector_usage/`                                    | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates                             |
 | `test_connector_usage.py`                               | Connector usage reporter and stream-path detection                                                                   |
@@ -253,7 +254,7 @@ Shared test data via pytest fixtures:
 def registry_file(tmp_path):
     """Create a sample proxy registry JSON file."""
     registry = {
-        "vms": {
+        "sandboxes": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
                 "billableFirewalls": [],
@@ -283,8 +284,8 @@ def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=True, host="api.github.com", path="/repos")
     flow.metadata.update(
         {
-            metadata_keys.VM_RUN_ID: "run-abc-123",
-            metadata_keys.VM_NETWORK_LOG_PATH: str(tmp_path / "network.jsonl"),
+            metadata_keys.SANDBOX_RUN_ID: "run-abc-123",
+            metadata_keys.SANDBOX_NETWORK_LOG_PATH: str(tmp_path / "network.jsonl"),
             metadata_keys.ORIGINAL_URL: "https://api.github.com/repos",
             metadata_keys.FIREWALL_ACTION: "ALLOW",
         }

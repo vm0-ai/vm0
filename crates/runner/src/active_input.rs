@@ -17,11 +17,16 @@ use crate::ids::RunId;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::provider::ApiClient;
 
-/// Exec-control payloads are bounded by the guest-side process-control IPC frame limit.
+/// Shared active-input payload limit across API, vsock, and guest process-control IPC.
 pub(crate) const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: usize =
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64 as usize;
 const _: () = assert!(
-    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES,
+    "API active-input payload limit must match the vsock exec-control limit",
+);
+const _: () = assert!(
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES,
+    "API active-input payload limit must match the guest process-control IPC limit",
 );
 
 pub(crate) fn identified_active_input_payload_len(text: &str) -> Result<usize, serde_json::Error> {

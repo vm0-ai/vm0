@@ -1,19 +1,15 @@
 import { command } from "ccstate";
 import { and, eq, or } from "drizzle-orm";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { writeDb$, type Db } from "../external/db";
-import { recomposeAgentIfStale$ } from "./agent-compose.service";
 import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import { updateUserConnectors } from "./user-connectors.service";
 
 interface AuthorizableAgent {
   readonly id: string;
-  readonly name: string;
-  readonly headVersionId: string | null;
 }
 
 type AuthorizeConnectedConnectorResult =
@@ -45,20 +41,15 @@ async function authorizableAgent(
 ): Promise<AuthorizableAgent | null> {
   const [agent] = await db
     .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
+      id: agents.id,
+      name: agents.name,
     })
-    .from(agentComposes)
-    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .from(agents)
     .where(
       and(
-        eq(agentComposes.orgId, args.orgId),
-        eq(agentComposes.id, args.agentId),
-        or(
-          eq(zeroAgents.visibility, "public"),
-          eq(zeroAgents.owner, args.userId),
-        ),
+        eq(agents.orgId, args.orgId),
+        eq(agents.id, args.agentId),
+        or(eq(agents.visibility, "public"), eq(agents.owner, args.userId)),
       ),
     )
     .limit(1);
@@ -156,7 +147,6 @@ export const authorizeConnectedConnector$ = command(
       agentId: agent.id,
       enabledConnectorSlugs: [args.connectorSlug],
       operation: "add",
-      allowMissingZeroAgentForEmptyReplace: false,
     });
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {
@@ -166,22 +156,6 @@ export const authorizeConnectedConnector$ = command(
       };
     }
 
-    const recomposed = await set(
-      recomposeAgentIfStale$,
-      {
-        userId: args.userId,
-        agentComposeId: agent.id,
-        agentName: agent.name,
-        currentHeadVersionId: agent.headVersionId,
-      },
-      signal,
-    );
-    if (recomposed.status === "missing") {
-      return {
-        status: "agentNotFound",
-        message: agentNotFoundMessage(agent.id),
-      };
-    }
     await publishBuiltinConnectorInvalidationAfterCommit(
       {
         userId: args.userId,

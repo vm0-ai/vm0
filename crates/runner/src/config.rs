@@ -1,7 +1,7 @@
 //! Runner YAML config (`runner.yaml`) — the schema the operator writes.
 //!
 //! The file is loaded once at startup via [`load`], validated, and then
-//! consumed by the rest of the runner. For each VM spawn, a profile is
+//! consumed by the rest of the runner. For each sandbox spawn, a profile is
 //! turned into a [`sandbox::FactoryConfig`] via
 //! [`RunnerConfig::factory_config`].
 //!
@@ -78,7 +78,7 @@ pub struct RunnerConfig {
     /// runners on the server and to build on-disk paths; validated by
     /// [`crate::group::validate_or_err`].
     pub group: String,
-    /// Runtime data root for this runner — holds per-VM workspaces, COW
+    /// Runtime data root for this runner — holds per-sandbox workspaces, COW
     /// devices, sockets, etc. Locked exclusively on startup so two runner
     /// processes can't share the same directory.
     pub base_dir: PathBuf,
@@ -95,8 +95,8 @@ pub struct RunnerConfig {
     /// least one entry; each profile name is also checked for format.
     pub profiles: BTreeMap<String, ProfileConfig>,
     /// Control-plane endpoint and auth token. May be omitted in the YAML if
-    /// `--api-url` / `--token` (or the corresponding env vars) are supplied
-    /// at `start` time.
+    /// `--api-url` / `--token` (or the corresponding environment aliases) are
+    /// supplied at `start` time.
     pub server: Option<ServerConfig>,
 }
 
@@ -133,19 +133,19 @@ pub struct ProfileConfig {
     pub workspace_disk_mb: u32,
 }
 
-/// Sandbox-level knobs for concurrency and the idle-VM pool.
+/// Sandbox-level knobs for concurrency and the idle-sandbox pool.
 ///
 /// All fields accept defaults via `#[serde(default)]`, so the whole
 /// `sandbox:` block may be omitted from the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
-    /// Hard cap on concurrent VMs. `0` auto-detects from host CPU and
+    /// Hard cap on concurrent sandboxes. `0` auto-detects from host CPU and
     /// memory at startup (see [`DEFAULT_MAX_CONCURRENT`]).
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
+    /// Maximum number of idle sandboxes to keep (0 = no limit, default: 0).
     pub max_idle: usize,
 }
 
@@ -166,7 +166,8 @@ pub struct ServerConfig {
     /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
     /// via `--api-url` / `VM0_API_BACKEND_URL`.
     pub url: String,
-    /// Runner auth token. Overridable via `--token` / `VM0_RUNNER_TOKEN`.
+    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`, with
+    /// `VM0_RUNNER_TOKEN` retained as a temporary legacy alias.
     pub token: String,
 }
 

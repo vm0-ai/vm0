@@ -138,8 +138,11 @@ async fn run_finalizing_claim(
         factory,
     } = request;
     let run_id = claimed.context().run_id;
-    let mut pre_spawn_timing =
-        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_timing());
+    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(
+        claim_returned_at,
+        claimed.api_claim_timing(),
+        &ctx.pre_spawn_concurrency,
+    );
     pre_spawn_timing.mark_task_enqueued();
     let started_at = Instant::now();
     let mut reserved_exact = None;
@@ -702,7 +705,7 @@ async fn acquire_fallback_resource(
                 info!(
                     run_id = %run_id,
                     profile = %retiring.profile_name(),
-                    "evicting idle VM for finalizing fallback"
+                    "evicting idle sandbox for finalizing fallback"
                 );
                 retiring_leases.push(retiring.into_budget_lease());
                 ctx.reuse_state_notify.notify_one();

@@ -8,7 +8,7 @@ use super::messages::{
     write_split_json_line_prefix, write_success, write_turn_completion_notifications,
     write_turn_notifications, write_turn_start_notifications,
 };
-use super::persistence::{InputEventContext, persist_input_events};
+use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
 use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
@@ -22,6 +22,8 @@ use uuid::Uuid;
 
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
+const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
@@ -114,11 +116,13 @@ impl AppServerState {
             }
         }
         let thread_id = Uuid::now_v7().to_string();
+        let rollout_timestamp = session_rollout_timestamp()?;
         self.set_current_thread(
             thread_id.clone(),
             params.get("runtimeWorkspaceRoots").is_some(),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
+            rollout_timestamp,
         );
         let response_thread_id = if self.scenario == Scenario::ThreadStartInvalidThreadId {
             "not-a-valid-codex-thread-id"
@@ -215,11 +219,13 @@ impl AppServerState {
             )?;
             return Ok(ServerAction::Continue);
         }
+        let rollout_timestamp = session_rollout_timestamp()?;
         self.set_current_thread(
             thread_id.to_string(),
             params.get("runtimeWorkspaceRoots").is_some(),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
+            rollout_timestamp,
         );
         let response_thread_id = if self.scenario == Scenario::ResumeDifferentThreadId {
             "0193abcd-ef01-7234-89ab-cdef01234568"
@@ -276,6 +282,7 @@ impl AppServerState {
             current_thread.thread_request_has_runtime_workspace_roots;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
+        let rollout_timestamp = current_thread.rollout_timestamp;
         let inputs = match text_inputs(params) {
             Ok(inputs) => inputs,
             Err(message) => {
@@ -302,10 +309,17 @@ impl AppServerState {
                 thread_request_has_runtime_workspace_roots,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
+                rollout_timestamp: &rollout_timestamp,
                 turn_params: params,
             },
             &inputs,
         )?;
+        if self.scenario == Scenario::RuntimeTurnStartedBeforeSteer {
+            std::fs::write(
+                crate::session::codex_home().join(SESSION_HISTORY_READY_FILE),
+                SESSION_HISTORY_READY_EVENT,
+            )?;
+        }
         let turn_output = mock_turn_output(inputs.iter().map(String::as_str))?;
         let response_text = match &turn_output {
             MockTurnOutput::Complete(response_text)
@@ -336,13 +350,6 @@ impl AppServerState {
                     "unexpected-turn-reasoning-item",
                     1_700_000_000_000,
                 ),
-            )?;
-            return Ok(ServerAction::Stop);
-        }
-        if self.scenario == Scenario::UnexpectedThreadTurnCompleted {
-            write_json_line(
-                output,
-                &turn_completed_notification("unexpected-thread-id", &turn_id),
             )?;
             return Ok(ServerAction::Stop);
         }
@@ -484,6 +491,7 @@ impl AppServerState {
             current_thread.thread_request_has_runtime_workspace_roots;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
+        let rollout_timestamp = current_thread.rollout_timestamp;
         let inputs = match text_inputs(params) {
             Ok(inputs) => inputs,
             Err(message) => {
@@ -501,6 +509,7 @@ impl AppServerState {
                 thread_request_has_runtime_workspace_roots,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
+                rollout_timestamp: &rollout_timestamp,
                 turn_params: params,
             },
             &inputs,

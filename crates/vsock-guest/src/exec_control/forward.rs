@@ -20,6 +20,11 @@ use super::{
     request_timeout_error,
 };
 
+const _: () = assert!(
+    vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES,
+    "vsock exec-control payload limit must match process-control IPC at the guest bridge",
+);
+
 pub(super) struct OwnedExecControlRequest {
     pub(super) response_seq: u32,
     pub(super) target_seq: u32,

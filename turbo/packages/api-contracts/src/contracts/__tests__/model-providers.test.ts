@@ -20,8 +20,8 @@ import {
   getVm0ApiModel,
   getVm0ConcreteProviderType,
   getVm0Vendor,
-  getVm0ManagedRouteCandidates,
-  getVm0ManagedRouteVendors,
+  getVm0BuiltInModelRouteCandidates,
+  getVm0BuiltInModelRouteVendors,
   getVm0ModelPriceTier,
   isModelSupportedByProvider,
   isCodexFastModeModel,
@@ -510,7 +510,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "routes vm0 managed %s directly through DeepSeek",
+    "routes vm0 built-in model %s directly through DeepSeek",
     (model) => {
       expect(getVm0ConcreteProviderType(model)).toBe("deepseek");
       expect(getVm0Vendor(model)).toBe("deepseek");
@@ -525,14 +525,17 @@ describe("model-first canonical catalog", () => {
     "claude-opus-4-8",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
-  ] as const)("routes vm0 managed %s directly through Anthropic", (model) => {
-    expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
-    expect(getVm0Vendor(model)).toBe("anthropic");
-    expect(getVm0ApiModel(model)).toBe(model);
-    expect(getProviderRuntimeModel("vm0", model)).toBe(model);
-  });
+  ] as const)(
+    "routes vm0 built-in model %s directly through Anthropic",
+    (model) => {
+      expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
+      expect(getVm0Vendor(model)).toBe("anthropic");
+      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getProviderRuntimeModel("vm0", model)).toBe(model);
+    },
+  );
 
-  it("defines two statically compilable managed routes for every model", () => {
+  it("defines two statically compilable built-in model routes for every model", () => {
     expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
       "claude-fable-5",
       "claude-opus-5",
@@ -546,7 +549,7 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-luna",
       "gpt-5.5",
     ]);
-    expect(getVm0ManagedRouteVendors()).toEqual([
+    expect(getVm0BuiltInModelRouteVendors()).toEqual([
       "anthropic",
       "openrouter",
       "deepseek",
@@ -554,7 +557,7 @@ describe("model-first canonical catalog", () => {
     ]);
 
     for (const model of SUPPORTED_RUN_MODELS) {
-      const candidates = getVm0ManagedRouteCandidates(model);
+      const candidates = getVm0BuiltInModelRouteCandidates(model);
       expect(candidates).toHaveLength(2);
       expect(candidates[0]?.providerType).toBe(
         getVm0ConcreteProviderType(model),
@@ -593,9 +596,13 @@ describe("model-first canonical catalog", () => {
       const catalog = getModelProviderCodexCatalogForModel(
         model,
         upstreamModel,
+        "openrouter-codex",
       );
       expect(catalog?.models).toEqual([
-        expect.objectContaining({ slug: upstreamModel }),
+        expect.objectContaining({
+          slug: upstreamModel,
+          apply_patch_tool_type: null,
+        }),
       ]);
     },
   );
@@ -826,7 +833,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("returns only active VM0 managed models", () => {
+  it("returns only active VM0 built-in models", () => {
     const models = getVm0VisibleModels();
     expect(models).toEqual(SUPPORTED_RUN_MODELS);
     expect(models).toContain("gpt-5.5");

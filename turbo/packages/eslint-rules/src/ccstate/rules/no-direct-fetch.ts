@@ -1,11 +1,11 @@
 /**
  * ESLint rule: no-direct-fetch
  *
- * Disallows direct usage of `fetch$`. All API calls should use `zeroClient$`
+ * Disallows direct usage of `fetch$`. All API calls should use `apiClient$`
  * which provides type-safe request/response handling via typed contracts.
  *
  * Good:
- *   const client = get(zeroClient$)(someContract);
+ *   const client = get(apiClient$)(someContract);
  *   const result = await client.doSomething();
  *
  * Bad:
@@ -23,12 +23,12 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow direct usage of fetch$ — use zeroClient$ for type-safe API calls instead",
+        "Disallow direct usage of fetch$ — use apiClient$ for type-safe API calls instead",
     },
     schema: [],
     messages: {
       noDirectFetch:
-        "Do not use fetch$ directly. Use zeroClient$ from signals/api-client.ts for type-safe API calls instead.",
+        "Do not use fetch$ directly. Use apiClient$ from signals/api-client.ts for type-safe API calls instead.",
     },
   },
   create(context) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorScopeDiffContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorScopeDiffContract } from "@okouai/api-contracts/contracts/connectors";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -79,7 +79,7 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
     const orgId = `org_${randomUUID()}`;
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
-      scope: "zero",
+      scope: "okou",
       userId,
       orgId,
       runId: `run_${randomUUID()}`,
@@ -88,7 +88,7 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
       exp: seconds + 60,
     });
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorScopeDiffContract,
+      connectorScopeDiffContract,
     );
     const response = await accept(
       client.getScopeDiff({
@@ -135,7 +135,10 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
 
     expectApiError(response.body);
     expect(response.body.error.code).toBe("NOT_FOUND");
-    await connectorsApi.deleteConnectorBySlug(actor, "openai");
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "openai",
+    );
   });
 
   it("returns an empty diff when stored scopes match current scopes exactly", async () => {

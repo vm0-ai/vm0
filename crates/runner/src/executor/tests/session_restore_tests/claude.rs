@@ -1,4 +1,3 @@
-use super::super::super::session_restore::restore_session;
 use super::super::support::sandbox_write_file_error;
 use super::*;
 use sandbox::{SandboxError, SandboxInvalidStateContext, SandboxOperation};

@@ -22,7 +22,7 @@ import {
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { computerUseHosts } from "@okouai/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -47,9 +47,9 @@ import {
 import { env } from "../../lib/env";
 import type { AuthContext } from "../../types/auth";
 import {
-  createQueueFirstZeroRun$,
-  type ZeroPreCreateSource,
-} from "./zero-runs-create.service";
+  createQueueFirstAgentRun$,
+  type AgentRunPreCreateSource,
+} from "./agent-runs-create.service";
 import { isQueueFirstRunClaimLost } from "./agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
@@ -126,6 +126,7 @@ import {
   canonicalChatEventError,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
+import { shouldUsePiExecution } from "./pi-sandbox-config";
 import {
   buildWebChatAppendSystemPrompt,
   type WebChatSessionPromptContext,
@@ -137,6 +138,13 @@ import {
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
+import {
+  additionalVolumesForRun,
+  authorizedUserPresentationTemplateIds,
+  selectedUserPresentationTemplateIds,
+  userPresentationTemplateVolumes,
+  type PresentationTemplateVolume,
+} from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
@@ -230,7 +238,7 @@ interface NormalSendArgs {
   readonly publicBrand: PublicBrand;
   readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
-  readonly zeroPreCreateSource?: ZeroPreCreateSource;
+  readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
 }
 
 interface PreparedNormalSend {
@@ -239,6 +247,11 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  /**
+   * Guidance packages to mount for this run, one per uploaded template the
+   * message selected and this caller was authorised for.
+   */
+  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
@@ -251,12 +264,13 @@ interface PreparedNormalSend {
     | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly piExecution: boolean;
 }
 
 function normalSendTriggerSource(
   auth: OrganizationAuthContext,
 ): "web" | "agent" {
-  return auth.tokenType === "zero" ? "agent" : "web";
+  return auth.tokenType === "agent" ? "agent" : "web";
 }
 
 async function resolveChatAgentRunSourceById(
@@ -271,7 +285,7 @@ async function resolveChatAgentRunSourceById(
     .select({
       runId: agentRuns.id,
       threadId: chatThreads.id,
-      agentId: chatThreads.agentComposeId,
+      agentId: chatThreads.agentId,
       title: chatThreads.title,
       autonomyBudget: agentRuns.autonomyBudget,
     })
@@ -317,7 +331,7 @@ async function resolveChatAgentRunSource(
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
 } | null> {
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     return null;
   }
   return await resolveChatAgentRunSourceById(db, auth, auth.runId);
@@ -347,7 +361,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   if (params.sourceRunId !== undefined) {
     if (
-      params.auth.tokenType === "zero" ||
+      params.auth.tokenType === "agent" ||
       params.auth.tokenType === "sandbox"
     ) {
       return {
@@ -375,7 +389,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   const resolved = await resolveChatAgentRunSource(params.db, params.auth);
   if (resolved === null) {
-    return params.auth.tokenType === "zero"
+    return params.auth.tokenType === "agent"
       ? { response: badRequestMessage("Agent source run not found") }
       : { source: null };
   }
@@ -406,7 +420,7 @@ function normalSendBodyWithAgentRunSource(
 }
 
 function shouldTouchThreadSortFromNormalSend(
-  source: ZeroPreCreateSource | undefined,
+  source: AgentRunPreCreateSource | undefined,
   isNewThread: boolean,
 ): boolean {
   return (
@@ -419,13 +433,15 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
+  readonly latestPresentationTemplatesEnabled: boolean;
   readonly videoModelSelectionEnabled: boolean;
+  readonly presentationTemplatesEnabled: boolean;
   /**
    * Carried whole so thread creation can resolve its media pins without
    * reloading the switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -798,7 +814,11 @@ const resolveIncomingAttachFileMetadata$ = command(
             wave.map(async (file) => {
               const object = await set(
                 resolveArtifactObject$,
-                { userId: args.userId, id: file.fileId },
+                {
+                  userId: args.userId,
+                  id: file.fileId,
+                  filenameHint: file.filenameSnapshot,
+                },
                 signal,
               );
               return { file, object };
@@ -842,13 +862,13 @@ async function loadAgentForChatSend(
 ): Promise<AgentForChatSend | undefined> {
   const [agent] = await db
     .select({
-      id: zeroAgents.id,
-      orgId: zeroAgents.orgId,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
+      id: agents.id,
+      orgId: agents.orgId,
+      owner: agents.owner,
+      visibility: agents.visibility,
     })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, agentId))
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
   return agent;
 }
@@ -927,7 +947,7 @@ async function withBuiltInModelRuntimeRoute(
   const selectedModel = configuration.modelPin.selectedModel;
   if (!selectedModel) {
     return providerUnavailable(
-      "No model provider configured: no VM0 managed model is selected",
+      "No model provider configured: no built-in model is selected",
     );
   }
   const builtInModelRuntimeRoute = await resolveBuiltInModelRuntimeRoute(
@@ -939,10 +959,10 @@ async function withBuiltInModelRuntimeRoute(
     ? { ...configuration, builtInModelRuntimeRoute }
     : fallbackEnabled
       ? modelProviderUnavailable(
-          "Every managed route for this model is temporarily unavailable",
+          "Every built-in model route for this model is temporarily unavailable",
         )
       : providerUnavailable(
-          "No model provider configured: no VM0 managed model key is configured",
+          "No model provider configured: no built-in model key is configured",
         );
 }
 
@@ -952,7 +972,7 @@ async function resolveExplicitRunConfiguration(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
   const modelSelection = params.body.modelSelection;
@@ -1018,7 +1038,7 @@ async function resolveExplicitRunConfiguration(params: {
         codexFastModeEnabled: params.codexFastModeEnabled,
       }),
     },
-    params.managedModelProviderFallbackEnabled,
+    params.builtInModelProviderFallbackEnabled,
   );
 }
 
@@ -1037,35 +1057,104 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.LatestWebsiteTemplates,
       context,
     ),
+    latestPresentationTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.LatestPresentationTemplates,
+      context,
+    ),
     videoModelSelectionEnabled: isFeatureEnabled(
       FeatureSwitchKey.VideoModelSelection,
       context,
     ),
+    presentationTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplates,
+      context,
+    ),
     featureSwitchContext: context,
-    managedModelProviderFallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ManagedModelProviderFallback,
+    builtInModelProviderFallbackEnabled: isFeatureEnabled(
+      FeatureSwitchKey.BuiltInModelProviderFallback,
       context,
     ),
   };
 }
 
-function validateGenerationTemplatePrompt(
+/**
+ * The two things this message's own selections contribute to its run: the
+ * template guidance block and the video options the composer sent with it.
+ */
+function resolveSelectedTemplateContext(
+  runtimeBody: RuntimeNormalSendBody,
+  featureSwitches: NormalSendFeatureSwitches,
+  mountedUserPresentationTemplateIds: readonly string[],
+): {
+  readonly generationTemplatePrompt: string;
+  readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
+} {
+  return {
+    generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
+      explicit: runtimeBody.primaryTemplate,
+      explicitTemplates: runtimeBody.templates,
+      latestWebsiteTemplatesEnabled:
+        featureSwitches.latestWebsiteTemplatesEnabled,
+      latestPresentationTemplatesEnabled:
+        featureSwitches.latestPresentationTemplatesEnabled,
+      presentationTemplatesEnabled:
+        featureSwitches.presentationTemplatesEnabled,
+      mountedUserPresentationTemplateIds,
+    }),
+    // Gated with the composer control that produces it, so a client that keeps
+    // sending the field after the switch is turned off stops being honoured.
+    videoRunOptions: featureSwitches.videoModelSelectionEnabled
+      ? (runtimeBody.runOptions?.video ?? null)
+      : null,
+  };
+}
+
+/**
+ * Row ids for the uploaded templates a message selected, in selection order.
+ *
+ * Authorised here rather than at dispatch: the run mounts one storage volume
+ * per id, and a volume the caller may not read must never be assembled at all.
+ */
+interface AuthorizedGenerationTemplates {
+  readonly userPresentationTemplateIds: readonly string[];
+}
+
+async function validateGenerationTemplatePrompt(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
   generationTemplates: readonly GenerationTemplateRequest[],
   featureSwitches: NormalSendFeatureSwitches,
-): NormalSendFailure | undefined {
+): Promise<NormalSendFailure | AuthorizedGenerationTemplates> {
   if (generationTemplates.length === 0) {
-    return undefined;
+    return { userPresentationTemplateIds: [] };
   }
+  // Syntax first: every selection this message names is a candidate mount, so
+  // the builder can reject a malformed or switched-off private id here without
+  // the database having been consulted yet.
+  const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
+      latestPresentationTemplatesEnabled:
+        featureSwitches.latestPresentationTemplatesEnabled,
+      presentationTemplatesEnabled:
+        featureSwitches.presentationTemplatesEnabled,
+      mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
     }
   }
-  return undefined;
+  const authorizedIds = await authorizedUserPresentationTemplateIds(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    templateIds: selectedIds,
+  });
+  if (authorizedIds.length !== selectedIds.length) {
+    return badRequestMessage("Presentation template not found");
+  }
+  return { userPresentationTemplateIds: authorizedIds };
 }
 
 async function updateUserModelPreference(
@@ -1140,13 +1229,14 @@ async function maybePersistExplicitCodexServiceTier(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1154,7 +1244,7 @@ async function maybePersistExplicitCodexServiceTier(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
       createdAt: updatedAt,
     });
@@ -1190,13 +1280,14 @@ async function updateThreadComputerAccess(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1204,7 +1295,7 @@ async function updateThreadComputerAccess(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: params.hostId,
       cloudBrowserEnabled: params.cloudBrowserEnabled,
       createdAt: updatedAt,
@@ -1346,17 +1437,22 @@ async function createChatThread(
       userId: args.userId,
       featureSwitchContext: args.featureSwitchContext,
     });
+    const pinColumns = chatThreadModelPinColumns(args.pin);
     if (args.clientThreadId) {
       const [thread] = await tx
         .insert(chatThreads)
         .values({
           id: args.clientThreadId,
           userId: args.userId,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           title: null,
-          ...chatThreadModelPinColumns(args.pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: args.codexServiceTier,
-          ...mediaModels,
+          selectedVideoModel: mediaModels.selectedVideoModel,
+          selectedImageModel: mediaModels.selectedImageModel,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1366,7 +1462,7 @@ async function createChatThread(
           userId: args.userId,
           orgId: args.orgId,
           chatThreadId: thread.id,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           eventId: args.chatThreadEventId,
           title: null,
           selectedModel: args.pin.selectedModel,
@@ -1386,7 +1482,7 @@ async function createChatThread(
           and(
             eq(chatThreads.id, args.clientThreadId),
             eq(chatThreads.userId, args.userId),
-            eq(chatThreads.agentComposeId, args.agentId),
+            eq(chatThreads.agentId, args.agentId),
           ),
         )
         .limit(1);
@@ -1400,11 +1496,15 @@ async function createChatThread(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentId,
+        agentId: args.agentId,
         title: null,
-        ...chatThreadModelPinColumns(args.pin),
+        modelProviderId: pinColumns.modelProviderId,
+        modelProviderType: pinColumns.modelProviderType,
+        modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+        selectedModel: pinColumns.selectedModel,
         codexServiceTier: args.codexServiceTier,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -1415,7 +1515,7 @@ async function createChatThread(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       eventId: args.chatThreadEventId,
       title: null,
       selectedModel: args.pin.selectedModel,
@@ -1459,8 +1559,10 @@ function loadTimedExistingThreadSnapshot(params: {
           computerUseHostId: chatThreads.computerUseHostId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
           ...persistedChatThreadModelSnapshotColumns(),
+          agentId: agents.id,
         })
         .from(chatThreads)
+        .innerJoin(agents, eq(agents.id, chatThreads.agentId))
         .where(
           and(
             eq(chatThreads.id, params.threadId),
@@ -1486,7 +1588,7 @@ async function resolveThread(params: {
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1525,7 +1627,7 @@ async function resolveThread(params: {
     threadId: params.existingThreadId,
     timing: params.timing,
   });
-  if (!thread) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
 
@@ -1565,7 +1667,7 @@ async function resolveThread(params: {
         providerAdmission: persisted.providerAdmission,
         codexServiceTier: persisted.runCodexServiceTier,
       },
-      params.managedModelProviderFallbackEnabled,
+      params.builtInModelProviderFallbackEnabled,
     );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
@@ -2226,8 +2328,8 @@ function resolveTimedExplicitRunConfiguration(
         userId: args.userId,
         body: args.body,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
     },
@@ -2294,8 +2396,8 @@ function resolveTimedThread(
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
         featureSwitchContext: featureSwitches.featureSwitchContext,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {
@@ -2421,11 +2523,25 @@ function resolveTimedNormalSendAgentRunSource(
       normal_send_agent_run_source_kind:
         args.body.sourceRunId !== undefined
           ? "forward"
-          : args.auth.tokenType === "zero"
+          : args.auth.tokenType === "agent"
             ? "agent"
             : "none",
     },
   );
+}
+
+function usesPi(
+  args: NormalSendArgs,
+  thread: PreparedNormalSend["thread"],
+  runConfiguration: PreparedNormalSend["runConfiguration"],
+  featureSwitches: NormalSendFeatureSwitches,
+): boolean {
+  return shouldUsePiExecution({
+    chatThreadId: thread.threadId,
+    selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
+    triggerSource: normalSendTriggerSource(args.auth),
+    featureSwitchContext: featureSwitches.featureSwitchContext,
+  });
 }
 
 const prepareNormalSend$ = command(
@@ -2441,7 +2557,6 @@ const prepareNormalSend$ = command(
     if ("status" in agent) {
       return agent;
     }
-
     const {
       prechecked: clientEventPrechecked,
       response: preflightClientEventResponse,
@@ -2450,7 +2565,6 @@ const prepareNormalSend$ = command(
     if (preflightClientEventResponse?.status === 201) {
       return preflightClientEventResponse;
     }
-
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
       db,
@@ -2465,18 +2579,19 @@ const prepareNormalSend$ = command(
       return agentRunSourceResult.response;
     }
     const agentRunSource = agentRunSourceResult.source;
-
     const runtimeBody = resolveRuntimeNormalSendBody(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
     );
-    const generationTemplateError = validateGenerationTemplatePrompt(
+    const authorizedTemplates = await validateGenerationTemplatePrompt(
+      db,
+      args,
       runtimeBody.templates,
       featureSwitches,
     );
-    if (generationTemplateError) {
-      return generationTemplateError;
+    signal.throwIfAborted();
+    if ("status" in authorizedTemplates) {
+      return authorizedTemplates;
     }
-
     const explicitRunConfiguration = await resolveTimedExplicitRunConfiguration(
       args,
       db,
@@ -2509,17 +2624,12 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.primaryTemplate,
-      explicitTemplates: runtimeBody.templates,
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
-    });
-    // Gated with the composer control that produces it, so a client that keeps
-    // sending the field after the switch is turned off stops being honoured.
-    const videoRunOptions = featureSwitches.videoModelSelectionEnabled
-      ? (runtimeBody.runOptions?.video ?? null)
-      : null;
+    const { generationTemplatePrompt, videoRunOptions } =
+      resolveSelectedTemplateContext(
+        runtimeBody,
+        featureSwitches,
+        authorizedTemplates.userPresentationTemplateIds,
+      );
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(
         args,
@@ -2543,6 +2653,7 @@ const prepareNormalSend$ = command(
       },
       signal,
     );
+    const piExecution = usesPi(args, thread, runConfiguration, featureSwitches);
 
     return {
       db,
@@ -2550,16 +2661,20 @@ const prepareNormalSend$ = command(
       thread,
       body: runtimeBody,
       generationTemplatePrompt,
+      presentationTemplateVolumes: userPresentationTemplateVolumes(
+        authorizedTemplates.userPresentationTemplateIds,
+      ),
       videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
       attachFileMetadata,
       runConfiguration,
       clientEventPrechecked,
       preflightClientEventConflict: preflightClientEventResponse,
       triggerSource: normalSendTriggerSource(args.auth),
       agentRunSource,
+      piExecution,
     };
   },
 );
@@ -3040,7 +3155,13 @@ function codexServiceTierForRun(params: {
     : undefined;
 }
 
-function buildCreateZeroRunArgs(params: {
+function cliAgentTypeForRun(prepared: PreparedNormalSend) {
+  return prepared.piExecution
+    ? ("pi" as const)
+    : prepared.runConfiguration.providerAdmission.cliAgentType;
+}
+
+function buildCreateAgentRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
   readonly realAgentInPreviewEnabled: boolean;
@@ -3071,7 +3192,7 @@ function buildCreateZeroRunArgs(params: {
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
     ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
-    zeroRunModelPin: {
+    agentRunModelPin: {
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
@@ -3083,7 +3204,7 @@ function buildCreateZeroRunArgs(params: {
       modelProviderId: modelPin.modelProviderId,
       modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
       modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
-      cliAgentType: providerAdmission.cliAgentType,
+      cliAgentType: cliAgentTypeForRun(prepared),
     },
     codexServiceTier,
     callbacks: [
@@ -3105,6 +3226,7 @@ function buildCreateZeroRunArgs(params: {
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
       ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),
+      ...additionalVolumesForRun(prepared.presentationTemplateVolumes),
     },
     triggerSource: prepared.triggerSource,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -3119,23 +3241,23 @@ function buildCreateZeroRunArgs(params: {
         }
       : { webChatSessionPromptContext }),
     ...(args.timing ? { timing: args.timing } : {}),
-    ...(args.zeroPreCreateSource
-      ? { zeroPreCreateSource: args.zeroPreCreateSource }
+    ...(args.agentRunPreCreateSource
+      ? { agentRunPreCreateSource: args.agentRunPreCreateSource }
       : {}),
   };
 }
 
-async function buildTimedCreateZeroRunArgs(params: {
+async function buildTimedCreateAgentRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
   readonly realAgentInPreviewEnabled: boolean;
-}): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
+}): Promise<ReturnType<typeof buildCreateAgentRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
     "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
     "nested",
     () => {
-      return buildCreateZeroRunArgs(params);
+      return buildCreateAgentRunArgs(params);
     },
   );
 }
@@ -3193,7 +3315,7 @@ function scheduleNormalChatRunSideEffects(params: {
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
     attachFileMetadata: params.prepared.attachFileMetadata,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
-      params.args.zeroPreCreateSource,
+      params.args.agentRunPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
     triggerSource: params.prepared.triggerSource,
@@ -3216,7 +3338,7 @@ async function buildNormalChatRunArgs(
   );
   signal.throwIfAborted();
 
-  const createRunArgs = await buildTimedCreateZeroRunArgs({
+  const createRunArgs = await buildTimedCreateAgentRunArgs({
     args,
     prepared,
     realAgentInPreviewEnabled: isFeatureEnabled(
@@ -3253,7 +3375,7 @@ const createNormalChatRun$ = command(
         orgId: args.orgId,
         publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
-          args.zeroPreCreateSource,
+          args.agentRunPreCreateSource,
           prepared.thread.isNewThread,
         ),
         queueFirstEventId,
@@ -3293,11 +3415,11 @@ const createNormalChatRun$ = command(
       );
     }
     const runResult = await set(
-      createQueueFirstZeroRun$,
+      createQueueFirstAgentRun$,
       {
         ...createRunArgs,
         apiStartTime: args.apiStartTime,
-        zeroRunMetadata: {
+        agentRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,
         },
         queueFirstAssociation: {
@@ -3455,7 +3577,7 @@ const sendQueueFirstNormalEvent$ = command(
           body: prepared.body,
           userId: args.userId,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(
-            args.zeroPreCreateSource,
+            args.agentRunPreCreateSource,
             prepared.thread.isNewThread,
           ),
           orgId: args.orgId,

@@ -141,9 +141,11 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       orgId: feishuOrgInstallations.orgId,
       ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
-      defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      defaultAgentId: feishuOrgInstallations.defaultAgentId,
+      botName: feishuOrgInstallations.botName,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      publicBrand: feishuChatIngress.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatIngress)
     .innerJoin(
@@ -158,6 +160,17 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
     )
     .limit(1);
   return row;
+}
+
+function resolveFeishuIngressPublicBrand(
+  ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+): PublicBrand {
+  // #27750 rollout fallback: the migration is applied before API promotion,
+  // so the previous API can leave this column null during the DB/API skew or
+  // rollback window. Remove after legacy null ingress rows are drained and the
+  // previous API is outside rollback; new webhook writers always set the Host
+  // brand explicitly.
+  return ingress.publicBrand ?? ingress.installationPublicBrand;
 }
 
 function parseMatchingMessage(
@@ -269,6 +282,7 @@ interface CanonicalFeishuLaunchContext {
   readonly senderOpenId: string;
   readonly connectionId: string;
   readonly installationId: string;
+  readonly publicBrand: PublicBrand;
 }
 
 function canonicalFeishuLaunchContext(args: {
@@ -277,6 +291,7 @@ function canonicalFeishuLaunchContext(args: {
   readonly reactionId: string | undefined;
   readonly conversationHistory: string;
   readonly files: readonly FeishuPromptFile[];
+  readonly publicBrand: PublicBrand;
 }): CanonicalFeishuLaunchContext {
   return {
     conversationHistory: args.conversationHistory,
@@ -305,6 +320,7 @@ function canonicalFeishuLaunchContext(args: {
     senderOpenId: args.message.openId,
     connectionId: args.connectionId,
     installationId: args.message.installationId,
+    publicBrand: args.publicBrand,
   };
 }
 
@@ -357,7 +373,7 @@ async function persistCanonicalFeishuIngress(
     threadId: routeThreadId,
     userId: args.connection.userId,
     orgId: args.installation.orgId,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
     currentTime: args.ingress.createdAt,
@@ -468,6 +484,7 @@ async function finishUnconnectedFeishuIngress(
     readonly ingressId: string;
     readonly message: FeishuInboundMessage;
     readonly publicBrand: PublicBrand;
+    readonly botName: string | null;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -476,6 +493,7 @@ async function finishUnconnectedFeishuIngress(
       db: args.db,
       message: args.message,
       publicBrand: args.publicBrand,
+      botName: args.botName,
     },
     signal,
   );
@@ -511,12 +529,17 @@ async function loadFeishuIngressDispatchContext(
     throw new Error("Canonical Feishu ingress is unavailable");
   }
   const message = parseMatchingMessage(ingress);
+  const publicBrand = resolveFeishuIngressPublicBrand(ingress);
+  if (ingress.defaultAgentId === null) {
+    return { ingress, message, installation: null, connection: null };
+  }
   const installation: FeishuDispatchInstallation = {
     orgId: ingress.orgId,
     ownerUserId: ingress.ownerUserId,
     defaultAgentId: ingress.defaultAgentId,
+    botName: ingress.botName,
     messageReceivedAt: ingress.messageReceivedAt,
-    publicBrand: ingress.publicBrand,
+    publicBrand,
   };
   await markFeishuMessageReceived({ db, installation, message }, signal);
   const connection = await loadConnection(db, ingress.orgId, message);
@@ -547,6 +570,18 @@ async function processClaimedIngress(
 ): Promise<PersistedCanonicalFeishuIngress | null> {
   const { ingress, message, installation, connection } =
     await loadFeishuIngressDispatchContext(args.db, args.ingressId, signal);
+  if (!installation) {
+    await finishUnavailableAgentFeishuIngress(
+      {
+        db: args.db,
+        ingressId: ingress.ingressId,
+        message,
+        status: "not_found",
+      },
+      signal,
+    );
+    return null;
+  }
   if (!connection) {
     await finishUnconnectedFeishuIngress(
       {
@@ -554,6 +589,7 @@ async function processClaimedIngress(
         ingressId: ingress.ingressId,
         message,
         publicBrand: installation.publicBrand,
+        botName: installation.botName,
       },
       signal,
     );
@@ -636,6 +672,7 @@ async function processClaimedIngress(
       reactionId,
       conversationHistory: history.text,
       files: history.files,
+      publicBrand: installation.publicBrand,
     }),
   };
   return await persistCanonicalFeishuIngress(persistInput, signal);

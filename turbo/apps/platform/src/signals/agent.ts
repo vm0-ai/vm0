@@ -13,8 +13,8 @@ import {
 import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
-import { zeroClient$ } from "./api-client.ts";
+import { onboardingStatus$ } from "./okou-page/onboarding.ts";
+import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { retryTransientLoad } from "./utils.ts";
@@ -27,7 +27,7 @@ const { get$: lastUsedAgentIdRaw$, set$: setLastUsedAgentIdRaw$ } =
   localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 export const defaultAgentId$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
+  const status = await get(onboardingStatus$);
   return status.defaultAgentId;
 });
 
@@ -36,7 +36,7 @@ const internalAgentByIdReload$ = state(0);
 export function agentById(id: string): Computed<Promise<AgentResponse>> {
   return computed(async (get) => {
     get(internalAgentByIdReload$);
-    const client = get(zeroClient$)(agentsByIdContract);
+    const client = get(apiClient$)(agentsByIdContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.get({ params: { id }, fetchOptions: { signal } }),
@@ -104,8 +104,8 @@ const internalReloadAgents$ = state(0);
 /** All agents in the user's org (from /api/team). */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
-  const zeroClient = get(zeroClient$)(teamContract);
-  const result = await accept(zeroClient.list(), [200]);
+  const apiClient = get(apiClient$)(teamContract);
+  const result = await accept(apiClient.list(), [200]);
   return result.body;
 });
 

@@ -11,7 +11,7 @@ import {
   type MailInlineImage,
 } from "@okouai/api-contracts/contracts/mail";
 import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
 import { mailDrafts } from "@okouai/db/schema/mail-draft";
@@ -347,14 +347,14 @@ async function ownedThreadAgentId(args: {
   readonly threadId: string;
 }): Promise<string | null> {
   const [row] = await args.db
-    .select({ agentId: chatThreads.agentComposeId })
+    .select({ agentId: agents.id })
     .from(chatThreads)
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(chatThreads.id, args.threadId),
         eq(chatThreads.userId, args.userId),
-        eq(agentComposes.orgId, args.orgId),
+        eq(agents.orgId, args.orgId),
       ),
     )
     .limit(1);
@@ -370,7 +370,7 @@ async function loadOwnedMailDraft(args: {
   const [row]: readonly StoredMailDraftRow[] = await args.db
     .select({
       id: mailDrafts.id,
-      agentId: chatThreads.agentComposeId,
+      agentId: agents.id,
       chatThreadId: chatThreads.id,
       connectorId: mailDrafts.connectorId,
       gmailDraftId: mailDrafts.gmailDraftId,
@@ -387,12 +387,12 @@ async function loadOwnedMailDraft(args: {
     })
     .from(mailDrafts)
     .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(
         eq(mailDrafts.id, args.mailDraftId),
         eq(chatThreads.userId, args.userId),
-        eq(agentComposes.orgId, args.orgId),
+        eq(agents.orgId, args.orgId),
       ),
     )
     .limit(1);

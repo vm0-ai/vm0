@@ -11,9 +11,7 @@ if (process.platform !== "darwin") {
 }
 
 const { executablePath, mainBundlePath, mcpBundlePath } = packagedAppPaths({
-  appBundlePath: process.env.VM0_DESKTOP_SMOKE_APP_PATH,
-  platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
-  product: process.env.VM0_DESKTOP_PRODUCT,
+  appBundlePath: process.env.OKOU_DESKTOP_SMOKE_APP_PATH,
 });
 
 if (!fs.existsSync(executablePath)) {
@@ -88,7 +86,7 @@ console.log(
 );
 
 const child = spawn(executablePath, [], {
-  env: { ...process.env, VM0_DESKTOP_SMOKE_TEST: "1" },
+  env: { ...process.env, OKOU_DESKTOP_SMOKE_TEST: "1" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 

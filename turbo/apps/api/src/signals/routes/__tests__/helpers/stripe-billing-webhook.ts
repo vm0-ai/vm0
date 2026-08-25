@@ -76,13 +76,13 @@ export function subscriptionCredits(tier: "pro" | "team"): number {
 
 function configureBillingWebhookEnv(): void {
   mockStripeClient(getApiTestMocks().stripe as unknown as StripeSDK);
-  mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-  mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+  mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
   mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
-  mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
+  mockEnv("OKOU_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
   mockEnv("ATOM_GRANT_PRICE", TEST_PRICE_ATOM_GRANT);
   mockEnv(
-    "ZERO_ONE_TIME_CAMPAIGN",
+    "OKOU_ONE_TIME_CAMPAIGN",
     JSON.stringify({
       ZERO100: {
         priceId: "price_test_zero100",

@@ -2,7 +2,7 @@ import type { Root } from "hast";
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { navigateToChat$ } from "../okou-page/nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
@@ -15,7 +15,7 @@ import {
   type UserMessagePart,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import { nowDate } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
@@ -166,7 +166,7 @@ export const deleteChatThread$ = command(
       } satisfies OptimisticChatThreadEvent);
     }
 
-    const client = get(zeroClient$)(chatThreadByIdContract);
+    const client = get(apiClient$)(chatThreadByIdContract);
     await accept(
       client.delete({
         params: { id: threadId },
@@ -228,7 +228,7 @@ export const pinChatThread$ = command(
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
-    const client = get(zeroClient$)(chatThreadPinContract);
+    const client = get(apiClient$)(chatThreadPinContract);
     await accept(
       client.pin({
         params: { id: threadId },
@@ -265,7 +265,7 @@ export const unpinChatThread$ = command(
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
-    const client = get(zeroClient$)(chatThreadUnpinContract);
+    const client = get(apiClient$)(chatThreadUnpinContract);
     await accept(
       client.unpin({
         params: { id: threadId },
@@ -319,7 +319,7 @@ export const renameChatThread$ = command(
       } satisfies OptimisticChatThreadEvent);
     }
 
-    const client = get(zeroClient$)(chatThreadRenameContract);
+    const client = get(apiClient$)(chatThreadRenameContract);
     signal.throwIfAborted();
     await accept(
       client.rename({

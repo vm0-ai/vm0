@@ -7,14 +7,14 @@ import {
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 import {
   apiTierToBillingTier,
   billingStatusAsync$,
   type BillingTier,
-} from "../zero-page/billing.ts";
-import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
-import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
+} from "../okou-page/billing.ts";
+import { setBillingSubPage$ } from "../okou-page/settings/workspace-settings-state.ts";
+import { openSettingsDialogAt$ } from "../okou-page/settings/settings-dialog.ts";
 import { logger } from "../log.ts";
 import {
   bestEffort,
@@ -91,7 +91,7 @@ export const audioInputAvailable$ = computed(() => {
 export const audioInputQuota$ = computed(
   async (get): Promise<AudioInputQuotaResponse> => {
     get(audioInputQuotaReload$);
-    const createClient = get(zeroClient$);
+    const createClient = get(apiClient$);
     const client = createClient(voiceIoQuotaContract);
     const result = await accept(client.get(), [200]);
     return result.body;
@@ -697,7 +697,7 @@ const transcribeAudioBlob$ = command(
     });
 
     const response = await tapError(
-      fetchFn("/api/okou/voice-io/stt", {
+      fetchFn("/api/voice-io/stt", {
         method: "POST",
         body: formData,
         signal,

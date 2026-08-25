@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.778.1",
+  "version": "0.791.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -47,7 +47,7 @@
     "mermaid": "^11.16.1",
     "micromark-util-sanitize-uri": "^2.0.1",
     "path-to-regexp": "^8.4.0",
-    "posthog-js": "^1.372.1",
+    "posthog-js": "^1.414.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.11",
@@ -80,7 +80,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/hast": "^3.0.4",
+    "@types/hast": "^3.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",

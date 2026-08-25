@@ -56,6 +56,47 @@ def make_openai_responses_websocket_response_headers(
     return http.Headers(pairs)
 
 
+def set_model_provider_flow_metadata(
+    flow: http.HTTPFlow,
+    tmp_path: Path,
+    *,
+    host: str,
+    original_url: str,
+    firewall_name: str,
+    proxy_log_path: Path | str | None,
+    run_id: str = "run-abc-123",
+    network_log_path: Path | str | None = None,
+    firewall_action: str = "ALLOW",
+    firewall_billable: object = True,
+    sandbox_token: str | None = None,
+    cli_agent_type: str | None = None,
+    model_usage_provider: str | None = None,
+) -> None:
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(
+        network_log_path if network_log_path is not None else tmp_path / "network.jsonl"
+    )
+    if proxy_log_path is not None:
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=flow.request.port,
+    )
+    flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = (
+        "tok-xyz" if sandbox_token is None else sandbox_token
+    )
+    if cli_agent_type is not None:
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = cli_agent_type
+    if model_usage_provider is not None:
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = model_usage_provider
+
+
 def make_model_provider_flow(
     real_flow: RealFlowFactory,
     tmp_path: Path,
@@ -75,30 +116,21 @@ def make_model_provider_flow(
     model_usage_provider: str | None = None,
 ) -> http.HTTPFlow:
     flow = real_flow(with_response=False, host=host, path=path, method=method)
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(
-        network_log_path if network_log_path is not None else tmp_path / "network.jsonl"
-    )
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(
-        proxy_log_path if proxy_log_path is not None else tmp_path / "proxy.jsonl"
-    )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
-    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
-    http_network_log.set_target(
+    set_model_provider_flow_metadata(
         flow,
-        url=original_url,
+        tmp_path,
         host=host,
-        port=flow.request.port,
+        original_url=original_url,
+        firewall_name=firewall_name,
+        proxy_log_path=(proxy_log_path if proxy_log_path is not None else tmp_path / "proxy.jsonl"),
+        run_id=run_id,
+        network_log_path=network_log_path,
+        firewall_action=firewall_action,
+        firewall_billable=firewall_billable,
+        sandbox_token=sandbox_token,
+        cli_agent_type=cli_agent_type,
+        model_usage_provider=model_usage_provider,
     )
-    flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
-    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = (
-        "tok-xyz" if sandbox_token is None else sandbox_token
-    )
-    if cli_agent_type is not None:
-        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = cli_agent_type
-    if model_usage_provider is not None:
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = model_usage_provider
     return flow
 
 
@@ -157,7 +189,7 @@ def model_provider_usage_sources(flow: http.HTTPFlow) -> dict:
 
 
 def model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [

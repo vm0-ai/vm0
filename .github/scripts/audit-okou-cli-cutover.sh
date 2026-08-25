@@ -62,7 +62,7 @@ while IFS=: read -r file line content; do
 
   category=""
   case "${file}" in
-    */CHANGELOG.md | .claude/notes/* | \
+    */CHANGELOG.md | \
       turbo/apps/api/src/signals/routes/test-user-config-state.ts)
       category="historical"
       historical_count=$((historical_count + 1))

@@ -38,7 +38,7 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const VIDEO_IO_MODEL = "dreamina-seedance-2-0-260128";
 const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
 const SEEDANCE_2_0_MINI_MODEL = "dreamina-seedance-2-0-mini-260615";
 const BYTEPLUS_VIDEO_TASKS_URL =
@@ -391,7 +391,7 @@ function readPublishedGenerationId(
   throw new Error("Expected a built-in-generation publish");
 }
 
-function zeroToken(args: {
+function okouToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
@@ -400,7 +400,7 @@ function zeroToken(args: {
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
-    scope: "zero",
+    scope: "okou",
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
@@ -471,7 +471,7 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
   return body.credits;
 }
 
-describe("POST /api/zero/video-io/generate", () => {
+describe("POST /api/video-io/generate", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -500,7 +500,7 @@ describe("POST /api/zero/video-io/generate", () => {
 
   it("returns 401 when not authenticated", async () => {
     const app = createVideoIoTestApp();
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       body: JSON.stringify({ prompt: "a city at night" }),
     });
@@ -523,7 +523,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city", duration: "3s" }),
@@ -532,8 +532,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message:
-          "Unsupported video duration for dreamina-seedance-2.0-fast: 3s",
+        message: "Unsupported video duration for dreamina-seedance-2.0: 3s",
         code: "BAD_REQUEST",
       },
     });
@@ -552,7 +551,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -577,7 +576,7 @@ describe("POST /api/zero/video-io/generate", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -609,7 +608,7 @@ describe("POST /api/zero/video-io/generate", () => {
       );
 
       const app = createVideoIoTestApp(fixture.pricingResolution);
-      const response = await app.request("/api/zero/video-io/generate", {
+      const response = await app.request("/api/video-io/generate", {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ prompt: "a city" }),
@@ -646,7 +645,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -676,7 +675,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -742,13 +741,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -777,7 +776,7 @@ describe("POST /api/zero/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -828,13 +827,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -900,13 +899,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -962,13 +961,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -994,7 +993,7 @@ describe("POST /api/zero/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1054,13 +1053,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1084,7 +1083,7 @@ describe("POST /api/zero/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1142,13 +1141,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1199,13 +1198,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1236,7 +1235,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1267,7 +1266,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -1319,14 +1318,14 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
       publicBrand: "okou",
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1373,7 +1372,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -1387,7 +1386,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 865,
+      creditsCharged: 1081,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -1450,7 +1449,7 @@ describe("POST /api/zero/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
   });
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
@@ -1473,7 +1472,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1526,7 +1525,7 @@ describe("POST /api/zero/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1572,7 +1571,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1637,7 +1636,7 @@ describe("POST /api/zero/video-io/generate", () => {
     await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -1669,7 +1668,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1711,7 +1710,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -1771,13 +1770,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1867,13 +1866,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1955,7 +1954,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2015,13 +2014,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2112,7 +2111,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2148,7 +2147,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2208,7 +2207,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2240,7 +2239,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2298,13 +2297,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2355,7 +2354,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2411,13 +2410,13 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const token = zeroToken({
+    const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId,
     });
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -2454,7 +2453,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
@@ -2495,7 +2494,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -2523,7 +2522,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);
@@ -2558,7 +2557,7 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/zero/video-io/generate", {
+    const response = await app.request("/api/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt: "a city" }),
@@ -2584,7 +2583,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
 
     const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
+      `/api/built-in-generations/${generationId}`,
       { headers: authHeaders() },
     );
     expect(statusResponse.status).toBe(200);

@@ -235,6 +235,73 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
 
+    def test_long_sse_reports_final_usage_after_discarded_and_malformed_events(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="text/event-stream",
+        )
+        delta = (
+            b'data: {"id":"chatcmpl_delta","model":"gpt-5.5",'
+            b'"choices":[{"delta":{"content":"x"}}]}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(
+            b"data: "
+            + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
+            + b"\n\n"
+            + delta * 2_560
+            + b'data: {"id":"chatcmpl_discarded"\n'
+            + b"x" * 4_097
+            + b"\n\n"
+            + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
+        )
+        final_payload = {
+            "id": "chatcmpl_final",
+            "model": "gpt-5.5",
+            "choices": [
+                {
+                    "usage": {
+                        "prompt_tokens": 30,
+                        "completion_tokens": 5,
+                    }
+                }
+            ],
+        }
+        callback(
+            b"data: "
+            + json.dumps(final_payload, separators=(",", ":")).encode()
+            + b"\n\ndata: [DONE]\n\n"
+        )
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        expected_quantities = {
+            "tokens.input": 30,
+            "tokens.output": 5,
+        }
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == (
+            expected_quantities
+        )
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == (
+            expected_quantities
+        )
+        warnings = [
+            entry
+            for entry in read_jsonl_entries_after_flush(
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
+            )
+            if entry.get("message") == "Model provider SSE usage extraction failed"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0]["error"] == "incomplete json"
+
     def test_malformed_sse_fails_closed_with_chat_protocol_diagnostic(
         self,
         tmp_path,
@@ -255,7 +322,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]
@@ -299,7 +366,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]
@@ -336,7 +403,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]

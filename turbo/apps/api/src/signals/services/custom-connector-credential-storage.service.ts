@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { connectors } from "@okouai/db/schema/connector";
 
 import type { Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 import {
   deleteConnectorCredentialStorageConnection,
   type ConnectorCredentialStorageDeclaration,
@@ -9,6 +10,8 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
+import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -87,16 +90,22 @@ export async function upsertCustomConnectorStoredValues(
 }
 
 export async function deleteCustomConnectorMemberConnection(
-  db: Db,
+  db: Tx,
   args: CustomConnectorMemberConnection,
   signal: AbortSignal,
 ): Promise<"deleted" | "missing" | "ambiguous"> {
+  await lockConnectorAccountTarget(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "custom", customConnectorId: args.connectorId },
+  });
+  signal.throwIfAborted();
   const resolution = await resolveConnectorAccount(db, {
     orgId: args.orgId,
     userId: args.userId,
     request: {
       target: { kind: "custom", customConnectorId: args.connectorId },
-      selection: { kind: "legacy-singleton" },
+      selection: { kind: "target-only-client-singleton" },
     },
   });
   signal.throwIfAborted();
@@ -149,4 +158,40 @@ export async function deleteCustomConnectorMemberConnectionById(
     signal,
   );
   return true;
+}
+
+export async function deleteCustomConnectorMemberConnectionExact(
+  db: Tx,
+  args: CustomConnectorMemberConnection & {
+    readonly memberConnectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "missing" }
+  | {
+      readonly kind: "deleted";
+      readonly resolvedSelectionCount: number;
+      readonly promotedDefaultConnectionId: string | null;
+    }
+> {
+  const deletion = await prepareConnectorAccountDeletion(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "custom", customConnectorId: args.connectorId },
+    connectionId: args.memberConnectorId,
+  });
+  signal.throwIfAborted();
+  if (deletion.kind !== "ready") {
+    return deletion;
+  }
+  await deleteConnectorCredentialStorageConnection(
+    db,
+    { connectorId: args.memberConnectorId },
+    signal,
+  );
+  return {
+    kind: "deleted",
+    resolvedSelectionCount: deletion.resolvedSelectionCount,
+    promotedDefaultConnectionId: deletion.promotedDefaultConnectionId,
+  };
 }

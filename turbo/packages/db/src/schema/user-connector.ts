@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   pgTable,
   uuid,
   text,
@@ -7,7 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { zeroAgents } from "./zero-agent";
+import { agents } from "./agent";
 
 /**
  * User Connectors table
@@ -21,19 +22,17 @@ export const userConnectors = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
+      foreignKey({
+        name: "user_connectors_agent_id_agents_id_fk",
+        columns: [table.agentId],
+        foreignColumns: [agents.id],
+      }).onDelete("cascade"),
       uniqueIndex("idx_user_connectors_unique_slug").on(
         table.orgId,
         table.userId,

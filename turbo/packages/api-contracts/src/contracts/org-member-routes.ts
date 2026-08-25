@@ -46,7 +46,7 @@ export const orgMembersContract = c.router({
       503: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get org members (zero proxy)",
+    summary: "Get org members",
   },
   updateRole: {
     method: "PATCH",
@@ -61,7 +61,7 @@ export const orgMembersContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update a member's role (zero proxy)",
+    summary: "Update a member's role",
   },
   removeMember: {
     method: "DELETE",
@@ -76,7 +76,7 @@ export const orgMembersContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Remove a member from the org (zero proxy)",
+    summary: "Remove a member from the org",
   },
 });
 
@@ -100,7 +100,7 @@ export const orgInviteContract = c.router({
       503: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Invite a member to the org (zero proxy)",
+    summary: "Invite a member to the org",
   },
   previewPurchase: {
     method: "POST",
@@ -152,7 +152,7 @@ export const orgInviteContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Revoke a pending invitation (zero proxy)",
+    summary: "Revoke a pending invitation",
   },
 });
 
@@ -174,7 +174,7 @@ export const orgMembershipRequestsContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Accept a membership request (zero proxy)",
+    summary: "Accept a membership request",
   },
   reject: {
     method: "DELETE",
@@ -188,7 +188,7 @@ export const orgMembershipRequestsContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Reject a membership request (zero proxy)",
+    summary: "Reject a membership request",
   },
 });
 

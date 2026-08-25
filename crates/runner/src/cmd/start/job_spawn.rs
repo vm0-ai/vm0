@@ -30,7 +30,8 @@ use super::sandbox_finalization::{
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
-    self, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
+    self, ExecutorConfig, RunnerPreSpawnConcurrency, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
+    SessionHistoryRestorePlan,
 };
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
@@ -82,6 +83,7 @@ pub(super) struct SpawnContext {
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) active_runs: ActiveRuns,
+    pub(super) pre_spawn_concurrency: RunnerPreSpawnConcurrency,
     pub(super) budget: Arc<ResourceBudget>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
@@ -1477,10 +1479,10 @@ mod tests {
         let raw = tokio::fs::read_to_string(status_path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let mut reuse_keys: Vec<String> = status
-            .get("idle_vms")
+            .get("idle_sandboxes")
             .and_then(|v| v.as_array())
-            .map(|idle_vms| {
-                idle_vms
+            .map(|idle_sandboxes| {
+                idle_sandboxes
                     .iter()
                     .filter_map(|vm| {
                         vm.get("reuse_key")

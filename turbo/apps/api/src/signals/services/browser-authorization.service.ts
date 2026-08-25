@@ -250,13 +250,14 @@ export const applyBrowserAuthorizationRequest$ = command(
           and(
             eq(chatThreads.id, loaded.request.chatThreadId),
             eq(chatThreads.userId, args.userId),
+            isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -264,7 +265,7 @@ export const applyBrowserAuthorizationRequest$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         computerUseHostId: null,
         cloudBrowserEnabled: true,
         createdAt: now,

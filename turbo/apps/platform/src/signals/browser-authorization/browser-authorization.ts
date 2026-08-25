@@ -3,7 +3,7 @@ import { browserAuthorizationRequestsContract } from "@okouai/api-contracts/cont
 
 import { accept } from "../../lib/accept.ts";
 import { pathParams$ } from "../route.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { apiClient$ } from "../api-client.ts";
 
 const browserAuthorizationReload$ = state(0);
 
@@ -18,7 +18,7 @@ export const browserAuthorizationRequest$ = computed(async (get) => {
   if (!requestToken) {
     return null;
   }
-  const client = get(zeroClient$)(browserAuthorizationRequestsContract);
+  const client = get(apiClient$)(browserAuthorizationRequestsContract);
   const result = await accept(client.get({ params: { requestToken } }), [200]);
   return result.body;
 });
@@ -29,7 +29,7 @@ export const applyBrowserAuthorizationRequest$ = command(
     if (!requestToken) {
       throw new Error("Cloud browser authorization request token is missing");
     }
-    const client = get(zeroClient$)(browserAuthorizationRequestsContract);
+    const client = get(apiClient$)(browserAuthorizationRequestsContract);
     const result = await accept(
       client.apply({
         params: { requestToken },
