@@ -1275,8 +1275,14 @@ function ArtifactPreviewDialogActions({
         <Button
           type="button"
           variant="quiet"
-          size="sm"
+          size="icon-sm"
           data-testid="artifact-dialog-annotate"
+          aria-label={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
+          title={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
           onClick={() => {
             // The editor owns the whole surface while it is open, so the
             // read-only viewer steps aside rather than stacking behind it.
@@ -1284,10 +1290,7 @@ function ArtifactPreviewDialogActions({
             closeLightboxWithDialogExit(rootSignal);
           }}
         >
-          <Pencil size={16} />
-          {t(($) => {
-            return $.artifacts.annotation.open;
-          })}
+          <Pencil size={18} />
         </Button>
       )}
       {showShare && (
