@@ -156,11 +156,15 @@ test("password sign-in recovers from a server error and honors an allowed redire
 
   await mockNextAuthV2VerificationServerError(page, "sign-in");
   await password.press("Enter");
-  await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-  await expect(password).toBeFocused();
+  const serverError = authV2Root(page).getByRole("alert");
+  await expect(serverError).toBeVisible();
+  await expect(serverError).toBeFocused();
+  await expect(password).toHaveAttribute("aria-invalid", "true");
   await expectStepAnnouncement(page);
 
   await password.fill(identity.password);
+  await expect(password).toHaveAttribute("aria-invalid", "false");
+  await expect(serverError).toHaveCount(0);
   await password.press("Enter");
   await finishAuthV2Continuation(page, redirect, ORGANIZATION_BETA);
 });
@@ -204,8 +208,9 @@ test("email-code sign-in sends once, coalesces retry, edits, expires, and refres
     const code = authV2Input(page, "code");
     await code.fill(AUTH_V2_TEST_OTP);
     await code.press("Enter");
-    await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-    await expect(code).toBeFocused();
+    const expiryError = authV2Root(page).getByRole("alert");
+    await expect(expiryError).toBeVisible();
+    await expect(expiryError).toBeFocused();
     await expectStepAnnouncement(page);
 
     const retry = resendOrRetryButton(page);
@@ -290,9 +295,15 @@ test("password reset retries an expired code, survives refresh, and sets a new p
     await newPasswordInput.fill(newPassword);
     await confirmation.fill(identity.password);
     await confirmation.press("Enter");
-    await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-    await expect(newPasswordInput).toBeFocused();
+    const mismatchError = authV2Root(page).getByRole("alert");
+    await expect(mismatchError).toBeVisible();
+    await expect(mismatchError).toBeFocused();
+    await expect(newPasswordInput).toHaveAttribute("aria-invalid", "true");
+    await expect(confirmation).toHaveAttribute("aria-invalid", "true");
     await confirmation.fill(newPassword);
+    await expect(newPasswordInput).toHaveAttribute("aria-invalid", "false");
+    await expect(confirmation).toHaveAttribute("aria-invalid", "false");
+    await expect(mismatchError).toHaveCount(0);
     await confirmation.press("Enter");
     await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
   } finally {
