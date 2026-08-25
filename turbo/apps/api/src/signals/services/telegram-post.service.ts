@@ -36,6 +36,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { escapeHtml } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { webUrl } from "../../lib/web-url";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
@@ -329,7 +330,7 @@ function buildTelegramWebhookUrl(
   telegramBotId: string,
   publicBrand: PublicBrand,
 ): string {
-  return `${apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand)}/api/telegram/webhook/${telegramBotId}`;
+  return `${apiUrlForPublicBrand(webUrl(), publicBrand)}/api/telegram/webhook/${telegramBotId}`;
 }
 
 function normalizeTelegramUsername(

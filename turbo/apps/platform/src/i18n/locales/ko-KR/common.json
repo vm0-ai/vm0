@@ -1082,6 +1082,7 @@
         "chooseAccountTitle": "계정 선택",
         "chooseMethodSubtitle": "문제가 있나요? 다른 방법으로 로그인할 수 있어요.",
         "chooseMethodTitle": "다른 방법 사용하기",
+        "clientTrustNotice": "새로운 기기에서 로그인 중이에요. 계정 보안을 위해 확인을 요청하고 있어요.",
         "codeExpired": "이 인증 코드는 만료되었습니다. 새 코드를 요청하세요.",
         "codeLabel": "인증 코드",
         "completeSubtitle": "곧 이동돼요",
@@ -1932,11 +1933,17 @@
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
+      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
+      "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",
+      "fallsBackTo": "{{account}} 계정으로 대체",
       "find": "커넥터 찾기...",
+      "noUsableAccount": "사용 가능한 계정 없음",
       "remove": "{{connectorName}} 제거",
-      "title": "커넥터"
+      "selectedAccountFor": "{{connector}} · 선택한 계정: {{account}}",
+      "title": "커넥터",
+      "useDefault": "기본값 사용"
     },
     "documentTitle": "채팅",
     "errors": {
@@ -2293,6 +2300,21 @@
     "toasts": {
       "copied": "복사됨",
       "deleted": "채팅 삭제됨"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "파일 변경",
+        "read": "파일 읽음",
+        "run": "명령 실행"
+      },
+      "collapse": "도구 활동 접기",
+      "expand": "도구 활동 펼치기",
+      "status": {
+        "cancelled": "취소됨",
+        "error": "실패",
+        "pending": "진행 중",
+        "success": "완료"
+      }
     },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",

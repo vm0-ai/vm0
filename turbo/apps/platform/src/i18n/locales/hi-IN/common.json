@@ -1083,6 +1083,7 @@
         "chooseAccountTitle": "एक खाता चुनें",
         "chooseMethodSubtitle": "समस्याओं का सामना कर रहे हैं? साइन इन करने के लिए आप इनमें से किसी भी विधि का उपयोग कर सकते हैं।",
         "chooseMethodTitle": "दूसरी विधि का उपयोग करें",
+        "clientTrustNotice": "आप एक नए डिवाइस से साइन इन कर रहे हैं। हम आपके खाते को सुरक्षित रखने के लिए सत्यापन मांग रहे हैं।",
         "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
         "codeLabel": "सत्यापन कोड",
         "completeSubtitle": "आप जल्द ही पुनर्निर्देशित किए जाएंगे",
@@ -1935,11 +1936,17 @@
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
+      "back": "वापस",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
+      "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
+      "fallsBackTo": "{{account}} पर वापस जाता है",
       "find": "कनेक्टर ढूंढें...",
+      "noUsableAccount": "कोई उपयोग योग्य खाता नहीं",
       "remove": "{{connectorName}} हटाएँ",
-      "title": "कनेक्टर्स"
+      "selectedAccountFor": "{{connector}} · चुना गया खाता: {{account}}",
+      "title": "कनेक्टर्स",
+      "useDefault": "डिफ़ॉल्ट उपयोग करें"
     },
     "documentTitle": "चैट",
     "errors": {
@@ -2297,6 +2304,21 @@
     "toasts": {
       "copied": "कॉपी किया गया",
       "deleted": "चैट हटा दी गई"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "फ़ाइलें बदलीं",
+        "read": "फ़ाइलें पढ़ीं",
+        "run": "कमांड चलाए"
+      },
+      "collapse": "टूल गतिविधि संक्षिप्त करें",
+      "expand": "टूल गतिविधि विस्तृत करें",
+      "status": {
+        "cancelled": "रद्द",
+        "error": "विफल",
+        "pending": "जारी",
+        "success": "पूरा हुआ"
+      }
     },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",

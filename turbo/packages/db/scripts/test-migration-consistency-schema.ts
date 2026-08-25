@@ -41,6 +41,7 @@ import {
 } from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
 import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
 import {
   validateAgentRunMetadataStage2Final,
@@ -10835,6 +10836,7 @@ async function main(): Promise<void> {
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
+    await validateAgentDraftsCompatibilityRelation();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

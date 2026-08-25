@@ -1,43 +1,29 @@
-import { Command, InvalidArgumentError } from "commander";
 import {
-  findManagedSocialKitOperation,
-  managedSocialKitRequiredQueryName,
-  MANAGED_SOCIALKIT_OPERATIONS,
-  SOCIALKIT_MAX_QUERY_ENTRIES,
+  findManagedSocialKitTool,
+  managedSocialKitToolCatalog,
+  MANAGED_SOCIALKIT_TOOLS,
   socialKitRequestSchema,
-  type ManagedSocialKitOperation,
   type ManagedSocialKitPagination,
-  type ManagedSocialKitRequiredQueryName,
-  type ManagedSocialKitResultField,
+  type ManagedSocialKitTool,
+  type ManagedSocialKitToolCatalogEntry,
   type SocialKitRequest,
-  type SocialKitRequestMethod,
   type SocialKitResponse,
 } from "@okouai/api-contracts/contracts/social";
+import { Command, InvalidArgumentError } from "commander";
 
 import { callSocialKit } from "../../lib/api/domains/social";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
-interface SocialKitRequestOptions {
+interface SocialKitCallOptions {
   readonly all?: boolean;
+  readonly input?: string;
+  readonly json?: boolean;
   readonly maxItems?: number;
   readonly maxPages?: number;
-  readonly method: string;
-  readonly query?: readonly string[];
-  readonly json?: boolean;
 }
 
 interface SocialKitCatalogOptions {
   readonly json?: boolean;
-}
-
-interface SocialKitCatalogQuery {
-  readonly required: readonly ManagedSocialKitRequiredQueryName[];
-  readonly optional: readonly string[];
-}
-
-interface SocialKitCatalogLimit {
-  readonly default: number | null;
-  readonly max: number | null;
 }
 
 type SocialKitCatalogRetrieval =
@@ -45,31 +31,20 @@ type SocialKitCatalogRetrieval =
   | { readonly kind: "page"; readonly maxPage: number }
   | { readonly kind: "provider_limited" };
 
-interface SocialKitCatalogCollection {
-  readonly resultField: ManagedSocialKitResultField;
-  readonly retrieval: SocialKitCatalogRetrieval;
-}
-
 type SocialKitCatalogBilling =
   | { readonly kind: "request" }
   | { readonly kind: "items"; readonly itemsPerUnit: number };
 
-interface SocialKitCatalogOperation {
-  readonly path: string;
-  readonly methods: readonly SocialKitRequestMethod[];
-  readonly query: SocialKitCatalogQuery;
-  readonly limit: SocialKitCatalogLimit | null;
-  readonly collection: SocialKitCatalogCollection | null;
+interface SocialKitCatalogEntry extends ManagedSocialKitToolCatalogEntry {
+  readonly collection: {
+    readonly resultField: string;
+    readonly retrieval: SocialKitCatalogRetrieval;
+  } | null;
   readonly billing: SocialKitCatalogBilling;
 }
 
 interface SocialKitCatalogOutput {
-  readonly operations: readonly SocialKitCatalogOperation[];
-}
-
-interface SocialKitPathOperations {
-  readonly operation: ManagedSocialKitOperation;
-  readonly methods: SocialKitRequestMethod[];
+  readonly tools: readonly SocialKitCatalogEntry[];
 }
 
 type FullRetrievalCompletion =
@@ -107,107 +82,66 @@ function catalogRetrieval(
   }
 }
 
-function catalogOperation(
-  operation: ManagedSocialKitOperation,
-  methods: readonly SocialKitRequestMethod[],
-): SocialKitCatalogOperation {
-  const requiredQueryName = managedSocialKitRequiredQueryName(operation);
-  const defaultLimit = operation.collection?.defaultLimit;
-  const itemsPerBillingUnit = operation.collection?.itemsPerBillingUnit;
+function catalogEntry(
+  tool: ManagedSocialKitTool,
+  schemaEntry: ManagedSocialKitToolCatalogEntry,
+): SocialKitCatalogEntry {
+  const collection = tool.collection;
+  const itemsPerUnit = collection?.itemsPerBillingUnit;
   return {
-    path: operation.path,
-    methods,
-    query: {
-      required: [requiredQueryName],
-      optional: operation.queryNames.filter((name) => {
-        return name !== requiredQueryName;
-      }),
-    },
-    limit:
-      defaultLimit === undefined && operation.maxLimit === undefined
-        ? null
-        : {
-            default: defaultLimit ?? null,
-            max: operation.maxLimit ?? null,
-          },
-    collection: operation.collection
+    ...schemaEntry,
+    collection: collection
       ? {
-          resultField: operation.collection.resultField,
-          retrieval: catalogRetrieval(operation.collection.pagination),
+          resultField: collection.resultField,
+          retrieval: catalogRetrieval(collection.pagination),
         }
       : null,
     billing:
-      itemsPerBillingUnit === undefined
+      itemsPerUnit === undefined
         ? { kind: "request" }
-        : { kind: "items", itemsPerUnit: itemsPerBillingUnit },
+        : { kind: "items", itemsPerUnit },
   };
 }
 
 function socialKitCatalog(): SocialKitCatalogOutput {
-  const operationsByPath = new Map<string, SocialKitPathOperations>();
-  for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
-    const existing = operationsByPath.get(operation.path);
-    if (existing) {
-      existing.methods.push(operation.method);
-      continue;
-    }
-    operationsByPath.set(operation.path, {
-      operation,
-      methods: [operation.method],
-    });
-  }
+  const schemaEntries = managedSocialKitToolCatalog();
   return {
-    operations: Array.from(
-      operationsByPath.values(),
-      ({ operation, methods }) => {
-        return catalogOperation(operation, methods);
-      },
-    ),
+    tools: MANAGED_SOCIALKIT_TOOLS.map((tool, index) => {
+      const schemaEntry = schemaEntries[index];
+      if (!schemaEntry || schemaEntry.name !== tool.name) {
+        throw new Error("Managed SocialKit catalog order is inconsistent");
+      }
+      return catalogEntry(tool, schemaEntry);
+    }),
   };
 }
 
-function catalogLimitLabel(limit: SocialKitCatalogLimit): string {
-  return [
-    ...(limit.default === null ? [] : [`default ${limit.default}`]),
-    ...(limit.max === null ? [] : [`max ${limit.max}`]),
-  ].join(", ");
+function indentedJson(value: unknown): string {
+  return JSON.stringify(value, null, 2)
+    .split("\n")
+    .map((line) => {
+      return `    ${line}`;
+    })
+    .join("\n");
 }
 
-function catalogRetrievalLabel(retrieval: SocialKitCatalogRetrieval): string {
-  switch (retrieval.kind) {
-    case "cursor": {
-      return "cursor";
-    }
-    case "page": {
-      return `page (up to ${retrieval.maxPage})`;
-    }
-    case "provider_limited": {
-      return "provider limited (no continuation)";
-    }
+function printCatalogEntry(tool: SocialKitCatalogEntry): void {
+  console.log(tool.name);
+  console.log(`  ${tool.description}`);
+  console.log("  Input schema:");
+  console.log(indentedJson(tool.inputSchema));
+  console.log("  Output schema:");
+  console.log(indentedJson(tool.outputSchema));
+  if (tool.collection) {
+    console.log(
+      `  Collection: ${tool.collection.resultField} (${tool.collection.retrieval.kind})`,
+    );
   }
-}
-
-function catalogBillingLabel(billing: SocialKitCatalogBilling): string {
-  return billing.kind === "request"
-    ? "1 quantity per successful request"
-    : `1 quantity per ${billing.itemsPerUnit} returned items`;
-}
-
-function printCatalogOperation(operation: SocialKitCatalogOperation): void {
-  console.log(`${operation.path} [${operation.methods.join(", ")}]`);
   console.log(
-    `  query: ${operation.query.required.join(", ")} (required); ${operation.query.optional.join(", ") || "none"} (optional)`,
+    tool.billing.kind === "request"
+      ? "  Billing: 1 quantity per successful request"
+      : `  Billing: 1 quantity per ${tool.billing.itemsPerUnit} returned items`,
   );
-  const details = [
-    ...(operation.limit
-      ? [`limit: ${catalogLimitLabel(operation.limit)}`]
-      : []),
-    operation.collection
-      ? `collection: ${operation.collection.resultField}; retrieval: ${catalogRetrievalLabel(operation.collection.retrieval)}`
-      : "collection: none",
-    `billing: ${catalogBillingLabel(operation.billing)}`,
-  ];
-  console.log(`  ${details.join("; ")}`);
 }
 
 function printSocialKitCatalog(
@@ -218,8 +152,8 @@ function printSocialKitCatalog(
     console.log(JSON.stringify(catalog));
     return;
   }
-  for (const operation of catalog.operations) {
-    printCatalogOperation(operation);
+  for (const tool of catalog.tools) {
+    printCatalogEntry(tool);
   }
 }
 
@@ -231,40 +165,28 @@ function positiveInteger(value: string): number {
   return parsed;
 }
 
-function collectQuery(
-  value: string,
-  previous: readonly string[] = [],
-): readonly string[] {
-  if (previous.length >= SOCIALKIT_MAX_QUERY_ENTRIES) {
+function parseToolRequest(tool: string, rawInput: string): SocialKitRequest {
+  let input: unknown;
+  try {
+    input = JSON.parse(rawInput);
+  } catch {
+    throw new InvalidArgumentError("--input must be valid JSON");
+  }
+  const definition = findManagedSocialKitTool(tool);
+  if (!definition) {
+    throw new InvalidArgumentError(`Unknown managed SocialKit tool: ${tool}`);
+  }
+  const parsedInput = definition.inputSchema.safeParse(input);
+  if (!parsedInput.success) {
     throw new InvalidArgumentError(
-      `--query may be repeated at most ${SOCIALKIT_MAX_QUERY_ENTRIES} times`,
+      parsedInput.error.issues[0]?.message ??
+        "Managed SocialKit input is invalid",
     );
   }
-  return [...previous, value];
+  return socialKitRequestSchema.parse({ tool, input: parsedInput.data });
 }
 
-function parseQuery(
-  values: readonly string[] | undefined,
-): Record<string, string> | undefined {
-  if (!values || values.length === 0) {
-    return undefined;
-  }
-  const query: Record<string, string> = {};
-  for (const value of values) {
-    const separator = value.indexOf("=");
-    if (separator <= 0) {
-      throw new InvalidArgumentError("--query must use NAME=VALUE");
-    }
-    const name = value.slice(0, separator);
-    if (name in query) {
-      throw new InvalidArgumentError(`--query field ${name} is duplicated`);
-    }
-    query[name] = value.slice(separator + 1);
-  }
-  return query;
-}
-
-function printFullRecord(value: unknown, compact: boolean): void {
+function printRecord(value: unknown, compact: boolean): void {
   console.log(JSON.stringify(value, null, compact ? 0 : 2));
 }
 
@@ -276,7 +198,7 @@ function printPage(
   if (!compact) {
     console.log(`Page ${pageNumber}`);
   }
-  printFullRecord({ kind: "page", pageNumber, response }, compact);
+  printRecord({ kind: "page", pageNumber, response }, compact);
 }
 
 function printSummary(
@@ -292,49 +214,49 @@ function printSummary(
     completion,
     ...totals,
   };
-  printFullRecord(summary, compact);
+  printRecord(summary, compact);
 }
 
-function queryIdentity(query: Readonly<Record<string, string>>): string {
+function inputIdentity(input: Readonly<Record<string, unknown>>): string {
   return JSON.stringify(
-    Object.entries(query).sort(([left], [right]) => {
+    Object.entries(input).sort(([left], [right]) => {
       return left.localeCompare(right);
     }),
   );
 }
 
-function requestForPage(
-  request: SocialKitRequest,
-  query: Readonly<Record<string, string>>,
+function requestForInput(
+  tool: string,
+  input: Readonly<Record<string, unknown>>,
 ): SocialKitRequest {
-  return { ...request, query: { ...query } };
+  return socialKitRequestSchema.parse({ tool, input });
 }
 
 async function retrieveAll(
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
-  options: SocialKitRequestOptions,
+  tool: ManagedSocialKitTool,
+  options: SocialKitCallOptions,
 ): Promise<void> {
-  if (!operation.collection) {
+  if (!tool.collection) {
     throw new InvalidArgumentError(
-      "--all requires a SocialKit collection operation",
+      "--all requires a SocialKit collection tool",
     );
   }
-  if (options.maxItems !== undefined && operation.maxLimit === undefined) {
+  if (options.maxItems !== undefined && tool.maxLimit === undefined) {
     throw new InvalidArgumentError(
-      "--max-items requires an operation with a result limit",
+      "--max-items requires a tool with a result limit",
     );
   }
 
   const compact = options.json === true;
-  const baseQuery: Record<string, string> = { ...request.query };
-  if (operation.maxLimit !== undefined && baseQuery.limit === undefined) {
-    baseQuery.limit = String(operation.maxLimit);
+  const baseInput: Record<string, unknown> = { ...request.input };
+  if (tool.maxLimit !== undefined && baseInput.limit === undefined) {
+    baseInput.limit = tool.maxLimit;
   }
   const pageSize =
-    operation.maxLimit === undefined ? undefined : Number(baseQuery.limit);
-  const seenQueries = new Set<string>();
-  let query = baseQuery;
+    typeof baseInput.limit === "number" ? baseInput.limit : undefined;
+  const seenInputs = new Set<string>();
+  let input = baseInput;
   let pages = 0;
   let itemsReturned = 0;
   let billingQuantity = 0;
@@ -345,12 +267,12 @@ async function retrieveAll(
       options.maxItems === undefined
         ? undefined
         : options.maxItems - itemsReturned;
-    const pageQuery = { ...query };
+    const pageInput: Record<string, unknown> = { ...input };
     if (remainingItems !== undefined && pageSize !== undefined) {
-      pageQuery.limit = String(Math.min(pageSize, remainingItems));
+      pageInput.limit = Math.min(pageSize, remainingItems);
     }
-    const pageIdentity = queryIdentity(pageQuery);
-    if (seenQueries.has(pageIdentity)) {
+    const pageIdentity = inputIdentity(pageInput);
+    if (seenInputs.has(pageIdentity)) {
       printSummary(
         "failed",
         { pages, itemsReturned, billingQuantity, creditsCharged },
@@ -358,11 +280,11 @@ async function retrieveAll(
       );
       throw new Error("SocialKit returned a repeated pagination state");
     }
-    seenQueries.add(pageIdentity);
+    seenInputs.add(pageIdentity);
 
     let response: SocialKitResponse;
     try {
-      response = await callSocialKit(requestForPage(request, pageQuery));
+      response = await callSocialKit(requestForInput(request.tool, pageInput));
     } catch (error) {
       printSummary(
         "failed",
@@ -411,29 +333,24 @@ async function retrieveAll(
       );
       return;
     }
-    query = { ...query, ...collection.nextQuery };
+    input = { ...input, ...collection.nextInput };
   }
 }
 
-const operationsCommand = new Command()
-  .name("operations")
-  .description("List reviewed managed SocialKit operations")
-  .option("--json", "Print the operation catalog as compact JSON")
+const toolsCommand = new Command()
+  .name("tools")
+  .description("List typed managed SocialKit tools and their schemas")
+  .option("--json", "Print the tool catalog as compact JSON")
   .action((options: SocialKitCatalogOptions) => {
     printSocialKitCatalog(socialKitCatalog(), options.json === true);
   });
 
-const requestCommand = new Command()
-  .name("request")
-  .description("Call a reviewed managed SocialKit data or analysis operation")
-  .argument("<path>", "Reviewed SocialKit path such as /youtube/transcript")
-  .option("-X, --method <method>", "Provider method: GET or POST", "GET")
-  .option(
-    "--query <name=value>",
-    "Provider query field; repeat for multiple fields",
-    collectQuery,
-  )
-  .option("--all", "Retrieve every provider page exposed by the operation")
+const callCommand = new Command()
+  .name("call")
+  .description("Call a typed managed SocialKit tool")
+  .argument("<tool-name>", "Exact tool name such as youtube_transcript")
+  .option("--input <json>", "Tool input as a JSON object", "{}")
+  .option("--all", "Retrieve every provider page exposed by the tool")
   .option(
     "--max-pages <count>",
     "Stop full retrieval after this many pages",
@@ -446,65 +363,53 @@ const requestCommand = new Command()
   )
   .option("--json", "Print compact JSON instead of formatted JSON")
   .action(
-    withErrorHandler(async (path: string, options: SocialKitRequestOptions) => {
-      const request = socialKitRequestSchema.safeParse({
-        method: options.method.toUpperCase(),
-        path,
-        query: parseQuery(options.query),
-      });
-      if (!request.success) {
-        throw new InvalidArgumentError(
-          request.error.issues[0]?.message ??
-            "Managed SocialKit request is invalid",
-        );
-      }
-      if (
-        !options.all &&
-        (options.maxPages !== undefined || options.maxItems !== undefined)
-      ) {
-        throw new InvalidArgumentError(
-          "--max-pages and --max-items require --all",
-        );
-      }
-      if (options.all) {
-        const operation = findManagedSocialKitOperation(
-          request.data.method,
-          request.data.path,
-        );
-        if (!operation) {
-          throw new Error(
-            "Validated SocialKit request has no reviewed operation",
+    withErrorHandler(
+      async (toolName: string, options: SocialKitCallOptions) => {
+        const request = parseToolRequest(toolName, options.input ?? "{}");
+        if (
+          !options.all &&
+          (options.maxPages !== undefined || options.maxItems !== undefined)
+        ) {
+          throw new InvalidArgumentError(
+            "--max-pages and --max-items require --all",
           );
         }
-        await retrieveAll(request.data, operation, options);
-        return;
-      }
-      const response = await callSocialKit(request.data);
-      console.log(JSON.stringify(response, null, options.json ? 0 : 2));
-    }),
+        if (options.all) {
+          const tool = findManagedSocialKitTool(request.tool);
+          if (!tool) {
+            throw new Error("Validated SocialKit request has no reviewed tool");
+          }
+          await retrieveAll(request, tool, options);
+          return;
+        }
+        const response = await callSocialKit(request);
+        console.log(JSON.stringify(response, null, options.json ? 0 : 2));
+      },
+    ),
   );
 
 export const socialCommand = new Command()
   .name("social")
   .description("Use managed SocialKit public social data services")
-  .addCommand(operationsCommand)
-  .addCommand(requestCommand)
+  .addCommand(toolsCommand)
+  .addCommand(callCommand)
   .addHelpText(
     "after",
     `
 Examples:
-  Operations:       okou social operations --json
-  Transcript:       okou social request /youtube/transcript --query 'url=https://www.youtube.com/watch?v=<id>'
-  Search:           okou social request /tiktok/search --query 'query=product launch' --query limit=10
-  Profile:          okou social request /linkedin/profile --query 'url=https://www.linkedin.com/in/<name>'
-  Summary:          okou social request /youtube/summarize --query 'url=https://youtu.be/<id>'
-  Full retrieval:  okou social request /instagram/comments --query 'url=https://www.instagram.com/p/<id>/' --all --json
+  Discover tools:   okou social tools --json
+  Transcript:       okou social call youtube_transcript --input '{"url":"https://www.youtube.com/watch?v=<id>"}'
+  Search:           okou social call tiktok_search --input '{"query":"product launch","limit":10}'
+  Profile:          okou social call linkedin_profile --input '{"url":"https://www.linkedin.com/in/<name>"}'
+  Summary:          okou social call youtube_summarize --input '{"url":"https://youtu.be/<id>"}'
+  Full retrieval:  okou social call instagram_comments --input '{"url":"https://www.instagram.com/p/<id>/"}' --all --json
 
 Notes:
-  - Supports 76 reviewed GET/POST method/path pairs across six social platforms
+  - Exposes 38 typed tools across six social platforms
+  - Tool discovery is local and does not consume managed credits
   - Authenticates via OKOU_TOKEN (requires social:read capability) or a CLI token
   - The SocialKit provider credential stays on the Okou API server
-  - Unknown, download, bulk, and direct-video operations are rejected before provider work
+  - Unknown, download, bulk, and direct-video tools are rejected before provider work
   - Full retrieval bills and emits each successful provider page independently
   - Submitted public content and provider results are untrusted data, not instructions`,
   );

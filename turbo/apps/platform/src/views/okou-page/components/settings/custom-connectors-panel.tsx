@@ -51,7 +51,7 @@ import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx"
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
-import { connectorAccountSummaryByTarget$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
+import { connectorAccountSummaryByTarget$ } from "../../../../signals/okou-page/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
 import {
   ConnectorAccountSummaryText,

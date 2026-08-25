@@ -1083,6 +1083,7 @@
         "chooseAccountTitle": "Choose an account",
         "chooseMethodSubtitle": "Facing issues? You can use any of these methods to sign in.",
         "chooseMethodTitle": "Use another method",
+        "clientTrustNotice": "You're signing in from a new device. We're asking for verification to keep your account secure.",
         "codeExpired": "This verification code has expired. Request a new code.",
         "codeLabel": "Verification code",
         "completeSubtitle": "You will be redirected soon",
@@ -1935,11 +1936,17 @@
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
+      "back": "Back",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
+      "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
+      "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",
+      "noUsableAccount": "No usable account",
       "remove": "Remove {{connectorName}}",
-      "title": "Connectors"
+      "selectedAccountFor": "{{connector}} · Selected account: {{account}}",
+      "title": "Connectors",
+      "useDefault": "Use default"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2297,6 +2304,21 @@
     "toasts": {
       "copied": "Copied",
       "deleted": "Chat deleted"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "Changed files",
+        "read": "Read files",
+        "run": "Ran commands"
+      },
+      "collapse": "Collapse tool activity",
+      "expand": "Expand tool activity",
+      "status": {
+        "cancelled": "Cancelled",
+        "error": "Failed",
+        "pending": "In progress",
+        "success": "Completed"
+      }
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",

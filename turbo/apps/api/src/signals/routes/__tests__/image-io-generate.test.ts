@@ -120,6 +120,7 @@ const FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_TURBO_MEGAPIXEL_CREDITS = 9;
 const FAL_IDEOGRAM_4_BALANCED_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_QUALITY_MEGAPIXEL_CREDITS = 30;
+const API_ORIGIN = "https://api.vm0.test";
 const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
@@ -1144,6 +1145,8 @@ describe("POST /api/image-io/generate", () => {
   });
 
   it("generates image files on the Okou CDN for Okou run-scoped agent tokens", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
+    mockEnv("VM0_API_BACKEND_URL", undefined);
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -1222,7 +1225,7 @@ describe("POST /api/image-io/generate", () => {
     });
     await flushWaitUntilForTest();
     const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
-    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.origin).toBe(API_ORIGIN);
     expect(webhookUrl.pathname).toBe(
       `/api/webhooks/built-in-generations/fal/${generationId}`,
     );

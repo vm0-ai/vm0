@@ -7,9 +7,9 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
 import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
+import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import {
   connectorAccountDeletionImpact$,
-  reloadConnectorAccountSummaries$,
   settingsConnectorAccounts,
 } from "./connector-accounts.ts";
 

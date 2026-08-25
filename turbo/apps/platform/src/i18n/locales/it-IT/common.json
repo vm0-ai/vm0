@@ -1102,6 +1102,7 @@
         "chooseAccountTitle": "Scegli un account",
         "chooseMethodSubtitle": "Problemi di accesso? Puoi usare uno di questi metodi per accedere.",
         "chooseMethodTitle": "Usa un altro metodo",
+        "clientTrustNotice": "Stai effettuando l'accesso da un nuovo dispositivo. Richiediamo la verifica per mantenere il tuo account sicuro.",
         "codeExpired": "Questo codice di verifica è scaduto. Richiedine uno nuovo.",
         "codeLabel": "Codice di verifica",
         "completeSubtitle": "Verrai presto reindirizzato",
@@ -1966,11 +1967,17 @@
       "available_one": "Connettori disponibili per la connessione ({{count}})",
       "available_many": "Connettori disponibili per la connessione ({{count}})",
       "available_other": "Connettori disponibili per la connessione ({{count}})",
+      "back": "Indietro",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
+      "defaultAccountFor": "{{connector}} · Account predefinito in uso: {{account}}",
+      "fallsBackTo": "Passa a {{account}} come alternativa",
       "find": "Trova connettori...",
+      "noUsableAccount": "Nessun account utilizzabile",
       "remove": "Rimuovi {{connectorName}}",
-      "title": "Connettori"
+      "selectedAccountFor": "{{connector}} · Account selezionato: {{account}}",
+      "title": "Connettori",
+      "useDefault": "Usa predefinito"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2341,6 +2348,21 @@
     "toasts": {
       "copied": "Copiato",
       "deleted": "Chat eliminata"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "File modificati",
+        "read": "File letti",
+        "run": "Comandi eseguiti"
+      },
+      "collapse": "Comprimi attività strumenti",
+      "expand": "Espandi attività strumenti",
+      "status": {
+        "cancelled": "Annullato",
+        "error": "Non riuscito",
+        "pending": "In corso",
+        "success": "Completato"
+      }
     },
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",

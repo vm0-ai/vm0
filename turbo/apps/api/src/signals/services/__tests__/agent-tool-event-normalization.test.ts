@@ -10,6 +10,28 @@ import {
 } from "../assistant-event-id";
 
 const RUN_ID = "8de6b4bf-d92a-4599-bde7-614e72552365";
+const SANITIZED_LIVE_CODEX_COMMAND = String.raw`/bin/bash -lc "exec '/usr/local/bin/guest-tool-exec' --shell \""'$0" -c '"'printf codex-tool-v1'"`;
+const SANITIZED_LIVE_CODEX_STARTED_EVENT = {
+  type: "item.started",
+  sequenceNumber: 5,
+  item: {
+    id: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+    type: "command_execution",
+    status: "in_progress",
+    command: SANITIZED_LIVE_CODEX_COMMAND,
+  },
+} satisfies AgentEvent;
+const SANITIZED_LIVE_CODEX_COMPLETED_EVENT = {
+  type: "item.completed",
+  sequenceNumber: 6,
+  item: {
+    id: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+    type: "command_execution",
+    status: "completed",
+    command: SANITIZED_LIVE_CODEX_COMMAND,
+    exit_code: 0,
+  },
+} satisfies AgentEvent;
 
 function agentEvent(
   sequenceNumber: number,
@@ -189,6 +211,80 @@ describe("agent tool event normalization", () => {
           summary: `Ran printf '%s\\n' "$HOME"`,
         });
       }
+    }
+  });
+
+  it("normalizes the sanitized live Codex managed wrapper lifecycle", () => {
+    const started = normalizeAgentToolEvent(SANITIZED_LIVE_CODEX_STARTED_EVENT);
+    expect(started).toStrictEqual({
+      kind: "correlated",
+      provider: "codex",
+      providerOperationId: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+      action: "run",
+      status: "pending",
+      summary: "Ran printf codex-tool-v1",
+    });
+    if (started?.kind !== "correlated") {
+      throw new Error("Expected the live Codex start to normalize");
+    }
+    expect(started.summary.length).toBeLessThanOrEqual(240);
+    expect(started.summary).not.toContain("guest-tool-exec");
+
+    expect(
+      normalizeAgentToolEvent({
+        ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT,
+        item: {
+          ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT.item,
+          aggregated_output: "CODEX_LIVE_OUTPUT_MUST_NOT_PERSIST",
+          result: "CODEX_LIVE_RESULT_MUST_NOT_PERSIST",
+        },
+      }),
+    ).toStrictEqual({
+      kind: "correlated-terminal",
+      provider: "codex",
+      providerOperationId: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+      status: "success",
+      standaloneOperation: {
+        action: "run",
+        summary: "Ran printf codex-tool-v1",
+      },
+    });
+  });
+
+  it("rejects malformed and ambiguous concatenated managed wrappers", () => {
+    const malformedCommands = [
+      SANITIZED_LIVE_CODEX_COMMAND.slice(0, -1),
+      `${SANITIZED_LIVE_CODEX_COMMAND}""`,
+      `${SANITIZED_LIVE_CODEX_COMMAND};true`,
+      SANITIZED_LIVE_CODEX_COMMAND.replace(
+        String.raw`'$0" -c '`,
+        String.raw`'$1" -c '`,
+      ),
+      SANITIZED_LIVE_CODEX_COMMAND.replace(
+        "printf codex-tool-v1",
+        "printf $HOME",
+      ),
+      SANITIZED_LIVE_CODEX_COMMAND.replace(
+        "printf codex-tool-v1",
+        "printf `hostname`",
+      ),
+      SANITIZED_LIVE_CODEX_COMMAND.replace(
+        "'printf codex-tool-v1'",
+        "printf codex-tool-v1",
+      ),
+    ];
+
+    for (const command of malformedCommands) {
+      expect(
+        normalizeAgentToolEvent(
+          codexItem("item.started", {
+            id: "malformed-live-wrapper",
+            type: "command_execution",
+            status: "in_progress",
+            command,
+          }),
+        ),
+      ).toBeNull();
     }
   });
 

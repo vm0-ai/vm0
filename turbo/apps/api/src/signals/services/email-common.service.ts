@@ -19,9 +19,11 @@ import {
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
 
+import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import { webUrl } from "../../lib/web-url";
 import type { ClerkClient } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import type { Tx } from "../../lib/db-types";
@@ -145,10 +147,7 @@ function getResendClient(): Resend {
 }
 
 function apiUrl(publicBrand: PublicBrand): string {
-  return apiUrlForPublicBrand(
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
-    publicBrand,
-  );
+  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand);
 }
 
 function appUrl(publicBrand: PublicBrand): string {

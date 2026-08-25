@@ -216,6 +216,36 @@ fn guest_agent_tuning_env_or_empty(
     Ok(value)
 }
 
+/// Resolve one optional test/debug mock binary path alias pair at the single
+/// process-env capture boundary. Canonical aliases are reader-only during
+/// #28914 Stage 1; all existing test/debug writers remain legacy-only.
+fn mock_binary_path_env(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<Option<String>, String> {
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(None),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting mock binary path environment aliases: \
+                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "mock_binary_path_env_source key={canonical_key} source={source}"
+    );
+    Ok(Some(value))
+}
+
 #[derive(Clone, Copy)]
 enum RunMetadataEnvSource {
     CanonicalOnly,
@@ -294,7 +324,7 @@ impl Framework {
 
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
-/// `VM0_MOCK_CLAUDE_PATH` env override is unset.
+/// mock Claude path aliases are absent or non-Unicode.
 pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 
 /// Production install location for the mock-codex binary, mirroring
@@ -415,7 +445,7 @@ pub struct GuestConfigRaw {
     pub api_start_time: String,
     pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
-    /// Optional `VM0_MOCK_CLAUDE_PATH` executable override.
+    /// Optional canonical or legacy mock Claude executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -425,7 +455,7 @@ pub struct GuestConfigRaw {
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    /// Optional `VM0_MOCK_CODEX_PATH` executable override.
+    /// Optional canonical or legacy mock Codex executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -526,12 +556,18 @@ impl GuestConfigRaw {
             )?,
             agent_execution_timeout_secs: agent_execution_timeout_env_or_empty()?,
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
-            mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
+            mock_claude_path: mock_binary_path_env(
+                guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+                guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+            )?,
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file,
             run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
+            mock_codex_path: mock_binary_path_env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            )?,
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
