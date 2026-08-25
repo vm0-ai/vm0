@@ -56,6 +56,7 @@ function createSignInHarness(options?: {
   const flowState$ = state<AuthV2SignInState>({
     accounts: [],
     factors: [],
+    identifierMode: "email",
     selectedFactor: null,
     status: "incomplete",
     step: "identifier",
@@ -234,8 +235,12 @@ function createSignUpHarness(options?: {
       signal.throwIfAborted();
     },
   );
-  const startGoogleOAuth$ = command(
-    async (_context, signal: AbortSignal): Promise<void> => {
+  const startOAuth$ = command(
+    async (
+      _context,
+      _strategy: "oauth_apple" | "oauth_google",
+      signal: AbortSignal,
+    ): Promise<void> => {
       await sourceGoogleOAuth();
       signal.throwIfAborted();
     },
@@ -251,10 +256,12 @@ function createSignUpHarness(options?: {
         return get(error$);
       }),
       firstName$: EMPTY_STRING$,
-      googleOAuthAvailable$: TRUE$,
       initialize$: asyncNoOp$,
       lastName$: EMPTY_STRING$,
       legalAccepted$: TRUE$,
+      oauthStrategies$: computed(() => {
+        return ["oauth_google"] as const;
+      }),
       password$: TEST_PASSWORD$,
       resendCode$: asyncNoOp$,
       resendCoolingDown$: FALSE$,
@@ -265,7 +272,7 @@ function createSignUpHarness(options?: {
       setLastName$: setString$,
       setLegalAccepted$: setBoolean$,
       setPassword$: setString$,
-      startGoogleOAuth$,
+      startOAuth$,
       state$: computed((get) => {
         return get(flowState$);
       }),
@@ -332,7 +339,8 @@ describe("auth v2 diagnostic attempt ownership", () => {
 
     const passwordAttempt = context.store.set(signals.submit$, context.signal);
     const coalescedGoogleAttempt = context.store.set(
-      signals.startGoogleOAuth$,
+      signals.startOAuth$,
+      "oauth_google",
       context.signal,
     );
 
@@ -350,7 +358,11 @@ describe("auth v2 diagnostic attempt ownership", () => {
       step: "details",
     });
 
-    await context.store.set(signals.startGoogleOAuth$, context.signal);
+    await context.store.set(
+      signals.startOAuth$,
+      "oauth_google",
+      context.signal,
+    );
 
     expect(harness.sourceGoogleOAuth).toHaveBeenCalledOnce();
     expect(capture).toHaveBeenCalledTimes(2);
@@ -511,6 +523,7 @@ describe("auth v2 diagnostic privacy", () => {
     context.store.set(harness.flowState$, {
       accounts: [],
       factors: [],
+      identifierMode: "email",
       selectedFactor: null,
       status: "incomplete",
       step: "identifier",

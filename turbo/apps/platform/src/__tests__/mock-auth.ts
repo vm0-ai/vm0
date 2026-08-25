@@ -63,6 +63,7 @@ export interface MockedClientSession {
 }
 
 export interface MockedAuthV2Capabilities {
+  readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
   readonly passkey?: boolean;
@@ -75,7 +76,7 @@ export type MockedSignInFactor =
       readonly safeIdentifier: string;
       readonly strategy: "email_code" | "reset_password_email_code";
     }
-  | { readonly strategy: "oauth_google" | "passkey" }
+  | { readonly strategy: "oauth_apple" | "oauth_google" | "passkey" }
   | { readonly strategy: string };
 
 export interface MockedSignInResourceState {
@@ -156,6 +157,7 @@ let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
 let internalMockedAuthV2Capabilities: Required<MockedAuthV2Capabilities> = {
+  appleOAuth: false,
   googleOAuth: false,
   googleOneTapClientId: null,
   passkey: false,
@@ -345,6 +347,7 @@ export function mockAuthV2Capabilities(
   capabilities: MockedAuthV2Capabilities,
 ): void {
   internalMockedAuthV2Capabilities = {
+    appleOAuth: capabilities.appleOAuth ?? false,
     googleOAuth: capabilities.googleOAuth ?? false,
     googleOneTapClientId: capabilities.googleOneTapClientId ?? null,
     passkey: capabilities.passkey ?? false,
@@ -513,6 +516,7 @@ function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   internalMockedAuthV2Capabilities = {
+    appleOAuth: false,
     googleOAuth: false,
     googleOneTapClientId: null,
     passkey: false,
@@ -1154,8 +1158,14 @@ export const mockedClerk = {
             used_for_first_factor: internalMockedAuthV2Capabilities.passkey,
           },
         },
-        authenticatableSocialStrategies:
-          internalMockedAuthV2Capabilities.googleOAuth ? ["oauth_google"] : [],
+        authenticatableSocialStrategies: [
+          ...(internalMockedAuthV2Capabilities.appleOAuth
+            ? (["oauth_apple"] as const)
+            : []),
+          ...(internalMockedAuthV2Capabilities.googleOAuth
+            ? (["oauth_google"] as const)
+            : []),
+        ],
         passkeySettings: {
           show_sign_in_button: internalMockedAuthV2Capabilities.passkey,
         },

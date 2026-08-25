@@ -12,6 +12,8 @@ import type { AuthBrandContext } from "../../../signals/auth.ts";
 export interface AuthV2SignUpCopy {
   readonly accessNotAllowed: string;
   readonly alreadyHaveAccount: string;
+  readonly appleMethod: string;
+  readonly appleProvider: string;
   readonly back: string;
   readonly captchaError: string;
   readonly captchaExpired: string;
@@ -26,12 +28,16 @@ export interface AuthV2SignUpCopy {
   readonly description: string;
   readonly editEmailAddress: string;
   readonly emailAddressLabel: string;
+  readonly emailAddressPlaceholder: string;
   readonly emailCodeSubtitle: string;
   readonly emailCodeTitle: string;
   readonly firstNameLabel: string;
+  readonly firstNamePlaceholder: string;
   readonly googleMethod: string;
+  readonly googleProvider: string;
   readonly hidePassword: string;
   readonly lastNameLabel: string;
+  readonly lastNamePlaceholder: string;
   readonly legacySignUp: string;
   readonly legalPrivacyOnly: string;
   readonly legalRequired: string;
@@ -41,6 +47,7 @@ export interface AuthV2SignUpCopy {
   readonly optional: string;
   readonly passwordInvalid: string;
   readonly passwordLabel: string;
+  readonly passwordPlaceholder: string;
   readonly resendCode: string;
   readonly resendCodeCooldown: string;
   readonly restart: string;
@@ -48,6 +55,7 @@ export interface AuthV2SignUpCopy {
   readonly showPassword: string;
   readonly signIn: string;
   readonly signUpTitle: string;
+  readonly separator: string;
   readonly unknownError: string;
   readonly unknownMessage: string;
   readonly unknownTitle: string;
@@ -63,6 +71,12 @@ function signUpDetailsCopy(
     alreadyHaveAccount: t(($) => {
       return $.auth.v2.signUp.alreadyHaveAccount;
     }),
+    appleMethod: t(($) => {
+      return $.auth.v2.signUp.appleMethod;
+    }),
+    appleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.apple;
+    }),
     continue: t(($) => {
       return $.auth.v2.signUp.continue;
     }),
@@ -75,17 +89,29 @@ function signUpDetailsCopy(
     emailAddressLabel: t(($) => {
       return $.auth.v2.signUp.emailAddressLabel;
     }),
+    emailAddressPlaceholder: t(($) => {
+      return $.auth.v2.signUp.emailAddressPlaceholder;
+    }),
     firstNameLabel: t(($) => {
       return $.auth.v2.signUp.firstNameLabel;
     }),
+    firstNamePlaceholder: t(($) => {
+      return $.auth.v2.signUp.firstNamePlaceholder;
+    }),
     googleMethod: t(($) => {
       return $.auth.v2.signUp.googleMethod;
+    }),
+    googleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.google;
     }),
     hidePassword: t(($) => {
       return $.auth.v2.signUp.hidePassword;
     }),
     lastNameLabel: t(($) => {
       return $.auth.v2.signUp.lastNameLabel;
+    }),
+    lastNamePlaceholder: t(($) => {
+      return $.auth.v2.signUp.lastNamePlaceholder;
     }),
     legalPrivacyOnly: t(($) => {
       return $.auth.v2.signUp.legalPrivacyOnly;
@@ -108,11 +134,17 @@ function signUpDetailsCopy(
     passwordLabel: t(($) => {
       return $.auth.v2.signUp.passwordLabel;
     }),
+    passwordPlaceholder: t(($) => {
+      return $.auth.v2.signUp.passwordPlaceholder;
+    }),
     showPassword: t(($) => {
       return $.auth.v2.signUp.showPassword;
     }),
     signIn: t(($) => {
       return $.auth.v2.signUp.signIn;
+    }),
+    separator: t(($) => {
+      return $.auth.v2.signUp.separator;
     }),
     signUpTitle: t(
       ($) => {
@@ -290,6 +322,22 @@ export function signUpCardDescription(
     return copy.emailCodeSubtitle;
   }
   return copy.description;
+}
+
+export function signUpCardTitle(
+  flowState: AuthV2SignUpState,
+  copy: AuthV2SignUpCopy,
+): string {
+  if (flowState.status === "complete") {
+    return copy.completeTitle;
+  }
+  if (flowState.status === "unknown") {
+    return copy.unknownTitle;
+  }
+  if (flowState.status === "incomplete" && flowState.step === "email-code") {
+    return copy.emailCodeTitle;
+  }
+  return copy.signUpTitle;
 }
 
 export function resendCodeLabel(

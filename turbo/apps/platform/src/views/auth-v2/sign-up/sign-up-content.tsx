@@ -1,21 +1,27 @@
-import { Button, Checkbox, Input } from "@okouai/ui";
+import { Button, Checkbox, cn, Input } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 import type {
+  AuthV2SignUpError,
   AuthV2SignUpErrorField,
   AuthV2SignUpFields,
   AuthV2SignUpLegalConfig,
   AuthV2SignUpSignals,
   AuthV2SignUpState,
 } from "../../../signals/auth-v2/sign-up-flow.ts";
+import type { AuthV2OAuthStrategy } from "../../../signals/auth-v2/oauth-strategies.ts";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { AuthV2Divider } from "../auth-v2-divider.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
+import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
+import { AuthV2OAuthIcon } from "../auth-v2-oauth-icon.tsx";
+import { AuthV2OtpInput } from "../auth-v2-otp-input.tsx";
 import { AuthV2PasswordInput } from "../auth-v2-password-input.tsx";
 import {
   type AuthV2SignUpCopy,
@@ -36,32 +42,38 @@ interface SignUpStepProps {
 
 function TextField({
   autoComplete,
-  errorField,
+  copy,
+  error,
   inputMode,
   hidePasswordLabel,
   label,
   name,
   onChange,
   optionalLabel,
+  placeholder,
   required,
   showPasswordLabel,
   type = "text",
   value,
 }: {
   readonly autoComplete: string;
-  readonly errorField: AuthV2SignUpErrorField | null;
+  readonly copy: AuthV2SignUpCopy;
+  readonly error: AuthV2SignUpError | null;
   readonly inputMode?: "email" | "numeric";
   readonly hidePasswordLabel?: string;
   readonly label: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
   readonly optionalLabel?: string;
+  readonly placeholder: string;
   readonly required: boolean;
   readonly showPasswordLabel?: string;
   readonly type?: "email" | "password" | "text";
   readonly value: string;
 }) {
   const id = `auth-v2-sign-up-${name}`;
+  const errorId = `${id}-error`;
+  const invalid = error !== null;
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground" htmlFor={id}>
@@ -74,19 +86,22 @@ function TextField({
       </label>
       {type === "password" && hidePasswordLabel && showPasswordLabel ? (
         <AuthV2PasswordInput
-          ariaInvalid={errorField === name}
+          ariaDescribedBy={invalid ? errorId : undefined}
+          ariaInvalid={invalid ? true : undefined}
           autoComplete={autoComplete}
           hidePasswordLabel={hidePasswordLabel}
           id={id}
           name={name}
           onChange={onChange}
+          placeholder={placeholder}
           required={required}
           showPasswordLabel={showPasswordLabel}
           value={value}
         />
       ) : (
         <Input
-          aria-invalid={errorField === name}
+          aria-describedby={invalid ? errorId : undefined}
+          aria-invalid={invalid ? true : undefined}
           autoComplete={autoComplete}
           id={id}
           inputMode={inputMode}
@@ -94,22 +109,32 @@ function TextField({
           onChange={(event) => {
             onChange(event.currentTarget.value);
           }}
+          placeholder={placeholder}
           required={required}
           type={type}
           value={value}
         />
       )}
+      {error ? (
+        <AuthV2FieldError
+          focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+          id={errorId}
+          message={signUpErrorMessage(error, copy)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function FlowErrorAlert({ copy, signals }: SignUpStepProps) {
+function FlowErrorAlert({
+  copy,
+  handledFields = [],
+  signals,
+}: SignUpStepProps & {
+  readonly handledFields?: readonly AuthV2SignUpErrorField[];
+}) {
   const error = useGet(signals.error$);
-  const code = error?.clerkCode?.toLowerCase();
-  const expiredCode =
-    error?.field === "code" &&
-    (code?.includes("expired") === true || code?.includes("timeout") === true);
-  if (!error || error.field === "captcha" || expiredCode) {
+  if (!error || handledFields.includes(error.field)) {
     return null;
   }
   return (
@@ -130,7 +155,7 @@ function SubmitButton({
   readonly label: string;
 }) {
   return (
-    <Button className="w-full" disabled={disabled} type="submit">
+    <Button className="w-full text-[13px]" disabled={disabled} type="submit">
       {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
       {label}
     </Button>
@@ -234,7 +259,6 @@ function FieldList({
   const firstName = useGet(signals.firstName$);
   const lastName = useGet(signals.lastName$);
   const error = useGet(signals.error$);
-  const errorField = error?.field ?? null;
   const setEmailAddress = useSet(signals.setEmailAddress$);
   const setPassword = useSet(signals.setPassword$);
   const setFirstName = useSet(signals.setFirstName$);
@@ -244,12 +268,14 @@ function FieldList({
       {fields.emailAddress !== "hidden" ? (
         <TextField
           autoComplete="email"
-          errorField={errorField}
+          copy={copy}
+          error={error?.field === "email-address" ? error : null}
           inputMode="email"
           label={copy.emailAddressLabel}
           name="email-address"
           onChange={setEmailAddress}
           optionalLabel={copy.optional}
+          placeholder={copy.emailAddressPlaceholder}
           required={fields.emailAddress === "required"}
           type="email"
           value={emailAddress}
@@ -258,12 +284,14 @@ function FieldList({
       {fields.password !== "hidden" ? (
         <TextField
           autoComplete="new-password"
-          errorField={errorField}
+          copy={copy}
+          error={error?.field === "password" ? error : null}
           hidePasswordLabel={copy.hidePassword}
           label={copy.passwordLabel}
           name="password"
           onChange={setPassword}
           optionalLabel={copy.optional}
+          placeholder={copy.passwordPlaceholder}
           required={fields.password === "required"}
           showPasswordLabel={copy.showPassword}
           type="password"
@@ -273,11 +301,13 @@ function FieldList({
       {fields.firstName !== "hidden" ? (
         <TextField
           autoComplete="given-name"
-          errorField={errorField}
+          copy={copy}
+          error={error?.field === "first-name" ? error : null}
           label={copy.firstNameLabel}
           name="first-name"
           onChange={setFirstName}
           optionalLabel={copy.optional}
+          placeholder={copy.firstNamePlaceholder}
           required={fields.firstName === "required"}
           value={firstName}
         />
@@ -285,11 +315,13 @@ function FieldList({
       {fields.lastName !== "hidden" ? (
         <TextField
           autoComplete="family-name"
-          errorField={errorField}
+          copy={copy}
+          error={error?.field === "last-name" ? error : null}
           label={copy.lastNameLabel}
           name="last-name"
           onChange={setLastName}
           optionalLabel={copy.optional}
+          placeholder={copy.lastNamePlaceholder}
           required={fields.lastName === "required"}
           value={lastName}
         />
@@ -332,6 +364,62 @@ function CaptchaStatus({ copy, signals }: SignUpStepProps) {
   );
 }
 
+function OAuthProviderActions({
+  busy,
+  copy,
+  disabled,
+  onSelect,
+  strategies,
+}: {
+  readonly busy: boolean;
+  readonly copy: AuthV2SignUpCopy;
+  readonly disabled: boolean;
+  readonly onSelect: (strategy: AuthV2OAuthStrategy) => void;
+  readonly strategies: readonly AuthV2OAuthStrategy[];
+}) {
+  if (strategies.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <div
+        className={cn("grid gap-2", strategies.length > 1 && "sm:grid-cols-2")}
+      >
+        {strategies.map((strategy) => {
+          return (
+            <Button
+              aria-busy={busy}
+              aria-label={
+                strategy === "oauth_apple"
+                  ? copy.appleMethod
+                  : copy.googleMethod
+              }
+              className="w-full text-[13px]"
+              disabled={disabled}
+              key={strategy}
+              type="button"
+              variant="outline"
+              onClick={() => {
+                onSelect(strategy);
+              }}
+            >
+              {busy ? (
+                <Loader2 className="animate-spin" aria-hidden="true" />
+              ) : (
+                <AuthV2OAuthIcon strategy={strategy} />
+              )}
+              {strategy === "oauth_apple"
+                ? copy.appleProvider
+                : copy.googleProvider}
+            </Button>
+          );
+        })}
+      </div>
+      <AuthV2Divider label={copy.separator} />
+    </>
+  );
+}
+
 function DetailsStep({
   copy,
   signInHref,
@@ -342,61 +430,78 @@ function DetailsStep({
 }) {
   const pageSignal = useGet(pageSignal$);
   const legalAccepted = useGet(signals.legalAccepted$);
-  const googleOAuthAvailable = useGet(signals.googleOAuthAvailable$);
+  const oauthStrategies = useGet(signals.oauthStrategies$);
   const captchaState = useGet(signals.captchaState$);
   const error = useGet(signals.error$);
   const setLegalAccepted = useSet(signals.setLegalAccepted$);
   const captchaRef = useSet(signals.captchaRef$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
-  const [googleOAuthLoadable, startGoogleOAuth] = useLoadableSet(
-    signals.startGoogleOAuth$,
-  );
+  const [oauthLoadable, startOAuth] = useLoadableSet(signals.startOAuth$);
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign up");
   };
+  const handleOAuth = (strategy: AuthV2OAuthStrategy): void => {
+    detach(
+      startOAuth(strategy, pageSignal),
+      Reason.DomCallback,
+      "start auth v2 OAuth sign up",
+    );
+  };
   const retrying = captchaState === "error" || captchaState === "expired";
   const operationPending =
-    submitLoadable.state === "loading" ||
-    googleOAuthLoadable.state === "loading";
+    submitLoadable.state === "loading" || oauthLoadable.state === "loading";
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FlowErrorAlert copy={copy} signals={signals} signInHref={signInHref} />
-      {googleOAuthAvailable ? (
-        <Button
-          className="w-full"
-          disabled={operationPending}
-          type="button"
-          variant="outline"
-          onClick={() => {
-            detach(
-              startGoogleOAuth(pageSignal),
-              Reason.DomCallback,
-              "start auth v2 Google sign up",
-            );
-          }}
-        >
-          {googleOAuthLoadable.state === "loading" ? (
-            <Loader2 className="animate-spin" aria-hidden="true" />
-          ) : null}
-          {copy.googleMethod}
-        </Button>
-      ) : null}
+      <FlowErrorAlert
+        copy={copy}
+        handledFields={[
+          "captcha",
+          "email-address",
+          "first-name",
+          "last-name",
+          "legal",
+          "password",
+        ]}
+        signals={signals}
+        signInHref={signInHref}
+      />
+      <OAuthProviderActions
+        busy={oauthLoadable.state === "loading"}
+        copy={copy}
+        disabled={operationPending}
+        onSelect={handleOAuth}
+        strategies={oauthStrategies}
+      />
       <FieldList copy={copy} fields={state.fields} signals={signals} />
       {state.legal.required ? (
-        <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
-          <Checkbox
-            aria-invalid={error?.field === "legal" ? true : undefined}
-            checked={legalAccepted}
-            className="mt-0.5"
-            onCheckedChange={(checked) => {
-              setLegalAccepted(checked === true);
-            }}
-          />
-          <span>
-            <LegalConsentText copy={copy} legal={state.legal} />
-          </span>
-        </label>
+        <div className="space-y-2">
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
+            <Checkbox
+              aria-describedby={
+                error?.field === "legal"
+                  ? "auth-v2-sign-up-legal-error"
+                  : undefined
+              }
+              aria-invalid={error?.field === "legal" ? true : undefined}
+              checked={legalAccepted}
+              className="mt-0.5"
+              onCheckedChange={(checked) => {
+                setLegalAccepted(checked === true);
+              }}
+            />
+            <span>
+              <LegalConsentText copy={copy} legal={state.legal} />
+            </span>
+          </label>
+          {error?.field === "legal" ? (
+            <AuthV2FieldError
+              focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+              id="auth-v2-sign-up-legal-error"
+              message={signUpErrorMessage(error, copy)}
+            />
+          ) : null}
+        </div>
       ) : null}
       {state.captchaEnabled ? (
         <div
@@ -413,6 +518,73 @@ function DetailsStep({
         label={retrying ? copy.retry : copy.continue}
       />
     </form>
+  );
+}
+
+function emailCodeErrorMessage(
+  copy: AuthV2SignUpCopy,
+  error: AuthV2SignUpError | null,
+  expired: boolean,
+): string {
+  if (expired) {
+    return copy.codeExpired;
+  }
+  return error ? signUpErrorMessage(error, copy) : copy.unknownError;
+}
+
+function EmailCodeChallenge({
+  code,
+  copy,
+  error,
+  expired,
+  onChange,
+  prepareFailed,
+  preparing,
+}: {
+  readonly code: string;
+  readonly copy: AuthV2SignUpCopy;
+  readonly error: AuthV2SignUpError | null;
+  readonly expired: boolean;
+  readonly onChange: (value: string) => void;
+  readonly prepareFailed: boolean;
+  readonly preparing: boolean;
+}) {
+  if (preparing) {
+    return (
+      <div
+        className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground"
+        role="status"
+      >
+        <Loader2 className="animate-spin" aria-hidden="true" />
+        {copy.loading}
+      </div>
+    );
+  }
+  if (prepareFailed) {
+    return null;
+  }
+  return (
+    <>
+      <AuthV2OtpInput
+        errorId="auth-v2-sign-up-code-error"
+        invalid={error !== null || expired}
+        label={copy.codeLabel}
+        name="code"
+        onChange={onChange}
+        value={code}
+      />
+      {error || expired ? (
+        <AuthV2FieldError
+          focusKey={
+            expired
+              ? "sign-up-code-expired"
+              : `${error?.code}:${error?.field}:${error?.clerkCode ?? ""}`
+          }
+          id="auth-v2-sign-up-code-error"
+          message={emailCodeErrorMessage(copy, error, expired)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -435,9 +607,11 @@ function EmailCodeStep({
   const preparing = state.verification === "preparing";
   const prepareFailed = state.verification === "prepare-failed";
   const expired = state.verification === "expired";
+  const codeError = error?.field === "code" ? error : null;
   const submitting = submitLoadable.state === "loading";
   const resending = resendLoadable.state === "loading";
   const operationPending = preparing || submitting || resending;
+  const showsCodeInput = !preparing && !prepareFailed;
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "verify auth v2 sign up");
@@ -451,47 +625,24 @@ function EmailCodeStep({
   };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FlowErrorAlert copy={copy} signals={signals} signInHref={signInHref} />
-      <div className="space-y-1 text-center">
-        <h2 className="text-base font-medium text-foreground">
-          {copy.emailCodeTitle}
-        </h2>
-        <p className="text-sm text-muted-foreground">{state.emailAddress}</p>
-      </div>
-      {preparing ? (
-        <div
-          className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground"
-          role="status"
-        >
-          <Loader2 className="animate-spin" aria-hidden="true" />
-          {copy.loading}
-        </div>
-      ) : null}
-      {expired ? (
-        <AuthV2ErrorAlert
-          focusKey="sign-up-code-expired"
-          message={copy.codeExpired}
-        />
-      ) : null}
-      {!preparing && !prepareFailed ? (
-        <TextField
-          autoComplete="one-time-code"
-          errorField={error?.field ?? null}
-          inputMode="numeric"
-          label={copy.codeLabel}
-          name="code"
-          onChange={setCode}
-          required
-          value={code}
-        />
-      ) : null}
-      {!preparing && !prepareFailed ? (
-        <SubmitButton
-          busy={submitting}
-          disabled={operationPending || expired}
-          label={copy.verify}
-        />
-      ) : null}
+      <FlowErrorAlert
+        copy={copy}
+        handledFields={showsCodeInput ? ["code"] : []}
+        signals={signals}
+        signInHref={signInHref}
+      />
+      <p className="text-center text-sm text-muted-foreground">
+        {state.emailAddress}
+      </p>
+      <EmailCodeChallenge
+        code={code}
+        copy={copy}
+        error={codeError}
+        expired={expired}
+        onChange={setCode}
+        prepareFailed={prepareFailed}
+        preparing={preparing}
+      />
       <Button
         className="h-auto w-full"
         disabled={operationPending || (coolingDown && !expired)}
@@ -504,6 +655,13 @@ function EmailCodeStep({
         ) : null}
         {prepareFailed ? copy.retry : resendCodeLabel(coolingDown, copy)}
       </Button>
+      {showsCodeInput ? (
+        <SubmitButton
+          busy={submitting}
+          disabled={operationPending || expired}
+          label={copy.continue}
+        />
+      ) : null}
       <Button
         className="w-full"
         disabled={operationPending}
@@ -529,7 +687,7 @@ function LoadingStep({ copy }: { readonly copy: AuthV2SignUpCopy }) {
   );
 }
 
-function CompleteStep({ copy }: { readonly copy: AuthV2SignUpCopy }) {
+function CompleteStep() {
   return (
     <div
       className="flex flex-col items-center gap-3 py-8 text-center"
@@ -539,9 +697,6 @@ function CompleteStep({ copy }: { readonly copy: AuthV2SignUpCopy }) {
         className="animate-spin text-muted-foreground"
         aria-hidden="true"
       />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.completeTitle}
-      </h2>
     </div>
   );
 }
@@ -578,9 +733,6 @@ function UnknownStep({ copy, signInHref, signals }: SignUpStepProps) {
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   return (
     <div className="space-y-4 text-center">
-      <h2 className="text-base font-medium text-foreground">
-        {copy.unknownTitle}
-      </h2>
       <Button
         className="w-full"
         disabled={restartLoadable.state === "loading"}
@@ -613,7 +765,7 @@ export function SignUpCardContent({
     return <LoadingStep copy={copy} />;
   }
   if (state.status === "complete") {
-    return <CompleteStep copy={copy} />;
+    return <CompleteStep />;
   }
   if (state.status === "transfer") {
     return (

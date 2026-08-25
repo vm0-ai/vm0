@@ -76,24 +76,24 @@ describe("auth v2 presentation", () => {
 
     await screen.findByRole("heading", {
       level: 1,
-      name: "Sign in to VM0",
+      name: "Choose an account",
     });
     await waitFor(() => {
       expect(
         screen.getByRole("heading", {
           level: 1,
-          name: "Sign in to VM0",
+          name: "Choose an account",
         }),
       ).toHaveFocus();
     });
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: "Sign in to VM0",
+      name: "Choose an account",
     });
 
     expect(screen.getByRole("main")).toContainElement(heading);
     expect(
-      screen.getByRole("region", { name: "Sign in to VM0" }),
+      screen.getByRole("region", { name: "Choose an account" }),
     ).toHaveAccessibleDescription(
       "Select the account with which you wish to continue.",
     );
@@ -106,9 +106,9 @@ describe("auth v2 presentation", () => {
     const currentSignInAction = linkByText("Use current sign-in");
     expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
     expect(currentSignInAction).toHaveClass("text-primary");
-    expect(currentSignInAction.closest('[data-testid="app-auth-v2"]')).toBe(
-      screen.getByTestId("app-auth-v2"),
-    );
+    expect(
+      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
+    ).toBeNull();
   });
 
   it("scopes neutral page-action semantics to the Auth v2 region", async () => {
@@ -121,6 +121,13 @@ describe("auth v2 presentation", () => {
     const sharedAuthLayout = screen.getByTestId("app-auth-layout");
     const passwordVisibilityAction = buttonByLabel("Show password");
 
+    expect(sharedAuthLayout).toHaveClass("zero-app", "p-6");
+    expect(region).toHaveClass(
+      "rounded-[12px]",
+      "border-border",
+      "shadow-none",
+    );
+    expect(region).not.toHaveClass("zero-composer");
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveClass(
       "text-primary",
@@ -178,10 +185,10 @@ describe("auth v2 presentation", () => {
     await screen.findByLabelText("メールアドレス");
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: "Okou アカウントを作成",
+      name: "アカウントを作成",
     });
     expect(
-      screen.getByRole("region", { name: "Okou アカウントを作成" }),
+      screen.getByRole("region", { name: "アカウントを作成" }),
     ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
     expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
@@ -200,7 +207,7 @@ describe("auth v2 presentation", () => {
 
     await screen.findByLabelText("E-Mail-Adresse");
     expect(
-      screen.getByRole("region", { name: "Ihr Okou-Konto erstellen" }),
+      screen.getByRole("region", { name: "Ihr Konto erstellen" }),
     ).toHaveAccessibleDescription("weiter zu Okou");
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });

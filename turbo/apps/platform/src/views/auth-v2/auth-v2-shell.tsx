@@ -22,6 +22,7 @@ interface AuthV2ShellProps {
   readonly children: ReactNode;
   readonly description: ReactNode;
   readonly focusKey: string;
+  readonly footer?: ReactNode;
   readonly title: ReactNode;
 }
 
@@ -30,39 +31,46 @@ export function AuthV2Shell({
   children,
   description,
   focusKey,
+  footer,
   title,
 }: AuthV2ShellProps) {
   const focusHeading = useSet(focusAuthV2HeadingRef$);
 
   return (
-    <Card
-      aria-describedby={AUTH_V2_DESCRIPTION_ID}
-      aria-labelledby={AUTH_V2_TITLE_ID}
-      className="zero-composer relative w-full max-w-md overflow-visible"
-      data-testid="app-auth-v2"
-      role="region"
+    <div
+      className="w-full max-w-[25rem] space-y-4"
       style={authV2PageActionSemantics()}
     >
-      <CardHeader className="items-center bg-transparent px-5 pt-6 pb-2 text-center sm:px-6 sm:pt-7">
-        <h1
-          className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          id={AUTH_V2_TITLE_ID}
-          key={focusKey}
-          ref={focusHeading}
-          tabIndex={-1}
-        >
-          {title}
-        </h1>
-        <CardDescription
-          className="max-w-sm leading-5"
-          id={AUTH_V2_DESCRIPTION_ID}
-        >
-          {description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="px-5 pt-4 pb-5 sm:px-6 sm:pb-6">
-        {children}
-      </CardContent>
+      <Card
+        aria-describedby={AUTH_V2_DESCRIPTION_ID}
+        aria-labelledby={AUTH_V2_TITLE_ID}
+        className="relative w-full overflow-visible rounded-[12px] border-border shadow-none"
+        data-testid="app-auth-v2"
+        role="region"
+        style={authV2PageActionSemantics()}
+      >
+        <CardHeader className="items-center bg-transparent px-5 pt-6 pb-2 text-center sm:px-10 sm:pt-7">
+          <h1
+            className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            id={AUTH_V2_TITLE_ID}
+            key={focusKey}
+            ref={focusHeading}
+            tabIndex={-1}
+          >
+            {title}
+          </h1>
+          <CardDescription
+            className="max-w-sm leading-5"
+            id={AUTH_V2_DESCRIPTION_ID}
+          >
+            {description}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-5 pt-4 pb-6 sm:px-10">
+          {children}
+        </CardContent>
+      </Card>
+      {footer ? <div className="space-y-1">{footer}</div> : null}
       <p
         aria-atomic="true"
         aria-live="polite"
@@ -71,6 +79,6 @@ export function AuthV2Shell({
       >
         {announcement}
       </p>
-    </Card>
+    </div>
   );
 }

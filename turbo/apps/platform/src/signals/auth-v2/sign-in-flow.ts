@@ -22,12 +22,16 @@ import {
   discoverAuthV2ExternalCapabilities,
   type AuthV2ExistingAccount,
   type AuthV2ExternalCapabilities,
-  recoverAuthV2GoogleOAuth,
+  recoverAuthV2OAuth,
   requestGoogleOneTapCredential,
-  startAuthV2GoogleOAuth,
+  startAuthV2OAuth,
 } from "./sign-in-external-strategies.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
+import {
+  isAuthV2OAuthStrategy,
+  type AuthV2OAuthStrategy,
+} from "./oauth-strategies.ts";
 
 export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
@@ -57,9 +61,9 @@ export type AuthV2SignInFactor =
       readonly safeIdentifier: string;
     }
   | {
-      readonly id: "oauth:oauth_google";
+      readonly id: `oauth:${AuthV2OAuthStrategy}`;
       readonly kind: "oauth";
-      readonly strategy: "oauth_google";
+      readonly strategy: AuthV2OAuthStrategy;
     }
   | {
       readonly id: "passkey";
@@ -86,6 +90,7 @@ export type AuthV2SignInState =
   | {
       readonly accounts: readonly AuthV2ExistingAccount[];
       readonly factors: readonly AuthV2SignInFactor[];
+      readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
       readonly selectedFactor: AuthV2SignInFactor | null;
       readonly status: "incomplete";
       readonly step: AuthV2SignInStep;
@@ -132,6 +137,7 @@ interface SignInResourceSnapshot {
   readonly identifier: string | null;
   readonly secondFactorVerificationStatus: string | null;
   readonly secondFactorVerificationStrategy: string | null;
+  readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
   readonly transferable: boolean;
   readonly unknownFactorStrategies: readonly string[];
 }
@@ -210,8 +216,9 @@ type ApplySignInResourceCommand = Command<
 
 function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
   return {
-    googleOAuth: false,
     googleOneTapClientId: null,
+    identifierMode: "email",
+    oauthStrategies: [],
     passkey: false,
   };
 }
@@ -219,6 +226,16 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
 interface FactorDiscovery {
   readonly factors: readonly AuthV2SignInFactor[];
   readonly unknownStrategies: readonly string[];
+}
+
+function oauthFactor(
+  strategy: AuthV2OAuthStrategy,
+): Extract<AuthV2SignInFactor, { kind: "oauth" }> {
+  return {
+    id: `oauth:${strategy}`,
+    kind: "oauth",
+    strategy,
+  };
 }
 
 function discoverFactors(
@@ -247,12 +264,8 @@ function discoverFactors(
         kind: "password-reset",
         safeIdentifier: factor.safeIdentifier,
       });
-    } else if (factor.strategy === "oauth_google") {
-      discovered.push({
-        id: "oauth:oauth_google",
-        kind: "oauth",
-        strategy: "oauth_google",
-      });
+    } else if (isAuthV2OAuthStrategy(factor.strategy)) {
+      discovered.push(oauthFactor(factor.strategy));
     } else if (factor.strategy === "passkey") {
       discovered.push({ id: "passkey", kind: "passkey" });
     } else {
@@ -290,12 +303,8 @@ function entryFactors(
   capabilities: AuthV2ExternalCapabilities,
 ): readonly AuthV2SignInFactor[] {
   const factors: AuthV2SignInFactor[] = [];
-  if (capabilities.googleOAuth) {
-    factors.push({
-      id: "oauth:oauth_google",
-      kind: "oauth",
-      strategy: "oauth_google",
-    });
+  for (const strategy of capabilities.oauthStrategies) {
+    factors.push(oauthFactor(strategy));
   }
   if (capabilities.passkey) {
     factors.push({ id: "passkey", kind: "passkey" });
@@ -331,6 +340,7 @@ function snapshotSignInResource(
       resource.secondFactorVerification?.status ?? null,
     secondFactorVerificationStrategy:
       resource.secondFactorVerification?.strategy ?? null,
+    identifierMode: capabilities.identifierMode,
     transferable: resource.__internal_future.isTransferable,
     unknownFactorStrategies: discovered.unknownStrategies,
   };
@@ -459,6 +469,7 @@ function incompleteState(
   return {
     accounts,
     factors: snapshot.factors,
+    identifierMode: snapshot.identifierMode,
     selectedFactor,
     status: "incomplete",
     step,
@@ -837,7 +848,7 @@ function createResourceCommands(
 
       if (dependencies.isOAuthCallbackRoute) {
         const recovery = await settle(
-          recoverAuthV2GoogleOAuth(clerk, dependencies.navigation),
+          recoverAuthV2OAuth(clerk, dependencies.navigation),
           signal,
         );
         if (!recovery.ok) {
@@ -1037,7 +1048,7 @@ function createFactorSelectionCommand(
       signal.throwIfAborted();
       if (factor.kind === "oauth") {
         const redirect = await settle(
-          startAuthV2GoogleOAuth(resource, dependencies.navigation),
+          startAuthV2OAuth(resource, dependencies.navigation, factor.strategy),
           signal,
         );
         if (!redirect.ok) {
@@ -1346,6 +1357,7 @@ function createFormCommands(
       identifier: null,
       secondFactorVerificationStatus: null,
       secondFactorVerificationStrategy: null,
+      identifierMode: get(atoms.capabilities$).identifierMode,
       transferable: false,
       unknownFactorStrategies: [],
     });
@@ -1367,24 +1379,39 @@ function createFormCommands(
     set(atoms.identifierLocallyModified$, true);
     set(atoms.identifier$, "");
   });
-  const setIdentifier$ = command(({ set }, value: string) => {
+  const setIdentifier$ = command(({ get, set }, value: string) => {
+    if (get(atoms.identifier$) === value) {
+      return;
+    }
     set(atoms.identifierLocallyModified$, true);
     set(atoms.identifier$, value);
     set(atoms.error$, null);
   });
-  const setPassword$ = command(({ set }, value: string) => {
+  const setPassword$ = command(({ get, set }, value: string) => {
+    if (get(atoms.password$) === value) {
+      return;
+    }
     set(atoms.password$, value);
     set(atoms.error$, null);
   });
-  const setCode$ = command(({ set }, value: string) => {
+  const setCode$ = command(({ get, set }, value: string) => {
+    if (get(atoms.code$) === value) {
+      return;
+    }
     set(atoms.code$, value);
     set(atoms.error$, null);
   });
-  const setNewPassword$ = command(({ set }, value: string) => {
+  const setNewPassword$ = command(({ get, set }, value: string) => {
+    if (get(atoms.newPassword$) === value) {
+      return;
+    }
     set(atoms.newPassword$, value);
     set(atoms.error$, null);
   });
-  const setConfirmPassword$ = command(({ set }, value: string) => {
+  const setConfirmPassword$ = command(({ get, set }, value: string) => {
+    if (get(atoms.confirmPassword$) === value) {
+      return;
+    }
     set(atoms.confirmPassword$, value);
     set(atoms.error$, null);
   });

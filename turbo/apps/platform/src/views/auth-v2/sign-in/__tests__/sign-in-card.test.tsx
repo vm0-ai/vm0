@@ -195,9 +195,7 @@ async function submitIdentifier(
   identifier: string,
   factors: readonly MockedSignInFactor[],
 ): Promise<void> {
-  const identifierInput = await screen.findByLabelText(
-    "Email address or username",
-  );
+  const identifierInput = await screen.findByLabelText("Email address");
   const nextResource = moveSignInTo({
     status: "needs_first_factor",
     supportedFirstFactors: factors,
@@ -233,7 +231,7 @@ describe("auth v2 sign-in flow", () => {
     });
 
     await expect(
-      screen.findByLabelText("Email address or username"),
+      screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
   });
 
@@ -243,9 +241,17 @@ describe("auth v2 sign-in flow", () => {
       status: "needs_identifier",
     });
 
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
+    expect(screen.getByLabelText("Email address")).toHaveAttribute(
+      "placeholder",
+      "Enter your email address",
+    );
+    expect(screen.getByLabelText("Email address")).toHaveAttribute(
+      "autocomplete",
+      "email",
+    );
   });
 
   it("preserves exact navigation context in the ordinary sign-up switch", async () => {
@@ -276,14 +282,15 @@ describe("auth v2 sign-in flow", () => {
       "Sign in with your password",
     );
     expect(document.activeElement).toBe(
-      screen.getByRole("heading", { level: 1, name: "Sign in to VM0" }),
+      screen.getByRole("heading", { level: 1, name: "Use another method" }),
     );
     fireEvent.click(passwordMethod);
 
     const passwordInput = await screen.findByLabelText("Password");
     expect(document.activeElement).toBe(
-      screen.getByRole("heading", { level: 1, name: "Sign in to VM0" }),
+      screen.getByRole("heading", { level: 1, name: "Enter your password" }),
     );
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
     const revealPassword = await waitForRoleElement("button", "Show password");
     expect(revealPassword).toHaveAttribute("aria-pressed", "false");
     expect(passwordInput).toHaveAttribute("type", "password");
@@ -477,12 +484,33 @@ describe("auth v2 sign-in flow", () => {
     expectFieldErrorAssociation(passwordInput, passwordAlert);
     expect(screen.queryByText("Private password provider detail.")).toBeNull();
 
+    fireEvent.change(passwordInput, { target: { value: "second-attempt" } });
+    expect(screen.getByRole("alert")).toBe(passwordAlert);
+    expectFieldErrorAssociation(passwordInput, passwordAlert);
+
     fireEvent.change(passwordInput, { target: { value: "retry-password" } });
     await waitFor(() => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
     expect(passwordInput).toHaveValue("retry-password");
     expectNoFieldErrorAssociation(passwordInput);
+  });
+
+  it("shows configured Apple and Google providers with compact visible labels", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+    setupSignInPage({ status: "needs_identifier" });
+
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(apple.textContent?.trim()).toBe("Apple");
+    expect(google.textContent?.trim()).toBe("Google");
+
+    fireEvent.click(apple);
+    await waitFor(() => {
+      expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({ strategy: "oauth_apple" }),
+      );
+    });
   });
 
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
@@ -708,7 +736,7 @@ describe("auth v2 sign-in flow", () => {
     );
 
     await expect(
-      screen.findByLabelText("Email address or username"),
+      screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
     expect(mockedGoogleOneTap.initialize).not.toHaveBeenCalled();
     expect(mockedGoogleOneTap.prompt).not.toHaveBeenCalled();
@@ -725,7 +753,7 @@ describe("auth v2 sign-in flow", () => {
 
     // Script loading is a browser resource boundary and cannot be triggered
     // through a rendered control, so dispatch its terminal event directly.
-    await screen.findByLabelText("Email address or username");
+    await screen.findByLabelText("Email address");
     fireEvent.error(failedScript);
 
     await waitFor(() => {
@@ -742,7 +770,7 @@ describe("auth v2 sign-in flow", () => {
     act(() => {
       window.history.back();
     });
-    await screen.findByLabelText("Email address or username");
+    await screen.findByLabelText("Email address");
     expect(retryScript).not.toBe(failedScript);
 
     mockGoogleOneTapCredential("retry-google-one-tap-token");
@@ -926,9 +954,9 @@ describe("auth v2 sign-in flow", () => {
 
     fireEvent.click(await waitForRoleElement("button", "Add account"));
 
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
   });
 
   it("prepares and resends one email code per concurrent user action", async () => {
@@ -985,6 +1013,16 @@ describe("auth v2 sign-in flow", () => {
     });
 
     const codeInput = await screen.findByLabelText("Verification code");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Check your email" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    expect(codeInput).toHaveAttribute("autocomplete", "one-time-code");
+    expect(codeInput).toHaveAttribute("inputmode", "numeric");
+    expect(codeInput).toHaveAttribute("maxlength", "6");
+    expect(
+      codeInput.parentElement?.querySelectorAll('[aria-hidden="true"] > span'),
+    ).toHaveLength(6);
     const coolingDownButton = await waitForRoleElement(
       "button",
       "Didn't receive a code? Resend (30s)",
@@ -1006,7 +1044,7 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
     });
-    const verifyButton = await waitForRoleElement("button", "Verify");
+    const verifyButton = await waitForRoleElement("button", "Continue");
     await waitFor(() => {
       expect(verifyButton).toBeDisabled();
     });
@@ -1055,11 +1093,13 @@ describe("auth v2 sign-in flow", () => {
       factor: emailCodeFactor(),
       method: "Email code to p***@example.com",
       name: "email verification",
+      title: "Check your email",
     },
     {
       factor: passwordResetFactor(),
       method: "Reset your password",
       name: "password reset",
+      title: "Reset password",
     },
   ])("recovers an expired $name code with one resend", async (testCase) => {
     mockedClerk.signInPrepareFirstFactor.mockResolvedValue(
@@ -1079,6 +1119,10 @@ describe("auth v2 sign-in flow", () => {
     fireEvent.click(await waitForRoleElement("button", testCase.method));
 
     const codeInput = await screen.findByLabelText("Verification code");
+    expect(
+      screen.getByRole("heading", { level: 1, name: testCase.title }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
     fireEvent.change(codeInput, { target: { value: "123456" } });
     fireEvent.submit(containingForm(codeInput));
 
@@ -1162,7 +1206,7 @@ describe("auth v2 sign-in flow", () => {
       fireEvent.click(await waitForRoleElement("button", "Back"));
       fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
       await expect(
-        screen.findByLabelText("Email address or username"),
+        screen.findByLabelText("Email address"),
       ).resolves.toHaveValue("person@example.com");
       expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
     },
@@ -1180,9 +1224,7 @@ describe("auth v2 sign-in flow", () => {
     await screen.findByLabelText("Verification code");
     fireEvent.click(await waitForRoleElement("button", "Back"));
     fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     expect(identifierInput).toHaveValue("person@example.com");
     fireEvent.change(identifierInput, {
       target: { value: "edited@example.com" },
@@ -1204,9 +1246,9 @@ describe("auth v2 sign-in flow", () => {
       });
     });
     fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("edited@example.com");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "edited@example.com",
+    );
   });
 
   it("keeps factor selection usable when email-code preparation fails", async () => {
@@ -1327,7 +1369,7 @@ describe("auth v2 sign-in flow", () => {
     const mismatchAlert = await screen.findByRole("alert");
     expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
     expect(document.activeElement).toBe(mismatchAlert);
-    expectFieldErrorAssociation(newPasswordInput, mismatchAlert);
+    expectNoFieldErrorAssociation(newPasswordInput);
     expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();
 
@@ -1369,9 +1411,7 @@ describe("auth v2 sign-in flow", () => {
 
     setupSignInPage({ status: "needs_identifier" });
 
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     fireEvent.change(identifierInput, {
       target: { value: "missing@example.com" },
     });
@@ -1429,9 +1469,7 @@ describe("auth v2 sign-in flow", () => {
       { url: "https://app.okou.ai/v2/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     fireEvent.change(identifierInput, {
       target: { value: "person@example.com" },
     });
@@ -1454,9 +1492,7 @@ describe("auth v2 sign-in flow", () => {
       { url: "https://app.okou.ai/v2/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText(
-      "E-Mail-Adresse oder Benutzername",
-    );
+    const identifierInput = await screen.findByLabelText("E-Mail-Adresse");
     expect(
       screen.getByRole("region", { name: "Bei Okou anmelden" }),
     ).toHaveAccessibleDescription("weiter zu Okou");
@@ -1479,7 +1515,7 @@ describe("auth v2 sign-in flow", () => {
     );
     await screen.findByLabelText("Passwort");
     expect(
-      screen.getByRole("region", { name: "Bei Okou anmelden" }),
+      screen.getByRole("region", { name: "Geben Sie Ihr Passwort ein" }),
     ).toHaveAccessibleDescription("weiter zu Okou");
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
@@ -1500,9 +1536,9 @@ describe("auth v2 sign-in flow", () => {
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
   });
 
   it("preserves exact navigation context in the transfer sign-up action", async () => {

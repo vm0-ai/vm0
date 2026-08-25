@@ -15,6 +15,8 @@ import {
 export interface AuthV2SignInCopy {
   readonly accessNotAllowed: string;
   readonly addAccount: string;
+  readonly appleMethod: string;
+  readonly appleProvider: string;
   readonly back: string;
   readonly chooseAccountSubtitle: string;
   readonly chooseAccountTitle: string;
@@ -27,13 +29,17 @@ export interface AuthV2SignInCopy {
   readonly confirmPasswordLabel: string;
   readonly continue: string;
   readonly editIdentifier: string;
+  readonly emailAddressLabel: string;
+  readonly emailAddressPlaceholder: string;
   readonly emailCodeMethod: (identifier: string) => string;
   readonly emailCodeSubtitle: string;
   readonly emailCodeTitle: string;
   readonly forgotPassword: string;
   readonly googleMethod: string;
+  readonly googleProvider: string;
   readonly hidePassword: string;
   readonly identifierLabel: string;
+  readonly identifierPlaceholder: string;
   readonly legacySignIn: string;
   readonly loading: string;
   readonly newPasswordLabel: string;
@@ -59,10 +65,13 @@ export interface AuthV2SignInCopy {
   readonly showPassword: string;
   readonly signInTitle: string;
   readonly signUp: string;
+  readonly separator: string;
   readonly startSubtitle: string;
   readonly unknownError: string;
   readonly useAnotherMethod: string;
   readonly userBanned: string;
+  readonly usernameLabel: string;
+  readonly usernamePlaceholder: string;
   readonly verify: string;
 }
 
@@ -73,6 +82,12 @@ function signInEntryCopy(
   return {
     addAccount: t(($) => {
       return $.auth.v2.signIn.addAccount;
+    }),
+    appleMethod: t(($) => {
+      return $.auth.v2.signIn.appleMethod;
+    }),
+    appleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.apple;
     }),
     chooseAccountSubtitle: t(($) => {
       return $.auth.v2.signIn.chooseAccountSubtitle;
@@ -89,6 +104,12 @@ function signInEntryCopy(
     editIdentifier: t(($) => {
       return $.auth.v2.signIn.editIdentifier;
     }),
+    emailAddressLabel: t(($) => {
+      return $.auth.v2.signIn.emailAddressLabel;
+    }),
+    emailAddressPlaceholder: t(($) => {
+      return $.auth.v2.signIn.emailAddressPlaceholder;
+    }),
     emailCodeMethod: (identifier: string) => {
       return t(
         ($) => {
@@ -100,8 +121,14 @@ function signInEntryCopy(
     googleMethod: t(($) => {
       return $.auth.v2.signIn.googleMethod;
     }),
+    googleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.google;
+    }),
     identifierLabel: t(($) => {
       return $.auth.v2.signIn.identifierLabel;
+    }),
+    identifierPlaceholder: t(($) => {
+      return $.auth.v2.signIn.identifierPlaceholder;
     }),
     noAccount: t(($) => {
       return $.auth.v2.signIn.noAccount;
@@ -118,6 +145,9 @@ function signInEntryCopy(
     signUp: t(($) => {
       return $.auth.v2.signIn.signUp;
     }),
+    separator: t(($) => {
+      return $.auth.v2.signIn.separator;
+    }),
     startSubtitle: t(
       ($) => {
         return $.auth.v2.signIn.startSubtitle;
@@ -126,6 +156,12 @@ function signInEntryCopy(
     ),
     useAnotherMethod: t(($) => {
       return $.auth.v2.signIn.useAnotherMethod;
+    }),
+    usernameLabel: t(($) => {
+      return $.auth.v2.signIn.usernameLabel;
+    }),
+    usernamePlaceholder: t(($) => {
+      return $.auth.v2.signIn.usernamePlaceholder;
     }),
   };
 }
@@ -365,6 +401,40 @@ export function signInCardDescription(
   return copy.startSubtitle;
 }
 
+export function signInCardTitle(
+  flowState: AuthV2SignInState,
+  copy: AuthV2SignInCopy,
+): string {
+  if (flowState.status === "complete") {
+    return copy.completeTitle;
+  }
+  if (flowState.status === "unknown") {
+    return copy.noMethodsTitle;
+  }
+  if (flowState.status !== "incomplete") {
+    return copy.signInTitle;
+  }
+  if (flowState.step === "choose-session") {
+    return copy.chooseAccountTitle;
+  }
+  if (flowState.step === "choose-factor") {
+    return copy.chooseMethodTitle;
+  }
+  if (flowState.step === "password") {
+    return copy.passwordTitle;
+  }
+  if (flowState.step === "email-code") {
+    return copy.emailCodeTitle;
+  }
+  if (flowState.step === "password-reset-code") {
+    return copy.resetPasswordCodeTitle;
+  }
+  if (flowState.step === "new-password") {
+    return copy.newPasswordTitle;
+  }
+  return copy.signInTitle;
+}
+
 export function signInFactorLabel(
   factor: AuthV2SignInFactor,
   copy: AuthV2SignInCopy,
@@ -376,7 +446,9 @@ export function signInFactorLabel(
     return copy.passwordResetMethod;
   }
   if (factor.kind === "oauth") {
-    return copy.googleMethod;
+    return factor.strategy === "oauth_apple"
+      ? copy.appleMethod
+      : copy.googleMethod;
   }
   if (factor.kind === "passkey") {
     return copy.passkeyMethod;

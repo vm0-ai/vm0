@@ -16,6 +16,7 @@ interface AuthV2PasswordInputProps {
   readonly id: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
+  readonly placeholder?: string;
   readonly required: boolean;
   readonly showPasswordLabel: string;
   readonly value: string;
@@ -29,6 +30,7 @@ export function AuthV2PasswordInput({
   id,
   name,
   onChange,
+  placeholder,
   required,
   showPasswordLabel,
   value,
@@ -50,6 +52,7 @@ export function AuthV2PasswordInput({
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
+        placeholder={placeholder}
         ref={resetOnRef}
         required={required}
         type={revealed ? "text" : "password"}

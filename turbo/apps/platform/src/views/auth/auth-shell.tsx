@@ -30,7 +30,7 @@ export function AuthShell({
     <div
       className={cn(
         "relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background",
-        v2 ? "zero-app p-4 sm:p-6" : "p-6",
+        v2 ? "zero-app p-6" : "p-6",
       )}
       data-testid="app-auth-layout"
     >
@@ -50,9 +50,7 @@ export function AuthShell({
         }}
         className={cn(
           "fixed z-50 border-border bg-card text-foreground hover:bg-card-hover",
-          v2
-            ? "right-[calc(1rem+var(--sar))] top-[calc(1rem+var(--sat))] sm:right-[calc(1.5rem+var(--sar))] sm:top-[calc(1.5rem+var(--sat))]"
-            : "right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))]",
+          "right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))]",
         )}
         aria-label={t(($) => {
           return $.auth.toggleTheme;
@@ -89,7 +87,7 @@ export function AuthShell({
         )}
         className={cn(
           "absolute flex items-center gap-2 transition-opacity hover:opacity-75 focus-visible:opacity-75 focus-visible:outline-none",
-          v2 ? "left-4 top-4 sm:left-6 sm:top-6" : "left-6 top-6",
+          "left-6 top-6",
         )}
       >
         {authBrand.brandName === "Okou" ? (
@@ -109,12 +107,7 @@ export function AuthShell({
         )}
       </a>
 
-      <main
-        className={cn(
-          "relative z-10 m-auto flex w-full min-w-0 justify-center",
-          v2 && "py-14 sm:py-16",
-        )}
-      >
+      <main className="relative z-10 m-auto flex w-full min-w-0 justify-center">
         {children}
       </main>
     </div>

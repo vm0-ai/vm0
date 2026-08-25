@@ -30,10 +30,11 @@ import {
 } from "../utils.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
+import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
 import {
   discoverAuthV2SignUpExternalCapabilities,
-  recoverAuthV2GoogleSignUp,
-  startAuthV2GoogleSignUp,
+  recoverAuthV2OAuthSignUp,
+  startAuthV2OAuthSignUp,
 } from "./sign-up-external-strategies.ts";
 
 const L = logger("AuthV2SignUp");
@@ -146,10 +147,10 @@ export interface AuthV2SignUpSignals {
   readonly emailAddress$: Computed<string>;
   readonly error$: Computed<AuthV2SignUpError | null>;
   readonly firstName$: Computed<string>;
-  readonly googleOAuthAvailable$: Computed<boolean>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly lastName$: Computed<string>;
   readonly legalAccepted$: Computed<boolean>;
+  readonly oauthStrategies$: Computed<readonly AuthV2OAuthStrategy[]>;
   readonly password$: Computed<string>;
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
   readonly resendCoolingDown$: Computed<boolean>;
@@ -161,7 +162,10 @@ export interface AuthV2SignUpSignals {
   readonly setLegalAccepted$: Command<void, [boolean]>;
   readonly setPassword$: Command<void, [string]>;
   readonly state$: Computed<AuthV2SignUpState>;
-  readonly startGoogleOAuth$: Command<Promise<void>, [AbortSignal]>;
+  readonly startOAuth$: Command<
+    Promise<void>,
+    [AuthV2OAuthStrategy, AbortSignal]
+  >;
   readonly submit$: Command<Promise<void>, [AbortSignal]>;
 }
 
@@ -208,9 +212,9 @@ interface SignUpFlowAtoms {
   readonly error$: State<AuthV2SignUpError | null>;
   readonly fatalState$: State<AuthV2SignUpUnknownState | null>;
   readonly firstName$: State<string>;
-  readonly googleOAuthAvailable$: State<boolean>;
   readonly lastName$: State<string>;
   readonly legalAccepted$: State<boolean>;
+  readonly oauthStrategies$: State<readonly AuthV2OAuthStrategy[]>;
   readonly password$: State<string>;
   readonly preparationState$: State<"failed" | "idle" | "preparing">;
   readonly resendCoolingDown$: State<boolean>;
@@ -379,13 +383,10 @@ function configuredIdentifierRequirements(
   };
 }
 
-function configuredAttributeRequirement(
+function requiredAttributeRequirement(
   attribute: AttributeData,
 ): FieldRequirement {
-  if (!attribute.enabled) {
-    return "hidden";
-  }
-  return attribute.required ? "required" : "optional";
+  return attribute.enabled && attribute.required ? "required" : "hidden";
 }
 
 function configuredSignUpFields(
@@ -405,8 +406,8 @@ function configuredSignUpFields(
           : "optional"
         : "required"
       : "hidden",
-    firstName: configuredAttributeRequirement(attributes.first_name),
-    lastName: configuredAttributeRequirement(attributes.last_name),
+    firstName: requiredAttributeRequirement(attributes.first_name),
+    lastName: requiredAttributeRequirement(attributes.last_name),
     password:
       attributes.password.enabled && attributes.password.required
         ? "required"
@@ -423,8 +424,8 @@ function resourceSignUpFields(resource: SignUpResource): AuthV2SignUpFields {
       requiredFields,
       optionalFields,
     ),
-    firstName: fieldRequirement("first_name", requiredFields, optionalFields),
-    lastName: fieldRequirement("last_name", requiredFields, optionalFields),
+    firstName: requiredFields.has("first_name") ? "required" : "hidden",
+    lastName: requiredFields.has("last_name") ? "required" : "hidden",
     password: resource.hasPassword
       ? "hidden"
       : fieldRequirement("password", requiredFields, optionalFields),
@@ -744,7 +745,7 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
   const emailAddress$ = state("");
   const password$ = state("");
   const firstName$ = state("");
-  const googleOAuthAvailable$ = state(false);
+  const oauthStrategies$ = state<readonly AuthV2OAuthStrategy[]>([]);
   const lastName$ = state("");
   const legalAccepted$ = state(false);
   const code$ = state("");
@@ -769,9 +770,9 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
     error$,
     fatalState$,
     firstName$,
-    googleOAuthAvailable$,
     lastName$,
     legalAccepted$,
+    oauthStrategies$,
     password$,
     preparationState$,
     resendCoolingDown$,
@@ -915,7 +916,7 @@ function createInitializeCommand(
     let recoveredSessionId: string | null = null;
     if (dependencies.isOAuthCallbackRoute) {
       set(atoms.error$, null);
-      const recovery = await settle(recoverAuthV2GoogleSignUp(clerk), signal);
+      const recovery = await settle(recoverAuthV2OAuthSignUp(clerk), signal);
       if (recovery.ok) {
         if (recovery.value.status === "sign-in") {
           window.location.assign(
@@ -935,7 +936,7 @@ function createInitializeCommand(
             "general",
           );
           L.warn(
-            "Auth v2 Google sign-up callback returned an error",
+            "Auth v2 OAuth sign-up callback returned an error",
             error.clerkCode ?? error.code,
           );
           set(atoms.error$, error);
@@ -943,7 +944,7 @@ function createInitializeCommand(
       } else {
         const error = normalizeClerkError(recovery.error, "general");
         L.warn(
-          "Auth v2 Google sign-up callback recovery failed",
+          "Auth v2 OAuth sign-up callback recovery failed",
           error.clerkCode ?? error.code,
         );
         set(atoms.error$, error);
@@ -951,8 +952,8 @@ function createInitializeCommand(
       }
     }
     set(
-      atoms.googleOAuthAvailable$,
-      discoverAuthV2SignUpExternalCapabilities(clerk, resource).googleOAuth,
+      atoms.oauthStrategies$,
+      discoverAuthV2SignUpExternalCapabilities(clerk, resource).oauthStrategies,
     );
     set(atoms.emailAddress$, resource.emailAddress ?? "");
     set(atoms.firstName$, resource.firstName ?? "");
@@ -1094,58 +1095,97 @@ function createCoalescedOperation(
   });
 }
 
-function createGoogleOAuthOperation(
+function createOAuthOperation(
   atoms: SignUpFlowAtoms,
   dependencies: AuthV2SignUpFlowDependencies,
-): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    if (!clerk.client) {
-      throw new Error(
-        "Loaded Clerk instance did not provide a client resource",
+): Command<Promise<void>, [AuthV2OAuthStrategy, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      strategy: AuthV2OAuthStrategy,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      if (!clerk.client) {
+        throw new Error(
+          "Loaded Clerk instance did not provide a client resource",
+        );
+      }
+      const resource = clerk.client.signUp;
+      const capabilities = discoverAuthV2SignUpExternalCapabilities(
+        clerk,
+        resource,
       );
-    }
-    const resource = clerk.client.signUp;
-    const capabilities = discoverAuthV2SignUpExternalCapabilities(
-      clerk,
-      resource,
-    );
-    set(atoms.googleOAuthAvailable$, capabilities.googleOAuth);
-    if (!capabilities.googleOAuth) {
-      set(atoms.error$, { code: "unknown", field: "general" });
-      return;
-    }
+      set(atoms.oauthStrategies$, capabilities.oauthStrategies);
+      if (!capabilities.oauthStrategies.includes(strategy)) {
+        set(atoms.error$, { code: "unknown", field: "general" });
+        return;
+      }
 
-    const flowState = get(atoms.state$);
-    const snapshot = get(atoms.snapshot$);
-    if (
-      !snapshot ||
-      flowState.status !== "incomplete" ||
-      flowState.step !== "details"
-    ) {
-      return;
-    }
-    const legalAccepted = get(atoms.legalAccepted$);
-    if (snapshot.legal.required && !legalAccepted) {
-      set(atoms.error$, { code: "legal-required", field: "legal" });
-      return;
-    }
+      const flowState = get(atoms.state$);
+      const snapshot = get(atoms.snapshot$);
+      if (
+        !snapshot ||
+        flowState.status !== "incomplete" ||
+        flowState.step !== "details"
+      ) {
+        return;
+      }
+      const legalAccepted = get(atoms.legalAccepted$);
+      if (snapshot.legal.required && !legalAccepted) {
+        set(atoms.error$, { code: "legal-required", field: "legal" });
+        return;
+      }
 
-    set(atoms.error$, null);
-    const started = await settle(
-      startAuthV2GoogleSignUp(resource, dependencies.navigation, legalAccepted),
-      signal,
-    );
-    if (!started.ok) {
-      const error = normalizeClerkError(started.error, "general");
-      L.warn(
-        "Auth v2 Google sign-up redirect failed",
-        error.clerkCode ?? error.code,
+      set(atoms.error$, null);
+      const started = await settle(
+        startAuthV2OAuthSignUp(
+          resource,
+          dependencies.navigation,
+          legalAccepted,
+          strategy,
+        ),
+        signal,
       );
-      set(atoms.error$, error);
-    }
-  });
+      if (!started.ok) {
+        const error = normalizeClerkError(started.error, "general");
+        L.warn(
+          "Auth v2 OAuth sign-up redirect failed",
+          error.clerkCode ?? error.code,
+        );
+        set(atoms.error$, error);
+      }
+    },
+  );
+}
+
+function createCoalescedOAuthOperation(
+  runtime: SignUpFlowRuntime,
+  operation$: Command<Promise<void>, [AuthV2OAuthStrategy, AbortSignal]>,
+): Command<Promise<void>, [AuthV2OAuthStrategy, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      strategy: AuthV2OAuthStrategy,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(runtime.inFlight$);
+      if (current) {
+        await current;
+        signal.throwIfAborted();
+        return;
+      }
+      const operation = set(operation$, strategy, signal);
+      set(runtime.inFlight$, operation);
+      await withCleanup(operation, () => {
+        set(runtime.inFlight$, (active) => {
+          return active === operation ? null : active;
+        });
+      });
+      signal.throwIfAborted();
+    },
+  );
 }
 
 function signUpParams(
@@ -1373,27 +1413,45 @@ function createFormCommands(atoms: SignUpFlowAtoms) {
     set(atoms.error$, null);
     set(atoms.preparationState$, "idle");
   });
-  const setEmailAddress$ = command(({ set }, value: string) => {
+  const setEmailAddress$ = command(({ get, set }, value: string) => {
+    if (get(atoms.emailAddress$) === value) {
+      return;
+    }
     set(atoms.emailAddress$, value);
     set(atoms.error$, null);
   });
-  const setPassword$ = command(({ set }, value: string) => {
+  const setPassword$ = command(({ get, set }, value: string) => {
+    if (get(atoms.password$) === value) {
+      return;
+    }
     set(atoms.password$, value);
     set(atoms.error$, null);
   });
-  const setFirstName$ = command(({ set }, value: string) => {
+  const setFirstName$ = command(({ get, set }, value: string) => {
+    if (get(atoms.firstName$) === value) {
+      return;
+    }
     set(atoms.firstName$, value);
     set(atoms.error$, null);
   });
-  const setLastName$ = command(({ set }, value: string) => {
+  const setLastName$ = command(({ get, set }, value: string) => {
+    if (get(atoms.lastName$) === value) {
+      return;
+    }
     set(atoms.lastName$, value);
     set(atoms.error$, null);
   });
-  const setLegalAccepted$ = command(({ set }, value: boolean) => {
+  const setLegalAccepted$ = command(({ get, set }, value: boolean) => {
+    if (get(atoms.legalAccepted$) === value) {
+      return;
+    }
     set(atoms.legalAccepted$, value);
     set(atoms.error$, null);
   });
-  const setCode$ = command(({ set }, value: string) => {
+  const setCode$ = command(({ get, set }, value: string) => {
+    if (get(atoms.code$) === value) {
+      return;
+    }
     set(atoms.code$, value);
     set(atoms.error$, null);
   });
@@ -1462,7 +1520,7 @@ export function createAuthV2SignUpSignals(
     runtime,
     applyResource$,
   );
-  const googleOAuthOperation$ = createGoogleOAuthOperation(atoms, dependencies);
+  const oauthOperation$ = createOAuthOperation(atoms, dependencies);
   const formCommands = createFormCommands(atoms);
   return {
     ...formCommands,
@@ -1482,15 +1540,15 @@ export function createAuthV2SignUpSignals(
     firstName$: computed((get) => {
       return get(atoms.firstName$);
     }),
-    googleOAuthAvailable$: computed((get) => {
-      return get(atoms.googleOAuthAvailable$);
-    }),
     initialize$: createCoalescedOperation(runtime, initialize$),
     lastName$: computed((get) => {
       return get(atoms.lastName$);
     }),
     legalAccepted$: computed((get) => {
       return get(atoms.legalAccepted$);
+    }),
+    oauthStrategies$: computed((get) => {
+      return get(atoms.oauthStrategies$);
     }),
     password$: computed((get) => {
       return get(atoms.password$);
@@ -1501,7 +1559,7 @@ export function createAuthV2SignUpSignals(
     }),
     restart$: createCoalescedOperation(runtime, restartOperation$),
     state$: atoms.state$,
-    startGoogleOAuth$: createCoalescedOperation(runtime, googleOAuthOperation$),
+    startOAuth$: createCoalescedOAuthOperation(runtime, oauthOperation$),
     submit$: createCoalescedOperation(runtime, submitOperation$),
   };
 }

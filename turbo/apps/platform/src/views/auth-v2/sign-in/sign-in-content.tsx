@@ -1,10 +1,12 @@
-import { Button, Input } from "@okouai/ui";
+import { Button, cn, Input } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 import type {
+  AuthV2SignInError,
+  AuthV2SignInErrorField,
   AuthV2SignInSignals,
   AuthV2SignInState,
 } from "../../../signals/auth-v2/sign-in-flow.ts";
@@ -12,7 +14,11 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { AuthV2Divider } from "../auth-v2-divider.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
+import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
+import { AuthV2OAuthIcon } from "../auth-v2-oauth-icon.tsx";
+import { AuthV2OtpInput } from "../auth-v2-otp-input.tsx";
 import { AuthV2PasswordInput } from "../auth-v2-password-input.tsx";
 import {
   type AuthV2SignInCopy,
@@ -34,24 +40,29 @@ const AUTH_V2_SIGN_IN_ERROR_ID = "auth-v2-sign-in-error";
 
 function TextField({
   autoComplete,
+  copy,
+  error,
   inputMode,
-  invalid,
   label,
   name,
   onChange,
+  placeholder,
   type = "text",
   value,
 }: {
   readonly autoComplete: string;
+  readonly copy: AuthV2SignInCopy;
+  readonly error: AuthV2SignInError | null;
   readonly inputMode?: "email" | "numeric";
-  readonly invalid: boolean;
   readonly label: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
+  readonly placeholder?: string;
   readonly type?: "password" | "text";
   readonly value: string;
 }) {
   const id = `auth-v2-${name}`;
+  const invalid = error !== null;
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground" htmlFor={id}>
@@ -67,17 +78,31 @@ function TextField({
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
+        placeholder={placeholder}
         required
         type={type}
         value={value}
       />
+      {error ? (
+        <AuthV2FieldError
+          focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+          id={AUTH_V2_SIGN_IN_ERROR_ID}
+          message={signInErrorMessage(error, copy)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function FlowErrorAlert({ copy, signals }: SignInStepProps) {
+function FlowErrorAlert({
+  copy,
+  handledFields = [],
+  signals,
+}: SignInStepProps & {
+  readonly handledFields?: readonly AuthV2SignInErrorField[];
+}) {
   const error = useGet(signals.error$);
-  if (!error) {
+  if (!error || handledFields.includes(error.field)) {
     return null;
   }
   return (
@@ -120,7 +145,7 @@ function SignUpLink({
 function PasswordField({
   autoComplete,
   copy,
-  invalid,
+  error,
   label,
   name,
   onChange,
@@ -128,13 +153,14 @@ function PasswordField({
 }: {
   readonly autoComplete: string;
   readonly copy: AuthV2SignInCopy;
-  readonly invalid: boolean;
+  readonly error: AuthV2SignInError | null;
   readonly label: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
   readonly value: string;
 }) {
   const id = `auth-v2-${name}`;
+  const invalid = error !== null;
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground" htmlFor={id}>
@@ -152,6 +178,13 @@ function PasswordField({
         showPasswordLabel={copy.showPassword}
         value={value}
       />
+      {error ? (
+        <AuthV2FieldError
+          focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+          id={AUTH_V2_SIGN_IN_ERROR_ID}
+          message={signInErrorMessage(error, copy)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -166,7 +199,7 @@ function SubmitButton({
   readonly label: string;
 }) {
   return (
-    <Button className="w-full" disabled={disabled} type="submit">
+    <Button className="w-full text-[13px]" disabled={disabled} type="submit">
       {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
       {label}
     </Button>
@@ -184,11 +217,26 @@ function IdentifierStep({
   const setIdentifier = useSet(signals.setIdentifier$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
-  const externalFactors = state.factors.filter((factor) => {
-    return factor.kind === "oauth" || factor.kind === "passkey";
+  const oauthFactors = state.factors.filter((factor) => {
+    return factor.kind === "oauth";
+  });
+  const passkeyFactor = state.factors.find((factor) => {
+    return factor.kind === "passkey";
   });
   const operationPending =
     submitLoadable.state === "loading" || selectLoadable.state === "loading";
+  const identifierLabel =
+    state.identifierMode === "email"
+      ? copy.emailAddressLabel
+      : state.identifierMode === "username"
+        ? copy.usernameLabel
+        : copy.identifierLabel;
+  const identifierPlaceholder =
+    state.identifierMode === "email"
+      ? copy.emailAddressPlaceholder
+      : state.identifierMode === "username"
+        ? copy.usernamePlaceholder
+        : copy.identifierPlaceholder;
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign in");
@@ -202,13 +250,23 @@ function IdentifierStep({
   };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FlowErrorAlert copy={copy} signals={signals} />
-      {externalFactors.length > 0 ? (
-        <div className="space-y-2">
-          {externalFactors.map((factor) => {
+      <FlowErrorAlert
+        copy={copy}
+        handledFields={["identifier"]}
+        signals={signals}
+      />
+      {oauthFactors.length > 0 ? (
+        <div
+          className={cn(
+            "grid gap-2",
+            oauthFactors.length > 1 && "sm:grid-cols-2",
+          )}
+        >
+          {oauthFactors.map((factor) => {
             return (
               <Button
-                className="w-full"
+                aria-label={signInFactorLabel(factor, copy)}
+                className="w-full text-[13px]"
                 disabled={operationPending}
                 key={factor.id}
                 type="button"
@@ -217,19 +275,27 @@ function IdentifierStep({
                   handleSelectFactor(factor.id);
                 }}
               >
-                {signInFactorLabel(factor, copy)}
+                <AuthV2OAuthIcon strategy={factor.strategy} />
+                {factor.strategy === "oauth_apple"
+                  ? copy.appleProvider
+                  : copy.googleProvider}
               </Button>
             );
           })}
         </div>
       ) : null}
+      {oauthFactors.length > 0 ? (
+        <AuthV2Divider label={copy.separator} />
+      ) : null}
       <TextField
-        autoComplete="username"
-        inputMode="email"
-        invalid={error?.field === "identifier"}
-        label={copy.identifierLabel}
+        autoComplete={state.identifierMode === "email" ? "email" : "username"}
+        copy={copy}
+        error={error?.field === "identifier" ? error : null}
+        inputMode={state.identifierMode === "email" ? "email" : undefined}
+        label={identifierLabel}
         name="identifier"
         onChange={setIdentifier}
+        placeholder={identifierPlaceholder}
         value={identifier}
       />
       <SubmitButton
@@ -237,6 +303,22 @@ function IdentifierStep({
         disabled={operationPending}
         label={copy.continue}
       />
+      {passkeyFactor ? (
+        <>
+          <AuthV2Divider label={copy.separator} />
+          <Button
+            className="w-full text-[13px]"
+            disabled={operationPending}
+            type="button"
+            variant="outline"
+            onClick={() => {
+              handleSelectFactor(passkeyFactor.id);
+            }}
+          >
+            {signInFactorLabel(passkeyFactor, copy)}
+          </Button>
+        </>
+      ) : null}
     </form>
   );
 }
@@ -261,9 +343,6 @@ function ChooseSessionStep({
   return (
     <div className="space-y-4">
       <FlowErrorAlert copy={copy} signals={signals} />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.chooseAccountTitle}
-      </h2>
       <div className="space-y-2">
         {state.accounts.map((account) => {
           return (
@@ -321,9 +400,6 @@ function ChooseFactorStep({
   return (
     <div className="space-y-4">
       <FlowErrorAlert copy={copy} signals={signals} />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.chooseMethodTitle}
-      </h2>
       <div className="space-y-2">
         {state.factors.map((factor) => {
           return (
@@ -337,6 +413,9 @@ function ChooseFactorStep({
                 handleSelectFactor(factor.id);
               }}
             >
+              {factor.kind === "oauth" ? (
+                <AuthV2OAuthIcon strategy={factor.strategy} />
+              ) : null}
               {signInFactorLabel(factor, copy)}
             </Button>
           );
@@ -385,14 +464,15 @@ function PasswordStep({
   };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FlowErrorAlert copy={copy} signals={signals} />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.passwordTitle}
-      </h2>
+      <FlowErrorAlert
+        copy={copy}
+        handledFields={["password"]}
+        signals={signals}
+      />
       <PasswordField
         autoComplete="current-password"
         copy={copy}
-        invalid={error?.field === "password"}
+        error={error?.field === "password" ? error : null}
         label={copy.passwordLabel}
         name="password"
         onChange={setPassword}
@@ -427,11 +507,9 @@ function PasswordStep({
 
 function CodeStep({
   copy,
-  reset,
   signals,
   state,
 }: SignInStepProps & {
-  readonly reset: boolean;
   readonly state: IncompleteSignInState;
 }) {
   const code = useGet(signals.code$);
@@ -474,27 +552,25 @@ function CodeStep({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
-      <FlowErrorAlert copy={copy} signals={signals} />
-      <h2 className="text-base font-medium text-foreground">
-        {reset ? copy.resetPasswordCodeTitle : copy.emailCodeTitle}
-      </h2>
+      <FlowErrorAlert copy={copy} handledFields={["code"]} signals={signals} />
       {safeIdentifier ? (
         <p className="text-sm text-muted-foreground">{safeIdentifier}</p>
       ) : null}
-      <TextField
-        autoComplete="one-time-code"
-        inputMode="numeric"
+      <AuthV2OtpInput
+        errorId={AUTH_V2_SIGN_IN_ERROR_ID}
         invalid={error?.field === "code"}
         label={copy.codeLabel}
         name="code"
         onChange={setCode}
         value={code}
       />
-      <SubmitButton
-        busy={submitting}
-        disabled={operationPending || expired}
-        label={copy.verify}
-      />
+      {error?.field === "code" ? (
+        <AuthV2FieldError
+          focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+          id={AUTH_V2_SIGN_IN_ERROR_ID}
+          message={signInErrorMessage(error, copy)}
+        />
+      ) : null}
       <Button
         className="h-auto w-full"
         disabled={operationPending || (coolingDown && !expired)}
@@ -509,6 +585,11 @@ function CodeStep({
           ? copy.resendCodeCooldown(resendState.remainingSeconds)
           : copy.resendCode}
       </Button>
+      <SubmitButton
+        busy={submitting}
+        disabled={operationPending || expired}
+        label={copy.continue}
+      />
       <Button
         className="w-full"
         type="button"
@@ -529,20 +610,29 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
   const setNewPassword = useSet(signals.setNewPassword$);
   const setConfirmPassword = useSet(signals.setConfirmPassword$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
+  const newPasswordError =
+    error?.field === "new-password" && error.code !== "password-mismatch"
+      ? error
+      : null;
+  const confirmationError =
+    error?.field === "new-password" && error.code === "password-mismatch"
+      ? error
+      : null;
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign in");
   };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FlowErrorAlert copy={copy} signals={signals} />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.newPasswordTitle}
-      </h2>
+      <FlowErrorAlert
+        copy={copy}
+        handledFields={["new-password"]}
+        signals={signals}
+      />
       <PasswordField
         autoComplete="new-password"
         copy={copy}
-        invalid={error?.field === "new-password"}
+        error={newPasswordError}
         label={copy.newPasswordLabel}
         name="new-password"
         onChange={setNewPassword}
@@ -551,7 +641,7 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
       <PasswordField
         autoComplete="new-password"
         copy={copy}
-        invalid={error?.field === "new-password"}
+        error={confirmationError}
         label={copy.confirmPasswordLabel}
         name="confirm-password"
         onChange={setConfirmPassword}
@@ -577,7 +667,7 @@ function LoadingStep({ copy }: { readonly copy: AuthV2SignInCopy }) {
   );
 }
 
-function CompleteStep({ copy }: { readonly copy: AuthV2SignInCopy }) {
+function CompleteStep() {
   return (
     <div
       className="flex flex-col items-center gap-3 py-8 text-center"
@@ -587,9 +677,6 @@ function CompleteStep({ copy }: { readonly copy: AuthV2SignInCopy }) {
         className="animate-spin text-muted-foreground"
         aria-hidden="true"
       />
-      <h2 className="text-base font-medium text-foreground">
-        {copy.completeTitle}
-      </h2>
     </div>
   );
 }
@@ -621,9 +708,6 @@ function UnknownStep({ copy, signals }: SignInStepProps) {
   const restart = useSet(signals.restart$);
   return (
     <div className="space-y-4 text-center">
-      <h2 className="text-base font-medium text-foreground">
-        {copy.noMethodsTitle}
-      </h2>
       <Button
         className="w-full"
         type="button"
@@ -649,7 +733,7 @@ export function SignInCardContent({
     return <LoadingStep copy={copy} />;
   }
   if (state.status === "complete") {
-    return <CompleteStep copy={copy} />;
+    return <CompleteStep />;
   }
   if (state.status === "transfer") {
     return (
@@ -672,9 +756,7 @@ export function SignInCardContent({
     return <PasswordStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "email-code") {
-    return (
-      <CodeStep copy={copy} reset={false} signals={signals} state={state} />
-    );
+    return <CodeStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "client-trust-code") {
     return (
@@ -682,7 +764,7 @@ export function SignInCardContent({
     );
   }
   if (state.step === "password-reset-code") {
-    return <CodeStep copy={copy} reset signals={signals} state={state} />;
+    return <CodeStep copy={copy} signals={signals} state={state} />;
   }
   return <NewPasswordStep copy={copy} signals={signals} />;
 }

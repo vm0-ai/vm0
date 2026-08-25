@@ -179,12 +179,18 @@ describe("auth v2 sign-up flow", () => {
 
     const emailInput = await screen.findByLabelText("Email address");
     const passwordInput = screen.getByLabelText("Password");
-    const firstNameInput = screen.getByLabelText(/First name/);
-    const lastNameInput = screen.getByLabelText(/Last name/);
     expect(emailInput).toBeRequired();
     expect(passwordInput).toBeRequired();
-    expect(firstNameInput).not.toBeRequired();
-    expect(lastNameInput).not.toBeRequired();
+    expect(emailInput).toHaveAttribute(
+      "placeholder",
+      "Enter your email address",
+    );
+    expect(passwordInput).toHaveAttribute("placeholder", "Create a password");
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last name/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Create your account" }),
+    ).toBeVisible();
     expect(screen.getByRole("checkbox")).toBeVisible();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
@@ -245,8 +251,8 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Email address"),
     ).resolves.toBeRequired();
-    expect(screen.getByLabelText(/First name/)).not.toBeRequired();
-    expect(screen.getByLabelText(/Last name/)).not.toBeRequired();
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last name/)).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
@@ -288,13 +294,16 @@ describe("auth v2 sign-up flow", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows supported Google sign-up without starting One Tap", async () => {
-    mockAuthV2Capabilities({ googleOAuth: true });
+  it("shows configured Apple and Google sign-up with compact provider labels", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
     setupSignUpPage({ status: null });
 
-    await expect(
-      waitForRoleElement("button", "Continue with Google"),
-    ).resolves.toBeVisible();
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(apple).toBeVisible();
+    expect(google).toBeVisible();
+    expect(apple.textContent?.trim()).toBe("Apple");
+    expect(google.textContent?.trim()).toBe("Google");
     expect(
       document.querySelector("script[data-auth-v2-google-one-tap]"),
     ).not.toBeInTheDocument();
@@ -637,6 +646,20 @@ describe("auth v2 sign-up flow", () => {
       return moveSignUpToAsync(readyEmailVerificationState());
     });
 
+    mockSignUpConfiguration({
+      attributes: {
+        first_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+        last_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+      },
+    });
     setupSignUpPage({ status: null });
     const { emailInput } = await fillRequiredDetails();
     const firstNameInput = screen.getByLabelText(/First name/);
@@ -689,9 +712,10 @@ describe("auth v2 sign-up flow", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("heading", {
         level: 1,
-        name: "Create your VM0 account",
+        name: "Verify your email",
       }),
     );
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
   });
 
   it("coalesces resend and code attempts, applies cooldown, preserves attribution, and activates once", async () => {
@@ -739,6 +763,14 @@ describe("auth v2 sign-up flow", () => {
     );
     expect(cooldownButton).toBeDisabled();
     const readyCodeInput = await screen.findByLabelText("Verification code");
+    expect(readyCodeInput).toHaveAttribute("autocomplete", "one-time-code");
+    expect(readyCodeInput).toHaveAttribute("inputmode", "numeric");
+    expect(readyCodeInput).toHaveAttribute("maxlength", "6");
+    expect(
+      readyCodeInput.parentElement?.querySelectorAll(
+        '[aria-hidden="true"] > span',
+      ),
+    ).toHaveLength(6);
     fireEvent.change(readyCodeInput, { target: { value: "123456" } });
     const form = containingForm(readyCodeInput);
     fireEvent.submit(form);
@@ -789,7 +821,7 @@ describe("auth v2 sign-up flow", () => {
       requiredFields: ["email_address", "password", "legal_accepted"],
       status: null,
     });
-    const { emailInput } = await fillRequiredDetails();
+    const { emailInput, passwordInput } = await fillRequiredDetails();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",
@@ -823,6 +855,16 @@ describe("auth v2 sign-up flow", () => {
         "Your password is not strong enough.",
       );
     });
+    const passwordError = screen.getByRole("alert");
+    expect(document.activeElement).toBe(passwordError);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(passwordInput).toHaveAttribute("aria-describedby", passwordError.id);
+
+    fireEvent.change(passwordInput, {
+      target: { value: "valid-password" },
+    });
+    expect(screen.getByRole("alert")).toBe(passwordError);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 
     mockSignUpPasswordValidation({ complexity: {}, strength: undefined });

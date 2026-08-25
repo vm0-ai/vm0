@@ -3,15 +3,18 @@ import type { SignInResource } from "@clerk/react/types";
 
 import { createDeferredPromise, settle, withCleanup } from "../utils.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
+import {
+  enabledAuthV2OAuthStrategies,
+  type AuthV2OAuthStrategy,
+} from "./oauth-strategies.ts";
 
 const GOOGLE_IDENTITY_SCRIPT_URL = "https://accounts.google.com/gsi/client";
-const GOOGLE_OAUTH_STRATEGY = "oauth_google" as const;
-
 export const AUTH_V2_OAUTH_CALLBACK_PATH = "/sso-callback";
 
 export interface AuthV2ExternalCapabilities {
-  readonly googleOAuth: boolean;
   readonly googleOneTapClientId: string | null;
+  readonly identifierMode: "email" | "email-or-username" | "username";
+  readonly oauthStrategies: readonly AuthV2OAuthStrategy[];
   readonly passkey: boolean;
 }
 
@@ -134,18 +137,31 @@ export function discoverAuthV2ExternalCapabilities(
 ): AuthV2ExternalCapabilities {
   const environment = clerk.__internal_environment;
   const settings = environment?.userSettings;
-  const googleOAuth =
-    settings?.authenticatableSocialStrategies.includes(GOOGLE_OAUTH_STRATEGY) ??
-    false;
+  const oauthStrategies = enabledAuthV2OAuthStrategies(
+    settings?.authenticatableSocialStrategies,
+  );
+  const emailEnabled = settings?.attributes.email_address.enabled === true;
+  const usernameEnabled = settings?.attributes.username.enabled === true;
+  const identifierMode =
+    emailEnabled && usernameEnabled
+      ? "email-or-username"
+      : usernameEnabled
+        ? "username"
+        : "email";
   const passkeyAttribute = settings?.attributes.passkey;
   const passkey =
     passkeyAttribute?.enabled === true &&
     passkeyAttribute.used_for_first_factor === true &&
     settings?.passkeySettings.show_sign_in_button === true;
-  const googleOneTapClientId = googleOAuth
+  const googleOneTapClientId = oauthStrategies.includes("oauth_google")
     ? (environment?.displayConfig.googleOneTapClientId ?? null)
     : null;
-  return { googleOAuth, googleOneTapClientId, passkey };
+  return {
+    googleOneTapClientId,
+    identifierMode,
+    oauthStrategies,
+    passkey,
+  };
 }
 
 export function discoverAuthV2ExistingAccounts(
@@ -166,20 +182,21 @@ export function discoverAuthV2ExistingAccounts(
   });
 }
 
-export function startAuthV2GoogleOAuth(
+export function startAuthV2OAuth(
   resource: SignInResource,
   navigation: AuthV2Navigation,
+  strategy: AuthV2OAuthStrategy,
 ): Promise<void> {
   return resource.authenticateWithRedirect({
     continueSignIn: true,
     continueSignUp: false,
     redirectUrl: navigation.href("sign-in", AUTH_V2_OAUTH_CALLBACK_PATH),
     redirectUrlComplete: navigation.completionRedirectUrl,
-    strategy: GOOGLE_OAUTH_STRATEGY,
+    strategy,
   });
 }
 
-export async function recoverAuthV2GoogleOAuth(
+export async function recoverAuthV2OAuth(
   clerk: Clerk,
   navigation: AuthV2Navigation,
 ): Promise<string | null> {
