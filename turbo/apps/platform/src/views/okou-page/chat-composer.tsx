@@ -5327,7 +5327,6 @@ function ImportedPptCardCaption({
 }: {
   template: PresentationTemplateSummary;
 }) {
-  const { t } = useTranslation();
   return (
     <div className={TEMPLATE_TILE_CAPTION}>
       <TooltipProvider delayDuration={300}>
@@ -5340,17 +5339,6 @@ function ImportedPptCardCaption({
           <TooltipContent side="bottom">{template.title}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        {template.visibility === "public" ? (
-          <Globe size={12} aria-hidden="true" />
-        ) : null}
-        {t(
-          ($) => {
-            return $.artifacts.templates.importedSlides;
-          },
-          { count: template.pageCount },
-        )}
-      </span>
     </div>
   );
 }
