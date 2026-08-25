@@ -350,11 +350,15 @@ EOF
     run jq -e \
         --arg customConnectorId "$CUSTOM_CONNECTOR_ID" \
         --arg sourceId "$default_connection_id" '
-            any(.firewalls[]?;
-                .kind == "inline" and
-                .customConnectorId == $customConnectorId and
-                .sourceId == $sourceId
-            )
+            ([
+                .firewalls[]?
+                | select(
+                    .kind == "inline" and
+                    .customConnectorId == $customConnectorId
+                )
+            ]) as $matches
+            | ($matches | length) == 1 and
+                $matches[0].sourceId == $sourceId
         ' <<<"$default_run_context"
     echo "$output"
     assert_success
@@ -488,11 +492,15 @@ EOF
     run jq -e \
         --arg customConnectorId "$CUSTOM_CONNECTOR_ID" \
         --arg sourceId "$selected_connection_id" '
-            any(.firewalls[]?;
-                .kind == "inline" and
-                .customConnectorId == $customConnectorId and
-                .sourceId == $sourceId
-            )
+            ([
+                .firewalls[]?
+                | select(
+                    .kind == "inline" and
+                    .customConnectorId == $customConnectorId
+                )
+            ]) as $matches
+            | ($matches | length) == 1 and
+                $matches[0].sourceId == $sourceId
         ' <<<"$selected_run_context"
     echo "$output"
     assert_success
