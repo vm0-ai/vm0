@@ -1,4 +1,11 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 
 import type {
   AuthV2DiagnosticErrorCategory,
@@ -37,6 +44,10 @@ interface DiagnosticResult {
   readonly outcome: "failure" | "success";
 }
 
+interface DiagnosticCommandRuntime {
+  readonly inFlight$: State<Promise<void> | null>;
+}
+
 const SIGN_UP_RESTART_ATTEMPT$ = computed((): DiagnosticAttempt => {
   return { method: "unknown", step: "restart" };
 });
@@ -46,11 +57,13 @@ const CONTINUATION_INITIALIZE_ATTEMPT$ = computed((): DiagnosticAttempt => {
 });
 
 export interface AuthV2SignInDiagnosticOptions {
+  readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
 }
 
 export interface AuthV2SignUpDiagnosticOptions {
+  readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isOAuthCallbackRoute: boolean;
 }
 
@@ -126,9 +139,13 @@ function signInStateErrorCategory(
 function signInResult(
   flowState: AuthV2SignInState,
   error: AuthV2SignInError | null,
+  continuationState: AuthV2ContinuationState,
 ): DiagnosticResult {
   return diagnosticResult(
-    error ? signInErrorCategory(error) : signInStateErrorCategory(flowState),
+    (error
+      ? signInErrorCategory(error)
+      : signInStateErrorCategory(flowState)) ??
+      continuationStateErrorCategory(continuationState),
   );
 }
 
@@ -178,9 +195,13 @@ function signUpStateErrorCategory(
 function signUpResult(
   flowState: AuthV2SignUpState,
   error: AuthV2SignUpError | null,
+  continuationState: AuthV2ContinuationState,
 ): DiagnosticResult {
   return diagnosticResult(
-    error ? signUpErrorCategory(error) : signUpStateErrorCategory(flowState),
+    (error
+      ? signUpErrorCategory(error)
+      : signUpStateErrorCategory(flowState)) ??
+      continuationStateErrorCategory(continuationState),
   );
 }
 
@@ -231,8 +252,8 @@ function createAsyncDiagnosticCommand(
   attempt$: Computed<DiagnosticAttempt | null>,
   finish$: Command<AuthV2DiagnosticProperties | null, [DiagnosticAttempt]>,
   capture: CaptureAuthV2Diagnostic,
+  runtime: DiagnosticCommandRuntime,
 ): Command<Promise<void>, [AbortSignal]> {
-  const inFlight$ = state<Promise<void> | null>(null);
   const run$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const attempt = get(attempt$);
@@ -248,16 +269,16 @@ function createAsyncDiagnosticCommand(
     },
   );
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const current = get(inFlight$);
+    const current = get(runtime.inFlight$);
     if (current) {
       await current;
       signal.throwIfAborted();
       return;
     }
     const operation = set(run$, signal);
-    set(inFlight$, operation);
+    set(runtime.inFlight$, operation);
     await withCleanup(operation, () => {
-      set(inFlight$, (active) => {
+      set(runtime.inFlight$, (active) => {
         return active === operation ? null : active;
       });
     });
@@ -270,8 +291,8 @@ function createStringDiagnosticCommand(
   describe$: Command<DiagnosticAttempt | null, [string]>,
   finish$: Command<AuthV2DiagnosticProperties | null, [DiagnosticAttempt]>,
   capture: CaptureAuthV2Diagnostic,
+  runtime: DiagnosticCommandRuntime,
 ): Command<Promise<void>, [string, AbortSignal]> {
-  const inFlight$ = state<Promise<void> | null>(null);
   const run$ = command(
     async ({ set }, value: string, signal: AbortSignal): Promise<void> => {
       const attempt = set(describe$, value);
@@ -288,16 +309,16 @@ function createStringDiagnosticCommand(
   );
   return command(
     async ({ get, set }, value: string, signal: AbortSignal): Promise<void> => {
-      const current = get(inFlight$);
+      const current = get(runtime.inFlight$);
       if (current) {
         await current;
         signal.throwIfAborted();
         return;
       }
       const operation = set(run$, value, signal);
-      set(inFlight$, operation);
+      set(runtime.inFlight$, operation);
       await withCleanup(operation, () => {
-        set(inFlight$, (active) => {
+        set(runtime.inFlight$, (active) => {
           return active === operation ? null : active;
         });
       });
@@ -359,7 +380,11 @@ function createSignInFinishCommands(
       return diagnosticProperties(
         flow,
         attempt,
-        signInResult(get(signals.state$), get(signals.error$)),
+        signInResult(
+          get(signals.state$),
+          get(signals.error$),
+          get(options.continuationState$),
+        ),
       );
     },
   );
@@ -370,7 +395,11 @@ function createSignInFinishCommands(
     ): AuthV2DiagnosticProperties | null => {
       const flowState = get(signals.state$);
       const error = get(signals.error$);
-      const result = signInResult(flowState, error);
+      const result = signInResult(
+        flowState,
+        error,
+        get(options.continuationState$),
+      );
       if (result.outcome === "failure") {
         const method =
           options.isBaseRoute && error ? "google-one-tap" : attempt.method;
@@ -498,6 +527,9 @@ function createSignInInstrumentation(
   signals: AuthV2SignInSignals,
   options: AuthV2SignInDiagnosticOptions,
 ): AuthV2SignInSignals {
+  const runtime: DiagnosticCommandRuntime = {
+    inFlight$: state<Promise<void> | null>(null),
+  };
   const { finish$, finishInitialize$ } = createSignInFinishCommands(
     flow,
     signals,
@@ -518,12 +550,14 @@ function createSignInInstrumentation(
       initializeAttempt$,
       finishInitialize$,
       capture,
+      runtime,
     ),
     resendCode$: createAsyncDiagnosticCommand(
       signals.resendCode$,
       resendAttempt$,
       finish$,
       capture,
+      runtime,
     ),
     restart$: createSyncDiagnosticCommand(
       signals.restart$,
@@ -536,18 +570,21 @@ function createSignInInstrumentation(
       describeFactor$,
       finish$,
       capture,
+      runtime,
     ),
     selectSession$: createStringDiagnosticCommand(
       signals.selectSession$,
       describeSession$,
       finish$,
       capture,
+      runtime,
     ),
     submit$: createAsyncDiagnosticCommand(
       signals.submit$,
       submitAttempt$,
       finish$,
       capture,
+      runtime,
     ),
   };
 }
@@ -558,12 +595,19 @@ function createSignUpInstrumentation(
   signals: AuthV2SignUpSignals,
   options: AuthV2SignUpDiagnosticOptions,
 ): AuthV2SignUpSignals {
+  const runtime: DiagnosticCommandRuntime = {
+    inFlight$: state<Promise<void> | null>(null),
+  };
   const finish$ = command(
     ({ get }, attempt: DiagnosticAttempt): AuthV2DiagnosticProperties => {
       return diagnosticProperties(
         flow,
         attempt,
-        signUpResult(get(signals.state$), get(signals.error$)),
+        signUpResult(
+          get(signals.state$),
+          get(signals.error$),
+          get(options.continuationState$),
+        ),
       );
     },
   );
@@ -578,7 +622,11 @@ function createSignUpInstrumentation(
       { get },
       attempt: DiagnosticAttempt,
     ): AuthV2DiagnosticProperties | null => {
-      const result = signUpResult(get(signals.state$), get(signals.error$));
+      const result = signUpResult(
+        get(signals.state$),
+        get(signals.error$),
+        get(options.continuationState$),
+      );
       return result.outcome === "failure"
         ? diagnosticProperties(flow, attempt, result)
         : null;
@@ -620,30 +668,35 @@ function createSignUpInstrumentation(
       initializeAttempt$,
       finishInitialize$,
       capture,
+      runtime,
     ),
     resendCode$: createAsyncDiagnosticCommand(
       signals.resendCode$,
       resendAttempt$,
       finish$,
       capture,
+      runtime,
     ),
     restart$: createAsyncDiagnosticCommand(
       signals.restart$,
       SIGN_UP_RESTART_ATTEMPT$,
       finish$,
       capture,
+      runtime,
     ),
     startGoogleOAuth$: createAsyncDiagnosticCommand(
       signals.startGoogleOAuth$,
       googleOAuthAttempt$,
       finish$,
       capture,
+      runtime,
     ),
     submit$: createAsyncDiagnosticCommand(
       signals.submit$,
       submitAttempt$,
       finish$,
       capture,
+      runtime,
     ),
   };
 }
@@ -653,6 +706,9 @@ function createContinuationInstrumentation(
   capture: CaptureAuthV2Diagnostic,
   signals: AuthV2ContinuationSignals,
 ): AuthV2ContinuationSignals {
+  const runtime: DiagnosticCommandRuntime = {
+    inFlight$: state<Promise<void> | null>(null),
+  };
   const finish$ = command(
     (
       { get },
@@ -688,12 +744,14 @@ function createContinuationInstrumentation(
       CONTINUATION_INITIALIZE_ATTEMPT$,
       finish$,
       capture,
+      runtime,
     ),
     selectOrganization$: createStringDiagnosticCommand(
       signals.selectOrganization$,
       describeOrganization$,
       finish$,
       capture,
+      runtime,
     ),
   };
 }

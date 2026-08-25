@@ -59,7 +59,11 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
           isOAuthCallbackRoute,
           navigation: platformContext.navigation,
         }),
-        { isBaseRoute, isOAuthCallbackRoute },
+        {
+          continuationState$: continuationController.state$,
+          isBaseRoute,
+          isOAuthCallbackRoute,
+        },
       );
       set(
         updatePage$,
@@ -80,7 +84,10 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
           isOAuthCallbackRoute,
           navigation: platformContext.navigation,
         }),
-        { isOAuthCallbackRoute },
+        {
+          continuationState$: continuationController.state$,
+          isOAuthCallbackRoute,
+        },
       );
       set(
         updatePage$,

@@ -1,20 +1,49 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AuthV2DiagnosticProperties } from "../../lib/posthog.ts";
 import { testContext } from "../__tests__/test-helpers.ts";
-import { createDeferredPromise } from "../utils.ts";
+import { createDeferredPromise, onRef } from "../utils.ts";
 import {
   createAuthV2Diagnostics,
   type AuthV2SignInDiagnosticOptions,
+  type AuthV2SignUpDiagnosticOptions,
 } from "./diagnostics.ts";
+import type { AuthV2ContinuationState } from "./continuation.ts";
 import type {
   AuthV2SignInError,
   AuthV2SignInSignals,
   AuthV2SignInState,
 } from "./sign-in-flow.ts";
+import type {
+  AuthV2SignUpError,
+  AuthV2SignUpSignals,
+  AuthV2SignUpState,
+} from "./sign-up-flow.ts";
 
 const context = testContext();
+
+const INACTIVE_CONTINUATION_STATE$ = computed((): AuthV2ContinuationState => {
+  return { status: "inactive" };
+});
+const IDLE_CAPTCHA_STATE$ = computed((): "idle" => {
+  return "idle";
+});
+const EMPTY_STRING$ = computed(() => {
+  return "";
+});
+const TEST_EMAIL_ADDRESS$ = computed(() => {
+  return "person@example.com";
+});
+const TRUE$ = computed(() => {
+  return true;
+});
+const FALSE$ = computed(() => {
+  return false;
+});
+const TEST_PASSWORD$ = computed(() => {
+  return "password";
+});
 
 function createSignInHarness(options?: {
   readonly submit?: () => Promise<void>;
@@ -119,14 +148,116 @@ function createSignInHarness(options?: {
 function instrumentSignIn(
   signals: AuthV2SignInSignals,
   capture: (properties: AuthV2DiagnosticProperties) => void,
+  continuationState$: Computed<AuthV2ContinuationState> = INACTIVE_CONTINUATION_STATE$,
 ): AuthV2SignInSignals {
   return createAuthV2Diagnostics("sign-in", capture).instrumentSignIn(signals, {
+    continuationState$,
     isBaseRoute: false,
     isOAuthCallbackRoute: false,
   } satisfies AuthV2SignInDiagnosticOptions);
 }
 
-describe("auth v2 diagnostics", () => {
+function createSignUpHarness(options?: {
+  readonly startGoogleOAuth?: () => Promise<void>;
+  readonly submit?: () => Promise<void>;
+}) {
+  const flowState$ = state<AuthV2SignUpState>({
+    captchaEnabled: false,
+    fields: {
+      emailAddress: "required",
+      firstName: "optional",
+      lastName: "optional",
+      password: "required",
+    },
+    legal: { privacyPolicyUrl: null, required: true, termsUrl: null },
+    status: "incomplete",
+    step: "details",
+  });
+  const error$ = state<AuthV2SignUpError | null>(null);
+  const sourceSubmit = vi.fn(
+    options?.submit ??
+      (() => {
+        return Promise.resolve();
+      }),
+  );
+  const sourceGoogleOAuth = vi.fn(
+    options?.startGoogleOAuth ??
+      (() => {
+        return Promise.resolve();
+      }),
+  );
+  const noOp$ = command((): void => {});
+  const setString$ = command((_context, _value: string): void => {});
+  const setBoolean$ = command((_context, _value: boolean): void => {});
+  const asyncNoOp$ = command((_context, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  });
+  const captchaRef$ = onRef(
+    command((_context, _element: HTMLDivElement, signal: AbortSignal): void => {
+      signal.throwIfAborted();
+    }),
+  );
+  const submit$ = command(
+    async (_context, signal: AbortSignal): Promise<void> => {
+      await sourceSubmit();
+      signal.throwIfAborted();
+    },
+  );
+  const startGoogleOAuth$ = command(
+    async (_context, signal: AbortSignal): Promise<void> => {
+      await sourceGoogleOAuth();
+      signal.throwIfAborted();
+    },
+  );
+  return {
+    signals: {
+      backToDetails$: noOp$,
+      captchaRef$,
+      captchaState$: IDLE_CAPTCHA_STATE$,
+      code$: EMPTY_STRING$,
+      emailAddress$: TEST_EMAIL_ADDRESS$,
+      error$: computed((get) => {
+        return get(error$);
+      }),
+      firstName$: EMPTY_STRING$,
+      googleOAuthAvailable$: TRUE$,
+      initialize$: asyncNoOp$,
+      lastName$: EMPTY_STRING$,
+      legalAccepted$: TRUE$,
+      password$: TEST_PASSWORD$,
+      resendCode$: asyncNoOp$,
+      resendCoolingDown$: FALSE$,
+      restart$: asyncNoOp$,
+      setCode$: setString$,
+      setEmailAddress$: setString$,
+      setFirstName$: setString$,
+      setLastName$: setString$,
+      setLegalAccepted$: setBoolean$,
+      setPassword$: setString$,
+      startGoogleOAuth$,
+      state$: computed((get) => {
+        return get(flowState$);
+      }),
+      submit$,
+    } satisfies AuthV2SignUpSignals,
+    sourceGoogleOAuth,
+    sourceSubmit,
+  };
+}
+
+function instrumentSignUp(
+  signals: AuthV2SignUpSignals,
+  capture: (properties: AuthV2DiagnosticProperties) => void,
+  continuationState$: Computed<AuthV2ContinuationState> = INACTIVE_CONTINUATION_STATE$,
+): AuthV2SignUpSignals {
+  return createAuthV2Diagnostics("sign-up", capture).instrumentSignUp(signals, {
+    continuationState$,
+    isOAuthCallbackRoute: false,
+  } satisfies AuthV2SignUpDiagnosticOptions);
+}
+
+describe("auth v2 diagnostic attempt ownership", () => {
   it("coalesces concurrent retries but preserves sequential user attempts", async () => {
     const deferred = createDeferredPromise<void>(context.signal);
     const harness = createSignInHarness({
@@ -159,6 +290,112 @@ describe("auth v2 diagnostics", () => {
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
+  it("coalesces different commands that share one source operation", async () => {
+    const deferred = createDeferredPromise<void>(context.signal);
+    const harness = createSignUpHarness({
+      submit: async () => {
+        await deferred.promise;
+      },
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = instrumentSignUp(harness.signals, capture);
+
+    const passwordAttempt = context.store.set(signals.submit$, context.signal);
+    const coalescedGoogleAttempt = context.store.set(
+      signals.startGoogleOAuth$,
+      context.signal,
+    );
+
+    expect(harness.sourceSubmit).toHaveBeenCalledOnce();
+    expect(harness.sourceGoogleOAuth).not.toHaveBeenCalled();
+    deferred.resolve();
+    await Promise.all([passwordAttempt, coalescedGoogleAttempt]);
+
+    expect(capture).toHaveBeenCalledOnce();
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "none",
+      flow: "sign-up",
+      method: "password",
+      outcome: "success",
+      step: "details",
+    });
+
+    await context.store.set(signals.startGoogleOAuth$, context.signal);
+
+    expect(harness.sourceGoogleOAuth).toHaveBeenCalledOnce();
+    expect(capture).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("auth v2 diagnostic continuation outcomes", () => {
+  it("reports sign-in session activation failures from continuation", async () => {
+    const continuationState$ = state<AuthV2ContinuationState>({
+      status: "inactive",
+    });
+    const harness = createSignInHarness({
+      submit: () => {
+        context.store.set(continuationState$, {
+          reason: "activation-failed",
+          status: "failure",
+        });
+        return Promise.resolve();
+      },
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = instrumentSignIn(
+      harness.signals,
+      capture,
+      computed((get) => {
+        return get(continuationState$);
+      }),
+    );
+
+    await context.store.set(signals.submit$, context.signal);
+
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "session-unavailable",
+      flow: "sign-in",
+      method: "identifier",
+      outcome: "failure",
+      step: "identifier",
+    });
+  });
+
+  it("reports sign-up session activation failures from continuation", async () => {
+    const continuationState$ = state<AuthV2ContinuationState>({
+      status: "inactive",
+    });
+    const harness = createSignUpHarness({
+      submit: () => {
+        context.store.set(continuationState$, {
+          reason: "activation-failed",
+          status: "failure",
+        });
+        return Promise.resolve();
+      },
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = instrumentSignUp(
+      harness.signals,
+      capture,
+      computed((get) => {
+        return get(continuationState$);
+      }),
+    );
+
+    await context.store.set(signals.submit$, context.signal);
+
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "session-unavailable",
+      flow: "sign-up",
+      method: "password",
+      outcome: "failure",
+      step: "details",
+    });
+  });
+});
+
+describe("auth v2 diagnostic privacy", () => {
   it("does not report rerenders or successful refresh recovery", async () => {
     const harness = createSignInHarness();
     const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
