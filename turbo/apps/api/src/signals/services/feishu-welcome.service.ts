@@ -11,7 +11,7 @@ import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { settle } from "../utils";
 
-const L = logger("ZeroFeishuWelcome");
+const L = logger("FeishuWelcome");
 const WELCOME_RETRY_LIMIT = 20;
 
 export async function notifyFeishuConnect(

@@ -45,11 +45,11 @@ export const runCreateBodySchema = unifiedRunRequestSchema
 
 const c = initContract();
 
-const zeroAgentEventPaginationQuerySchema = createLogPaginationQuerySchema({
+const agentEventPaginationQuerySchema = createLogPaginationQuerySchema({
   cursorKind: "sequence",
 });
 
-const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
+const networkLogPaginationQuerySchema = createLogPaginationQuerySchema({
   cursorKind: "time",
   maxLimit: 500,
   defaultLimit: 500,
@@ -129,7 +129,7 @@ export const runAgentEventsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: zeroAgentEventPaginationQuerySchema,
+    query: agentEventPaginationQuerySchema,
     responses: {
       200: agentEventsResponseSchema,
       400: apiErrorSchema,
@@ -246,7 +246,7 @@ export const runNetworkLogsContract = c.router({
     pathParams: z.object({
       id: z.uuid("Run ID must be a valid UUID"),
     }),
-    query: zeroNetworkLogPaginationQuerySchema,
+    query: networkLogPaginationQuerySchema,
     responses: {
       200: networkLogsResponseSchema,
       400: apiErrorSchema,

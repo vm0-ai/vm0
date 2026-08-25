@@ -38,7 +38,7 @@ import {
 } from "./feishu-config";
 import { buildFeishuOAuthConnectUrl } from "./feishu-oauth-state";
 
-const L = logger("ZeroFeishuConnect");
+const L = logger("FeishuConnect");
 
 async function loadFeishuInstallations(db: ReadonlyDb, orgId: string) {
   return await db
