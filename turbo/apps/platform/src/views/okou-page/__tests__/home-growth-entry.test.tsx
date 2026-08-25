@@ -109,6 +109,18 @@ describe("home growth entry", () => {
     expect(entry).toHaveTextContent("Add Zero in Slack");
 
     await user.click(entry);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(pathname()).toBe("/works");
+    });
+  });
+
+  it("opens channel choices from the separate menu button", async () => {
+    const user = userEvent.setup();
+    setupGrowthEntry({ isConnected: false, isInstalled: false });
+
+    await screen.findByTestId("growth-entry");
+    await user.click(screen.getByTestId("growth-entry-menu"));
     const menu = await screen.findByRole("menu");
     const slackAction = within(menu).getByTestId("growth-slack");
     expect(slackAction).toHaveTextContent("Add Zero in Slack");
@@ -134,6 +146,19 @@ describe("home growth entry", () => {
     expect(entry).toHaveTextContent("Invite humans 🤝");
 
     await user.click(entry);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await expect(screen.findByRole("dialog")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(search()).toContain("settings=people");
+    });
+  });
+
+  it("opens growth options from the separate menu button", async () => {
+    const user = userEvent.setup();
+    setupGrowthEntry({ isConnected: false, isInstalled: true });
+
+    await screen.findByTestId("growth-entry");
+    await user.click(screen.getByTestId("growth-entry-menu"));
     const menu = await screen.findByRole("menu");
     const slackStatus = within(menu).getByTestId("growth-slack");
     expect(slackStatus).toHaveTextContent("Zero is in Slack");
@@ -150,7 +175,8 @@ describe("home growth entry", () => {
     const user = userEvent.setup();
     setupGrowthEntry({ isConnected: true, isInstalled: true });
 
-    await user.click(await screen.findByTestId("growth-entry"));
+    await screen.findByTestId("growth-entry");
+    await user.click(screen.getByTestId("growth-entry-menu"));
     const menu = await screen.findByRole("menu");
     const credits = await within(menu).findByTestId("growth-credits");
 
@@ -178,10 +204,10 @@ describe("home growth entry", () => {
       { usagePackPlansEnabled: true },
     );
 
-    const entry = await screen.findByTestId("growth-entry");
+    await screen.findByTestId("growth-entry");
     expect(usagePackCreditRequests).toBe(0);
 
-    await user.click(entry);
+    await user.click(screen.getByTestId("growth-entry-menu"));
     const menu = await screen.findByRole("menu");
     await within(menu).findByTestId("growth-credits");
     expect(usagePackCreditRequests).toBe(1);
