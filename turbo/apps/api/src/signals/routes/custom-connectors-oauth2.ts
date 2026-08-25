@@ -219,6 +219,7 @@ async function persistCustomConnectorOAuth2Connection(
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
     readonly account: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -376,6 +377,10 @@ const completeOAuth2Callback$ = command(
             token,
             featureContext,
             account: claimed.state.accountMutation,
+            insertConnectionId:
+              claimed.state.accountMutation.intent === "add"
+                ? claimed.state.id
+                : undefined,
           },
           signal,
         );

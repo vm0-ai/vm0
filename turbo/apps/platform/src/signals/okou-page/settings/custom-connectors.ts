@@ -31,6 +31,7 @@ import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { singleAccountConnectorMutation } from "../../connector-domain.ts";
 import {
+  connectorAccountConnectionExists,
   connectorAccountMutationCompleted,
   readConnectorAccountMutationVersion,
   type ConnectorAccountMutationVersion,
@@ -285,9 +286,10 @@ const isCustomConnectorAuthorizedForTarget$ = command(
   },
 );
 
-interface CustomConnectorConnectionResult {
+export interface CustomConnectorConnectionResult {
   readonly connected: boolean;
   readonly targetAuthorized: boolean;
+  readonly connectionId: string | null;
 }
 
 export const createCustomConnector$ = command(
@@ -402,10 +404,18 @@ const setCustomConnectorValuesForTarget$ = command(
     const connector = customConnectorResponseSchema.parse(result.body);
     set(bumpReload$);
     if (!connector.connected) {
-      return { connected: false, targetAuthorized: false };
+      return {
+        connected: false,
+        targetAuthorized: false,
+        connectionId: null,
+      };
     }
     if (args.authorizeTarget === false) {
-      return { connected: true, targetAuthorized: false };
+      return {
+        connected: true,
+        targetAuthorized: false,
+        connectionId: result.body.connectedAccountId ?? null,
+      };
     }
     let targetAuthorized: boolean;
     if (connector.permissionBundleRef) {
@@ -431,7 +441,11 @@ const setCustomConnectorValuesForTarget$ = command(
         return $.connectors.custom.toasts.connected;
       }),
     );
-    return { connected: true, targetAuthorized };
+    return {
+      connected: true,
+      targetAuthorized,
+      connectionId: result.body.connectedAccountId ?? null,
+    };
   },
 );
 
@@ -566,6 +580,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     authWindow.opener = null;
     let navigated = false;
     let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
+    let expectedConnectionId: string | null = null;
     await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
@@ -589,6 +604,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
           [200],
         );
         signal.throwIfAborted();
+        expectedConnectionId = result.body.connectionId ?? null;
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;
       })(),
@@ -607,15 +623,31 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const accountCompleted = await customConnectorAccountMutationCompleted(
-      get(apiClient$),
-      args.id,
-      args.account,
-      initialAccountVersion,
-      signal,
-    );
+    const exactAccountCompleted = expectedConnectionId
+      ? await connectorAccountConnectionExists(
+          get(apiClient$),
+          { kind: "custom", customConnectorId: args.id },
+          expectedConnectionId,
+          signal,
+        )
+      : false;
+    const accountCompleted = exactAccountCompleted
+      ? true
+      : // Older API responses omit the exact ID. Remove this bounded account
+        // mutation fallback with the final rollout contraction in #28571.
+        await customConnectorAccountMutationCompleted(
+          get(apiClient$),
+          args.id,
+          args.account,
+          initialAccountVersion,
+          signal,
+        );
     if (!accountCompleted) {
-      return { connected: false, targetAuthorized: false };
+      return {
+        connected: false,
+        targetAuthorized: false,
+        connectionId: null,
+      };
     }
     set(bumpReload$);
     const connectors = await get(customConnectors$);
@@ -646,6 +678,11 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     return {
       connected: connector?.connected ?? false,
       targetAuthorized,
+      connectionId: exactAccountCompleted
+        ? expectedConnectionId
+        : args.account?.intent === "reconnect"
+          ? args.account.connectionId
+          : null,
     };
   },
 );

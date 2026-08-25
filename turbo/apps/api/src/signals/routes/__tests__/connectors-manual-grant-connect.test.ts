@@ -252,7 +252,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     expect(response.status).toBe(400);
   });
 
-  it("requires account labels for manual and no-auth additions", async () => {
+  it("allows unlabeled additions before optional post-connect naming", async () => {
     await seedFixture();
     const manualClient = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -271,11 +271,12 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         },
         headers: authHeaders(),
       }),
-      [400],
+      [200],
     );
-    expect(manual.body.error.message).toBe(
-      "Account display name is required when adding a manual connector account",
-    );
+    expect(manual.body).toMatchObject({
+      slug: "openai",
+      connectionStatus: "connected",
+    });
 
     const noAuth = await accept(
       noAuthClient.connect({
@@ -288,8 +289,8 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
       }),
       [400],
     );
-    expect(noAuth.body.error.message).toBe(
-      "Account display name is required when adding a no-auth connector account",
+    expect(noAuth.body.error.message).toContain(
+      "openai api-token auth method does not use a no-auth grant",
     );
 
     const list = await accept(
@@ -298,8 +299,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
       ).list({ headers: authHeaders() }),
       [200],
     );
-    expect(list.body.connectors).not.toContainEqual(
-      expect.objectContaining({ slug: "openai" }),
+    expect(list.body.connectors).toContainEqual(
+      expect.objectContaining({
+        slug: "openai",
+        connectionStatus: "connected",
+      }),
     );
   });
 

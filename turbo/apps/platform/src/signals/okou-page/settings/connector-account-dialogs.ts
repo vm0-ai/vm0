@@ -3,11 +3,13 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/cu
 import type {
   ConnectorAccountConnection,
   ConnectorAccountMutationIntent,
+  ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
 import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
 import {
   connectorAccountDeletionImpact$,
+  reloadConnectorAccountSummaries$,
   settingsConnectorAccounts,
 } from "./connector-accounts.ts";
 
@@ -20,7 +22,6 @@ export type ConnectorAccountConnectMode =
 
 export function connectorAccountMutationFor(
   mode: ConnectorAccountConnectMode | undefined,
-  accountLabel: string,
 ): ConnectorAccountMutationIntent | undefined {
   if (!mode) {
     return undefined;
@@ -28,8 +29,7 @@ export function connectorAccountMutationFor(
   if (mode.kind === "reconnect") {
     return { intent: "reconnect", connectionId: mode.account.id };
   }
-  const displayName = accountLabel.trim();
-  return displayName ? { intent: "add", displayName } : { intent: "add" };
+  return { intent: "add" };
 }
 
 interface BuiltinAccountConnectDialog {
@@ -51,7 +51,6 @@ const internalCustomAccountManager$ = state<CustomConnectorResponse | null>(
 );
 const internalCustomAccountConnectDialog$ =
   state<CustomAccountConnectDialog | null>(null);
-const internalConnectorAccountLabel$ = state("");
 
 export const builtinAccountManager$ = computed((get) => {
   return get(internalBuiltinAccountManager$);
@@ -68,20 +67,6 @@ export const customAccountManager$ = computed((get) => {
 export const customAccountConnectDialog$ = computed((get) => {
   return get(internalCustomAccountConnectDialog$);
 });
-
-export const connectorAccountLabel$ = computed((get) => {
-  return get(internalConnectorAccountLabel$);
-});
-
-export const setConnectorAccountLabel$ = command(
-  ({ set }, displayName: string) => {
-    set(internalConnectorAccountLabel$, displayName);
-  },
-);
-
-function modeDisplayName(mode: ConnectorAccountConnectMode): string {
-  return mode.kind === "reconnect" ? (mode.account.displayName ?? "") : "";
-}
 
 export const openBuiltinAccountManager$ = command(
   ({ set }, connector: PlatformConnectorCatalogStatusItem) => {
@@ -107,14 +92,12 @@ export const openBuiltinAccountConnectDialog$ = command(
   ) => {
     set(internalBuiltinAccountManager$, null);
     set(settingsConnectorAccounts.setTarget$, null);
-    set(internalConnectorAccountLabel$, modeDisplayName(mode));
     set(internalBuiltinAccountConnectDialog$, { connector, mode });
   },
 );
 
 export const closeBuiltinAccountConnectDialog$ = command(({ set }) => {
   set(internalBuiltinAccountConnectDialog$, null);
-  set(internalConnectorAccountLabel$, "");
 });
 
 export const openCustomAccountManager$ = command(
@@ -141,15 +124,71 @@ export const openCustomAccountConnectDialog$ = command(
   ) => {
     set(internalCustomAccountManager$, null);
     set(settingsConnectorAccounts.setTarget$, null);
-    set(internalConnectorAccountLabel$, modeDisplayName(mode));
     set(internalCustomAccountConnectDialog$, { connector, mode });
   },
 );
 
 export const closeCustomAccountConnectDialog$ = command(({ set }) => {
   set(internalCustomAccountConnectDialog$, null);
-  set(internalConnectorAccountLabel$, "");
 });
+
+interface ConnectorAccountNamePrompt {
+  readonly target: ConnectorAccountTarget;
+  readonly connectionId: string;
+  readonly connectorLabel: string;
+}
+
+const internalConnectorAccountNamePrompt$ =
+  state<ConnectorAccountNamePrompt | null>(null);
+const internalConnectorAccountNamePromptValue$ = state("");
+
+export const connectorAccountNamePrompt$ = computed((get) => {
+  return get(internalConnectorAccountNamePrompt$);
+});
+
+export const connectorAccountNamePromptValue$ = computed((get) => {
+  return get(internalConnectorAccountNamePromptValue$);
+});
+
+export const setConnectorAccountNamePromptValue$ = command(
+  ({ set }, value: string) => {
+    set(internalConnectorAccountNamePromptValue$, value);
+  },
+);
+
+export const openConnectorAccountNamePrompt$ = command(
+  ({ set }, prompt: ConnectorAccountNamePrompt) => {
+    set(internalConnectorAccountNamePromptValue$, "");
+    set(internalConnectorAccountNamePrompt$, prompt);
+  },
+);
+
+export const closeConnectorAccountNamePrompt$ = command(({ set }) => {
+  set(internalConnectorAccountNamePrompt$, null);
+  set(internalConnectorAccountNamePromptValue$, "");
+});
+
+export const finishConnectorAccountConnection$ = command(
+  (
+    { set },
+    args: Omit<ConnectorAccountNamePrompt, "connectionId"> & {
+      readonly connectionId: string | null;
+      readonly mode: ConnectorAccountConnectMode;
+    },
+  ) => {
+    set(reloadConnectorAccountSummaries$);
+    set(settingsConnectorAccounts.reload$);
+    if (args.mode.kind !== "add" || !args.connectionId) {
+      return;
+    }
+    set(internalConnectorAccountNamePromptValue$, "");
+    set(internalConnectorAccountNamePrompt$, {
+      target: args.target,
+      connectionId: args.connectionId,
+      connectorLabel: args.connectorLabel,
+    });
+  },
+);
 
 interface ConnectorAccountRenameDraft {
   readonly account: ConnectorAccountConnection;
@@ -247,7 +286,8 @@ export const resetConnectorAccountDialogs$ = command(({ set }) => {
   set(internalBuiltinAccountConnectDialog$, null);
   set(internalCustomAccountManager$, null);
   set(internalCustomAccountConnectDialog$, null);
-  set(internalConnectorAccountLabel$, "");
+  set(internalConnectorAccountNamePrompt$, null);
+  set(internalConnectorAccountNamePromptValue$, "");
   set(resetConnectorAccountManagerDrafts$);
   set(settingsConnectorAccounts.setTarget$, null);
 });

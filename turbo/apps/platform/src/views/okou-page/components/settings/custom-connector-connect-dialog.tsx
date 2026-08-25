@@ -36,14 +36,13 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import {
   connectorAccountMutationFor as accountMutationFor,
-  connectorAccountLabel$,
-  setConnectorAccountLabel$,
   type ConnectorAccountConnectMode,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 interface CustomConnectorConnectionSubmission {
   readonly connected: boolean;
   readonly targetAuthorized: boolean;
+  readonly connectionId: string | null;
 }
 
 function formValue(
@@ -265,15 +264,13 @@ interface CustomConnectorConnectDialogProps {
   readonly connector: CustomConnectorResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
-  readonly onSuccess?: () => void | Promise<void>;
+  readonly onSuccess?: (connectionId: string | null) => void | Promise<void>;
   readonly accountMode?: ConnectorAccountConnectMode;
 }
 
 function CustomConnectorConnectForm({
   connector,
   accountMode,
-  accountLabel,
-  setAccountLabel,
   values,
   setField,
   submitting,
@@ -283,8 +280,6 @@ function CustomConnectorConnectForm({
 }: {
   readonly connector: CustomConnectorResponse;
   readonly accountMode: ConnectorAccountConnectMode | undefined;
-  readonly accountLabel: string;
-  readonly setAccountLabel: (value: string) => void;
   readonly values: Readonly<Record<string, string>>;
   readonly setField: (args: {
     readonly key: string;
@@ -299,29 +294,6 @@ function CustomConnectorConnectForm({
   const oauth = connector.authMode === "oauth";
   return (
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-      {accountMode?.kind === "add" ? (
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="custom-connector-account-label"
-            className="text-sm font-medium text-foreground"
-          >
-            {t(($) => {
-              return $.connectors.accounts.accountName;
-            })}
-          </label>
-          <Input
-            id="custom-connector-account-label"
-            value={accountLabel}
-            onChange={(event) => {
-              setAccountLabel(event.target.value);
-            }}
-            placeholder={t(($) => {
-              return $.connectors.accounts.workPlaceholder;
-            })}
-            maxLength={255}
-          />
-        </div>
-      ) : null}
       {oauth ? (
         <p className="text-sm text-muted-foreground">
           {t(($) => {
@@ -361,9 +333,7 @@ export function CustomConnectorConnectDialog({
   const { submitting, submitDeclaredValues, submitOAuth } =
     useCustomConnectorConnectionSubmitters(agentId);
   const signal = useGet(pageSignal$);
-  const accountLabel = useGet(connectorAccountLabel$);
-  const setAccountLabel = useSet(setConnectorAccountLabel$);
-  const accountMutation = accountMutationFor(accountMode, accountLabel);
+  const accountMutation = accountMutationFor(accountMode);
   const oauth = connector.authMode === "oauth";
   const values = declaredValuesFromForm(connector, form.values);
   const submittedKeys = new Set(
@@ -381,9 +351,7 @@ export function CustomConnectorConnectDialog({
     return submittedKeys.has(key);
   });
   const canSubmit =
-    !submitting &&
-    (accountMode?.kind !== "add" || accountLabel.trim().length > 0) &&
-    (oauth || (values.length > 0 && hasRequiredValues));
+    !submitting && (oauth || (values.length > 0 && hasRequiredValues));
   const showSecretDescription =
     !oauth &&
     connector.fields.length === 1 &&
@@ -415,7 +383,7 @@ export function CustomConnectorConnectDialog({
           return;
         }
         if (result.targetAuthorized || accountMode) {
-          await onSuccess?.();
+          await onSuccess?.(result.connectionId);
         }
         close();
       })(),
@@ -464,8 +432,6 @@ export function CustomConnectorConnectDialog({
         <CustomConnectorConnectForm
           connector={connector}
           accountMode={accountMode}
-          accountLabel={accountLabel}
-          setAccountLabel={setAccountLabel}
           values={form.values}
           setField={setField}
           submitting={submitting}

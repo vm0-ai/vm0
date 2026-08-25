@@ -116,6 +116,12 @@ function buttonByAriaLabel(
   return button;
 }
 
+async function waitForButtonByAriaLabel(label: string): Promise<HTMLElement> {
+  return await waitFor(() => {
+    return buttonByAriaLabel(label);
+  });
+}
+
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
@@ -1404,17 +1410,20 @@ describe("connectors page", () => {
     });
   });
 
-  it("requires a label for feature-on manual account additions", async () => {
+  it("names the exact account after a feature-on manual account addition", async () => {
     mockConnectors([]);
+    const connectionId = crypto.randomUUID();
     let submittedAccount: unknown;
     let submittedAuthorizeAgent: true | undefined;
+    let renamedConnectionId: string | undefined;
+    let renamedDisplayName: string | null | undefined;
     context.mocks.api(
       connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         submittedAccount = body.account;
         submittedAuthorizeAgent = body.authorizeAgent;
         const connector = {
-          id: crypto.randomUUID(),
+          id: connectionId,
           slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
@@ -1431,35 +1440,56 @@ describe("connectors page", () => {
         return respond(200, connector);
       },
     );
+    context.mocks.api(
+      connectorAccountsContract.rename,
+      ({ body, params, respond }) => {
+        renamedConnectionId = params.connectionId;
+        renamedDisplayName = body.displayName;
+        return respond(200, {
+          id: connectionId,
+          target: { kind: "builtin", connectorSlug: "ahrefs" },
+          authMethod: "api-token",
+          displayName: body.displayName,
+          isDefault: true,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: [],
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:02.000Z",
+        });
+      },
+    );
     detachedSetupPage({
       context,
       path: "/connectors",
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      const candidate = connectorCardByLabel("Ahrefs");
-      expect(within(candidate).getByText("No accounts")).toBeInTheDocument();
-      return candidate;
-    });
-    click(buttonByText("Add", card));
+    click(await screen.findByLabelText("Connect Ahrefs"));
 
     const dialog = await screen.findByRole("dialog", { name: "Ahrefs" });
     await fill(
       within(dialog).getByPlaceholderText("your-ahrefs-api-token"),
       "secret-token",
     );
-    expect(buttonByText("Save", dialog)).toBeDisabled();
-    await fill(within(dialog).getByLabelText("Account name"), "Work");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
     click(buttonByText("Save", dialog));
 
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Ahrefs account",
+    });
+    expect(within(nameDialog).getByLabelText("Account name")).toHaveValue("");
+    await fill(within(nameDialog).getByLabelText("Account name"), "Work");
+    click(buttonByText("Save", nameDialog));
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Ahrefs" })).toBeNull();
+      expect(renamedConnectionId).toBe(connectionId);
+      expect(renamedDisplayName).toBe("Work");
     });
-    expect(submittedAccount).toStrictEqual({
-      intent: "add",
-      displayName: "Work",
-    });
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
     expect(submittedAuthorizeAgent).toBeUndefined();
   });
 
@@ -1530,14 +1560,11 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
+    await waitFor(() => {
       const candidate = connectorCardByLabel("GitHub");
-      expect(
-        within(candidate).getByText("101 accounts · Work 0"),
-      ).toBeInTheDocument();
-      return candidate;
+      expect(candidate).toHaveTextContent("101 accounts");
     });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
 
     const dialog = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
@@ -1636,10 +1663,7 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
@@ -1653,11 +1677,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(defaultConnectionId).toBe(personalAccount.id);
-      expect(
-        within(connectorCardByLabel("GitHub")).getByText(
-          "2 accounts · Personal",
-        ),
-      ).toBeInTheDocument();
+      expect(connectorCardByLabel("GitHub")).toHaveTextContent("2 accounts");
     });
   });
 
@@ -1707,10 +1727,7 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
@@ -1786,10 +1803,7 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const firstManager = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
@@ -1805,16 +1819,14 @@ describe("connectors page", () => {
       ).toBeNull();
     });
 
-    click(buttonByText("Manage", connectorCardByLabel("GitHub")));
-    const reopenedManager = await screen.findByRole("dialog", {
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
     resolveImpact();
-    await fill(
-      within(reopenedManager).getByPlaceholderText("Find accounts"),
-      "Work",
-    );
-    expect(within(reopenedManager).queryByText("Delete Work?")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByText("Delete Work?")).toBeNull();
+    });
   });
 
   it("renames and deletes an exact account after bounded impact", async () => {
@@ -1902,10 +1914,7 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const dialog = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
@@ -1927,18 +1936,17 @@ describe("connectors page", () => {
     });
     click(within(dialog).getByLabelText("Account actions"));
     click(menuItemByText("Delete"));
-    await waitFor(() => {
-      expect(
-        within(dialog).getByText(
-          "2 threads will return to default inheritance.",
-        ),
-      ).toBeInTheDocument();
+    const deleteDialog = await screen.findByRole("dialog", {
+      name: "Delete octocat?",
     });
-    click(buttonByText("Delete account", dialog));
+    expect(
+      within(deleteDialog).getByText(
+        "2 threads will return to default inheritance.",
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Delete account", deleteDialog));
     await waitFor(() => {
-      expect(
-        within(connectorCardByLabel("GitHub")).getByText("No accounts"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
   });
 
@@ -2038,10 +2046,7 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("Stripe");
-    });
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage Stripe accounts"));
     const manager = await screen.findByRole("dialog", {
       name: "Manage Stripe accounts",
     });
@@ -2081,6 +2086,11 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Stripe" })).toBeNull();
     });
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Name your Stripe account",
+      }),
+    ).toBeNull();
     expect(submittedAccount).toStrictEqual({
       intent: "reconnect",
       connectionId: personalAccount.id,
@@ -2932,11 +2942,7 @@ describe("connectors page", () => {
       "src",
       "https://icons.example.test/partner-steam.svg",
     );
-    click(buttonByText("Add", connectorCardByLabel("Partner Steam")));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Partner Steam",
-    });
-    click(buttonByText("Connect", dialog));
+    click(await screen.findByLabelText("Connect Partner Steam"));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
@@ -3335,7 +3341,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("requires a label for feature-on no-auth account additions", async () => {
+  it("prompts for an optional label after a feature-on no-auth account addition", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -3355,13 +3361,14 @@ describe("connectors page", () => {
     ]);
     let submittedAccount: unknown;
     let submittedAuthorizeAgent: true | undefined;
+    const connectionId = crypto.randomUUID();
     context.mocks.api(
       connectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         submittedAccount = body.account;
         submittedAuthorizeAgent = body.authorizeAgent;
         return respond(200, {
-          id: crypto.randomUUID(),
+          id: connectionId,
           slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
@@ -3382,23 +3389,13 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("Public Stripe");
-    });
-    click(buttonByText("Add", card));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Public Stripe",
-    });
-    expect(buttonByText("Enable Public Stripe", dialog)).toBeDisabled();
-    await fill(within(dialog).getByLabelText("Account name"), "Work");
-    click(buttonByText("Enable Public Stripe", dialog));
+    click(await screen.findByLabelText("Connect Public Stripe"));
 
-    await waitFor(() => {
-      expect(submittedAccount).toStrictEqual({
-        intent: "add",
-        displayName: "Work",
-      });
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Public Stripe account",
     });
+    click(buttonByText("Skip", nameDialog));
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
     expect(submittedAuthorizeAgent).toBeUndefined();
   });
 
@@ -3597,7 +3594,7 @@ describe("connectors page", () => {
     });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
-    click(buttonByText("Add", connectorCardByLabel("Stripe")));
+    click(await screen.findByLabelText("Connect Stripe"));
 
     const dialog = await screen.findByRole("dialog", { name: "Stripe" });
     const connectButton = buttonByText("Connect Stripe", dialog);
@@ -4261,7 +4258,7 @@ describe("connectors page", () => {
     });
 
     await fill(screen.getByPlaceholderText("Find connectors"), "aws");
-    click(buttonByText("Add", connectorCardByLabel("AWS")));
+    click(await screen.findByLabelText("Connect AWS"));
 
     const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
     expect(
@@ -4290,14 +4287,20 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("AWS connected")).toBeInTheDocument();
     });
+    click(
+      buttonByText(
+        "Skip",
+        await screen.findByRole("dialog", {
+          name: "Name your AWS account",
+        }),
+      ),
+    );
     expect(
       screen.queryByText("You've successfully connected with AWS!"),
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("AWS")).getByText(
-          "1 account · arn:aws:iam::000000000000:user/mock-aws",
-        ),
+        within(connectorCardByLabel("AWS")).getByText("Connected"),
       ).toBeInTheDocument();
     });
   });
@@ -4531,9 +4534,7 @@ describe("connectors page", () => {
       expect(
         within(card).queryByTestId("connector-card-agent-access"),
       ).not.toBeInTheDocument();
-      expect(
-        within(card).getByLabelText("Connect Acme Search"),
-      ).toBeInTheDocument();
+      expect(card).toHaveAccessibleName("Connect Acme Search");
     });
 
     click(screen.getByLabelText("More options"));
@@ -6172,7 +6173,7 @@ describe("connectors page", () => {
     { label: "HTTP", connector: customConnector({}) },
     { label: "MCP", connector: mcpCustomConnector({ connected: false }) },
   ])(
-    "adds a labeled custom $label account without changing connector grants",
+    "adds a custom $label account and offers optional post-connect naming",
     async ({ connector: initialConnector }) => {
       let connector: CustomConnectorResponse = initialConnector;
       let account: ConnectorAccountConnection | null = null;
@@ -6227,7 +6228,10 @@ describe("connectors page", () => {
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
           };
-          return respond(200, connector);
+          return respond(200, {
+            ...connector,
+            connectedAccountId: account.id,
+          });
         },
       );
       context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
@@ -6243,31 +6247,26 @@ describe("connectors page", () => {
         },
       });
 
-      const card = await waitFor(() => {
-        const candidate = connectorCardByLabel(connector.displayName);
-        expect(within(candidate).getByText("No accounts")).toBeInTheDocument();
-        return candidate;
-      });
-      click(buttonByText("Add", card));
+      click(await screen.findByLabelText(`Connect ${connector.displayName}`));
       const dialog = await screen.findByRole("dialog", {
         name: `Connect ${connector.displayName}`,
       });
       await fill(within(dialog).getByLabelText("Secret"), "custom-secret");
-      expect(buttonByText("Save", dialog)).toBeDisabled();
-      await fill(within(dialog).getByLabelText("Account name"), "Work");
+      expect(buttonByText("Save", dialog)).toBeEnabled();
       click(buttonByText("Save", dialog));
 
+      const nameDialog = await screen.findByRole("dialog", {
+        name: `Name your ${connector.displayName} account`,
+      });
+      click(buttonByText("Skip", nameDialog));
       await waitFor(() => {
         expect(
           within(connectorCardByLabel(connector.displayName)).getByText(
-            "1 account · Work",
+            "Connected",
           ),
         ).toBeInTheDocument();
       });
-      expect(submittedAccount).toStrictEqual({
-        intent: "add",
-        displayName: "Work",
-      });
+      expect(submittedAccount).toStrictEqual({ intent: "add" });
       expect(grantMutationCount).toBe(0);
     },
   );
@@ -6329,15 +6328,19 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel(connector.displayName);
+    click(
+      await waitForButtonByAriaLabel(
+        `Manage ${connector.displayName} accounts`,
+      ),
+    );
+    const manager = await screen.findByRole("dialog", {
+      name: `Manage ${connector.displayName} accounts`,
     });
-    click(buttonByText("Add", card));
+    click(buttonByText("Add account", manager));
     const dialog = await screen.findByRole("dialog", {
       name: `Connect ${connector.displayName}`,
     });
     expect(dialog).not.toHaveTextContent("Configured");
-    await fill(within(dialog).getByLabelText("Account name"), "Work");
     await fill(within(dialog).getByLabelText("Secret"), "account-secret");
     expect(buttonByText("Save", dialog)).toBeDisabled();
     await fill(within(dialog).getByLabelText("Subdomain"), "work");
@@ -6401,16 +6404,28 @@ describe("connectors page", () => {
         nextCursor: null,
       });
     });
+    let submittedAccount: unknown;
+    context.mocks.api(
+      customConnectorValuesContract.set,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        return respond(200, {
+          ...connector,
+          connectedAccountId: existingAccount.id,
+        });
+      },
+    );
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel(connector.displayName);
-    });
-    click(buttonByText("Manage", card));
+    click(
+      await waitForButtonByAriaLabel(
+        `Manage ${connector.displayName} accounts`,
+      ),
+    );
     const manager = await screen.findByRole("dialog", {
       name: `Manage ${connector.displayName} accounts`,
     });
@@ -6422,6 +6437,24 @@ describe("connectors page", () => {
     expect(dialog).not.toHaveTextContent("Configured");
     await fill(within(dialog).getByLabelText("Secret"), "new-secret");
     expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: `Connect ${connector.displayName}`,
+        }),
+      ).toBeNull();
+    });
+    expect(
+      screen.queryByRole("dialog", {
+        name: `Name your ${connector.displayName} account`,
+      }),
+    ).toBeNull();
+    expect(submittedAccount).toStrictEqual({
+      intent: "reconnect",
+      connectionId: existingAccount.id,
+    });
   });
 
   it("keeps MCP account connection actions disabled with the MCP feature off", async () => {
@@ -6469,11 +6502,7 @@ describe("connectors page", () => {
       },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel("Acme MCP");
-    });
-    expect(buttonByText("Add", card)).toBeDisabled();
-    click(buttonByText("Manage", card));
+    click(await waitForButtonByAriaLabel("Manage Acme MCP accounts"));
 
     const manager = await screen.findByRole("dialog", {
       name: "Manage Acme MCP accounts",
@@ -6484,7 +6513,7 @@ describe("connectors page", () => {
     expect(menuItemByText("Rename")).toBeInTheDocument();
   });
 
-  it("confirms a labeled custom OAuth addition from account summary growth", async () => {
+  it("confirms an exact custom OAuth addition and offers optional naming", async () => {
     let connector: CustomConnectorHttpResponse = customConnector({
       fields: [],
       headerInjections: [
@@ -6507,6 +6536,7 @@ describe("connectors page", () => {
       missingRequiredFields: ["oauth"],
     });
     let account: ConnectorAccountConnection | null = null;
+    const connectionId = crypto.randomUUID();
     let submittedAccount: unknown;
     let grantMutationCount = 0;
     const authWindow = createMockAuthWindow();
@@ -6538,7 +6568,7 @@ describe("connectors page", () => {
           missingRequiredFields: [],
         };
         account = {
-          id: crypto.randomUUID(),
+          id: connectionId,
           target: { kind: "custom", customConnectorId: connector.id },
           authMethod: "oauth",
           displayName:
@@ -6559,7 +6589,18 @@ describe("connectors page", () => {
         authWindow.close();
         return respond(200, {
           authorizationUrl: "https://oauth.acme.test/authorize?state=test",
+          connectionId,
         });
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        return params.connectionId === account?.id && account
+          ? respond(200, account)
+          : respond(404, {
+              error: { message: "Account not found", code: "NOT_FOUND" },
+            });
       },
     );
     context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
@@ -6572,28 +6613,20 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
-      return connectorCardByLabel(connector.displayName);
-    });
-    click(buttonByText("Add", card));
-    const dialog = await screen.findByRole("dialog", {
-      name: `Connect ${connector.displayName}`,
-    });
-    expect(buttonByText("Continue", dialog)).toBeDisabled();
-    await fill(within(dialog).getByLabelText("Account name"), "Work");
-    click(buttonByText("Continue", dialog));
+    click(await screen.findByLabelText(`Connect ${connector.displayName}`));
 
+    const nameDialog = await screen.findByRole("dialog", {
+      name: `Name your ${connector.displayName} account`,
+    });
+    click(buttonByText("Skip", nameDialog));
     await waitFor(() => {
       expect(
         within(connectorCardByLabel(connector.displayName)).getByText(
-          "1 account · Work",
+          "Connected",
         ),
       ).toBeInTheDocument();
     });
-    expect(submittedAccount).toStrictEqual({
-      intent: "add",
-      displayName: "Work",
-    });
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
     expect(grantMutationCount).toBe(0);
   });
 

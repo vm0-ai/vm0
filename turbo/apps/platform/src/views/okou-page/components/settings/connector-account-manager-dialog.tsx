@@ -11,6 +11,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -222,37 +223,57 @@ function AccountList({
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
+  const renameDraft = useGet(connectorAccountRenameDraft$);
   if (loadable.state === "hasError") {
-    return t(($) => {
-      return $.connectors.accounts.accountsUnavailable;
-    });
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+      </p>
+    );
   }
   if (loadable.state === "loading") {
-    return t(($) => {
-      return $.connectors.accounts.loading;
-    });
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.accounts.loading;
+        })}
+      </p>
+    );
   }
   if (!loadable.data.available) {
-    return t(($) => {
-      return $.connectors.accounts.accountsUnavailable;
-    });
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.accounts.accountsUnavailable;
+        })}
+      </p>
+    );
   }
   if (loadable.data.connections.length === 0) {
-    return t(($) => {
-      return $.connectors.accounts.noAccountsFound;
-    });
-  }
-  return loadable.data.connections.map((account) => {
     return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.accounts.noAccountsFound;
+        })}
+      </p>
+    );
+  }
+  return loadable.data.connections.flatMap((account) => {
+    return [
       <AccountRow
-        key={account.id}
+        key={`${account.id}-row`}
         target={target}
         account={account}
         connectorLabel={connectorLabel}
         connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
-      />
-    );
+      />,
+      renameDraft?.account.id === account.id ? (
+        <RenameAccountForm key={`${account.id}-rename`} target={target} />
+      ) : null,
+    ];
   });
 }
 
@@ -281,7 +302,10 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
     );
   };
   return (
-    <form className="rounded-lg border border-border p-3" onSubmit={submit}>
+    <form
+      className="border-b border-border bg-muted/30 px-4 py-3"
+      onSubmit={submit}
+    >
       <label className="text-sm font-medium" htmlFor="account-rename">
         {t(($) => {
           return $.connectors.accounts.accountName;
@@ -338,50 +362,59 @@ function DeleteAccountConfirmation({
     );
   };
   return (
-    <div className="rounded-lg border border-destructive/50 p-3">
-      <p className="text-sm font-medium">
-        {t(
-          ($) => {
-            return $.connectors.accounts.deleteTitle;
-          },
-          {
-            account: connectorAccountEffectiveLabel(
-              draft.account,
-              connectorLabel,
-            ),
-          },
-        )}
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {draft.explicitSelectionCount === 0
-          ? t(($) => {
-              return $.connectors.accounts.deleteDescription;
-            })
-          : t(
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        return !open && clear();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {t(
               ($) => {
-                return $.connectors.accounts.deleteDescriptionWithCount;
+                return $.connectors.accounts.deleteTitle;
               },
-              { value: draft.explicitSelectionCount },
+              {
+                account: connectorAccountEffectiveLabel(
+                  draft.account,
+                  connectorLabel,
+                ),
+              },
             )}
-      </p>
-      <DialogFooter className="mt-3">
-        <Button type="button" variant="outline" onClick={clear}>
-          {t(($) => {
-            return $.connectors.actions.cancel;
-          })}
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={deleteLoadable.state === "loading"}
-          onClick={remove}
-        >
-          {t(($) => {
-            return $.connectors.accounts.deleteAccount;
-          })}
-        </Button>
-      </DialogFooter>
-    </div>
+          </DialogTitle>
+          <DialogDescription>
+            {draft.explicitSelectionCount === 0
+              ? t(($) => {
+                  return $.connectors.accounts.deleteDescription;
+                })
+              : t(
+                  ($) => {
+                    return $.connectors.accounts.deleteDescriptionWithCount;
+                  },
+                  { value: draft.explicitSelectionCount },
+                )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={clear}>
+            {t(($) => {
+              return $.connectors.actions.cancel;
+            })}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={deleteLoadable.state === "loading"}
+            onClick={remove}
+          >
+            {t(($) => {
+              return $.connectors.accounts.deleteAccount;
+            })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -407,6 +440,10 @@ export function ConnectorAccountManagerDialog({
     accountsLoadable.state === "hasData"
       ? accountsLoadable.data.nextCursor
       : null;
+  const showSearch =
+    search.length > 0 ||
+    (accountsLoadable.state === "hasData" &&
+      (accountsLoadable.data.connections.length > 1 || nextCursor !== null));
   const leave = (next: () => void) => {
     resetDrafts();
     next();
@@ -418,48 +455,56 @@ export function ConnectorAccountManagerDialog({
         return !open && leave(onClose);
       }}
     >
-      <DialogContent className="max-w-xl" aria-describedby={undefined}>
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            {icon}
-            <DialogTitle>
-              {t(
-                ($) => {
-                  return $.connectors.accounts.managerTitle;
-                },
-                { connector: connectorLabel },
-              )}
-            </DialogTitle>
+      <DialogContent
+        className="max-w-xl gap-0 overflow-hidden p-0"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="border-b border-border px-6 py-5">
+          <div className="flex items-center justify-between gap-4 pr-6">
+            <div className="flex min-w-0 items-center gap-3">
+              {icon}
+              <DialogTitle className="truncate">
+                {t(
+                  ($) => {
+                    return $.connectors.accounts.managerTitle;
+                  },
+                  { connector: connectorLabel },
+                )}
+              </DialogTitle>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                !connectionActionsEnabled ||
+                accountsLoadable.state === "hasError" ||
+                (accountsLoadable.state === "hasData" &&
+                  !accountsLoadable.data.available)
+              }
+              onClick={() => {
+                return leave(onAdd);
+              }}
+            >
+              {t(($) => {
+                return $.connectors.accounts.addAccount;
+              })}
+            </Button>
           </div>
         </DialogHeader>
-        <div className="flex items-center gap-2">
-          <Input
-            value={search}
-            onChange={(event) => {
-              return setSearch(event.target.value);
-            }}
-            placeholder={t(($) => {
-              return $.connectors.accounts.find;
-            })}
-          />
-          <Button
-            type="button"
-            disabled={
-              !connectionActionsEnabled ||
-              accountsLoadable.state === "hasError" ||
-              (accountsLoadable.state === "hasData" &&
-                !accountsLoadable.data.available)
-            }
-            onClick={() => {
-              return leave(onAdd);
-            }}
-          >
-            {t(($) => {
-              return $.connectors.accounts.addAccount;
-            })}
-          </Button>
-        </div>
-        <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border p-4 text-sm text-muted-foreground">
+        {showSearch ? (
+          <div className="border-b border-border px-6 py-3">
+            <Input
+              value={search}
+              onChange={(event) => {
+                return setSearch(event.target.value);
+              }}
+              placeholder={t(($) => {
+                return $.connectors.accounts.find;
+              })}
+            />
+          </div>
+        ) : null}
+        <div className="max-h-[min(60vh,420px)] overflow-y-auto text-sm text-muted-foreground">
           <AccountList
             loadable={accountsLoadable}
             target={target}
@@ -473,24 +518,26 @@ export function ConnectorAccountManagerDialog({
           />
         </div>
         {nextCursor ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={loadMoreLoadable.state === "loading"}
-            onClick={() => {
-              return detach(loadMore(signal), Reason.DomCallback);
-            }}
-          >
-            {loadMoreLoadable.state === "loading"
-              ? t(($) => {
-                  return $.connectors.accounts.loadingMore;
-                })
-              : t(($) => {
-                  return $.connectors.accounts.loadMore;
-                })}
-          </Button>
+          <div className="border-t border-border px-6 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={loadMoreLoadable.state === "loading"}
+              onClick={() => {
+                return detach(loadMore(signal), Reason.DomCallback);
+              }}
+            >
+              {loadMoreLoadable.state === "loading"
+                ? t(($) => {
+                    return $.connectors.accounts.loadingMore;
+                  })
+                : t(($) => {
+                    return $.connectors.accounts.loadMore;
+                  })}
+            </Button>
+          </div>
         ) : null}
-        <RenameAccountForm target={target} />
         <DeleteAccountConfirmation
           target={target}
           connectorLabel={connectorLabel}

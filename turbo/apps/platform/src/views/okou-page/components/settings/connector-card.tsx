@@ -67,8 +67,8 @@ type AccountsConnectorCardProps = {
   readonly summary: ConnectorAccountSummary | undefined;
   readonly summaryStatus: ConnectorAccountSummaryStatus;
   readonly busy: boolean;
+  readonly connect: ConnectorConnectHandlers;
   readonly manageAccess?: ReactNode;
-  readonly onAdd: () => void;
   readonly onManage: () => void;
 };
 
@@ -442,14 +442,54 @@ function AccountsConnectorCard({
   summary,
   summaryStatus,
   busy,
+  connect,
   manageAccess,
-  onAdd,
   onManage,
 }: AccountsConnectorCardProps) {
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
+  if (summaryStatus === "ready" && accountCount === 0) {
+    return (
+      <CatalogConnectorCard
+        variant="catalog"
+        connector={connector}
+        busy={busy}
+        connect={connect}
+      />
+    );
+  }
+  const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
+  const manage = () => {
+    if (canManage) {
+      onManage();
+    }
+  };
   return (
-    <div className="zero-card flex flex-col">
+    <div
+      role={canManage ? "button" : undefined}
+      tabIndex={canManage ? 0 : undefined}
+      aria-label={
+        canManage
+          ? t(
+              ($) => {
+                return $.connectors.accounts.managerTitle;
+              },
+              { connector: connector.label },
+            )
+          : undefined
+      }
+      className={cn(
+        "zero-card flex flex-col text-left",
+        canManage && "cursor-pointer",
+      )}
+      onClick={manage}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          manage();
+        }
+      }}
+    >
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           <ConnectorIcon icon={connector.icon} size={20} />
@@ -462,37 +502,44 @@ function AccountsConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
-        <ConnectorAccountSummaryText
-          summary={summary}
-          status={summaryStatus}
-          connectorLabel={connector.label}
-          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-        />
-        {manageAccess}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          disabled={busy}
-          onClick={onAdd}
+        {summaryStatus === "ready" ? (
+          <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-xs text-muted-foreground">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+            <span>
+              {t(($) => {
+                return $.connectors.accounts.connected;
+              })}
+            </span>
+            {accountCount > 1 ? (
+              <span>
+                ·{" "}
+                {t(
+                  ($) => {
+                    return $.connectors.accounts.summaryMany;
+                  },
+                  { value: accountCount },
+                )}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          <ConnectorAccountSummaryText
+            summary={summary}
+            status={summaryStatus}
+            connectorLabel={connector.label}
+            className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+          />
+        )}
+        <div
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+          }}
         >
-          {t(($) => {
-            return $.connectors.accounts.add;
-          })}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          disabled={busy || accountCount === 0}
-          onClick={onManage}
-        >
-          {t(($) => {
-            return $.connectors.accounts.manage;
-          })}
-        </Button>
+          {manageAccess}
+        </div>
       </div>
     </div>
   );

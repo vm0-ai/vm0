@@ -88,6 +88,20 @@ type ConnectorOAuthStateStatus =
       readonly redirectUri: string;
     };
 
+export async function insertConnectorOAuthState(
+  db: Db,
+  values: typeof connectorOauthStates.$inferInsert,
+): Promise<string> {
+  const [oauthState] = await db
+    .insert(connectorOauthStates)
+    .values(values)
+    .returning({ id: connectorOauthStates.id });
+  if (!oauthState) {
+    throw new Error("Failed to create connector OAuth state");
+  }
+  return oauthState.id;
+}
+
 function oauthStateTargetConditions(
   target: OAuthStateTarget,
 ): readonly [SQL, SQL] {

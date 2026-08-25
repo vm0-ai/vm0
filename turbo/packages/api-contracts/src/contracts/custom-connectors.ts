@@ -290,6 +290,7 @@ export const startCustomConnectorOAuth2BodySchema = z
 
 export const startCustomConnectorOAuth2ResponseSchema = z.object({
   authorizationUrl: z.string().url(),
+  connectionId: z.uuid().optional(),
 });
 
 export const customConnectorValueInputSchema = z.object({
@@ -308,6 +309,18 @@ export const setCustomConnectorValuesBodySchema = z.object({
 export type SetCustomConnectorValuesBody = z.infer<
   typeof setCustomConnectorValuesBodySchema
 >;
+
+const connectedAccountResponseShape = {
+  connectedAccountId: z.uuid().optional(),
+};
+
+export const setCustomConnectorValuesResponseSchema = z.discriminatedUnion(
+  "kind",
+  [
+    customConnectorHttpResponseSchema.extend(connectedAccountResponseShape),
+    customConnectorMcpResponseSchema.extend(connectedAccountResponseShape),
+  ],
+);
 
 export const customConnectorProposalSchema = z.object({
   operation: z.enum(["create", "update"]),
@@ -449,7 +462,7 @@ export const customConnectorValuesContract = c.router({
     pathParams: z.object({ id: z.string().uuid() }),
     body: setCustomConnectorValuesBodySchema,
     responses: {
-      200: customConnectorResponseSchema,
+      200: setCustomConnectorValuesResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
