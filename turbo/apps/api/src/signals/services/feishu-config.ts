@@ -3,6 +3,7 @@ import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installatio
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 
+import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -105,7 +106,7 @@ export function feishuOAuthAppCallbackUrl(): string {
 export function feishuOAuthConnectUrl(state: string): string {
   const url = new URL(
     "/api/feishu/oauth/connect",
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? env("VM0_WEB_URL"),
   );
   url.searchParams.set("state", state);
   return url.toString();

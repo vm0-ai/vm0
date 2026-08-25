@@ -55,6 +55,7 @@ const SCHEMA = {
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to VM0_WEB_URL.
+  OKOU_API_BACKEND_URL: z.url().optional(),
   VM0_API_BACKEND_URL: z.url().optional(),
   FEISHU_CALLBACK_BASE_URL: z.url(),
   VM0_WEB_URL: z.url(),

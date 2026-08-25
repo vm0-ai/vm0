@@ -17,7 +17,8 @@ import {
   workflowAutomations,
   workflows,
 } from "@okouai/db/schema/workflow";
-import { env, optionalEnv } from "../../lib/env";
+import { apiBackendUrl } from "../../lib/api-backend-url";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
@@ -389,7 +390,7 @@ function calendarEventsUrl(calendarId: string): string {
 }
 
 function googleCalendarWebhookUrl(): string {
-  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
+  const baseUrl = apiBackendUrl() ?? env("VM0_WEB_URL");
   return new URL("/api/webhooks/google-calendar", baseUrl).toString();
 }
 

@@ -5,6 +5,7 @@ import {
   appUrlForPublicBrand,
 } from "@okouai/core/public-brand";
 
+import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
 
 export const MORNING_BRIEF_PREHEADER =
@@ -36,7 +37,7 @@ export function buildMorningBriefUnsubscribeUrl(
   publicBrand: PublicBrand = "vm0",
 ): string {
   const apiUrl = apiUrlForPublicBrand(
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? env("VM0_WEB_URL"),
     publicBrand,
   );
   return `${apiUrl}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
