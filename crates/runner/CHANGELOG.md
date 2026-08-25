@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.173.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.4...runner-rs-v0.173.5) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api backend url aliases ([#29369](https://github.com/vm0-ai/vm0/issues/29369)) ([84295ac](https://github.com/vm0-ai/vm0/commit/84295ac0c3d66185b90d59fc6afa3f79903aac9a))
+
 ## [0.173.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.3...runner-rs-v0.173.4) (2026-08-25)
 
 

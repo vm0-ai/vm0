@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.79.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.78.0...guest-agent-v0.79.0) (2026-08-25)
+
+
+### Features
+
+* materialize provider tool activity ([#29372](https://github.com/vm0-ai/vm0/issues/29372)) ([0383cb8](https://github.com/vm0-ai/vm0/commit/0383cb83c9d370a730c97dade61994165ab69023))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api backend url aliases ([#29369](https://github.com/vm0-ai/vm0/issues/29369)) ([84295ac](https://github.com/vm0-ai/vm0/commit/84295ac0c3d66185b90d59fc6afa3f79903aac9a))
+
 ## [0.78.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.2...guest-agent-v0.78.0) (2026-08-25)
 
 
