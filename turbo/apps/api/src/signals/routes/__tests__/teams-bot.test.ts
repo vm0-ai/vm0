@@ -2035,7 +2035,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         id: activityIds.switchSubmit,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
+          okouTeamsAction: "switch_agent",
           selectedAgentId: switchAgent.agentId,
         },
       }),
@@ -2047,7 +2047,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     expect(switchSubmitBody).toMatchObject({
       activity: {
         value: {
-          zeroTeamsAction: "switch_agent",
+          okouTeamsAction: "switch_agent",
           selectedAgentId: switchAgent.agentId,
         },
       },
@@ -2059,7 +2059,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         id: activityIds.modelSubmit,
         text: "",
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "claude-sonnet-5",
         },
       }),
@@ -2071,7 +2071,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     expect(modelSubmitBody).toMatchObject({
       activity: {
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "claude-sonnet-5",
         },
       },
@@ -2133,7 +2133,7 @@ describe("POST /api/webhooks/teams/bot", () => {
               {
                 type: "Action.Submit",
                 title: "Switch",
-                data: { zeroTeamsAction: "switch_agent" },
+                data: { okouTeamsAction: "switch_agent" },
               },
             ],
           },
@@ -2165,7 +2165,7 @@ describe("POST /api/webhooks/teams/bot", () => {
               {
                 type: "Action.Submit",
                 title: "Switch",
-                data: { zeroTeamsAction: "switch_model" },
+                data: { okouTeamsAction: "switch_model" },
               },
             ],
           },
@@ -2321,7 +2321,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         id: activityIds.switchAgent,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
+          okouTeamsAction: "switch_agent",
           selectedAgentId: supportAgent.agentId,
         },
       }),
@@ -2362,7 +2362,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         id: activityIds.switchModel,
         text: "",
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "gpt-5.6-sol",
         },
       }),
@@ -2599,7 +2599,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         id: switchActivityId,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
+          okouTeamsAction: "switch_agent",
           selectedAgentId: supportAgent.agentId,
         },
       }),

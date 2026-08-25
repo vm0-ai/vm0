@@ -86,7 +86,7 @@ const TEAMS_SUPPORTED_COMMANDS_TEXT =
   "`help`, `connect`, `disconnect`, `switch`, `model`";
 const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
 const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
-const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
+const TEAMS_CARD_ACTION_KEY = "okouTeamsAction";
 const TEAMS_AGENT_PICKER_ACTION = "switch_agent";
 const TEAMS_MODEL_PICKER_ACTION = "switch_model";
 const TEAMS_AGENT_PICKER_INPUT_ID = "selectedAgentId";
