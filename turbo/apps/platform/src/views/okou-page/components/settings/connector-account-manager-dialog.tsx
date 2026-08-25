@@ -25,6 +25,8 @@ import {
 import { connectorAccountEffectiveLabel } from "../../../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
+  connectorAccountSummaryByTarget$,
+  connectorAccountTargetKey,
   deleteConnectorAccount$,
   renameConnectorAccount$,
   setDefaultConnectorAccount$,
@@ -220,11 +222,13 @@ function AccountRow({
 
 function AccountList({
   loadable,
+  defaultConnectionId,
   target,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
+  readonly defaultConnectionId: string | null;
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
@@ -267,20 +271,58 @@ function AccountList({
       </p>
     );
   }
-  return loadable.data.connections.flatMap((account) => {
-    return [
+  return loadable.data.connections
+    .filter((account) => {
+      return account.id !== defaultConnectionId;
+    })
+    .flatMap((account) => {
+      return [
+        <AccountRow
+          key={`${account.id}-row`}
+          target={target}
+          account={account}
+          connectionActionsEnabled={connectionActionsEnabled}
+          onReconnect={onReconnect}
+        />,
+        renameDraft?.account.id === account.id ? (
+          <RenameAccountForm key={`${account.id}-rename`} target={target} />
+        ) : null,
+      ];
+    });
+}
+
+function DefaultAccount({
+  target,
+  account,
+  connectionActionsEnabled,
+  onReconnect,
+}: {
+  readonly target: ConnectorAccountTarget;
+  readonly account: ConnectorAccountConnection;
+  readonly connectionActionsEnabled: boolean;
+  readonly onReconnect: (account: ConnectorAccountConnection) => void;
+}) {
+  const { t } = useTranslation();
+  const renameDraft = useGet(connectorAccountRenameDraft$);
+  return (
+    <div
+      role="group"
+      aria-label={t(($) => {
+        return $.connectors.accounts.default;
+      })}
+      className="border-b border-border bg-muted/20 text-sm text-muted-foreground"
+    >
       <AccountRow
-        key={`${account.id}-row`}
         target={target}
         account={account}
         connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
-      />,
-      renameDraft?.account.id === account.id ? (
-        <RenameAccountForm key={`${account.id}-rename`} target={target} />
-      ) : null,
-    ];
-  });
+      />
+      {renameDraft?.account.id === account.id ? (
+        <RenameAccountForm target={target} />
+      ) : null}
+    </div>
+  );
 }
 
 function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
@@ -427,6 +469,29 @@ function DeleteAccountConfirmation({
   );
 }
 
+function ConnectorAccountSearch({
+  value,
+  onChange,
+}: {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="border-b border-border px-6 py-3">
+      <Input
+        value={value}
+        onChange={(event) => {
+          return onChange(event.target.value);
+        }}
+        placeholder={t(($) => {
+          return $.connectors.accounts.find;
+        })}
+      />
+    </div>
+  );
+}
+
 export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
@@ -438,6 +503,7 @@ export function ConnectorAccountManagerDialog({
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
   const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
+  const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
   const setSearch = useSet(settingsConnectorAccounts.setSearch$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
@@ -449,6 +515,11 @@ export function ConnectorAccountManagerDialog({
     accountsLoadable.state === "hasData"
       ? accountsLoadable.data.nextCursor
       : null;
+  const defaultConnection =
+    summariesLoadable.state === "hasData"
+      ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
+          ?.defaultConnection ?? null)
+      : null;
   const showSearch =
     search.length > 0 ||
     (accountsLoadable.state === "hasData" &&
@@ -457,6 +528,11 @@ export function ConnectorAccountManagerDialog({
   const leave = (next: () => void) => {
     resetDrafts();
     next();
+  };
+  const reconnect = (account: ConnectorAccountConnection) => {
+    leave(() => {
+      return onReconnect(account);
+    });
   };
   return (
     <Dialog
@@ -497,28 +573,23 @@ export function ConnectorAccountManagerDialog({
           </div>
         </DialogHeader>
         {showSearch ? (
-          <div className="border-b border-border px-6 py-3">
-            <Input
-              value={search}
-              onChange={(event) => {
-                return setSearch(event.target.value);
-              }}
-              placeholder={t(($) => {
-                return $.connectors.accounts.find;
-              })}
-            />
-          </div>
+          <ConnectorAccountSearch value={search} onChange={setSearch} />
+        ) : null}
+        {defaultConnection ? (
+          <DefaultAccount
+            target={target}
+            account={defaultConnection}
+            connectionActionsEnabled={connectionActionsEnabled}
+            onReconnect={reconnect}
+          />
         ) : null}
         <div className="max-h-[min(60vh,420px)] overflow-y-auto text-sm text-muted-foreground">
           <AccountList
             loadable={accountsLoadable}
+            defaultConnectionId={defaultConnection?.id ?? null}
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
-            onReconnect={(account) => {
-              leave(() => {
-                return onReconnect(account);
-              });
-            }}
+            onReconnect={reconnect}
           />
         </div>
         {nextCursor ? (

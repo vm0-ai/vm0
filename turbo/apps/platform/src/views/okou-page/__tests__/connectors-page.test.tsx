@@ -1501,28 +1501,34 @@ describe("connectors page", () => {
       throw new Error("Expected GitHub fixture connector");
     }
     const accounts = Array.from({ length: 101 }, (_, index) => {
+      const isDefault = index === 0;
       return {
-        id:
-          index === 0
-            ? "00000000-0000-4000-a000-000000000001"
-            : crypto.randomUUID(),
+        id: isDefault
+          ? "00000000-0000-4000-a000-000000000001"
+          : crypto.randomUUID(),
         target: { kind: "builtin" as const, connectorSlug: "github" },
         authMethod: "oauth",
-        displayName: index === 0 ? null : `Work ${index}`,
-        isDefault: index === 0,
+        displayName: isDefault ? null : `Work ${index}`,
+        isDefault,
         externalId: null,
-        externalUsername: index === 0 ? null : `octocat-${index}`,
+        externalUsername: isDefault ? null : `octocat-${index}`,
         externalEmail: null,
         oauthScopes: [],
-        connectionStatus: "connected" as const,
-        reconnectReason: null,
+        connectionStatus: isDefault
+          ? ("reconnect-required" as const)
+          : ("connected" as const),
+        reconnectReason: isDefault
+          ? ("authorization_expired_or_revoked" as const)
+          : null,
         tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       } satisfies ConnectorAccountConnection;
-    });
+    }).reverse();
     context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
-      const [defaultAccount] = accounts;
+      const defaultAccount = accounts.find((account) => {
+        return account.isDefault;
+      });
       if (!defaultAccount) {
         throw new Error("Expected a default account fixture");
       }
@@ -1531,7 +1537,7 @@ describe("connectors page", () => {
           {
             target: { kind: "builtin", connectorSlug: "github" },
             accountCount: accounts.length,
-            attentionCount: 0,
+            attentionCount: 1,
             defaultConnection: defaultAccount,
           },
         ],
@@ -1592,11 +1598,29 @@ describe("connectors page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "GitHub",
     });
-    expect(within(dialog).getByText("Account #00000000")).toBeInTheDocument();
+    const defaultGroup = within(dialog).getByRole("group", {
+      name: "Default",
+    });
+    expect(
+      within(defaultGroup).getByText("Account #00000000"),
+    ).toBeInTheDocument();
+    expect(
+      within(defaultGroup).getByText("Reconnect required"),
+    ).toBeInTheDocument();
+    expect(
+      within(defaultGroup).getByLabelText("Account actions"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     expect(within(dialog).queryByText("Work 50")).toBeNull();
     click(buttonByText("Load more", dialog));
     await waitFor(() => {
       expect(within(dialog).getByText("Work 50")).toBeInTheDocument();
+    });
+    click(buttonByText("Load more", dialog));
+    await waitFor(() => {
+      expect(queryButtonByText("Load more", dialog)).toBeNull();
+      expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
     await fill(
       within(dialog).getByPlaceholderText("Find accounts"),
@@ -1604,7 +1628,15 @@ describe("connectors page", () => {
     );
     await waitFor(() => {
       expect(within(dialog).getByText("Work 100")).toBeInTheDocument();
-      expect(within(dialog).queryByText("Account #00000000")).toBeNull();
+      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    });
+    await fill(
+      within(dialog).getByPlaceholderText("Find accounts"),
+      "No matching account",
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
   });
 
@@ -1690,6 +1722,11 @@ describe("connectors page", () => {
     const manager = await screen.findByRole("dialog", {
       name: "GitHub",
     });
+    expect(
+      within(within(manager).getByRole("group", { name: "Default" })).getByText(
+        "Work",
+      ),
+    ).toBeInTheDocument();
     expect(within(manager).queryByPlaceholderText("Find accounts")).toBeNull();
     const actions = within(manager).getAllByLabelText("Account actions");
     const personalActions = actions.at(1);
@@ -1702,6 +1739,12 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(defaultConnectionId).toBe(personalAccount.id);
       expect(connectorCardByLabel("GitHub")).toHaveTextContent("2 accounts");
+      const defaultGroup = within(manager).getByRole("group", {
+        name: "Default",
+      });
+      expect(within(defaultGroup).getByText("Personal")).toBeInTheDocument();
+      expect(within(manager).getAllByText("Personal")).toHaveLength(1);
+      expect(within(manager).getAllByText("Work")).toHaveLength(1);
     });
   });
 
@@ -6451,7 +6494,11 @@ describe("connectors page", () => {
     const manager = await screen.findByRole("dialog", {
       name: connector.displayName,
     });
-    click(await within(manager).findByLabelText("Account actions"));
+    const defaultGroup = within(manager).getByRole("group", {
+      name: "Default",
+    });
+    expect(within(defaultGroup).getByText("Existing")).toBeInTheDocument();
+    click(within(defaultGroup).getByLabelText("Account actions"));
     click(menuItemByText("Reconnect"));
     const dialog = await screen.findByRole("dialog", {
       name: `Connect ${connector.displayName}`,
