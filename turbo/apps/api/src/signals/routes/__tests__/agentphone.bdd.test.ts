@@ -188,9 +188,17 @@ function expectIntegrationImmediatelyBeforeRestrictedContent(
     "# Restricted Explicit Content",
   );
   expect(restrictedContentIndex).toBeGreaterThan(-1);
+  // The API appends the default image model section after the caller's own
+  // prompt, so the integration block is the last caller-supplied section
+  // rather than the last section overall.
+  const defaultImageModelIndex = appendSystemPrompt.lastIndexOf(
+    "\n\n# Default built-in image model",
+  );
+  expect(defaultImageModelIndex).toBeGreaterThan(-1);
+  expect(defaultImageModelIndex).toBeLessThan(restrictedContentIndex);
   expect(
     appendSystemPrompt
-      .slice(0, restrictedContentIndex)
+      .slice(0, defaultImageModelIndex)
       .trimEnd()
       .endsWith(expectedIntegration),
   ).toBeTruthy();

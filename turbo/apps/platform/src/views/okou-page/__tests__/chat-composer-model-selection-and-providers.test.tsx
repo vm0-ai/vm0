@@ -481,6 +481,8 @@ describe("chat composer models", () => {
       context,
       featureSwitches: {
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+        [FeatureSwitchKey.ImageModelSelection]: false,
+        [FeatureSwitchKey.VideoModelSelection]: false,
       },
       path: `/agents/${AGENT_ID}/chat`,
     });
@@ -1960,6 +1962,8 @@ describe("chat composer models", () => {
       context,
       featureSwitches: {
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+        [FeatureSwitchKey.ImageModelSelection]: false,
+        [FeatureSwitchKey.VideoModelSelection]: false,
       },
       path: `/chats/${THREAD_ID}`,
     });
@@ -4055,7 +4059,14 @@ describe("chat composer image model", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: false,
+        [FeatureSwitchKey.VideoModelSelection]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Fable 5/ });
@@ -4705,7 +4716,10 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.ImageModelSelection]: false,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4761,7 +4775,10 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.ImageModelSelection]: false,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4814,7 +4831,11 @@ describe("chat composer video model", () => {
     const user = userEvent.setup({ delay: null });
     mockVideoModelThread(null);
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });

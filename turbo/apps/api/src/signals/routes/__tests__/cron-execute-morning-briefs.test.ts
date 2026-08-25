@@ -1622,9 +1622,16 @@ describe("cron execute morning briefs", () => {
       "# Restricted Explicit Content",
     );
     expect(restrictedContentIndex).toBeGreaterThan(-1);
+    // The API appends the default image model section after the brief prompt,
+    // so the caller-supplied tail ends where that section begins.
+    const defaultImageModelIndex = normalizedAppendSystemPrompt.lastIndexOf(
+      "\n\n# Default built-in image model",
+    );
+    expect(defaultImageModelIndex).toBeGreaterThan(-1);
+    expect(defaultImageModelIndex).toBeLessThan(restrictedContentIndex);
     expect(
       normalizedAppendSystemPrompt
-        .slice(0, restrictedContentIndex)
+        .slice(0, defaultImageModelIndex)
         .trimEnd()
         .slice(-expectedAppendSystemPrompt.length),
     ).toBe(expectedAppendSystemPrompt);

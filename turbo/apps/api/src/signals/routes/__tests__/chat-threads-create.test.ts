@@ -885,6 +885,10 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("leaves media models unpinned while neither picker is enabled", async () => {
     const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: false,
+      [FeatureSwitchKey.ImageModelSelection]: false,
+    });
     await setMemberMediaDefaults(fixture);
     const token = okouToken({
       userId: fixture.userId,
@@ -919,6 +923,7 @@ describe("POST /api/zero/chat-threads", () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.VideoModelSelection]: true,
+      [FeatureSwitchKey.ImageModelSelection]: false,
     });
     await setMemberMediaDefaults(fixture);
     const token = okouToken({
@@ -940,7 +945,7 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     // Each switch gates its own pin: the video default freezes, the image one
-    // stays null until its picker ships.
+    // stays null while its own switch is off.
     await expect(
       readCreatedThreadEvent(response.body.id, token),
     ).resolves.toMatchObject({
