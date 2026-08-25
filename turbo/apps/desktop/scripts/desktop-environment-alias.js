@@ -7,10 +7,12 @@ function environmentValue(name) {
   return process.env[name]?.trim() || undefined;
 }
 
-// Repository writers and supported local inputs remain legacy-only during
-// reader Stage 1. Remove the legacy mappings only after #28914 cuts every
-// writer over, preserves the rollback window, and records zero legacy source
-// evidence.
+// Repository writers and documentation are canonical-only. Keep the legacy
+// mappings temporarily available for a unit-revert rollback of this writer/docs
+// change. Remove them only after an ordinary signed Desktop release checks out a
+// target containing the canonical writers, records canonical-only source
+// evidence for both keys with zero legacy-only or dual evidence, completes the
+// supported rollback window, and records zero legacy-use evidence under #28914.
 function resolveDesktopEnvironmentAlias(canonicalKey) {
   const legacyKey = ENVIRONMENT_ALIASES[canonicalKey];
   const canonicalValue = environmentValue(canonicalKey);

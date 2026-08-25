@@ -261,7 +261,7 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import { ZeroChatComposer } from "./chat-composer.tsx";
+import { ChatComposer } from "./chat-composer.tsx";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -2821,7 +2821,7 @@ function HeaderAutomationSidebar({
 }
 
 // ---------------------------------------------------------------------------
-// ZeroSessionChatPage — real conversation backed by agent runs
+// SessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
 function ChatThread({
@@ -2915,7 +2915,7 @@ function ThreadAutomationsSidebarSlot({
   return <HeaderAutomationSidebar thread={thread} onClose={close} />;
 }
 
-export function ZeroChatThreadPage() {
+export function ChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftPane = useGet(currentLeftPane$);
   const rightPane = useGet(currentRightPane$);
@@ -4773,7 +4773,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
         )}
       >
         <div className="mx-auto max-w-[900px]">
-          <ZeroChatComposer signals={thread.composer} />
+          <ChatComposer signals={thread.composer} />
           <ActiveGoalObjectiveDialog threadId={thread.threadId} />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />

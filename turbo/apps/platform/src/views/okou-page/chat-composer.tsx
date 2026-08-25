@@ -287,7 +287,7 @@ function isHappyDomTestEnvironment(): boolean {
 // Props
 // ---------------------------------------------------------------------------
 
-interface ZeroChatComposerProps {
+interface ChatComposerProps {
   readonly signals: ComposerSignals;
   readonly showPendingItems?: boolean;
 }
@@ -10109,10 +10109,10 @@ function ComposerSurface({
   );
 }
 
-export function ZeroChatComposer({
+export function ChatComposer({
   signals,
   showPendingItems = true,
-}: ZeroChatComposerProps) {
+}: ChatComposerProps) {
   return (
     <ComposerSurface signals={signals} showPendingItems={showPendingItems} />
   );

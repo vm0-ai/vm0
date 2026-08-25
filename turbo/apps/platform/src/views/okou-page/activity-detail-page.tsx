@@ -44,11 +44,11 @@ import {
 } from "../../signals/okou-page/log-types.ts";
 import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
-  zeroActivityDetail$,
-  zeroActivityEvents$,
-  zeroActivityVisibleGroups$,
-  zeroActivityStepSearch$,
-  setZeroActivityStepSearch$,
+  activityDetail$,
+  activityEvents$,
+  activityVisibleGroups$,
+  activityStepSearch$,
+  setActivityStepSearch$,
   formatLogTime,
   formatDuration,
   currentRunId$,
@@ -60,10 +60,10 @@ import {
 } from "../../signals/activity-page/log-detail-utils";
 import { EventGroupCard } from "./components/log-views/event-group-card.tsx";
 import { StatusDot } from "./components/log-views/status-dot.tsx";
-import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
-import { zeroActivityRunner$ } from "../../signals/activity-page/activity-runner-signals.ts";
+import { activityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
+import { activityRunner$ } from "../../signals/activity-page/activity-runner-signals.ts";
 import {
-  zeroActivityNetworkLogs$,
+  activityNetworkLogs$,
   loadNetworkLogsNextPage$,
 } from "../../signals/activity-page/activity-network-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -75,7 +75,7 @@ import {
 } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
-import { ZeroNoPermissionIllustration } from "./components/no-permission-illustration.tsx";
+import { NoPermissionIllustration } from "./components/no-permission-illustration.tsx";
 import { formatAppNumber } from "../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ function ActivityNotFound() {
         </span>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <ZeroNoPermissionIllustration />
+        <NoPermissionIllustration />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.detail.notFound.title;
@@ -321,7 +321,7 @@ export function ActivityHeaderCard({
                 return $.activity.detail.fields.status;
               })}
             </span>
-            <StatusBadge status={status} zeroStyle />
+            <StatusBadge status={status} shellStyle />
           </div>
           <span
             className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -495,9 +495,9 @@ function ActivityStepsContent({
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   const { t } = useTranslation();
-  const stepSearch = useGet(zeroActivityStepSearch$);
-  const setStepSearch = useSet(setZeroActivityStepSearch$);
-  const visibleGroupsLoadable = useLastLoadable(zeroActivityVisibleGroups$);
+  const stepSearch = useGet(activityStepSearch$);
+  const setStepSearch = useSet(setActivityStepSearch$);
+  const visibleGroupsLoadable = useLastLoadable(activityVisibleGroups$);
   const visibleGroupsData =
     visibleGroupsLoadable.state === "hasData" &&
     visibleGroupsLoadable.data.runId === detail.id
@@ -578,7 +578,7 @@ function ActivityStepsContent({
 
 function ActivityContextTab({ detail }: { detail: LogDetail }) {
   const { t } = useTranslation();
-  const contextLoadable = useLastLoadable(zeroActivityContext$);
+  const contextLoadable = useLastLoadable(activityContext$);
   const modelRoute =
     detail.modelRuntimeProvider && detail.modelRuntimeModel ? (
       <section className="mb-6">
@@ -757,7 +757,7 @@ function RunnerOutcomeRow({
 
 function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
-  const runnerLoadable = useLastLoadable(zeroActivityRunner$);
+  const runnerLoadable = useLastLoadable(activityRunner$);
 
   if (
     runnerLoadable.state === "loading" ||
@@ -905,7 +905,7 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
 
 function ActivityNetworkTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
-  const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
+  const logsLoadable = useLastLoadable(activityNetworkLogs$);
   const loadNextPage = useSet(loadNetworkLogsNextPage$);
   const pageSignal = useGet(pageSignal$);
 
@@ -1105,11 +1105,11 @@ function ActivityDetailContent({
   );
 }
 
-export function ZeroActivityDetailPage() {
+export function ActivityDetailPage() {
   const { t } = useTranslation();
   const currentRunId = useGet(currentRunId$);
-  const detailLoadable = useLastLoadable(zeroActivityDetail$);
-  const eventsLoadable = useLastLoadable(zeroActivityEvents$);
+  const detailLoadable = useLastLoadable(activityDetail$);
+  const eventsLoadable = useLastLoadable(activityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;

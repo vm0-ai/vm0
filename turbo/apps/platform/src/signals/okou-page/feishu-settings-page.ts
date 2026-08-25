@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { i18n } from "../../i18n/index.ts";
-import { ZeroFeishuSettingsPage } from "../../views/okou-page/feishu-card.tsx";
+import { FeishuSettingsPage } from "../../views/okou-page/feishu-card.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -45,7 +45,7 @@ export const setupFeishuSettingsPage$ = command(
     set(resetFeishuSettingsUi$);
     set(reloadFeishuInstallations$);
     set(showFeishuSettingsResult$);
-    set(updatePage$, createElement(ZeroFeishuSettingsPage), "sidebar");
+    set(updatePage$, createElement(FeishuSettingsPage), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

@@ -15,7 +15,7 @@ import {
 import { command } from "ccstate";
 import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";
-import { ZeroConnectorCallbackPage } from "../../views/okou-page/connector-callback-page.tsx";
+import { ConnectorCallbackPage } from "../../views/okou-page/connector-callback-page.tsx";
 import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -163,7 +163,7 @@ function callbackPageElement(
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
-  return createElement(ZeroConnectorCallbackPage, {
+  return createElement(ConnectorCallbackPage, {
     connectorIcon,
     connectorLabel: label,
     status: result.status,

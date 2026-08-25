@@ -253,6 +253,7 @@ runs:
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET
           fi
           if [[ "$INPUT_ENVIRONMENT" == "preview" && -n "$INPUT_JOB_REF" ]]; then
+            add_env OKOU_PREVIEW_JOB_REF "$INPUT_JOB_REF"
             add_env VM0_PREVIEW_JOB_REF "$INPUT_JOB_REF"
           fi
           if [[ -n "$atom_url" ]]; then

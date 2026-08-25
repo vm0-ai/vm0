@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { ZeroSlackConnectPage } from "../../views/okou-page/slack-connect-page.tsx";
+import { SlackConnectPage } from "../../views/okou-page/slack-connect-page.tsx";
 import { initSlackConnectPage$ } from "./slack-connect-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
@@ -14,7 +14,7 @@ export const setupSlackConnectPage$ = command(
       return;
     }
 
-    set(updatePage$, createElement(ZeroSlackConnectPage));
+    set(updatePage$, createElement(SlackConnectPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

@@ -15,6 +15,33 @@ export const reloadBuiltInModelCooldownDiagnostics$ = command(({ set }) => {
   });
 });
 
+type BuiltInModelCooldown =
+  BuiltInModelCooldownDiagnostics["activeCooldowns"][number];
+
+export const cancelBuiltInModelCooldown$ = command(
+  async (
+    { get, set },
+    cooldown: BuiltInModelCooldown,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createClient = get(apiClient$);
+    const client = createClient(modelProviderCooldownDiagnosticsContract);
+    await accept(
+      client.cancel({
+        body: {
+          selectedModel: cooldown.selectedModel,
+          providerType: cooldown.providerType,
+          upstreamModel: cooldown.upstreamModel,
+        },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadBuiltInModelCooldownDiagnostics$);
+  },
+);
+
 export const builtInModelCooldownDiagnostics$ = computed(
   async (get): Promise<BuiltInModelCooldownDiagnostics | null> => {
     get(internalBuiltInModelCooldownDiagnosticsReload$);

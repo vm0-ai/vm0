@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroIdeationPage } from "../../views/okou-page/ideation-page.tsx";
+import { IdeationPage } from "../../views/okou-page/ideation-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
@@ -10,7 +10,7 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupIdeationPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroIdeationPage), "sidebar");
+    set(updatePage$, createElement(IdeationPage), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(

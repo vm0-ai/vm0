@@ -16,12 +16,7 @@ import {
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
-import {
-  Decoration,
-  DecorationSet,
-  type EditorView,
-  type NodeView,
-} from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
@@ -32,9 +27,6 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { composerSubmitDomReconcileEnabled$ } from "../external/feature-switch.ts";
-import { logger } from "../log.ts";
-import { sentryLogContext } from "../../lib/sentry-config.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -268,117 +260,12 @@ function connectComposerFeedback(
   });
 }
 
-const L = logger("WorkflowComposer");
-
-const COMPOSER_RESYNC_ATTRIBUTE = "data-composer-resync";
-
-interface EditorViewWithDomObserver extends EditorView {
-  readonly domObserver: {
-    readonly flush: () => void;
-    readonly forceFlush: () => void;
-  };
-}
-
-/**
- * An attribute record maps to its block's full range in the observer's
- * registerMutation, so touching one attribute makes prosemirror-view re-read
- * that whole block from the live DOM. The feedback item's node view ignores
- * mutations outside its contentDOM, so its marker must land on the note
- * element; the template chip carries no editable text.
- */
-function blockResyncTargets(editor: Editor): HTMLElement[] {
-  const targets: HTMLElement[] = [];
-  const { doc } = editor.state;
-  let position = 0;
-  for (let index = 0; index < doc.childCount; index++) {
-    const node = doc.child(index);
-    const element = editor.view.nodeDOM(position);
-    position += node.nodeSize;
-    if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      continue;
-    }
-    if (!(element instanceof HTMLElement)) {
-      throw new Error("Composer block DOM not found");
-    }
-    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
-      const note = element.querySelector("[data-feedback-note]");
-      if (!(note instanceof HTMLElement)) {
-        throw new Error("Composer feedback note DOM not found");
-      }
-      targets.push(note);
-      continue;
-    }
-    targets.push(element);
-  }
-  return targets;
-}
-
-/**
- * A broken mobile composition can leave text visible in the contenteditable
- * that never reached `editor.state.doc`. Once the browser's mutation records
- * for it are consumed, nothing re-reads that DOM — the divergence is permanent
- * and a submission serializes less than the user sees. Queue one synthetic
- * whole-block mutation per block and flush the observer, so prosemirror-view
- * re-reads every block through its normal parse path. Node views survive the
- * re-read via their view desc parse rules; blocks whose DOM already matches
- * the document parse to no change and dispatch nothing.
- *
- * This must only run outside an IME composition. The submission read sits
- * behind the composition gate, and prosemirror-view clears `composing` in its
- * own compositionend handler before the gate's settling frame.
- *
- * Every `EditorView` constructs `domObserver`, but prosemirror-view marks it
- * internal and omits it from the published types, so it is reached through a
- * cast. A future rename must fail loudly here rather than silently restore
- * truncated submissions.
- */
-function reconcileDomIntoDocument(editor: Editor): void {
-  const { domObserver } = editor.view as EditorViewWithDomObserver;
-  // flush() returns early while a deferred flush is scheduled — the state a
-  // just-ended composition leaves behind — so clear that timer first.
-  domObserver.forceFlush();
-  for (const element of blockResyncTargets(editor)) {
-    element.setAttribute(COMPOSER_RESYNC_ATTRIBUTE, "");
-    element.removeAttribute(COMPOSER_RESYNC_ATTRIBUTE);
-  }
-  domObserver.flush();
-}
-
-// Report every submission changed by the reconcile, with sizes only and never
-// content, so the switch can be evaluated against real mobile sends.
-function reconcileSubmissionDocument(editor: Editor): void {
-  const before = workflowComposerDocToString(editor);
-  reconcileDomIntoDocument(editor);
-  const after = workflowComposerDocToString(editor);
-  if (after === before) {
-    return;
-  }
-  L.error(
-    "composer submission document differed from the live DOM",
-    sentryLogContext({
-      tags: {
-        hasFeedbackItem: feedbackItemsFromWorkflowComposer(editor).length > 0,
-      },
-      contexts: {
-        composerSubmitDomReconcile: {
-          promptLengthBefore: before.length,
-          promptLengthAfter: after.length,
-        },
-      },
-    }),
-  );
-}
-
 function createReadInputForSubmissionCommand(
   editor: Editor,
   compositionGate: CompositionGate,
 ) {
-  return command(({ get }, signal: AbortSignal) => {
-    const reconcileEnabled = get(composerSubmitDomReconcileEnabled$);
+  return command((_context, signal: AbortSignal) => {
     return compositionGate.runWhenSettled(() => {
-      if (reconcileEnabled) {
-        reconcileSubmissionDocument(editor);
-      }
       return {
         prompt: workflowComposerDocToString(editor),
         editorDocument: createEditorDocumentSnapshot(editor.state.doc),

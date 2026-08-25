@@ -329,7 +329,7 @@ export const uploadFileToStorage$ = command(
   },
 );
 
-export interface ZeroChatAttachment {
+export interface ChatAttachment {
   filename: string;
   contentType: string;
   size: number;
@@ -352,7 +352,7 @@ export interface ZeroChatAttachment {
   setAnnotation$: Command<void, [ImageAnnotation | null]>;
 }
 
-function createChatAttachment(file: File): ZeroChatAttachment {
+function createChatAttachment(file: File): ChatAttachment {
   const contentType = inferUploadContentType(file);
   const internalAnnotation$ = state<ImageAnnotation | null>(null);
   const annotation$ = computed((get) => {
@@ -429,7 +429,7 @@ export interface DraftSignals {
     void,
     [GenerationTemplateRequest | undefined]
   >;
-  attachments$: Computed<ZeroChatAttachment[]>;
+  attachments$: Computed<ChatAttachment[]>;
   attachmentUploadsReady$: Computed<boolean>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   /**
@@ -440,7 +440,7 @@ export interface DraftSignals {
     Promise<boolean>,
     [PersistedAttachment[], AbortSignal]
   >;
-  removeAttachment$: Command<void, [ZeroChatAttachment]>;
+  removeAttachment$: Command<void, [ChatAttachment]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
   /** Reset all draft state (input, template, attachments). Called after send. */
@@ -457,7 +457,7 @@ interface DraftSeed {
   content: string;
   userMessage: UserMessageDocument | null;
   generationTemplate: GenerationTemplateRequest | undefined;
-  attachments: ZeroChatAttachment[];
+  attachments: ChatAttachment[];
 }
 
 export interface DraftInputSyncTarget {
@@ -466,7 +466,7 @@ export interface DraftInputSyncTarget {
 }
 
 /**
- * Reconstructs a ZeroChatAttachment from persisted attachment metadata.
+ * Reconstructs a ChatAttachment from persisted attachment metadata.
  *
  * The persisted id is an externally managed reference: the artifact is stored
  * per user, so a saved draft, a forwarded message, or a pasted chat payload can
@@ -477,7 +477,7 @@ export interface DraftInputSyncTarget {
  */
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
-): ZeroChatAttachment {
+): ChatAttachment {
   const internalAnnotation$ = state<ImageAnnotation | null>(
     persisted.annotation ?? null,
   );
@@ -511,7 +511,7 @@ export function createRestoredAttachment(
   const cancel$ = command(() => {
     // no-op: already uploaded, nothing to cancel
   });
-  // upload$ accepts a signal parameter to match the ZeroChatAttachment interface.
+  // upload$ accepts a signal parameter to match the ChatAttachment interface.
   // The file is already uploaded, so this is a no-op.
   const upload$ = command((_visitor, _signal: AbortSignal): Promise<void> => {
     return Promise.resolve();
@@ -646,12 +646,12 @@ function createDraftDocumentSignals() {
  * is the only state the user can act on.
  */
 function createPruneUnavailableAttachments(
-  internalAttachments$: State<ZeroChatAttachment[]>,
-): Command<Promise<boolean>, [readonly ZeroChatAttachment[], AbortSignal]> {
+  internalAttachments$: State<ChatAttachment[]>,
+): Command<Promise<boolean>, [readonly ChatAttachment[], AbortSignal]> {
   return command(
     async (
       { get, set },
-      candidates: readonly ZeroChatAttachment[],
+      candidates: readonly ChatAttachment[],
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (candidates.length === 0) {
@@ -696,11 +696,11 @@ function createDraftLifecycleSignals({
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
-  internalAttachments$: State<ZeroChatAttachment[]>;
+  internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
   pruneUnavailableAttachments$: Command<
     Promise<boolean>,
-    [readonly ZeroChatAttachment[], AbortSignal]
+    [readonly ChatAttachment[], AbortSignal]
   >;
 }) {
   const clear$ = command(({ get, set }) => {
@@ -748,7 +748,7 @@ export function createDraftSignals(): DraftSignals {
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
-  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+  const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
 
   const generationTemplate$ = computed((get) => {
@@ -816,16 +816,14 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
-  const removeAttachment$ = command(
-    ({ set }, attachment: ZeroChatAttachment) => {
-      set(attachment.cancel$);
-      set(internalAttachments$, (prev) => {
-        return prev.filter((a) => {
-          return a !== attachment;
-        });
+  const removeAttachment$ = command(({ set }, attachment: ChatAttachment) => {
+    set(attachment.cancel$);
+    set(internalAttachments$, (prev) => {
+      return prev.filter((a) => {
+        return a !== attachment;
       });
-    },
-  );
+    });
+  });
 
   const dragOver$ = computed((get) => {
     return get(internalDragOver$);

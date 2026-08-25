@@ -118,6 +118,19 @@ function builtInModelCooldownDisclosure(region: HTMLElement): {
   return { details, summary };
 }
 
+function buttonWithText(
+  container: HTMLElement,
+  text: string,
+): HTMLButtonElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
+
 describe("settings dialog", () => {
   it("keeps every available locale in the language menu", async () => {
     context.mocks.data.userPreferences(
@@ -972,6 +985,11 @@ describe("settings dialog", () => {
         "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
       ),
     ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", diagnostics).some((button) => {
+        return button.textContent?.trim() === "Cancel cooldown";
+      }),
+    ).toBeFalsy();
 
     const refreshButton = queryAllByRoleFast("button", diagnostics).find(
       (button) => {
@@ -996,6 +1014,104 @@ describe("settings dialog", () => {
       expect(summary).toHaveTextContent("workspace fallback: enabled");
       expect(summary).toHaveTextContent("global active cooldowns: 0");
       expect(refreshButton).toBeEnabled();
+    });
+    expect(details.open).toBeTruthy();
+    expect(
+      within(diagnostics).getByText(
+        "No built-in model routes are currently in global cooldown.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("lets staff confirm and cancel a built-in model cooldown", async () => {
+    const releaseCancellation = context.mocks.deferred<void>();
+    let diagnosticsRequestCount = 0;
+    let cancellationRequestCount = 0;
+    let cancellationBody: {
+      readonly selectedModel: string;
+      readonly providerType: string;
+      readonly upstreamModel: string;
+    } | null = null;
+    context.mocks.api(
+      modelProviderCooldownDiagnosticsContract.get,
+      ({ respond }) => {
+        diagnosticsRequestCount += 1;
+        return respond(200, {
+          fallbackEnabled: true,
+          canCancelCooldowns: true,
+          activeCooldowns:
+            diagnosticsRequestCount === 1
+              ? [
+                  {
+                    selectedModel: "gpt-5.6-luna",
+                    providerType: "openai-api-key",
+                    upstreamModel: "gpt-5.6-luna-2026-08-01",
+                    unavailableUntil: "2026-08-23T04:05:00.000Z",
+                  },
+                ]
+              : [],
+        });
+      },
+    );
+    context.mocks.api(
+      modelProviderCooldownDiagnosticsContract.cancel,
+      async ({ body, respond }) => {
+        cancellationRequestCount += 1;
+        cancellationBody = body;
+        await releaseCancellation.promise;
+        return respond(204);
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Built-in model fallback",
+    });
+    const { details, summary } = builtInModelCooldownDisclosure(diagnostics);
+    click(summary);
+    expect(details.open).toBeTruthy();
+
+    click(buttonWithText(diagnostics, "Cancel cooldown"));
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Cancel global cooldown?",
+    });
+    expect(cancellationRequestCount).toBe(0);
+    expect(within(confirmation).getByText("gpt-5.6-luna")).toBeVisible();
+    expect(within(confirmation).getByText("openai-api-key")).toBeVisible();
+    expect(
+      within(confirmation).getByText("gpt-5.6-luna-2026-08-01"),
+    ).toBeVisible();
+    expect(
+      within(confirmation).getByText(
+        "Cancelling this global cooldown makes the route immediately eligible for every workspace with built-in model fallback enabled.",
+      ),
+    ).toBeVisible();
+    expect(
+      within(confirmation).getByText(
+        "A later qualifying failure can place this route back in cooldown.",
+      ),
+    ).toBeVisible();
+
+    click(buttonWithText(confirmation, "Cancel cooldown"));
+    await waitFor(() => {
+      expect(cancellationRequestCount).toBe(1);
+      expect(buttonWithText(confirmation, "Cancelling...")).toBeDisabled();
+      expect(buttonWithText(confirmation, "Keep cooldown")).toBeDisabled();
+    });
+    expect(cancellationBody).toStrictEqual({
+      selectedModel: "gpt-5.6-luna",
+      providerType: "openai-api-key",
+      upstreamModel: "gpt-5.6-luna-2026-08-01",
+    });
+
+    releaseCancellation.resolve();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Cancel global cooldown?" }),
+      ).not.toBeInTheDocument();
+      expect(diagnosticsRequestCount).toBe(2);
+      expect(summary).toHaveTextContent("global active cooldowns: 0");
     });
     expect(details.open).toBeTruthy();
     expect(

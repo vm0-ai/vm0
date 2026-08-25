@@ -1,15 +1,15 @@
 import { noPermissionIllustration } from "../platform-assets.ts";
 
-type ZeroNoPermissionIllustrationProps = {
+type NoPermissionIllustrationProps = {
   className?: string;
 };
 
 /**
  * Padlock illustration for restricted access / not-found states (transparent WebP).
  */
-export function ZeroNoPermissionIllustration({
+export function NoPermissionIllustration({
   className = "h-28 w-auto max-w-[200px] object-contain opacity-90",
-}: ZeroNoPermissionIllustrationProps) {
+}: NoPermissionIllustrationProps) {
   return (
     <img
       src={noPermissionIllustration}

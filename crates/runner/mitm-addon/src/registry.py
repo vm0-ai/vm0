@@ -55,7 +55,21 @@ class _RegistrySnapshot:
 
 @dataclass(frozen=True)
 class RegistryUnavailable:
-    """Current registry file cannot be trusted as an enforcement source."""
+    """Current registry file cannot be trusted as an enforcement source.
+
+    ``reason`` is the stable diagnostic category for the unavailable state:
+
+    - ``stat_failed`` means the registry could not be opened or validated as a
+      regular file, so no file identity was available.
+    - ``read_failed`` means the opened registry could not be read, including a
+      bounded-read failure.
+    - ``parse_failed`` means the bytes could not be decoded or did not have the
+      expected registry shape.
+
+    ``message`` contains detailed internal failure context. The local 503
+    response exposes ``reason`` as its diagnostic category but uses its own
+    fixed user-visible message instead of serializing this internal detail.
+    """
 
     reason: str
     message: str
@@ -458,6 +472,16 @@ def load_registry_state(registry_path: str) -> RegistryState:
     failed key so repeated reads of the same bad bytes do not reparse or
     re-warn. File read errors keep retrying that key, and internal
     compile/eviction errors are allowed to propagate.
+
+    ``stat_failed`` covers failures before a file identity is available, and
+    later calls retry opening the path while the stat warning guard suppresses
+    duplicate warnings. ``read_failed`` covers bounded read errors; its file
+    identity is not stored as a failed key, so the same identity is retried on
+    the next call while ``read_error_key`` only suppresses duplicate warnings.
+    ``parse_failed`` stores the file identity in ``failed_key`` and
+    short-circuits subsequent calls for that identity until the file changes.
+    An unavailable transition clears the previous enforcement snapshot rather
+    than reusing stale registry data.
     """
     path = Path(registry_path)
     path_key = _path_key(path)

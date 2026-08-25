@@ -432,6 +432,7 @@ function legacyFeishuAppOAuthState(args: {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
 }): string {
   const encodedPayload = Buffer.from(
     JSON.stringify({
@@ -2432,6 +2433,7 @@ describe("Feishu integration", () => {
           installationId,
           orgId: requireValue(member.orgId, "Expected an organization"),
           userId: member.userId,
+          publicBrand: "vm0",
         }),
       })}`,
     );

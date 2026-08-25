@@ -31,7 +31,7 @@ function BackLink() {
   );
 }
 
-export function ZeroSlackConnectPage() {
+export function SlackConnectPage() {
   return (
     <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">

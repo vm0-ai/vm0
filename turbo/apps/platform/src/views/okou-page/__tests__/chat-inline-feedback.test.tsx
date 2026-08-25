@@ -1,8 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Editor } from "@tiptap/core";
-import type { EditorView } from "@tiptap/pm/view";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
@@ -288,134 +286,6 @@ async function findFeedbackNote(): Promise<HTMLElement> {
     throw new Error("Feedback note not found");
   }
   return note;
-}
-
-interface ComposerDomObserver {
-  readonly stop: () => void;
-  readonly start: () => void;
-}
-
-// Tiptap stores the editor on its contenteditable root, and prosemirror-view
-// keeps domObserver internal — reached the same way the submit-time dom
-// reconcile reaches it.
-function composerDomObserver(editorElement: HTMLElement): ComposerDomObserver {
-  const editor: unknown =
-    "editor" in editorElement ? editorElement.editor : null;
-  if (!(editor instanceof Editor)) {
-    throw new Error("Composer tiptap editor not found");
-  }
-  const view = editor.view as EditorView & {
-    readonly domObserver: ComposerDomObserver;
-  };
-  return view.domObserver;
-}
-
-// Extends the paragraph's existing text node in place, the shape a broken
-// mobile composition leaves behind: text visible in the DOM, absent from the
-// ProseMirror document, with no mutation record left to ever deliver it.
-function strandTextInParagraph(paragraph: Element, value: string): void {
-  const textNode = Array.from(paragraph.childNodes)
-    .reverse()
-    .find((child): child is Text => {
-      return child instanceof Text;
-    });
-  if (!textNode) {
-    throw new Error("Paragraph text node not found");
-  }
-  textNode.nodeValue = `${textNode.nodeValue ?? ""}${value}`;
-}
-
-function topLevelParagraph(editorElement: HTMLElement): Element {
-  const paragraph = editorElement.querySelector(":scope > p");
-  if (!paragraph) {
-    throw new Error("Top-level composer paragraph not found");
-  }
-  return paragraph;
-}
-
-function noteParagraph(note: HTMLElement): Element {
-  const paragraph = note.querySelector("p");
-  if (!paragraph) {
-    throw new Error("Feedback note paragraph not found");
-  }
-  return paragraph;
-}
-
-async function submitWithStrandedComposerText(
-  reconcileEnabled: boolean,
-  caseName: string,
-): Promise<{
-  readonly assistantReply: string;
-  readonly sentMessage: RunCreateCapture;
-}> {
-  const user = userEvent.setup({ delay: null });
-  const assistantReply = "The rollout dates are unclear in this summary.";
-  const sentMessages: RunCreateCapture[] = [];
-
-  mockChatLifecycle(context, {
-    threadId: FEEDBACK_THREAD_ID,
-    threadTitle: "Feedback review",
-    chatEvents: [
-      {
-        id: `msg-feedback-reconcile-${caseName}-user`,
-        role: "user",
-        content: "Review this launch summary",
-        runId: `run-feedback-reconcile-${caseName}`,
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-      {
-        id: `msg-feedback-reconcile-${caseName}-assistant`,
-        role: "assistant",
-        content: assistantReply,
-        runId: `run-feedback-reconcile-${caseName}`,
-        createdAt: "2026-06-09T10:01:00Z",
-      },
-    ],
-    onRunCreate: (body) => {
-      sentMessages.push(body);
-    },
-  });
-
-  detachedSetupPage({
-    context,
-    path: `/chats/${FEEDBACK_THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ComposerSubmitDomReconcile]: reconcileEnabled,
-    },
-  });
-
-  const composerEditor = await findComposerEditor();
-  await user.click(composerEditor);
-  pastePlainText(composerEditor, "Mention the dates");
-  await waitForDeferredSelectionCapture();
-  selectTextForInlineFeedback(await screen.findByText(assistantReply));
-  await user.click(await screen.findByText("Quote"));
-
-  const feedbackComment = await findFeedbackNote();
-  await user.click(feedbackComment);
-  pastePlainText(feedbackComment, "Make the dates");
-  await waitFor(() => {
-    expect(feedbackComment).toHaveTextContent("Make the dates");
-  });
-
-  const domObserver = composerDomObserver(composerEditor);
-  domObserver.stop();
-  strandTextInParagraph(
-    topLevelParagraph(composerEditor),
-    " before the risk summary.",
-  );
-  strandTextInParagraph(noteParagraph(feedbackComment), " explicit.");
-  domObserver.start();
-
-  await user.click(screen.getByLabelText("Send"));
-  await waitFor(() => {
-    expect(sentMessages).toHaveLength(1);
-  });
-  const [sentMessage] = sentMessages;
-  if (!sentMessage) {
-    throw new Error("Submission was not captured");
-  }
-  return { assistantReply, sentMessage };
 }
 
 async function replaceFeedbackNote(
@@ -1633,63 +1503,6 @@ describe("chat inline feedback", () => {
       expect(sentPrompts).toHaveLength(1);
     });
     expect(sentPrompts[0]).toContain("补充具体日期");
-  });
-
-  it("recovers text stranded in the dom before reading a submission", async () => {
-    // The recovery reports itself through the error logger; the shared setup
-    // turns unexpected console.error calls into test failures, so capture it
-    // here and assert the report below.
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    const { assistantReply, sentMessage } =
-      await submitWithStrandedComposerText(true, "enabled");
-    const sentPrompt = sentMessage.prompt;
-    expect(sentPrompt).toContain("Mention the dates before the risk summary.");
-    expect(sentPrompt).toContain("Make the dates explicit.");
-    expect(sentMessage.userMessage).toStrictEqual({
-      version: 1,
-      parts: [
-        {
-          type: "text",
-          text: "Mention the dates before the risk summary.",
-        },
-        {
-          type: "feedback",
-          quote: assistantReply,
-          eventId: "msg-feedback-reconcile-enabled-assistant",
-          range: { start: 0, end: assistantReply.length },
-          note: [{ type: "text", text: "Make the dates explicit." }],
-        },
-      ],
-    });
-    expect(consoleError).toHaveBeenCalledWith(
-      "[E][WorkflowComposer]",
-      "composer submission document differed from the live DOM",
-      expect.anything(),
-    );
-  });
-
-  it("leaves stranded dom text out when the reconcile switch is disabled", async () => {
-    const { assistantReply, sentMessage } =
-      await submitWithStrandedComposerText(false, "disabled");
-    expect(sentMessage.userMessage).toStrictEqual({
-      version: 1,
-      parts: [
-        {
-          type: "text",
-          text: "Mention the dates",
-        },
-        {
-          type: "feedback",
-          quote: assistantReply,
-          eventId: "msg-feedback-reconcile-disabled-assistant",
-          range: { start: 0, end: assistantReply.length },
-          note: [{ type: "text", text: "Make the dates" }],
-        },
-      ],
-    });
   });
 
   it("waits until mouseup before showing the inline feedback toolbar", async () => {

@@ -3796,27 +3796,27 @@ export const WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV =
 // in sync with the private R2 version ids served by the API download route.
 const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
-    "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+    "44126993be4b2932a270efcc21dbc855e60ccc0b280fadedc6ce2c90399f7e17",
   "blueprint-grid":
-    "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+    "9fdf8c7555e85072b9c92526b098edbe90c3230a71f6a1ec08ec3fa902ebabf0",
   "coastal-hotel":
-    "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+    "b285b649b73c0b526734ce63b01de5f3f6704ed89f5e71a96f953484a882f979",
   "dot-matrix":
-    "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+    "9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
   "frame-stack":
-    "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+    "182a63e7b268779b2d45a81651a99da6004873162b1a98d5da27f15be6338d15",
   "frosted-scatter":
-    "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+    "32fb6fc4ebc85ffa3ea1672cd75005048519dfd1fbc3c1d4c254363d89ebb14e",
   "gallery-wall":
-    "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+    "401854b89ea8b8ce98880309a190fa19e03647b564e64bc082ae481f3cb9c8fc",
   "glass-bloom":
-    "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+    "ed9f6ef684cc89d5e6653b7f35a62988665a63993ca69305334399652cb7f586",
   "serif-stack":
-    "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+    "55034642b7becda0da90d202c689e79938844142144fef15b5371706bdb3ef46",
   "sticker-pop":
-    "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+    "d6a8fc7658fe0709a089d819fa745af461e99a1f1759040b60e8b0e4d4eb8ef4",
   "warm-cards":
-    "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+    "30a7ce127311bcba581793c47f234c043474b9b7bdfca2ba0732bd35e065cee3",
 };
 
 function websiteTemplateArchiveSha256(slug: string): string {

@@ -2175,7 +2175,7 @@ function TelegramBotsCard({
   );
 }
 
-export function ZeroTelegramSettingsPage() {
+export function TelegramSettingsPage() {
   const { t } = useTranslation();
   const botsLoadable = useLastLoadable(telegramBots$);
   const agentsLoadable = useLastLoadable(sortedAgents$);
