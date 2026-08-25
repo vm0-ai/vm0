@@ -10,8 +10,6 @@ import {
   type UsagePackSubscriptionChangePreviewResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -88,7 +86,6 @@ import {
   loadBillingOrganizationDirectory,
   loadBillingOrganizationMemberships,
 } from "../services/billing-clerk-directory.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { reconcilePaidStripeInvoice$ } from "../services/webhooks-stripe.service";
 import {
   mergeFirstTouchAttribution,
@@ -102,26 +99,6 @@ const adminRequired = Object.freeze({
   body: Object.freeze({
     error: Object.freeze({
       message: "Only org admins can manage billing",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const usagePackCheckoutDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Usage pack checkout is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const usagePackManagementDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Usage pack management is not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -755,20 +732,6 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return usagePackCheckoutDisabled;
-    }
-
     const db = get(db$);
     if (!(await usagePackPurchaseSerializationSchemaAvailable(db))) {
       return providerUnavailable("Usage pack billing is not ready");
@@ -890,20 +853,6 @@ const usagePackCatalogAuthed$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired;
     }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return usagePackCheckoutDisabled;
-    }
-
     const usagePacks = await loadUsagePackCatalog();
     signal.throwIfAborted();
     return { status: 200 as const, body: { usagePacks: [...usagePacks] } };
@@ -953,31 +902,14 @@ const usagePackCheckoutConfirm$ = command(
   },
 );
 
-const usagePackManagementAccess$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return { allowed: false as const, response: adminRequired };
-    }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return {
-        allowed: false as const,
-        response: usagePackManagementDisabled,
-      };
-    }
-    return { allowed: true as const, auth };
-  },
-);
+const usagePackManagementAccess$ = command(({ get }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return { allowed: false as const, response: adminRequired };
+  }
+  signal.throwIfAborted();
+  return { allowed: true as const, auth };
+});
 
 const usagePackManagementGetAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {

@@ -3,137 +3,295 @@
     {
       "name": "secret without whitespace",
       "template": "${{secrets.TOKEN}}",
-      "expectedReferences": [{ "namespace": "secrets", "name": "TOKEN" }]
+      "expectedReferences": [
+        {
+          "namespace": "secrets",
+          "name": "TOKEN",
+          "source": "${{secrets.TOKEN}}"
+        }
+      ]
     },
     {
       "name": "variable without whitespace",
       "template": "${{vars._TOKEN9}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "_TOKEN9" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "_TOKEN9",
+          "source": "${{vars._TOKEN9}}"
+        }
+      ]
     },
     {
       "name": "horizontal tab whitespace",
       "template": "${{\u0009vars.VALUE\u0009}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u0009vars.VALUE\u0009}}"
+        }
+      ]
     },
     {
       "name": "line feed whitespace",
       "template": "${{\u000avars.VALUE\u000a}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u000avars.VALUE\u000a}}"
+        }
+      ]
     },
     {
       "name": "vertical tab whitespace",
       "template": "${{\u000bvars.VALUE\u000b}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u000bvars.VALUE\u000b}}"
+        }
+      ]
     },
     {
       "name": "form feed whitespace",
       "template": "${{\u000cvars.VALUE\u000c}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u000cvars.VALUE\u000c}}"
+        }
+      ]
     },
     {
       "name": "carriage return whitespace",
       "template": "${{\u000dvars.VALUE\u000d}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u000dvars.VALUE\u000d}}"
+        }
+      ]
     },
     {
       "name": "space whitespace",
       "template": "${{ vars.VALUE }}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        { "namespace": "vars", "name": "VALUE", "source": "${{ vars.VALUE }}" }
+      ]
     },
     {
       "name": "no-break space whitespace",
       "template": "${{\u00a0vars.VALUE\u00a0}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u00a0vars.VALUE\u00a0}}"
+        }
+      ]
     },
     {
       "name": "ogham space mark whitespace",
       "template": "${{\u1680vars.VALUE\u1680}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u1680vars.VALUE\u1680}}"
+        }
+      ]
     },
     {
       "name": "en quad whitespace",
       "template": "${{\u2000vars.VALUE\u2000}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2000vars.VALUE\u2000}}"
+        }
+      ]
     },
     {
       "name": "em quad whitespace",
       "template": "${{\u2001vars.VALUE\u2001}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2001vars.VALUE\u2001}}"
+        }
+      ]
     },
     {
       "name": "en space whitespace",
       "template": "${{\u2002vars.VALUE\u2002}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2002vars.VALUE\u2002}}"
+        }
+      ]
     },
     {
       "name": "em space whitespace",
       "template": "${{\u2003vars.VALUE\u2003}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2003vars.VALUE\u2003}}"
+        }
+      ]
     },
     {
       "name": "three-per-em space whitespace",
       "template": "${{\u2004vars.VALUE\u2004}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2004vars.VALUE\u2004}}"
+        }
+      ]
     },
     {
       "name": "four-per-em space whitespace",
       "template": "${{\u2005vars.VALUE\u2005}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2005vars.VALUE\u2005}}"
+        }
+      ]
     },
     {
       "name": "six-per-em space whitespace",
       "template": "${{\u2006vars.VALUE\u2006}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2006vars.VALUE\u2006}}"
+        }
+      ]
     },
     {
       "name": "figure space whitespace",
       "template": "${{\u2007vars.VALUE\u2007}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2007vars.VALUE\u2007}}"
+        }
+      ]
     },
     {
       "name": "punctuation space whitespace",
       "template": "${{\u2008vars.VALUE\u2008}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2008vars.VALUE\u2008}}"
+        }
+      ]
     },
     {
       "name": "thin space whitespace",
       "template": "${{\u2009vars.VALUE\u2009}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2009vars.VALUE\u2009}}"
+        }
+      ]
     },
     {
       "name": "hair space whitespace",
       "template": "${{\u200avars.VALUE\u200a}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u200avars.VALUE\u200a}}"
+        }
+      ]
     },
     {
       "name": "line separator whitespace",
       "template": "${{\u2028vars.VALUE\u2028}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2028vars.VALUE\u2028}}"
+        }
+      ]
     },
     {
       "name": "paragraph separator whitespace",
       "template": "${{\u2029vars.VALUE\u2029}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u2029vars.VALUE\u2029}}"
+        }
+      ]
     },
     {
       "name": "narrow no-break space whitespace",
       "template": "${{\u202fvars.VALUE\u202f}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u202fvars.VALUE\u202f}}"
+        }
+      ]
     },
     {
       "name": "medium mathematical space whitespace",
       "template": "${{\u205fvars.VALUE\u205f}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u205fvars.VALUE\u205f}}"
+        }
+      ]
     },
     {
       "name": "ideographic space whitespace",
       "template": "${{\u3000vars.VALUE\u3000}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\u3000vars.VALUE\u3000}}"
+        }
+      ]
     },
     {
       "name": "byte order mark whitespace",
       "template": "${{\ufeffvars.VALUE\ufeff}}",
-      "expectedReferences": [{ "namespace": "vars", "name": "VALUE" }]
+      "expectedReferences": [
+        {
+          "namespace": "vars",
+          "name": "VALUE",
+          "source": "${{\ufeffvars.VALUE\ufeff}}"
+        }
+      ]
     },
     {
       "name": "python file separator whitespace is rejected",
@@ -213,21 +371,37 @@
     {
       "name": "reference surrounded by literal text",
       "template": "Bearer ${{ secrets.TOKEN }} suffix",
-      "expectedReferences": [{ "namespace": "secrets", "name": "TOKEN" }]
+      "expectedReferences": [
+        {
+          "namespace": "secrets",
+          "name": "TOKEN",
+          "source": "${{ secrets.TOKEN }}"
+        }
+      ]
     },
     {
       "name": "multiple references preserve source order",
       "template": "${{ vars.USER }}:${{ secrets.PASS }}:${{ vars.USER }}",
       "expectedReferences": [
-        { "namespace": "vars", "name": "USER" },
-        { "namespace": "secrets", "name": "PASS" },
-        { "namespace": "vars", "name": "USER" }
+        { "namespace": "vars", "name": "USER", "source": "${{ vars.USER }}" },
+        {
+          "namespace": "secrets",
+          "name": "PASS",
+          "source": "${{ secrets.PASS }}"
+        },
+        { "namespace": "vars", "name": "USER", "source": "${{ vars.USER }}" }
       ]
     },
     {
       "name": "later valid reference follows malformed input",
       "template": "${{ env.BAD }} ${{ secrets.GOOD }}",
-      "expectedReferences": [{ "namespace": "secrets", "name": "GOOD" }]
+      "expectedReferences": [
+        {
+          "namespace": "secrets",
+          "name": "GOOD",
+          "source": "${{ secrets.GOOD }}"
+        }
+      ]
     }
   ],
   "basicTemplateCases": [

@@ -1,6 +1,6 @@
 {
   "name": "VM0 Development",
-  "image": "ghcr.io/vm0-ai/vm0-dev:20260710",
+  "image": "ghcr.io/vm0-ai/vm0-dev:20260825",
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"

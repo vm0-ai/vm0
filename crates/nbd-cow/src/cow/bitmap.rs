@@ -140,11 +140,13 @@ pub(super) fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec>
         let bytes_in_chunk = words_in_chunk * 8;
         chunk.truncate(bytes_in_chunk);
         file.read_exact(&mut chunk)?;
-        words.extend(chunk.chunks_exact(8).map(|word_bytes| {
-            let mut word = [0u8; 8];
-            word.copy_from_slice(word_bytes);
-            u64::from_le_bytes(word) as usize
-        }));
+        words.extend(
+            chunk
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|word_bytes| u64::from_le_bytes(*word_bytes) as usize),
+        );
     }
     let mut bv = BitVec::from_vec(words);
     bv.truncate(num_blocks);

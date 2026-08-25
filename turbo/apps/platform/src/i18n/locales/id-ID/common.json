@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "Lampirkan tanda",
       "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "inkLabel": "Warna {{color}}",
       "notePlaceholder": "Tulis apa yang harus diubah di sini",
       "open": "Anotasi",
       "redo": "Ulangi",
       "removeMark": "Hapus tanda",
       "subtitle_other": "{{count}} tanda",
+      "textPlaceholder": "Ketik labelnya",
       "tools": {
         "arrow": "Panah",
         "box": "Kotak",
@@ -697,6 +699,12 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "visibility": {
+        "change": "Ubah",
+        "changeLabel": "Ubah visibilitas templat",
+        "privateState": "Hanya Anda yang dapat melihat dan menggunakannya",
+        "workspaceState": "Siapa pun di ruang kerja ini dapat menggunakannya"
+      },
       "website": "Website",
       "websitePreview": "pratinjau template website {{title}}",
       "workflow": "Alur kerja",
@@ -3325,9 +3333,17 @@
           "description": "Hasilkan slide dan narasi",
           "title": "Buat presentasi"
         },
+        "slack": {
+          "description": "Chat dengan rekan tim AI Anda di ruang kerja",
+          "title": "Gunakan Slack"
+        },
         "video": {
           "description": "Ubah ide Anda menjadi video",
           "title": "Produksi video"
+        },
+        "website": {
+          "description": "Buat halaman yang bisa dibagikan",
+          "title": "Buat situs web"
         },
         "workflow": {
           "description": "Jelajahi dari template prasetel",
@@ -4634,7 +4650,6 @@
         "usage": {
           "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
-          "balanceUsageDescription": "Saldo kredit dan penggunaan tim Anda.",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
         }

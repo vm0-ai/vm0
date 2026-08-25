@@ -15,6 +15,13 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
+import { Input } from "@okouai/ui/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@okouai/ui/components/ui/tooltip";
 import { cn } from "@okouai/ui";
 import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
 import {
@@ -32,18 +39,15 @@ import {
   bindAnnotationSurface$,
   closeAnnotationEditor$,
   commitAnnotation$,
-  HIGHLIGHT_FILL,
   redoAnnotation$,
-  REDACT_FILL,
   removeAnnotationMark$,
+  removeSelectedAnnotationMark$,
   selectAnnotationMark$,
   setAnnotationCrop$,
   setAnnotationInk$,
   setAnnotationMarkNote$,
   setAnnotationStroke$,
   setAnnotationTool$,
-  STROKE_HALO_INNER,
-  STROKE_HALO_OUTER,
   undoAnnotation$,
   type AnnotationInk,
   type AnnotationPoint,
@@ -52,6 +56,7 @@ import {
   type AnnotationTool,
 } from "../../signals/okou-page/image-annotation.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
+import { markInk, MarkShape } from "./image-annotation-marks.tsx";
 
 const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
   { tool: "select", icon: MousePointer2 },
@@ -82,6 +87,10 @@ function rectFrom(a: AnnotationPoint, b: AnnotationPoint) {
     width: Math.abs(b.x - a.x),
     height: Math.abs(b.y - a.y),
   };
+}
+
+function percent(value: number): string {
+  return `${value * 100}%`;
 }
 
 function buildMark(
@@ -121,13 +130,6 @@ function buildMark(
   }
 }
 
-function markInk(mark: ImageAnnotationMark): string {
-  if (mark.shape === "highlight" || mark.shape === "redact") {
-    return REDACT_FILL;
-  }
-  return mark.ink;
-}
-
 function noteOf(mark: ImageAnnotationMark): string {
   if (mark.shape === "text") {
     return mark.text;
@@ -138,177 +140,17 @@ function noteOf(mark: ImageAnnotationMark): string {
   return mark.note ?? "";
 }
 
-function percent(value: number): string {
-  return `${value * 100}%`;
-}
-
-function StrokeMark({ mark }: { mark: ImageAnnotationMark }) {
-  if (mark.shape === "pen") {
-    const points = mark.points
-      .map((point) => {
-        return `${point.x * 100},${point.y * 100}`;
-      })
-      .join(" ");
-    return (
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-0 h-full w-full"
-      >
-        <polyline
-          points={points}
-          fill="none"
-          stroke={STROKE_HALO_OUTER}
-          vectorEffect="non-scaling-stroke"
-          style={{ strokeWidth: 5 }}
-        />
-        <polyline
-          points={points}
-          fill="none"
-          stroke={mark.ink}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-          style={{ strokeWidth: 3 }}
-        />
-      </svg>
-    );
-  }
-
-  if (mark.shape !== "arrow") {
-    return null;
-  }
-
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      className="pointer-events-none absolute inset-0 h-full w-full"
-    >
-      <line
-        x1={mark.from.x * 100}
-        y1={mark.from.y * 100}
-        x2={mark.to.x * 100}
-        y2={mark.to.y * 100}
-        stroke={STROKE_HALO_OUTER}
-        vectorEffect="non-scaling-stroke"
-        style={{ strokeWidth: 5 }}
-      />
-      <line
-        x1={mark.from.x * 100}
-        y1={mark.from.y * 100}
-        x2={mark.to.x * 100}
-        y2={mark.to.y * 100}
-        stroke={mark.ink}
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-        style={{ strokeWidth: 3 }}
-      />
-      <circle
-        cx={mark.to.x * 100}
-        cy={mark.to.y * 100}
-        r={1.4}
-        fill={mark.ink}
-      />
-    </svg>
-  );
-}
-
-function BoxedMark({
-  mark,
-  ordinal,
-  selected,
-  onSelect,
-}: {
-  mark: Extract<ImageAnnotationMark, { shape: "box" | "highlight" | "redact" }>;
-  ordinal: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const fill =
-    mark.shape === "redact"
-      ? { background: REDACT_FILL }
-      : mark.shape === "highlight"
-        ? { background: HIGHLIGHT_FILL }
-        : {
-            border: `2.5px solid ${mark.ink}`,
-            background: `${mark.ink}1A`,
-            boxShadow: `0 0 0 1px ${STROKE_HALO_OUTER}, inset 0 0 0 1px ${STROKE_HALO_INNER}`,
-          };
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      style={{
-        left: percent(mark.rect.x),
-        top: percent(mark.rect.y),
-        width: percent(mark.rect.width),
-        height: percent(mark.rect.height),
-        borderRadius: mark.shape === "box" ? 4 : 3,
-        ...fill,
-        ...(selected
-          ? { outline: `2px solid ${markInk(mark)}`, outlineOffset: "3px" }
-          : {}),
-      }}
-      className="absolute"
-    >
-      {mark.shape === "box" && (
-        <span
-          style={{ background: mark.ink }}
-          className="absolute -left-[11px] -top-[11px] flex h-[22px] w-[22px] items-center justify-center rounded-full border-[1.5px] border-white text-[11px] font-bold text-white shadow"
-        >
-          {ordinal}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function MarkLayer({
-  mark,
-  ordinal,
-  selected,
-  onSelect,
-}: {
-  mark: ImageAnnotationMark;
-  ordinal: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  if (mark.shape === "pen" || mark.shape === "arrow") {
-    return <StrokeMark mark={mark} />;
-  }
-
+function markAnchor(mark: ImageAnnotationMark): AnnotationPoint {
   if (mark.shape === "text") {
-    return (
-      <button
-        type="button"
-        onClick={onSelect}
-        style={{
-          left: percent(mark.at.x),
-          top: percent(mark.at.y),
-          color: mark.ink,
-          textShadow: `0 0 3px ${STROKE_HALO_INNER}, 0 0 3px ${STROKE_HALO_INNER}`,
-          ...(selected
-            ? { outline: `2px solid ${mark.ink}`, outlineOffset: "3px" }
-            : {}),
-        }}
-        className="absolute whitespace-pre text-sm font-bold"
-      >
-        {mark.text || "…"}
-      </button>
-    );
+    return mark.at;
   }
-
-  return (
-    <BoxedMark
-      mark={mark}
-      ordinal={ordinal}
-      selected={selected}
-      onSelect={onSelect}
-    />
-  );
+  if (mark.shape === "arrow") {
+    return mark.to;
+  }
+  if (mark.shape === "pen") {
+    return mark.points[0] ?? { x: 0.5, y: 0.5 };
+  }
+  return { x: mark.rect.x, y: mark.rect.y + mark.rect.height };
 }
 
 /**
@@ -365,34 +207,47 @@ function useToolLabel(): (tool: AnnotationTool) => string {
 }
 
 function InkSwatches() {
+  const { t } = useTranslation();
   const ink = useGet(annotationInk$);
   const setInk = useSet(setAnnotationInk$);
 
   return (
-    <div className="flex items-center gap-1.5 px-1">
+    <div className="flex items-center gap-0.5 px-1">
       {ANNOTATION_INKS.map((candidate) => {
         const active = candidate === ink;
         return (
-          <button
-            key={candidate}
-            type="button"
-            onClick={() => {
-              setInk(candidate);
-            }}
-            aria-pressed={active}
-            aria-label={candidate}
-            title={candidate}
-            style={{
-              background: candidate,
-              boxShadow: active
-                ? `0 0 0 2px hsl(var(--card)), 0 0 0 3.5px ${candidate}`
-                : "0 0 0 1px hsl(var(--gray-300))",
-            }}
-            className={cn(
-              "rounded-full transition-all",
-              active ? "h-[18px] w-[18px]" : "h-4 w-4",
-            )}
-          />
+          <Tooltip key={candidate}>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="icon-xs"
+                  aria-pressed={active}
+                  aria-label={t(
+                    ($) => {
+                      return $.artifacts.annotation.inkLabel;
+                    },
+                    { color: candidate },
+                  )}
+                  onClick={() => {
+                    setInk(candidate);
+                  }}
+                >
+                  <span
+                    style={{ background: candidate }}
+                    className={cn(
+                      "rounded-full transition-all",
+                      active
+                        ? "h-[18px] w-[18px] ring-2 ring-card ring-offset-2"
+                        : "h-4 w-4",
+                    )}
+                  />
+                </Button>
+              }
+            />
+            <TooltipContent>{candidate}</TooltipContent>
+          </Tooltip>
         );
       })}
     </div>
@@ -408,23 +263,28 @@ function ToolPill() {
     <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-background p-1.5 shadow-lg">
       {TOOLS.map(({ tool: candidate, icon: Icon }) => {
         return (
-          <Button
-            key={candidate}
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            aria-pressed={tool === candidate}
-            aria-label={toolLabel(candidate)}
-            title={toolLabel(candidate)}
-            onClick={() => {
-              setTool(candidate);
-            }}
-            className={cn(
-              tool === candidate && "bg-foreground text-background",
-            )}
-          >
-            <Icon size={16} />
-          </Button>
+          <Tooltip key={candidate}>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="icon-sm"
+                  aria-pressed={tool === candidate}
+                  aria-label={toolLabel(candidate)}
+                  onClick={() => {
+                    setTool(candidate);
+                  }}
+                  className={cn(
+                    tool === candidate && "bg-foreground text-background",
+                  )}
+                >
+                  <Icon size={16} />
+                </Button>
+              }
+            />
+            <TooltipContent>{toolLabel(candidate)}</TooltipContent>
+          </Tooltip>
         );
       })}
       <span className="mx-1 h-[18px] w-px bg-border" />
@@ -433,40 +293,69 @@ function ToolPill() {
   );
 }
 
-function NoteField({ mark }: { mark: ImageAnnotationMark }) {
+/**
+ * The note lives next to the mark it belongs to rather than in a bar at the
+ * bottom of the dialog: a field detached from the thing it describes gives no
+ * clue which mark is being edited, and text marks were being typed twice —
+ * once on the image and once underneath it.
+ */
+function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
   const { t } = useTranslation();
   const setNote = useSet(setAnnotationMarkNote$);
   const removeMark = useSet(removeAnnotationMark$);
+  const anchor = markAnchor(mark);
 
   return (
-    <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2.5">
-      <span
-        style={{ background: markInk(mark) }}
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-      />
-      <input
-        value={noteOf(mark)}
-        onChange={(event) => {
-          setNote(mark.id, event.target.value);
-        }}
-        placeholder={t(($) => {
-          return $.artifacts.annotation.notePlaceholder;
-        })}
-        className="h-8 flex-1 rounded-lg border border-border bg-input px-3 text-sm"
-      />
-      <Button
-        type="button"
-        variant="quiet"
-        size="icon-sm"
-        onClick={() => {
-          removeMark(mark.id);
-        }}
-        aria-label={t(($) => {
-          return $.artifacts.annotation.removeMark;
-        })}
-      >
-        <Trash2 size={16} />
-      </Button>
+    <div
+      style={{ left: percent(anchor.x), top: percent(anchor.y) }}
+      // The popover lives inside the drawing surface so it can be positioned
+      // against the mark, which means its own clicks would otherwise start a
+      // stroke on the canvas underneath it.
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        event.stopPropagation();
+      }}
+      className="absolute z-30 w-[248px] translate-y-2 rounded-xl border border-border bg-popover p-2 shadow-lg"
+      data-testid="annotation-note-popover"
+    >
+      <div className="flex items-center gap-2">
+        <span
+          style={{ background: markInk(mark) }}
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+        />
+        <Input
+          autoFocus
+          value={noteOf(mark)}
+          onChange={(event) => {
+            setNote(mark.id, event.target.value);
+          }}
+          placeholder={
+            mark.shape === "text"
+              ? t(($) => {
+                  return $.artifacts.annotation.textPlaceholder;
+                })
+              : t(($) => {
+                  return $.artifacts.annotation.notePlaceholder;
+                })
+          }
+          className="h-8 flex-1 text-sm"
+        />
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-sm"
+          onClick={() => {
+            removeMark(mark.id);
+          }}
+          aria-label={t(($) => {
+            return $.artifacts.annotation.removeMark;
+          })}
+        >
+          <Trash2 size={16} />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -493,30 +382,52 @@ function EditorHeader({ filename }: { filename: string }) {
           )}
         </div>
       </div>
-      <Button
-        type="button"
-        variant="quiet"
-        size="icon-sm"
-        disabled={!canUndo}
-        onClick={undo}
-        aria-label={t(($) => {
-          return $.artifacts.annotation.undo;
-        })}
-      >
-        <Undo2 size={18} />
-      </Button>
-      <Button
-        type="button"
-        variant="quiet"
-        size="icon-sm"
-        disabled={!canRedo}
-        onClick={redo}
-        aria-label={t(($) => {
-          return $.artifacts.annotation.redo;
-        })}
-      >
-        <Redo2 size={18} />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-sm"
+              disabled={!canUndo}
+              onClick={undo}
+              aria-label={t(($) => {
+                return $.artifacts.annotation.undo;
+              })}
+            >
+              <Undo2 size={18} />
+            </Button>
+          }
+        />
+        <TooltipContent>
+          {t(($) => {
+            return $.artifacts.annotation.undo;
+          })}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-sm"
+              disabled={!canRedo}
+              onClick={redo}
+              aria-label={t(($) => {
+                return $.artifacts.annotation.redo;
+              })}
+            >
+              <Redo2 size={18} />
+            </Button>
+          }
+        />
+        <TooltipContent>
+          {t(($) => {
+            return $.artifacts.annotation.redo;
+          })}
+        </TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         variant="quiet"
@@ -556,6 +467,44 @@ function EditorFooter() {
         })}
       </Button>
     </div>
+  );
+}
+
+/** Delete and Backspace remove the selected mark, unless a field has focus. */
+function DeleteKeyBinding() {
+  const removeSelected = useSet(removeSelectedAnnotationMark$);
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node) {
+          return;
+        }
+        const onKeyDown = (event: KeyboardEvent) => {
+          if (event.key !== "Delete" && event.key !== "Backspace") {
+            return;
+          }
+          const active = document.activeElement;
+          if (
+            active instanceof HTMLInputElement ||
+            active instanceof HTMLTextAreaElement ||
+            (active instanceof HTMLElement && active.isContentEditable)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          removeSelected();
+        };
+        document.addEventListener("keydown", onKeyDown, true);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown, true);
+        };
+      }}
+      hidden
+    />
   );
 }
 
@@ -629,9 +578,11 @@ function useStrokeHandlers(): StrokeHandlers {
       }
       const mark = buildMark(stroke, ink);
       if (mark) {
+        // Adding selects the mark, so its note opens straight away — a shape
+        // and the sentence explaining it are one gesture. The tool stays put so
+        // several boxes in a row do not need the tool re-picked each time; only
+        // text hands over to select, because it has nothing until it is typed.
         addMark(mark);
-        // A text mark is useless until it has words, so the note field is where
-        // the user lands the moment the mark exists.
         if (mark.shape === "text") {
           setTool("select");
         }
@@ -654,6 +605,9 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
 
   const preview =
     stroke && stroke.tool !== "pen" ? rectFrom(stroke.from, stroke.to) : null;
+  const selectedMark = annotation.marks.find((mark) => {
+    return mark.id === selectedId;
+  });
 
   return (
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/30 p-5">
@@ -682,15 +636,14 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
               top: percent(annotation.crop.y),
               width: percent(annotation.crop.width),
               height: percent(annotation.crop.height),
-              boxShadow: "0 0 0 9999px rgba(20,23,29,.55)",
               outline: `2px solid ${ink}`,
             }}
-            className="pointer-events-none absolute rounded-sm"
+            className="pointer-events-none absolute rounded-sm shadow-[0_0_0_9999px_hsl(var(--overlay)/0.55)]"
           />
         )}
         {annotation.marks.map((mark, index) => {
           return (
-            <MarkLayer
+            <MarkShape
               key={mark.id}
               mark={mark}
               ordinal={index + 1}
@@ -702,6 +655,9 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
             />
           );
         })}
+        {selectedMark && selectedMark.shape !== "redact" && (
+          <MarkNotePopover mark={selectedMark} />
+        )}
         {preview && (
           <div
             style={{
@@ -736,31 +692,25 @@ export function ImageAnnotationEditor() {
 }
 
 function AnnotationSurface({ target }: { target: AnnotationTarget }) {
-  const annotation = useGet(annotationDraft$);
-  const selectedId = useGet(annotationSelectedMarkId$);
   const resolvedUrl = useResolvedAttachmentUrl(target.url);
 
   if (resolvedUrl === null) {
     return null;
   }
 
-  const selectedMark = annotation.marks.find((mark) => {
-    return mark.id === selectedId;
-  });
-
   return (
-    <div
-      className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
-      data-testid="image-annotation-editor"
-    >
-      <div className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-2xl bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]">
-        <EditorHeader filename={target.filename} />
-        <EditorStage filename={target.filename} url={resolvedUrl} />
-        {selectedMark && selectedMark.shape !== "redact" && (
-          <NoteField mark={selectedMark} />
-        )}
-        <EditorFooter />
+    <TooltipProvider delayDuration={300}>
+      <div
+        className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
+        data-testid="image-annotation-editor"
+      >
+        <DeleteKeyBinding />
+        <div className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-2xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]">
+          <EditorHeader filename={target.filename} />
+          <EditorStage filename={target.filename} url={resolvedUrl} />
+          <EditorFooter />
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

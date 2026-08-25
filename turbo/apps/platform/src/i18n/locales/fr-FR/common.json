@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Joindre les annotations",
       "draftOnly": "Les annotations restent dans le brouillon — modifiables jusqu'à l'envoi",
+      "inkLabel": "Couleur {{color}}",
       "notePlaceholder": "Dites ce qui doit changer ici",
       "open": "Annoter",
       "redo": "Rétablir",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} annotation",
       "subtitle_many": "{{count}} annotations",
       "subtitle_other": "{{count}} annotations",
+      "textPlaceholder": "Saisissez le libellé",
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",
@@ -717,6 +719,12 @@
       "tryDifferentSearch": "Essayez une recherche différente.",
       "use": "Utiliser",
       "useThisTemplate": "Utilisez ce modèle",
+      "visibility": {
+        "change": "Modifier",
+        "changeLabel": "Modifier la visibilité du modèle",
+        "privateState": "Vous seul pouvez le voir et l'utiliser",
+        "workspaceState": "Tout le monde dans cet espace de travail peut l'utiliser"
+      },
       "website": "Site web",
       "websitePreview": "Aperçu du modèle de site web {{title}}",
       "workflow": "Workflow",
@@ -3384,9 +3392,17 @@
           "description": "Générer des diapositives et un présentateur",
           "title": "Générer une présentation"
         },
+        "slack": {
+          "description": "Discutez avec votre coéquipier IA dans votre espace de travail",
+          "title": "Utiliser Slack"
+        },
         "video": {
           "description": "Transformez vos idées en vidéo",
           "title": "Production vidéo"
+        },
+        "website": {
+          "description": "Créez et publiez une page partageable",
+          "title": "Créer un site web"
         },
         "workflow": {
           "description": "Explorer à partir de modèles prédéfinis",
@@ -4699,7 +4715,6 @@
         "usage": {
           "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
-          "balanceUsageDescription": "Le solde de crédits et la consommation de votre équipe.",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"
         }

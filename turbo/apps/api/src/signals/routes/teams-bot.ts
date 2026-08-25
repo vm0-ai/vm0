@@ -334,146 +334,137 @@ const dispatchTeamsMessageAndReply$ = command(
   },
 );
 
-const handleZeroTeamsBot$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const request = get(request$);
-    const publicBrand = get(publicBrand$);
-    const apiStartTime = now();
-    const bodyText = await request.text();
-    signal.throwIfAborted();
+const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$);
+  const publicBrand = get(publicBrand$);
+  const apiStartTime = now();
+  const bodyText = await request.text();
+  signal.throwIfAborted();
 
-    const body = safeJsonParse(bodyText);
-    const normalized = normalizeTeamsActivity(body);
-    if (!normalized.ok) {
-      return errorResponse(400, normalized.error, "BAD_REQUEST");
-    }
+  const body = safeJsonParse(bodyText);
+  const normalized = normalizeTeamsActivity(body);
+  if (!normalized.ok) {
+    return errorResponse(400, normalized.error, "BAD_REQUEST");
+  }
 
-    const serviceUrl =
-      normalized.activity.kind === "unsupported"
-        ? readTeamsActivityServiceUrl(body)
-        : normalized.activity.serviceUrl;
-    if (!serviceUrl) {
-      return errorResponse(
-        400,
-        "Missing Teams activity serviceUrl",
-        "BAD_REQUEST",
-      );
-    }
+  const serviceUrl =
+    normalized.activity.kind === "unsupported"
+      ? readTeamsActivityServiceUrl(body)
+      : normalized.activity.serviceUrl;
+  if (!serviceUrl) {
+    return errorResponse(
+      400,
+      "Missing Teams activity serviceUrl",
+      "BAD_REQUEST",
+    );
+  }
 
-    const auth = await verifyTeamsBotAuthorization(
-      {
-        authorization: get(authorization$),
-        serviceUrl,
-        channelId: readTeamsActivityChannelId(body),
-      },
+  const auth = await verifyTeamsBotAuthorization(
+    {
+      authorization: get(authorization$),
+      serviceUrl,
+      channelId: readTeamsActivityChannelId(body),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (!auth.ok) {
+    return errorResponse(auth.status, auth.message, authErrorCode(auth.status));
+  }
+
+  const activityResult = await set(
+    recordTeamsInstallationActivity$,
+    { activity: normalized.activity },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (activityResult.kind === "removed" && activityResult.orgId) {
+    await set(
+      publishTeamsChanged$,
+      { orgId: activityResult.orgId, userIds: activityResult.userIds },
       signal,
     );
     signal.throwIfAborted();
-
-    if (!auth.ok) {
-      return errorResponse(
-        auth.status,
-        auth.message,
-        authErrorCode(auth.status),
-      );
-    }
-
-    const activityResult = await set(
-      recordTeamsInstallationActivity$,
-      { activity: normalized.activity },
+  }
+  if (activityResult.kind === "upserted" && activityResult.installation.orgId) {
+    await set(
+      publishTeamsChanged$,
+      { orgId: activityResult.installation.orgId },
       signal,
     );
     signal.throwIfAborted();
+  }
 
-    if (activityResult.kind === "removed" && activityResult.orgId) {
-      await set(
-        publishTeamsChanged$,
-        { orgId: activityResult.orgId, userIds: activityResult.userIds },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-    if (
-      activityResult.kind === "upserted" &&
-      activityResult.installation.orgId
-    ) {
-      await set(
-        publishTeamsChanged$,
-        { orgId: activityResult.installation.orgId },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-
-    const installation =
-      activityResult.kind === "upserted" ? activityResult.installation : null;
-    const timing = new ApiDispatchTimingCollector();
-    timing.recordElapsed(
-      "api_dispatch_pre_create_zero_teams_entrypoint_gap",
-      "nested",
-      apiStartTime,
+  const installation =
+    activityResult.kind === "upserted" ? activityResult.installation : null;
+  const timing = new ApiDispatchTimingCollector();
+  timing.recordElapsed(
+    "api_dispatch_pre_create_zero_teams_entrypoint_gap",
+    "nested",
+    apiStartTime,
+  );
+  if (normalized.activity.kind === "message") {
+    waitUntil(
+      tapError(
+        set(
+          dispatchTeamsMessageAndReply$,
+          {
+            activity: normalized.activity,
+            installation,
+            publicBrand,
+            apiStartTime,
+            timing,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling Teams message activity", { error });
+        },
+      ),
     );
-    if (normalized.activity.kind === "message") {
-      waitUntil(
-        tapError(
-          set(
-            dispatchTeamsMessageAndReply$,
-            {
-              activity: normalized.activity,
-              installation,
-              publicBrand,
-              apiStartTime,
-              timing,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error handling Teams message activity", { error });
-          },
-        ),
-      );
-    }
+  }
 
-    if (
-      teamsInstallWelcomeActivity(normalized.activity) &&
-      activityResult.kind === "upserted"
-    ) {
-      waitUntil(
-        tapError(
-          set(
-            sendTeamsInstallWelcome$,
-            {
-              activity: normalized.activity,
-              installation: activityResult.installation,
-              publicBrand,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error sending Teams install welcome", { error });
+  if (
+    teamsInstallWelcomeActivity(normalized.activity) &&
+    activityResult.kind === "upserted"
+  ) {
+    waitUntil(
+      tapError(
+        set(
+          sendTeamsInstallWelcome$,
+          {
+            activity: normalized.activity,
+            installation: activityResult.installation,
+            publicBrand,
           },
+          signal,
         ),
-      );
-    }
+        (error) => {
+          L.error("Error sending Teams install welcome", { error });
+        },
+      ),
+    );
+  }
 
-    return {
-      status: 200 as const,
-      body: {
-        ok: true as const,
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      activity: normalized.activity,
+      connectUrl: buildTeamsConnectUrlForActivity({
         activity: normalized.activity,
-        connectUrl: buildTeamsConnectUrlForActivity({
-          activity: normalized.activity,
-          publicBrand,
-          installation,
-        }),
-      },
-    };
-  },
-);
+        publicBrand,
+        installation,
+      }),
+    },
+  };
+});
 
 export const teamsBotRoutes: readonly RouteEntry[] = [
   {
     route: teamsBotContract.post,
-    handler: handleZeroTeamsBot$,
+    handler: handleTeamsBot$,
   },
 ];

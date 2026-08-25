@@ -1775,7 +1775,7 @@ mod tests {
                 .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "historyless-checkpoint"}));
+                .json_body(json!({"checkpointId": "historyless-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let complete_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/complete");
@@ -1880,7 +1880,7 @@ mod tests {
                 .json_body_includes(r#"{"cliAgentSessionId":"recovery-session-from-main"}"#);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "checkpoint-from-main"}));
+                .json_body(json!({"checkpointId": "checkpoint-from-main", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");

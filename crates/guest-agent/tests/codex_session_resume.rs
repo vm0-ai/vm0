@@ -225,7 +225,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             .json_body_includes(format!(r#"{{"cliAgentSessionId":"{thread_id}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "codex-derived-checkpoint"}));
+            .json_body(json!({"checkpointId": "codex-derived-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let config = fixture.config(&server.base_url(), "test-token")?;

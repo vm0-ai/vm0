@@ -439,6 +439,7 @@ function CodeStep({
   const resendState = useGet(signals.resendState$);
   const pageSignal = useGet(pageSignal$);
   const setCode = useSet(signals.setCode$);
+  const backToIdentifier = useSet(signals.backToIdentifier$);
   const backToMethods = useSet(signals.backToMethods$);
   const resendCooldownLifecycleRef = useSet(
     signals.resendCooldownLifecycleRef$,
@@ -451,10 +452,12 @@ function CodeStep({
   const coolingDown = resendState.status === "cooling-down";
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
+  const clientTrust = selectedFactor?.kind === "client-trust-email-code";
   const safeIdentifier =
     selectedFactor &&
     (selectedFactor.kind === "email-code" ||
-      selectedFactor.kind === "password-reset")
+      selectedFactor.kind === "password-reset" ||
+      selectedFactor.kind === "client-trust-email-code")
       ? selectedFactor.safeIdentifier
       : null;
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
@@ -510,7 +513,7 @@ function CodeStep({
         className="w-full"
         type="button"
         variant="ghost"
-        onClick={backToMethods}
+        onClick={clientTrust ? backToIdentifier : backToMethods}
       >
         {copy.back}
       </Button>
@@ -669,6 +672,11 @@ export function SignInCardContent({
     return <PasswordStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "email-code") {
+    return (
+      <CodeStep copy={copy} reset={false} signals={signals} state={state} />
+    );
+  }
+  if (state.step === "client-trust-code") {
     return (
       <CodeStep copy={copy} reset={false} signals={signals} state={state} />
     );

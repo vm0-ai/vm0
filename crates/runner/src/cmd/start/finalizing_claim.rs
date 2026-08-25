@@ -174,7 +174,7 @@ async fn run_finalizing_claim(
             return complete_claimed_without_sandbox(
                 claimed,
                 cancellation,
-                failure,
+                *failure,
                 None,
                 pre_spawn_timing.finalizing_handoff_outcome(),
                 &ctx,
@@ -376,7 +376,7 @@ async fn run_finalizing_claim(
 async fn prepare_finalizing_resource(
     request: FinalizingPreparation<'_>,
     reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
-) -> Result<FinalizingResource, ExecutionFailure> {
+) -> Result<FinalizingResource, Box<ExecutionFailure>> {
     let FinalizingPreparation {
         claimed,
         cancellation,
@@ -397,7 +397,7 @@ async fn prepare_finalizing_resource(
         run_id,
     );
     if let Err(error) = validate_resume_session_id(claimed.context()) {
-        return Err(ExecutionFailure::from_error(error));
+        return Err(ExecutionFailure::from_error(error).into());
     }
 
     info!(
@@ -457,7 +457,7 @@ async fn prepare_finalizing_resource(
                 ctx.reuse_state_notify.notify_one();
             }
             pre_spawn_timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Cancelled);
-            Err(ExecutionFailure::cancelled())
+            Err(ExecutionFailure::cancelled().into())
         }
     }
 }
@@ -631,7 +631,7 @@ async fn receive_finalizing_handoff(
 
 async fn acquire_fallback_resource(
     request: FinalizingFallback<'_>,
-) -> Result<FinalizingResource, ExecutionFailure> {
+) -> Result<FinalizingResource, Box<ExecutionFailure>> {
     let FinalizingFallback {
         run_id,
         cancellation,
@@ -721,7 +721,7 @@ async fn acquire_fallback_resource(
         tokio::select! {
             biased;
             () = cancel.cancelled() => {
-                return Err(ExecutionFailure::cancelled());
+                return Err(ExecutionFailure::cancelled().into());
             }
             lease = ResourceBudget::substitute_leases_when_available(
                 &ctx.budget,
@@ -754,7 +754,7 @@ async fn reserve_fallback_exact(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     history_generation_run_id: RunId,
     ctx: &SpawnContext,
-) -> Result<Option<Box<ReservedIdleSandbox>>, ExecutionFailure> {
+) -> Result<Option<Box<ReservedIdleSandbox>>, Box<ExecutionFailure>> {
     let Some(reservation) = reserve_reusable_idle_for_spawn(
         reuse_key,
         profile_name,
@@ -775,11 +775,11 @@ async fn accept_fallback_exact(
     cancellation: &RunCancellationRegistration,
     reservation: Box<ReservedIdleSandbox>,
     ctx: &SpawnContext,
-) -> Result<Box<ReservedIdleSandbox>, ExecutionFailure> {
+) -> Result<Box<ReservedIdleSandbox>, Box<ExecutionFailure>> {
     if cancellation.token().is_cancelled() {
         rollback_reserved_idle_for_spawn(*reservation, ctx).await;
         ctx.reuse_state_notify.notify_one();
-        return Err(ExecutionFailure::cancelled());
+        return Err(ExecutionFailure::cancelled().into());
     }
     Ok(reservation)
 }

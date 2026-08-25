@@ -492,12 +492,14 @@
     "annotation": {
       "attach": "Markierungen anhängen",
       "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "inkLabel": "Farbe {{color}}",
       "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
       "open": "Markieren",
       "redo": "Wiederholen",
       "removeMark": "Markierung entfernen",
       "subtitle_one": "{{count}} Markierung",
       "subtitle_other": "{{count}} Markierungen",
+      "textPlaceholder": "Beschriftung eingeben",
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
@@ -698,6 +700,12 @@
       "tryDifferentSearch": "Versuchen Sie es mit einer anderen Suche.",
       "use": "Verwenden",
       "useThisTemplate": "Verwenden Sie diese Vorlage",
+      "visibility": {
+        "change": "Ändern",
+        "changeLabel": "Sichtbarkeit der Vorlage ändern",
+        "privateState": "Nur du kannst sie sehen und verwenden",
+        "workspaceState": "Alle in diesem Arbeitsbereich können sie verwenden"
+      },
       "website": "Webseite",
       "websitePreview": "{{title}} Vorschau der Website-Vorlage",
       "workflow": "Workflow",
@@ -3333,9 +3341,17 @@
           "description": "Folien und Referenten erstellen",
           "title": "Erstellen Sie eine Präsentation"
         },
+        "slack": {
+          "description": "Chatten Sie mit Ihrem KI-Teammitglied in Ihrem Workspace",
+          "title": "Slack verwenden"
+        },
         "video": {
           "description": "Verwandeln Sie Ihre Ideen in Videos",
           "title": "Videoproduktion"
+        },
+        "website": {
+          "description": "Erstellen Sie eine teilbare Seite",
+          "title": "Website erstellen"
         },
         "workflow": {
           "description": "Entdecken Sie anhand voreingestellter Vorlagen",
@@ -4642,7 +4658,6 @@
         "usage": {
           "balanceDescription": "Was deinem Team noch zum Ausgeben bleibt.",
           "balanceTitle": "Credit-Guthaben",
-          "balanceUsageDescription": "Guthaben und Verbrauch deines Teams.",
           "usageDescription": "Ihre Credit-Nutzung über Chats, Automatisierungen und Kanäle hinweg.",
           "usageTitle": "Credit-Nutzung"
         }

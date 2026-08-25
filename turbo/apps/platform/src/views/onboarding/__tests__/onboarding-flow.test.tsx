@@ -10,7 +10,6 @@ import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorCatalogContract,
@@ -186,11 +185,9 @@ function mockCatalogItem({
   });
 }
 
-async function openMakePage(
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
+async function openMakePage(): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding", featureSwitches });
+  detachedSetupPage({ context, path: "/onboarding" });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -266,6 +263,50 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("leads with Slack and opens its setup after completing onboarding", async () => {
+    await openMakePage();
+
+    const slackOption = firstItem(screen.getAllByRole("radio"));
+    expect(slackOption).toHaveTextContent("Use Slack");
+    expect(
+      screen.getByTestId("onboarding-slack-illustration"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+      "src",
+      expect.stringContaining("slack-198390069136.svg"),
+    );
+
+    click(slackOption);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(ROUTES.works);
+    });
+  });
+
+  it("opens website templates from the make page", async () => {
+    await openMakePage();
+
+    const websiteOption = screen.getByRole("radio", {
+      name: /Build a website/u,
+    });
+    expect(websiteOption.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("v2-choice-website_80x80.png"),
+    );
+
+    click(websiteOption);
+
+    await waitFor(() => {
+      const websiteTab = queryAllByRoleFast("tab").find((candidate) => {
+        return (
+          candidate.textContent === "Website" &&
+          candidate.getAttribute("aria-selected") === "true"
+        );
+      });
+      expect(websiteTab).toBeInTheDocument();
+    });
+  });
+
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();
@@ -1163,18 +1204,21 @@ describe("onboarding flow", () => {
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      successUrl = body.successUrl;
-      cancelUrl = body.cancelUrl;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/onboarding-video",
-      });
-    });
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        successUrl = body.successUrl;
+        cancelUrl = body.cancelUrl;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test/onboarding-video",
+        });
+      },
+    );
     context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage({ [FeatureSwitchKey.UsagePackPlans]: false });
+    await openMakePage();
     chooseMakeOption("Video production");
 
     await expect(
@@ -1247,9 +1291,8 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("uses the new Pro plan with a $20 usage pack when enabled", async () => {
+  it("uses the Pro plan with a $20 usage pack", async () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let legacyCheckoutCalled = false;
     let usagePackCheckoutBody:
       | {
           readonly tier: "pro" | "team";
@@ -1259,12 +1302,6 @@ describe("onboarding flow", () => {
           }[];
         }
       | undefined;
-    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
-      legacyCheckoutCalled = true;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/legacy-onboarding-video",
-      });
-    });
     context.mocks.api(
       billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
@@ -1279,7 +1316,6 @@ describe("onboarding flow", () => {
     detachedSetupPage({
       context,
       path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await expect(
       screen.findByRole("heading", {
@@ -1307,7 +1343,6 @@ describe("onboarding flow", () => {
         "https://checkout.stripe.com/test/usage-pack-onboarding-video",
       );
     });
-    expect(legacyCheckoutCalled).toBeFalsy();
     expect(usagePackCheckoutBody).toMatchObject({
       tier: "pro",
       memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],

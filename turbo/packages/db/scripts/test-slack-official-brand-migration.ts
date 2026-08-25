@@ -8,9 +8,10 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousMigration = "0984_rich_hemingway";
-const backfillMigration = "0986_backfill_official_slack_installation_brand";
-const testDatabase = "migration_slack_official_brand_backfill";
+const previousMigration = "0994_last_butterfly";
+const finalizationMigration =
+  "0995_canonicalize_official_slack_installation_brand";
+const testDatabase = "migration_slack_official_brand_finalization";
 
 interface InstallationBrandRow {
   readonly publicBrand: string;
@@ -32,7 +33,7 @@ async function readInstallationBrands(
 }
 
 export async function validateSlackOfficialBrandMigration(): Promise<void> {
-  console.log("=== Validate official Slack installation brand migration ===\n");
+  console.log("=== Validate official Slack brand finalization ===\n");
 
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
@@ -61,67 +62,49 @@ export async function validateSlackOfficialBrandMigration(): Promise<void> {
         "bot_user_id",
         "public_brand"
       )
-      VALUES (
-        'T_SLACK_BRAND_EXISTING',
-        'encrypted-existing-token',
-        'U_SLACK_BRAND_EXISTING',
-        'vm0'
-      )
+      VALUES
+        (
+          'T_SLACK_BRAND_RESIDUE',
+          'encrypted-residue-token',
+          'U_SLACK_BRAND_RESIDUE',
+          'vm0'
+        ),
+        (
+          'T_SLACK_BRAND_CANONICAL',
+          'encrypted-canonical-token',
+          'U_SLACK_BRAND_CANONICAL',
+          'okou'
+        )
     `);
 
     await applyMigrationsFromDirectoryUpToTag(
       client,
       migrationsDirectory,
-      backfillMigration,
+      finalizationMigration,
     );
 
-    assert.deepEqual(await readInstallationBrands(client), [
-      {
-        publicBrand: "okou",
-        slackWorkspaceId: "T_SLACK_BRAND_EXISTING",
-      },
-    ]);
-
-    const defaults = await client.query<{ columnDefault: string | null }>(`
-      SELECT "column_default" AS "columnDefault"
-      FROM "information_schema"."columns"
-      WHERE "table_schema" = 'public'
-        AND "table_name" = 'slack_org_installations'
-        AND "column_name" = 'public_brand'
-    `);
-    assert.deepEqual(defaults.rows, [{ columnDefault: "'okou'::text" }]);
-
-    await client.query(`
-      INSERT INTO "slack_org_installations" (
-        "slack_workspace_id",
-        "encrypted_bot_token",
-        "bot_user_id"
-      )
-      VALUES (
-        'T_SLACK_BRAND_NEW',
-        'encrypted-new-token',
-        'U_SLACK_BRAND_NEW'
-      )
-    `);
     const migratedRows = await readInstallationBrands(client);
     assert.deepEqual(migratedRows, [
       {
         publicBrand: "okou",
-        slackWorkspaceId: "T_SLACK_BRAND_EXISTING",
+        slackWorkspaceId: "T_SLACK_BRAND_CANONICAL",
       },
-      { publicBrand: "okou", slackWorkspaceId: "T_SLACK_BRAND_NEW" },
+      {
+        publicBrand: "okou",
+        slackWorkspaceId: "T_SLACK_BRAND_RESIDUE",
+      },
     ]);
 
-    const backfillSql = await fs.readFile(
-      path.join(migrationsDirectory, `${backfillMigration}.sql`),
+    const finalizationSql = await fs.readFile(
+      path.join(migrationsDirectory, `${finalizationMigration}.sql`),
       "utf8",
     );
-    await client.query(backfillSql);
+    await client.query(finalizationSql);
     assert.deepEqual(await readInstallationBrands(client), migratedRows);
 
-    console.log("   ✅ existing VM0 installation rows are backfilled to Okou");
-    console.log("   ✅ new official installation rows default to Okou");
-    console.log("   ✅ rerunning the backfill is a no-op\n");
+    console.log("   ✅ stale VM0 installation rows are finalized as Okou");
+    console.log("   ✅ canonical Okou installation rows stay unchanged");
+    console.log("   ✅ rerunning the finalization is a no-op\n");
   } finally {
     await client.end();
     await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);

@@ -69,7 +69,7 @@ import {
   getModelBrandIconType,
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 import { settingsIconAssetUrl } from "./settings/settings-icon-assets";
@@ -84,7 +84,7 @@ export interface MediaModelPanelOption {
   readonly label: string;
   readonly icon: ReactNode;
   /** What one reference generation costs, relative to the other rows here. */
-  readonly priceTier: Vm0ModelPriceTier;
+  readonly priceTier: ModelPriceTier;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
@@ -173,7 +173,7 @@ function PriceTierBadge({
   tier,
   description,
 }: {
-  tier: Vm0ModelPriceTier;
+  tier: ModelPriceTier;
   description: string;
 }) {
   return (

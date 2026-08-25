@@ -3,7 +3,6 @@
 import { useGet, useSet, useLastLoadable, type Loadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core";
 import {
   ExternalLink,
   Crown,
@@ -94,7 +93,6 @@ import {
 } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { openSettingsUsagePackUpgrade$ } from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import {
   UsagePackMigrationPage,
@@ -2614,11 +2612,8 @@ function BillingPricingPage({
   );
 }
 
-function shouldWaitForUsagePackMigration(
-  enabled: boolean,
-  loading: boolean,
-): boolean {
-  return enabled && loading;
+function shouldWaitForUsagePackMigration(loading: boolean): boolean {
+  return loading;
 }
 function canStartUsagePackCheckout(
   status: BillingStatusResponse | null,
@@ -2651,15 +2646,10 @@ function usagePackMigrationNeedsProgressPage(
    tab, including conversion from a legacy plan. The legacy pricing page and a
    migration that can only report progress still keep the tab sub-page. */
 function showsUsagePackPlanDialogs(
-  enabled: boolean,
   migrationLoading: boolean,
   migration: UsagePackMigrationStateResponse | null,
 ): boolean {
-  return (
-    enabled &&
-    !migrationLoading &&
-    !usagePackMigrationNeedsProgressPage(migration)
-  );
+  return !migrationLoading && !usagePackMigrationNeedsProgressPage(migration);
 }
 
 function usagePackMigrationConfigurable(
@@ -2782,7 +2772,6 @@ function UsagePackPricingFlowDialogs({
 
 export function OrgBillingTab() {
   const { t } = useTranslation();
-  const featureSwitches = useGet(featureSwitch$);
   const pricingOpen = useGet(billingSubPage$);
   const migrationOpen = useGet(billingMigrationSubPage$);
   const migrationTargetTier = useGet(billingMigrationTargetTier$);
@@ -2809,15 +2798,12 @@ export function OrgBillingTab() {
   );
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const migrationLoadable = useLastLoadable(usagePackMigrationAsync$);
-  const usagePackPlansEnabled =
-    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
   const upgradeLoading = upgradeLoadable.state === "loading";
 
   const status = loadableDataOrNull(statusLoadable);
   const migration = loadableDataOrNull(migrationLoadable);
   const migrationLoading = shouldWaitForUsagePackMigration(
-    usagePackPlansEnabled,
     migrationLoadable.state === "loading",
   );
   const migrationInProgress = usagePackMigrationInProgress(migration);
@@ -2861,7 +2847,7 @@ export function OrgBillingTab() {
     handleReplaceCancellationWithPro,
   );
   const handleUpgrade = () => {
-    if (!usagePackPlansEnabled || currentTier !== "pro") {
+    if (currentTier !== "pro") {
       openPricingPage();
       return;
     }
@@ -2892,7 +2878,6 @@ export function OrgBillingTab() {
   };
 
   const usagePackPlanDialogs = showsUsagePackPlanDialogs(
-    usagePackPlansEnabled,
     migrationLoading,
     migration,
   );

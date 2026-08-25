@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "マークを添付",
       "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "inkLabel": "色 {{color}}",
       "notePlaceholder": "ここをどう変えたいか書いてください",
       "open": "注釈",
       "redo": "やり直す",
       "removeMark": "マークを削除",
       "subtitle_other": "{{count}} 件のマーク",
+      "textPlaceholder": "ラベルを入力",
       "tools": {
         "arrow": "矢印",
         "box": "矩形",
@@ -697,6 +699,12 @@
       "tryDifferentSearch": "別の検索を試してください。",
       "use": "使用する",
       "useThisTemplate": "このテンプレートを使用してください",
+      "visibility": {
+        "change": "変更",
+        "changeLabel": "テンプレートの公開範囲を変更",
+        "privateState": "自分だけが表示・使用できます",
+        "workspaceState": "このワークスペースの全員が使用できます"
+      },
       "website": "ウェブサイト",
       "websitePreview": "{{title}} Web サイト テンプレートのプレビュー",
       "workflow": "ワークフロー",
@@ -3325,9 +3333,17 @@
           "description": "スライドとスピーカーを生成する",
           "title": "プレゼンテーションを生成する"
         },
+        "slack": {
+          "description": "ワークスペースでAIチームメイトとチャット",
+          "title": "Slackを使う"
+        },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",
           "title": "映像制作"
+        },
+        "website": {
+          "description": "共有できるページを作って公開する",
+          "title": "ウェブサイトを作る"
         },
         "workflow": {
           "description": "プリセットテンプレートから探索する",
@@ -4634,7 +4650,6 @@
         "usage": {
           "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
-          "balanceUsageDescription": "チームのクレジット残高と使用量。",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"
         }

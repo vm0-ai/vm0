@@ -22,8 +22,8 @@ fn build_artifact_snapshot_entry(
     version: &str,
     mount_path: &str,
     missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
-) -> checkpoints::RequestArtifactSnapshot {
-    checkpoints::RequestArtifactSnapshot {
+) -> checkpoints::ArtifactSnapshot {
+    checkpoints::ArtifactSnapshot {
         name: name.to_string(),
         version: version.to_string(),
         mount_path: mount_path.to_string(),
@@ -70,7 +70,7 @@ async fn snapshot_artifact_plan(
     http: &HttpClient,
     run_id: &str,
     plan: ArtifactSnapshotPlan<'_>,
-) -> Result<checkpoints::RequestArtifactSnapshot, AgentError> {
+) -> Result<checkpoints::ArtifactSnapshot, AgentError> {
     let (entry, files) = match plan {
         ArtifactSnapshotPlan::Snapshot { entry, files } => (entry, files),
         ArtifactSnapshotPlan::PreserveParentVersion { entry } => {
@@ -166,7 +166,7 @@ pub(super) async fn snapshot_artifact_entries(
     http: &HttpClient,
     run_id: &str,
     entries: &[env::ArtifactEnv],
-) -> Result<Option<Vec<checkpoints::RequestArtifactSnapshot>>, AgentError> {
+) -> Result<Option<Vec<checkpoints::ArtifactSnapshot>>, AgentError> {
     if entries.is_empty() {
         log_info!(
             LOG_TAG,

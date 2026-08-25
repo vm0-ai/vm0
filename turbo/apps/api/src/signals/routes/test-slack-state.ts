@@ -11,7 +11,6 @@ import {
 } from "@okouai/api-contracts/contracts/test-slack-state";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agents } from "@okouai/db/schema/agent";
-import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
@@ -39,7 +38,6 @@ import {
   releaseBuiltInModelKeyFixture,
 } from "../services/built-in-model-key-fixture";
 import { chatEventTypeIn } from "../services/chat-event-type.service";
-import { dispatchSlackChatDeliveryOnce } from "../services/internal-slack-chat-run-callback.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -865,96 +863,6 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const legacySlackCallbackRedriveBody$ = bodyResultOf(
-  testSlackStateContract.redriveLegacyCallback,
-);
-
-async function requeueLegacySlackChatCallback(
-  db: Db,
-  runId: string,
-): Promise<string | undefined> {
-  const [callback] = await db
-    .select({
-      id: agentRunCallbacks.id,
-      payload: agentRunCallbacks.payload,
-    })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, runId),
-        eq(agentRunCallbacks.internalKind, "slack:chat"),
-        eq(agentRunCallbacks.status, "delivered"),
-      ),
-    )
-    .limit(1);
-  if (
-    !callback ||
-    typeof callback.payload !== "object" ||
-    callback.payload === null ||
-    Array.isArray(callback.payload) ||
-    !Object.hasOwn(callback.payload, "publicBrand") ||
-    !Object.hasOwn(callback.payload, "channelId") ||
-    !Object.hasOwn(callback.payload, "threadTs") ||
-    !Object.hasOwn(callback.payload, "chatEventId")
-  ) {
-    return undefined;
-  }
-
-  // The current writer cannot author this historical shape. This test-only
-  // endpoint removes exactly the rollout field and leaves the real Slack
-  // delivery payload intact before redriving the production callback service.
-  const legacyPayload: Record<string, unknown> = { ...callback.payload };
-  delete legacyPayload.publicBrand;
-  const [requeued] = await db
-    .update(agentRunCallbacks)
-    .set({
-      payload: legacyPayload,
-      status: "pending",
-      attempts: 0,
-      lastAttemptAt: null,
-      lastError: null,
-      deliveredAt: null,
-    })
-    .where(eq(agentRunCallbacks.id, callback.id))
-    .returning({ id: agentRunCallbacks.id });
-  return requeued?.id;
-}
-
-const redriveLegacySlackCallback$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const request = get(request$);
-    if (!isTestEndpointAllowed(request)) {
-      return testEndpointNotFoundResponse();
-    }
-
-    const bodyResult = await get(legacySlackCallbackRedriveBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const db = set(writeDb$);
-    const callbackId = await requeueLegacySlackChatCallback(
-      db,
-      bodyResult.data.run_id,
-    );
-    signal.throwIfAborted();
-    if (!callbackId) {
-      return {
-        status: 400 as const,
-        body: { error: "A branded delivered Slack callback is required" },
-      };
-    }
-
-    await dispatchSlackChatDeliveryOnce(db, callbackId, signal);
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: { ok: true as const, callback_id: callbackId },
-    };
-  },
-);
-
 interface SlackStateDeleteQuery {
   readonly team_id?: string;
   readonly org_id?: string;
@@ -1149,10 +1057,6 @@ export const testSlackStateRoutes: readonly RouteEntry[] = [
   {
     route: testSlackStateContract.post,
     handler: postSlackState$,
-  },
-  {
-    route: testSlackStateContract.redriveLegacyCallback,
-    handler: redriveLegacySlackCallback$,
   },
   {
     route: testSlackStateContract.delete,

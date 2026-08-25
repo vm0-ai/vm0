@@ -104,7 +104,7 @@ const TERMINAL_RUN_STATUSES = [
   "timeout",
   "cancelled",
 ] as const;
-const L = logger("ZeroBrowser");
+const L = logger("Browser");
 const browserTabSnapshotSchema = z.array(z.string().max(8192)).max(50);
 
 const BROWSER_SESSION_SELECTION = {

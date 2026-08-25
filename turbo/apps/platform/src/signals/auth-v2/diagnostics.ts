@@ -371,6 +371,9 @@ function signInFactorMethod(
     case "email-code": {
       return "email-code";
     }
+    case "client-trust-email-code": {
+      return "email-code";
+    }
     case "oauth": {
       return "google-oauth";
     }
@@ -484,6 +487,11 @@ function createSignInAttemptSignals(
           ? { method: "email-code", step: "email-code" }
           : null;
       }
+      case "client-trust-code": {
+        return get(signals.code$).trim()
+          ? { method: "email-code", step: "email-code" }
+          : null;
+      }
       case "password-reset-code": {
         return get(signals.code$).trim()
           ? { method: "password-reset", step: "password-reset-code" }
@@ -532,7 +540,10 @@ function createSignInAttemptSignals(
     if (flowState.status !== "incomplete") {
       return null;
     }
-    if (flowState.step === "email-code") {
+    if (
+      flowState.step === "email-code" ||
+      flowState.step === "client-trust-code"
+    ) {
       return { method: "email-code", step: "email-code" };
     }
     return flowState.step === "password-reset-code"

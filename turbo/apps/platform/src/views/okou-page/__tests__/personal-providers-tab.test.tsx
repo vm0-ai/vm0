@@ -385,9 +385,7 @@ describe("personal model providers settings", () => {
     context.mocks.data.personalModelProviders([]);
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
 
-    await openModelSettings("Models", {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
+    await openModelSettings("Models");
 
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",
@@ -405,7 +403,7 @@ describe("personal model providers settings", () => {
     click(claudeUpgrade);
 
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 

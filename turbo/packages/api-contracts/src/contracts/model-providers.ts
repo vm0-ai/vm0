@@ -6,7 +6,7 @@ import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 } from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
@@ -46,7 +46,7 @@ export {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 };
 
 /**
@@ -196,7 +196,7 @@ export function isCodexFastModeModel(
 
 export function getVm0ModelPriceTier(
   model: string,
-): Vm0ModelPriceTier | undefined {
+): ModelPriceTier | undefined {
   return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
 }
 
@@ -233,21 +233,21 @@ export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "openai-api-key": { vendor: "openai" },
 } as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
 
-export type Vm0BuiltInModelRouteProviderType =
+export type BuiltInModelRouteProviderType =
   keyof typeof VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS;
 
-export interface Vm0BuiltInModelRouteCandidate {
-  readonly concreteType: Vm0BuiltInModelRouteProviderType;
+export interface BuiltInModelRouteCandidate {
+  readonly concreteType: BuiltInModelRouteProviderType;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
   // different identifier than what we show to users.
   readonly apiModel?: string;
 }
 
-interface Vm0ModelConfig {
+interface ModelConfig {
   readonly candidates: readonly [
-    Vm0BuiltInModelRouteCandidate,
-    ...Vm0BuiltInModelRouteCandidate[],
+    BuiltInModelRouteCandidate,
+    ...BuiltInModelRouteCandidate[],
   ];
 }
 
@@ -354,16 +354,16 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
-} as const satisfies Record<SupportedRunModel, Vm0ModelConfig>;
+} as const satisfies Record<SupportedRunModel, ModelConfig>;
 
-export interface Vm0BuiltInModelRouteTarget {
+export interface BuiltInModelRouteTarget {
   readonly selectedModel: SupportedRunModel;
-  readonly providerType: Vm0BuiltInModelRouteProviderType;
+  readonly providerType: BuiltInModelRouteProviderType;
   readonly upstreamModel: string;
   readonly vendor: string;
 }
 
-function vm0PrimaryCandidate(model: string): Vm0BuiltInModelRouteCandidate {
+function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -374,7 +374,7 @@ function vm0PrimaryCandidate(model: string): Vm0BuiltInModelRouteCandidate {
 
 export function getVm0BuiltInModelRouteCandidates(
   model: string,
-): readonly Vm0BuiltInModelRouteTarget[] {
+): readonly BuiltInModelRouteTarget[] {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -1076,7 +1076,7 @@ export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
  */
 export function getVm0ConcreteProviderType(
   model: string,
-): Vm0BuiltInModelRouteProviderType {
+): BuiltInModelRouteProviderType {
   return vm0PrimaryCandidate(model).concreteType;
 }
 

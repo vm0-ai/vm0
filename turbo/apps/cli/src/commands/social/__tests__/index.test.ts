@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { HttpResponse, http } from "msw";
 import { socialKitRequestSchema } from "@okouai/api-contracts/contracts/social";
+import { z } from "zod";
 import {
   afterAll,
   afterEach,
@@ -40,6 +41,62 @@ const responseBody = {
     comments: [{ text: "Welcome to the comments." }],
   },
 } as const;
+
+const catalogRetrievalSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("cursor") }).strict(),
+  z
+    .object({ kind: z.literal("page"), maxPage: z.number().int().positive() })
+    .strict(),
+  z.object({ kind: z.literal("provider_limited") }).strict(),
+]);
+
+const socialKitCatalogOutputSchema = z
+  .object({
+    operations: z.array(
+      z
+        .object({
+          path: z.string(),
+          methods: z.array(z.enum(["GET", "POST"])),
+          query: z
+            .object({
+              required: z.array(z.enum(["url", "query", "hashtag"])),
+              optional: z.array(z.string()),
+            })
+            .strict(),
+          limit: z
+            .object({
+              default: z.number().int().positive().nullable(),
+              max: z.number().int().positive().nullable(),
+            })
+            .strict()
+            .nullable(),
+          collection: z
+            .object({
+              resultField: z.enum([
+                "comments",
+                "items",
+                "posts",
+                "results",
+                "tweets",
+              ]),
+              retrieval: catalogRetrievalSchema,
+            })
+            .strict()
+            .nullable(),
+          billing: z.discriminatedUnion("kind", [
+            z.object({ kind: z.literal("request") }).strict(),
+            z
+              .object({
+                kind: z.literal("items"),
+                itemsPerUnit: z.number().int().positive(),
+              })
+              .strict(),
+          ]),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
 
 describe("okou social command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -98,6 +155,120 @@ describe("okou social command", () => {
       .map(String)
       .join("\n");
   }
+
+  it("prints the complete managed operation catalog as compact JSON", async () => {
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        apiRequests += 1;
+        return HttpResponse.json(responseBody);
+      }),
+    );
+
+    await socialCommand.parseAsync(["node", "cli", "operations", "--json"]);
+
+    const catalog = socialKitCatalogOutputSchema.parse(
+      JSON.parse(output()) as unknown,
+    );
+    expect(catalog.operations).toHaveLength(38);
+    expect(
+      new Set(
+        catalog.operations.map((operation) => {
+          return operation.path;
+        }),
+      ).size,
+    ).toBe(38);
+    expect(apiRequests).toBe(0);
+
+    expect(
+      catalog.operations.find((operation) => {
+        return operation.path === "/youtube/transcript";
+      }),
+    ).toStrictEqual({
+      path: "/youtube/transcript",
+      methods: ["GET", "POST"],
+      query: {
+        required: ["url"],
+        optional: ["cache", "cache_ttl"],
+      },
+      limit: null,
+      collection: null,
+      billing: { kind: "request" },
+    });
+    expect(
+      catalog.operations.find((operation) => {
+        return operation.path === "/instagram/comments";
+      }),
+    ).toStrictEqual({
+      path: "/instagram/comments",
+      methods: ["GET", "POST"],
+      query: {
+        required: ["url"],
+        optional: ["limit", "cursor", "sortBy"],
+      },
+      limit: { default: 10, max: 100 },
+      collection: {
+        resultField: "comments",
+        retrieval: { kind: "cursor" },
+      },
+      billing: { kind: "items", itemsPerUnit: 50 },
+    });
+    expect(
+      catalog.operations.find((operation) => {
+        return operation.path === "/twitter/tweets";
+      }),
+    ).toMatchObject({
+      collection: {
+        resultField: "tweets",
+        retrieval: { kind: "cursor" },
+      },
+      billing: { kind: "request" },
+    });
+    expect(
+      catalog.operations.find((operation) => {
+        return operation.path === "/instagram/reels-search";
+      }),
+    ).toMatchObject({
+      query: { required: ["query"], optional: ["page"] },
+      limit: null,
+      collection: {
+        resultField: "items",
+        retrieval: { kind: "page", maxPage: 2 },
+      },
+    });
+    expect(
+      catalog.operations.find((operation) => {
+        return operation.path === "/youtube/search";
+      }),
+    ).toMatchObject({
+      limit: { default: 10, max: 100 },
+      collection: {
+        resultField: "results",
+        retrieval: { kind: "provider_limited" },
+      },
+      billing: { kind: "items", itemsPerUnit: 50 },
+    });
+  });
+
+  it("prints a readable path-level operation catalog", async () => {
+    await socialCommand.parseAsync(["node", "cli", "operations"]);
+
+    const lines = mockConsoleLog.mock.calls.flat().map(String);
+    expect(
+      lines.filter((line) => {
+        return line.startsWith("/");
+      }),
+    ).toHaveLength(38);
+    expect(output()).toContain("/facebook/comments [GET, POST]");
+    expect(output()).toContain(
+      "query: url (required); limit, cursor (optional)",
+    );
+    expect(output()).toContain(
+      "collection: comments; retrieval: cursor; billing: 1 quantity per 50 returned items",
+    );
+    expect(output()).toContain("retrieval: page (up to 2)");
+    expect(output()).toContain("retrieval: provider limited (no continuation)");
+  });
 
   it("posts a reviewed GET operation and prints compact JSON", async () => {
     let requestBody: unknown;
@@ -691,6 +862,9 @@ describe("okou social command", () => {
   });
 
   it("documents broad coverage, billing, and security boundaries", () => {
+    const operations = socialCommand.commands.find((command) => {
+      return command.name() === "operations";
+    });
     const request = socialCommand.commands.find((command) => {
       return command.name() === "request";
     });
@@ -702,6 +876,7 @@ describe("okou social command", () => {
     });
     socialCommand.outputHelp();
 
+    expect(operations?.helpInformation()).toContain("--json");
     expect(request?.helpInformation()).toContain("--query");
     expect(request?.helpInformation()).toContain("--all");
     expect(request?.helpInformation()).toContain("--max-pages");
@@ -709,6 +884,7 @@ describe("okou social command", () => {
     expect(request?.helpInformation()).not.toContain("--body");
     expect(request?.helpInformation()).toContain("--json");
     expect(socialHelp).toContain("76 reviewed");
+    expect(socialHelp).toContain("okou social operations --json");
     expect(socialHelp).toContain("/youtube/summarize");
     expect(socialHelp).toContain(
       "download, bulk, and direct-video operations are rejected",

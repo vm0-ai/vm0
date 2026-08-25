@@ -1,6 +1,5 @@
 import {
   billingAutoRechargeContract,
-  billingCheckoutContract,
   billingUsagePackCatalogContract,
   billingUsagePackCheckoutContract,
   billingUsagePackManagementContract,
@@ -13,11 +12,9 @@ import {
   billingRestoreContract,
   billingStatusContract,
   type BillingStatusResponse,
-  type CheckoutRequest,
   type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -33,7 +30,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
-const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function queryButtonByText(
   text: string,
@@ -268,14 +264,10 @@ function mockBillingStory(): {
   };
 }
 
-async function openBillingTab(
-  path = "/?settings=billing",
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
+async function openBillingTab(path = "/?settings=billing"): Promise<void> {
   detachedSetupPage({
     context,
     path,
-    featureSwitches: { ...LEGACY_PRICING, ...featureSwitches },
   });
   await waitFor(() => {
     expect(
@@ -329,57 +321,7 @@ async function waitForAnimationFrame(): Promise<void> {
 }
 
 describe("organization billing settings", () => {
-  it("localizes plans, credit purchases, and currency in Portuguese", async () => {
-    let usagePackCatalogCalls = 0;
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Localized Org",
-      role: "admin",
-    });
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...activeProBillingStatus(),
-        canBuyCredits: true,
-        autoRechargeAllowed: true,
-      });
-    });
-    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-      usagePackCatalogCalls += 1;
-      return respond(200, usagePackCatalogResponse());
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=billing",
-      featureSwitches: LEGACY_PRICING,
-    });
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("pt-BR");
-      expect(
-        screen.getByRole("heading", { name: "Plano" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Plano Pro")).toBeInTheDocument();
-      expect(screen.getByText("Métodos de pagamento")).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Comprar créditos" }),
-      ).toBeInTheDocument();
-      expect(buttonByText("Compra rápida de US$ 20,00")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Comparar todos os planos"));
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Comparar planos" }),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("20.000 créditos / mês")).toBeNull();
-      expect(screen.getAllByText("/mês").length).toBeGreaterThan(0);
-    });
-    expect(usagePackCatalogCalls).toBe(0);
-  });
-
-  it("configures member usage behind the feature switch", async () => {
+  it("configures member usage", async () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Usage Pack Org",
@@ -434,7 +376,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -831,7 +772,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Pro plan");
@@ -872,38 +812,6 @@ describe("organization billing settings", () => {
     expect(reviewDialog).toBeInTheDocument();
     expect(confirmButton).toHaveTextContent("Updating...");
     expect(confirmButton).toBeDisabled();
-  });
-
-  it("does not probe legacy migrations while usage packs are disabled", async () => {
-    let migrationCalls = 0;
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Legacy Team Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeTeamBillingStatus());
-    });
-    context.mocks.api(billingUsagePackMigrationContract.get, ({ respond }) => {
-      migrationCalls += 1;
-      return respond(200, {
-        tier: "team",
-        targetTier: null,
-        status: "eligible",
-        migrationId: null,
-        effectiveAt: "2026-09-01T00:00:00.000Z",
-        hostedInvoiceUrl: null,
-      });
-    });
-
-    await openBillingTab();
-
-    expect(screen.getByText("Team plan")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Move to member packages"),
-    ).not.toBeInTheDocument();
-    expect(queryButtonByText("Convert plan")).toBeUndefined();
-    expect(migrationCalls).toBe(0);
   });
 
   it("labels the current plan as legacy and offers both new plans", async () => {
@@ -960,7 +868,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Team plan");
@@ -1087,7 +994,6 @@ describe("organization billing settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Legacy");
@@ -1127,7 +1033,6 @@ describe("organization billing settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Pro plan");
@@ -1218,7 +1123,6 @@ describe("organization billing settings", () => {
           fullName: "Alex Chen",
           email: "alex@example.com",
         },
-        featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
       });
 
       await screen.findByText(`${planName} plan`);
@@ -1431,7 +1335,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Team plan");
@@ -1764,7 +1667,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -2050,7 +1952,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Pro plan");
@@ -2184,7 +2085,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Pro plan");
@@ -2343,7 +2243,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await screen.findByText("Pro plan");
@@ -2456,7 +2355,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -2627,7 +2525,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -2760,7 +2657,6 @@ describe("organization billing settings", () => {
         fullName: "Alex Chen",
         email: "alex@example.com",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -2891,7 +2787,7 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("recovers from a billing load failure and starts an upgrade checkout", async () => {
+  it("recovers from a billing load failure", async () => {
     let statusCalls = 0;
     let failNextStatusRequest = false;
     const failedStatusRequestStarted = context.mocks.deferred<void>();
@@ -2917,12 +2813,6 @@ describe("organization billing settings", () => {
       }
       return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      return respond(200, {
-        url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
-      });
-    });
-
     await openBillingTab();
 
     await waitFor(() => {
@@ -2946,28 +2836,6 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(screen.getByText("No active plan")).toBeInTheDocument();
       expect(screen.getByText("No active subscription")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Upgrade"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Compare plans")).toBeInTheDocument();
-    });
-
-    // A legacy plan pools its credits in the organization, so its card keeps
-    // the established legacy description instead of the per-member plan copy.
-    expect(
-      screen.getByText(
-        "More credits and concurrency for teams running AI agents every day.",
-      ),
-    ).toBeInTheDocument();
-
-    click(screen.getByText("Start with Team"));
-
-    await waitFor(() => {
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test-upgrade?tier=team",
-      );
     });
   });
 
@@ -3074,7 +2942,7 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("shows custom tier access and disables Pro and Team checkout", async () => {
+  it("shows custom tier access without legacy checkout controls", async () => {
     context.mocks.data.org({
       id: "org_1",
       name: "Custom Org",
@@ -3096,23 +2964,6 @@ describe("organization billing settings", () => {
     });
     expect(screen.queryByText("Upgrade")).not.toBeInTheDocument();
     expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();
-
-    click(screen.getByText("Compare all plans"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Custom workspaces cannot switch to Pro or Team checkout.",
-        ),
-      ).toBeInTheDocument();
-    });
-    const unavailableButtons = queryAllByRoleFast("button").filter((button) => {
-      return button.textContent?.trim() === "Unavailable";
-    });
-    expect(unavailableButtons).toHaveLength(2);
-    for (const button of unavailableButtons) {
-      expect(button).toBeDisabled();
-    }
   });
 
   it.each(["managed subscription", "scheduled migration"] as const)(
@@ -3162,9 +3013,7 @@ describe("organization billing settings", () => {
         );
       }
 
-      await openBillingTab("/?settings=billing", {
-        [FeatureSwitchKey.UsagePackPlans]: true,
-      });
+      await openBillingTab("/?settings=billing");
 
       await screen.findByText("Custom plan");
       if (source === "scheduled migration") {
@@ -4239,180 +4088,8 @@ describe("organization billing settings", () => {
         ).toBeInTheDocument();
       });
       expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
-
-      click(screen.getByText("Compare all plans"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Compare plans")).toBeInTheDocument();
-        expect(screen.getByText("Current plan")).toBeInTheDocument();
-      });
-      expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
     },
   );
-
-  it("reviews a saved-card plan purchase in app and opens its unpaid invoice", async () => {
-    let requestedTier: "pro" | "team" | null = null;
-    let supportsInAppPreview: boolean | undefined;
-    let confirmationRequest: CheckoutRequest | null = null;
-    const hostedInvoiceUrl =
-      "https://invoice.stripe.com/plan-purchase-authentication";
-
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Plan Preview Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeProBillingStatus());
-    });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      if (body.previewToken) {
-        confirmationRequest = body;
-        return respond(200, {
-          status: "pending_payment",
-          hostedInvoiceUrl,
-        });
-      }
-      requestedTier = body.tier;
-      supportsInAppPreview = body.supportsInAppPreview;
-      return respond(200, {
-        status: "preview",
-        purchaseType: "plan",
-        tier: body.tier,
-        immediateAmountCents: 16_000,
-        nextRecurringAmountCents: 16_000,
-        currency: "usd",
-        expiresAt: "2026-08-13T12:15:00.000Z",
-        previewToken: "plan-preview-token",
-      });
-    });
-
-    await openBillingTab("/?settings=billing");
-    const locationBeforePurchase = window.location.href;
-    click(screen.getByText("Upgrade"));
-    await screen.findByText("Compare plans");
-    click(buttonByText("Upgrade to Team"));
-
-    const reviewDialog = await screen.findByRole("dialog", {
-      name: "Upgrade to Team",
-    });
-    expect(within(reviewDialog).getByText("Today")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Plan")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Every month")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Monthly total")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Team")).toBeInTheDocument();
-    expect(within(reviewDialog).getAllByText("$160.00")).toHaveLength(2);
-    expect(requestedTier).toBe("team");
-    expect(supportsInAppPreview).toBeTruthy();
-    expect(window.location.href).toBe(locationBeforePurchase);
-
-    click(buttonByText("Upgrade to Team", reviewDialog));
-
-    await waitFor(() => {
-      expect(window.location.href).toBe(hostedInvoiceUrl);
-    });
-    expect(confirmationRequest).toMatchObject({
-      tier: "team",
-      supportsInAppPreview: true,
-      previewToken: "plan-preview-token",
-    });
-  });
-
-  it("refreshes invalid Plan previews from current and older billing APIs", async () => {
-    let previewCount = 0;
-    let confirmationCount = 0;
-    let confirmedPreviewToken: string | null = null;
-
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Plan Retry Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeProBillingStatus());
-    });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      if (body.previewToken) {
-        confirmationCount += 1;
-        confirmedPreviewToken = body.previewToken;
-        if (confirmationCount === 1) {
-          previewCount += 1;
-          return respond(200, {
-            status: "preview",
-            purchaseType: "plan",
-            tier: body.tier,
-            immediateAmountCents: 15_000 + previewCount * 1000,
-            nextRecurringAmountCents: 15_000 + previewCount * 1000,
-            currency: "usd",
-            expiresAt: "2026-08-13T12:15:00.000Z",
-            previewToken: `plan-preview-token-${previewCount}`,
-          });
-        }
-        return confirmationCount === 2
-          ? respond(409, {
-              error: {
-                code: "CONFLICT",
-                message: "Plan purchase preview is no longer valid",
-              },
-            })
-          : respond(200, {
-              status: "completed",
-              hostedInvoiceUrl: null,
-            });
-      }
-      previewCount += 1;
-      return respond(200, {
-        status: "preview",
-        purchaseType: "plan",
-        tier: body.tier,
-        immediateAmountCents: 15_000 + previewCount * 1000,
-        nextRecurringAmountCents: 15_000 + previewCount * 1000,
-        currency: "usd",
-        expiresAt: "2026-08-13T12:15:00.000Z",
-        previewToken: `plan-preview-token-${previewCount}`,
-      });
-    });
-
-    await openBillingTab("/?settings=billing");
-    click(screen.getByText("Upgrade"));
-    await screen.findByText("Compare plans");
-    click(buttonByText("Upgrade to Team"));
-
-    const firstDialog = await screen.findByRole("dialog", {
-      name: "Upgrade to Team",
-    });
-    click(buttonByText("Upgrade to Team", firstDialog));
-    await screen.findAllByText("$170.00");
-    const refreshedDialog = await screen.findByRole("dialog", {
-      name: "Upgrade to Team",
-    });
-    expect(
-      within(refreshedDialog).queryByText(
-        "Could not prepare the subscription change. Try again.",
-      ),
-    ).not.toBeInTheDocument();
-    expect(within(refreshedDialog).getAllByText("$170.00")).toHaveLength(2);
-    expect(previewCount).toBe(2);
-    expect(confirmationCount).toBe(1);
-
-    click(buttonByText("Upgrade to Team", refreshedDialog));
-    await screen.findAllByText("$180.00");
-    const legacyRefreshedDialog = await screen.findByRole("dialog", {
-      name: "Upgrade to Team",
-    });
-    expect(previewCount).toBe(3);
-    expect(confirmationCount).toBe(2);
-
-    click(buttonByText("Upgrade to Team", legacyRefreshedDialog));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Upgrade to Team" }),
-      ).not.toBeInTheDocument();
-    });
-    expect(confirmationCount).toBe(3);
-    expect(confirmedPreviewToken).toBe("plan-preview-token-3");
-  });
 
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
     const checkoutReady = createDeferredPromise<void>(context.signal);
@@ -4570,7 +4247,7 @@ describe("organization billing settings", () => {
     expect(confirmationCount).toBe(1);
   });
 
-  it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
+  it("manages credit purchases and auto-recharge settings", async () => {
     const billingStory = mockBillingStory();
     await openBillingTab("/?settings=billing");
 
@@ -4582,73 +4259,6 @@ describe("organization billing settings", () => {
     click(screen.getByText("Custom"));
     await fill(screen.getByLabelText("Custom dollar amount"), "35");
     expect(screen.getByText("Quick buy $35.00")).toBeInTheDocument();
-
-    click(screen.getByText("Compare all plans"));
-    await waitFor(() => {
-      expect(screen.getByText("Compare plans")).toBeInTheDocument();
-      expect(screen.getByText("Team")).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Back"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automatic top-ups")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Downgrade"));
-    const downgradeCancelDialog = await screen.findByRole("dialog", {
-      name: "Downgrade plan",
-    });
-    expect(
-      within(downgradeCancelDialog).getByText(
-        "Are you sure you want to cancel your Pro plan?",
-      ),
-    ).toBeInTheDocument();
-    click(buttonByText("Cancel", downgradeCancelDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
-    });
-
-    click(screen.getByText("Downgrade"));
-    const downgradeConfirmDialog = await screen.findByRole("dialog", {
-      name: "Downgrade plan",
-    });
-    click(buttonByText("Cancel subscription", downgradeConfirmDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Restore plan")).toBeInTheDocument();
-      expect(
-        screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Restore plan"));
-    const restoreCancelDialog = await screen.findByRole("dialog", {
-      name: "Restore Pro plan?",
-    });
-    expect(
-      within(restoreCancelDialog).getByText(
-        /undo the scheduled cancellation for your Pro plan/,
-      ),
-    ).toBeInTheDocument();
-    click(buttonByText("Cancel", restoreCancelDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Restore Pro plan?")).not.toBeInTheDocument();
-    });
-
-    click(screen.getByText("Restore plan"));
-    const restoreConfirmDialog = await screen.findByRole("dialog", {
-      name: "Restore Pro plan?",
-    });
-    click(buttonByText("Restore plan", restoreConfirmDialog));
-
-    await waitFor(() => {
-      expect(screen.getByText("Downgrade")).toBeInTheDocument();
-      expect(
-        screen.queryByText(/has been cancelled and will end on Apr 1, 2026/),
-      ).not.toBeInTheDocument();
-    });
 
     click(screen.getByLabelText("Enable auto-recharge"));
     await fill(
@@ -4695,226 +4305,5 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("dialog", { name: "Review credit purchase" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("schedules and restores a team plan downgrade from the pricing page", async () => {
-    let billingStatus: BillingStatusResponse = {
-      ...activeTeamBillingStatus(),
-      concurrencyLimit: 15,
-      concurrencySubscriptions: [
-        {
-          id: "sub_team_downgrade_concurrency",
-          quantity: 5,
-          currentPeriodEnd: "2026-05-01T00:00:00Z",
-          cancelAtPeriodEnd: false,
-          canReduce: true,
-          canChangeInApp: true,
-        },
-      ],
-    };
-
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Team Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, billingStatus);
-    });
-    context.mocks.api(billingDowngradeContract.create, ({ body, respond }) => {
-      const targetTier = body.targetTier === "pro" ? "pro" : "limited-free-1";
-      billingStatus = {
-        ...billingStatus,
-        cancelAtPeriodEnd: targetTier === "limited-free-1",
-        canRestorePlan: true,
-        scheduledChange:
-          targetTier === "pro"
-            ? {
-                type: "downgrade",
-                targetTier: "pro",
-                effectiveDate: "2026-05-01T00:00:00Z",
-              }
-            : {
-                type: "cancel",
-                targetTier: "limited-free-1",
-                effectiveDate: "2026-05-01T00:00:00Z",
-              },
-      };
-      return respond(200, {
-        success: true,
-        effectiveDate: "2026-05-01T00:00:00Z",
-      });
-    });
-    context.mocks.api(billingRestoreContract.create, ({ respond }) => {
-      billingStatus = {
-        ...billingStatus,
-        cancelAtPeriodEnd: false,
-        canRestorePlan: false,
-        scheduledChange: null,
-      };
-      return respond(200, { status: "restored" });
-    });
-
-    await openBillingTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("Team plan")).toBeInTheDocument();
-      expect(screen.getAllByText("Renews May 1, 2026")).toHaveLength(2);
-    });
-
-    click(screen.getByText("Downgrade"));
-    const downgradeDialog = await screen.findByRole("dialog", {
-      name: "Downgrade plan",
-    });
-    expect(
-      within(downgradeDialog).getByText("Choose which plan to downgrade to."),
-    ).toBeInTheDocument();
-    const proOption = within(downgradeDialog)
-      .getByText("Pro")
-      .closest("button");
-    if (!proOption) {
-      throw new Error("Pro downgrade option not found");
-    }
-    click(proOption);
-    expect(downgradeDialog).toHaveTextContent(
-      "Your paid concurrency (5 slots) will remain active until May 1, 2026, then end with your Team plan. Any slots added before then will end on the same date.",
-    );
-    click(buttonByText("Downgrade to Pro", downgradeDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Downgrade scheduled. Your current plan stays active until May 1, 2026.",
-        ),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Restore plan")).toBeInTheDocument();
-      expect(screen.getByText("Restore Team plan")).toBeInTheDocument();
-      expect(screen.getByText("Active until May 1, 2026")).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "Your Team plan will downgrade to Pro on May 1, 2026.",
-        ),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Compare all plans"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Compare plans")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
-      ).toBeGreaterThan(0);
-    });
-
-    click(screen.getByText("Restore plan"));
-    const restoreDialog = await screen.findByRole("dialog", {
-      name: "Restore Team plan?",
-    });
-    expect(
-      within(restoreDialog).getByText(
-        "This will cancel the scheduled downgrade to Pro. Your Team plan will continue renewing.",
-      ),
-    ).toBeInTheDocument();
-    expect(restoreDialog).toHaveTextContent(
-      "Your paid concurrency (5 slots) will remain active and continue renewing with your plan.",
-    );
-    click(buttonByText("Restore plan", restoreDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Plan restored. Your subscription will renew normally.",
-        ),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Current plan")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Downgrades to Pro on May 1, 2026"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("replaces a scheduled team cancellation with a downgrade to Pro", async () => {
-    let capturedTargetTier: string | null = null;
-    let billingStatus: BillingStatusResponse = {
-      ...activeTeamBillingStatus(),
-      cancelAtPeriodEnd: true,
-      canRestorePlan: true,
-      scheduledChange: {
-        type: "cancel",
-        targetTier: "limited-free-1",
-        effectiveDate: "2026-05-01T00:00:00Z",
-      },
-    };
-
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Team Cancel Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, billingStatus);
-    });
-    context.mocks.api(billingDowngradeContract.create, ({ body, respond }) => {
-      capturedTargetTier = body.targetTier;
-      billingStatus = {
-        ...billingStatus,
-        cancelAtPeriodEnd: false,
-        scheduledChange: {
-          type: "downgrade",
-          targetTier: "pro",
-          effectiveDate: "2026-05-01T00:00:00Z",
-        },
-      };
-      return respond(200, {
-        success: true,
-        effectiveDate: "2026-05-01T00:00:00Z",
-      });
-    });
-
-    await openBillingTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("Restore plan")).toBeInTheDocument();
-      expect(
-        screen.getByText(/has been cancelled and will end on May 1, 2026/),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Compare all plans"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Compare plans")).toBeInTheDocument();
-      expect(screen.getAllByText("Ends on May 1, 2026").length).toBeGreaterThan(
-        0,
-      );
-    });
-
-    click(buttonByText("Downgrade to Pro"));
-
-    const downgradeDialog = await screen.findByRole("dialog", {
-      name: "Downgrade plan",
-    });
-    expect(
-      within(downgradeDialog).getByText("Downgrade to Pro?"),
-    ).toBeInTheDocument();
-    expect(
-      within(downgradeDialog).getByText(
-        /After that, this workspace moves to Pro/u,
-      ),
-    ).toBeInTheDocument();
-
-    click(buttonByText("Downgrade to Pro", downgradeDialog));
-
-    await waitFor(() => {
-      expect(capturedTargetTier).toBe("pro");
-      expect(
-        screen.getByText(
-          "Downgrade scheduled. Your current plan stays active until May 1, 2026.",
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
-      ).toBeGreaterThan(0);
-    });
   });
 });

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.488.2](https://github.com/vm0-ai/vm0/compare/api-v1.488.1...api-v1.488.2) (2026-08-25)
+
+
+### Refactoring
+
+* **api-contracts:** drop the vm0 prefix from the built-in model route types ([#29319](https://github.com/vm0-ai/vm0/issues/29319)) ([796aba5](https://github.com/vm0-ai/vm0/commit/796aba530c66cc5ea5aa24afc832c463f2d428f8)), closes [#29314](https://github.com/vm0-ai/vm0/issues/29314)
+* **api:** drop the zero prefix from remaining service and contract identifiers ([#29323](https://github.com/vm0-ai/vm0/issues/29323)) ([317b9c7](https://github.com/vm0-ai/vm0/commit/317b9c703d958eeaf997813825c22787bcfc7061)), closes [#29315](https://github.com/vm0-ai/vm0/issues/29315)
+* **slack:** remove dual-brand rollout fallbacks ([#29312](https://github.com/vm0-ai/vm0/issues/29312)) ([04209ee](https://github.com/vm0-ai/vm0/commit/04209eed51c32eeb7245649327118b32c3aaffe6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.365.0
+    * @okouai/core bumped to 8.590.3
+    * @okouai/db bumped to 1.223.3
+
 ## [1.488.1](https://github.com/vm0-ai/vm0/compare/api-v1.488.0...api-v1.488.1) (2026-08-25)
 
 

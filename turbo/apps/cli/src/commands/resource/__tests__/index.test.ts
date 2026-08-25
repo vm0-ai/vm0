@@ -67,7 +67,7 @@ describe("okou resource pull registry resolver", () => {
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
+              "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
           }),
         }),
       }),

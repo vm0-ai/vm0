@@ -1,7 +1,9 @@
 import type {
   PrepareFirstFactorParams,
+  PrepareSecondFactorParams,
   SignInFirstFactor,
   SignInResource,
+  SignInSecondFactor,
 } from "@clerk/react/types";
 import {
   command,
@@ -49,6 +51,12 @@ export type AuthV2SignInFactor =
       readonly safeIdentifier: string;
     }
   | {
+      readonly emailAddressId: string;
+      readonly id: string;
+      readonly kind: "client-trust-email-code";
+      readonly safeIdentifier: string;
+    }
+  | {
       readonly id: "oauth:oauth_google";
       readonly kind: "oauth";
       readonly strategy: "oauth_google";
@@ -64,6 +72,7 @@ export type AuthV2SignInStep =
   | "choose-factor"
   | "password"
   | "email-code"
+  | "client-trust-code"
   | "password-reset-code"
   | "new-password";
 
@@ -121,6 +130,8 @@ interface SignInResourceSnapshot {
   readonly firstFactorVerificationStatus: string | null;
   readonly firstFactorVerificationStrategy: string | null;
   readonly identifier: string | null;
+  readonly secondFactorVerificationStatus: string | null;
+  readonly secondFactorVerificationStrategy: string | null;
   readonly transferable: boolean;
   readonly unknownFactorStrategies: readonly string[];
 }
@@ -251,6 +262,30 @@ function discoverFactors(
   return { factors: discovered, unknownStrategies };
 }
 
+function discoverClientTrustFactors(
+  factors: readonly SignInSecondFactor[] | null,
+): FactorDiscovery {
+  if (!factors) {
+    return { factors: [], unknownStrategies: [] };
+  }
+
+  const discovered: AuthV2SignInFactor[] = [];
+  const unknownStrategies: string[] = [];
+  for (const factor of factors) {
+    if (factor.strategy === "email_code") {
+      discovered.push({
+        emailAddressId: factor.emailAddressId,
+        id: `client-trust-email-code:${factor.emailAddressId}`,
+        kind: "client-trust-email-code",
+        safeIdentifier: factor.safeIdentifier,
+      });
+    } else {
+      unknownStrategies.push(factor.strategy);
+    }
+  }
+  return { factors: discovered, unknownStrategies };
+}
+
 function entryFactors(
   capabilities: AuthV2ExternalCapabilities,
 ): readonly AuthV2SignInFactor[] {
@@ -275,7 +310,10 @@ function snapshotSignInResource(
   // The legacy resource is the stable low-level API used by this app. Clerk
   // exposes transferability on its future view, so keep that SDK detail
   // isolated in this adapter rather than leaking it into the flow or view.
-  const discovered = discoverFactors(resource.supportedFirstFactors);
+  const discovered =
+    resource.status === "needs_client_trust"
+      ? discoverClientTrustFactors(resource.supportedSecondFactors)
+      : discoverFactors(resource.supportedFirstFactors);
   const factors =
     resource.status === "needs_identifier" || resource.status === null
       ? entryFactors(capabilities)
@@ -289,6 +327,10 @@ function snapshotSignInResource(
     firstFactorVerificationStrategy:
       resource.firstFactorVerification?.strategy ?? null,
     identifier: resource.identifier,
+    secondFactorVerificationStatus:
+      resource.secondFactorVerification?.status ?? null,
+    secondFactorVerificationStrategy:
+      resource.secondFactorVerification?.strategy ?? null,
     transferable: resource.__internal_future.isTransferable,
     unknownFactorStrategies: discovered.unknownStrategies,
   };
@@ -297,10 +339,14 @@ function snapshotSignInResource(
 function preparedFactorForSnapshot(
   snapshot: SignInResourceSnapshot,
 ): AuthV2SignInFactor | null {
-  const strategy = snapshot.firstFactorVerificationStrategy;
-  if (strategy !== "email_code" && strategy !== "reset_password_email_code") {
-    return null;
+  if (snapshot.secondFactorVerificationStrategy === "email_code") {
+    return (
+      snapshot.factors.find((factor) => {
+        return factor.kind === "client-trust-email-code";
+      }) ?? null
+    );
   }
+  const strategy = snapshot.firstFactorVerificationStrategy;
   return (
     snapshot.factors.find((factor) => {
       return (
@@ -436,10 +482,41 @@ function stepForSelectedFactor(
   if (factor?.kind === "email-code") {
     return "email-code";
   }
+  if (factor?.kind === "client-trust-email-code") {
+    return "client-trust-code";
+  }
   if (factor?.kind === "password-reset") {
     return "password-reset-code";
   }
   return "choose-factor";
+}
+
+function deriveClientTrustState(
+  snapshot: SignInResourceSnapshot,
+  options: DeriveSignInFlowOptions,
+): AuthV2SignInState {
+  if (
+    snapshot.factors.length === 0 ||
+    snapshot.unknownFactorStrategies.length > 0
+  ) {
+    return {
+      clerkStatus: snapshot.clerkStatus,
+      reason: "unsupported-factor",
+      status: "unknown",
+    };
+  }
+  const currentFactor =
+    selectedFactorForSnapshot(snapshot, options.selectedFactor) ??
+    snapshot.factors.find((factor) => {
+      return factor.kind === "client-trust-email-code";
+    }) ??
+    null;
+  return incompleteState(
+    snapshot,
+    options.accounts,
+    stepForSelectedFactor(currentFactor),
+    currentFactor,
+  );
 }
 
 function deriveSignInFlowState(
@@ -491,6 +568,9 @@ function deriveSignInFlowState(
       stepForSelectedFactor(currentFactor),
       currentFactor,
     );
+  }
+  if (snapshot.clerkStatus === "needs_client_trust") {
+    return deriveClientTrustState(snapshot, options);
   }
   if (snapshot.clerkStatus === "needs_new_password") {
     return incompleteState(
@@ -623,15 +703,12 @@ function createResendCooldownLifecycleRef(
   );
 }
 
-function createResourceCommands(
+function createCommitResourceCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   dependencies: AuthV2SignInFlowDependencies,
-): {
-  readonly applyResource$: ApplySignInResourceCommand;
-  readonly initialize$: Command<Promise<void>, [AbortSignal]>;
-} {
-  const applyResource$ = command(
+): ApplySignInResourceCommand {
+  return command(
     async (
       { get, set },
       resource: SignInResource,
@@ -656,7 +733,11 @@ function createResourceCommands(
       if (preparedFactor) {
         set(runtime.preparedFactorId$, preparedFactor.id);
         set(atoms.selectedFactor$, preparedFactor);
-        if (snapshot.firstFactorVerificationStatus === "expired") {
+        const verificationStatus =
+          preparedFactor.kind === "client-trust-email-code"
+            ? snapshot.secondFactorVerificationStatus
+            : snapshot.firstFactorVerificationStatus;
+        if (verificationStatus === "expired") {
           set(atoms.error$, { code: "code-expired", field: "code" });
         }
       }
@@ -681,6 +762,65 @@ function createResourceCommands(
       );
       signal.throwIfAborted();
       set(runtime.handledSessionId$, snapshot.createdSessionId);
+    },
+  );
+}
+
+function createResourceCommands(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+  startCooldown$: Command<void, [AbortSignal]>,
+  dependencies: AuthV2SignInFlowDependencies,
+): {
+  readonly applyResource$: ApplySignInResourceCommand;
+  readonly initialize$: Command<Promise<void>, [AbortSignal]>;
+} {
+  const commitResource$ = createCommitResourceCommand(
+    atoms,
+    runtime,
+    dependencies,
+  );
+
+  const applyResource$ = command(
+    async (
+      { get, set },
+      resource: SignInResource,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const snapshot = snapshotSignInResource(
+        resource,
+        get(atoms.capabilities$),
+      );
+      const clientTrustFactor = snapshot.factors.find((factor) => {
+        return factor.kind === "client-trust-email-code";
+      });
+      if (
+        snapshot.clerkStatus !== "needs_client_trust" ||
+        !clientTrustFactor ||
+        snapshot.unknownFactorStrategies.length > 0 ||
+        snapshot.secondFactorVerificationStrategy === "email_code"
+      ) {
+        await set(commitResource$, resource, signal);
+        signal.throwIfAborted();
+        return;
+      }
+
+      set(atoms.selectedFactor$, clientTrustFactor);
+      set(atoms.code$, "");
+      const prepared = await settle(
+        resource.prepareSecondFactor(clientTrustPreparation(clientTrustFactor)),
+        signal,
+      );
+      if (!prepared.ok) {
+        await set(commitResource$, resource, signal);
+        signal.throwIfAborted();
+        set(atoms.error$, normalizeClerkError(prepared.error, "code"));
+        return;
+      }
+      set(runtime.preparedFactorId$, clientTrustFactor.id);
+      await set(commitResource$, prepared.value, signal);
+      signal.throwIfAborted();
+      set(startCooldown$, signal);
     },
   );
 
@@ -788,6 +928,7 @@ function createSubmitOperation$(
       });
     } else if (
       flowState.step === "email-code" ||
+      flowState.step === "client-trust-code" ||
       flowState.step === "password-reset-code"
     ) {
       const code = get(atoms.code$).trim();
@@ -795,13 +936,16 @@ function createSubmitOperation$(
         return;
       }
       fallbackField = "code";
-      request = resource.attemptFirstFactor({
-        code,
-        strategy:
-          flowState.step === "email-code"
-            ? "email_code"
-            : "reset_password_email_code",
-      });
+      request =
+        flowState.step === "client-trust-code"
+          ? resource.attemptSecondFactor({ code, strategy: "email_code" })
+          : resource.attemptFirstFactor({
+              code,
+              strategy:
+                flowState.step === "email-code"
+                  ? "email_code"
+                  : "reset_password_email_code",
+            });
     } else if (flowState.step === "new-password") {
       const password = get(atoms.newPassword$);
       if (!password) {
@@ -844,6 +988,15 @@ function factorPreparation(
     emailAddressId: factor.emailAddressId,
     strategy:
       factor.kind === "email-code" ? "email_code" : "reset_password_email_code",
+  };
+}
+
+function clientTrustPreparation(
+  factor: Extract<AuthV2SignInFactor, { kind: "client-trust-email-code" }>,
+): PrepareSecondFactorParams {
+  return {
+    emailAddressId: factor.emailAddressId,
+    strategy: "email_code",
   };
 }
 
@@ -912,10 +1065,11 @@ function createFactorSelectionCommand(
         set(atoms.selectedFactor$, factor);
         return;
       }
-      const prepared = await settle(
-        resource.prepareFirstFactor(factorPreparation(factor)),
-        signal,
-      );
+      const preparation =
+        factor.kind === "client-trust-email-code"
+          ? resource.prepareSecondFactor(clientTrustPreparation(factor))
+          : resource.prepareFirstFactor(factorPreparation(factor));
+      const prepared = await settle(preparation, signal);
       if (!prepared.ok) {
         set(atoms.error$, normalizeClerkError(prepared.error, "general"));
         return;
@@ -1124,7 +1278,9 @@ function createResendCodeOperation$(
     const factor = get(atoms.selectedFactor$);
     if (
       !factor ||
-      (factor.kind !== "email-code" && factor.kind !== "password-reset")
+      (factor.kind !== "email-code" &&
+        factor.kind !== "password-reset" &&
+        factor.kind !== "client-trust-email-code")
     ) {
       return;
     }
@@ -1138,10 +1294,11 @@ function createResendCodeOperation$(
     const resource = await get(clerkSignInResource$);
     signal.throwIfAborted();
     set(atoms.error$, null);
-    const prepared = await settle(
-      resource.prepareFirstFactor(factorPreparation(factor)),
-      signal,
-    );
+    const preparation =
+      factor.kind === "client-trust-email-code"
+        ? resource.prepareSecondFactor(clientTrustPreparation(factor))
+        : resource.prepareFirstFactor(factorPreparation(factor));
+    const prepared = await settle(preparation, signal);
     if (!prepared.ok) {
       set(atoms.error$, normalizeClerkError(prepared.error, "code"));
       return;
@@ -1187,6 +1344,8 @@ function createFormCommands(
       firstFactorVerificationStatus: null,
       firstFactorVerificationStrategy: null,
       identifier: null,
+      secondFactorVerificationStatus: null,
+      secondFactorVerificationStrategy: null,
       transferable: false,
       unknownFactorStrategies: [],
     });
@@ -1247,9 +1406,11 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
+  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
   const { applyResource$, initialize$ } = createResourceCommands(
     atoms,
     runtime,
+    startCooldown$,
     dependencies,
   );
   const submitOperation$ = createSubmitOperation$(
@@ -1257,7 +1418,6 @@ export function createAuthV2SignInSignals(
     runtime,
     applyResource$,
   );
-  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
   const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
     atoms,
     runtime,

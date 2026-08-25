@@ -107,6 +107,67 @@ async fn shutdown_returns_none() {
 }
 
 #[tokio::test]
+async fn atomic_job_publication_wakes_idle_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    local_queue::ensure_profile_jobs_dir(dir.path(), crate::profile::DEFAULT_PROFILE).unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let discover = {
+        let provider = Arc::clone(&provider);
+        tokio::spawn(async move { provider.discover().await })
+    };
+    provider.wait_for_job_scan_count(1).await;
+
+    let job_id = RunId::new_v4();
+    write_job_atomically(dir.path(), job_id, "published after idle");
+
+    let candidate = tokio::time::timeout(Duration::from_secs(2), discover)
+        .await
+        .expect("job publication should wake discovery")
+        .unwrap()
+        .unwrap();
+    assert_eq!(candidate.run_id(), job_id);
+    assert_eq!(provider.job_scan_count(), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn idle_provider_scans_only_at_reconciliation_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    local_queue::ensure_profile_jobs_dir(dir.path(), crate::profile::DEFAULT_PROFILE).unwrap();
+    let cancel = CancellationToken::new();
+    let provider = LocalProvider::new(
+        dir.path().to_path_buf(),
+        default_profiles(),
+        cancel.clone(),
+        empty_cancel_tokens(),
+    );
+    let discover = {
+        let provider = Arc::clone(&provider);
+        tokio::spawn(async move { provider.discover().await })
+    };
+    provider.wait_for_job_scan_count(1).await;
+    provider.wait_for_cancel_scan_count(1).await;
+    tokio::task::yield_now().await;
+    let initial_job_scans = provider.job_scan_count();
+    let initial_cancel_scans = provider.cancel_scan_count();
+
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert_eq!(provider.job_scan_count(), initial_job_scans);
+    assert_eq!(provider.cancel_scan_count(), initial_cancel_scans);
+
+    tokio::time::advance(RECONCILE_INTERVAL - Duration::from_secs(1)).await;
+    provider
+        .wait_for_job_scan_count(initial_job_scans + 1)
+        .await;
+    provider
+        .wait_for_cancel_scan_count(initial_cancel_scans + 1)
+        .await;
+
+    cancel.cancel();
+    assert!(discover.await.unwrap().is_none());
+    provider.shutdown().await;
+}
+
+#[tokio::test]
 async fn skips_already_claimed_jobs() {
     let dir = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();

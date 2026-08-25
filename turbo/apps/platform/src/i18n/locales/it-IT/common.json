@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Allega segni",
       "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "inkLabel": "Colore {{color}}",
       "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
       "open": "Annota",
       "redo": "Ripeti",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} segno",
       "subtitle_many": "{{count}} segni",
       "subtitle_other": "{{count}} segni",
+      "textPlaceholder": "Scrivi l'etichetta",
       "tools": {
         "arrow": "Freccia",
         "box": "Rettangolo",
@@ -717,6 +719,12 @@
       "tryDifferentSearch": "Prova una ricerca diversa.",
       "use": "Utilizzare",
       "useThisTemplate": "Usa questo modello",
+      "visibility": {
+        "change": "Modifica",
+        "changeLabel": "Modifica la visibilità del modello",
+        "privateState": "Solo tu puoi vederlo e usarlo",
+        "workspaceState": "Chiunque in quest'area di lavoro può usarlo"
+      },
       "website": "Sito web",
       "websitePreview": "{{title}} anteprima del modello di sito web",
       "workflow": "Flusso di lavoro",
@@ -3384,9 +3392,17 @@
           "description": "Genera diapositive e relatore",
           "title": "Generare una presentazione"
         },
+        "slack": {
+          "description": "Chatta con il tuo collega IA nel tuo spazio di lavoro",
+          "title": "Usa Slack"
+        },
         "video": {
           "description": "Trasforma le tue idee in video",
           "title": "Produzione video"
+        },
+        "website": {
+          "description": "Crea e pubblica una pagina condivisibile",
+          "title": "Crea un sito web"
         },
         "workflow": {
           "description": "Esplora da modelli preimpostati",
@@ -4699,7 +4715,6 @@
         "usage": {
           "balanceDescription": "Quanto resta da spendere al tuo team.",
           "balanceTitle": "Saldo del credito",
-          "balanceUsageDescription": "Il saldo dei crediti e l'utilizzo del tuo team.",
           "usageDescription": "Il tuo utilizzo del credito attraverso chat, automazioni e canali.",
           "usageTitle": "Utilizzo del credito"
         }

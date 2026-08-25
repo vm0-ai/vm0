@@ -24,7 +24,10 @@ import {
   loadAgentDraft$,
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
-import { setAgentComposerContext$ } from "./agent-composer-signals.ts";
+import {
+  agentChatComposerSignals$,
+  setAgentComposerContext$,
+} from "./agent-composer-signals.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
@@ -99,6 +102,7 @@ export const setupAgentChatPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    const templatePicker = params.get("templatePicker");
     if (agentDraft && !prompt) {
       await set(loadAgentDraft$, agentId, agentDraft, signal);
     }
@@ -108,6 +112,17 @@ export const setupAgentChatPage$ = command(
       set(targetDraft.setInput$, prompt);
       const next = new URLSearchParams(params);
       next.delete("prompt");
+      set(updateSearchParams$, next);
+    }
+    if (templatePicker === "website") {
+      const composerSignals = get(agentChatComposerSignals$);
+      set(composerSignals.template.setTemplatePickerSearch$, "");
+      set(composerSignals.template.setTemplatePickerPreviewSlug$, null);
+      set(composerSignals.template.setTemplatePickerReferenceValue$, null);
+      set(composerSignals.template.setTemplatePickerCategory$, templatePicker);
+      set(composerSignals.template.setTemplatePickerOpen$, true);
+      const next = new URLSearchParams(get(searchParams$));
+      next.delete("templatePicker");
       set(updateSearchParams$, next);
     }
     if (queue === "1") {

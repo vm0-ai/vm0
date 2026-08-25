@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "표시 첨부",
       "draftOnly": "표시는 임시 보관함에 남아 있으며 보내기 전까지 수정할 수 있습니다",
+      "inkLabel": "색상 {{color}}",
       "notePlaceholder": "여기를 어떻게 바꿀지 적어 주세요",
       "open": "주석",
       "redo": "다시 실행",
       "removeMark": "표시 삭제",
       "subtitle_other": "표시 {{count}}개",
+      "textPlaceholder": "라벨 입력",
       "tools": {
         "arrow": "화살표",
         "box": "사각형",
@@ -697,6 +699,12 @@
       "tryDifferentSearch": "다른 검색어를 시도해 보세요.",
       "use": "사용",
       "useThisTemplate": "이 템플릿 사용",
+      "visibility": {
+        "change": "변경",
+        "changeLabel": "템플릿 공개 범위 변경",
+        "privateState": "나만 보고 사용할 수 있습니다",
+        "workspaceState": "이 워크스페이스의 모든 사람이 사용할 수 있습니다"
+      },
       "website": "웹사이트",
       "websitePreview": "{{title}} 웹사이트 템플릿 미리보기",
       "workflow": "워크플로",
@@ -3325,9 +3333,17 @@
           "description": "슬라이드와 발표자 생성",
           "title": "프레젠테이션 생성"
         },
+        "slack": {
+          "description": "워크스페이스에서 AI 팀원과 채팅하세요",
+          "title": "Slack 사용"
+        },
         "video": {
           "description": "아이디어를 비디오로 전환",
           "title": "비디오 제작"
+        },
+        "website": {
+          "description": "공유할 수 있는 페이지를 만들어 게시하세요",
+          "title": "웹사이트 만들기"
         },
         "workflow": {
           "description": "사전 설정된 템플릿에서 탐색",
@@ -4634,7 +4650,6 @@
         "usage": {
           "balanceDescription": "팀이 사용할 수 있는 잔액입니다.",
           "balanceTitle": "크레딧 잔액",
-          "balanceUsageDescription": "팀의 크레딧 잔액 및 사용량입니다.",
           "usageDescription": "채팅, 자동화, 채널에서의 크레딧 사용량입니다.",
           "usageTitle": "크레딧 사용량"
         }

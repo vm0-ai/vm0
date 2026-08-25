@@ -1,9 +1,7 @@
-import { command, computed, type Computed } from "ccstate";
+import { command } from "ccstate";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { orgInviteContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import type { OrgRole } from "@okouai/api-contracts/contracts/org-members";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -23,7 +21,6 @@ import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   confirmUsagePackInvitationPurchase,
@@ -198,20 +195,6 @@ function invitationPurchaseError(args: {
 
 const inviteBody$ = bodyResultOf(orgInviteContract.invite);
 
-function usagePackInvitationsEnabled(
-  orgId: string,
-  userId: string,
-): Computed<Promise<boolean>> {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-      orgId,
-      userId,
-      overrides,
-    });
-  });
-}
-
 const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
@@ -224,22 +207,19 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     return body.response;
   }
 
-  if (await get(usagePackInvitationsEnabled(auth.orgId, auth.userId))) {
-    signal.throwIfAborted();
-    const db = get(db$);
-    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
-    signal.throwIfAborted();
-    if (!capabilities?.memberInvitationAllowed) {
-      return memberInvitationUpgradeRequired;
+  const db = get(db$);
+  const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
+  signal.throwIfAborted();
+  if (!capabilities?.memberInvitationAllowed) {
+    return memberInvitationUpgradeRequired;
+  }
+  if (capabilities.memberInviteUsagePackRequired) {
+    if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
+      return providerUnavailable("Usage pack invitations are not ready");
     }
-    if (capabilities?.memberInviteUsagePackRequired) {
-      if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
-        return providerUnavailable("Usage pack invitations are not ready");
-      }
-      return conflict(
-        "A usage pack must be purchased before inviting this member",
-      );
-    }
+    return conflict(
+      "A usage pack must be purchased before inviting this member",
+    );
   }
 
   // Clerk side effect: sends the invitation email server-side.
@@ -321,17 +301,6 @@ const purchasePreviewInner$ = command(
     }
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
       return providerUnavailable("Billing not configured");
-    }
-    if (!(await get(usagePackInvitationsEnabled(auth.orgId, auth.userId)))) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "Usage pack invitations are not enabled",
-            code: "FORBIDDEN",
-          },
-        },
-      };
     }
     signal.throwIfAborted();
     const db = get(db$);
@@ -493,17 +462,6 @@ const purchaseConfirmInner$ = command(
     }
     if (!optionalEnv("STRIPE_SECRET_KEY")) {
       return providerUnavailable("Billing not configured");
-    }
-    if (!(await get(usagePackInvitationsEnabled(auth.orgId, auth.userId)))) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "Usage pack invitations are not enabled",
-            code: "FORBIDDEN",
-          },
-        },
-      };
     }
     signal.throwIfAborted();
     const db = get(db$);

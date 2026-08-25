@@ -767,6 +767,17 @@ impl RunningExec {
         let containment_error = containment_result.as_ref().err().map(ToString::to_string);
         let (termination, diagnostic) =
             resolve_exec_result(outcome, request.lifecycle, containment_error.as_deref());
+        let containment_evidence = containment_result
+            .as_ref()
+            .ok()
+            .and_then(|evidence| evidence.as_deref());
+        let diagnostic = successful_containment_evidence_diagnostic(
+            request.lifecycle,
+            &request.label,
+            termination,
+            diagnostic,
+            containment_evidence,
+        );
 
         log_exec_terminal_if_notable(
             request,
@@ -829,6 +840,23 @@ fn resolve_exec_result(
     (termination, diagnostic)
 }
 
+fn successful_containment_evidence_diagnostic(
+    lifecycle: ExecOperationLifecycle,
+    label: &str,
+    termination: ExecTermination,
+    diagnostic: String,
+    containment_evidence: Option<&str>,
+) -> String {
+    if lifecycle != ExecOperationLifecycle::OneShot
+        || label != "runner-exec"
+        || !diagnostic.is_empty()
+        || !matches!(termination, ExecTermination::Exited { .. })
+    {
+        return diagnostic;
+    }
+    containment_evidence.unwrap_or_default().to_owned()
+}
+
 fn append_containment_cleanup_failure(diagnostic: &str, containment_error: Option<&str>) -> String {
     let Some(error) = containment_error else {
         return diagnostic.to_string();
@@ -843,8 +871,8 @@ fn append_containment_cleanup_failure(diagnostic: &str, containment_error: Optio
 fn cleanup_process_containment(
     process_containment: ExecProcessContainment,
     mode: ProcessContainmentCleanupMode,
-) -> Result<(), ProcessContainmentError> {
-    process_containment.cleanup(mode)
+) -> Result<Option<String>, ProcessContainmentError> {
+    process_containment.cleanup_with_evidence(mode)
 }
 
 pub(crate) fn start_exec_operation(
@@ -1931,6 +1959,62 @@ mod tests {
 
         assert_eq!(termination, ExecTermination::TimedOut);
         assert!(diagnostic.is_empty());
+    }
+
+    #[test]
+    fn successful_exec_result_carries_containment_evidence() {
+        let evidence = "exec process containment cleaned cgroup_kill_used=true";
+
+        assert_eq!(
+            successful_containment_evidence_diagnostic(
+                ExecOperationLifecycle::OneShot,
+                "runner-exec",
+                ExecTermination::Exited { exit_code: 0 },
+                String::new(),
+                Some(evidence),
+            ),
+            evidence
+        );
+    }
+
+    #[test]
+    fn containment_evidence_does_not_replace_terminal_failure_diagnostic() {
+        assert_eq!(
+            successful_containment_evidence_diagnostic(
+                ExecOperationLifecycle::OneShot,
+                "runner-exec",
+                ExecTermination::WaitFailed,
+                "wait failed".to_owned(),
+                Some("cleanup evidence"),
+            ),
+            "wait failed"
+        );
+    }
+
+    #[test]
+    fn containment_evidence_is_only_attached_to_one_shot_runner_exec_results() {
+        let evidence = Some("cleanup evidence");
+
+        assert_eq!(
+            successful_containment_evidence_diagnostic(
+                ExecOperationLifecycle::Supervised,
+                "runner-exec",
+                ExecTermination::Exited { exit_code: 0 },
+                String::new(),
+                evidence,
+            ),
+            ""
+        );
+        assert_eq!(
+            successful_containment_evidence_diagnostic(
+                ExecOperationLifecycle::OneShot,
+                "benchmark-exec",
+                ExecTermination::Exited { exit_code: 0 },
+                String::new(),
+                evidence,
+            ),
+            ""
+        );
     }
 
     #[test]

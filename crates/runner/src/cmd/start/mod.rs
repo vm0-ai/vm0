@@ -1754,8 +1754,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, lifecycle changes, etc.). Without pinning, heartbeat
-    // (10s) cancels discover() on every tick, restarting its internal poll
-    // sleep (30s) from scratch — so poll never fires. See #8747.
+    // (10s) cancels discover() on every tick, restarting its provider-owned
+    // wait from scratch before reconciliation can run. See #8747.
     let mut discover_fut = Box::pin(provider_state.provider.discover());
 
     let mut current_mode = startup_mode;
@@ -1858,9 +1858,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .and_then(JobCandidate::runner_preference)
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
-            // Job discovery via provider (Ably wakeups + HTTP poll).
+            // Job discovery via provider (Ably/filesystem wakeups + reconciliation).
             // The future is pinned outside the loop so other reactor branches
-            // do not cancel and restart its internal poll timer. See #8747.
+            // do not cancel and restart its internal wait timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.

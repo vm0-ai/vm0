@@ -34,7 +34,7 @@ pub enum RunnerError {
     Io(#[from] std::io::Error),
 
     #[error("{0}")]
-    ActiveJobs(ActiveJobsError),
+    ActiveJobs(Box<ActiveJobsError>),
 }
 
 /// Error returned by `service stop` / `service uninstall` when the target

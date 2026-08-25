@@ -352,6 +352,15 @@ export const removeAnnotationMark$ = command(({ get, set }, id: string) => {
   }
 });
 
+/** Deletes whatever is selected. Bound to Delete/Backspace in the editor. */
+export const removeSelectedAnnotationMark$ = command(({ get, set }) => {
+  const id = get(internalSelectedMarkId$);
+  if (id === null) {
+    return;
+  }
+  set(removeAnnotationMark$, id);
+});
+
 export const setAnnotationMarkNote$ = command(
   ({ set }, id: string, note: string) => {
     set(pushAnnotation$, (current) => {

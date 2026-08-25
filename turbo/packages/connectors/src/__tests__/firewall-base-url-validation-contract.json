@@ -69,6 +69,13 @@
       "expectedResolvedBase": "https://api.example.com:8443/acme/v1"
     },
     {
+      "category": "multiple",
+      "name": "repeated path reference occurrences resolve independently",
+      "base": "https://api.example.com/accounts/${{ vars.TENANT }}/mirror/${{ vars.TENANT }}/v1",
+      "vars": { "TENANT": "acme" },
+      "expectedResolvedBase": "https://api.example.com/accounts/acme/mirror/acme/v1"
+    },
+    {
       "category": "port",
       "name": "port fragments across references resolve",
       "base": "https://api.example.com:${{ vars.PORT_MAJOR }}${{ vars.PORT_MINOR }}/v1",
