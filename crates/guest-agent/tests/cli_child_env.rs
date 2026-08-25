@@ -25,6 +25,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
+        std::env::remove_var(guest_contracts::env::API_URL_ENV);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
         std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "300");
         for (canonical, legacy) in [
             (
@@ -112,6 +117,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some(std::time::Duration::from_secs(60))
     );
     assert_eq!(runtime.config.stuck_tool_timeout_secs, 300);
+    assert_eq!(runtime.config.api_url, "http://127.0.0.1:1");
     assert_eq!(
         runtime.config.post_result_sigterm_grace,
         std::time::Duration::from_secs(3)
@@ -141,6 +147,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     unsafe {
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "https://stale-canonical-api.example.invalid",
+        );
         std::env::set_var("HOME", tmp.path().join("stale-home"));
         for key in [
             guest_contracts::env::USER_ENV_FILE_ENV,
@@ -185,6 +195,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         cli_env.get("VM0_API_BACKEND_URL").map(String::as_str),
         Some("http://127.0.0.1:1")
     );
+    assert!(
+        !cli_env.contains_key(guest_contracts::env::CANONICAL_API_URL_ENV),
+        "Claude child env contains the reader-only canonical API URL alias"
+    );
     assert_eq!(
         cli_env.get("HOME").map(String::as_str),
         Some(user_home_str.as_str())
@@ -218,6 +232,16 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(cli_env.contains_key("PATH"));
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
+    for key in [
+        guest_contracts::env::API_TOKEN_ENV,
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV,
+        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains sensitive bootstrap key {key}"
+        );
+    }
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
@@ -302,6 +326,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             .exists()
     );
 
+    unsafe {
+        // The remaining cases construct fresh runtimes; leave them with the
+        // legacy-only setup supplied by `common::setup_env`.
+        std::env::remove_var(guest_contracts::env::CANONICAL_API_URL_ENV);
+    }
     assert_home_value_reaches_claude(
         &mock,
         &tmp.path().join("relative-home-case"),

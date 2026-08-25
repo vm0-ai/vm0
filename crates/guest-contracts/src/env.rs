@@ -21,6 +21,17 @@
 /// processes by the guest-agent's curated child environment.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
+/// Canonical backend API URL alias accepted by guest readers during migration.
+///
+/// This fallback is confined to the Runner-to-Guest-Agent bootstrap surface.
+/// Runner writers keep using [`API_URL_ENV`], and the guest-agent keeps exposing
+/// that legacy spelling to managed CLI children. Remove the legacy reader only
+/// after the exact production Runner plus embedded-Guest reader floor, complete
+/// pre-reader service and reusable-sandbox drain, supported rollback window,
+/// and value-free legacy-source-zero gates in #28914. The managed CLI-child
+/// spelling has its own later reader/support floor.
+pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
+
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
@@ -557,6 +568,7 @@ mod tests {
     #[test]
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
+        assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -791,6 +803,7 @@ mod tests {
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
             API_URL_ENV,
+            CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
             API_TOKEN_ENV,
             CANONICAL_API_TOKEN_ENV,
@@ -860,7 +873,12 @@ mod tests {
                 "canonical reader alias {key} must not become a local tuning input"
             );
         }
-        assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
+        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
+            assert!(
+                !is_guest_agent_tuning_env_key(key),
+                "API URL bootstrap key {key} must not become a local tuning input"
+            );
+        }
     }
 
     /// Contract sources scanned for declared environment key constants.

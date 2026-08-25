@@ -489,6 +489,22 @@ fn build_env_json_required_keys() {
 }
 
 #[test]
+fn build_env_json_keeps_api_url_writer_legacy_only() {
+    let ctx = minimal_context();
+    let env = build_env_for_test(&ctx, "https://api.example.com");
+
+    assert_eq!(
+        env.get(guest_contracts::env::API_URL_ENV)
+            .map(String::as_str),
+        Some("https://api.example.com")
+    );
+    assert!(
+        !env.contains_key(guest_contracts::env::CANONICAL_API_URL_ENV),
+        "Runner bootstrap writer emitted the reader-only canonical API URL alias"
+    );
+}
+
+#[test]
 fn build_env_json_sandbox_reuse_result_wire_format() {
     let ctx = minimal_context();
     let sid = SandboxId::new_v4().to_string();
