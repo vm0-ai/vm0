@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.18...guest-contracts-v0.11.19) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read execution timeout aliases ([#29229](https://github.com/vm0-ai/vm0/issues/29229)) ([c27e3fa](https://github.com/vm0-ai/vm0/commit/c27e3fa6ca856a65ef8d4b195f7da91dbf86942a))
+
 ## [0.11.18](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.17...guest-contracts-v0.11.18) (2026-08-24)
 
 

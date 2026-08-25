@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.488.0](https://github.com/vm0-ai/vm0/compare/api-v1.487.0...api-v1.488.0) (2026-08-25)
+
+
+### Features
+
+* **ads:** add adsmarch website conversions ([#29187](https://github.com/vm0-ai/vm0/issues/29187)) ([1fa2bf6](https://github.com/vm0-ai/vm0/commit/1fa2bf61489d3eda7238239210d93c60cbfd8898))
+
+
+### Refactoring
+
+* **ci:** move e2e and workflow callers off the branded api namespace ([#29172](https://github.com/vm0-ai/vm0/issues/29172)) ([54eb6c0](https://github.com/vm0-ai/vm0/commit/54eb6c0840f99b84a2e580c5304a349df2af6842))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.364.0
+    * @okouai/core bumped to 8.590.1
+    * @okouai/db bumped to 1.223.1
+
 ## [1.487.0](https://github.com/vm0-ai/vm0/compare/api-v1.486.0...api-v1.487.0) (2026-08-25)
 
 

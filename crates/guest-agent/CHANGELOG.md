@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.77.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.0...guest-agent-v0.77.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound api response bodies ([#29239](https://github.com/vm0-ai/vm0/issues/29239)) ([95cb00a](https://github.com/vm0-ai/vm0/commit/95cb00a74ad072ae78f975634050c3a068834eff))
+
 ## [0.77.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.76.0...guest-agent-v0.77.0) (2026-08-25)
 
 
