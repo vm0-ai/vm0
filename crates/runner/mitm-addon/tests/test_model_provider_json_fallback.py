@@ -19,7 +19,10 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
-from tests.model_provider_flow_helpers import model_usage_source_entries
+from tests.model_provider_flow_helpers import (
+    model_usage_source_entries,
+    set_model_provider_flow_metadata,
+)
 from tests.model_provider_response_helpers import (
     ANTHROPIC_JSON_CASE,
     CODEX_OAUTH_RESPONSES_CASE,
@@ -32,7 +35,6 @@ from tests.model_provider_response_helpers import (
     model_provider_flow,
     model_provider_json_case_id,
     run_response,
-    set_common_model_metadata,
     standard_success_payload,
 )
 from tests.stream_buffer_helpers import set_response_stream_buffer
@@ -726,13 +728,13 @@ class TestModelProviderJsonFallback:
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_json_fallback_skips_malformed_firewall_name(self, tmp_path, real_flow, firewall_name):
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        set_common_model_metadata(flow, tmp_path)
-        flow.metadata[metadata_keys.ORIGINAL_URL] = ANTHROPIC_JSON_CASE.original_url
-        http_network_log.set_target(
+        set_model_provider_flow_metadata(
             flow,
-            url=ANTHROPIC_JSON_CASE.original_url,
+            tmp_path,
             host=ANTHROPIC_JSON_CASE.host,
-            port=flow.request.port,
+            original_url=ANTHROPIC_JSON_CASE.original_url,
+            firewall_name=ANTHROPIC_JSON_CASE.firewall_name,
+            proxy_log_path=None,
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
         body = standard_success_payload(ANTHROPIC_JSON_CASE)
