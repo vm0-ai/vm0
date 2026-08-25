@@ -1570,8 +1570,23 @@ describe("connectors page", () => {
     const manageAccounts = await waitForButtonByAriaLabel(
       "Manage GitHub accounts",
     );
+    const manageAccess = within(connectorCardByLabel("GitHub")).getByLabelText(
+      "Manage GitHub access",
+    );
     expect(manageAccounts.tagName).toBe("BUTTON");
     expect(manageAccounts.querySelector("button")).toBeNull();
+    expect(manageAccounts).not.toContainElement(manageAccess);
+    click(manageAccess);
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(screen.queryByRole("dialog", { name: "GitHub" })).toBeNull();
+    click(within(accessDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Manage GitHub access" }),
+      ).toBeNull();
+    });
     click(manageAccounts);
 
     const dialog = await screen.findByRole("dialog", {
