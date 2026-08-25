@@ -8,8 +8,11 @@ import { notarize } from "@electron/notarize";
 import { sign } from "@electron/osx-sign";
 
 import desktopNotarizeApiEnvironment from "./desktop-notarize-api-environment.js";
+import desktopSigningIdentityEnvironment from "./desktop-signing-identity-environment.js";
 
 const { resolveDesktopNotarizeApiEnvironment } = desktopNotarizeApiEnvironment;
+const { resolveDesktopSigningIdentityEnvironment } =
+  desktopSigningIdentityEnvironment;
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
@@ -23,8 +26,7 @@ const desktopIdentities = JSON.parse(
   ),
 );
 
-function requiredEnvironmentVariable(name) {
-  const value = process.env[name];
+function requiredEnvironmentVariable(name, value) {
   if (!value) {
     throw new Error(`${name} is required`);
   }
@@ -81,7 +83,10 @@ if (!notarizeOptions) {
 await sign({
   app: options.appPath,
   batchCodesignCalls: true,
-  identity: requiredEnvironmentVariable("VM0_DESKTOP_SIGNING_IDENTITY"),
+  identity: requiredEnvironmentVariable(
+    "VM0_DESKTOP_SIGNING_IDENTITY",
+    resolveDesktopSigningIdentityEnvironment(),
+  ),
   identityValidation: true,
   platform: "darwin",
   version: packageMetadata.devDependencies.electron,
