@@ -400,7 +400,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Keep the feedback note's wrapper elements outside the editable flow, with the note content opting back in as its own editing host, so WebKit's editing machinery can neither restructure the wrappers during an IME composition nor land the caret between them.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",

@@ -128,6 +128,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -162,6 +165,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
+      false,
+    );
   });
 
   it("should enable Bingjie-only composer switches only for Bingjie", () => {
@@ -174,9 +180,6 @@ describe("getAllFeatureStates", () => {
     expect(
       bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(true);
-    expect(bingjieStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
-      true,
-    );
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -187,9 +190,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
-    expect(
-      otherStaffStates[FeatureSwitchKey.ComposerNoteEditableIsolation],
     ).toBe(false);
   });
 
