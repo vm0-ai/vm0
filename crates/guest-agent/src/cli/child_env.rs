@@ -7,8 +7,9 @@ use super::CliRuntimeConfig;
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
 // The sandbox CLI needs the same API origin as the guest-agent in local
-// development. Keep runner-visible env intentionally narrow: tokens and other
-// VM0 bootstrap controls must stay private to the guest-agent.
+// development. During #28914 reader Stage 1, keep this legacy spelling until
+// the separate managed-CLI reader/support floor permits a child-writer cutover.
+// Tokens and all other bootstrap controls must stay private to the guest-agent.
 const RUNNER_VISIBLE_API_URL_ENV_KEY: &str = guest_contracts::env::API_URL_ENV;
 const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "USER",

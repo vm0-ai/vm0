@@ -30,6 +30,38 @@ fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+/// Resolve the Runner-to-Guest Agent API URL at the single process-env capture
+/// boundary. The canonical alias is reader-only during #28914 Stage 1; Runner
+/// writers and managed CLI-child exposure remain [`guest_contracts::env::API_URL_ENV`].
+/// Remove the legacy reader only after the exact production Runner plus
+/// embedded-Guest reader floor, complete pre-reader service and reusable-sandbox
+/// drain, supported rollback window, and value-free legacy-source-zero gates.
+fn api_url_env_or_empty() -> Result<String, String> {
+    let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
+    let legacy_key = guest_contracts::env::API_URL_ENV;
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting API backend URL environment aliases: canonical_key={canonical_key} \
+                 legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "api_url_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
 #[derive(Clone, Copy)]
 enum PrivatePayloadFileEnvSource {
     CanonicalOnly,
@@ -430,6 +462,7 @@ impl GuestConfigRaw {
         guest_runtime_dir: guest_contracts::runtime_paths::GuestRuntimeDirEnvResolution,
     ) -> Result<Self, String> {
         let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
+        let api_url = api_url_env_or_empty()?;
 
         let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -468,7 +501,7 @@ impl GuestConfigRaw {
 
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
-            api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
+            api_url,
             api_token: api_token_env_or_empty()?,
             sandbox_id: run_metadata_env_or_empty(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
