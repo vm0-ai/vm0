@@ -75,7 +75,7 @@ import {
 } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
-import { ZeroNoPermissionIllustration } from "./components/no-permission-illustration.tsx";
+import { NoPermissionIllustration } from "./components/no-permission-illustration.tsx";
 import { formatAppNumber } from "../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ function ActivityNotFound() {
         </span>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <ZeroNoPermissionIllustration />
+        <NoPermissionIllustration />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.detail.notFound.title;

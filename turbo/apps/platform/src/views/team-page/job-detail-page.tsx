@@ -39,8 +39,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@okouai/ui";
-import { ZeroInstructionsTab } from "../okou-page/instructions-tab.tsx";
-import { ZeroSettingsTab } from "../okou-page/settings-tab.tsx";
+import { InstructionsTab } from "../okou-page/instructions-tab.tsx";
+import { SettingsTab } from "../okou-page/settings-tab.tsx";
 import { TONE_OPTIONS, type Tone } from "../okou-page/tone-constants.ts";
 import { agentDetail$ } from "../../signals/okou-page/job-detail/detail";
 import {
@@ -81,7 +81,7 @@ import {
 } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ZeroNoPermissionIllustration } from "../okou-page/components/no-permission-illustration.tsx";
+import { NoPermissionIllustration } from "../okou-page/components/no-permission-illustration.tsx";
 import { ConnectorCard } from "../okou-page/components/settings/connector-card.tsx";
 import { PermissionsDrawer } from "../okou-page/components/settings/permissions-dialog.tsx";
 import type { PermissionDraftIntent } from "../../signals/okou-page/settings/permission-draft-intent.ts";
@@ -199,7 +199,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
         <Breadcrumb />
         <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
           <div className="flex flex-col items-center text-center gap-4 max-w-sm">
-            <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
+            <NoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
             <div className="space-y-1.5">
               <h2 className="text-lg font-semibold text-foreground">
                 {t(($) => {
@@ -806,7 +806,7 @@ function JobInstructionsTab() {
   const discard = useSet(discardAgentEdit$);
 
   return (
-    <ZeroInstructionsTab
+    <InstructionsTab
       instructions={instructions}
       loading={loading}
       fetchError={fetchError}
@@ -998,7 +998,7 @@ function AgentProfileSettings({
   };
 
   return (
-    <ZeroSettingsTab
+    <SettingsTab
       key={agentId}
       agentId={agentId}
       displayName={displayName}
@@ -1141,7 +1141,7 @@ function useTabVisibility(agentId: string, ownerId: string) {
   };
 }
 
-export function ZeroJobDetailPage() {
+export function JobDetailPage() {
   const { t } = useTranslation("agents");
   const detailLoadable = useLoadable(agentDetail$);
   const error = loadableErrorMessage(
