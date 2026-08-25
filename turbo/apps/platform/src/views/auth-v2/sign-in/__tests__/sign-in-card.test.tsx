@@ -165,6 +165,25 @@ function expectNoFieldErrorAssociation(input: HTMLElement): void {
   expect(input).not.toHaveAttribute("aria-describedby");
 }
 
+function signUpSwitchContext(): {
+  readonly expectedHref: string;
+  readonly url: string;
+} {
+  const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
+  const searchParams = new URLSearchParams([
+    ["redirect_url", redirectUrl],
+    ["gclid", "click-123"],
+    ["utm_campaign", "summer"],
+    ["utm_content", "hero"],
+    ["utm_content", "footer"],
+  ]);
+  const hash = `#/factor-one?step=code&redirect_url=${encodeURIComponent(redirectUrl)}`;
+  return {
+    expectedHref: `/v2/sign-up?${searchParams.toString()}${hash}`,
+    url: `https://app.vm0.ai/v2/sign-in?${searchParams.toString()}${hash}`,
+  };
+}
+
 function createStalledGoogleOneTapScript(): HTMLScriptElement {
   const script = document.createElement("script");
   script.dataset.authV2GoogleOneTap = "true";
@@ -206,6 +225,7 @@ describe("auth v2 sign-in flow", () => {
     expect(loadingState).toHaveTextContent(
       "Checking what your account needs next.",
     );
+    expect(roleElement("link", "Sign up")).toBeUndefined();
 
     await act(async () => {
       clerkLoad.resolve(undefined);
@@ -226,6 +246,17 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByLabelText("Email address or username"),
     ).resolves.toHaveValue("");
+  });
+
+  it("preserves exact navigation context in the ordinary sign-up switch", async () => {
+    const { expectedHref, url } = signUpSwitchContext();
+    setupSignInPage({ status: "needs_identifier" }, { url });
+
+    const signUp = await waitForRoleElement("link", "Sign up");
+    expect(signUp).toHaveAttribute("href", expectedHref);
+    expect(signUp.parentElement).toHaveTextContent(
+      "Don’t have an account? Sign up",
+    );
   });
 
   it("discovers password factors, coalesces duplicate submits, and activates once", async () => {
@@ -1363,13 +1394,52 @@ describe("auth v2 sign-in flow", () => {
     });
 
     const signUp = await waitForRoleElement("link", "Sign up");
-    expect(signUp).toHaveAttribute("href", "/v2/sign-up");
+    expect(signUp).toHaveAttribute(
+      "href",
+      "/v2/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai",
+    );
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
     await expect(
       screen.findByLabelText("Email address or username"),
     ).resolves.toHaveValue("");
+  });
+
+  it("preserves exact navigation context in the transfer sign-up action", async () => {
+    const { expectedHref, url } = signUpSwitchContext();
+    setupSignInPage(
+      {
+        isTransferable: true,
+        status: "needs_identifier",
+      },
+      { url },
+    );
+
+    const signUp = await waitForRoleElement("link", "Sign up");
+    expect(signUp).toHaveAttribute("href", expectedHref);
+    expect(
+      queryAllByRoleFast("link").filter((candidate) => {
+        return candidate.textContent?.trim() === "Sign up";
+      }),
+    ).toHaveLength(1);
+    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+  });
+
+  it("does not render the ordinary sign-up switch while completing", async () => {
+    const activation = createDeferredPromise<void>(context.signal);
+    mockedClerk.setActive.mockImplementation(() => {
+      return activation.promise;
+    });
+    setupSignInPage({
+      createdSessionId: "session_complete",
+      status: "complete",
+    });
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(roleElement("link", "Sign up")).toBeUndefined();
   });
 
   it.each([
@@ -1393,5 +1463,6 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       waitForRoleElement("button", "Use another method"),
     ).resolves.toBeVisible();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
   });
 });

@@ -2,7 +2,7 @@ import { Button, Input } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 import type {
   AuthV2SignInSignals,
@@ -86,6 +86,34 @@ function FlowErrorAlert({ copy, signals }: SignInStepProps) {
       id={AUTH_V2_SIGN_IN_ERROR_ID}
       message={signInErrorMessage(error, copy)}
     />
+  );
+}
+
+function signUpLinkOptions(signUpHref: string) {
+  const url = new URL(signUpHref, location.origin);
+  return {
+    hash: url.hash,
+    searchParams: url.searchParams,
+  };
+}
+
+function SignUpLink({
+  children,
+  className,
+  signUpHref,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly signUpHref: string;
+}) {
+  return (
+    <Link
+      className={className}
+      options={signUpLinkOptions(signUpHref)}
+      pathname={ROUTES.signUpV2}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -559,12 +587,16 @@ function CompleteStep({ copy }: { readonly copy: AuthV2SignInCopy }) {
   );
 }
 
-function TransferStep({ copy, signals }: SignInStepProps) {
+function TransferStep({
+  copy,
+  signUpHref,
+  signals,
+}: SignInStepProps & { readonly signUpHref: string }) {
   const restart = useSet(signals.restart$);
   return (
     <div className="space-y-3">
       <Button className="w-full" asChild>
-        <Link pathname={ROUTES.signUpV2}>{copy.signUp}</Link>
+        <SignUpLink signUpHref={signUpHref}>{copy.signUp}</SignUpLink>
       </Button>
       <Button
         className="w-full"
@@ -599,9 +631,13 @@ function UnknownStep({ copy, signals }: SignInStepProps) {
 
 export function SignInCardContent({
   copy,
+  signUpHref,
   signals,
   state,
-}: SignInStepProps & { readonly state: AuthV2SignInState }) {
+}: SignInStepProps & {
+  readonly signUpHref: string;
+  readonly state: AuthV2SignInState;
+}) {
   if (state.status === "loading") {
     return <LoadingStep copy={copy} />;
   }
@@ -609,7 +645,9 @@ export function SignInCardContent({
     return <CompleteStep copy={copy} />;
   }
   if (state.status === "transfer") {
-    return <TransferStep copy={copy} signals={signals} />;
+    return (
+      <TransferStep copy={copy} signUpHref={signUpHref} signals={signals} />
+    );
   }
   if (state.status === "unknown") {
     return <UnknownStep copy={copy} signals={signals} />;
@@ -635,4 +673,24 @@ export function SignInCardContent({
     return <CodeStep copy={copy} reset signals={signals} state={state} />;
   }
   return <NewPasswordStep copy={copy} signals={signals} />;
+}
+
+export function SignInSwitch({
+  copy,
+  signUpHref,
+}: {
+  readonly copy: AuthV2SignInCopy;
+  readonly signUpHref: string;
+}) {
+  return (
+    <p className="text-center text-sm text-muted-foreground">
+      {copy.noAccount}{" "}
+      <SignUpLink
+        className="font-medium text-foreground underline underline-offset-4"
+        signUpHref={signUpHref}
+      >
+        {copy.signUp}
+      </SignUpLink>
+    </p>
+  );
 }
