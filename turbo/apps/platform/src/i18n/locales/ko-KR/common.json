@@ -2228,6 +2228,7 @@
       "deleteDescriptionWithCount": "{{value}}개 스레드가 기본 상속으로 돌아갑니다.",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}}을(를) 삭제할까요?",
+      "fallbackName": "계정 #{{id}}",
       "find": "계정 찾기",
       "loading": "계정 불러오는 중…",
       "loadingMore": "불러오는 중…",

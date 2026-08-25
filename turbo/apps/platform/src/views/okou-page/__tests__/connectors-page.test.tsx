@@ -1502,13 +1502,16 @@ describe("connectors page", () => {
     }
     const accounts = Array.from({ length: 101 }, (_, index) => {
       return {
-        id: crypto.randomUUID(),
+        id:
+          index === 0
+            ? "00000000-0000-4000-a000-000000000001"
+            : crypto.randomUUID(),
         target: { kind: "builtin" as const, connectorSlug: "github" },
         authMethod: "oauth",
-        displayName: `Work ${index}`,
+        displayName: index === 0 ? null : `Work ${index}`,
         isDefault: index === 0,
         externalId: null,
-        externalUsername: `octocat-${index}`,
+        externalUsername: index === 0 ? null : `octocat-${index}`,
         externalEmail: null,
         oauthScopes: [],
         connectionStatus: "connected" as const,
@@ -1569,7 +1572,7 @@ describe("connectors page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "GitHub",
     });
-    expect(within(dialog).getByText("Work 0")).toBeInTheDocument();
+    expect(within(dialog).getByText("Account #00000000")).toBeInTheDocument();
     expect(within(dialog).queryByText("Work 50")).toBeNull();
     click(buttonByText("Load more", dialog));
     await waitFor(() => {
@@ -1581,7 +1584,7 @@ describe("connectors page", () => {
     );
     await waitFor(() => {
       expect(within(dialog).getByText("Work 100")).toBeInTheDocument();
-      expect(within(dialog).queryByText("Work 0")).toBeNull();
+      expect(within(dialog).queryByText("Account #00000000")).toBeNull();
     });
   });
 

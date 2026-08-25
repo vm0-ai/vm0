@@ -167,13 +167,11 @@ function AccountActions({
 function AccountRow({
   target,
   account,
-  connectorLabel,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
-  readonly connectorLabel: string;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
@@ -184,7 +182,15 @@ function AccountRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">
-            {connectorAccountEffectiveLabel(account, connectorLabel)}
+            {connectorAccountEffectiveLabel(
+              account,
+              t(
+                ($) => {
+                  return $.connectors.accounts.fallbackName;
+                },
+                { id: account.id.slice(0, 8) },
+              ),
+            )}
           </span>
           {account.isDefault ? (
             <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
@@ -214,13 +220,11 @@ function AccountRow({
 function AccountList({
   loadable,
   target,
-  connectorLabel,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly target: ConnectorAccountTarget;
-  readonly connectorLabel: string;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
@@ -268,7 +272,6 @@ function AccountList({
         key={`${account.id}-row`}
         target={target}
         account={account}
-        connectorLabel={connectorLabel}
         connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
       />,
@@ -339,10 +342,8 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
 
 function DeleteAccountConfirmation({
   target,
-  connectorLabel,
 }: {
   readonly target: ConnectorAccountTarget;
-  readonly connectorLabel: string;
 }) {
   const { t } = useTranslation();
   const draft = useGet(connectorAccountDeletionDraft$);
@@ -380,7 +381,12 @@ function DeleteAccountConfirmation({
               {
                 account: connectorAccountEffectiveLabel(
                   draft.account,
-                  connectorLabel,
+                  t(
+                    ($) => {
+                      return $.connectors.accounts.fallbackName;
+                    },
+                    { id: draft.account.id.slice(0, 8) },
+                  ),
                 ),
               },
             )}
@@ -506,7 +512,6 @@ export function ConnectorAccountManagerDialog({
           <AccountList
             loadable={accountsLoadable}
             target={target}
-            connectorLabel={connectorLabel}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={(account) => {
               leave(() => {
@@ -536,10 +541,7 @@ export function ConnectorAccountManagerDialog({
             </Button>
           </div>
         ) : null}
-        <DeleteAccountConfirmation
-          target={target}
-          connectorLabel={connectorLabel}
-        />
+        <DeleteAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>
   );

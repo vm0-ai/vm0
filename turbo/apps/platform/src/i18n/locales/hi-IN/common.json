@@ -2234,6 +2234,7 @@
       "deleteDescriptionWithCount_one": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}} को हटाएँ?",
+      "fallbackName": "खाता #{{id}}",
       "find": "खाते खोजें",
       "loading": "खाते लोड हो रहे हैं…",
       "loadingMore": "लोड हो रहा है…",

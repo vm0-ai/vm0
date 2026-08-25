@@ -2280,6 +2280,7 @@
       "deleteDescriptionWithCount_many": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "Supprimer {{account}} ?",
+      "fallbackName": "Compte #{{id}}",
       "find": "Rechercher des comptes",
       "loading": "Chargement des comptes…",
       "loadingMore": "Chargement…",

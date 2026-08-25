@@ -366,12 +366,10 @@ function ConnectionConnectorCard({
 export function ConnectorAccountSummaryText({
   summary,
   status,
-  connectorLabel,
   className,
 }: {
   readonly summary: ConnectorAccountSummary | undefined;
   readonly status: ConnectorAccountSummaryStatus;
-  readonly connectorLabel: string;
   readonly className?: string;
 }) {
   const { t } = useTranslation();
@@ -421,7 +419,12 @@ export function ConnectorAccountSummaryText({
         summary: summaryText,
         account: connectorAccountEffectiveLabel(
           summary.defaultConnection,
-          connectorLabel,
+          t(
+            ($) => {
+              return $.connectors.accounts.fallbackName;
+            },
+            { id: summary.defaultConnection.id.slice(0, 8) },
+          ),
         ),
       },
     );
@@ -526,7 +529,6 @@ function AccountsConnectorCard({
           <ConnectorAccountSummaryText
             summary={summary}
             status={summaryStatus}
-            connectorLabel={connector.label}
             className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
           />
         )}
