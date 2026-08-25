@@ -4636,7 +4636,6 @@
         "usage": {
           "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
-          "balanceUsageDescription": "Saldo kredit dan penggunaan tim Anda.",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
         }

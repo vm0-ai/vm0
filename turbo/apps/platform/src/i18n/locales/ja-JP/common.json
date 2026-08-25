@@ -4636,7 +4636,6 @@
         "usage": {
           "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
-          "balanceUsageDescription": "チームのクレジット残高と使用量。",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"
         }

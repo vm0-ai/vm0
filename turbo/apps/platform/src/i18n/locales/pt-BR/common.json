@@ -4701,7 +4701,6 @@
         "usage": {
           "balanceDescription": "O que resta para a sua equipe gastar.",
           "balanceTitle": "Saldo de créditos",
-          "balanceUsageDescription": "O saldo de créditos e o uso da sua equipe.",
           "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
           "usageTitle": "Uso de créditos"
         }

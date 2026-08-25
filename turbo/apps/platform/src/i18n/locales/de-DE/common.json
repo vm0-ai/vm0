@@ -4644,7 +4644,6 @@
         "usage": {
           "balanceDescription": "Was deinem Team noch zum Ausgeben bleibt.",
           "balanceTitle": "Credit-Guthaben",
-          "balanceUsageDescription": "Guthaben und Verbrauch deines Teams.",
           "usageDescription": "Ihre Credit-Nutzung über Chats, Automatisierungen und Kanäle hinweg.",
           "usageTitle": "Credit-Nutzung"
         }

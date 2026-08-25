@@ -2309,6 +2309,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("checks out the new plan", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const memberIds = Array.from({ length: 101 }, (_, index) => {
       return index === 0 ? fixture.userId : `user_${randomUUID()}`;
     });
@@ -2691,6 +2692,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const checkoutSessionId = `cs_${randomUUID()}`;
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList
@@ -2756,6 +2758,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("returns a non-cacheable 503 when Clerk rate limits persist", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new ClerkApiResponseTestError(7),
@@ -2794,6 +2797,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("preserves non-rate-limit Clerk checkout failures", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new Error("Clerk membership read failed"),
     );
@@ -2824,6 +2828,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("stops sibling Clerk pagination after checkout directory exhaustion", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const invitationPage = createDeferredPromise<{
       readonly data: readonly {
         readonly id: string;
@@ -2880,6 +2885,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("stops Clerk retries when usage pack checkout is cancelled", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const controller = new AbortController();
     const retryStarted = createDeferredPromise<void>(context.signal);
     let retrySignal: AbortSignal | undefined;
@@ -3772,6 +3778,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("rejects a usage pack preview after a replacement retires its snapshot", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
@@ -3857,6 +3864,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("attempts the saved card for an open usage pack invoice", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     const subscriptionId = `sub_${randomUUID()}`;
@@ -3970,6 +3978,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("reuses a pending usage pack preview and creates one subscription", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
@@ -4116,6 +4125,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("reuses an open Checkout when repeated usage pack previews lose their saved card", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     const checkoutSessionId = `cs_${randomUUID()}`;
@@ -4258,6 +4268,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("rejects stale member selections before creating checkout", async () => {
     const fixture = createOrgFixture();
+    authenticateOrg(fixture);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [

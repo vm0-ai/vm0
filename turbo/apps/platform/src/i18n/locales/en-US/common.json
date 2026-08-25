@@ -4636,7 +4636,6 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
-          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }
