@@ -2,10 +2,9 @@ import { publicBrandPresentation } from "@okouai/core/public-brand";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
-import {
-  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
-  type AuthV2SignUpError,
-  type AuthV2SignUpState,
+import type {
+  AuthV2SignUpError,
+  AuthV2SignUpState,
 } from "../../../signals/auth-v2/sign-up-flow.ts";
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 
@@ -49,7 +48,7 @@ export interface AuthV2SignUpCopy {
   readonly passwordLabel: string;
   readonly passwordPlaceholder: string;
   readonly resendCode: string;
-  readonly resendCodeCooldown: string;
+  readonly resendCodeCooldown: (remainingSeconds: number) => string;
   readonly restart: string;
   readonly retry: string;
   readonly showPassword: string;
@@ -185,15 +184,17 @@ function signUpVerificationCopy(
       return $.auth.v2.signUp.emailCodeTitle;
     }),
     resendCode,
-    resendCodeCooldown: t(
-      ($) => {
-        return $.auth.v2.signUp.resendCodeCooldown;
-      },
-      {
-        resendCode,
-        seconds: AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
-      },
-    ),
+    resendCodeCooldown: (remainingSeconds: number) => {
+      return t(
+        ($) => {
+          return $.auth.v2.signUp.resendCodeCooldown;
+        },
+        {
+          resendCode,
+          seconds: remainingSeconds,
+        },
+      );
+    },
     retry: t(($) => {
       return $.auth.v2.signUp.retry;
     }),
@@ -341,8 +342,10 @@ export function signUpCardTitle(
 }
 
 export function resendCodeLabel(
-  coolingDown: boolean,
+  remainingSeconds: number,
   copy: AuthV2SignUpCopy,
 ): string {
-  return coolingDown ? copy.resendCodeCooldown : copy.resendCode;
+  return remainingSeconds > 0
+    ? copy.resendCodeCooldown(remainingSeconds)
+    : copy.resendCode;
 }

@@ -62,7 +62,7 @@ export function AuthV2SignUpCard({
       headerDetail={
         flowState.status === "incomplete" && flowState.step === "email-code" ? (
           <AuthV2IdentityPreview
-            actionLabel={copy.editEmailAddress || copy.back}
+            actionLabel={copy.editEmailAddress}
             value={flowState.emailAddress}
             onEdit={backToDetails}
           />

@@ -516,7 +516,9 @@ function createSignInAttemptSignals(
       const flowState = get(signals.state$);
       if (
         flowState.status !== "incomplete" ||
-        (flowState.step !== "choose-factor" && flowState.step !== "identifier")
+        (flowState.step !== "choose-factor" &&
+          flowState.step !== "identifier" &&
+          flowState.step !== "password-recovery")
       ) {
         return null;
       }
@@ -525,7 +527,12 @@ function createSignInAttemptSignals(
       });
       return {
         method: factor ? signInFactorMethod(factor) : "unknown",
-        step: flowState.step === "identifier" ? "identifier" : "choose-factor",
+        step:
+          flowState.step === "identifier"
+            ? "identifier"
+            : flowState.step === "password-recovery"
+              ? "recovery"
+              : "choose-factor",
       };
     },
   );
@@ -709,7 +716,8 @@ function createSignUpInstrumentation(
     if (
       flowState.status !== "incomplete" ||
       flowState.step !== "email-code" ||
-      (get(signals.resendCoolingDown$) && flowState.verification !== "expired")
+      (get(signals.resendState$).status === "cooling-down" &&
+        flowState.verification !== "expired")
     ) {
       return null;
     }

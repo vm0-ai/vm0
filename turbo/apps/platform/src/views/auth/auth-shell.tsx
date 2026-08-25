@@ -107,7 +107,12 @@ export function AuthShell({
         )}
       </a>
 
-      <main className="relative z-10 m-auto flex w-full min-w-0 justify-center">
+      <main
+        className={cn(
+          "relative z-10 m-auto flex w-full min-w-0 justify-center",
+          v2 && "py-14 sm:py-16",
+        )}
+      >
         {children}
       </main>
     </div>

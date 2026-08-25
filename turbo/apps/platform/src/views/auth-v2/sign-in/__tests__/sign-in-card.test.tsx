@@ -301,6 +301,7 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.signInAttemptFirstFactor).not.toHaveBeenCalled();
     fireEvent.change(passwordInput, { target: { value: "correct-password" } });
     const passwordForm = containingForm(passwordInput);
+    const continueButton = await waitForRoleElement("button", "Continue");
     fireEvent.submit(passwordForm);
     fireEvent.submit(passwordForm);
 
@@ -311,6 +312,11 @@ describe("auth v2 sign-in flow", () => {
       password: "correct-password",
       strategy: "password",
     });
+    await waitFor(() => {
+      expect(continueButton).toHaveAttribute("aria-busy", "true");
+    });
+    expect(continueButton).toHaveAccessibleName("Continue");
+    expect(continueButton.textContent?.trim()).toBe("");
 
     await act(async () => {
       const resource = moveSignInTo({
@@ -474,6 +480,69 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
   });
 
+  it("shows recovery loading only on the selected method", async () => {
+    const preparation = createDeferredPromise<
+      ReturnType<typeof currentSignInResource>
+    >(context.signal);
+    mockedClerk.signInPrepareFirstFactor.mockImplementation(() => {
+      return preparation.promise;
+    });
+    mockAuthV2Capabilities({
+      appleOAuth: true,
+      googleOAuth: true,
+      passkey: true,
+    });
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      emailCodeFactor(),
+      passwordResetFactor(),
+      passkeyFactor(),
+    ]);
+
+    fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+    const reset = await waitForRoleElement("button", "Reset your password");
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    const email = await waitForRoleElement(
+      "button",
+      "Email code to p***@example.com",
+    );
+    const passkey = await waitForRoleElement(
+      "button",
+      "Sign in with your passkey",
+    );
+
+    fireEvent.click(email);
+
+    await waitFor(() => {
+      expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
+      expect(email).toHaveAttribute("aria-busy", "true");
+    });
+    expect(email).toHaveAccessibleName("Email code to p***@example.com");
+    expect(email.textContent?.trim()).toBe("");
+    for (const competingAction of [reset, apple, google, passkey]) {
+      expect(competingAction).toBeDisabled();
+      expect(competingAction).toHaveAttribute("aria-busy", "false");
+      expect(competingAction.textContent?.trim()).not.toBe("");
+    }
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return button.getAttribute("aria-busy") === "true";
+      }),
+    ).toStrictEqual([email]);
+
+    mockPreparedFirstFactor("email_code");
+    await act(async () => {
+      preparation.resolve(currentSignInResource());
+      await preparation.promise;
+    });
+
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+  });
+
   it("associates only typed password errors and clears them on change", async () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
@@ -535,6 +604,10 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("shows configured Apple and Google providers with compact visible labels", async () => {
+    const redirect = createDeferredPromise<void>(context.signal);
+    mockedClerk.signInAuthenticateWithRedirect.mockImplementation(() => {
+      return redirect.promise;
+    });
     mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
     setupSignInPage({ status: "needs_identifier" });
 
@@ -548,6 +621,21 @@ describe("auth v2 sign-in flow", () => {
       expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith(
         expect.objectContaining({ strategy: "oauth_apple" }),
       );
+      expect(apple).toHaveAttribute("aria-busy", "true");
+    });
+    expect(apple).toHaveAccessibleName("Continue with Apple");
+    expect(apple.textContent?.trim()).toBe("");
+    expect(google).toBeDisabled();
+    expect(google).toHaveAttribute("aria-busy", "false");
+    expect(google.textContent?.trim()).toBe("Google");
+
+    await act(async () => {
+      redirect.resolve(undefined);
+      await redirect.promise;
+    });
+    await waitFor(() => {
+      expect(apple).toHaveAttribute("aria-busy", "false");
+      expect(apple).toHaveTextContent("Apple");
     });
   });
 
@@ -1026,6 +1114,14 @@ describe("auth v2 sign-in flow", () => {
     ]);
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
+    const appleMethod = await waitForRoleElement(
+      "button",
+      "Continue with Apple",
+    );
+    const googleMethod = await waitForRoleElement(
+      "button",
+      "Continue with Google",
+    );
     const emailMethod = await waitForRoleElement(
       "button",
       "Email code to p***@example.com",
@@ -1035,6 +1131,7 @@ describe("auth v2 sign-in flow", () => {
 
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
+      expect(emailMethod).toHaveAttribute("aria-busy", "true");
     });
     expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenLastCalledWith({
       emailAddressId: "email_primary",
@@ -1043,6 +1140,13 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(emailMethod).toBeDisabled();
     });
+    expect(emailMethod).toHaveAccessibleName("Email code to p***@example.com");
+    expect(emailMethod.textContent?.trim()).toBe("");
+    for (const competingMethod of [appleMethod, googleMethod]) {
+      expect(competingMethod).toBeDisabled();
+      expect(competingMethod).toHaveAttribute("aria-busy", "false");
+      expect(competingMethod.textContent?.trim()).not.toBe("");
+    }
     expect(
       screen.queryByLabelText("Verification code"),
     ).not.toBeInTheDocument();
@@ -1123,7 +1227,7 @@ describe("auth v2 sign-in flow", () => {
     ).toHaveLength(6);
     const coolingDownButton = await waitForRoleElement(
       "button",
-      "Didn't receive a code? Resend (30s)",
+      "Didn't receive a code? Resend (30)",
     );
     expect(coolingDownButton).toBeDisabled();
     fireEvent.click(coolingDownButton);

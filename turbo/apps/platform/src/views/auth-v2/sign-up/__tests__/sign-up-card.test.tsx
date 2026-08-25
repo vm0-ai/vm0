@@ -9,7 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { now } from "../../../../lib/time.ts";
+import { mockNow, now } from "../../../../lib/time.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
@@ -322,7 +322,7 @@ describe("auth v2 sign-up flow", () => {
     mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
       return redirect.promise;
     });
-    mockAuthV2Capabilities({ googleOAuth: true });
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
     const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
     const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
     setupSignUpPage(
@@ -334,6 +334,7 @@ describe("auth v2 sign-up flow", () => {
     );
 
     const google = await waitForRoleElement("button", "Continue with Google");
+    const apple = await waitForRoleElement("button", "Continue with Apple");
     fireEvent.click(google);
     fireEvent.click(google);
 
@@ -341,7 +342,13 @@ describe("auth v2 sign-up flow", () => {
       expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
         1,
       );
+      expect(google).toHaveAttribute("aria-busy", "true");
     });
+    expect(google).toHaveAccessibleName("Continue with Google");
+    expect(google.textContent?.trim()).toBe("");
+    expect(apple).toBeDisabled();
+    expect(apple).toHaveAttribute("aria-busy", "false");
+    expect(apple.textContent?.trim()).toBe("Apple");
     const handoff =
       mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
     expect(handoff).toMatchObject({
@@ -365,6 +372,10 @@ describe("auth v2 sign-up flow", () => {
     await act(async () => {
       redirect.resolve(undefined);
       await redirect.promise;
+    });
+    await waitFor(() => {
+      expect(google).toHaveAttribute("aria-busy", "false");
+      expect(google).toHaveTextContent("Google");
     });
   });
 
@@ -727,6 +738,8 @@ describe("auth v2 sign-up flow", () => {
   });
 
   it("coalesces resend and code attempts, applies cooldown, preserves attribution, and activates once", async () => {
+    const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+    mockNow(startedAt, context.signal);
     const resend = createDeferredPromise<
       ReturnType<typeof currentSignUpResource>
     >(context.signal);
@@ -758,7 +771,15 @@ describe("auth v2 sign-up flow", () => {
       expect(
         mockedClerk.signUpPrepareEmailAddressVerification,
       ).toHaveBeenCalledTimes(1);
+      expect(resendButton).toHaveAttribute("aria-busy", "true");
     });
+    expect(resendButton).toHaveAccessibleName("Didn't receive a code? Resend");
+    expect(resendButton.textContent?.trim()).toBe("");
+    expect(screen.getByLabelText("Verification code")).toBeVisible();
+    expect(
+      within(containingForm(resendButton)).queryByRole("status"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
 
     await act(async () => {
       resend.resolve(moveSignUpTo(readyEmailVerificationState()));
@@ -767,9 +788,15 @@ describe("auth v2 sign-up flow", () => {
 
     const cooldownButton = await waitForRoleElement(
       "button",
-      "Didn't receive a code? Resend (30s)",
+      "Didn't receive a code? Resend (30)",
     );
     expect(cooldownButton).toBeDisabled();
+    mockNow(startedAt + 1000, context.signal);
+    const advancingCooldownButton = await waitForRoleElement(
+      "button",
+      "Didn't receive a code? Resend (29)",
+    );
+    expect(advancingCooldownButton).toBeDisabled();
     const readyCodeInput = await screen.findByLabelText("Verification code");
     expect(readyCodeInput).toHaveAttribute("autocomplete", "one-time-code");
     expect(readyCodeInput).toHaveAttribute("inputmode", "numeric");
@@ -1039,6 +1066,62 @@ describe("auth v2 sign-up flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
   });
+
+  it.each([
+    {
+      name: "transfer",
+      state: readyEmailVerificationState({
+        emailVerificationExpireAt: null,
+        emailVerificationStatus: null,
+        emailVerificationStrategy: null,
+        isTransferable: true,
+      }),
+    },
+    {
+      name: "fail-closed recovery",
+      state: {
+        missingFields: ["phone_number"],
+        requiredFields: ["phone_number"],
+        status: "missing_requirements",
+      },
+    },
+  ] as const)(
+    "shows one owned restart indicator from the $name state",
+    async ({ state }) => {
+      const restart = createDeferredPromise<{ readonly error: null }>(
+        context.signal,
+      );
+      mockedClerk.signUpFutureReset.mockImplementation(() => {
+        return restart.promise;
+      });
+      setupSignUpPage(state);
+
+      const restartButton = await waitForRoleElement(
+        "button",
+        "Use another method",
+      );
+      fireEvent.click(restartButton);
+
+      await waitFor(() => {
+        expect(mockedClerk.signUpFutureReset).toHaveBeenCalledTimes(1);
+        expect(restartButton).toHaveAttribute("aria-busy", "true");
+      });
+      expect(restartButton).toHaveAccessibleName("Use another method");
+      expect(restartButton).toBeDisabled();
+      expect(restartButton.textContent?.trim()).toBe("");
+      expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+      moveSignUpTo({ status: null });
+      await act(async () => {
+        restart.resolve({ error: null });
+        await restart.promise;
+      });
+
+      await expect(
+        screen.findByLabelText("Email address"),
+      ).resolves.toBeVisible();
+    },
+  );
 
   it.each([
     {

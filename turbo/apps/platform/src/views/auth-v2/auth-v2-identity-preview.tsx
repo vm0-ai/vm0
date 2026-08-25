@@ -11,7 +11,7 @@ export function AuthV2IdentityPreview({
   readonly value: string;
 }) {
   return (
-    <div className="flex h-5 w-full items-center justify-center gap-2 bg-muted text-sm leading-5 text-muted-foreground">
+    <div className="flex h-5 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground">
       <span className="min-w-0 flex-1 truncate text-center">{value}</span>
       <Button
         aria-label={actionLabel}

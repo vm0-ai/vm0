@@ -25,6 +25,7 @@ import {
   createChildAbortController,
   createDeferredPromise,
   onRef,
+  setLoop,
   settle,
   withCleanup,
 } from "../utils.ts";
@@ -76,6 +77,10 @@ export type AuthV2SignUpVerificationState =
   | "prepare-failed"
   | "preparing"
   | "ready";
+
+export type AuthV2SignUpResendState =
+  | { readonly remainingSeconds: 0; readonly status: "ready" }
+  | { readonly remainingSeconds: number; readonly status: "cooling-down" };
 
 export type AuthV2SignUpCaptchaState =
   | "blocked"
@@ -151,9 +156,13 @@ export interface AuthV2SignUpSignals {
   readonly lastName$: Computed<string>;
   readonly legalAccepted$: Computed<boolean>;
   readonly oauthStrategies$: Computed<readonly AuthV2OAuthStrategy[]>;
+  readonly pendingOAuthStrategy$: Computed<AuthV2OAuthStrategy | null>;
   readonly password$: Computed<string>;
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
-  readonly resendCoolingDown$: Computed<boolean>;
+  readonly resendCooldownLifecycleRef$: ReturnType<
+    typeof onRef<HTMLSpanElement>
+  >;
+  readonly resendState$: Computed<AuthV2SignUpResendState>;
   readonly restart$: Command<Promise<void>, [AbortSignal]>;
   readonly setCode$: Command<void, [string]>;
   readonly setEmailAddress$: Command<void, [string]>;
@@ -215,9 +224,10 @@ interface SignUpFlowAtoms {
   readonly lastName$: State<string>;
   readonly legalAccepted$: State<boolean>;
   readonly oauthStrategies$: State<readonly AuthV2OAuthStrategy[]>;
+  readonly pendingOAuthStrategy$: State<AuthV2OAuthStrategy | null>;
   readonly password$: State<string>;
   readonly preparationState$: State<"failed" | "idle" | "preparing">;
-  readonly resendCoolingDown$: State<boolean>;
+  readonly resendRemainingSeconds$: State<number>;
   readonly snapshot$: State<SignUpResourceSnapshot | null>;
   readonly state$: Computed<AuthV2SignUpState>;
   readonly verificationExpired$: State<boolean>;
@@ -225,7 +235,7 @@ interface SignUpFlowAtoms {
 
 interface SignUpFlowRuntime {
   readonly automaticPreparationAttempted$: State<boolean>;
-  readonly cooldownController$: State<AbortController | null>;
+  readonly cooldownDeadlineMs$: State<number | null>;
   readonly expiryController$: State<AbortController | null>;
   readonly inFlight$: State<Promise<void> | null>;
 }
@@ -746,12 +756,13 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
   const password$ = state("");
   const firstName$ = state("");
   const oauthStrategies$ = state<readonly AuthV2OAuthStrategy[]>([]);
+  const pendingOAuthStrategy$ = state<AuthV2OAuthStrategy | null>(null);
   const lastName$ = state("");
   const legalAccepted$ = state(false);
   const code$ = state("");
   const captchaState$ = state<AuthV2SignUpCaptchaState>("idle");
   const captchaPending$ = state(false);
-  const resendCoolingDown$ = state(false);
+  const resendRemainingSeconds$ = state(0);
   const state$ = computed((get) => {
     return deriveSignUpFlowState(
       get(snapshot$),
@@ -773,9 +784,10 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
     lastName$,
     legalAccepted$,
     oauthStrategies$,
+    pendingOAuthStrategy$,
     password$,
     preparationState$,
-    resendCoolingDown$,
+    resendRemainingSeconds$,
     snapshot$,
     state$,
     verificationExpired$,
@@ -785,7 +797,7 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
 function createSignUpFlowRuntime(): SignUpFlowRuntime {
   return {
     automaticPreparationAttempted$: state(false),
-    cooldownController$: state<AbortController | null>(null),
+    cooldownDeadlineMs$: state<number | null>(null),
     expiryController$: state<AbortController | null>(null),
     inFlight$: state<Promise<void> | null>(null),
   };
@@ -869,33 +881,51 @@ function createStartCooldownCommand(
   atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
 ): Command<void, [AbortSignal]> {
-  return command(({ get, set }, signal: AbortSignal): void => {
+  return command(({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
-    get(runtime.cooldownController$)?.abort();
-    const controller = createChildAbortController(signal);
-    set(runtime.cooldownController$, controller);
-    set(atoms.resendCoolingDown$, true);
-    controller.signal.addEventListener(
-      "abort",
-      () => {
-        if (get(runtime.cooldownController$) === controller) {
-          set(runtime.cooldownController$, null);
-        }
-      },
-      { once: true },
+    set(
+      runtime.cooldownDeadlineMs$,
+      now() + AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS,
     );
-    timeout(
-      () => {
-        if (get(runtime.cooldownController$) !== controller) {
-          return;
-        }
-        set(atoms.resendCoolingDown$, false);
-        controller.abort();
-      },
-      AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS,
-      { signal: controller.signal },
-    );
+    set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS);
   });
+}
+
+function createResendCooldownLifecycleRef(
+  atoms: SignUpFlowAtoms,
+  runtime: SignUpFlowRuntime,
+) {
+  return onRef(
+    command(
+      async (
+        { get, set },
+        _element: HTMLSpanElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        await setLoop(
+          () => {
+            const deadlineMs = get(runtime.cooldownDeadlineMs$);
+            if (deadlineMs === null) {
+              return true;
+            }
+            const remainingSeconds = Math.max(
+              0,
+              Math.ceil((deadlineMs - now()) / 1000),
+            );
+            set(atoms.resendRemainingSeconds$, remainingSeconds);
+            if (remainingSeconds > 0) {
+              return false;
+            }
+            set(runtime.cooldownDeadlineMs$, null);
+            return true;
+          },
+          1000,
+          signal,
+          { retryTransientErrors: false },
+        );
+      },
+    ),
+  );
 }
 
 function createInitializeCommand(
@@ -1161,6 +1191,7 @@ function createOAuthOperation(
 }
 
 function createCoalescedOAuthOperation(
+  atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
   operation$: Command<Promise<void>, [AuthV2OAuthStrategy, AbortSignal]>,
 ): Command<Promise<void>, [AuthV2OAuthStrategy, AbortSignal]> {
@@ -1176,11 +1207,15 @@ function createCoalescedOAuthOperation(
         signal.throwIfAborted();
         return;
       }
+      set(atoms.pendingOAuthStrategy$, strategy);
       const operation = set(operation$, strategy, signal);
       set(runtime.inFlight$, operation);
       await withCleanup(operation, () => {
         set(runtime.inFlight$, (active) => {
           return active === operation ? null : active;
+        });
+        set(atoms.pendingOAuthStrategy$, (pendingStrategy) => {
+          return pendingStrategy === strategy ? null : pendingStrategy;
         });
       });
       signal.throwIfAborted();
@@ -1344,14 +1379,14 @@ function createResendOperation(
     if (
       flowState.status !== "incomplete" ||
       flowState.step !== "email-code" ||
-      (get(atoms.resendCoolingDown$) && flowState.verification !== "expired")
+      (get(atoms.resendRemainingSeconds$) > 0 &&
+        flowState.verification !== "expired")
     ) {
       return;
     }
     const resource = await get(clerkSignUpResource$);
     signal.throwIfAborted();
     set(atoms.error$, null);
-    set(atoms.preparationState$, "preparing");
     const prepared = await settle(
       resource.prepareEmailAddressVerification({ strategy: "email_code" }),
       signal,
@@ -1389,6 +1424,7 @@ function createRestartOperation(
       return;
     }
     set(runtime.automaticPreparationAttempted$, false);
+    set(runtime.cooldownDeadlineMs$, null);
     set(atoms.editDetails$, false);
     set(atoms.fatalState$, null);
     set(atoms.error$, null);
@@ -1399,6 +1435,7 @@ function createRestartOperation(
     set(atoms.legalAccepted$, false);
     set(atoms.code$, "");
     set(atoms.preparationState$, "idle");
+    set(atoms.resendRemainingSeconds$, 0);
     set(atoms.verificationExpired$, false);
     set(atoms.captchaState$, "idle");
     await set(applyResource$, resource, signal);
@@ -1521,6 +1558,10 @@ export function createAuthV2SignUpSignals(
     applyResource$,
   );
   const oauthOperation$ = createOAuthOperation(atoms, dependencies);
+  const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
+    atoms,
+    runtime,
+  );
   const formCommands = createFormCommands(atoms);
   return {
     ...formCommands,
@@ -1550,16 +1591,23 @@ export function createAuthV2SignUpSignals(
     oauthStrategies$: computed((get) => {
       return get(atoms.oauthStrategies$);
     }),
+    pendingOAuthStrategy$: computed((get) => {
+      return get(atoms.pendingOAuthStrategy$);
+    }),
     password$: computed((get) => {
       return get(atoms.password$);
     }),
     resendCode$: createCoalescedOperation(runtime, resendOperation$),
-    resendCoolingDown$: computed((get) => {
-      return get(atoms.resendCoolingDown$);
+    resendCooldownLifecycleRef$,
+    resendState$: computed((get) => {
+      const remainingSeconds = get(atoms.resendRemainingSeconds$);
+      return remainingSeconds > 0
+        ? { remainingSeconds, status: "cooling-down" }
+        : { remainingSeconds: 0, status: "ready" };
     }),
     restart$: createCoalescedOperation(runtime, restartOperation$),
     state$: atoms.state$,
-    startOAuth$: createCoalescedOAuthOperation(runtime, oauthOperation$),
+    startOAuth$: createCoalescedOAuthOperation(atoms, runtime, oauthOperation$),
     submit$: createCoalescedOperation(runtime, submitOperation$),
   };
 }

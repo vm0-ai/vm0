@@ -45,6 +45,32 @@ interface SignInStepProps {
 
 const AUTH_V2_SIGN_IN_ERROR_ID = "auth-v2-sign-in-error";
 
+function FactorActionContent({
+  busy,
+  children,
+}: {
+  readonly busy: boolean;
+  readonly children: ReactNode;
+}) {
+  return busy ? (
+    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+  ) : (
+    children
+  );
+}
+
+function selectRecoveryFactor(
+  selectFactor: (factorId: string, signal: AbortSignal) => Promise<void>,
+  factorId: string,
+  pageSignal: AbortSignal,
+): void {
+  detach(
+    selectFactor(factorId, pageSignal),
+    Reason.DomCallback,
+    "select auth v2 password recovery factor",
+  );
+}
+
 function TextField({
   autoComplete,
   copy,
@@ -208,6 +234,34 @@ function PasswordField({
   );
 }
 
+function identifierFieldPresentation(
+  mode: IncompleteSignInState["identifierMode"],
+  copy: AuthV2SignInCopy,
+) {
+  if (mode === "email") {
+    return {
+      autoComplete: "email",
+      inputMode: "email" as const,
+      label: copy.emailAddressLabel,
+      placeholder: copy.emailAddressPlaceholder,
+    };
+  }
+  if (mode === "username") {
+    return {
+      autoComplete: "username",
+      inputMode: undefined,
+      label: copy.usernameLabel,
+      placeholder: copy.usernamePlaceholder,
+    };
+  }
+  return {
+    autoComplete: "username",
+    inputMode: undefined,
+    label: copy.identifierLabel,
+    placeholder: copy.identifierPlaceholder,
+  };
+}
+
 function IdentifierStep({
   copy,
   signals,
@@ -215,6 +269,7 @@ function IdentifierStep({
 }: SignInStepProps & { readonly state: IncompleteSignInState }) {
   const identifier = useGet(signals.identifier$);
   const error = useGet(signals.error$);
+  const pendingFactorId = useGet(signals.pendingFactorId$);
   const pageSignal = useGet(pageSignal$);
   const setIdentifier = useSet(signals.setIdentifier$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
@@ -227,18 +282,9 @@ function IdentifierStep({
   });
   const operationPending =
     submitLoadable.state === "loading" || selectLoadable.state === "loading";
-  const identifierLabel =
-    state.identifierMode === "email"
-      ? copy.emailAddressLabel
-      : state.identifierMode === "username"
-        ? copy.usernameLabel
-        : copy.identifierLabel;
-  const identifierPlaceholder =
-    state.identifierMode === "email"
-      ? copy.emailAddressPlaceholder
-      : state.identifierMode === "username"
-        ? copy.usernamePlaceholder
-        : copy.identifierPlaceholder;
+  const selectingFactorId =
+    selectLoadable.state === "loading" ? pendingFactorId : null;
+  const field = identifierFieldPresentation(state.identifierMode, copy);
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign in");
@@ -265,9 +311,12 @@ function IdentifierStep({
           )}
         >
           {oauthFactors.map((factor) => {
+            const actionLabel = signInFactorLabel(factor, copy);
+            const busy = selectingFactorId === factor.id;
             return (
               <Button
-                aria-label={signInFactorLabel(factor, copy)}
+                aria-busy={busy}
+                aria-label={actionLabel}
                 className="w-full border border-border bg-transparent text-sm hover:bg-muted"
                 disabled={operationPending}
                 key={factor.id}
@@ -277,10 +326,12 @@ function IdentifierStep({
                   handleSelectFactor(factor.id);
                 }}
               >
-                <AuthV2OAuthIcon strategy={factor.strategy} />
-                {factor.strategy === "oauth_apple"
-                  ? copy.appleProvider
-                  : copy.googleProvider}
+                <FactorActionContent busy={busy}>
+                  <AuthV2OAuthIcon strategy={factor.strategy} />
+                  {factor.strategy === "oauth_apple"
+                    ? copy.appleProvider
+                    : copy.googleProvider}
+                </FactorActionContent>
               </Button>
             );
           })}
@@ -291,14 +342,14 @@ function IdentifierStep({
       ) : null}
       <div className="flex flex-col gap-8">
         <TextField
-          autoComplete={state.identifierMode === "email" ? "email" : "username"}
+          autoComplete={field.autoComplete}
           copy={copy}
           error={error?.field === "identifier" ? error : null}
-          inputMode={state.identifierMode === "email" ? "email" : undefined}
-          label={identifierLabel}
+          inputMode={field.inputMode}
+          label={field.label}
           name="identifier"
           onChange={setIdentifier}
-          placeholder={identifierPlaceholder}
+          placeholder={field.placeholder}
           value={identifier}
         />
         <AuthV2SubmitButton
@@ -311,6 +362,8 @@ function IdentifierStep({
         <>
           <AuthV2Divider label={copy.separator} />
           <Button
+            aria-busy={selectingFactorId === passkeyFactor.id}
+            aria-label={signInFactorLabel(passkeyFactor, copy)}
             className="w-full text-[13px]"
             disabled={operationPending}
             type="button"
@@ -319,7 +372,9 @@ function IdentifierStep({
               handleSelectFactor(passkeyFactor.id);
             }}
           >
-            {signInFactorLabel(passkeyFactor, copy)}
+            <FactorActionContent busy={selectingFactorId === passkeyFactor.id}>
+              {signInFactorLabel(passkeyFactor, copy)}
+            </FactorActionContent>
           </Button>
         </>
       ) : null}
@@ -392,8 +447,11 @@ function ChooseFactorStep({
   state,
 }: SignInStepProps & { readonly state: IncompleteSignInState }) {
   const pageSignal = useGet(pageSignal$);
+  const pendingFactorId = useGet(signals.pendingFactorId$);
   const back = useSet(signals.backFromMethods$);
   const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
+  const selectingFactorId =
+    selectLoadable.state === "loading" ? pendingFactorId : null;
   const availableFactors = state.factors.filter((factor) => {
     return (
       factor.kind !== "password-reset" && factor.id !== state.selectedFactor?.id
@@ -424,9 +482,12 @@ function ChooseFactorStep({
             )}
           >
             {oauthFactors.map((factor) => {
+              const actionLabel = signInFactorLabel(factor, copy);
+              const busy = selectingFactorId === factor.id;
               return (
                 <Button
-                  aria-label={signInFactorLabel(factor, copy)}
+                  aria-busy={busy}
+                  aria-label={actionLabel}
                   className="w-full border border-border bg-transparent text-sm hover:bg-muted"
                   disabled={selectLoadable.state === "loading"}
                   key={factor.id}
@@ -436,19 +497,28 @@ function ChooseFactorStep({
                     handleSelectFactor(factor.id);
                   }}
                 >
-                  <AuthV2OAuthIcon strategy={factor.strategy} />
-                  {factor.strategy === "oauth_apple"
-                    ? copy.appleProvider
-                    : copy.googleProvider}
+                  <FactorActionContent busy={busy}>
+                    <AuthV2OAuthIcon strategy={factor.strategy} />
+                    {factor.strategy === "oauth_apple"
+                      ? copy.appleProvider
+                      : copy.googleProvider}
+                  </FactorActionContent>
                 </Button>
               );
             })}
           </div>
         ) : null}
         {credentialFactors.map((factor) => {
+          const actionLabel = signInFactorLabel(factor, copy);
+          const busy = selectingFactorId === factor.id;
           return (
             <Button
-              className="h-auto w-full justify-between px-0 py-1.5 text-sm"
+              aria-busy={busy}
+              aria-label={actionLabel}
+              className={cn(
+                "h-auto w-full px-0 py-1.5 text-sm",
+                busy ? "justify-center" : "justify-between",
+              )}
               disabled={selectLoadable.state === "loading"}
               key={factor.id}
               type="button"
@@ -457,15 +527,15 @@ function ChooseFactorStep({
                 handleSelectFactor(factor.id);
               }}
             >
-              <span className="flex min-w-0 items-center gap-2">
-                {factor.kind === "email-code" ? (
-                  <Mail className="size-4 shrink-0" aria-hidden="true" />
-                ) : null}
-                <span className="truncate">
-                  {signInFactorLabel(factor, copy)}
+              <FactorActionContent busy={busy}>
+                <span className="flex min-w-0 items-center gap-2">
+                  {factor.kind === "email-code" ? (
+                    <Mail className="size-4 shrink-0" aria-hidden="true" />
+                  ) : null}
+                  <span className="truncate">{actionLabel}</span>
                 </span>
-              </span>
-              <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+              </FactorActionContent>
             </Button>
           );
         })}
@@ -549,14 +619,7 @@ function PasswordStep({
   );
 }
 
-function PasswordRecoveryStep({
-  copy,
-  signals,
-  state,
-}: SignInStepProps & { readonly state: IncompleteSignInState }) {
-  const pageSignal = useGet(pageSignal$);
-  const back = useSet(signals.backFromPasswordRecovery$);
-  const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
+function passwordRecoveryFactors(state: IncompleteSignInState) {
   const resetFactor = state.factors.find((factor) => {
     return factor.kind === "password-reset";
   });
@@ -566,22 +629,38 @@ function PasswordRecoveryStep({
   const alternativeFactors = state.factors.filter((factor) => {
     return factor.kind === "email-code" || factor.kind === "passkey";
   });
-  const selecting = selectLoadable.state === "loading";
-  const handleSelectFactor = (factorId: string): void => {
-    detach(
-      selectFactor(factorId, pageSignal),
-      Reason.DomCallback,
-      "select auth v2 password recovery factor",
-    );
+  return {
+    alternativeFactors,
+    hasAlternativeMethods:
+      oauthFactors.length > 0 || alternativeFactors.length > 0,
+    oauthFactors,
+    resetFactor,
   };
-  const hasAlternativeMethods =
-    oauthFactors.length > 0 || alternativeFactors.length > 0;
+}
 
+function PasswordRecoveryStep({
+  copy,
+  signals,
+  state,
+}: SignInStepProps & { readonly state: IncompleteSignInState }) {
+  const pageSignal = useGet(pageSignal$);
+  const pendingFactorId = useGet(signals.pendingFactorId$);
+  const back = useSet(signals.backFromPasswordRecovery$);
+  const [selectLoadable, selectFactor] = useLoadableSet(signals.selectFactor$);
+  const factors = passwordRecoveryFactors(state);
+  const resetFactor = factors.resetFactor;
+  const selecting = selectLoadable.state === "loading";
+  const selectingFactorId = selecting ? pendingFactorId : null;
+  const handleSelectFactor = (factorId: string): void => {
+    selectRecoveryFactor(selectFactor, factorId, pageSignal);
+  };
   return (
     <div className="flex flex-col gap-6">
       <FlowErrorAlert copy={copy} signals={signals} />
       {resetFactor ? (
         <Button
+          aria-busy={selectingFactorId === resetFactor.id}
+          aria-label={copy.passwordResetMethod}
           className="w-full text-[13px]"
           disabled={selecting}
           type="button"
@@ -589,29 +668,31 @@ function PasswordRecoveryStep({
             handleSelectFactor(resetFactor.id);
           }}
         >
-          {copy.passwordResetMethod}
-          {selecting ? (
-            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-          ) : null}
+          <FactorActionContent busy={selectingFactorId === resetFactor.id}>
+            {copy.passwordResetMethod}
+          </FactorActionContent>
         </Button>
       ) : null}
-      {hasAlternativeMethods ? (
+      {factors.hasAlternativeMethods ? (
         <AuthV2Divider label={copy.recoveryMethodsDivider} />
       ) : null}
       <div className="flex flex-col gap-4">
-        {hasAlternativeMethods ? (
+        {factors.hasAlternativeMethods ? (
           <div className="flex flex-col gap-2">
-            {oauthFactors.length > 0 ? (
+            {factors.oauthFactors.length > 0 ? (
               <div
                 className={cn(
                   "grid gap-2",
-                  oauthFactors.length > 1 && "sm:grid-cols-2",
+                  factors.oauthFactors.length > 1 && "sm:grid-cols-2",
                 )}
               >
-                {oauthFactors.map((factor) => {
+                {factors.oauthFactors.map((factor) => {
+                  const actionLabel = signInFactorLabel(factor, copy);
+                  const busy = selectingFactorId === factor.id;
                   return (
                     <Button
-                      aria-label={signInFactorLabel(factor, copy)}
+                      aria-busy={busy}
+                      aria-label={actionLabel}
                       className="w-full border border-border bg-transparent text-sm hover:bg-muted"
                       disabled={selecting}
                       key={factor.id}
@@ -621,19 +702,28 @@ function PasswordRecoveryStep({
                         handleSelectFactor(factor.id);
                       }}
                     >
-                      <AuthV2OAuthIcon strategy={factor.strategy} />
-                      {factor.strategy === "oauth_apple"
-                        ? copy.appleProvider
-                        : copy.googleProvider}
+                      <FactorActionContent busy={busy}>
+                        <AuthV2OAuthIcon strategy={factor.strategy} />
+                        {factor.strategy === "oauth_apple"
+                          ? copy.appleProvider
+                          : copy.googleProvider}
+                      </FactorActionContent>
                     </Button>
                   );
                 })}
               </div>
             ) : null}
-            {alternativeFactors.map((factor) => {
+            {factors.alternativeFactors.map((factor) => {
+              const actionLabel = signInFactorLabel(factor, copy);
+              const busy = selectingFactorId === factor.id;
               return (
                 <Button
-                  className="h-auto w-full justify-between px-0 py-1.5 text-sm"
+                  aria-busy={busy}
+                  aria-label={actionLabel}
+                  className={cn(
+                    "h-auto w-full px-0 py-1.5 text-sm",
+                    busy ? "justify-center" : "justify-between",
+                  )}
                   disabled={selecting}
                   key={factor.id}
                   type="button"
@@ -642,18 +732,18 @@ function PasswordRecoveryStep({
                     handleSelectFactor(factor.id);
                   }}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {factor.kind === "email-code" ? (
-                      <Mail className="size-4 shrink-0" aria-hidden="true" />
-                    ) : null}
-                    <span className="truncate">
-                      {signInFactorLabel(factor, copy)}
+                  <FactorActionContent busy={busy}>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {factor.kind === "email-code" ? (
+                        <Mail className="size-4 shrink-0" aria-hidden="true" />
+                      ) : null}
+                      <span className="truncate">{actionLabel}</span>
                     </span>
-                  </span>
-                  <ChevronRight
-                    className="size-4 shrink-0"
-                    aria-hidden="true"
-                  />
+                    <ChevronRight
+                      className="size-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                  </FactorActionContent>
                 </Button>
               );
             })}
@@ -896,7 +986,7 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
           <label className="flex cursor-pointer items-start gap-1.5 text-sm leading-5 font-medium text-foreground">
             <Checkbox
               checked={signOutOfOtherSessions}
-              className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/35"
+              className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/50"
               onCheckedChange={(checked) => {
                 setSignOutOfOtherSessions(checked === true);
               }}

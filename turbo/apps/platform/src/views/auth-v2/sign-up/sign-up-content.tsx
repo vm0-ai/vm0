@@ -356,16 +356,16 @@ function CaptchaStatus({ copy, signals }: SignUpStepProps) {
 }
 
 function OAuthProviderActions({
-  busy,
   copy,
   disabled,
   onSelect,
+  pendingStrategy,
   strategies,
 }: {
-  readonly busy: boolean;
   readonly copy: AuthV2SignUpCopy;
   readonly disabled: boolean;
   readonly onSelect: (strategy: AuthV2OAuthStrategy) => void;
+  readonly pendingStrategy: AuthV2OAuthStrategy | null;
   readonly strategies: readonly AuthV2OAuthStrategy[];
 }) {
   if (strategies.length === 0) {
@@ -377,14 +377,13 @@ function OAuthProviderActions({
         className={cn("grid gap-2", strategies.length > 1 && "sm:grid-cols-2")}
       >
         {strategies.map((strategy) => {
+          const busy = pendingStrategy === strategy;
+          const actionLabel =
+            strategy === "oauth_apple" ? copy.appleMethod : copy.googleMethod;
           return (
             <Button
               aria-busy={busy}
-              aria-label={
-                strategy === "oauth_apple"
-                  ? copy.appleMethod
-                  : copy.googleMethod
-              }
+              aria-label={actionLabel}
               className="w-full border border-border bg-transparent text-sm hover:bg-muted"
               disabled={disabled}
               key={strategy}
@@ -397,11 +396,13 @@ function OAuthProviderActions({
               {busy ? (
                 <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
-                <AuthV2OAuthIcon strategy={strategy} />
+                <>
+                  <AuthV2OAuthIcon strategy={strategy} />
+                  {strategy === "oauth_apple"
+                    ? copy.appleProvider
+                    : copy.googleProvider}
+                </>
               )}
-              {strategy === "oauth_apple"
-                ? copy.appleProvider
-                : copy.googleProvider}
             </Button>
           );
         })}
@@ -422,6 +423,7 @@ function DetailsStep({
   const pageSignal = useGet(pageSignal$);
   const legalAccepted = useGet(signals.legalAccepted$);
   const oauthStrategies = useGet(signals.oauthStrategies$);
+  const pendingOAuthStrategy = useGet(signals.pendingOAuthStrategy$);
   const captchaState = useGet(signals.captchaState$);
   const error = useGet(signals.error$);
   const setLegalAccepted = useSet(signals.setLegalAccepted$);
@@ -458,10 +460,10 @@ function DetailsStep({
         signInHref={signInHref}
       />
       <OAuthProviderActions
-        busy={oauthLoadable.state === "loading"}
         copy={copy}
         disabled={operationPending}
         onSelect={handleOAuth}
+        pendingStrategy={pendingOAuthStrategy}
         strategies={oauthStrategies}
       />
       <div className="flex flex-col gap-8">
@@ -478,7 +480,7 @@ function DetailsStep({
                   }
                   aria-invalid={error?.field === "legal" ? true : undefined}
                   checked={legalAccepted}
-                  className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/35"
+                  className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/50"
                   onCheckedChange={(checked) => {
                     setLegalAccepted(checked === true);
                   }}
@@ -597,9 +599,12 @@ function EmailCodeStep({
 }) {
   const code = useGet(signals.code$);
   const error = useGet(signals.error$);
-  const coolingDown = useGet(signals.resendCoolingDown$);
+  const resendState = useGet(signals.resendState$);
   const pageSignal = useGet(pageSignal$);
   const setCode = useSet(signals.setCode$);
+  const resendCooldownLifecycleRef = useSet(
+    signals.resendCooldownLifecycleRef$,
+  );
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [resendLoadable, resendCode] = useLoadableSet(signals.resendCode$);
   const preparing = state.verification === "preparing";
@@ -608,8 +613,12 @@ function EmailCodeStep({
   const codeError = error?.field === "code" ? error : null;
   const submitting = submitLoadable.state === "loading";
   const resending = resendLoadable.state === "loading";
+  const coolingDown = resendState.status === "cooling-down";
   const operationPending = preparing || submitting || resending;
   const showsCodeInput = !preparing && !prepareFailed;
+  const resendLabel = prepareFailed
+    ? copy.retry
+    : resendCodeLabel(resendState.remainingSeconds, copy);
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "verify auth v2 sign up");
@@ -623,6 +632,7 @@ function EmailCodeStep({
   };
   return (
     <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
+      {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
       <FlowErrorAlert
         copy={copy}
         handledFields={showsCodeInput ? ["code"] : []}
@@ -640,6 +650,8 @@ function EmailCodeStep({
           preparing={preparing}
         />
         <Button
+          aria-busy={resending}
+          aria-label={resendLabel}
           className={cn(
             "w-full text-[13px]",
             !prepareFailed && !expired && "h-auto p-0 leading-[17px]",
@@ -651,8 +663,9 @@ function EmailCodeStep({
         >
           {resending ? (
             <Loader2 className="animate-spin" aria-hidden="true" />
-          ) : null}
-          {prepareFailed ? copy.retry : resendCodeLabel(coolingDown, copy)}
+          ) : (
+            resendLabel
+          )}
         </Button>
       </div>
       {showsCodeInput ? (
@@ -692,53 +705,64 @@ function CompleteStep() {
   );
 }
 
-function TransferStep({ copy, signInHref, signals }: SignUpStepProps) {
+function RestartAction({
+  copy,
+  signals,
+  variant,
+}: SignUpStepProps & { readonly variant: "ghost" | "outline" }) {
   const pageSignal = useGet(pageSignal$);
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
+  const restarting = restartLoadable.state === "loading";
+  return (
+    <Button
+      aria-busy={restarting}
+      aria-label={copy.restart}
+      className="w-full"
+      disabled={restarting}
+      type="button"
+      variant={variant}
+      onClick={() => {
+        detach(
+          restart(pageSignal),
+          Reason.DomCallback,
+          "restart auth v2 sign up",
+        );
+      }}
+    >
+      {restarting ? (
+        <Loader2 className="animate-spin" aria-hidden="true" />
+      ) : (
+        copy.restart
+      )}
+    </Button>
+  );
+}
+
+function TransferStep({ copy, signInHref, signals }: SignUpStepProps) {
   return (
     <div className="space-y-3">
       <Button className="w-full" asChild>
         <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
       </Button>
-      <Button
-        className="w-full"
-        disabled={restartLoadable.state === "loading"}
-        type="button"
+      <RestartAction
+        copy={copy}
+        signInHref={signInHref}
+        signals={signals}
         variant="ghost"
-        onClick={() => {
-          detach(
-            restart(pageSignal),
-            Reason.DomCallback,
-            "restart auth v2 sign up",
-          );
-        }}
-      >
-        {copy.restart}
-      </Button>
+      />
     </div>
   );
 }
 
 function UnknownStep({ copy, signInHref, signals }: SignUpStepProps) {
-  const pageSignal = useGet(pageSignal$);
-  const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   return (
     <div className="space-y-4 text-center">
-      <Button
-        className="w-full"
-        disabled={restartLoadable.state === "loading"}
-        type="button"
+      <RestartAction
+        copy={copy}
+        signInHref={signInHref}
+        signals={signals}
         variant="outline"
-        onClick={() => {
-          detach(
-            restart(pageSignal),
-            Reason.DomCallback,
-            "restart unknown auth v2 sign up",
-          );
-        }}
-      >
-        {copy.restart}
-      </Button>
+      />
       <Button className="w-full" asChild variant="ghost">
         <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
       </Button>

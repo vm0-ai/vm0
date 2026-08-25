@@ -33,13 +33,21 @@ export function AuthV2SubmitButton({
   readonly showIdleGlyph?: boolean;
 }) {
   return (
-    <Button className="w-full text-[13px]" disabled={disabled} type="submit">
-      {label}
+    <Button
+      aria-busy={busy}
+      aria-label={label}
+      className="w-full text-[13px]"
+      disabled={disabled}
+      type="submit"
+    >
       {busy ? (
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-      ) : showIdleGlyph ? (
-        <AuthV2ActionGlyph />
-      ) : null}
+      ) : (
+        <>
+          {label}
+          {showIdleGlyph ? <AuthV2ActionGlyph /> : null}
+        </>
+      )}
     </Button>
   );
 }

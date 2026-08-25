@@ -164,6 +164,7 @@ export interface AuthV2SignInSignals {
   readonly identifier$: Computed<string>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly newPassword$: Computed<string>;
+  readonly pendingFactorId$: Computed<string | null>;
   readonly password$: Computed<string>;
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
   readonly resendCooldownLifecycleRef$: ReturnType<
@@ -231,6 +232,7 @@ interface SignInFlowAtoms {
   readonly identifierLocallyModified$: State<boolean>;
   readonly newPassword$: State<string>;
   readonly methodChooser$: State<boolean>;
+  readonly pendingFactorId$: State<string | null>;
   readonly password$: State<string>;
   readonly passwordRecovery$: State<boolean>;
   readonly resendRemainingSeconds$: State<number>;
@@ -740,6 +742,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const identifierLocallyModified$ = state(false);
   const password$ = state("");
   const methodChooser$ = state(false);
+  const pendingFactorId$ = state<string | null>(null);
   const passwordRecovery$ = state(false);
   const resendRemainingSeconds$ = state(0);
   const code$ = state("");
@@ -771,6 +774,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     identifierLocallyModified$,
     newPassword$,
     methodChooser$,
+    pendingFactorId$,
     password$,
     passwordRecovery$,
     resendRemainingSeconds$,
@@ -1314,6 +1318,7 @@ function createFactorSelectionCommand(
         signal.throwIfAborted();
         return;
       }
+      set(atoms.pendingFactorId$, factorId);
       const operation = set(prepareFactorOperation$, factorId, signal);
       set(runtime.inFlight$, (operations) => {
         return new Map(operations).set("resource", operation);
@@ -1326,6 +1331,9 @@ function createFactorSelectionCommand(
           const remaining = new Map(operations);
           remaining.delete("resource");
           return remaining;
+        });
+        set(atoms.pendingFactorId$, (pendingFactorId) => {
+          return pendingFactorId === factorId ? null : pendingFactorId;
         });
       });
       signal.throwIfAborted();
@@ -1802,6 +1810,9 @@ export function createAuthV2SignInSignals(
     initialize$: initializeWithExternalStrategies$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
+    }),
+    pendingFactorId$: computed((get) => {
+      return get(atoms.pendingFactorId$);
     }),
     password$: computed((get) => {
       return get(atoms.password$);

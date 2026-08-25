@@ -38,10 +38,13 @@ const TEST_EMAIL_ADDRESS$ = computed(() => {
 const TRUE$ = computed(() => {
   return true;
 });
-const FALSE$ = computed(() => {
-  return false;
+const NULL$ = computed(() => {
+  return null;
 });
 const READY_SIGN_IN_RESEND_STATE$ = computed(() => {
+  return { remainingSeconds: 0, status: "ready" } as const;
+});
+const READY_SIGN_UP_RESEND_STATE$ = computed(() => {
   return { remainingSeconds: 0, status: "ready" } as const;
 });
 const TEST_PASSWORD$ = computed(() => {
@@ -162,6 +165,7 @@ function createSignInHarness(options?: {
       newPassword$: computed((get) => {
         return get(newPassword$);
       }),
+      pendingFactorId$: NULL$,
       password$: computed((get) => {
         return get(password$);
       }),
@@ -280,9 +284,11 @@ function createSignUpHarness(options?: {
       oauthStrategies$: computed(() => {
         return ["oauth_google"] as const;
       }),
+      pendingOAuthStrategy$: NULL$,
       password$: TEST_PASSWORD$,
       resendCode$: asyncNoOp$,
-      resendCoolingDown$: FALSE$,
+      resendCooldownLifecycleRef$: SIGN_IN_NO_OP_REF$,
+      resendState$: READY_SIGN_UP_RESEND_STATE$,
       restart$: asyncNoOp$,
       setCode$: setString$,
       setEmailAddress$: setString$,
@@ -494,6 +500,93 @@ describe("auth v2 diagnostic continuation outcomes", () => {
       outcome: "failure",
       step: "details",
     });
+  });
+});
+
+describe("auth v2 password recovery diagnostics", () => {
+  it("attributes every recovery chooser action without exposing provider data", async () => {
+    const privateIdentifier = "private.recovery@example.com";
+    const privateProviderCode = "private_recovery_provider_code";
+    const harness = createSignInHarness();
+    const factors = [
+      {
+        emailAddressId: "email_private",
+        id: "password-reset:email_private",
+        kind: "password-reset",
+        safeIdentifier: "p***@example.com",
+      },
+      {
+        id: "oauth:oauth_apple",
+        kind: "oauth",
+        strategy: "oauth_apple",
+      },
+      {
+        emailAddressId: "email_private",
+        id: "email-code:email_private",
+        kind: "email-code",
+        safeIdentifier: "p***@example.com",
+      },
+      { id: "passkey", kind: "passkey" },
+    ] as const;
+    context.store.set(harness.identifier$, privateIdentifier);
+    context.store.set(harness.error$, {
+      clerkCode: privateProviderCode,
+      code: "clerk",
+      field: "general",
+    });
+    context.store.set(harness.flowState$, {
+      accounts: [],
+      factors,
+      identifierMode: "email",
+      selectedFactor: { id: "password", kind: "password" },
+      status: "incomplete",
+      step: "password-recovery",
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = instrumentSignIn(harness.signals, capture);
+
+    for (const factor of factors) {
+      await context.store.set(signals.selectFactor$, factor.id, context.signal);
+    }
+
+    expect(
+      capture.mock.calls.map(([properties]) => {
+        return properties;
+      }),
+    ).toStrictEqual([
+      {
+        error_category: "provider-error",
+        flow: "sign-in",
+        method: "password-reset",
+        outcome: "failure",
+        step: "recovery",
+      },
+      {
+        error_category: "provider-error",
+        flow: "sign-in",
+        method: "apple-oauth",
+        outcome: "failure",
+        step: "recovery",
+      },
+      {
+        error_category: "provider-error",
+        flow: "sign-in",
+        method: "email-code",
+        outcome: "failure",
+        step: "recovery",
+      },
+      {
+        error_category: "provider-error",
+        flow: "sign-in",
+        method: "passkey",
+        outcome: "failure",
+        step: "recovery",
+      },
+    ]);
+    const serializedCalls = JSON.stringify(capture.mock.calls);
+    expect(serializedCalls).not.toContain(privateIdentifier);
+    expect(serializedCalls).not.toContain(privateProviderCode);
+    expect(serializedCalls).not.toContain("email_private");
   });
 });
 
