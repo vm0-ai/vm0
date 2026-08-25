@@ -94,7 +94,6 @@ import { cn } from "@okouai/ui/lib/utils";
 import { processShortcut, type KeyboardEventLike } from "@okouai/ui";
 import {
   bestEffort,
-  createDeferredPromise,
   detach,
   onDomEventFn,
   Reason,
@@ -5053,17 +5052,6 @@ async function loadDecodedImportedPptImage(
   candidate.decoding = "async";
   candidate.loading = "eager";
   candidate.fetchPriority = referenceImage.fetchPriority;
-  if (candidate.decode === undefined) {
-    const deferred = createDeferredPromise<boolean>(AbortSignal.any([]));
-    candidate.addEventListener("load", () => {
-      deferred.resolve(true);
-    });
-    candidate.addEventListener("error", () => {
-      deferred.resolve(false);
-    });
-    candidate.src = imageUrl;
-    return deferred.promise;
-  }
   candidate.src = imageUrl;
   let decodeFailed = false;
   await tapError(candidate.decode(), () => {
@@ -5093,10 +5081,12 @@ async function replaceImportedPptImageAfterDecode(
     }
     return;
   }
+  if (media.dataset.pendingImageUrl === imageUrl) {
+    delete media.dataset.pendingImageUrl;
+  }
   if (media.dataset.desiredImageUrl !== imageUrl || !media.isConnected) {
     return;
   }
-  delete media.dataset.pendingImageUrl;
   showImportedPptImage(media, image, imageUrl);
 }
 

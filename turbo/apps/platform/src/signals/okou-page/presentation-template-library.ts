@@ -208,23 +208,33 @@ function createImportedPresentationTemplateUrlRefreshSignals(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
   detailUrlsVersion$: State<number>,
 ) {
-  const internalRequestedAtMs$ = state<number | null>(null);
-  const freshAtMs = (loadedAtMs: number, requestedAtMs: number | null) => {
-    return Math.max(loadedAtMs, requestedAtMs ?? Number.NEGATIVE_INFINITY);
-  };
+  const internalDetailUrlsFreshAtMs$ = state<number | null>(null);
+  const initializeImportedPresentationTemplateDetailUrlsFreshAtMs$ = command(
+    ({ get, set }, catalogLoadedAtMs: number): number => {
+      const detailUrlsFreshAtMs = get(internalDetailUrlsFreshAtMs$);
+      if (detailUrlsFreshAtMs !== null) {
+        return detailUrlsFreshAtMs;
+      }
+      set(internalDetailUrlsFreshAtMs$, catalogLoadedAtMs);
+      return catalogLoadedAtMs;
+    },
+  );
   const refreshImportedPresentationTemplateUrlsIfStale$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const catalog = await get(catalog$);
       signal.throwIfAborted();
+      const detailUrlsFreshAtMs = set(
+        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
+        catalog.loadedAtMs,
+      );
       const requestedAt = now();
       if (
-        requestedAt -
-          freshAtMs(catalog.loadedAtMs, get(internalRequestedAtMs$)) <
+        requestedAt - detailUrlsFreshAtMs <
         PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS
       ) {
         return;
       }
-      set(internalRequestedAtMs$, requestedAt);
+      set(internalDetailUrlsFreshAtMs$, requestedAt);
       await set(refreshAndReconcilePresentationTemplates$, signal);
       set(detailUrlsVersion$, (version) => {
         return version + 1;
@@ -239,12 +249,17 @@ function createImportedPresentationTemplateUrlRefreshSignals(
       await delay(0, { signal });
       const catalog = await get(catalog$);
       signal.throwIfAborted();
+      const detailUrlsFreshAtMs = set(
+        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
+        catalog.loadedAtMs,
+      );
       const requestedAt = now();
       const refreshDetailUrls =
-        requestedAt -
-          freshAtMs(catalog.loadedAtMs, get(internalRequestedAtMs$)) >=
+        requestedAt - detailUrlsFreshAtMs >=
         PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS;
-      set(internalRequestedAtMs$, requestedAt);
+      if (refreshDetailUrls) {
+        set(internalDetailUrlsFreshAtMs$, requestedAt);
+      }
       await set(refreshAndReconcilePresentationTemplates$, signal);
       if (refreshDetailUrls) {
         set(detailUrlsVersion$, (version) => {
@@ -264,15 +279,15 @@ function createImportedPresentationTemplateUrlRefreshSignals(
           async (loopSignal) => {
             const catalog = await get(catalog$);
             loopSignal.throwIfAborted();
-            const loadedOrRequestedAtMs = freshAtMs(
+            const detailUrlsFreshAtMs = set(
+              initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
               catalog.loadedAtMs,
-              get(internalRequestedAtMs$),
             );
             await delay(
               Math.max(
                 0,
                 PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
-                  (now() - loadedOrRequestedAtMs),
+                  (now() - detailUrlsFreshAtMs),
               ),
               { signal: loopSignal },
             );

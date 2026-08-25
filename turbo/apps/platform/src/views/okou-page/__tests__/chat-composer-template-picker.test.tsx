@@ -3640,7 +3640,7 @@ describe("chat composer templates", () => {
       presentationTemplatesContract.list,
       async ({ respond }) => {
         catalogRequestCount += 1;
-        if (catalogRequestCount > 2) {
+        if (catalogRequestCount > 3) {
           refreshCatalogRequested.resolve();
           await releaseRefreshCatalog.promise;
           serveRenewedUrls = true;
@@ -3778,15 +3778,24 @@ describe("chat composer templates", () => {
     expect(primaryDetailRequestCount).toBe(3);
     expect(secondaryDetailRequestCount).toBe(0);
 
-    await user.keyboard("{Escape}");
+    // A metadata-only refresh must not reset the independent signed-detail URL
+    // age, or frequent renames and visibility changes can postpone renewal
+    // until the page URLs have expired.
+    mockNow(context.signal, loadedAtMs + 5 * 60 * 1000);
+    context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(catalogRequestCount).toBe(3);
+      expect(primaryDetailRequestCount).toBe(4);
     });
     // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
     // overlap with the API's 15-minute expiry. Opening is also a non-blocking
     // catch-up point for a suspended tab whose timer did not run.
     mockNow(context.signal, loadedAtMs + 10 * 60 * 1000 + 1);
-    await user.click(screen.getByLabelText("Template"));
+    click(within(dialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Template"));
     await refreshCatalogRequested.promise;
 
     const refreshingDialog = screen.getByRole("dialog");
@@ -3807,6 +3816,11 @@ describe("chat composer templates", () => {
 
     releaseRefreshCatalog.resolve();
     await refreshedPrimaryDetailRequested.promise;
+    await waitFor(() => {
+      // Catalog reconciliation recreates the preload resource. The separate
+      // detail-version renewal is observed on the next card hover below.
+      expect(primaryDetailRequestCount).toBe(5);
+    });
     const refreshedPreviewButton = within(refreshingCard).getByLabelText(
       "Preview Primary draft deck at current slide",
     );
@@ -3850,7 +3864,7 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/renewed-primary-page-100.png",
     );
-    expect(catalogRequestCount).toBe(3);
+    expect(catalogRequestCount).toBe(4);
     expect(primaryDetailRequestCount).toBeGreaterThan(3);
     expect(secondaryDetailRequestCount).toBe(0);
   });
@@ -4019,6 +4033,16 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/imported-page-2.png",
     );
+    await user.click(screen.getByLabelText("Preview slide 2"));
+    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    await waitFor(() => {
+      expect(detailPreview).not.toHaveAttribute("data-pending-image-url");
+    });
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-2.png",
+    );
+    await user.click(screen.getByLabelText("Preview slide 3"));
     await imageDecodes.complete("https://example.com/imported-page-3.png");
     await waitFor(() => {
       expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
