@@ -14,7 +14,7 @@ import {
 
 import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
-import { settle, withCleanup } from "../utils.ts";
+import { onRef, setLoop, settle, withCleanup } from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
@@ -143,6 +143,9 @@ export interface AuthV2SignInSignals {
   readonly newPassword$: Computed<string>;
   readonly password$: Computed<string>;
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
+  readonly resendCooldownLifecycleRef$: ReturnType<
+    typeof onRef<HTMLSpanElement>
+  >;
   readonly resendState$: Computed<AuthV2SignInResendState>;
   readonly restart$: Command<void, []>;
   readonly selectFactor$: Command<Promise<void>, [string, AbortSignal]>;
@@ -184,7 +187,6 @@ interface SignInFlowAtoms {
 
 interface SignInFlowRuntime {
   readonly cooldownDeadlineMs$: State<number | null>;
-  readonly cooldownTimer$: State<number | null>;
   readonly handledSessionId$: State<string | null>;
   readonly inFlight$: State<ReadonlyMap<CoalescedOperation, Promise<void>>>;
   readonly preparedFactorId$: State<string | null>;
@@ -564,7 +566,6 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
 function createSignInFlowRuntime(): SignInFlowRuntime {
   return {
     cooldownDeadlineMs$: state<number | null>(null),
-    cooldownTimer$: state<number | null>(null),
     handledSessionId$: state<string | null>(null),
     inFlight$: state<ReadonlyMap<CoalescedOperation, Promise<void>>>(new Map()),
     preparedFactorId$: state<string | null>(null),
@@ -575,55 +576,51 @@ function createStartCooldownCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
 ): Command<void, [AbortSignal]> {
-  const updateCooldown$ = command(({ get, set }): void => {
-    const deadlineMs = get(runtime.cooldownDeadlineMs$);
-    if (deadlineMs === null) {
-      set(atoms.resendRemainingSeconds$, 0);
-      return;
-    }
-    const remainingSeconds = Math.max(
-      0,
-      Math.ceil((deadlineMs - now()) / 1000),
-    );
-    set(atoms.resendRemainingSeconds$, remainingSeconds);
-    if (remainingSeconds > 0) {
-      return;
-    }
-    const timer = get(runtime.cooldownTimer$);
-    if (timer !== null) {
-      window.clearInterval(timer);
-    }
-    set(runtime.cooldownDeadlineMs$, null);
-    set(runtime.cooldownTimer$, null);
-  });
-
-  return command(({ get, set }, signal: AbortSignal): void => {
-    const currentTimer = get(runtime.cooldownTimer$);
-    if (currentTimer !== null) {
-      window.clearInterval(currentTimer);
-    }
+  return command(({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
     set(
       runtime.cooldownDeadlineMs$,
       now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS,
     );
     set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
-    const timer = window.setInterval(() => {
-      set(updateCooldown$);
-    }, 1000);
-    set(runtime.cooldownTimer$, timer);
-    signal.addEventListener(
-      "abort",
-      () => {
-        if (get(runtime.cooldownTimer$) === timer) {
-          window.clearInterval(timer);
-          set(runtime.cooldownDeadlineMs$, null);
-          set(runtime.cooldownTimer$, null);
-          set(atoms.resendRemainingSeconds$, 0);
-        }
-      },
-      { once: true },
-    );
   });
+}
+
+function createResendCooldownLifecycleRef(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+) {
+  return onRef(
+    command(
+      async (
+        { get, set },
+        _element: HTMLSpanElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        await setLoop(
+          () => {
+            const deadlineMs = get(runtime.cooldownDeadlineMs$);
+            if (deadlineMs === null) {
+              return true;
+            }
+            const remainingSeconds = Math.max(
+              0,
+              Math.ceil((deadlineMs - now()) / 1000),
+            );
+            set(atoms.resendRemainingSeconds$, remainingSeconds);
+            if (remainingSeconds > 0) {
+              return false;
+            }
+            set(runtime.cooldownDeadlineMs$, null);
+            return true;
+          },
+          1000,
+          signal,
+          { retryTransientErrors: false },
+        );
+      },
+    ),
+  );
 }
 
 function createResourceCommands(
@@ -1161,13 +1158,8 @@ function createFormCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
 ) {
-  const clearCooldown$ = command(({ get, set }): void => {
-    const timer = get(runtime.cooldownTimer$);
-    if (timer !== null) {
-      window.clearInterval(timer);
-    }
+  const clearCooldown$ = command(({ set }): void => {
     set(runtime.cooldownDeadlineMs$, null);
-    set(runtime.cooldownTimer$, null);
     set(atoms.resendRemainingSeconds$, 0);
   });
   const backToMethods$ = command(({ set }) => {
@@ -1266,6 +1258,10 @@ export function createAuthV2SignInSignals(
     applyResource$,
   );
   const startCooldown$ = createStartCooldownCommand(atoms, runtime);
+  const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
+    atoms,
+    runtime,
+  );
   const resendCodeOperation$ = createResendCodeOperation$(
     atoms,
     runtime,
@@ -1313,6 +1309,7 @@ export function createAuthV2SignInSignals(
       "resource",
       resendCodeOperation$,
     ),
+    resendCooldownLifecycleRef$,
     resendState$: computed((get) => {
       const remainingSeconds = get(atoms.resendRemainingSeconds$);
       return remainingSeconds > 0

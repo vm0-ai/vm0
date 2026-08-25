@@ -412,6 +412,9 @@ function CodeStep({
   const pageSignal = useGet(pageSignal$);
   const setCode = useSet(signals.setCode$);
   const backToMethods = useSet(signals.backToMethods$);
+  const resendCooldownLifecycleRef = useSet(
+    signals.resendCooldownLifecycleRef$,
+  );
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [resendLoadable, resendCode] = useLoadableSet(signals.resendCode$);
   const submitting = submitLoadable.state === "loading";
@@ -439,6 +442,7 @@ function CodeStep({
   };
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
       <FlowErrorAlert copy={copy} signals={signals} />
       <h2 className="text-base font-medium text-foreground">
         {reset ? copy.resetPasswordCodeTitle : copy.emailCodeTitle}

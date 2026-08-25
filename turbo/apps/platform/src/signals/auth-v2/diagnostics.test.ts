@@ -79,6 +79,13 @@ function createSignInHarness(options?: {
       }),
   );
   const noOp$ = command((): void => {});
+  const noOpRef$ = onRef(
+    command(
+      (_context, _element: HTMLSpanElement, signal: AbortSignal): void => {
+        signal.throwIfAborted();
+      },
+    ),
+  );
   const asyncNoOp$ = command((_context, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
     return Promise.resolve();
@@ -147,6 +154,7 @@ function createSignInHarness(options?: {
         return get(password$);
       }),
       resendCode$: asyncNoOp$,
+      resendCooldownLifecycleRef$: noOpRef$,
       resendState$: READY_SIGN_IN_RESEND_STATE$,
       restart$: noOp$,
       selectFactor$: stringAsyncNoOp$,
