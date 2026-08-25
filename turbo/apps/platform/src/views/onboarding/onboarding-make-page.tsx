@@ -211,7 +211,7 @@ export function OnboardingMakePage() {
       })}
     >
       <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-3 pb-12 sm:grid-cols-2 sm:pb-0"
         role="radiogroup"
         aria-label={t(($) => {
           return $.onboarding.make.projectTypeLabel;
