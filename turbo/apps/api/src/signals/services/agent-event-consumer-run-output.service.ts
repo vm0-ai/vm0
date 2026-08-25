@@ -386,7 +386,12 @@ async function insertRunOutputChatEvents(
     .where(eq(agentRuns.id, payload.runId))
     .limit(1);
   signal.throwIfAborted();
-  const toolActivityEnabled = run?.chatToolActivityEnabled === true;
+  if (run === undefined) {
+    throw new Error(
+      `Run ${payload.runId} is missing during output materialization`,
+    );
+  }
+  const toolActivityEnabled = run.chatToolActivityEnabled;
   const priorToolOperations = toolActivityEnabled
     ? await priorToolOperationsForRun(tx, payload.runId, signal)
     : new Map<string, ToolOperationState>();

@@ -383,6 +383,13 @@ describe("agent tool event normalization", () => {
       },
       { id: "mcp", type: "mcp_tool_call", status: "completed", path: "a" },
       { id: "image", type: "image_view", status: "completed", path: "a" },
+      {
+        id: "malformed-command",
+        type: "command_execution",
+        status: "completed",
+        command: "/bin/bash -lc 'unterminated",
+        exit_code: 0,
+      },
       { id: "unknown", type: "file_read", status: "in_progress", path: "a" },
     ]) {
       expect(

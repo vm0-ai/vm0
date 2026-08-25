@@ -326,14 +326,15 @@ function codexCommand(event: AgentEvent): NormalizedAgentToolEvent | null {
     return null;
   }
   const summary = toolSummary("Ran", decodedToolCommand(item.command));
+  if (summary === null) {
+    return null;
+  }
   return {
     kind: "correlated-terminal",
     provider: "codex",
     providerOperationId,
     status,
-    ...(summary === null
-      ? {}
-      : { standaloneOperation: { action: "run", summary } }),
+    standaloneOperation: { action: "run", summary },
   };
 }
 
