@@ -6,7 +6,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
-import { ZeroTelegramConnectPage } from "../../views/okou-page/telegram-connect-page.tsx";
+import { TelegramConnectPage } from "../../views/okou-page/telegram-connect-page.tsx";
 import { parseTelegramConnectParams } from "./telegram-connect-params.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
@@ -27,7 +27,7 @@ export const setupTelegramConnectPage$ = command(
       },
     });
 
-    set(updatePage$, createElement(ZeroTelegramConnectPage));
+    set(updatePage$, createElement(TelegramConnectPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

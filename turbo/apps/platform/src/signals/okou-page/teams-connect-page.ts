@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroTeamsConnectPage } from "../../views/okou-page/teams-connect-page.tsx";
+import { TeamsConnectPage } from "../../views/okou-page/teams-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -24,7 +24,7 @@ export const setupTeamsConnectPage$ = command(
       return;
     }
 
-    set(updatePage$, createElement(ZeroTeamsConnectPage));
+    set(updatePage$, createElement(TeamsConnectPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

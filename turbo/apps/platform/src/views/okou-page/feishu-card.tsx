@@ -2134,7 +2134,7 @@ function feishuSettingsHasError(...states: readonly string[]): boolean {
   return states.includes("hasError");
 }
 
-export function ZeroFeishuSettingsPage() {
+export function FeishuSettingsPage() {
   const { t } = useTranslation();
   const dataLoadable = useLastLoadable(feishuOrgData$);
   const botsLoadable = useLastLoadable(feishuInstallations$);

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroDirectedAuthorizePage } from "../../views/okou-page/directed-authorize-page.tsx";
+import { DirectedAuthorizePage } from "../../views/okou-page/directed-authorize-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
@@ -18,7 +18,7 @@ export const setupDirectedAuthorizePage$ = command(
     const connectorSlug =
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
-    set(updatePage$, createElement(ZeroDirectedAuthorizePage), "minimal");
+    set(updatePage$, createElement(DirectedAuthorizePage), "minimal");
     set(
       updateDocumentTitle$,
       i18n.t(
