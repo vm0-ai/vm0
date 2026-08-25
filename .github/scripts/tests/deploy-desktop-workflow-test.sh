@@ -16,6 +16,25 @@ ruby -e '
 
   desktop = YAML.safe_load(File.read(ARGV[0]), aliases: true).fetch("jobs")
   release = YAML.safe_load(File.read(ARGV[1]), aliases: true).fetch("jobs")
+  desktop_text = File.read(ARGV[0])
+  release_text = File.read(ARGV[1])
+
+  canonical_writer_counts = {
+    "OKOU_DESKTOP_PRODUCT" => [8, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
+  }
+  canonical_writer_counts.each do |name, expected_counts|
+    actual_counts = [desktop_text.scan(name).length, release_text.scan(name).length]
+    raise "Desktop workflows must use the complete canonical product/platform writer surface" unless actual_counts == expected_counts
+  end
+  legacy_prefix = "VM0_"
+  legacy_names = ["DESKTOP_PRODUCT", "DESKTOP_PLATFORM_URL"].map do |suffix|
+    legacy_prefix + suffix
+  end
+  legacy_writer_present = legacy_names.any? do |name|
+    desktop_text.include?(name) || release_text.include?(name)
+  end
+  raise "Desktop workflows must not use legacy product/platform writers" if legacy_writer_present
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
@@ -30,9 +49,9 @@ ruby -e '
 
   okou_build = build.fetch("steps").find { |step| step["id"] == "build-okou-prod" }
   raise "Desktop CI must build the Okou product" unless okou_build
-  raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PRODUCT") == "okou"
-  raise "Okou CI build must use app.okou.ai" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
-  raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.VM0_DESKTOP_PRODUCT")
+  raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("OKOU_DESKTOP_PRODUCT") == "okou"
+  raise "Okou CI build must use app.okou.ai" unless okou_build.fetch("env").fetch("OKOU_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
+  raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.OKOU_DESKTOP_PRODUCT")
 
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
@@ -45,7 +64,7 @@ ruby -e '
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
   raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("OKOU_DESKTOP_SKIP_SIGNING") == "true"
   raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou.app")
-  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai")
+  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai")
 
   artifact_build = deploy.fetch("steps").find { |step| step["name"] == "Create canonical Desktop artifact" }.fetch("run")
   raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou-darwin-arm64/Okou.app")
@@ -64,7 +83,6 @@ ruby -e '
   raise "Desktop promotion must address artifacts by release_target" unless download.include?(ARGV[5])
   raise "Desktop promotion must require the Okou app archive" unless download.include?("--require-okou")
 
-  release_text = File.read(ARGV[1])
   promote_text = release_text.split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
   dollar = 36.chr
   canonical_credentials = {
