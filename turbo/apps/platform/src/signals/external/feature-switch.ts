@@ -73,6 +73,12 @@ export const composerRestoredAttachmentValidationEnabled$ = computed(
   },
 );
 
+export const composerFlatFeedbackNoteEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ComposerFlatFeedbackNote] ?? false
+  );
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
