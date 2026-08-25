@@ -113,6 +113,12 @@ fn append_exec_result_payload(
 }
 
 /// Encode exec_result payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `diagnostic` or captured stdout/stderr cannot
+/// fit its wire length field, or the encoded payload exceeds the maximum
+/// message size.
 pub fn encode_exec_result(
     termination: ExecTermination,
     duration_ms: u32,
