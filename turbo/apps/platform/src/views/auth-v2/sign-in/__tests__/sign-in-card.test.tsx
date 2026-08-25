@@ -425,6 +425,7 @@ describe("auth v2 sign-in flow", () => {
 
     await waitFor(() => {
       expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledTimes(1);
       expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
         signUpIfMissing: false,
         strategy: "google_one_tap",
@@ -432,12 +433,108 @@ describe("auth v2 sign-in flow", () => {
       });
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
-    expect(mockedGoogleOneTap.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        auto_select: false,
-        client_id: "google-client-id",
-      }),
-    );
+    expect(mockedGoogleOneTap.initialize).toHaveBeenCalledTimes(1);
+    expect(mockedGoogleOneTap.initialize).toHaveBeenCalledWith({
+      auto_select: false,
+      callback: expect.any(Function),
+      cancel_on_tap_outside: true,
+      client_id: "google-client-id",
+      itp_support: true,
+      use_fedcm_for_prompt: true,
+    });
+  });
+
+  it.each(["dismissed", "skipped"] as const)(
+    "settles a FedCM %s moment without legacy notification methods",
+    async (momentType) => {
+      mockAuthV2Capabilities({
+        googleOAuth: true,
+        googleOneTapClientId: "google-client-id",
+      });
+      mockGoogleOneTapCredential(null);
+      mockedGoogleOneTap.prompt.mockImplementation((callback) => {
+        callback({
+          getMomentType: () => {
+            return momentType;
+          },
+        });
+      });
+
+      setupSignInPage({ status: "needs_identifier" });
+
+      await waitFor(() => {
+        expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+      });
+      expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("ignores a legacy display moment until a terminal moment arrives", async () => {
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential(null);
+    mockedGoogleOneTap.prompt.mockImplementation((callback) => {
+      callback({
+        getMomentType: () => {
+          return "display";
+        },
+      });
+      callback({
+        getMomentType: () => {
+          return "skipped";
+        },
+      });
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("cancels an aborted FedCM prompt and ignores late credential events", async () => {
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential(null);
+    mockedGoogleOneTap.prompt.mockImplementation(() => {});
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+    });
+    const initializeOptions =
+      mockedGoogleOneTap.initialize.mock.calls.at(-1)?.[0];
+    const promptCallback = mockedGoogleOneTap.prompt.mock.calls.at(-1)?.[0];
+    if (!initializeOptions || !promptCallback) {
+      throw new Error("Expected Google One Tap callbacks to be registered");
+    }
+
+    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    await expect(
+      screen.findByTestId("clerk-sign-in"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    initializeOptions.callback({ credential: "late-google-one-tap-token" });
+    promptCallback({
+      getMomentType: () => {
+        return "skipped";
+      },
+    });
+
+    expect(mockedGoogleOneTap.cancel).toHaveBeenCalledTimes(1);
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
   it("does not start Google One Tap on a nested sign-in route", async () => {
