@@ -45,8 +45,8 @@ export interface ComposerConnectorAccountSignals {
   readonly accounts$: ReturnType<
     typeof createConnectorAccountListSignals
   >["accounts$"];
-  readonly openTarget$: Command<void, [ConnectorAccountTarget]>;
-  readonly closePanel$: Command<void, []>;
+  readonly openTarget$: Command<void, [ConnectorAccountTarget, AbortSignal]>;
+  readonly closePanel$: Command<void, [AbortSignal]>;
   readonly setSearch$: ReturnType<
     typeof createConnectorAccountListSignals
   >["setSearch$"];
@@ -215,7 +215,6 @@ export function createComposerConnectorAccountSignals(
       return version + 1;
     });
     set(reloadConnectorAccountSummaries$);
-    set(list.reload$);
   });
   const openPopover$ = command(({ set }) => {
     set(reloadVersion$, (version) => {
@@ -224,7 +223,11 @@ export function createComposerConnectorAccountSignals(
     set(reloadConnectorAccountSummaries$);
   });
   const openTarget$ = command(
-    ({ get, set }, target: ConnectorAccountTarget): void => {
+    (
+      { get, set },
+      target: ConnectorAccountTarget,
+      signal: AbortSignal,
+    ): void => {
       const currentTarget = get(panelTarget$);
       set(panelTarget$, target);
       if (
@@ -232,16 +235,16 @@ export function createComposerConnectorAccountSignals(
         connectorAccountTargetKey(currentTarget) ===
           connectorAccountTargetKey(target)
       ) {
-        set(list.reload$);
+        set(list.reload$, signal);
       } else {
-        set(list.setTarget$, target);
+        set(list.setTarget$, target, signal);
       }
       set(panelOpen$, true);
     },
   );
-  const closePanel$ = command(({ set }): void => {
+  const closePanel$ = command(({ set }, signal: AbortSignal): void => {
     set(panelOpen$, false);
-    set(list.setSearch$, "");
+    set(list.setSearch$, "", signal);
   });
 
   const { selectAccount$, useDefault$ } = createConnectorAccountMutationSignals(

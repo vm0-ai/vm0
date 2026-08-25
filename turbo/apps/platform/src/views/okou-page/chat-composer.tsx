@@ -8208,7 +8208,7 @@ function ComposerConnectorAccountPanel({
             return $.chat.connectors.back;
           })}
           onClick={() => {
-            closePanel();
+            closePanel(signal);
           }}
         >
           <ArrowLeft size={15} />
@@ -8225,7 +8225,7 @@ function ComposerConnectorAccountPanel({
           <Input
             value={search}
             onChange={(event) => {
-              setSearch(event.target.value);
+              setSearch(event.target.value, signal);
             }}
             placeholder={t(($) => {
               return $.connectors.accounts.find;
@@ -8409,6 +8409,7 @@ function ConnectorsPopoverButton({
   ) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
@@ -8509,7 +8510,7 @@ function ConnectorsPopoverButton({
         }
         defaultConnection={summary.defaultConnection}
         onOpen={() => {
-          openAccountTarget(target);
+          openAccountTarget(target, signal);
         }}
       />
     );
@@ -8530,7 +8531,7 @@ function ConnectorsPopoverButton({
       openAccountsPopover();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
-      closeAccountPanel();
+      closeAccountPanel(signal);
     }
   };
 
