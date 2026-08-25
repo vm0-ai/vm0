@@ -35,6 +35,47 @@ Connector-intent capture and request-header probe metadata live in
 snapshot, lookup, candidate, ownership, stream, and log guard state. Public
 diagnostic/firewall metadata used for observable logging and generic response-
 stream state have separate owners.
+
+Client-visible connector availability response contract:
+
+The diagnostic response is JSON with ``Content-Type: application/json`` and
+contains this stable field set::
+
+    {
+        "error": "connector_not_configured_for_run",
+        "connector": "<connector-slug>",
+        "reason": "not_configured_for_run",
+        "message": "<human-readable explanation>",
+        "envNames": ["<credential-alias-name>"],
+        "base": "https://<static-built-in-base>",
+        "upstreamStatus": 0,
+    }
+
+``error`` is the machine-readable discriminator. ``connector`` is the matched
+connector slug. ``reason`` describes the diagnostic condition; the first
+supported reason is ``not_configured_for_run``. ``message`` is human-readable
+context and is not a stable parsing surface. ``envNames`` lists credential
+alias names referenced by the connector configuration, never credential
+values. ``base`` is the matched static built-in base. ``upstreamStatus`` is
+``0`` for a pre-upstream local diagnostic and is the preserved upstream
+``401`` or ``403`` for a response-hook diagnostic.
+
+There are two HTTP status modes for the same JSON contract. An inactive
+shared-base owner can be diagnosed before upstream authentication with HTTP
+``424`` and ``upstreamStatus: 0``. An ordinary eligible request is diagnosed
+only after an upstream ``401`` or ``403``; the response keeps that upstream
+status and records the same value in ``upstreamStatus``. Buffered and streamed
+replacement paths use the same JSON body. A streamed replacement discards
+upstream chunks and emits the diagnostic body once at end-of-stream. HEAD
+responses keep the diagnostic status and metadata but have no body or
+``Content-Length``. Replacement removes incompatible upstream
+``Content-Encoding``, ``Content-Length``, and ``Transfer-Encoding`` headers and
+discards trailers before applying JSON framing.
+
+This is an agent-visible compatibility contract. Consumers should branch on
+stable machine-readable fields such as ``error`` and ``reason`` rather than
+``message``, tolerate additive unknown fields, and receive a coordinated
+contract update before existing fields are removed or their meanings change.
 """
 
 import json
@@ -172,10 +213,12 @@ def maybe_make_firewall_allow_local_response(
     diagnostic. The provisional path pins only when it actually builds the
     local response.
 
-    Return ``True`` only after installing and logging a local HTTP 424 response
-    and recording the selected candidate and ownership metadata. HEAD keeps the
-    same diagnostic status and metadata without response content. The caller
-    must stop normal request dispatch on ``True``.
+    Return ``True`` only after installing and logging the pre-upstream mode of
+    the module's connector availability response contract: a local HTTP 424
+    response with ``upstreamStatus`` set to ``0`` and the selected candidate
+    and ownership metadata. HEAD keeps the same diagnostic status and metadata
+    without response content. The caller must stop normal request dispatch on
+    ``True``.
     """
     if _is_browser_diagnostic_skip(flow):
         return False
@@ -231,10 +274,13 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     """Install diagnostic replacement during the response-header phase.
 
     ``responseheaders()`` must call this before general response streaming. For
-    an eligible unauthenticated 401/403, it replaces the response content and
-    framing headers, caches the diagnostic content, and installs a callback that
-    discards upstream chunks and emits that content once at end-of-stream. HEAD
-    caches and emits empty content without a Content-Length field.
+    an eligible unauthenticated 401/403, it applies the response-hook mode of
+    the module's connector availability response contract: the response keeps
+    its upstream status and records it in ``upstreamStatus``. It replaces the
+    response content and framing headers, caches the diagnostic content, and
+    installs a callback that discards upstream chunks and emits that content
+    once at end-of-stream. HEAD caches and emits empty content without a
+    Content-Length field.
 
     Return ``True`` only when this module owns ``flow.response.stream``; the
     caller must then skip installing another stream callback. ``False`` means no
@@ -298,7 +344,10 @@ def maybe_replace_response(
     If response headers already installed diagnostic streaming, this clears
     trailers, restores the cached body when the stream did not emit it, and
     records the proxy entry at most once. Otherwise it may replace a buffered
-    401/403 body for an eligible request without user auth material.
+    401/403 body for an eligible request without user auth material. In either
+    response-hook case, the JSON body follows the module's connector
+    availability response contract and retains the eligible upstream status in
+    both the HTTP response and ``upstreamStatus``.
 
     Non-401/403 responses, browser flows, missing candidates, and authenticated
     requests keep their upstream response unchanged.
