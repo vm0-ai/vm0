@@ -46,7 +46,7 @@ export function AuthV2PasswordInput({
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         autoComplete={autoComplete}
-        className="pr-10"
+        className="border border-border pr-10"
         id={id}
         name={name}
         onChange={(event) => {

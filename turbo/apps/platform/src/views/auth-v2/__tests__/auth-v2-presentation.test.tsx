@@ -61,13 +61,6 @@ function buttonByLabel(label: string): HTMLButtonElement {
   return button;
 }
 
-const AUTH_V2_PAGE_ACTION_SEMANTICS = [
-  ["--color-primary", "var(--color-foreground)"],
-  ["--color-primary-foreground", "var(--color-background)"],
-  ["--color-primary-hover", "var(--color-foreground-hover)"],
-  ["--color-primary-pressed", "var(--color-foreground-pressed)"],
-] as const;
-
 describe("auth v2 presentation", () => {
   it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
@@ -105,44 +98,27 @@ describe("auth v2 presentation", () => {
 
     const currentSignInAction = linkByText("Use current sign-in");
     expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
-    expect(currentSignInAction).toHaveClass("text-primary");
     expect(
       currentSignInAction.closest('[data-testid="app-auth-v2"]'),
     ).toBeNull();
   });
 
-  it("scopes neutral page-action semantics to the Auth v2 region", async () => {
+  it("keeps password controls and fallback navigation in their accessible regions", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-up");
 
     detachedSetupPage({ context, path: "/v2/sign-up" });
 
     await screen.findByLabelText("Password");
     const region = screen.getByTestId("app-auth-v2");
-    const sharedAuthLayout = screen.getByTestId("app-auth-layout");
     const passwordVisibilityAction = buttonByLabel("Show password");
 
-    expect(sharedAuthLayout).toHaveClass("zero-app", "p-6");
-    expect(region).toHaveClass(
-      "rounded-[12px]",
-      "border-border",
-      "shadow-none",
-    );
-    expect(region).not.toHaveClass("zero-composer");
     expect(region).toContainElement(passwordVisibilityAction);
-    expect(passwordVisibilityAction).toHaveClass(
-      "text-primary",
-      "hover:bg-state-hover",
-      "active:bg-state-pressed",
-    );
-    expect(passwordVisibilityAction).not.toHaveClass("text-muted-foreground");
-
-    for (const [property, value] of AUTH_V2_PAGE_ACTION_SEMANTICS) {
-      expect(region.style.getPropertyValue(property)).toBe(value);
-      expect(sharedAuthLayout.style.getPropertyValue(property)).toBe("");
-      expect(document.documentElement.style.getPropertyValue(property)).toBe(
-        "",
-      );
-    }
+    expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
+    const currentSignUpAction = linkByText("Use current sign-up");
+    expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
+    expect(
+      currentSignUpAction.closest('[data-testid="app-auth-v2"]'),
+    ).toBeNull();
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {

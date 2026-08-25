@@ -1,11 +1,12 @@
 import { Button } from "@okouai/ui";
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2Navigation } from "../../../signals/auth-v2/navigation.ts";
 import type { AuthV2SignUpSignals } from "../../../signals/auth-v2/sign-up-flow.ts";
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { Link } from "../../router/link.tsx";
+import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import { SignUpCardContent, SignUpSwitch } from "./sign-up-content.tsx";
 import {
@@ -25,6 +26,7 @@ export function AuthV2SignUpCard({
 }) {
   const copy = useAuthV2SignUpCopy(authBrand.brandName);
   const flowState = useGet(signals.state$);
+  const backToDetails = useSet(signals.backToDetails$);
   const description = signUpCardDescription(flowState, copy);
   const title = signUpCardTitle(flowState, copy);
   const signInHref = navigation.href("sign-in");
@@ -39,7 +41,7 @@ export function AuthV2SignUpCard({
       focusKey={focusKey}
       footer={
         <>
-          {flowState.status === "incomplete" ? (
+          {flowState.status === "incomplete" && flowState.step === "details" ? (
             <SignUpSwitch copy={copy} signInHref={signInHref} />
           ) : null}
           <div className="flex justify-center">
@@ -56,6 +58,15 @@ export function AuthV2SignUpCard({
             </Button>
           </div>
         </>
+      }
+      headerDetail={
+        flowState.status === "incomplete" && flowState.step === "email-code" ? (
+          <AuthV2IdentityPreview
+            actionLabel={copy.editEmailAddress || copy.back}
+            value={flowState.emailAddress}
+            onEdit={backToDetails}
+          />
+        ) : null
       }
       title={title}
     >

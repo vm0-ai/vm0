@@ -504,7 +504,9 @@ function createSignInAttemptSignals(
           : null;
       }
       case "choose-factor":
-      case "choose-session": {
+      case "choose-session":
+      case "help":
+      case "password-recovery": {
         return null;
       }
     }

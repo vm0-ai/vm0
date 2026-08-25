@@ -75,6 +75,8 @@ export type AuthV2SignInStep =
   | "identifier"
   | "choose-factor"
   | "password"
+  | "password-recovery"
+  | "help"
   | "email-code"
   | "client-trust-code"
   | "password-reset-code"
@@ -150,6 +152,10 @@ export interface AuthV2SignInFlowDependencies {
 }
 
 export interface AuthV2SignInSignals {
+  readonly backFromHelp$: Command<void, []>;
+  readonly backFromMethods$: Command<void, []>;
+  readonly backFromPasswordRecovery$: Command<void, []>;
+  readonly backFromNewPassword$: Command<void, []>;
   readonly backToIdentifier$: Command<void, []>;
   readonly backToMethods$: Command<void, []>;
   readonly code$: Computed<string>;
@@ -172,6 +178,10 @@ export interface AuthV2SignInSignals {
   readonly setIdentifier$: Command<void, [string]>;
   readonly setNewPassword$: Command<void, [string]>;
   readonly setPassword$: Command<void, [string]>;
+  readonly setSignOutOfOtherSessions$: Command<void, [boolean]>;
+  readonly showPasswordRecovery$: Command<void, []>;
+  readonly showHelp$: Command<void, []>;
+  readonly signOutOfOtherSessions$: Computed<boolean>;
   readonly state$: Computed<AuthV2SignInState>;
   readonly submit$: Command<Promise<void>, [AbortSignal]>;
   readonly useAnotherAccount$: Command<void, []>;
@@ -191,12 +201,16 @@ interface SignInFlowAtoms {
   readonly editIdentifier$: State<boolean>;
   readonly error$: State<AuthV2SignInError | null>;
   readonly fatalState$: State<AuthV2SignInUnknownState | null>;
+  readonly helpOrigin$: State<"methods" | "password-recovery" | null>;
   readonly identifier$: State<string>;
   readonly identifierLocallyModified$: State<boolean>;
   readonly newPassword$: State<string>;
+  readonly methodChooser$: State<boolean>;
   readonly password$: State<string>;
+  readonly passwordRecovery$: State<boolean>;
   readonly resendRemainingSeconds$: State<number>;
   readonly selectedFactor$: State<AuthV2SignInFactor | null>;
+  readonly signOutOfOtherSessions$: State<boolean>;
   readonly snapshot$: State<SignInResourceSnapshot | null>;
   readonly state$: Computed<AuthV2SignInState>;
   readonly useAnotherAccount$: State<boolean>;
@@ -323,10 +337,21 @@ function snapshotSignInResource(
     resource.status === "needs_client_trust"
       ? discoverClientTrustFactors(resource.supportedSecondFactors)
       : discoverFactors(resource.supportedFirstFactors);
+  const factorsWithExternalOAuth =
+    resource.status === "needs_client_trust"
+      ? discovered.factors
+      : [
+          ...discovered.factors,
+          ...capabilities.oauthStrategies.map(oauthFactor).filter((factor) => {
+            return !discovered.factors.some((candidate) => {
+              return candidate.id === factor.id;
+            });
+          }),
+        ];
   const factors =
     resource.status === "needs_identifier" || resource.status === null
       ? entryFactors(capabilities)
-      : discovered.factors;
+      : factorsWithExternalOAuth;
   return {
     clerkStatus: resource.status,
     createdSessionId: resource.createdSessionId,
@@ -480,6 +505,9 @@ interface DeriveSignInFlowOptions {
   readonly accounts: readonly AuthV2ExistingAccount[];
   readonly editIdentifier: boolean;
   readonly fatalState: AuthV2SignInUnknownState | null;
+  readonly helpOrigin: "methods" | "password-recovery" | null;
+  readonly methodChooser: boolean;
+  readonly passwordRecovery: boolean;
   readonly selectedFactor: AuthV2SignInFactor | null;
   readonly useAnotherAccount: boolean;
 }
@@ -569,6 +597,35 @@ function deriveSignInFlowState(
         status: "unknown",
       };
     }
+    if (options.helpOrigin) {
+      return incompleteState(
+        snapshot,
+        options.accounts,
+        "help",
+        selectedFactorForSnapshot(snapshot, options.selectedFactor),
+      );
+    }
+    if (
+      options.passwordRecovery &&
+      snapshot.factors.some((factor) => {
+        return factor.kind === "password-reset";
+      })
+    ) {
+      return incompleteState(
+        snapshot,
+        options.accounts,
+        "password-recovery",
+        selectedFactorForSnapshot(snapshot, options.selectedFactor),
+      );
+    }
+    if (options.methodChooser) {
+      return incompleteState(
+        snapshot,
+        options.accounts,
+        "choose-factor",
+        selectedFactorForSnapshot(snapshot, options.selectedFactor),
+      );
+    }
     const currentFactor = selectedFactorForSnapshot(
       snapshot,
       options.selectedFactor,
@@ -582,6 +639,28 @@ function deriveSignInFlowState(
   }
   if (snapshot.clerkStatus === "needs_client_trust") {
     return deriveClientTrustState(snapshot, options);
+  }
+  if (snapshot.clerkStatus === "needs_new_password" && options.helpOrigin) {
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "help",
+      selectedFactorForSnapshot(snapshot, options.selectedFactor),
+    );
+  }
+  if (
+    snapshot.clerkStatus === "needs_new_password" &&
+    options.passwordRecovery &&
+    snapshot.factors.some((factor) => {
+      return factor.kind === "password-reset";
+    })
+  ) {
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "password-recovery",
+      selectedFactorForSnapshot(snapshot, options.selectedFactor),
+    );
   }
   if (snapshot.clerkStatus === "needs_new_password") {
     return incompleteState(
@@ -614,12 +693,16 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   );
   const snapshot$ = state<SignInResourceSnapshot | null>(null);
   const selectedFactor$ = state<AuthV2SignInFactor | null>(null);
+  const signOutOfOtherSessions$ = state(true);
   const editIdentifier$ = state(false);
   const fatalState$ = state<AuthV2SignInUnknownState | null>(null);
+  const helpOrigin$ = state<"methods" | "password-recovery" | null>(null);
   const error$ = state<AuthV2SignInError | null>(null);
   const identifier$ = state("");
   const identifierLocallyModified$ = state(false);
   const password$ = state("");
+  const methodChooser$ = state(false);
+  const passwordRecovery$ = state(false);
   const resendRemainingSeconds$ = state(0);
   const code$ = state("");
   const newPassword$ = state("");
@@ -630,6 +713,9 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
       accounts: get(accounts$),
       editIdentifier: get(editIdentifier$),
       fatalState: get(fatalState$),
+      helpOrigin: get(helpOrigin$),
+      methodChooser: get(methodChooser$),
+      passwordRecovery: get(passwordRecovery$),
       selectedFactor: get(selectedFactor$),
       useAnotherAccount: get(useAnotherAccount$),
     });
@@ -642,12 +728,16 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     editIdentifier$,
     error$,
     fatalState$,
+    helpOrigin$,
     identifier$,
     identifierLocallyModified$,
     newPassword$,
+    methodChooser$,
     password$,
+    passwordRecovery$,
     resendRemainingSeconds$,
     selectedFactor$,
+    signOutOfOtherSessions$,
     snapshot$,
     state$,
     useAnotherAccount$,
@@ -970,7 +1060,10 @@ function createSubmitOperation$(
         });
         return;
       }
-      request = resource.resetPassword({ password });
+      request = resource.resetPassword({
+        password,
+        signOutOfOtherSessions: get(atoms.signOutOfOtherSessions$),
+      });
     } else {
       return;
     }
@@ -982,10 +1075,26 @@ function createSubmitOperation$(
     }
     if (flowState.step === "identifier") {
       set(atoms.editIdentifier$, false);
+      set(atoms.helpOrigin$, null);
+      set(atoms.methodChooser$, false);
       set(atoms.selectedFactor$, null);
+      set(atoms.passwordRecovery$, false);
     }
     await set(applyResource$, result.value, signal);
     signal.throwIfAborted();
+    if (flowState.step === "identifier") {
+      const snapshot = get(atoms.snapshot$);
+      const passwordFactor = snapshot?.factors.find((factor) => {
+        return factor.kind === "password";
+      });
+      if (
+        snapshot?.clerkStatus === "needs_first_factor" &&
+        passwordFactor &&
+        get(atoms.selectedFactor$) === null
+      ) {
+        set(atoms.selectedFactor$, passwordFactor);
+      }
+    }
   });
 }
 
@@ -1040,6 +1149,8 @@ function createFactorSelectionCommand(
       set(atoms.error$, null);
       set(atoms.code$, "");
       if (factor.kind === "password") {
+        set(atoms.methodChooser$, false);
+        set(atoms.passwordRecovery$, false);
         set(atoms.selectedFactor$, factor);
         return;
       }
@@ -1070,9 +1181,13 @@ function createFactorSelectionCommand(
         }
         await set(applyResource$, authentication.value, signal);
         signal.throwIfAborted();
+        set(atoms.methodChooser$, false);
+        set(atoms.passwordRecovery$, false);
         return;
       }
       if (get(runtime.preparedFactorId$) === factor.id) {
+        set(atoms.methodChooser$, false);
+        set(atoms.passwordRecovery$, false);
         set(atoms.selectedFactor$, factor);
         return;
       }
@@ -1088,6 +1203,8 @@ function createFactorSelectionCommand(
       set(runtime.preparedFactorId$, factor.id);
       await set(applyResource$, prepared.value, signal);
       signal.throwIfAborted();
+      set(atoms.methodChooser$, false);
+      set(atoms.passwordRecovery$, false);
       set(atoms.selectedFactor$, factor);
       set(startCooldown$, signal);
     },
@@ -1331,16 +1448,30 @@ function createFormCommands(
     set(atoms.resendRemainingSeconds$, 0);
   });
   const backToMethods$ = command(({ set }) => {
-    set(atoms.selectedFactor$, null);
-    set(atoms.code$, "");
-    set(atoms.password$, "");
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, true);
+    set(atoms.passwordRecovery$, false);
     set(atoms.error$, null);
+  });
+  const backFromMethods$ = command(({ get, set }) => {
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, false);
+    set(atoms.error$, null);
+    if (get(atoms.selectedFactor$) === null) {
+      set(atoms.editIdentifier$, true);
+      set(atoms.useAnotherAccount$, true);
+    }
   });
   const backToIdentifier$ = command(({ set }) => {
     set(clearCooldown$);
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, false);
+    set(atoms.passwordRecovery$, false);
     set(atoms.editIdentifier$, true);
     set(atoms.useAnotherAccount$, true);
     set(atoms.selectedFactor$, null);
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, false);
     set(atoms.code$, "");
     set(atoms.password$, "");
     set(atoms.error$, null);
@@ -1362,6 +1493,7 @@ function createFormCommands(
       unknownFactorStrategies: [],
     });
     set(atoms.selectedFactor$, null);
+    set(atoms.passwordRecovery$, false);
     set(atoms.editIdentifier$, false);
     set(atoms.fatalState$, null);
     set(atoms.error$, null);
@@ -1371,9 +1503,13 @@ function createFormCommands(
     set(atoms.code$, "");
     set(atoms.newPassword$, "");
     set(atoms.confirmPassword$, "");
+    set(atoms.signOutOfOtherSessions$, true);
     set(atoms.useAnotherAccount$, true);
   });
   const useAnotherAccount$ = command(({ set }) => {
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, false);
+    set(atoms.passwordRecovery$, false);
     set(atoms.useAnotherAccount$, true);
     set(atoms.error$, null);
     set(atoms.identifierLocallyModified$, true);
@@ -1415,7 +1551,66 @@ function createFormCommands(
     set(atoms.confirmPassword$, value);
     set(atoms.error$, null);
   });
+  const setSignOutOfOtherSessions$ = command(({ get, set }, value: boolean) => {
+    if (get(atoms.signOutOfOtherSessions$) === value) {
+      return;
+    }
+    set(atoms.signOutOfOtherSessions$, value);
+  });
+  const showPasswordRecovery$ = command(({ get, set }) => {
+    const snapshot = get(atoms.snapshot$);
+    if (
+      snapshot?.clerkStatus !== "needs_first_factor" ||
+      !snapshot.factors.some((factor) => {
+        return factor.kind === "password-reset";
+      })
+    ) {
+      return;
+    }
+    set(atoms.helpOrigin$, null);
+    set(atoms.methodChooser$, false);
+    set(atoms.passwordRecovery$, true);
+    set(atoms.error$, null);
+  });
+  const backFromPasswordRecovery$ = command(({ set }) => {
+    set(atoms.helpOrigin$, null);
+    set(atoms.passwordRecovery$, false);
+    set(atoms.error$, null);
+  });
+  const backFromNewPassword$ = command(({ get, set }) => {
+    const snapshot = get(atoms.snapshot$);
+    if (snapshot?.clerkStatus !== "needs_new_password") {
+      return;
+    }
+    set(backToIdentifier$);
+    set(atoms.newPassword$, "");
+    set(atoms.confirmPassword$, "");
+    set(atoms.signOutOfOtherSessions$, true);
+  });
+  const showHelp$ = command(({ get, set }) => {
+    const flowState = get(atoms.state$);
+    if (flowState.status !== "incomplete") {
+      return;
+    }
+    if (flowState.step === "password-recovery") {
+      set(atoms.helpOrigin$, "password-recovery");
+      set(atoms.error$, null);
+      return;
+    }
+    if (flowState.step === "choose-factor") {
+      set(atoms.helpOrigin$, "methods");
+      set(atoms.error$, null);
+    }
+  });
+  const backFromHelp$ = command(({ set }) => {
+    set(atoms.helpOrigin$, null);
+    set(atoms.error$, null);
+  });
   return {
+    backFromHelp$,
+    backFromMethods$,
+    backFromNewPassword$,
+    backFromPasswordRecovery$,
     backToIdentifier$,
     backToMethods$,
     restart$,
@@ -1424,6 +1619,9 @@ function createFormCommands(
     setIdentifier$,
     setNewPassword$,
     setPassword$,
+    setSignOutOfOtherSessions$,
+    showHelp$,
+    showPasswordRecovery$,
     useAnotherAccount$,
   };
 }
@@ -1515,6 +1713,9 @@ export function createAuthV2SignInSignals(
       runtime,
       dependencies.continuation.completeSession$,
     ),
+    signOutOfOtherSessions$: computed((get) => {
+      return get(atoms.signOutOfOtherSessions$);
+    }),
     state$: atoms.state$,
     submit$: createCoalescedOperation$(runtime, "resource", submitOperation$),
   };

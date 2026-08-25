@@ -191,6 +191,8 @@ describe("auth v2 sign-up flow", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Create your account" }),
     ).toBeVisible();
+    expect(roleElement("link", "Sign in")).toBeDefined();
+    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.getByRole("checkbox")).toBeVisible();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
@@ -242,6 +244,8 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
+    expect(roleElement("link", "Sign in")).toBeUndefined();
+    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.queryByText("Access restricted")).not.toBeInTheDocument();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,
@@ -251,6 +255,7 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Email address"),
     ).resolves.toBeRequired();
+    expect(roleElement("link", "Sign in")).toBeDefined();
     expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Last name/)).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();

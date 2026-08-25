@@ -53,7 +53,7 @@ export function AuthV2OtpInput({
             return (
               <span
                 className={cn(
-                  "flex size-9 items-center justify-center rounded-lg border border-input bg-background text-sm text-foreground",
+                  "flex size-9 items-center justify-center rounded-lg border border-border bg-input text-base font-medium text-foreground",
                   invalid && "border-destructive",
                 )}
                 key={index}

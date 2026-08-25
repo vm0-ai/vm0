@@ -20,9 +20,10 @@ function authV2PageActionSemantics(): CSSProperties &
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
   readonly children: ReactNode;
-  readonly description: ReactNode;
+  readonly description?: ReactNode;
   readonly focusKey: string;
   readonly footer?: ReactNode;
+  readonly headerDetail?: ReactNode;
   readonly title: ReactNode;
 }
 
@@ -32,24 +33,25 @@ export function AuthV2Shell({
   description,
   focusKey,
   footer,
+  headerDetail,
   title,
 }: AuthV2ShellProps) {
   const focusHeading = useSet(focusAuthV2HeadingRef$);
 
   return (
     <div
-      className="w-full max-w-[25rem] space-y-4"
+      className="w-[calc(100%+0.5rem)] max-w-[25rem] space-y-4"
       style={authV2PageActionSemantics()}
     >
       <Card
-        aria-describedby={AUTH_V2_DESCRIPTION_ID}
+        aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}
-        className="relative w-full overflow-visible rounded-[12px] border-border shadow-none"
+        className="relative flex w-full flex-col gap-8 overflow-visible rounded-[12px] border-border px-10 py-8 shadow-none"
         data-testid="app-auth-v2"
         role="region"
         style={authV2PageActionSemantics()}
       >
-        <CardHeader className="items-center bg-transparent px-5 pt-6 pb-2 text-center sm:px-10 sm:pt-7">
+        <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">
           <h1
             className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             id={AUTH_V2_TITLE_ID}
@@ -59,16 +61,17 @@ export function AuthV2Shell({
           >
             {title}
           </h1>
-          <CardDescription
-            className="max-w-sm leading-5"
-            id={AUTH_V2_DESCRIPTION_ID}
-          >
-            {description}
-          </CardDescription>
+          {description ? (
+            <CardDescription
+              className="max-w-sm leading-5"
+              id={AUTH_V2_DESCRIPTION_ID}
+            >
+              {description}
+            </CardDescription>
+          ) : null}
+          {headerDetail}
         </CardHeader>
-        <CardContent className="px-5 pt-4 pb-6 sm:px-10">
-          {children}
-        </CardContent>
+        <CardContent className="p-0">{children}</CardContent>
       </Card>
       {footer ? <div className="space-y-1">{footer}</div> : null}
       <p
