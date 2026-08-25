@@ -99,6 +99,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
@@ -131,6 +134,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      false,
+    );
     expect(
       otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(false);
