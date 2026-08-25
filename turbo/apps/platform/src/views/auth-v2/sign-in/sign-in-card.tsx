@@ -16,11 +16,15 @@ export function AuthV2SignInCard({
   const copy = useAuthV2SignInCopy();
   const flowState = useGet(signals.state$);
   const description = signInCardDescription(flowState, copy);
+  const focusKey =
+    flowState.status === "incomplete"
+      ? `sign-in:${flowState.status}:${flowState.step}`
+      : `sign-in:${flowState.status}`;
   return (
     <AuthV2Shell
       announcement={description}
       description={description}
-      focusKey="sign-in"
+      focusKey={focusKey}
       title={copy.signInTitle}
     >
       <div className="space-y-4">

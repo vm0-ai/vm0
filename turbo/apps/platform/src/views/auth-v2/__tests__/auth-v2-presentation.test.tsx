@@ -59,12 +59,21 @@ describe("auth v2 presentation", () => {
 
     detachedSetupPage({ context, path: "/v2/sign-in" });
 
-    const heading = await screen.findByRole("heading", {
+    await screen.findByRole("heading", {
       level: 1,
       name: "Sign in to VM0",
     });
     await waitFor(() => {
-      expect(heading).toHaveFocus();
+      expect(
+        screen.getByRole("heading", {
+          level: 1,
+          name: "Sign in to VM0",
+        }),
+      ).toHaveFocus();
+    });
+    const heading = screen.getByRole("heading", {
+      level: 1,
+      name: "Sign in to VM0",
     });
 
     expect(screen.getByRole("main")).toContainElement(heading);
@@ -122,7 +131,8 @@ describe("auth v2 presentation", () => {
 
     detachedSetupPage({ context, path: "/v2/sign-up" });
 
-    const heading = await screen.findByRole("heading", {
+    await screen.findByLabelText("メールアドレス");
+    const heading = screen.getByRole("heading", {
       level: 1,
       name: "Okou アカウントを作成",
     });

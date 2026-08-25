@@ -23,11 +23,15 @@ export function AuthV2SignUpCard({
   const flowState = useGet(signals.state$);
   const description = signUpCardDescription(flowState, copy);
   const signInHref = navigation.href("sign-in");
+  const focusKey =
+    flowState.status === "incomplete"
+      ? `sign-up:${flowState.status}:${flowState.step}`
+      : `sign-up:${flowState.status}`;
   return (
     <AuthV2Shell
       announcement={description}
       description={description}
-      focusKey="sign-up"
+      focusKey={focusKey}
       title={copy.signUpTitle}
     >
       <div className="space-y-4">

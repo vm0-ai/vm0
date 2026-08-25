@@ -1,5 +1,4 @@
 import { Button, Input } from "@okouai/ui";
-import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
@@ -13,6 +12,8 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
+import { AuthV2PasswordInput } from "../auth-v2-password-input.tsx";
 import {
   type AuthV2SignInCopy,
   signInErrorMessage,
@@ -74,9 +75,48 @@ function FlowErrorAlert({ copy, signals }: SignInStepProps) {
     return null;
   }
   return (
-    <Alert variant="destructive">
-      <AlertDescription>{signInErrorMessage(error, copy)}</AlertDescription>
-    </Alert>
+    <AuthV2ErrorAlert
+      focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+      message={signInErrorMessage(error, copy)}
+    />
+  );
+}
+
+function PasswordField({
+  autoComplete,
+  copy,
+  invalid,
+  label,
+  name,
+  onChange,
+  value,
+}: {
+  readonly autoComplete: string;
+  readonly copy: AuthV2SignInCopy;
+  readonly invalid: boolean;
+  readonly label: string;
+  readonly name: string;
+  readonly onChange: (value: string) => void;
+  readonly value: string;
+}) {
+  const id = `auth-v2-${name}`;
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-foreground" htmlFor={id}>
+        {label}
+      </label>
+      <AuthV2PasswordInput
+        ariaInvalid={invalid}
+        autoComplete={autoComplete}
+        hidePasswordLabel={copy.hidePassword}
+        id={id}
+        name={name}
+        onChange={onChange}
+        required
+        showPasswordLabel={copy.showPassword}
+        value={value}
+      />
+    </div>
   );
 }
 
@@ -282,6 +322,7 @@ function PasswordStep({
   state,
 }: SignInStepProps & { readonly state: IncompleteSignInState }) {
   const password = useGet(signals.password$);
+  const error = useGet(signals.error$);
   const pageSignal = useGet(pageSignal$);
   const setPassword = useSet(signals.setPassword$);
   const backToMethods = useSet(signals.backToMethods$);
@@ -310,12 +351,13 @@ function PasswordStep({
       <h2 className="text-base font-medium text-foreground">
         {copy.passwordTitle}
       </h2>
-      <TextField
+      <PasswordField
         autoComplete="current-password"
+        copy={copy}
+        invalid={error?.field === "password"}
         label={copy.passwordLabel}
         name="password"
         onChange={setPassword}
-        type="password"
         value={password}
       />
       {resetFactor ? (
@@ -355,6 +397,8 @@ function CodeStep({
   readonly state: IncompleteSignInState;
 }) {
   const code = useGet(signals.code$);
+  const error = useGet(signals.error$);
+  const resendState = useGet(signals.resendState$);
   const pageSignal = useGet(pageSignal$);
   const setCode = useSet(signals.setCode$);
   const backToMethods = useSet(signals.backToMethods$);
@@ -362,6 +406,8 @@ function CodeStep({
   const [resendLoadable, resendCode] = useLoadableSet(signals.resendCode$);
   const submitting = submitLoadable.state === "loading";
   const resending = resendLoadable.state === "loading";
+  const expired = error?.code === "code-expired";
+  const coolingDown = resendState.status === "cooling-down";
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
   const safeIdentifier =
@@ -400,20 +446,22 @@ function CodeStep({
       />
       <SubmitButton
         busy={submitting}
-        disabled={operationPending}
+        disabled={operationPending || expired}
         label={copy.verify}
       />
       <Button
         className="h-auto w-full"
-        disabled={operationPending}
+        disabled={operationPending || (coolingDown && !expired)}
         type="button"
-        variant="link"
+        variant={expired ? "outline" : "link"}
         onClick={handleResend}
       >
         {resending ? (
           <Loader2 className="animate-spin" aria-hidden="true" />
         ) : null}
-        {copy.resendCode}
+        {coolingDown && !expired
+          ? copy.resendCodeCooldown(resendState.remainingSeconds)
+          : copy.resendCode}
       </Button>
       <Button
         className="w-full"
@@ -430,6 +478,7 @@ function CodeStep({
 function NewPasswordStep({ copy, signals }: SignInStepProps) {
   const newPassword = useGet(signals.newPassword$);
   const confirmPassword = useGet(signals.confirmPassword$);
+  const error = useGet(signals.error$);
   const pageSignal = useGet(pageSignal$);
   const setNewPassword = useSet(signals.setNewPassword$);
   const setConfirmPassword = useSet(signals.setConfirmPassword$);
@@ -444,20 +493,22 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
       <h2 className="text-base font-medium text-foreground">
         {copy.newPasswordTitle}
       </h2>
-      <TextField
+      <PasswordField
         autoComplete="new-password"
+        copy={copy}
+        invalid={error?.field === "new-password"}
         label={copy.newPasswordLabel}
         name="new-password"
         onChange={setNewPassword}
-        type="password"
         value={newPassword}
       />
-      <TextField
+      <PasswordField
         autoComplete="new-password"
+        copy={copy}
+        invalid={error?.field === "new-password"}
         label={copy.confirmPasswordLabel}
         name="confirm-password"
         onChange={setConfirmPassword}
-        type="password"
         value={confirmPassword}
       />
       <SubmitButton

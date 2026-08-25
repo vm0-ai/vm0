@@ -12,6 +12,7 @@ import {
   type State,
 } from "ccstate";
 
+import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
 import { settle, withCleanup } from "../utils.ts";
 import {
@@ -25,6 +26,10 @@ import {
 } from "./sign-in-external-strategies.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
+
+export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
+const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
 
 export type AuthV2SignInFactor =
   | {
@@ -92,20 +97,29 @@ export type AuthV2SignInErrorField =
   | "password";
 
 export interface AuthV2SignInError {
+  readonly clerkCode?: string;
   readonly code:
+    | "access-not-allowed"
     | "clerk"
+    | "code-expired"
     | "passkey-cancelled"
     | "passkey-unavailable"
     | "password-mismatch"
+    | "user-banned"
     | "unknown";
   readonly field: AuthV2SignInErrorField;
-  readonly message?: string;
 }
+
+export type AuthV2SignInResendState =
+  | { readonly remainingSeconds: 0; readonly status: "ready" }
+  | { readonly remainingSeconds: number; readonly status: "cooling-down" };
 
 interface SignInResourceSnapshot {
   readonly clerkStatus: string | null;
   readonly createdSessionId: string | null;
   readonly factors: readonly AuthV2SignInFactor[];
+  readonly firstFactorVerificationStatus: string | null;
+  readonly firstFactorVerificationStrategy: string | null;
   readonly transferable: boolean;
   readonly unknownFactorStrategies: readonly string[];
 }
@@ -128,6 +142,7 @@ export interface AuthV2SignInSignals {
   readonly newPassword$: Computed<string>;
   readonly password$: Computed<string>;
   readonly resendCode$: Command<Promise<void>, [AbortSignal]>;
+  readonly resendState$: Computed<AuthV2SignInResendState>;
   readonly restart$: Command<void, []>;
   readonly selectFactor$: Command<Promise<void>, [string, AbortSignal]>;
   readonly selectSession$: Command<Promise<void>, [string, AbortSignal]>;
@@ -158,6 +173,7 @@ interface SignInFlowAtoms {
   readonly identifier$: State<string>;
   readonly newPassword$: State<string>;
   readonly password$: State<string>;
+  readonly resendRemainingSeconds$: State<number>;
   readonly selectedFactor$: State<AuthV2SignInFactor | null>;
   readonly snapshot$: State<SignInResourceSnapshot | null>;
   readonly state$: Computed<AuthV2SignInState>;
@@ -165,6 +181,8 @@ interface SignInFlowAtoms {
 }
 
 interface SignInFlowRuntime {
+  readonly cooldownDeadlineMs$: State<number | null>;
+  readonly cooldownTimer$: State<number | null>;
   readonly handledSessionId$: State<string | null>;
   readonly inFlight$: State<ReadonlyMap<CoalescedOperation, Promise<void>>>;
   readonly preparedFactorId$: State<string | null>;
@@ -262,9 +280,31 @@ function snapshotSignInResource(
     clerkStatus: resource.status,
     createdSessionId: resource.createdSessionId,
     factors,
+    firstFactorVerificationStatus:
+      resource.firstFactorVerification?.status ?? null,
+    firstFactorVerificationStrategy:
+      resource.firstFactorVerification?.strategy ?? null,
     transferable: resource.__internal_future.isTransferable,
     unknownFactorStrategies: discovered.unknownStrategies,
   };
+}
+
+function preparedFactorForSnapshot(
+  snapshot: SignInResourceSnapshot,
+): AuthV2SignInFactor | null {
+  const strategy = snapshot.firstFactorVerificationStrategy;
+  if (strategy !== "email_code" && strategy !== "reset_password_email_code") {
+    return null;
+  }
+  return (
+    snapshot.factors.find((factor) => {
+      return (
+        (strategy === "email_code" && factor.kind === "email-code") ||
+        (strategy === "reset_password_email_code" &&
+          factor.kind === "password-reset")
+      );
+    }) ?? null
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -314,21 +354,26 @@ function normalizeClerkError(
   if (!apiError && !clerkCode) {
     return { code: "unknown", field: fallbackField };
   }
-  const message =
-    stringProperty(normalizedError, "longMessage") ??
-    stringProperty(normalizedError, "message");
   const code =
-    clerkCode === "passkey_retrieval_cancelled" ||
-    clerkCode === "passkey_operation_aborted"
-      ? "passkey-cancelled"
-      : clerkCode === "passkey_not_supported" ||
-          clerkCode === "passkey_pa_not_supported"
-        ? "passkey-unavailable"
-        : "clerk";
+    fallbackField === "code" &&
+    (clerkCode?.toLowerCase().includes("expired") === true ||
+      clerkCode?.toLowerCase().includes("timeout") === true)
+      ? "code-expired"
+      : clerkCode === "passkey_retrieval_cancelled" ||
+          clerkCode === "passkey_operation_aborted"
+        ? "passkey-cancelled"
+        : clerkCode === "passkey_not_supported" ||
+            clerkCode === "passkey_pa_not_supported"
+          ? "passkey-unavailable"
+          : clerkCode === "not_allowed_access"
+            ? "access-not-allowed"
+            : clerkCode === "user_banned"
+              ? "user-banned"
+              : "clerk";
   return {
+    ...(clerkCode ? { clerkCode } : {}),
     code,
     field: clerkErrorField(normalizedError, fallbackField),
-    ...(message ? { message } : {}),
   };
 }
 
@@ -478,6 +523,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const error$ = state<AuthV2SignInError | null>(null);
   const identifier$ = state("");
   const password$ = state("");
+  const resendRemainingSeconds$ = state(0);
   const code$ = state("");
   const newPassword$ = state("");
   const confirmPassword$ = state("");
@@ -502,6 +548,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     identifier$,
     newPassword$,
     password$,
+    resendRemainingSeconds$,
     selectedFactor$,
     snapshot$,
     state$,
@@ -511,10 +558,67 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
 
 function createSignInFlowRuntime(): SignInFlowRuntime {
   return {
+    cooldownDeadlineMs$: state<number | null>(null),
+    cooldownTimer$: state<number | null>(null),
     handledSessionId$: state<string | null>(null),
     inFlight$: state<ReadonlyMap<CoalescedOperation, Promise<void>>>(new Map()),
     preparedFactorId$: state<string | null>(null),
   };
+}
+
+function createStartCooldownCommand(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+): Command<void, [AbortSignal]> {
+  const updateCooldown$ = command(({ get, set }): void => {
+    const deadlineMs = get(runtime.cooldownDeadlineMs$);
+    if (deadlineMs === null) {
+      set(atoms.resendRemainingSeconds$, 0);
+      return;
+    }
+    const remainingSeconds = Math.max(
+      0,
+      Math.ceil((deadlineMs - now()) / 1000),
+    );
+    set(atoms.resendRemainingSeconds$, remainingSeconds);
+    if (remainingSeconds > 0) {
+      return;
+    }
+    const timer = get(runtime.cooldownTimer$);
+    if (timer !== null) {
+      window.clearInterval(timer);
+    }
+    set(runtime.cooldownDeadlineMs$, null);
+    set(runtime.cooldownTimer$, null);
+  });
+
+  return command(({ get, set }, signal: AbortSignal): void => {
+    const currentTimer = get(runtime.cooldownTimer$);
+    if (currentTimer !== null) {
+      window.clearInterval(currentTimer);
+    }
+    set(
+      runtime.cooldownDeadlineMs$,
+      now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS,
+    );
+    set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
+    const timer = window.setInterval(() => {
+      set(updateCooldown$);
+    }, 1000);
+    set(runtime.cooldownTimer$, timer);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (get(runtime.cooldownTimer$) === timer) {
+          window.clearInterval(timer);
+          set(runtime.cooldownDeadlineMs$, null);
+          set(runtime.cooldownTimer$, null);
+          set(atoms.resendRemainingSeconds$, 0);
+        }
+      },
+      { once: true },
+    );
+  });
 }
 
 function createResourceCommands(
@@ -537,6 +641,14 @@ function createResourceCommands(
       );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
+      const preparedFactor = preparedFactorForSnapshot(snapshot);
+      if (preparedFactor) {
+        set(runtime.preparedFactorId$, preparedFactor.id);
+        set(atoms.selectedFactor$, preparedFactor);
+        if (snapshot.firstFactorVerificationStatus === "expired") {
+          set(atoms.error$, { code: "code-expired", field: "code" });
+        }
+      }
       if (snapshot.clerkStatus === "needs_second_factor") {
         set(dependencies.continuation.failClosed$, "second-factor");
         return;
@@ -728,6 +840,7 @@ function createFactorSelectionCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
+  startCooldown$: Command<void, [AbortSignal]>,
   dependencies: AuthV2SignInFlowDependencies,
 ): Command<Promise<void>, [string, AbortSignal]> {
   const prepareFactorOperation$ = command(
@@ -800,6 +913,7 @@ function createFactorSelectionCommand(
       await set(applyResource$, prepared.value, signal);
       signal.throwIfAborted();
       set(atoms.selectedFactor$, factor);
+      set(startCooldown$, signal);
     },
   );
 
@@ -993,12 +1107,19 @@ function createResendCodeOperation$(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
+  startCooldown$: Command<void, [AbortSignal]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const factor = get(atoms.selectedFactor$);
     if (
       !factor ||
       (factor.kind !== "email-code" && factor.kind !== "password-reset")
+    ) {
+      return;
+    }
+    if (
+      get(atoms.resendRemainingSeconds$) > 0 &&
+      get(atoms.error$)?.code !== "code-expired"
     ) {
       return;
     }
@@ -1015,8 +1136,10 @@ function createResendCodeOperation$(
       return;
     }
     set(runtime.preparedFactorId$, factor.id);
+    set(atoms.code$, "");
     await set(applyResource$, prepared.value, signal);
     signal.throwIfAborted();
+    set(startCooldown$, signal);
   });
 }
 
@@ -1024,6 +1147,15 @@ function createFormCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
 ) {
+  const clearCooldown$ = command(({ get, set }): void => {
+    const timer = get(runtime.cooldownTimer$);
+    if (timer !== null) {
+      window.clearInterval(timer);
+    }
+    set(runtime.cooldownDeadlineMs$, null);
+    set(runtime.cooldownTimer$, null);
+    set(atoms.resendRemainingSeconds$, 0);
+  });
   const backToMethods$ = command(({ set }) => {
     set(atoms.selectedFactor$, null);
     set(atoms.code$, "");
@@ -1031,6 +1163,7 @@ function createFormCommands(
     set(atoms.error$, null);
   });
   const backToIdentifier$ = command(({ set }) => {
+    set(clearCooldown$);
     set(atoms.editIdentifier$, true);
     set(atoms.useAnotherAccount$, true);
     set(atoms.selectedFactor$, null);
@@ -1039,11 +1172,14 @@ function createFormCommands(
     set(atoms.error$, null);
   });
   const restart$ = command(({ get, set }) => {
+    set(clearCooldown$);
     set(runtime.preparedFactorId$, null);
     set(atoms.snapshot$, {
       clerkStatus: "needs_identifier",
       createdSessionId: null,
       factors: entryFactors(get(atoms.capabilities$)),
+      firstFactorVerificationStatus: null,
+      firstFactorVerificationStrategy: null,
       transferable: false,
       unknownFactorStrategies: [],
     });
@@ -1110,10 +1246,12 @@ export function createAuthV2SignInSignals(
     runtime,
     applyResource$,
   );
+  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
   const resendCodeOperation$ = createResendCodeOperation$(
     atoms,
     runtime,
     applyResource$,
+    startCooldown$,
   );
   const formCommands = createFormCommands(atoms, runtime);
   const runGoogleOneTap$ = createGoogleOneTapCommand(
@@ -1156,10 +1294,17 @@ export function createAuthV2SignInSignals(
       "resource",
       resendCodeOperation$,
     ),
+    resendState$: computed((get) => {
+      const remainingSeconds = get(atoms.resendRemainingSeconds$);
+      return remainingSeconds > 0
+        ? { remainingSeconds, status: "cooling-down" }
+        : { remainingSeconds: 0, status: "ready" };
+    }),
     selectFactor$: createFactorSelectionCommand(
       atoms,
       runtime,
       applyResource$,
+      startCooldown$,
       dependencies,
     ),
     selectSession$: createSessionSelectionCommand(

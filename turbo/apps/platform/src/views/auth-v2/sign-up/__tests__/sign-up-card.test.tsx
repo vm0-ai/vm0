@@ -68,7 +68,10 @@ function containingForm(element: HTMLElement): HTMLFormElement {
 
 function roleElement(role: "button" | "link", name: string) {
   return queryAllByRoleFast(role).find((candidate) => {
-    return candidate.textContent?.trim() === name;
+    return (
+      candidate.textContent?.trim() === name ||
+      candidate.getAttribute("aria-label") === name
+    );
   });
 }
 
@@ -434,9 +437,12 @@ describe("auth v2 sign-up flow", () => {
       },
     );
 
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      "Google sign-up was cancelled.",
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
     );
+    expect(document.activeElement).toBe(alert);
+    expect(screen.queryByText("Google sign-up was cancelled.")).toBeNull();
     fireEvent.click(await waitForRoleElement("button", "Continue with Google"));
     await waitFor(() => {
       expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
@@ -458,6 +464,28 @@ describe("auth v2 sign-up flow", () => {
       mockedClerk.signUpPrepareEmailAddressVerification,
     ).not.toHaveBeenCalled();
     expect(screen.getByText("person@example.com")).toBeVisible();
+  });
+
+  it("reveals the sign-up password by keyboard without submitting", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupSignUpPage({ status: null });
+
+    const passwordInput = await screen.findByLabelText("Password");
+    const reveal = await waitForRoleElement("button", "Show password");
+    expect(reveal).toHaveAttribute("aria-controls", passwordInput.id);
+    expect(reveal).toHaveAttribute("aria-pressed", "false");
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    reveal.focus();
+    await user.keyboard("{Enter}");
+    expect(passwordInput).toHaveAttribute("type", "text");
+    await expect(
+      waitForRoleElement("button", "Hide password"),
+    ).resolves.toHaveAttribute("aria-pressed", "true");
+    await user.keyboard(" ");
+    expect(passwordInput).toHaveAttribute("type", "password");
+    expect(mockedClerk.signUpValidatePassword).not.toHaveBeenCalled();
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
   });
 
   it("collects Clerk-exposed fields, validates the password, coalesces creation, and prepares exactly once", async () => {
@@ -520,6 +548,12 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Create your VM0 account",
+      }),
+    );
   });
 
   it("coalesces resend and code attempts, applies cooldown, preserves attribution, and activates once", async () => {
@@ -629,9 +663,11 @@ describe("auth v2 sign-up flow", () => {
 
     const form = containingForm(emailInput);
     fireEvent.submit(form);
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    const legalError = await screen.findByRole("alert");
+    expect(legalError).toHaveTextContent(
       "Please read and accept the terms to continue",
     );
+    expect(document.activeElement).toBe(legalError);
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 
     const legalConsent = screen.getByRole("checkbox");
@@ -715,7 +751,9 @@ describe("auth v2 sign-up flow", () => {
     );
 
     const editEmail = await waitForRoleElement("button", "Edit email address");
-    expect(screen.getByRole("alert")).toBeVisible();
+    const expiredAlert = screen.getByRole("alert");
+    expect(expiredAlert).toBeVisible();
+    expect(document.activeElement).toBe(expiredAlert);
     await expect(
       waitForRoleElement("button", "Didn't receive a code? Resend"),
     ).resolves.toBeEnabled();
@@ -793,9 +831,12 @@ describe("auth v2 sign-up flow", () => {
       await expect(create.promise).rejects.toBeDefined();
     });
 
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      "Bot validation expired.",
+    const captchaError = await screen.findByRole("alert");
+    expect(captchaError).toHaveTextContent(
+      "Bot verification expired. Try again.",
     );
+    expect(document.activeElement).toBe(captchaError);
+    expect(screen.queryByText("Bot validation expired.")).toBeNull();
     mockedClerk.clientSignUpCreate.mockImplementation(() => {
       return moveSignUpToAsync({
         createdSessionId: "session_captcha",

@@ -1,5 +1,4 @@
 import { Button, Checkbox, Input } from "@okouai/ui";
-import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
@@ -16,6 +15,8 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
+import { AuthV2PasswordInput } from "../auth-v2-password-input.tsx";
 import {
   type AuthV2SignUpCopy,
   resendCodeLabel,
@@ -37,22 +38,26 @@ function TextField({
   autoComplete,
   errorField,
   inputMode,
+  hidePasswordLabel,
   label,
   name,
   onChange,
   optionalLabel,
   required,
+  showPasswordLabel,
   type = "text",
   value,
 }: {
   readonly autoComplete: string;
   readonly errorField: AuthV2SignUpErrorField | null;
   readonly inputMode?: "email" | "numeric";
+  readonly hidePasswordLabel?: string;
   readonly label: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
   readonly optionalLabel?: string;
   readonly required: boolean;
+  readonly showPasswordLabel?: string;
   readonly type?: "email" | "password" | "text";
   readonly value: string;
 }) {
@@ -67,32 +72,51 @@ function TextField({
           </span>
         ) : null}
       </label>
-      <Input
-        aria-invalid={errorField === name}
-        autoComplete={autoComplete}
-        id={id}
-        inputMode={inputMode}
-        name={name}
-        onChange={(event) => {
-          onChange(event.currentTarget.value);
-        }}
-        required={required}
-        type={type}
-        value={value}
-      />
+      {type === "password" && hidePasswordLabel && showPasswordLabel ? (
+        <AuthV2PasswordInput
+          ariaInvalid={errorField === name}
+          autoComplete={autoComplete}
+          hidePasswordLabel={hidePasswordLabel}
+          id={id}
+          name={name}
+          onChange={onChange}
+          required={required}
+          showPasswordLabel={showPasswordLabel}
+          value={value}
+        />
+      ) : (
+        <Input
+          aria-invalid={errorField === name}
+          autoComplete={autoComplete}
+          id={id}
+          inputMode={inputMode}
+          name={name}
+          onChange={(event) => {
+            onChange(event.currentTarget.value);
+          }}
+          required={required}
+          type={type}
+          value={value}
+        />
+      )}
     </div>
   );
 }
 
 function FlowErrorAlert({ copy, signals }: SignUpStepProps) {
   const error = useGet(signals.error$);
-  if (!error || error.field === "captcha") {
+  const code = error?.clerkCode?.toLowerCase();
+  const expiredCode =
+    error?.field === "code" &&
+    (code?.includes("expired") === true || code?.includes("timeout") === true);
+  if (!error || error.field === "captcha" || expiredCode) {
     return null;
   }
   return (
-    <Alert variant="destructive">
-      <AlertDescription>{signUpErrorMessage(error, copy)}</AlertDescription>
-    </Alert>
+    <AuthV2ErrorAlert
+      focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+      message={signUpErrorMessage(error, copy)}
+    />
   );
 }
 
@@ -159,22 +183,20 @@ function LegalConsentText({
   readonly legal: AuthV2SignUpLegalConfig;
 }) {
   const template = legalTemplate(legal, copy);
-  const tokenPattern =
-    /{{\s*(termsOfServiceLink|privacyPolicyLink)\s*\|\|\s*link\((["'])(.*?)\2\)\s*}}/g;
+  const tokenPattern = /<(terms|privacy)>(.*?)<\/\1>/g;
   const content: ReactNode[] = [];
   let cursor = 0;
   for (const match of template.matchAll(tokenPattern)) {
     const index = match.index;
     const token = match[1];
-    const label = match[3];
+    const label = match[2];
     if (index === undefined || !token || !label) {
       continue;
     }
     if (index > cursor) {
       content.push(template.slice(cursor, index));
     }
-    const href =
-      token === "termsOfServiceLink" ? legal.termsUrl : legal.privacyPolicyUrl;
+    const href = token === "terms" ? legal.termsUrl : legal.privacyPolicyUrl;
     if (href) {
       content.push(
         <a
@@ -237,11 +259,13 @@ function FieldList({
         <TextField
           autoComplete="new-password"
           errorField={errorField}
+          hidePasswordLabel={copy.hidePassword}
           label={copy.passwordLabel}
           name="password"
           onChange={setPassword}
           optionalLabel={copy.optional}
           required={fields.password === "required"}
+          showPasswordLabel={copy.showPassword}
           type="password"
           value={password}
         />
@@ -282,14 +306,12 @@ function CaptchaStatus({ copy, signals }: SignUpStepProps) {
   }
   if (captchaState === "error" || captchaState === "expired") {
     return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          {error?.message ??
-            (captchaState === "expired"
-              ? copy.captchaExpired
-              : copy.captchaError)}
-        </AlertDescription>
-      </Alert>
+      <AuthV2ErrorAlert
+        focusKey={`captcha:${captchaState}:${error?.clerkCode ?? ""}`}
+        message={
+          captchaState === "expired" ? copy.captchaExpired : copy.captchaError
+        }
+      />
     );
   }
   return (
@@ -446,9 +468,10 @@ function EmailCodeStep({
         </div>
       ) : null}
       {expired ? (
-        <Alert variant="destructive">
-          <AlertDescription>{copy.codeExpired}</AlertDescription>
-        </Alert>
+        <AuthV2ErrorAlert
+          focusKey="sign-up-code-expired"
+          message={copy.codeExpired}
+        />
       ) : null}
       {!preparing && !prepareFailed ? (
         <TextField
