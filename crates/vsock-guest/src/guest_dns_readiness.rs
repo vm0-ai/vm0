@@ -13,7 +13,7 @@ use vsock_proto::{
     GuestDnsReadinessTermination, MSG_GUEST_DNS_READINESS_RESULT,
 };
 
-use crate::drain::{BoundedDrainResult, drain_bounded_cancellable};
+use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
@@ -225,6 +225,16 @@ fn run_probe(
     connection_cancel: &AtomicBool,
 ) -> GuestDnsReadinessOutput {
     let started = Instant::now();
+    let drain_cancel = match DrainCancellation::new() {
+        Ok(cancel) => Arc::new(cancel),
+        Err(error) => {
+            return failed_output(
+                GuestDnsReadinessTermination::StartFailed,
+                started,
+                format!("failed to initialize guest DNS output drain cancellation: {error}"),
+            );
+        }
+    };
     let mut command = Command::new(program);
     command
         .arg(RESOLVER_DATABASE)
@@ -268,7 +278,6 @@ fn run_probe(
         );
     };
 
-    let drain_cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = mpsc::channel();
     let stdout_drain = match spawn_drain(
         stdout.into(),
@@ -297,7 +306,7 @@ fn run_probe(
     ) {
         Ok(drain) => drain,
         Err(error) => {
-            drain_cancel.store(true, Ordering::Release);
+            drain_cancel.cancel();
             kill_and_reap_child(child);
             drop(drain_done_tx);
             let _ = stdout_drain.join();
@@ -319,7 +328,7 @@ fn run_probe(
         || true,
     );
     if !matches!(outcome, WaitOutcome::Exited(_)) {
-        drain_cancel.store(true, Ordering::Release);
+        drain_cancel.cancel();
     }
     let completed = await_drain_deadline(&drain_done_rx, 2, &drain_cancel, OUTPUT_DRAIN_DEADLINE);
     let stdout_result = stdout_drain.join();
@@ -376,7 +385,7 @@ impl DrainHandle {
 fn spawn_drain(
     pipe: OwnedFd,
     limit: usize,
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<DrainCancellation>,
     done_tx: mpsc::Sender<()>,
     thread_name: &'static str,
 ) -> io::Result<DrainHandle> {
