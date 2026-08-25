@@ -152,17 +152,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
   });
 
-  it("should enable Bingjie-only composer switches only for Bingjie", () => {
-    const bingjieStates = getAllFeatureStates({
-      email: "bingjie@vm0.ai",
-    });
-
-    const otherStaffStates = getAllFeatureStates({
-      email: "ethan@vm0.ai",
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-  });
-
   it("should apply overrides to enable disabled features", () => {
     const states = getAllFeatureStates({
       overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
