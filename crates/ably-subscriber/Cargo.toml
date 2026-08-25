@@ -23,7 +23,7 @@ hmac = { workspace = true }
 httpmock = { workspace = true }
 proptest.workspace = true
 sha2 = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net", "io-util"] }
 tracing-subscriber = { workspace = true }
 tracing-test-support = { workspace = true }
 
