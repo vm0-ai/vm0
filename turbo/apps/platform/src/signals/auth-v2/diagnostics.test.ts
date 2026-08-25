@@ -263,6 +263,7 @@ function createSignUpHarness(options?: {
     },
   );
   return {
+    error$,
     signals: {
       backToDetails$: noOp$,
       captchaRef$,
@@ -493,6 +494,75 @@ describe("auth v2 diagnostic continuation outcomes", () => {
       outcome: "failure",
       step: "details",
     });
+  });
+});
+
+describe("auth v2 OAuth callback diagnostics", () => {
+  it("keeps sign-in OAuth callback failures provider-neutral and private", async () => {
+    const providerCode = "private_sign_in_oauth_callback_code";
+    const identifier = "private.callback@example.com";
+    const harness = createSignInHarness();
+    context.store.set(harness.identifier$, identifier);
+    context.store.set(harness.error$, {
+      clerkCode: providerCode,
+      code: "clerk",
+      field: "general",
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = createAuthV2Diagnostics(
+      "sign-in",
+      capture,
+    ).instrumentSignIn(harness.signals, {
+      continuationState$: INACTIVE_CONTINUATION_STATE$,
+      isBaseRoute: false,
+      isOAuthCallbackRoute: true,
+    });
+
+    await context.store.set(signals.initialize$, context.signal);
+
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "provider-error",
+      flow: "sign-in",
+      method: "unknown",
+      outcome: "failure",
+      step: "oauth-callback",
+    });
+    const serializedCalls = JSON.stringify(capture.mock.calls);
+    expect(serializedCalls).not.toContain(providerCode);
+    expect(serializedCalls).not.toContain(identifier);
+  });
+
+  it("keeps sign-up OAuth callback failures provider-neutral and private", async () => {
+    const providerCode = "private_sign_up_oauth_callback_code";
+    const providerMessage = "private sign-up OAuth callback detail";
+    const harness = createSignUpHarness();
+    context.store.set(harness.error$, {
+      clerkCode: providerCode,
+      code: "clerk",
+      field: "general",
+      message: providerMessage,
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = createAuthV2Diagnostics(
+      "sign-up",
+      capture,
+    ).instrumentSignUp(harness.signals, {
+      continuationState$: INACTIVE_CONTINUATION_STATE$,
+      isOAuthCallbackRoute: true,
+    });
+
+    await context.store.set(signals.initialize$, context.signal);
+
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "provider-error",
+      flow: "sign-up",
+      method: "unknown",
+      outcome: "failure",
+      step: "oauth-callback",
+    });
+    const serializedCalls = JSON.stringify(capture.mock.calls);
+    expect(serializedCalls).not.toContain(providerCode);
+    expect(serializedCalls).not.toContain(providerMessage);
   });
 });
 

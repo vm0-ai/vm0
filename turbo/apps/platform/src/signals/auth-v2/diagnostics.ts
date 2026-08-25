@@ -462,7 +462,7 @@ function createSignInAttemptSignals(
 } {
   const initializeAttempt$ = computed((get): SignInInitializeAttempt => {
     return {
-      method: options.isOAuthCallbackRoute ? "google-oauth" : "unknown",
+      method: "unknown",
       resourceAttemptVersion: get(resourceAttemptVersion$),
       step: options.isOAuthCallbackRoute ? "oauth-callback" : "initialize",
     };
@@ -661,7 +661,7 @@ function createSignUpInstrumentation(
   );
   const initializeAttempt$ = computed((): DiagnosticAttempt => {
     return {
-      method: options.isOAuthCallbackRoute ? "google-oauth" : "unknown",
+      method: "unknown",
       step: options.isOAuthCallbackRoute ? "oauth-callback" : "initialize",
     };
   });

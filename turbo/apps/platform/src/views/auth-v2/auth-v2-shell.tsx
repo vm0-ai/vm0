@@ -48,7 +48,7 @@ export function AuthV2Shell({
 
   return (
     <div
-      className="w-[calc(100%+0.5rem)] max-w-[25rem] space-y-4"
+      className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4"
       style={authV2PageActionSemantics()}
     >
       <Card
