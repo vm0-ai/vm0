@@ -346,6 +346,9 @@ function codexFile(event: AgentEvent): NormalizedAgentToolEvent | null {
   if (item === null) {
     return null;
   }
+  if (nonBlankProviderId(item.id) === null) {
+    return null;
+  }
   const status = codexTerminalStatus(item);
   if (status === null) {
     return null;
