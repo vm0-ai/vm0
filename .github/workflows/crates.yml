@@ -414,7 +414,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: coverage-line-tables-only-mold
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'perf/issue-29242-rust-coverage-mold' }}
 
       - name: Report coverage disk usage after cache restore
         run: |
