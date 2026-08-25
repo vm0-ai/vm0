@@ -22,7 +22,7 @@ jq -e '
     .uses == "Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae" and
     .with.workspaces == "crates -> target" and
     .with["shared-key"] == "coverage-line-tables-only-mold" and
-    .with["save-if"] == "${{ github.ref == '\''refs/heads/main'\'' || github.head_ref == '\''perf/issue-29242-rust-coverage-mold'\'' }}"
+    .with["save-if"] == "${{ github.ref == '\''refs/heads/main'\'' }}"
   )) and
   (any($coverage.steps[];
     .name == "Run tests with coverage" and
