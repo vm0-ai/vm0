@@ -121,6 +121,34 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
       draftAttachments: [attachment],
     });
 
+    const updatedDraftUserMessage: UserMessageInputDocument = {
+      version: 1,
+      parts: [{ type: "text", text: "updated draft text" }],
+    };
+    await accept(
+      draftsClient().patch({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+        body: {
+          draftUserMessage: updatedDraftUserMessage,
+          draftAttachments: null,
+        },
+      }),
+      [204],
+    );
+
+    const updated = await accept(
+      draftsClient().get({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(updated.body).toStrictEqual({
+      draftUserMessage: updatedDraftUserMessage,
+      draftAttachments: null,
+    });
+
     await accept(
       draftsClient().patch({
         params: { id: fixture.agentId },
@@ -144,6 +172,45 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
       draftUserMessage: null,
       draftAttachments: null,
     });
+  });
+
+  it("converges concurrent first writes without exposing a conflict", async () => {
+    const fixture = await seedAgent();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const concurrentDrafts: UserMessageInputDocument[] = [
+      {
+        version: 1,
+        parts: [{ type: "text", text: "concurrent draft A" }],
+      },
+      {
+        version: 1,
+        parts: [{ type: "text", text: "concurrent draft B" }],
+      },
+    ];
+
+    await Promise.all(
+      concurrentDrafts.map(async (draftUserMessage) => {
+        await accept(
+          draftsClient().patch({
+            params: { id: fixture.agentId },
+            headers: authHeaders(),
+            body: { draftUserMessage, draftAttachments: null },
+          }),
+          [204],
+        );
+      }),
+    );
+
+    const saved = await accept(
+      draftsClient().get({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(concurrentDrafts).toContainEqual(saved.body.draftUserMessage);
+    expect(saved.body.draftAttachments).toBeNull();
   });
 
   it("does not expose another user's draft on the same public agent", async () => {
@@ -177,6 +244,50 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(peerDraft.body).toStrictEqual({
       draftUserMessage: null,
+      draftAttachments: null,
+    });
+
+    const peerDraftUserMessage: UserMessageInputDocument = {
+      version: 1,
+      parts: [{ type: "text", text: "peer draft" }],
+    };
+    await accept(
+      draftsClient().patch({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+        body: {
+          draftUserMessage: peerDraftUserMessage,
+          draftAttachments: null,
+        },
+      }),
+      [204],
+    );
+
+    const savedPeerDraft = await accept(
+      draftsClient().get({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(savedPeerDraft.body).toStrictEqual({
+      draftUserMessage: peerDraftUserMessage,
+      draftAttachments: null,
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const ownerDraft = await accept(
+      draftsClient().get({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(ownerDraft.body).toStrictEqual({
+      draftUserMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "owner draft" }],
+      },
       draftAttachments: null,
     });
   });
