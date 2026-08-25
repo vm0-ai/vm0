@@ -14,9 +14,12 @@
 //! Ably connection state all route through `PollWakeups` so a runner can still
 //! discover work through HTTP polling.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant as StdInstant};
 
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::{Mutex, Notify};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -32,7 +35,7 @@ use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
-use crate::run_cancellation::RunCancellationRegistry;
+use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
 use crate::types::ConnectorRuntimeTarget;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
@@ -41,6 +44,7 @@ const ABLY_DISCONNECT_ERROR_AFTER: Duration = Duration::from_secs(60);
 const DEFERRED_POLL_MAX: Duration = Duration::from_secs(10);
 type AblyConnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
+type CancelDelivery = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PollReason {
@@ -525,6 +529,7 @@ impl Drop for AblySupervisor {
 
 async fn run_supervisor(config: SupervisorTaskConfig) {
     let mut ably: Option<ably_subscriber::Subscription> = None;
+    let mut cancel_deliveries = FuturesUnordered::<CancelDelivery>::new();
     let mut ably_retry: RetryState<AblyConnectHandle> =
         RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
     ably_retry.restart_at = Some(StdInstant::now());
@@ -546,6 +551,13 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     Some(ably_subscriber::Event::Message(msg)) => {
                         if let Some(run_id) = parse_active_input_notification(&msg) {
                             config.active_input_notifications.notify(run_id);
+                            continue;
+                        }
+                        if enqueue_cancel_delivery(
+                            &msg,
+                            &config.cancel_tokens,
+                            &mut cancel_deliveries,
+                        ).await {
                             continue;
                         }
                         handle_ably_message_with_connector_runtime_sync(
@@ -588,6 +600,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                     }
                 }
             }
+            Some(()) = cancel_deliveries.next(), if !cancel_deliveries.is_empty() => {}
             result = recv_retry(&mut ably_retry.handle) => {
                 match handle_ably_connect_result(result, &mut ably, &mut ably_retry) {
                     Ok(()) => {
@@ -653,19 +666,8 @@ async fn handle_ably_message_with_connector_runtime_sync(
     let notification_received_at = StdInstant::now();
 
     if let Some(notification) = parse_cancel_notification(msg) {
-        let run_id = notification.run_id;
-        let handle = cancel_tokens.handle(run_id).await;
-        if let Some(handle) = handle {
-            match notification.mode {
-                CancelNotificationMode::Cooperative => {
-                    info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
-                    handle.request_cooperative_user_cancellation().await;
-                }
-                CancelNotificationMode::Hard => {
-                    info!(run_id = %run_id, "ably: cancel notification, requesting hard cancellation");
-                    handle.request_hard_cancellation().await;
-                }
-            }
+        if let Some(delivery) = prepare_cancel_delivery(notification, cancel_tokens).await {
+            delivery.await;
         }
         return;
     }
@@ -841,6 +843,45 @@ enum CancelNotificationMode {
 struct CancelNotification {
     run_id: RunId,
     mode: CancelNotificationMode,
+}
+
+async fn prepare_cancel_delivery(
+    notification: CancelNotification,
+    cancel_tokens: &RunCancellationRegistry,
+) -> Option<CancelDelivery> {
+    let handle = cancel_tokens.handle(notification.run_id).await?;
+    Some(Box::pin(deliver_cancel_notification(notification, handle)))
+}
+
+async fn enqueue_cancel_delivery(
+    msg: &ably_subscriber::Message,
+    cancel_tokens: &RunCancellationRegistry,
+    cancel_deliveries: &mut FuturesUnordered<CancelDelivery>,
+) -> bool {
+    let Some(notification) = parse_cancel_notification(msg) else {
+        return false;
+    };
+    if let Some(delivery) = prepare_cancel_delivery(notification, cancel_tokens).await {
+        cancel_deliveries.push(delivery);
+    }
+    true
+}
+
+async fn deliver_cancel_notification(
+    notification: CancelNotification,
+    handle: RunCancellationHandle,
+) {
+    let run_id = notification.run_id;
+    match notification.mode {
+        CancelNotificationMode::Cooperative => {
+            info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
+            handle.request_cooperative_user_cancellation().await;
+        }
+        CancelNotificationMode::Hard => {
+            info!(run_id = %run_id, "ably: cancel notification, requesting hard cancellation");
+            handle.request_hard_cancellation().await;
+        }
+    }
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNotification> {
@@ -1828,6 +1869,120 @@ mod tests {
         assert!(signals.hard().is_cancelled());
         assert!(!signals.cooperative_user().is_cancelled());
         assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn queued_cancel_preserves_registration_and_allows_unrelated_notification() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let job_run_id: RunId = "00000000-0000-0000-0000-000000000001".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let transfer_guard = registration.handle().transfer_guard().await;
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "hard" }),
+        );
+        let mut cancel_deliveries = FuturesUnordered::new();
+        assert!(enqueue_cancel_delivery(&msg, &tokens, &mut cancel_deliveries).await);
+
+        assert!(futures_util::poll!(cancel_deliveries.next()).is_pending());
+        assert!(registration.unregister().await);
+        let replacement = tokens.register(run_id).await.unwrap();
+
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let job_msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": job_run_id,
+                "profile": "vm0/default"
+            }),
+        );
+        handle_ably_message(&job_msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert_eq!(
+            pop_direct_candidate(&direct_candidates).await.run_id(),
+            job_run_id
+        );
+        assert!(!signals.hard().is_cancelled());
+        drop(transfer_guard);
+        tokio::time::timeout(Duration::from_secs(1), cancel_deliveries.next())
+            .await
+            .expect("queued cancellation should complete after transfer")
+            .expect("queued cancellation delivery");
+
+        assert!(signals.hard().is_cancelled());
+        assert!(!replacement.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn supervisor_shutdown_drops_transfer_blocked_cancel_after_unrelated_progress() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let job_run_id: RunId = "00000000-0000-0000-0000-000000000001".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let transfer_guard = registration.handle().transfer_guard().await;
+        let direct_candidates = direct_candidate_inbox();
+        let task_direct_candidates = Arc::clone(&direct_candidates);
+        let task_tokens = tokens.clone();
+        let (progress_tx, progress_rx) = tokio::sync::oneshot::channel();
+        let supervisor = AblySupervisor::spawn_test_task(move |shutdown| async move {
+            let cancel_msg = make_message(
+                Some("cancel"),
+                serde_json::json!({ "runId": run_id, "mode": "hard" }),
+            );
+            let mut cancel_deliveries = FuturesUnordered::new();
+            assert!(
+                enqueue_cancel_delivery(&cancel_msg, &task_tokens, &mut cancel_deliveries).await
+            );
+            assert!(futures_util::poll!(cancel_deliveries.next()).is_pending());
+
+            let wakeups = PollWakeups::new(true);
+            let profiles = default_profiles();
+            let job_msg = make_message(
+                Some("job"),
+                serde_json::json!({
+                    "runId": job_run_id,
+                    "profile": "vm0/default"
+                }),
+            );
+            handle_ably_message(
+                &job_msg,
+                &profiles,
+                &wakeups,
+                &task_direct_candidates,
+                &task_tokens,
+            )
+            .await;
+            let _ = progress_tx.send(());
+
+            let shutdown_won = tokio::select! {
+                () = shutdown.cancelled() => true,
+                Some(()) = cancel_deliveries.next() => false,
+            };
+            assert!(
+                shutdown_won,
+                "cancellation must remain blocked while the transfer guard is held"
+            );
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), progress_rx)
+            .await
+            .expect("unrelated notification should make progress")
+            .unwrap();
+        assert_eq!(
+            pop_direct_candidate(&direct_candidates).await.run_id(),
+            job_run_id
+        );
+        tokio::time::timeout(Duration::from_secs(1), supervisor.shutdown())
+            .await
+            .expect("supervisor shutdown should drop blocked cancellation delivery");
+
+        assert!(!signals.hard().is_cancelled());
+        drop(transfer_guard);
     }
 
     #[tokio::test]
