@@ -606,9 +606,10 @@ describe("connector account lifecycle routes", () => {
     const fixture = await seedFixture();
     await setConnectorAccountsEnabled(fixture, true);
 
+    const createdAccountIds: string[] = [];
     for (let index = 0; index < 101; index += 1) {
       const label = `Bulk ${index.toString().padStart(3, "0")}`;
-      await accept(
+      const created = await accept(
         connectorClient().connect({
           headers: authHeaders(),
           params: { connectorSlug: "openai" },
@@ -620,9 +621,11 @@ describe("connector account lifecycle routes", () => {
         }),
         [200],
       );
+      createdAccountIds.push(created.body.id);
     }
 
     const ids = new Set<string>();
+    const firstPageIds = new Set<string>();
     let cursor: string | undefined;
     do {
       const page = await accept(
@@ -639,6 +642,9 @@ describe("connector account lifecycle routes", () => {
       );
       for (const account of page.body.connections) {
         ids.add(account.id);
+        if (!cursor) {
+          firstPageIds.add(account.id);
+        }
       }
       cursor = page.body.nextCursor ?? undefined;
     } while (cursor);
@@ -658,6 +664,72 @@ describe("connector account lifecycle routes", () => {
     );
     expect(searched.body.connections).toHaveLength(1);
     expect(searched.body.connections[0]!.displayName).toBe("Bulk 042");
+
+    const accountOutsideFirstPage = createdAccountIds.find((id) => {
+      return !firstPageIds.has(id);
+    });
+    if (!accountOutsideFirstPage) {
+      throw new Error("Expected an account outside the first page");
+    }
+    await accept(
+      accountClient().rename({
+        headers: authHeaders(),
+        params: { connectionId: accountOutsideFirstPage },
+        body: {
+          target: { kind: "builtin", connectorSlug: "openai" },
+          displayName: null,
+        },
+      }),
+      [200],
+    );
+    const searchedByFallback = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: {
+          kind: "builtin",
+          connectorSlug: "openai",
+          limit: 100,
+          search: accountOutsideFirstPage.slice(0, 8),
+        },
+      }),
+      [200],
+    );
+    expect(searchedByFallback.body.connections).toContainEqual(
+      expect.objectContaining({
+        id: accountOutsideFirstPage,
+        displayName: null,
+      }),
+    );
+
+    const noMatch = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: {
+          kind: "builtin",
+          connectorSlug: "openai",
+          limit: 100,
+          search: "no-matching-connector-account",
+        },
+      }),
+      [200],
+    );
+    expect(noMatch.body).toStrictEqual({
+      connections: [],
+      nextCursor: null,
+    });
+
+    await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: {
+          kind: "builtin",
+          connectorSlug: "openai",
+          limit: 100,
+          search: " ",
+        },
+      }),
+      [400],
+    );
 
     const summary = await accept(
       accountClient().summaries({ headers: authHeaders() }),
@@ -693,7 +765,12 @@ describe("connector account lifecycle routes", () => {
     const listed = await accept(
       accountClient().connections({
         headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
+        query: {
+          kind: "builtin",
+          connectorSlug: "openai",
+          limit: 100,
+          search: account.body.id.slice(0, 8),
+        },
       }),
       [200],
     );
@@ -943,6 +1020,20 @@ describe("connector account lifecycle routes", () => {
       if (!work || !personal) {
         throw new Error("Expected both custom connector accounts");
       }
+
+      const searchedByFallback = await accept(
+        accountClient().connections({
+          headers: authHeaders(),
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+            limit: 100,
+            search: work.id.slice(0, 8),
+          },
+        }),
+        [200],
+      );
+      expect(searchedByFallback.body.connections).toContainEqual(work);
 
       const renamed = await accept(
         accountClient().rename({
