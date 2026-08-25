@@ -94,7 +94,6 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
 import * as builtInModelCooldownSchema from "./schema/built-in-model-cooldown";
-import * as managedModelCooldownSchema from "./schema/managed-model-cooldown";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
@@ -226,7 +225,6 @@ export const schema = {
   ...runUploadedFileSchema,
   ...builtInModelKeySchema,
   ...builtInModelCooldownSchema,
-  ...managedModelCooldownSchema,
   ...workflowSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,

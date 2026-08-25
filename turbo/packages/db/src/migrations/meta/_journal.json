@@ -1296,6 +1296,13 @@
       "when": 1787605616998,
       "tag": "0992_pink_forgotten_one",
       "breakpoints": true
+    },
+    {
+      "idx": 993,
+      "version": "7",
+      "when": 1787638553789,
+      "tag": "0993_contract_legacy_built_in_model_cooldown_storage",
+      "breakpoints": true
     }
   ]
 }

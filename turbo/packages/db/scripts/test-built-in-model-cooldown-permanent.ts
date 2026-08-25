@@ -1,0 +1,285 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { Client } from "pg";
+
+interface CooldownRow {
+  readonly providerType: string;
+  readonly selectedModel: string;
+  readonly unavailableUntil: Date;
+  readonly upstreamModel: string;
+}
+
+interface ColumnRow {
+  readonly characterMaximumLength: number | null;
+  readonly columnName: string;
+  readonly dataType: string;
+  readonly isNullable: "NO" | "YES";
+}
+
+const fixture = {
+  baseline: {
+    providerType: "permanent-provider-baseline",
+    selectedModel: "permanent-built-in-model-cooldown-baseline",
+    upstreamModel: "permanent-upstream-baseline",
+  },
+  statement: {
+    providerType: "permanent-provider-statements",
+    selectedModel: "permanent-built-in-model-cooldown-statements",
+    upstreamModel: "permanent-upstream-statements",
+  },
+} as const;
+
+async function readFixture(
+  client: Client,
+  identity: {
+    readonly providerType: string;
+    readonly selectedModel: string;
+    readonly upstreamModel: string;
+  },
+): Promise<readonly CooldownRow[]> {
+  const result = await client.query<CooldownRow>(
+    `
+      SELECT
+        "selected_model" AS "selectedModel",
+        "provider_type" AS "providerType",
+        "upstream_model" AS "upstreamModel",
+        "unavailable_until" AS "unavailableUntil"
+      FROM "built_in_model_candidate_cooldown"
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+    `,
+    [identity.selectedModel, identity.providerType, identity.upstreamModel],
+  );
+  return result.rows;
+}
+
+async function assertCanonicalSchema(client: Client): Promise<void> {
+  const relations = await client.query<{
+    canonicalRelation: string | null;
+    legacyRelation: string | null;
+  }>(`
+    SELECT
+      to_regclass('public.built_in_model_candidate_cooldown')::text
+        AS "canonicalRelation",
+      to_regclass('public.managed_model_candidate_cooldown')::text
+        AS "legacyRelation"
+  `);
+  assert.deepEqual(relations.rows, [
+    {
+      canonicalRelation: "built_in_model_candidate_cooldown",
+      legacyRelation: null,
+    },
+  ]);
+
+  const columns = await client.query<ColumnRow>(`
+    SELECT
+      "column_name" AS "columnName",
+      "data_type" AS "dataType",
+      "is_nullable" AS "isNullable",
+      "character_maximum_length" AS "characterMaximumLength"
+    FROM "information_schema"."columns"
+    WHERE "table_schema" = 'public'
+      AND "table_name" = 'built_in_model_candidate_cooldown'
+    ORDER BY "ordinal_position"
+  `);
+  assert.deepEqual(columns.rows, [
+    {
+      characterMaximumLength: 255,
+      columnName: "selected_model",
+      dataType: "character varying",
+      isNullable: "NO",
+    },
+    {
+      characterMaximumLength: 100,
+      columnName: "provider_type",
+      dataType: "character varying",
+      isNullable: "NO",
+    },
+    {
+      characterMaximumLength: 255,
+      columnName: "upstream_model",
+      dataType: "character varying",
+      isNullable: "NO",
+    },
+    {
+      characterMaximumLength: null,
+      columnName: "unavailable_until",
+      dataType: "timestamp without time zone",
+      isNullable: "NO",
+    },
+  ]);
+
+  const primaryKey = await client.query<{ columnName: string }>(`
+    SELECT "attribute"."attname" AS "columnName"
+    FROM "pg_constraint" AS "constraint"
+    INNER JOIN "pg_class" AS "relation"
+      ON "relation"."oid" = "constraint"."conrelid"
+    INNER JOIN LATERAL unnest("constraint"."conkey") WITH ORDINALITY
+      AS "key_column"("attribute_number", "position") ON TRUE
+    INNER JOIN "pg_attribute" AS "attribute"
+      ON "attribute"."attrelid" = "relation"."oid"
+      AND "attribute"."attnum" = "key_column"."attribute_number"
+    WHERE "relation"."relname" = 'built_in_model_candidate_cooldown'
+      AND "constraint"."contype" = 'p'
+    ORDER BY "key_column"."position"
+  `);
+  assert.deepEqual(
+    primaryKey.rows.map((row) => {
+      return row.columnName;
+    }),
+    ["selected_model", "provider_type", "upstream_model"],
+  );
+}
+
+async function validateCanonicalStatements(client: Client): Promise<void> {
+  const baselineDeadline = new Date("2026-08-25T05:00:00.000Z");
+  const initialDeadline = new Date("2026-08-25T07:00:00.000Z");
+  const earlierDeadline = new Date("2026-08-25T06:00:00.000Z");
+  const laterDeadline = new Date("2026-08-25T08:00:00.000Z");
+
+  await client.query(
+    `
+      INSERT INTO "built_in_model_candidate_cooldown" (
+        "selected_model", "provider_type", "upstream_model", "unavailable_until"
+      )
+      VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.baseline.selectedModel,
+      fixture.baseline.providerType,
+      fixture.baseline.upstreamModel,
+      baselineDeadline,
+    ],
+  );
+
+  const upsert = async (deadline: Date): Promise<readonly CooldownRow[]> => {
+    const result = await client.query<CooldownRow>(
+      `
+        INSERT INTO "built_in_model_candidate_cooldown" (
+          "selected_model", "provider_type", "upstream_model", "unavailable_until"
+        )
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT ("selected_model", "provider_type", "upstream_model")
+        DO UPDATE SET
+          "unavailable_until" = GREATEST(
+            "built_in_model_candidate_cooldown"."unavailable_until",
+            EXCLUDED."unavailable_until"
+          )
+        RETURNING
+          "selected_model" AS "selectedModel",
+          "provider_type" AS "providerType",
+          "upstream_model" AS "upstreamModel",
+          "unavailable_until" AS "unavailableUntil"
+      `,
+      [
+        fixture.statement.selectedModel,
+        fixture.statement.providerType,
+        fixture.statement.upstreamModel,
+        deadline,
+      ],
+    );
+    return result.rows;
+  };
+
+  assert.equal(
+    (await upsert(initialDeadline))[0]?.unavailableUntil.getTime(),
+    initialDeadline.getTime(),
+  );
+  assert.equal(
+    (await upsert(earlierDeadline))[0]?.unavailableUntil.getTime(),
+    initialDeadline.getTime(),
+  );
+  assert.equal(
+    (await upsert(laterDeadline))[0]?.unavailableUntil.getTime(),
+    laterDeadline.getTime(),
+  );
+
+  const active = await client.query<CooldownRow>(
+    `
+      SELECT
+        "selected_model" AS "selectedModel",
+        "provider_type" AS "providerType",
+        "upstream_model" AS "upstreamModel",
+        "unavailable_until" AS "unavailableUntil"
+      FROM "built_in_model_candidate_cooldown"
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+        AND "unavailable_until" > $4
+    `,
+    [
+      fixture.statement.selectedModel,
+      fixture.statement.providerType,
+      fixture.statement.upstreamModel,
+      initialDeadline,
+    ],
+  );
+  assert.equal(
+    active.rows[0]?.unavailableUntil.getTime(),
+    laterDeadline.getTime(),
+  );
+
+  const deleted = await client.query<CooldownRow>(
+    `
+      DELETE FROM "built_in_model_candidate_cooldown"
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+      RETURNING
+        "selected_model" AS "selectedModel",
+        "provider_type" AS "providerType",
+        "upstream_model" AS "upstreamModel",
+        "unavailable_until" AS "unavailableUntil"
+    `,
+    [
+      fixture.statement.selectedModel,
+      fixture.statement.providerType,
+      fixture.statement.upstreamModel,
+    ],
+  );
+  assert.deepEqual(deleted.rows, active.rows);
+  assert.equal(
+    (
+      await readFixture(client, fixture.baseline)
+    )[0]?.unavailableUntil.getTime(),
+    baselineDeadline.getTime(),
+  );
+}
+
+export async function validatePermanentBuiltInModelCooldownState(
+  databaseUrl: string,
+): Promise<void> {
+  console.log("=== Validate permanent built-in model cooldown state ===\n");
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await assertCanonicalSchema(client);
+    await validateCanonicalStatements(client);
+
+    console.log("   ✅ only the canonical cooldown relation exists");
+    console.log("   ✅ canonical columns and primary key are stable");
+    console.log("   ✅ current statements preserve monotonic deadlines\n");
+  } finally {
+    await client.query(
+      `
+        DELETE FROM "built_in_model_candidate_cooldown"
+        WHERE "selected_model" IN ($1, $2)
+      `,
+      [fixture.baseline.selectedModel, fixture.statement.selectedModel],
+    );
+    await client.end();
+  }
+}
+
+if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl, "DATABASE_URL is required");
+  validatePermanentBuiltInModelCooldownState(databaseUrl).catch(
+    (error: unknown) => {
+      console.error(error);
+      process.exitCode = 1;
+    },
+  );
+}
