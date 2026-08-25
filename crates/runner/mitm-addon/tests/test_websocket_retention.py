@@ -1,7 +1,5 @@
 """Tests for registered WebSocket message retention and cleanup."""
 
-import uuid
-
 import pytest
 from mitmproxy.flow import Error
 
@@ -21,6 +19,7 @@ from tests.model_provider_websocket_helpers import (
     openai_websocket_usage_frame,
     run_deferred_websocket_trims,
 )
+from tests.usage_helpers import assert_usage_event_rows
 
 
 @pytest.fixture
@@ -28,19 +27,6 @@ def deferred_websocket_trim_scheduler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[ScheduledWebSocketTrim]:
     return capture_deferred_websocket_trims(monkeypatch)
-
-
-def _assert_billing_event_rows(
-    events: list[dict], expected_rows: list[tuple[str, str, int]]
-) -> None:
-    actual_rows = [(event["provider"], event["category"], event["quantity"]) for event in events]
-    assert len(events) == len(expected_rows)
-    assert sorted(actual_rows) == sorted(expected_rows)
-
-    idempotency_keys = [event["idempotencyKey"] for event in events]
-    assert len(set(idempotency_keys)) == len(idempotency_keys)
-    for key in idempotency_keys:
-        uuid.UUID(key)
 
 
 class TestModelProviderWebSocketRetentionWithUsageDelivery:
@@ -74,8 +60,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert messages == [old_client, old_server, latest_server]
         assert model_provider_usage_sources(flow) == {}
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
@@ -126,8 +113,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert flow.websocket.messages == [latest_server]
         assert model_provider_usage_sources(flow) == {}
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 1),
                 ("gpt-5.5", "tokens.output", 1),
@@ -156,8 +144,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
@@ -190,8 +179,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
