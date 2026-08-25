@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { HttpResponse, http } from "msw";
+import { socialKitRequestSchema } from "@okouai/api-contracts/contracts/social";
 import {
   afterAll,
   afterEach,
@@ -319,7 +320,9 @@ describe("okou social command", () => {
             creditsCharged: 6,
             collection: { state: "provider_limited", itemsReturned: 100 },
             result: {
-              results: Array.from({ length: 100 }, (_, id) => ({ id })),
+              results: Array.from({ length: 100 }, (_, id) => {
+                return { id };
+              }),
             },
           });
         },
@@ -358,14 +361,15 @@ describe("okou social command", () => {
       http.post(
         "http://localhost:3000/api/social/request",
         async ({ request }) => {
-          const body: unknown = await request.json();
+          const body = socialKitRequestSchema.parse(await request.json());
           requests.push(body);
+          const requestedLimit = Number(body.query?.limit);
           return HttpResponse.json({
             ...responseBody,
             operation: { method: "GET", path: "/tiktok/search" },
             collection: {
               state: "more",
-              itemsReturned: requests.length === 1 ? 100 : 3,
+              itemsReturned: requestedLimit,
               nextQuery: { cursor: `page-${requests.length + 1}` },
             },
             result: { results: [], hasMore: true },
