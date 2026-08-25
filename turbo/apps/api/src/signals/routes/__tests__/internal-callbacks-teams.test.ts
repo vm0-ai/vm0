@@ -539,7 +539,7 @@ async function switchTeamsAgent(args: {
       text: "",
       entities: [],
       value: {
-        zeroTeamsAction: "switch_agent",
+        okouTeamsAction: "switch_agent",
         selectedAgentId: args.agentId,
       },
     }),
