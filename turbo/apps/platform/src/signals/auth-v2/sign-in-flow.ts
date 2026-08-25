@@ -120,6 +120,7 @@ interface SignInResourceSnapshot {
   readonly factors: readonly AuthV2SignInFactor[];
   readonly firstFactorVerificationStatus: string | null;
   readonly firstFactorVerificationStrategy: string | null;
+  readonly identifier: string | null;
   readonly transferable: boolean;
   readonly unknownFactorStrategies: readonly string[];
 }
@@ -171,6 +172,7 @@ interface SignInFlowAtoms {
   readonly error$: State<AuthV2SignInError | null>;
   readonly fatalState$: State<AuthV2SignInUnknownState | null>;
   readonly identifier$: State<string>;
+  readonly identifierLocallyModified$: State<boolean>;
   readonly newPassword$: State<string>;
   readonly password$: State<string>;
   readonly resendRemainingSeconds$: State<number>;
@@ -284,6 +286,7 @@ function snapshotSignInResource(
       resource.firstFactorVerification?.status ?? null,
     firstFactorVerificationStrategy:
       resource.firstFactorVerification?.strategy ?? null,
+    identifier: resource.identifier,
     transferable: resource.__internal_future.isTransferable,
     unknownFactorStrategies: discovered.unknownStrategies,
   };
@@ -522,6 +525,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const fatalState$ = state<AuthV2SignInUnknownState | null>(null);
   const error$ = state<AuthV2SignInError | null>(null);
   const identifier$ = state("");
+  const identifierLocallyModified$ = state(false);
   const password$ = state("");
   const resendRemainingSeconds$ = state(0);
   const code$ = state("");
@@ -546,6 +550,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     error$,
     fatalState$,
     identifier$,
+    identifierLocallyModified$,
     newPassword$,
     password$,
     resendRemainingSeconds$,
@@ -641,6 +646,15 @@ function createResourceCommands(
       );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
+      if (
+        snapshot.clerkStatus === "needs_first_factor" &&
+        snapshot.identifier !== null &&
+        !get(atoms.identifierLocallyModified$)
+      ) {
+        // Restore only Clerk's public identifier. Factor safeIdentifier values
+        // are masked display labels and must never become an editable draft.
+        set(atoms.identifier$, snapshot.identifier);
+      }
       const preparedFactor = preparedFactorForSnapshot(snapshot);
       if (preparedFactor) {
         set(runtime.preparedFactorId$, preparedFactor.id);
@@ -1180,6 +1194,7 @@ function createFormCommands(
       factors: entryFactors(get(atoms.capabilities$)),
       firstFactorVerificationStatus: null,
       firstFactorVerificationStrategy: null,
+      identifier: null,
       transferable: false,
       unknownFactorStrategies: [],
     });
@@ -1187,6 +1202,7 @@ function createFormCommands(
     set(atoms.editIdentifier$, false);
     set(atoms.fatalState$, null);
     set(atoms.error$, null);
+    set(atoms.identifierLocallyModified$, true);
     set(atoms.identifier$, "");
     set(atoms.password$, "");
     set(atoms.code$, "");
@@ -1197,8 +1213,11 @@ function createFormCommands(
   const useAnotherAccount$ = command(({ set }) => {
     set(atoms.useAnotherAccount$, true);
     set(atoms.error$, null);
+    set(atoms.identifierLocallyModified$, true);
+    set(atoms.identifier$, "");
   });
   const setIdentifier$ = command(({ set }, value: string) => {
+    set(atoms.identifierLocallyModified$, true);
     set(atoms.identifier$, value);
     set(atoms.error$, null);
   });

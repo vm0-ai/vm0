@@ -65,6 +65,23 @@ function moveSignInTo(state: MockedSignInResourceState) {
   return currentSignInResource();
 }
 
+function mockPreparedFirstFactor(
+  strategy: "email_code" | "reset_password_email_code",
+): void {
+  const signInResource = currentSignInResource();
+  Object.defineProperty(signInResource, "firstFactorVerification", {
+    configurable: true,
+    value: { status: "unverified", strategy },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(signInResource, "firstFactorVerification");
+    },
+    { once: true },
+  );
+}
+
 interface SetupSignInPageOptions {
   readonly url?: string;
   readonly user?: {
@@ -198,6 +215,17 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByLabelText("Email address or username"),
     ).resolves.toBeVisible();
+  });
+
+  it("starts a fresh identifier request with an empty draft", async () => {
+    setupSignInPage({
+      identifier: "previous@example.com",
+      status: "needs_identifier",
+    });
+
+    await expect(
+      screen.findByLabelText("Email address or username"),
+    ).resolves.toHaveValue("");
   });
 
   it("discovers password factors, coalesces duplicate submits, and activates once", async () => {
@@ -743,7 +771,10 @@ describe("auth v2 sign-in flow", () => {
 
   it("can fall back from existing Clerk accounts to a new sign-in", async () => {
     setupSignInPage(
-      { status: "needs_identifier" },
+      {
+        identifier: "previous@example.com",
+        status: "needs_identifier",
+      },
       {
         user: {
           clientSessions: [
@@ -767,7 +798,7 @@ describe("auth v2 sign-in flow", () => {
 
     await expect(
       screen.findByLabelText("Email address or username"),
-    ).resolves.toBeVisible();
+    ).resolves.toHaveValue("");
   });
 
   it("prepares and resends one email code per concurrent user action", async () => {
@@ -961,40 +992,91 @@ describe("auth v2 sign-in flow", () => {
     expect(codeInput).toHaveValue("");
   });
 
-  it("recovers a prepared email-code step without another initial dispatch", async () => {
-    const signInResource = currentSignInResource();
-    Object.defineProperty(signInResource, "firstFactorVerification", {
-      configurable: true,
-      value: { status: "unverified", strategy: "email_code" },
-    });
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        Reflect.deleteProperty(signInResource, "firstFactorVerification");
-      },
-      { once: true },
-    );
+  it.each([
+    {
+      factor: emailCodeFactor(),
+      method: "Email code to p***@example.com",
+      name: "email-code",
+      strategy: "email_code" as const,
+    },
+    {
+      factor: passwordResetFactor(),
+      method: "Reset your password",
+      name: "password-reset-code",
+      strategy: "reset_password_email_code" as const,
+    },
+  ])(
+    "restores a prepared $name step and its editable identifier without another initial dispatch",
+    async (testCase) => {
+      mockPreparedFirstFactor(testCase.strategy);
+      setupSignInPage({
+        identifier: "person@example.com",
+        status: "needs_first_factor",
+        supportedFirstFactors: [testCase.factor, passwordFactor()],
+      });
 
+      await expect(
+        screen.findByLabelText("Verification code"),
+      ).resolves.toBeVisible();
+      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByLabelText("Toggle theme"));
+      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+      fireEvent.click(await waitForRoleElement("button", "Back"));
+      fireEvent.click(await waitForRoleElement("button", testCase.method));
+      await expect(
+        screen.findByLabelText("Verification code"),
+      ).resolves.toBeVisible();
+      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+      fireEvent.click(await waitForRoleElement("button", "Back"));
+      fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
+      await expect(
+        screen.findByLabelText("Email address or username"),
+      ).resolves.toHaveValue("person@example.com");
+      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an edited restored identifier authoritative over a stale resource snapshot", async () => {
+    const factors = [emailCodeFactor(), passwordFactor()];
+    mockPreparedFirstFactor("email_code");
     setupSignInPage({
+      identifier: "person@example.com",
       status: "needs_first_factor",
-      supportedFirstFactors: [emailCodeFactor(), passwordFactor()],
+      supportedFirstFactors: factors,
     });
 
-    await expect(
-      screen.findByLabelText("Verification code"),
-    ).resolves.toBeVisible();
-    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByLabelText("Toggle theme"));
-    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+    await screen.findByLabelText("Verification code");
     fireEvent.click(await waitForRoleElement("button", "Back"));
-    fireEvent.click(
-      await waitForRoleElement("button", "Email code to p***@example.com"),
+    fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
+    const identifierInput = await screen.findByLabelText(
+      "Email address or username",
     );
+    expect(identifierInput).toHaveValue("person@example.com");
+    fireEvent.change(identifierInput, {
+      target: { value: "edited@example.com" },
+    });
+
+    Reflect.deleteProperty(currentSignInResource(), "firstFactorVerification");
+    mockedClerk.clientSignInCreate.mockResolvedValue(
+      moveSignInTo({
+        identifier: "person@example.com",
+        status: "needs_first_factor",
+        supportedFirstFactors: factors,
+      }),
+    );
+    fireEvent.submit(containingForm(identifierInput));
+
+    await waitFor(() => {
+      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+        identifier: "edited@example.com",
+      });
+    });
+    fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
     await expect(
-      screen.findByLabelText("Verification code"),
-    ).resolves.toBeVisible();
-    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+      screen.findByLabelText("Email address or username"),
+    ).resolves.toHaveValue("edited@example.com");
   });
 
   it("keeps factor selection usable when email-code preparation fails", async () => {
@@ -1274,13 +1356,20 @@ describe("auth v2 sign-in flow", () => {
 
   it("renders a transfer state without implementing sign-up", async () => {
     setupSignInPage({
+      identifier: "person@example.com",
       isTransferable: true,
-      status: "needs_identifier",
+      status: "needs_first_factor",
+      supportedFirstFactors: [passwordFactor()],
     });
 
     const signUp = await waitForRoleElement("link", "Sign up");
     expect(signUp).toHaveAttribute("href", "/v2/sign-up");
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
+    await expect(
+      screen.findByLabelText("Email address or username"),
+    ).resolves.toHaveValue("");
   });
 
   it.each([
