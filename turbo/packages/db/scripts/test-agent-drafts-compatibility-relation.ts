@@ -403,17 +403,16 @@ async function validateCrossRelationLock(
   }
 }
 
-async function validateStatementShapes(
+async function insertDraftWithDefaults(
   client: Client,
-  databaseUrl: string,
   relation: RelationName,
-  counterpart: RelationName,
-): Promise<void> {
+  userId: string,
+  orgId: string,
+  agentId: string,
+  draftUserMessage: string,
+): Promise<DraftRow[]> {
   const relationIdentifier = relationIdentifiers[relation];
-  const userId = `${relation}-statement-user`;
-  const orgId = `${relation}-statement-org`;
-  const initialMessage = `{"version":1,"parts":[{"type":"text","text":"${relation} initial"}]}`;
-  const inserted = await client.query<DraftRow>(
+  const result = await client.query<DraftRow>(
     `
       INSERT INTO ${relationIdentifier} (
         "user_id",
@@ -432,20 +431,21 @@ async function validateStatementShapes(
         "created_at"::text AS "createdAt",
         "updated_at"::text AS "updatedAt"
     `,
-    [userId, orgId, parentAgentId, initialMessage, "[]"],
+    [userId, orgId, agentId, draftUserMessage, "[]"],
   );
-  assert.equal(inserted.rows.length, 1);
-  const [insertedRow] = inserted.rows;
-  assert.ok(insertedRow);
-  assert.ok(insertedRow.createdAt.length > 0);
-  assert.ok(insertedRow.updatedAt.length > 0);
-  assert.deepEqual(
-    await selectDraft(client, counterpart, userId, orgId, parentAgentId),
-    inserted.rows,
-  );
+  return result.rows;
+}
 
-  const updatedMessage = `{"version":1,"parts":[{"type":"text","text":"${relation} updated"}]}`;
-  const updated = await client.query<DraftRow>(
+async function updateDraft(
+  client: Client,
+  relation: RelationName,
+  userId: string,
+  orgId: string,
+  agentId: string,
+  draftUserMessage: string,
+): Promise<DraftRow[]> {
+  const relationIdentifier = relationIdentifiers[relation];
+  const result = await client.query<DraftRow>(
     `
       UPDATE ${relationIdentifier}
       SET
@@ -464,28 +464,20 @@ async function validateStatementShapes(
         "created_at"::text AS "createdAt",
         "updated_at"::text AS "updatedAt"
     `,
-    [updatedMessage, "[]", "2026-08-26 01:00:00", userId, orgId, parentAgentId],
+    [draftUserMessage, "[]", "2026-08-26 01:00:00", userId, orgId, agentId],
   );
-  assert.equal(updated.rows.length, 1);
-  const [updatedRow] = updated.rows;
-  assert.ok(updatedRow);
-  assert.equal(updatedRow.createdAt, insertedRow.createdAt);
-  assert.deepEqual(
-    await selectDraft(client, counterpart, userId, orgId, parentAgentId),
-    updated.rows,
-  );
+  return result.rows;
+}
 
-  await validateCrossRelationLock(
-    client,
-    databaseUrl,
-    relation,
-    counterpart,
-    userId,
-    orgId,
-    parentAgentId,
-  );
-
-  const deleted = await client.query<DraftRow>(
+async function deleteDraft(
+  client: Client,
+  relation: RelationName,
+  userId: string,
+  orgId: string,
+  agentId: string,
+): Promise<DraftRow[]> {
+  const relationIdentifier = relationIdentifiers[relation];
+  const result = await client.query<DraftRow>(
     `
       DELETE FROM ${relationIdentifier}
       WHERE "user_id" = $1
@@ -500,9 +492,74 @@ async function validateStatementShapes(
         "created_at"::text AS "createdAt",
         "updated_at"::text AS "updatedAt"
     `,
-    [userId, orgId, parentAgentId],
+    [userId, orgId, agentId],
   );
-  assert.deepEqual(deleted.rows, updated.rows);
+  return result.rows;
+}
+
+async function validateStatementShapes(
+  client: Client,
+  databaseUrl: string,
+  relation: RelationName,
+  counterpart: RelationName,
+): Promise<void> {
+  const userId = `${relation}-statement-user`;
+  const orgId = `${relation}-statement-org`;
+  const initialMessage = `{"version":1,"parts":[{"type":"text","text":"${relation} initial"}]}`;
+  const insertedRows = await insertDraftWithDefaults(
+    client,
+    relation,
+    userId,
+    orgId,
+    parentAgentId,
+    initialMessage,
+  );
+  assert.equal(insertedRows.length, 1);
+  const [insertedRow] = insertedRows;
+  assert.ok(insertedRow);
+  assert.ok(insertedRow.createdAt.length > 0);
+  assert.ok(insertedRow.updatedAt.length > 0);
+  assert.deepEqual(
+    await selectDraft(client, counterpart, userId, orgId, parentAgentId),
+    insertedRows,
+  );
+
+  const updatedMessage = `{"version":1,"parts":[{"type":"text","text":"${relation} updated"}]}`;
+  const updatedRows = await updateDraft(
+    client,
+    relation,
+    userId,
+    orgId,
+    parentAgentId,
+    updatedMessage,
+  );
+  assert.equal(updatedRows.length, 1);
+  const [updatedRow] = updatedRows;
+  assert.ok(updatedRow);
+  assert.equal(updatedRow.createdAt, insertedRow.createdAt);
+  assert.deepEqual(
+    await selectDraft(client, counterpart, userId, orgId, parentAgentId),
+    updatedRows,
+  );
+
+  await validateCrossRelationLock(
+    client,
+    databaseUrl,
+    relation,
+    counterpart,
+    userId,
+    orgId,
+    parentAgentId,
+  );
+
+  const deletedRows = await deleteDraft(
+    client,
+    relation,
+    userId,
+    orgId,
+    parentAgentId,
+  );
+  assert.deepEqual(deletedRows, updatedRows);
   assert.deepEqual(
     await selectDraft(client, counterpart, userId, orgId, parentAgentId),
     [],
@@ -601,10 +658,7 @@ function firstMissBarrier(participantCount: number): () => Promise<void> {
   };
 }
 
-async function validateConstraintsAndConcurrentWrites(
-  client: Client,
-  databaseUrl: string,
-): Promise<void> {
+async function validateConstraintPropagation(client: Client): Promise<void> {
   await expectDatabaseFailure(
     client.query(
       `
@@ -649,7 +703,12 @@ async function validateConstraintsAndConcurrentWrites(
     ),
     [],
   );
+}
 
+async function validateConcurrentFirstWrites(
+  client: Client,
+  databaseUrl: string,
+): Promise<void> {
   const participants = 8;
   const waitForFirstMiss = firstMissBarrier(participants);
   const writers = Array.from({ length: participants }, () => {
@@ -798,7 +857,8 @@ export async function validateAgentDraftsCompatibilityRelation(): Promise<void> 
       canonicalRelation,
       legacyRelation,
     );
-    await validateConstraintsAndConcurrentWrites(client, testUrl.toString());
+    await validateConstraintPropagation(client);
+    await validateConcurrentFirstWrites(client, testUrl.toString());
 
     console.log("   ✅ the legacy table remains the sole physical relation");
     console.log(
