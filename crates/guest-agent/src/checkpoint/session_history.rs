@@ -14,6 +14,7 @@ use api_contracts::generated::constants::runners::{
     SESSION_HISTORY_ENCODING_IDENTITY, SESSION_HISTORY_ENCODING_ZSTD,
     SESSION_HISTORY_GZIP_MIN_BYTES,
 };
+use api_contracts::generated::types::webhooks::agent::checkpoints::prepare_history;
 use bytes::Bytes;
 use guest_common::telemetry::{
     SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
@@ -27,7 +28,6 @@ use guest_session_prune::{
     select_claude_compact_generation_from_file_with_candidate_limit_for_test,
     select_codex_compact_generation, select_codex_compact_generation_with_candidate_limit_for_test,
 };
-use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::time::Duration;
@@ -254,10 +254,12 @@ struct DecodedSessionHistoryAnalysis {
 }
 
 impl SessionHistoryUpload {
-    fn requested_encoding(&self) -> &'static str {
+    fn requested_encoding(&self) -> prepare_history::SessionHistoryEncoding {
         match self.body {
-            SessionHistoryUploadBody::Identity(_) => SESSION_HISTORY_ENCODING_IDENTITY,
-            SessionHistoryUploadBody::Zstd(_) => SESSION_HISTORY_ENCODING_ZSTD,
+            SessionHistoryUploadBody::Identity(_) => {
+                prepare_history::SessionHistoryEncoding::Identity
+            }
+            SessionHistoryUploadBody::Zstd(_) => prepare_history::SessionHistoryEncoding::Zstd,
         }
     }
 
@@ -273,6 +275,16 @@ impl SessionHistoryUpload {
             SessionHistoryUploadBody::Identity(raw) => Bytes::from(raw),
             SessionHistoryUploadBody::Zstd(zstd) => Bytes::from(zstd),
         }
+    }
+}
+
+const fn session_history_encoding_label(
+    encoding: prepare_history::SessionHistoryEncoding,
+) -> &'static str {
+    match encoding {
+        prepare_history::SessionHistoryEncoding::Identity => SESSION_HISTORY_ENCODING_IDENTITY,
+        prepare_history::SessionHistoryEncoding::Gzip => SESSION_HISTORY_ENCODING_GZIP,
+        prepare_history::SessionHistoryEncoding::Zstd => SESSION_HISTORY_ENCODING_ZSTD,
     }
 }
 
@@ -433,25 +445,35 @@ async fn upload_session_history(
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
     let requested_encoding = history_upload.requested_encoding();
+    let requested_encoding_label = session_history_encoding_label(requested_encoding);
     let encoded_size = history_upload.encoded_size();
+    let request = prepare_history::Request {
+        run_id: run_id.to_string(),
+        hash: history_hash.to_string(),
+        raw_size: history_upload.raw_size,
+        encoded_size,
+        encoding: Some(requested_encoding),
+    };
     let prep_resp = match http
-        .post_json(
-            url,
-            &json!({
-                "runId": run_id,
-                "hash": history_hash,
-                "rawSize": history_upload.raw_size,
-                "encodedSize": encoded_size,
-                "encoding": requested_encoding,
-            }),
-            constants::HTTP_MAX_ATTEMPTS,
-        )
+        .post_json(url, &request, constants::HTTP_MAX_ATTEMPTS)
         .await
     {
-        Ok(Some(v)) => {
-            record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
-            v
-        }
+        Ok(Some(value)) => match serde_json::from_value::<prepare_history::Response>(value) {
+            Ok(response) => {
+                record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
+                response
+            }
+            Err(_) => {
+                let message = "Invalid prepare-history response";
+                record_sandbox_op(
+                    "session_history_prepare",
+                    prep_start.elapsed(),
+                    false,
+                    Some(message),
+                );
+                return Err(AgentError::Checkpoint(message.into()));
+            }
+        },
         Ok(None) => {
             record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
             return Err(AgentError::Checkpoint(
@@ -464,20 +486,21 @@ async fn upload_session_history(
         }
     };
 
-    let existing = prep_resp
-        .get("existing")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
+    let existing = prep_resp.existing;
+    let response_encoding = prep_resp.encoding;
     // Existing content-addressed blobs retain their persisted encoding; no upload occurs.
     let zstd_response_encoding_is_compatible = response_encoding
-        == Some(SESSION_HISTORY_ENCODING_ZSTD)
+        == Some(prepare_history::SessionHistoryEncoding::Zstd)
         || (existing
             && matches!(
                 response_encoding,
-                Some(SESSION_HISTORY_ENCODING_IDENTITY | SESSION_HISTORY_ENCODING_GZIP)
+                Some(
+                    prepare_history::SessionHistoryEncoding::Identity
+                        | prepare_history::SessionHistoryEncoding::Gzip
+                )
             ));
-    if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD && !zstd_response_encoding_is_compatible
+    if requested_encoding == prepare_history::SessionHistoryEncoding::Zstd
+        && !zstd_response_encoding_is_compatible
     {
         return Err(AgentError::Checkpoint(
             "Prepare-history response did not acknowledge zstd session history".into(),
@@ -485,7 +508,9 @@ async fn upload_session_history(
     }
 
     if existing {
-        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
+        let accepted_encoding = session_history_encoding_label(
+            response_encoding.unwrap_or(prepare_history::SessionHistoryEncoding::Identity),
+        );
         log_info!(
             LOG_TAG,
             "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
@@ -493,22 +518,19 @@ async fn upload_session_history(
         return Ok(());
     }
 
-    let presigned_url = prep_resp
-        .get("presignedUrl")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
-        })?;
+    let presigned_url = prep_resp.presigned_url.ok_or_else(|| {
+        AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
+    })?;
 
     let upload_bytes = history_upload.into_bytes();
 
     log_info!(
         LOG_TAG,
-        "Uploading session history to S3 (encoding={requested_encoding})..."
+        "Uploading session history to S3 (encoding={requested_encoding_label})..."
     );
     let upload_start = std::time::Instant::now();
     if let Err(e) = http
-        .put_presigned(presigned_url, upload_bytes, "application/octet-stream")
+        .put_presigned(&presigned_url, upload_bytes, "application/octet-stream")
         .await
     {
         record_sandbox_op(

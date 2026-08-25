@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Adjuntar marcas",
       "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
+      "inkLabel": "Color {{color}}",
       "notePlaceholder": "Di qué debería cambiar aquí",
       "open": "Anotar",
       "redo": "Rehacer",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} marca",
       "subtitle_many": "{{count}} marcas",
       "subtitle_other": "{{count}} marcas",
+      "textPlaceholder": "Escribe la etiqueta",
       "tools": {
         "arrow": "Flecha",
         "box": "Rectángulo",
@@ -717,6 +719,12 @@
       "tryDifferentSearch": "Prueba con otra búsqueda.",
       "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
+      "visibility": {
+        "change": "Cambiar",
+        "changeLabel": "Cambiar la visibilidad de la plantilla",
+        "privateState": "Solo tú puedes verla y usarla",
+        "workspaceState": "Cualquier persona de este espacio de trabajo puede usarla"
+      },
       "website": "Sitio web",
       "websitePreview": "Vista previa de la plantilla de sitio web {{title}}",
       "workflow": "Flujo de trabajo",
@@ -3384,9 +3392,17 @@
           "description": "Genera diapositivas y contenido para presentarlas",
           "title": "Generar una presentación"
         },
+        "slack": {
+          "description": "Chatea con tu compañero de IA en tu espacio de trabajo",
+          "title": "Usar Slack"
+        },
         "video": {
           "description": "Convierte tus ideas en vídeo",
           "title": "Producción de vídeo"
+        },
+        "website": {
+          "description": "Crea y publica una página que puedas compartir",
+          "title": "Crear un sitio web"
         },
         "workflow": {
           "description": "Explorar desde plantillas preestablecidas",
@@ -4699,7 +4715,6 @@
         "usage": {
           "balanceDescription": "Lo que le queda a tu equipo para gastar.",
           "balanceTitle": "Saldo de créditos",
-          "balanceUsageDescription": "El saldo de créditos y el uso de tu equipo.",
           "usageDescription": "Tu consumo de créditos en conversaciones, automatizaciones y canales.",
           "usageTitle": "Consumo de créditos"
         }

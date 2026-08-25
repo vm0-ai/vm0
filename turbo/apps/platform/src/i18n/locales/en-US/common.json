@@ -492,12 +492,14 @@
     "annotation": {
       "attach": "Attach marks",
       "draftOnly": "Marks stay in the draft — you can change them until you send",
+      "inkLabel": "Ink {{color}}",
       "notePlaceholder": "Say what should change here",
       "open": "Annotate",
       "redo": "Redo",
       "removeMark": "Remove mark",
       "subtitle_one": "{{count}} mark",
       "subtitle_other": "{{count}} marks",
+      "textPlaceholder": "Type the label",
       "tools": {
         "arrow": "Arrow",
         "box": "Box",
@@ -698,6 +700,12 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "visibility": {
+        "change": "Change",
+        "changeLabel": "Change template visibility",
+        "privateState": "Only you can see and use it",
+        "workspaceState": "Anyone in this workspace can use it"
+      },
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
       "workflow": "Workflow",
@@ -3325,9 +3333,17 @@
           "description": "Generate slides and speaker",
           "title": "Generate a presentation"
         },
+        "slack": {
+          "description": "Chat with your AI teammate in your workspace",
+          "title": "Use Slack"
+        },
         "video": {
           "description": "Turn your ideas into video",
           "title": "Video production"
+        },
+        "website": {
+          "description": "Create and publish a shareable page",
+          "title": "Build a website"
         },
         "workflow": {
           "description": "Explore from preset templates",
@@ -4634,7 +4650,6 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
-          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }

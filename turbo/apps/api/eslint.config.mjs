@@ -410,6 +410,10 @@ export default [
       // focused transaction proves Calendar watch reads and initial writes stay
       // legal on both sides of the transition-column migration.
       "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
+      // A physical relation versus a compatibility view cannot be selected
+      // through the production API. This focused PostgreSQL test proves the
+      // exact Agent Draft writer through both rollout targets.
+      "src/signals/services/__tests__/agent-draft-write.service.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -542,6 +546,10 @@ export default [
       // focused transaction proves Calendar watch reads and initial writes stay
       // legal on both sides of the transition-column migration.
       "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
+      // A physical relation versus a compatibility view cannot be selected
+      // through the production API. This focused PostgreSQL test proves the
+      // exact Agent Draft writer through both rollout targets.
+      "src/signals/services/__tests__/agent-draft-write.service.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

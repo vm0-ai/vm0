@@ -146,6 +146,15 @@ const disposeLightboxSession$ = command(({ set }) => {
   set(releaseLightboxObjectUrlResources$);
 });
 
+/**
+ * Closes without the exit animation. Handing the screen to the annotation
+ * editor used to animate the viewer out while the editor animated in, and the
+ * two transitions read as the modal jumping.
+ */
+export const closeLightboxImmediately$ = command(({ set }) => {
+  set(disposeLightboxSession$);
+});
+
 const disposeLightboxForDialogUnmountToken$ = command(
   ({ get, set }, token: number) => {
     if (get(internalLightboxDialogMountToken$) !== token) {

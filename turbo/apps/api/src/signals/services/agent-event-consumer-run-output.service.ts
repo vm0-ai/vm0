@@ -154,11 +154,6 @@ function latestCandidate(
 }
 
 function eventOutputId(event: AgentEvent): string {
-  const message = recordOf(event.message);
-  if (typeof message?.id === "string") {
-    return message.id;
-  }
-
   const item = recordOf(event.item);
   if (typeof item?.id === "string") {
     return item.id;

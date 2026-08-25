@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -12,7 +12,6 @@ import {
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { manualHttpCustomConnectorCreateBody } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 
 /*
 helper gap:
@@ -41,15 +40,11 @@ function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
 }
 
-async function disableUsagePackPlans(actor: ApiTestUser): Promise<void> {
+function requiredOrgId(actor: ApiTestUser): string {
   if (!actor.orgId) {
     throw new Error("Expected an organization-scoped actor");
   }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.UsagePackPlans]: false },
-  );
+  return actor.orgId;
 }
 
 async function onboardAdmin(
@@ -246,7 +241,11 @@ describe("ORG-01 and ORG-02", () => {
   it("projects direct invitation redirects by request brand", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const admin = api.user();
-    await disableUsagePackPlans(admin);
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      memberInvitationAllowed: true,
+      memberInviteUsagePackRequired: false,
+    });
 
     const vm0Email = `vm0-invite-${shortId()}@example.test`;
     context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
@@ -281,7 +280,6 @@ describe("ORG-01 and ORG-02", () => {
 
   it("reads, updates, lists, invites, changes membership, handles requests, and leaves orgs through APIs", async () => {
     const admin = api.user();
-    await disableUsagePackPlans(admin);
     const member = api.user({
       orgId: admin.orgId,
       orgRole: "org:member",
@@ -298,6 +296,11 @@ describe("ORG-01 and ORG-02", () => {
     const requestId = `req_${shortId()}`;
 
     await onboardAdmin(admin, { slug: baseSlug, name: "BDD Org" });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      memberInvitationAllowed: true,
+      memberInviteUsagePackRequired: false,
+    });
     api.mockClerkOrg(admin, {
       slug: baseSlug,
       name: "BDD Org",

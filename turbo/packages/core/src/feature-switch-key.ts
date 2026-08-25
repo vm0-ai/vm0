@@ -8,7 +8,6 @@ export enum FeatureSwitchKey {
   AhrefsConnector = "ahrefsConnector",
   BillConnector = "billConnector",
   BentomlConnector = "bentomlConnector",
-  BoxConnector = "boxConnector",
   CanvaConnector = "canvaConnector",
   CalComConnector = "calComConnector",
   CopperConnector = "copperConnector",
@@ -50,8 +49,6 @@ export enum FeatureSwitchKey {
   CodexFastMode = "codexFastMode",
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
-  UsagePackPlans = "usagePackPlans",
-
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",

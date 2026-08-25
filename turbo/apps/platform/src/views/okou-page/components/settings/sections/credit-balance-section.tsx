@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { ArrowRight, ChevronRight, Users } from "lucide-react";
 import {
   Button,
@@ -12,9 +11,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Tabs,
-  TabsList,
-  TabsTrigger,
 } from "@okouai/ui";
 import {
   Tooltip,
@@ -28,14 +24,8 @@ import {
   formatCreditDate,
   type CreditAddition,
 } from "../../org-manage/org-usage-tab.tsx";
-import {
-  PersonalUsageRecord,
-  TeamUsageRecord,
-  UsageRangeSelect,
-} from "../../preferences/personal-usage-record.tsx";
 import { UserAvatar } from "../../../../components/avatar.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
-import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
 import { usagePackCreditsAsync$ } from "../../../../../signals/okou-page/billing.ts";
 import { setSettingsActiveSection$ } from "../../../../../signals/okou-page/settings/settings-dialog.ts";
@@ -44,15 +34,8 @@ import {
   setBillingSubPage$,
 } from "../../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
-  creditBalanceTab$,
-  myUsageRange$,
-  setCreditBalanceTab$,
-  setMyUsageRange$,
-  setTeamUsageRange$,
   setUsagePackMembersDialogOpen$,
-  teamUsageRange$,
   toggleUsagePackMemberAdditions$,
-  type CreditBalanceTab,
   usagePackMemberAdditionsExpandedMemberId$,
   usagePackMembersDialogOpen$,
 } from "../../../../../signals/okou-page/settings/personal-usage-record.ts";
@@ -569,16 +552,6 @@ export function CreditBalanceSection() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const tab = useGet(creditBalanceTab$);
-  const setTab = useSet(setCreditBalanceTab$);
-  const myRange = useGet(myUsageRange$);
-  const teamRange = useGet(teamUsageRange$);
-  const setMyRange = useSet(setMyUsageRange$);
-  const setTeamRange = useSet(setTeamUsageRange$);
-  const features = useLastResolved(featureSwitch$);
-  const usagePackPlansEnabled =
-    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
-
   const goToComparePlans = () => {
     setActiveSection("billing");
     setBillingSubPage(true);
@@ -589,15 +562,13 @@ export function CreditBalanceSection() {
     setActiveSection("billing");
   };
 
-  const usagePackCreditCard = usagePackPlansEnabled ? (
-    <UsagePackCreditCard isAdmin={isAdmin} />
-  ) : null;
+  const usagePackCreditCard = <UsagePackCreditCard isAdmin={isAdmin} />;
 
   const creditCard = (
     <CreditBalanceCard
       onBuyCredits={goToBuyCredits}
       onComparePlans={goToComparePlans}
-      splitLayout={usagePackPlansEnabled}
+      splitLayout
     />
   );
 
@@ -605,48 +576,6 @@ export function CreditBalanceSection() {
   // balances remain available to organization admins.
   if (!isAdmin) {
     return <div>{usagePackCreditCard}</div>;
-  }
-
-  // Without the new pricing, the section still owns the usage records and the
-  // Mine/Team tabs that go with them.
-  if (!usagePackPlansEnabled) {
-    const activeRange = tab === "team" ? teamRange : myRange;
-    const setActiveRange = tab === "team" ? setTeamRange : setMyRange;
-    return (
-      <div className="flex flex-col gap-6">
-        {creditCard}
-        <div className="flex flex-col gap-4">
-          {/* One compact header row: tabs on the left, range filter on the right. */}
-          <div className="flex items-center justify-between gap-3">
-            <Tabs
-              value={tab}
-              onValueChange={(value) => {
-                setTab(value as CreditBalanceTab);
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value="mine">
-                  {t(($) => {
-                    return $.usage.records.myUsage;
-                  })}
-                </TabsTrigger>
-                <TabsTrigger value="team">
-                  {t(($) => {
-                    return $.usage.records.teamUsage;
-                  })}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <UsageRangeSelect value={activeRange} onChange={setActiveRange} />
-          </div>
-          {tab === "mine" ? (
-            <PersonalUsageRecord range={myRange} />
-          ) : (
-            <TeamUsageRecord range={teamRange} />
-          )}
-        </div>
-      </div>
-    );
   }
 
   return (

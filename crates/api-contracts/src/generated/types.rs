@@ -293,21 +293,10 @@ pub mod webhooks {
     pub mod agent {
         /// DTOs for creating recoverable agent checkpoints.
         pub mod checkpoints {
-            /// Reason a checkpoint intentionally omits resumable CLI agent session history.
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-            pub enum RequestCliAgentSessionHistoryDisposition {
-                /// The native history was oversized and had no safe bounded generation.
-                #[serde(rename = "discarded_oversized")]
-                DiscardedOversized,
-                /// The native history was missing, unsafe, ambiguous, or otherwise unusable.
-                #[serde(rename = "unavailable")]
-                Unavailable,
-            }
-
             /// Artifact version captured by an agent checkpoint.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
-            pub struct RequestArtifactSnapshot {
+            pub struct ArtifactSnapshot {
                 /// User-facing artifact name referenced by the run.
                 pub name: String,
                 /// Artifact version selected for the checkpoint.
@@ -319,6 +308,17 @@ pub mod webhooks {
                 pub missing_root_policy: Option<
                     crate::generated::types::runners::storage::ArtifactEntryMissingRootPolicy,
                 >,
+            }
+
+            /// Reason a checkpoint intentionally omits resumable CLI agent session history.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestCliAgentSessionHistoryDisposition {
+                /// The native history was oversized and had no safe bounded generation.
+                #[serde(rename = "discarded_oversized")]
+                DiscardedOversized,
+                /// The native history was missing, unsafe, ambiguous, or otherwise unusable.
+                #[serde(rename = "unavailable")]
+                Unavailable,
             }
 
             /// Volume versions captured by an agent checkpoint.
@@ -348,10 +348,78 @@ pub mod webhooks {
                     Option<RequestCliAgentSessionHistoryDisposition>,
                 /// Optional artifact versions captured by the checkpoint.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
-                pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,
+                pub artifact_snapshots: Option<Vec<ArtifactSnapshot>>,
                 /// Optional volume versions captured by the checkpoint.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub volume_versions_snapshot: Option<RequestVolumeVersionsSnapshot>,
+            }
+
+            /// Response body returned after creating an agent checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct Response {
+                /// Created checkpoint identifier.
+                pub checkpoint_id: String,
+                /// Agent session associated with the checkpoint.
+                pub agent_session_id: String,
+                /// Conversation captured by the checkpoint.
+                pub conversation_id: String,
+                /// Optional artifact versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub artifacts: Option<Vec<ArtifactSnapshot>>,
+                /// Optional volume versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub volumes: Option<std::collections::BTreeMap<String, String>>,
+            }
+
+            /// DTOs for preparing direct session-history uploads.
+            pub mod prepare_history {
+                /// Request body for preparing a session-history upload.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct Request {
+                    /// Agent run identifier bound to the sandbox token.
+                    pub run_id: String,
+                    /// SHA-256 hash of the uncompressed session history.
+                    pub hash: String,
+                    /// Uncompressed session-history size in bytes.
+                    pub raw_size: u64,
+                    /// Encoded session-history size in bytes.
+                    pub encoded_size: u64,
+                    /// Optional encoding used for the uploaded bytes.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub encoding: Option<SessionHistoryEncoding>,
+                }
+
+                /// Response body returned when preparing session history.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct Response {
+                    /// Optional presigned URL for uploading new content.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub presigned_url: Option<String>,
+                    /// Whether the requested session history already exists.
+                    pub existing: bool,
+                    /// Optional encoding of the persisted session history.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub encoding: Option<SessionHistoryEncoding>,
+                }
+
+                /// Encoding used for persisted CLI agent session history.
+                #[derive(
+                    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+                )]
+                pub enum SessionHistoryEncoding {
+                    /// Uncompressed session history bytes.
+                    #[serde(rename = "identity")]
+                    Identity,
+                    /// Gzip-compressed session history bytes.
+                    #[serde(rename = "gzip")]
+                    Gzip,
+                    /// Zstandard-compressed session history bytes.
+                    #[serde(rename = "zstd")]
+                    Zstd,
+                }
             }
         }
 

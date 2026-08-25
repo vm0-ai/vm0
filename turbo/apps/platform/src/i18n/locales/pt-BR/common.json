@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Anexar marcações",
       "draftOnly": "As marcações ficam no rascunho — você pode alterá-las até enviar",
+      "inkLabel": "Cor {{color}}",
       "notePlaceholder": "Diga o que deve mudar aqui",
       "open": "Anotar",
       "redo": "Refazer",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} marcação",
       "subtitle_many": "{{count}} marcações",
       "subtitle_other": "{{count}} marcações",
+      "textPlaceholder": "Digite o rótulo",
       "tools": {
         "arrow": "Seta",
         "box": "Retângulo",
@@ -717,6 +719,12 @@
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
+      "visibility": {
+        "change": "Alterar",
+        "changeLabel": "Alterar a visibilidade do modelo",
+        "privateState": "Somente você pode vê-lo e usá-lo",
+        "workspaceState": "Qualquer pessoa neste espaço de trabalho pode usá-lo"
+      },
       "website": "Site",
       "websitePreview": "Visualização do modelo de site {{title}}",
       "workflow": "Fluxo de trabalho",
@@ -3384,9 +3392,17 @@
           "description": "Gerar slides e notas do apresentador",
           "title": "Gerar uma apresentação"
         },
+        "slack": {
+          "description": "Converse com seu colega de IA no seu workspace",
+          "title": "Usar o Slack"
+        },
         "video": {
           "description": "Transforme suas ideias em vídeo",
           "title": "Produção de vídeo"
+        },
+        "website": {
+          "description": "Crie e publique uma página compartilhável",
+          "title": "Criar um site"
         },
         "workflow": {
           "description": "Explore a partir de modelos pré-definidos",
@@ -4699,7 +4715,6 @@
         "usage": {
           "balanceDescription": "O que resta para a sua equipe gastar.",
           "balanceTitle": "Saldo de créditos",
-          "balanceUsageDescription": "O saldo de créditos e o uso da sua equipe.",
           "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
           "usageTitle": "Uso de créditos"
         }

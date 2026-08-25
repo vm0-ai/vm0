@@ -40,7 +40,6 @@ import {
   orgRoleSchema,
   type OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type {
   UsagePackCatalogItem,
   UsagePackManagementResponse,
@@ -58,7 +57,6 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { user$ } from "../../../../signals/auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { orgPlanCapabilities$ } from "../../../../signals/okou-page/org-plan-capabilities.ts";
 import {
   memberSearch$,
@@ -363,7 +361,6 @@ type InviteDialogMode =
   | "upgrade";
 
 function resolveInviteDialogMode(args: {
-  readonly usagePackPlansEnabled: boolean;
   readonly capabilities:
     | {
         readonly memberInvitationAllowed: boolean;
@@ -374,9 +371,6 @@ function resolveInviteDialogMode(args: {
   readonly catalogError: boolean;
   readonly usagePackConfigured: boolean;
 }): InviteDialogMode {
-  if (!args.usagePackPlansEnabled) {
-    return "direct";
-  }
   if (!args.capabilities) {
     return "loading";
   }
@@ -691,14 +685,12 @@ function InviteDialog() {
   const setRole = useSet(setInviteRole$);
   const usagePackUsd = useGet(inviteUsagePackUsd$);
   const setUsagePackUsd = useSet(setInviteUsagePackUsd$);
-  const featureSwitches = useGet(featureSwitch$);
   const capabilities = useLastResolved(orgPlanCapabilities$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
   const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
   const usagePacks =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const mode = resolveInviteDialogMode({
-    usagePackPlansEnabled: featureSwitches[FeatureSwitchKey.UsagePackPlans],
     capabilities,
     catalogLoading: catalogLoadable.state === "loading",
     catalogError: catalogLoadable.state === "hasError",

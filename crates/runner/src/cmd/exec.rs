@@ -45,6 +45,10 @@ pub struct ExecArgs {
     #[arg(long)]
     sudo: bool,
 
+    /// Print the guest terminal diagnostic for ordinary process exits
+    #[arg(long)]
+    show_diagnostic: bool,
+
     /// Command to execute inside the sandbox (after `--`).
     ///
     /// Arguments are preserved as argv — pipes, redirects, globs, and
@@ -115,7 +119,7 @@ async fn run_exec_with_writers(
     {
         Ok(result) => {
             let _ = stdout.write_all(&result.stdout);
-            write_remote_exec_stderr(stderr, &result);
+            write_remote_exec_stderr(stderr, &result, args.show_diagnostic);
 
             Ok(remote_exec_exit_code(result.termination))
         }
@@ -141,11 +145,15 @@ fn remote_exec_exit_code(termination: ExecTermination) -> ExitCode {
     }
 }
 
-fn write_remote_exec_stderr(stderr: &mut impl Write, result: &RemoteExecResult) {
+fn write_remote_exec_stderr(
+    stderr: &mut impl Write,
+    result: &RemoteExecResult,
+    show_diagnostic: bool,
+) {
     let _ = stderr.write_all(&result.stderr);
     let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
 
-    write_remote_exec_terminal_diagnostic(stderr, result, &mut line_open);
+    write_remote_exec_terminal_diagnostic(stderr, result, show_diagnostic, &mut line_open);
     if result.stdout_truncated {
         write_remote_exec_warning(stderr, &mut line_open, REMOTE_EXEC_STDOUT_TRUNCATED_WARNING);
     }
@@ -157,14 +165,16 @@ fn write_remote_exec_stderr(stderr: &mut impl Write, result: &RemoteExecResult) 
 fn write_remote_exec_terminal_diagnostic(
     stderr: &mut impl Write,
     result: &RemoteExecResult,
+    show_diagnostic: bool,
     line_open: &mut bool,
 ) {
-    let (fallback, include_diagnostic) = match result.termination {
+    let (fallback, include_terminal_diagnostic) = match result.termination {
         ExecTermination::Exited { .. } => (None, false),
         ExecTermination::TimedOut => (Some("Timeout"), false),
         ExecTermination::Cancelled => (Some("Cancelled"), true),
         ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
     };
+    let include_diagnostic = show_diagnostic || include_terminal_diagnostic;
 
     if result.stderr.is_empty() {
         if let Some(message) = fallback {
@@ -204,6 +214,7 @@ mod tests {
             sandbox: Some(sandbox_id.into()),
             timeout: 5,
             sudo: false,
+            show_diagnostic: false,
             command: command.split_whitespace().map(String::from).collect(),
         }
     }
@@ -214,6 +225,7 @@ mod tests {
             sandbox: Some("id".into()),
             timeout: 5,
             sudo: false,
+            show_diagnostic: false,
             command: command.into_iter().map(String::from).collect(),
         }
     }
@@ -269,6 +281,7 @@ mod tests {
             sandbox: Some("direct-sandbox".into()),
             timeout: 47,
             sudo: true,
+            show_diagnostic: false,
             command: vec!["echo".into(), "hello world".into()],
         };
 
@@ -387,7 +400,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
@@ -404,7 +417,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"stderr clue");
     }
@@ -421,7 +434,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Cancelled\n");
     }
@@ -438,7 +451,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Cancelled\ncancel diagnostic\n");
     }
@@ -455,9 +468,29 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Timeout\n");
+    }
+
+    #[test]
+    fn successful_terminal_diagnostic_is_opt_in() {
+        let result = RemoteExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: "containment evidence".into(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut default_stderr = Vec::new();
+        let mut diagnostic_stderr = Vec::new();
+
+        write_remote_exec_stderr(&mut default_stderr, &result, false);
+        write_remote_exec_stderr(&mut diagnostic_stderr, &result, true);
+
+        assert!(default_stderr.is_empty());
+        assert_eq!(diagnostic_stderr, b"containment evidence\n");
     }
 
     #[test]
@@ -472,7 +505,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(
             stderr,
@@ -492,7 +525,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(
             stderr,

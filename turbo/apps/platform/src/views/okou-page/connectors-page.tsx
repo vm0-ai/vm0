@@ -1200,7 +1200,7 @@ export function ConnectorsPage() {
           detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
         }}
         onManageAccounts={() => {
-          return openAccountManager(c);
+          return openAccountManager(c, signal);
         }}
         onManageAccess={() => {
           return setManagedConnectorSlug(c.slug);

@@ -7,11 +7,13 @@ import {
   piLaunchConfigSchema,
   piModelConfigSchema,
   runnersModelProviderFailuresContract,
+  sessionHistoryEncodingSchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookCheckpointsContract,
+  webhookCheckpointsPrepareHistoryContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -87,6 +89,10 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["webhooks", "agent", "checkpoints"],
     rustDoc: ["DTOs for creating recoverable agent checkpoints."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustDoc: ["DTOs for preparing direct session-history uploads."],
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -371,9 +377,11 @@ export const rustTypeBindings = [
     ],
   },
   {
-    schema: webhookCheckpointsContract.create.body,
+    schema:
+      webhookCheckpointsContract.create.body.shape.artifactSnapshots.unwrap()
+        .element,
     rustModulePath: ["webhooks", "agent", "checkpoints"],
-    rustTypeName: "Request",
+    rustTypeName: "ArtifactSnapshot",
     direction: "request",
     fieldTypeOverrides: {
       missingRootPolicy:
@@ -381,7 +389,7 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
-        rustTypeName: "RequestArtifactSnapshot",
+        rustTypeName: "ArtifactSnapshot",
         rustDoc: ["Artifact version captured by an agent checkpoint."],
         fields: {
           name: ["User-facing artifact name referenced by the run."],
@@ -392,6 +400,17 @@ export const rustTypeBindings = [
           ],
         },
       },
+    ],
+  },
+  {
+    schema: webhookCheckpointsContract.create.body,
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      artifactSnapshots: "Vec<ArtifactSnapshot>",
+    },
+    declarations: [
       {
         rustTypeName: "RequestVolumeVersionsSnapshot",
         rustDoc: ["Volume versions captured by an agent checkpoint."],
@@ -434,6 +453,89 @@ export const rustTypeBindings = [
           volumeVersionsSnapshot: [
             "Optional volume versions captured by the checkpoint.",
           ],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsContract.create.responses[200],
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      artifacts: "Vec<ArtifactSnapshot>",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Response body returned after creating an agent checkpoint."],
+        fields: {
+          checkpointId: ["Created checkpoint identifier."],
+          agentSessionId: ["Agent session associated with the checkpoint."],
+          conversationId: ["Conversation captured by the checkpoint."],
+          artifacts: ["Optional artifact versions captured by the checkpoint."],
+          volumes: ["Optional volume versions captured by the checkpoint."],
+        },
+      },
+    ],
+  },
+  {
+    schema: sessionHistoryEncodingSchema,
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "SessionHistoryEncoding",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "SessionHistoryEncoding",
+        rustDoc: ["Encoding used for persisted CLI agent session history."],
+        variants: {
+          identity: ["Uncompressed session history bytes."],
+          gzip: ["Gzip-compressed session history bytes."],
+          zstd: ["Zstandard-compressed session history bytes."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsPrepareHistoryContract.prepare.body,
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      rawSize: "u64",
+      encodedSize: "u64",
+      encoding: "SessionHistoryEncoding",
+    },
+    declarations: [
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for preparing a session-history upload."],
+        fields: {
+          runId: ["Agent run identifier bound to the sandbox token."],
+          hash: ["SHA-256 hash of the uncompressed session history."],
+          rawSize: ["Uncompressed session-history size in bytes."],
+          encodedSize: ["Encoded session-history size in bytes."],
+          encoding: ["Optional encoding used for the uploaded bytes."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsPrepareHistoryContract.prepare.responses[200],
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      encoding: "SessionHistoryEncoding",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Response body returned when preparing session history."],
+        fields: {
+          presignedUrl: ["Optional presigned URL for uploading new content."],
+          existing: ["Whether the requested session history already exists."],
+          encoding: ["Optional encoding of the persisted session history."],
         },
       },
     ],

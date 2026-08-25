@@ -14,11 +14,13 @@ import { modelProviderCodexRuntimeConfigSchema } from "../../contracts/model-pro
 import {
   piLaunchConfigSchema,
   piModelConfigSchema,
+  sessionHistoryEncodingSchema,
   storageMountEntrySchema,
 } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
   webhookCheckpointsContract,
+  webhookCheckpointsPrepareHistoryContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../../contracts/webhooks";
@@ -66,7 +68,32 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "ArtifactSnapshot",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
     rustTypeName: "Request",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Request",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "SessionHistoryEncoding",
     direction: "request",
   },
   {
@@ -205,6 +232,7 @@ describe("Rust type bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod webhooks {");
     expect(firstRender).toContain("pub mod checkpoints {");
+    expect(firstRender).toContain("pub mod prepare_history {");
     expect(firstRender).toContain("pub mod prepare {");
     expect(firstRender).toContain("pub struct FileEntryWithHash {");
     expect(firstRender).toContain(
@@ -264,9 +292,14 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "/// Request body for creating a recoverable agent checkpoint.",
     );
-    expect(firstRender).toContain("pub struct RequestArtifactSnapshot {");
+    expect(firstRender).toContain("pub struct ArtifactSnapshot {");
+    expect(firstRender).not.toContain("pub struct RequestArtifactSnapshot {");
+    expect(firstRender).not.toContain("pub struct ResponseArtifactsItem {");
     expect(firstRender).toContain(
-      "pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,",
+      "pub artifact_snapshots: Option<Vec<ArtifactSnapshot>>,",
+    );
+    expect(firstRender).toContain(
+      "pub artifacts: Option<Vec<ArtifactSnapshot>>,",
     );
     expect(firstRender).toMatch(
       /pub missing_root_policy: Option<\n\s+crate::generated::types::runners::storage::ArtifactEntryMissingRootPolicy,\n\s+>,/,
@@ -280,6 +313,12 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "pub versions: std::collections::BTreeMap<String, String>,",
     );
+    expect(firstRender).toContain("pub enum SessionHistoryEncoding {");
+    expect(firstRender).toContain(
+      "pub encoding: Option<SessionHistoryEncoding>,",
+    );
+    expect(firstRender).toContain("pub raw_size: u64,");
+    expect(firstRender).toContain("pub encoded_size: u64,");
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
       1,
     );
@@ -441,6 +480,85 @@ describe("Rust type bindings", () => {
     );
 
     expect(checkpointPolicySchema).toEqual(runnerPolicySchema);
+  });
+
+  it("reuses canonical checkpoint artifact and encoding schemas", () => {
+    const checkpointModule = "webhooks/agent/checkpoints";
+    const prepareHistoryModule = "webhooks/agent/checkpoints/prepare_history";
+    const artifactSchema =
+      webhookCheckpointsContract.create.body.shape.artifactSnapshots.unwrap()
+        .element;
+    const responseArtifactSchema =
+      webhookCheckpointsContract.create.responses[200].shape.artifacts.unwrap()
+        .element;
+    const requestEncodingSchema =
+      webhookCheckpointsPrepareHistoryContract.prepare.body.shape.encoding.unwrap();
+    const responseEncodingSchema =
+      webhookCheckpointsPrepareHistoryContract.prepare.responses[200].shape.encoding.unwrap();
+    const artifactBinding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === checkpointModule &&
+          rustTypeName === "ArtifactSnapshot"
+        );
+      },
+    );
+    const checkpointRequestBinding: RustTypeBinding | undefined =
+      rustTypeBindings.find(({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === checkpointModule &&
+          rustTypeName === "Request"
+        );
+      });
+    const checkpointResponseBinding: RustTypeBinding | undefined =
+      rustTypeBindings.find(({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === checkpointModule &&
+          rustTypeName === "Response"
+        );
+      });
+    const encodingBinding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === prepareHistoryModule &&
+          rustTypeName === "SessionHistoryEncoding"
+        );
+      },
+    );
+    const prepareRequestBinding: RustTypeBinding | undefined =
+      rustTypeBindings.find(({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === prepareHistoryModule &&
+          rustTypeName === "Request"
+        );
+      });
+    const prepareResponseBinding: RustTypeBinding | undefined =
+      rustTypeBindings.find(({ rustModulePath, rustTypeName }) => {
+        return (
+          rustModulePath.join("/") === prepareHistoryModule &&
+          rustTypeName === "Response"
+        );
+      });
+
+    expect(responseArtifactSchema).toBe(artifactSchema);
+    expect(artifactBinding?.schema).toBe(artifactSchema);
+    expect(checkpointRequestBinding?.fieldTypeOverrides).toEqual({
+      artifactSnapshots: "Vec<ArtifactSnapshot>",
+    });
+    expect(checkpointResponseBinding?.fieldTypeOverrides).toEqual({
+      artifacts: "Vec<ArtifactSnapshot>",
+    });
+    expect(requestEncodingSchema).toBe(sessionHistoryEncodingSchema);
+    expect(responseEncodingSchema).toBe(sessionHistoryEncodingSchema);
+    expect(encodingBinding?.schema).toBe(sessionHistoryEncodingSchema);
+    expect(prepareRequestBinding?.fieldTypeOverrides).toEqual({
+      rawSize: "u64",
+      encodedSize: "u64",
+      encoding: "SessionHistoryEncoding",
+    });
+    expect(prepareResponseBinding?.fieldTypeOverrides).toEqual({
+      encoding: "SessionHistoryEncoding",
+    });
   });
 
   it("renders common JSON schema shapes", () => {

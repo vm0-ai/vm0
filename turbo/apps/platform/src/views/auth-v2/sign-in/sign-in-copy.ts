@@ -350,7 +350,10 @@ export function signInCardDescription(
   if (flowState.step === "password") {
     return copy.passwordSubtitle;
   }
-  if (flowState.step === "email-code") {
+  if (
+    flowState.step === "email-code" ||
+    flowState.step === "client-trust-code"
+  ) {
     return copy.emailCodeSubtitle;
   }
   if (flowState.step === "password-reset-code") {

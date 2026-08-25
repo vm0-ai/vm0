@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.794.2](https://github.com/vm0-ai/vm0/compare/app-v0.794.1...app-v0.794.2) (2026-08-25)
+
+
+### Refactoring
+
+* **api-contracts:** drop the vm0 prefix from the built-in model route types ([#29319](https://github.com/vm0-ai/vm0/issues/29319)) ([796aba5](https://github.com/vm0-ai/vm0/commit/796aba530c66cc5ea5aa24afc832c463f2d428f8)), closes [#29314](https://github.com/vm0-ai/vm0/issues/29314)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.365.0
+    * @okouai/core bumped to 8.590.3
+
 ## [0.794.1](https://github.com/vm0-ai/vm0/compare/app-v0.794.0...app-v0.794.1) (2026-08-25)
 
 

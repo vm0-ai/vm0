@@ -269,7 +269,6 @@ def feed_usage(
             usage_protocol="openai_responses_websocket",
             error=inspection_error,
         )
-        return
 
     message_id_value = usage_result.get("message_id") if usage_result else None
     message_id = (

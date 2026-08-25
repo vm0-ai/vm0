@@ -181,7 +181,7 @@ async function expectNoUsage(actor: TranslationActor): Promise<void> {
 }
 
 describe("POST /api/translate", () => {
-  it("translates with fixed Qwen routing and settles each invocation", async () => {
+  it("keeps pre-deployment CLI requests compatible and settles each invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
     server.use(

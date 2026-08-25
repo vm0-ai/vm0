@@ -22,6 +22,13 @@ const translateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return await set(translation$, { auth, body: bodyResult.data }, signal);
 });
 
+/**
+ * Rollout fallback. Surface: pre-deployment commit-addressed CLI -> new API.
+ * Contexts can hold the old CLI package for the two-hour queue lifetime plus
+ * maximum claimed execution and bounded finalization. Remove under #29356 once
+ * no queued or active pre-deployment context or supported external caller can
+ * invoke this route.
+ */
 export const translationRoutes: readonly RouteEntry[] = [
   {
     route: translationContract.translate,

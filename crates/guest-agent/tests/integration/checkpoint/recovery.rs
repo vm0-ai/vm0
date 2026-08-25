@@ -39,7 +39,7 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
             .json_body_includes(r#"{"cliAgentSessionId":"recovery-session"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-recovery"}));
+            .json_body(json!({"checkpointId": "checkpoint-recovery", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
@@ -81,7 +81,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_claude_history() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-claude-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-invalid-claude-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_recovery_checkpoint(&runtime).await.unwrap();
@@ -115,7 +115,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-codex-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-invalid-codex-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_recovery_checkpoint(&runtime).await.unwrap();
@@ -180,7 +180,7 @@ async fn assert_recovery_checkpoint_ignores_legacy_history_marker(
             .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-derived-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-derived-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
@@ -233,7 +233,7 @@ async fn recovery_checkpoint_continues_without_partial_jsonl_history() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-partial-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-partial-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
@@ -276,7 +276,7 @@ async fn recovery_checkpoint_continues_without_non_utf8_session_history() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-non-utf8-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-non-utf8-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
@@ -351,7 +351,7 @@ async fn recovery_checkpoint_continues_when_derived_history_is_missing() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-missing-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-missing-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
@@ -389,7 +389,7 @@ async fn recovery_checkpoint_continues_without_invalid_history_source() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-history-source"}));
+            .json_body(json!({"checkpointId": "checkpoint-invalid-history-source", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(

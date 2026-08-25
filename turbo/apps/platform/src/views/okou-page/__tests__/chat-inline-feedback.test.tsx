@@ -1557,9 +1557,13 @@ describe("chat inline feedback", () => {
     // The flat block is its own content element: no nested note wrapper.
     expect(note.dataset.feedbackItem).toBe("");
     expect(note.querySelector("[data-feedback-note]")).toBeNull();
-    // The chrome widget carries the quote chip and the empty-note placeholder.
+    // The chrome widget carries the quote chip; the empty-note placeholder is
+    // an attribute the paragraph renders through ::before, so typing never
+    // inserts or removes DOM around the caret.
     expect(note).toHaveTextContent(assistantReply);
-    expect(note).toHaveTextContent("What should change about this?");
+    expect(
+      note.querySelector<HTMLElement>(":scope > p")?.dataset.placeholder,
+    ).toBe("What should change about this?");
 
     await user.click(note);
     pastePlainText(note, "Make the dates explicit");
@@ -1567,7 +1571,9 @@ describe("chat inline feedback", () => {
       expect(note).toHaveTextContent("Make the dates explicit");
     });
     await waitFor(() => {
-      expect(note).not.toHaveTextContent("What should change about this?");
+      expect(
+        note.querySelector<HTMLElement>(":scope > p")?.dataset.placeholder,
+      ).toBeUndefined();
     });
 
     await user.click(screen.getByLabelText("Send"));
@@ -1576,6 +1582,38 @@ describe("chat inline feedback", () => {
     });
     expect(sentMessages[0]?.prompt).toContain("Make the dates explicit");
     expect(sentMessages[0]?.prompt).toContain(assistantReply);
+  });
+
+  it("keeps the chrome widget's identity while the note empties and refills", async () => {
+    // Recreating the widget swaps a contenteditable=false element right next
+    // to the caret; at an IME composition boundary WebKit loses the caret.
+    // The widget must survive both transitions with the same DOM element.
+    const user = userEvent.setup({ delay: null });
+    const { assistantReply } = await setupFlatFeedbackNoteThread("stable");
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const note = await findFeedbackNote();
+    const chrome = note.firstElementChild;
+    if (!(chrome instanceof HTMLElement) || chrome.tagName === "P") {
+      throw new Error("Chrome widget not found");
+    }
+
+    await user.click(note);
+    pastePlainText(note, "z");
+    await waitFor(() => {
+      expect(note).toHaveTextContent("z");
+    });
+    expect(note.firstElementChild).toBe(chrome);
+
+    await replaceFeedbackNote(note, "{Backspace}");
+    await waitFor(() => {
+      expect(
+        note.querySelector<HTMLElement>(":scope > p")?.dataset.placeholder,
+      ).toBe("What should change about this?");
+    });
+    expect(note.firstElementChild).toBe(chrome);
   });
 
   it("stays editable after the flat quote block is damaged in place", async () => {

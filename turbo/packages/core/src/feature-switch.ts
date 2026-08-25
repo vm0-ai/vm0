@@ -58,11 +58,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
-  [FeatureSwitchKey.BoxConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Box file storage connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Canva design connector",
@@ -332,12 +327,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
     enabled: false,
-  },
-  [FeatureSwitchKey.UsagePackPlans]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

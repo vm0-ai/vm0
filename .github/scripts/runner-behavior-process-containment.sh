@@ -478,6 +478,125 @@ grep -E -q '^cpu-pressure-complete throttled_periods=[1-9][0-9]*$' \
   <<<"$CPU_PRESSURE_RESULT" \
   || fail "CPU pressure did not report throttling"
 
+echo "--- Evidence: return mixed-identity pids.max cleanup through exec result ---"
+PID_EVIDENCE_COMMAND=$(cat <<'PYTHON'
+import errno
+import os
+import pathlib
+import signal
+
+relative = next(
+    line.removeprefix("0::").strip()
+    for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
+    if line.startswith("0::")
+)
+if not relative.startswith("/vm0-exec/exec-") or not relative.endswith("/workload"):
+    raise RuntimeError(f"PID evidence is outside workload cgroup: {relative}")
+workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
+(workload / "pids.max").write_text("64")
+
+ready_read, ready_write = os.pipe()
+children = []
+while True:
+    try:
+        pid = os.fork()
+    except OSError as error:
+        if error.errno != errno.EAGAIN:
+            raise
+        break
+    if pid == 0:
+        os.close(ready_read)
+        os.setsid()
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if len(children) % 2 == 0:
+            os.setgroups([])
+            os.setgid(1000)
+            os.setuid(1000)
+        null = os.open("/dev/null", os.O_RDWR)
+        for descriptor in (0, 1, 2):
+            os.dup2(null, descriptor)
+        if null > 2:
+            os.close(null)
+        os.write(ready_write, b"1")
+        os.close(ready_write)
+        while True:
+            signal.pause()
+    children.append(pid)
+
+os.close(ready_write)
+ready = b""
+while len(ready) < len(children):
+    chunk = os.read(ready_read, len(children) - len(ready))
+    if not chunk:
+        raise RuntimeError("PID-pressure readiness pipe closed early")
+    ready += chunk
+os.close(ready_read)
+events = dict(
+    line.split()
+    for line in (workload / "pids.events").read_text().splitlines()
+)
+if int(events.get("max", "0")) == 0:
+    raise RuntimeError("pids.max did not reject a workload fork")
+print(
+    "pid-evidence-ready "
+    f"children={len(children)} "
+    f"user_children={(len(children) + 1) // 2} "
+    f"root_children={len(children) // 2} "
+    f"max={events['max']}",
+    flush=True,
+)
+PYTHON
+)
+if ! PID_EVIDENCE_RESULT=$(sudo "$BIN_DIR/runner" exec \
+  --timeout 15 \
+  --sandbox "$PRESSURE_SANDBOX_ID" \
+  --sudo \
+  --show-diagnostic \
+  -- python3 -c "$PID_EVIDENCE_COMMAND" 2>&1); then
+  printf '%s\n' "$PID_EVIDENCE_RESULT"
+  fail "PID-pressure cleanup behavior failed before result evidence"
+fi
+printf '%s\n' "$PID_EVIDENCE_RESULT"
+PID_EVIDENCE_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=\([0-9][0-9]*\) user_children=[1-9][0-9]* root_children=[1-9][0-9]* max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+[ -n "$PID_EVIDENCE_CHILDREN" ] \
+  || fail "PID-pressure evidence did not reach the configured pids.max boundary"
+[ "$PID_EVIDENCE_CHILDREN" -ge 50 ] \
+  || fail "PID-pressure evidence created only ${PID_EVIDENCE_CHILDREN} children"
+PID_EVIDENCE_USER_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=[0-9][0-9]* user_children=\([1-9][0-9]*\) root_children=[1-9][0-9]* max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+PID_EVIDENCE_ROOT_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=[0-9][0-9]* user_children=[1-9][0-9]* root_children=\([1-9][0-9]*\) max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+[ -n "$PID_EVIDENCE_USER_CHILDREN" ] \
+  || fail "PID-pressure evidence did not create user-owned descendants"
+[ -n "$PID_EVIDENCE_ROOT_CHILDREN" ] \
+  || fail "PID-pressure evidence did not create root-owned descendants"
+PID_CLEANUP_LINE=$(printf '%s\n' "$PID_EVIDENCE_RESULT" \
+  | grep -F 'exec process containment cleaned' \
+  | grep -F 'descendants_observed=true' \
+  | grep -F 'cgroup_kill_used=true' \
+  | head -1) \
+  || fail "PID-pressure cleanup behavior passed, but its successful exec result produced no populated cgroup.kill cleanup evidence"
+PID_INITIAL_MEMBERS=$(sed -n \
+  's/.*initial_members=\([0-9][0-9]*\).*/\1/p' \
+  <<<"$PID_CLEANUP_LINE")
+[ -n "$PID_INITIAL_MEMBERS" ] \
+  || fail "PID-pressure cleanup result evidence omitted its initial member count"
+[ "$PID_INITIAL_MEMBERS" -ge 50 ] \
+  || fail "PID-pressure cleanup result evidence observed only ${PID_INITIAL_MEMBERS} members"
+PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' \
+  <<<"$PID_CLEANUP_LINE")
+[ -n "$PID_CLEANUP_MS" ] \
+  || fail "PID-pressure cleanup result evidence omitted cleanup latency"
+[ "$PID_CLEANUP_MS" -le 5000 ] \
+  || fail "PID-pressure cleanup exceeded 5s: ${PID_CLEANUP_MS}ms"
+LEAK_CLEANUP_MS=$PID_CLEANUP_MS
+[ "$LEAK_CLEANUP_MS" -le 2000 ] \
+  || fail "mixed-identity descendant cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
+
 echo "--- Pressure: cross the retired workload memory boundary through Guest reclaim ---"
 PRESSURE_API_SOCK="/run/vm0/sock/$PRESSURE_SANDBOX_ID/api.sock"
 BALLOON_BEFORE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
@@ -847,39 +966,12 @@ printf '%s\n' "$LOGS" \
   | grep -F 'reused=true' \
   >/dev/null \
   || fail "tool-group OOM follow-up did not reuse its sandbox"
-LEAK_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'exec process containment cleaned' \
-  | grep -F 'descendants_observed=true' \
-  | grep -F 'cgroup_kill_used=true' \
-  | head -1) \
-  || fail "missing populated cleanup that used cgroup.kill"
-
-LEAK_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$LEAK_LINE")
-[ -n "$LEAK_CLEANUP_MS" ] || fail "missing leaked cleanup latency"
-[ "$LEAK_CLEANUP_MS" -le 2000 ] \
-  || fail "leaked cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
-
 if grep -F 'process control latency exceeded calibrated bound' <<<"$LOGS" >/dev/null; then
   fail "process control exceeded the calibrated 750ms bound under pressure"
 fi
-PID_CLEANUP_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'exec process containment cleaned' \
-  | grep -F 'descendants_observed=true' \
-  | grep -F 'cgroup_kill_used=true' \
-  | sed -n 's/.*initial_members=\([0-9][0-9]*\).*/\1 &/p' \
-  | sort -nr \
-  | head -1) \
-  || fail "missing forced PID-pressure cleanup"
-PID_INITIAL_MEMBERS=${PID_CLEANUP_LINE%% *}
-[ "$PID_INITIAL_MEMBERS" -ge 50 ] \
-  || fail "PID-pressure cleanup observed only ${PID_INITIAL_MEMBERS} members"
-PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$PID_CLEANUP_LINE")
-[ -n "$PID_CLEANUP_MS" ] || fail "PID-pressure cleanup latency was not reported"
-[ "$PID_CLEANUP_MS" -le 5000 ] \
-  || fail "PID-pressure cleanup exceeded 5s: ${PID_CLEANUP_MS}ms"
 
 echo "PASS: detached user/root descendants were reclaimed"
-echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
+echo "PASS: mixed-identity leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
 echo "PASS: compressed CPU pressure kept process control and ${METRICS_COUNT} metric samples live"
 echo "PASS: Bash tool group OOM preserved the CLI, unrelated tool, and reuse in ${MEMORY_ELAPSED}s"
 echo "PASS: pids.max cleanup reclaimed ${PID_INITIAL_MEMBERS} members in ${PID_CLEANUP_MS}ms"

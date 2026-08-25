@@ -469,20 +469,16 @@ function DeleteAccountConfirmation({
   );
 }
 
-function ConnectorAccountSearch({
-  value,
-  onChange,
-}: {
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
+function ConnectorAccountSearch({ value }: { readonly value: string }) {
   const { t } = useTranslation();
+  const setSearch = useSet(settingsConnectorAccounts.setSearch$);
+  const signal = useGet(pageSignal$);
   return (
     <div className="border-b border-border px-6 py-3">
       <Input
         value={value}
         onChange={(event) => {
-          return onChange(event.target.value);
+          return setSearch(event.target.value, signal);
         }}
         placeholder={t(($) => {
           return $.connectors.accounts.find;
@@ -505,7 +501,6 @@ export function ConnectorAccountManagerDialog({
   const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
   const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
-  const setSearch = useSet(settingsConnectorAccounts.setSearch$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     settingsConnectorAccounts.loadMore$,
   );
@@ -574,9 +569,7 @@ export function ConnectorAccountManagerDialog({
             </Button>
           </div>
         </DialogHeader>
-        {showSearch ? (
-          <ConnectorAccountSearch value={search} onChange={setSearch} />
-        ) : null}
+        {showSearch ? <ConnectorAccountSearch value={search} /> : null}
         {defaultConnection ? (
           <DefaultAccount
             target={target}

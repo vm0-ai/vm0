@@ -304,14 +304,12 @@ function AccountUsageGroup({
   resetPending,
   subscriptionRowsCacheKey,
   subscriptionsEnabled,
-  usagePackPlansEnabled,
 }: {
   onOpenCreditBalance: () => void;
   onResetCodexUsage: (resetCredits: number | null) => void;
   resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
   subscriptionsEnabled: boolean;
-  usagePackPlansEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
@@ -319,15 +317,8 @@ function AccountUsageGroup({
 
   if (subscriptionsEnabled) {
     if (isAdmin) {
-      return usagePackPlansEnabled ? (
+      return (
         <AccountUsageGroupWithCombinedCredit
-          onOpenCreditBalance={onOpenCreditBalance}
-          onResetCodexUsage={onResetCodexUsage}
-          resetPending={resetPending}
-          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
-        />
-      ) : (
-        <AccountUsageGroupWithCredit
           onOpenCreditBalance={onOpenCreditBalance}
           onResetCodexUsage={onResetCodexUsage}
           resetPending={resetPending}
@@ -335,15 +326,9 @@ function AccountUsageGroup({
         />
       );
     }
-    return usagePackPlansEnabled ? (
+    return (
       <AccountUsageGroupWithUsagePackCredit
         onOpenCreditBalance={onOpenCreditBalance}
-        onResetCodexUsage={onResetCodexUsage}
-        resetPending={resetPending}
-        subscriptionRowsCacheKey={subscriptionRowsCacheKey}
-      />
-    ) : (
-      <AccountSubscriptionsGroup
         onResetCodexUsage={onResetCodexUsage}
         resetPending={resetPending}
         subscriptionRowsCacheKey={subscriptionRowsCacheKey}
@@ -352,17 +337,15 @@ function AccountUsageGroup({
   }
 
   if (isAdmin) {
-    return usagePackPlansEnabled ? (
+    return (
       <AccountCombinedCreditBalanceGroup
         onOpenCreditBalance={onOpenCreditBalance}
       />
-    ) : (
-      <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
     );
   }
-  return usagePackPlansEnabled ? (
+  return (
     <AccountUsagePackCreditGroup onOpenCreditBalance={onOpenCreditBalance} />
-  ) : null;
+  );
 }
 
 function useCombinedCreditBalance(): {
@@ -404,83 +387,6 @@ function useUsagePackCreditBalance(): {
     creditLabel: credits !== null ? formatCreditBalance(credits) : null,
     loading: creditsLoadable.state === "loading" && credits === null,
   };
-}
-
-function AccountCreditBalanceGroup({
-  onOpenCreditBalance,
-}: {
-  onOpenCreditBalance: () => void;
-}) {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
-
-  const credits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
-  const loading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
-
-  if (!loading && creditLabel === null) {
-    return null;
-  }
-
-  return (
-    <>
-      <CreditBalanceItem
-        creditLabel={creditLabel}
-        loading={loading}
-        onOpenCreditBalance={onOpenCreditBalance}
-      />
-      <DropdownMenuSeparator />
-    </>
-  );
-}
-
-function AccountUsageGroupWithCredit({
-  onOpenCreditBalance,
-  onResetCodexUsage,
-  resetPending,
-  subscriptionRowsCacheKey,
-}: {
-  onOpenCreditBalance: () => void;
-  onResetCodexUsage: (resetCredits: number | null) => void;
-  resetPending: boolean;
-  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
-}) {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
-    cacheKey: subscriptionRowsCacheKey,
-  });
-  const credits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
-  const creditLoading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
-  const showCredit = creditLoading || creditLabel !== null;
-  const showSubscriptions = subscriptionsLoading || rows.length > 0;
-
-  if (!showCredit && !showSubscriptions) {
-    return null;
-  }
-
-  return (
-    <>
-      {showCredit && (
-        <CreditBalanceItem
-          creditLabel={creditLabel}
-          loading={creditLoading}
-          onOpenCreditBalance={onOpenCreditBalance}
-        />
-      )}
-      {showCredit && showSubscriptions && <DropdownMenuSeparator />}
-      {showSubscriptions && (
-        <AccountMenuSubscriptionsPanel
-          loading={subscriptionsLoading}
-          onResetCodexUsage={onResetCodexUsage}
-          resetPending={resetPending}
-          rows={rows}
-        />
-      )}
-      <DropdownMenuSeparator />
-    </>
-  );
 }
 
 function AccountUsageGroupWithCombinedCredit({
@@ -593,37 +499,6 @@ function AccountCombinedCreditBalanceGroup({
         loading={loading}
         onOpenCreditBalance={onOpenCreditBalance}
         testId="account-menu-credit-balance"
-      />
-      <DropdownMenuSeparator />
-    </>
-  );
-}
-
-function AccountSubscriptionsGroup({
-  onResetCodexUsage,
-  resetPending,
-  subscriptionRowsCacheKey,
-}: {
-  onResetCodexUsage: (resetCredits: number | null) => void;
-  resetPending: boolean;
-  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
-}) {
-  const { loading, rows } = useSubscriptionUsageRows({
-    cacheKey: subscriptionRowsCacheKey,
-  });
-  const showSubscriptions = loading || rows.length > 0;
-
-  if (!showSubscriptions) {
-    return null;
-  }
-
-  return (
-    <>
-      <AccountMenuSubscriptionsPanel
-        loading={loading}
-        onResetCodexUsage={onResetCodexUsage}
-        resetPending={resetPending}
-        rows={rows}
       />
       <DropdownMenuSeparator />
     </>
@@ -861,8 +736,6 @@ export function AccountDropdown({
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
-  const usagePackPlansEnabled =
-    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
   // The three-column nav stacks the account mark under the workspace logo, so
   // it takes the same rounded square there and stays a circle everywhere else.
   const avatarShape =
@@ -1047,7 +920,6 @@ export function AccountDropdown({
               resetPending={actionPending}
               subscriptionRowsCacheKey={subscriptionRowsCacheKey}
               subscriptionsEnabled={subscriptionsEnabled}
-              usagePackPlansEnabled={usagePackPlansEnabled}
             />
           )}
           {!hidePreferences && (

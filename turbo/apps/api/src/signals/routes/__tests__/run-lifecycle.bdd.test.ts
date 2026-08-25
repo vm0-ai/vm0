@@ -14028,8 +14028,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "okou web-search --help",
       "okou finance --help",
       "Financial instruments and market data",
-      'okou translate "<text>" --to <language> [--from <language>]',
-      "managed translation model",
       "`okou web-search --help` for the current interface. Queries are sent to an external provider, so they must not contain secrets or private internal context",
       "Keep general public-web discovery on `okou web-search`. Queries are sent to an external provider",
       "must not contain secrets or private internal context",
@@ -14179,7 +14177,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed search and translation tools for regular runs", async () => {
+  it("advertises managed research tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -14199,9 +14197,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain("okou finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("okou seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("okou scrape --help");
-    expect(claim.appendSystemPrompt ?? "").toContain(
-      'okou translate "<text>" --to <language> [--from <language>]',
-    );
     expect(claim.appendSystemPrompt ?? "").toContain(
       "okou people-search <query>",
     );
@@ -15814,7 +15809,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       return message.eventType === "output.message" && message.runId === runId;
     });
     expect(firstAssistant?.id).toBe(
-      assistantEventIdForRunEvent(runId, "msg_bdd_1"),
+      assistantEventIdForRunEvent(runId, "event:1"),
     );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
     expect(
@@ -16020,13 +16015,15 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       }),
     ).toHaveLength(3);
 
+    // Repeating an already persisted canonical sequence is idempotent even if
+    // the redelivered payload differs.
     await webhooks.requestAgentEvents(
       {
         runId,
         events: [
           {
             type: "assistant",
-            sequenceNumber: 11,
+            sequenceNumber: 1,
             message: {
               id: "msg_bdd_1",
               content: [{ type: "text", text: "Duplicate text" }],
@@ -16039,7 +16036,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     await flushWaitUntilForTest();
     const afterDuplicate = await chat.listThreadEvents(actor, threadId);
-    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "msg_bdd_1");
+    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "event:1");
     const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
       return (
         message.eventType === "output.message" &&

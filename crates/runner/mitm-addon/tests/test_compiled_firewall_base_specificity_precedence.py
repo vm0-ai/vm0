@@ -481,6 +481,55 @@ def test_parameterized_path_base_deny_blocks_earlier_root_allow():
     assert result.reason == "permission_denied"
 
 
+@pytest.mark.parametrize(
+    "specific_first",
+    [False, True],
+    ids=["broad-first", "specific-first"],
+)
+def test_path_base_deny_blocks_long_static_host_allow_in_both_orders(specific_first):
+    host = ".".join(["a"] * 100 + ["com"])
+    path_base = "https://{sub+}.com/{tenant}"
+    apis = [
+        {
+            "base": f"https://{host}",
+            "auth": {"headers": {"Authorization": "Bearer root"}},
+            "permissions": [
+                {"name": "root", "rules": ["ANY /{path+}"]},
+            ],
+        },
+        {
+            "base": path_base,
+            "auth": {"headers": {"Authorization": "Bearer restricted"}},
+            "permissions": [
+                {"name": "restricted", "rules": ["GET /delete"]},
+            ],
+        },
+    ]
+    ordered_apis = list(reversed(apis)) if specific_first else apis
+    fws = wrap_firewalls(ordered_apis, name="example")
+    policies = {
+        "example": {
+            "allow": ["root"],
+            "deny": ["restricted"],
+            "unknownPolicy": "deny",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        f"https://{host}/admin/delete",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.base == path_base
+    assert result.name == "example"
+    assert result.path == "/delete"
+    assert result.permissions == ("restricted",)
+    assert result.reason == "permission_denied"
+
+
 def test_base_specificity_wins_before_rule_specificity():
     fws = wrap_firewalls(
         [

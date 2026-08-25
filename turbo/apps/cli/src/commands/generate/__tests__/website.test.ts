@@ -157,7 +157,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "https://static.okou.io/html-resources/website/v1/480d0e4a000be6df09698005009fa5a0bf3c02a904b8fd70adfc83655b411a12/website.json",
+      "https://static.okou.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json",
     );
     expect(stdout).toContain("Built-in Website template release: latest");
     const imageWorkflowLines = stdout.split("\n").filter((line) => {
@@ -294,7 +294,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template archive SHA-256: 9bb367c272e46942c33f51c5774b4e229929fd5fb330186bf9a23164bed1c56b",
+      "Selected template archive SHA-256: 5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
     );
   });
 

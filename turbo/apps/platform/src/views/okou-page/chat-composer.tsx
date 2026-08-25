@@ -42,6 +42,7 @@ import {
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
+  Lock,
   Mic,
   Monitor,
   Paperclip,
@@ -57,6 +58,7 @@ import {
   SwatchBook,
   Target,
   User,
+  Users,
   Video,
   X,
   type LucideIcon,
@@ -352,6 +354,7 @@ const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
 );
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
+const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -5006,19 +5009,36 @@ function ImportedPptCardMediaControls({
   );
 }
 
-type ImportedPptCardImageSlot = "a" | "b";
+// Keep one rendered image stable while its replacement loads and decodes
+// off-DOM, then swap the src atomically. Stale requests are ignored by URL.
 
-function importedPptCardImage(
-  media: HTMLDivElement,
-  slot: ImportedPptCardImageSlot,
-): HTMLImageElement | null {
+function importedPptImageVariant(
+  imageUrl: string,
+  size: TemplatePreviewImageSize,
+): string;
+function importedPptImageVariant(
+  imageUrl: null,
+  size: TemplatePreviewImageSize,
+): null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null {
+  return imageUrl === null ? null : r2ImageTransformUrl(imageUrl, size);
+}
+
+function importedPptImage(media: HTMLElement): HTMLImageElement | null {
   return media.querySelector<HTMLImageElement>(
-    `[data-imported-presentation-template-image="${slot}"]`,
+    "[data-imported-presentation-template-image]",
   );
 }
 
-function setImportedPptCardPlaceholder(
-  media: HTMLDivElement,
+function setImportedPptImagePlaceholder(
+  media: HTMLElement,
   state: "error" | "hidden" | "loading",
 ): void {
   const placeholder = media.querySelector<HTMLElement>(
@@ -5031,136 +5051,219 @@ function setImportedPptCardPlaceholder(
   placeholder.dataset.state = state;
 }
 
-function activateImportedPptCardImage(
-  media: HTMLDivElement,
-  slot: ImportedPptCardImageSlot,
-): void {
-  const active = importedPptCardImage(media, slot);
-  const inactive = importedPptCardImage(media, slot === "a" ? "b" : "a");
-  if (active === null || inactive === null) {
-    return;
-  }
-  media.dataset.activeImageSlot = slot;
-  active.dataset.active = "true";
-  active.alt = media.dataset.imageLabel ?? "";
-  active.title = media.dataset.imageLabel ?? "";
-  active.removeAttribute("aria-hidden");
-  inactive.dataset.active = "false";
-  inactive.alt = "";
-  inactive.removeAttribute("title");
-  inactive.setAttribute("aria-hidden", "true");
-  setImportedPptCardPlaceholder(media, "hidden");
-}
-
-function completeImportedPptCardImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLDivElement>(
-    "[data-imported-presentation-template-media]",
-  );
-  const slot = image.dataset.importedPresentationTemplateImage;
-  if (
-    media === null ||
-    (slot !== "a" && slot !== "b") ||
-    image.getAttribute("src") !== media.dataset.desiredImageUrl
-  ) {
-    return;
-  }
-  image.dataset.loadedImageUrl = media.dataset.desiredImageUrl;
-  activateImportedPptCardImage(media, slot);
-}
-
-async function decodeImportedPptCardImage(
+function showImportedPptImage(
+  media: HTMLElement,
   image: HTMLImageElement,
+  imageUrl: string,
+): void {
+  if (image.getAttribute("src") !== imageUrl) {
+    image.src = imageUrl;
+  }
+  image.dataset.loadedImageUrl = imageUrl;
+  image.alt = media.dataset.imageLabel ?? "";
+  image.title = media.dataset.imageLabel ?? "";
+  image.removeAttribute("aria-hidden");
+  setImportedPptImagePlaceholder(media, "hidden");
+}
+
+async function loadDecodedImportedPptImage(
+  imageUrl: string,
+  referenceImage: HTMLImageElement,
+): Promise<boolean> {
+  const candidate = new Image();
+  candidate.decoding = "async";
+  candidate.loading = "eager";
+  candidate.fetchPriority = referenceImage.fetchPriority;
+  candidate.src = imageUrl;
+  let decodeFailed = false;
+  await tapError(candidate.decode(), () => {
+    decodeFailed = true;
+  });
+  return !decodeFailed;
+}
+
+async function replaceImportedPptImageAfterDecode(
+  media: HTMLElement,
+  imageUrl: string,
+): Promise<void> {
+  const image = importedPptImage(media);
+  if (image === null) {
+    return;
+  }
+  const decoded = await loadDecodedImportedPptImage(imageUrl, image);
+  if (!decoded) {
+    if (
+      media.dataset.desiredImageUrl === imageUrl &&
+      image.dataset.loadedImageUrl === undefined
+    ) {
+      setImportedPptImagePlaceholder(media, "error");
+    }
+    if (media.dataset.pendingImageUrl === imageUrl) {
+      delete media.dataset.pendingImageUrl;
+    }
+    return;
+  }
+  if (media.dataset.pendingImageUrl === imageUrl) {
+    delete media.dataset.pendingImageUrl;
+  }
+  if (media.dataset.desiredImageUrl !== imageUrl || !media.isConnected) {
+    return;
+  }
+  showImportedPptImage(media, image, imageUrl);
+}
+
+function requestDecodedImportedPptImage(
+  media: HTMLElement,
+  imageUrl: string,
+): void {
+  if (media.dataset.pendingImageUrl === imageUrl) {
+    return;
+  }
+  media.dataset.pendingImageUrl = imageUrl;
+  detach(
+    replaceImportedPptImageAfterDecode(media, imageUrl),
+    Reason.DomCallback,
+  );
+}
+
+function completeImportedPptImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLElement>(
+    "[data-imported-presentation-template-image-container]",
+  );
+  const imageUrl = image.getAttribute("src");
+  if (media === null || imageUrl === null) {
+    return;
+  }
+  showImportedPptImage(media, image, imageUrl);
+  if (
+    imageUrl === media.dataset.previewImageUrl &&
+    imageUrl !== media.dataset.desiredImageUrl &&
+    media.dataset.desiredImageUrl !== undefined
+  ) {
+    requestDecodedImportedPptImage(media, media.dataset.desiredImageUrl);
+  }
+}
+
+async function decodeImportedPptImage(
+  image: HTMLImageElement,
+  imageUrl: string,
 ): Promise<void> {
   await bestEffort(image.decode());
-  completeImportedPptCardImage(image);
+  if (image.getAttribute("src") === imageUrl) {
+    completeImportedPptImage(image);
+  }
 }
 
-function prepareImportedPptCardImage(image: HTMLImageElement): void {
+function prepareImportedPptImage(image: HTMLImageElement): void {
   if (image.decode === undefined) {
-    completeImportedPptCardImage(image);
+    completeImportedPptImage(image);
     return;
   }
-  detach(decodeImportedPptCardImage(image), Reason.DomCallback);
-}
-
-function failImportedPptCardImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLDivElement>(
-    "[data-imported-presentation-template-media]",
-  );
-  if (
-    media !== null &&
-    image.dataset.importedPresentationTemplateImage ===
-      media.dataset.activeImageSlot
-  ) {
-    delete image.dataset.loadedImageUrl;
-    setImportedPptCardPlaceholder(media, "error");
+  const imageUrl = image.getAttribute("src");
+  if (imageUrl !== null) {
+    detach(decodeImportedPptImage(image, imageUrl), Reason.DomCallback);
   }
 }
 
-function syncImportedPptCardImage(
-  media: HTMLDivElement | null,
+function failImportedPptImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLElement>(
+    "[data-imported-presentation-template-image-container]",
+  );
+  const imageUrl = image.getAttribute("src");
+  if (media === null || imageUrl === null) {
+    return;
+  }
+  delete image.dataset.loadedImageUrl;
+  if (
+    imageUrl === media.dataset.previewImageUrl &&
+    imageUrl !== media.dataset.desiredImageUrl &&
+    media.dataset.desiredImageUrl !== undefined
+  ) {
+    image.src = media.dataset.desiredImageUrl;
+    return;
+  }
+  setImportedPptImagePlaceholder(media, "error");
+}
+
+function syncImportedPptImage(
+  media: HTMLElement | null,
   imageUrl: string | null,
   label: string,
+  previewImageUrl: string | null = imageUrl,
 ): void {
   if (media === null) {
     return;
   }
-  const activeSlot = media.dataset.activeImageSlot === "b" ? "b" : "a";
-  const inactiveSlot = activeSlot === "a" ? "b" : "a";
-  const active = importedPptCardImage(media, activeSlot);
-  const inactive = importedPptCardImage(media, inactiveSlot);
-  if (active === null || inactive === null) {
+  const image = importedPptImage(media);
+  if (image === null) {
     return;
   }
-  media.dataset.activeImageSlot = activeSlot;
   media.dataset.imageLabel = label;
-  media.dataset.desiredImageUrl = imageUrl ?? "";
-  active.dataset.active = "true";
-  active.alt = label;
-  active.title = label;
-  active.removeAttribute("aria-hidden");
-  inactive.dataset.active = "false";
-  inactive.alt = "";
-  inactive.removeAttribute("title");
-  inactive.setAttribute("aria-hidden", "true");
+  image.alt = label;
+  image.title = label;
 
   if (imageUrl === null) {
-    active.removeAttribute("src");
-    inactive.removeAttribute("src");
-    setImportedPptCardPlaceholder(media, "error");
+    delete media.dataset.desiredImageUrl;
+    delete media.dataset.previewImageUrl;
+    delete media.dataset.pendingImageUrl;
+    image.removeAttribute("src");
+    delete image.dataset.loadedImageUrl;
+    image.setAttribute("aria-hidden", "true");
+    setImportedPptImagePlaceholder(media, "error");
     return;
   }
-  if (active.getAttribute("src") === imageUrl) {
-    if (
-      active.dataset.loadedImageUrl === imageUrl ||
-      (active.complete && active.naturalWidth > 0)
-    ) {
-      setImportedPptCardPlaceholder(media, "hidden");
-    }
-    return;
-  }
+  const resolvedPreviewImageUrl = previewImageUrl ?? imageUrl;
+  image.removeAttribute("aria-hidden");
   if (
-    inactive.getAttribute("src") === imageUrl &&
-    (inactive.dataset.loadedImageUrl === imageUrl ||
-      (inactive.complete && inactive.naturalWidth > 0))
+    media.dataset.desiredImageUrl === imageUrl &&
+    media.dataset.previewImageUrl === resolvedPreviewImageUrl
   ) {
-    activateImportedPptCardImage(media, inactiveSlot);
     return;
   }
-  if (active.getAttribute("src") === null) {
-    active.loading = "eager";
-    active.fetchPriority = "high";
-    delete active.dataset.loadedImageUrl;
-    setImportedPptCardPlaceholder(media, "loading");
-    active.src = imageUrl;
+  media.dataset.desiredImageUrl = imageUrl;
+  media.dataset.previewImageUrl = resolvedPreviewImageUrl;
+
+  if (image.dataset.loadedImageUrl === imageUrl) {
+    setImportedPptImagePlaceholder(media, "hidden");
     return;
   }
-  if (inactive.getAttribute("src") !== imageUrl) {
-    inactive.loading = "eager";
-    inactive.fetchPriority = "high";
-    delete inactive.dataset.loadedImageUrl;
-    inactive.src = imageUrl;
+  const currentImageUrl = image.getAttribute("src");
+  if (currentImageUrl === null || image.dataset.loadedImageUrl === undefined) {
+    delete image.dataset.loadedImageUrl;
+    setImportedPptImagePlaceholder(media, "loading");
+    image.src = resolvedPreviewImageUrl;
+    return;
   }
+  requestDecodedImportedPptImage(media, imageUrl);
+}
+
+function ImportedPptImage({
+  className,
+  fetchPriority,
+  loading,
+}: {
+  className: string;
+  fetchPriority: "auto" | "high" | "low";
+  loading: "eager" | "lazy";
+}) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      data-imported-presentation-template-image=""
+      loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
+      draggable={false}
+      className={className}
+      onLoad={(event) => {
+        prepareImportedPptImage(event.currentTarget);
+      }}
+      onError={(event) => {
+        failImportedPptImage(event.currentTarget);
+      }}
+    />
+  );
 }
 
 function ImportedPptCardMedia({
@@ -5191,8 +5294,9 @@ function ImportedPptCardMedia({
   return (
     <div
       ref={(media) => {
-        syncImportedPptCardImage(media, activeImageUrl, label);
+        syncImportedPptImage(media, activeImageUrl, label);
       }}
+      data-imported-presentation-template-image-container=""
       data-imported-presentation-template-media=""
       className={cn(
         TEMPLATE_TILE_MEDIA,
@@ -5217,37 +5321,10 @@ function ImportedPptCardMedia({
         onHover(null);
       }}
     >
-      <img
-        alt=""
-        aria-hidden="true"
-        data-imported-presentation-template-image="a"
+      <ImportedPptImage
         loading="eager"
-        decoding="async"
         fetchPriority="high"
-        draggable={false}
-        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
-        onLoad={(event) => {
-          prepareImportedPptCardImage(event.currentTarget);
-        }}
-        onError={(event) => {
-          failImportedPptCardImage(event.currentTarget);
-        }}
-      />
-      <img
-        alt=""
-        aria-hidden="true"
-        data-imported-presentation-template-image="b"
-        loading="eager"
-        decoding="async"
-        fetchPriority="high"
-        draggable={false}
-        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
-        onLoad={(event) => {
-          prepareImportedPptCardImage(event.currentTarget);
-        }}
-        onError={(event) => {
-          failImportedPptCardImage(event.currentTarget);
-        }}
+        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
       />
       <div
         data-imported-presentation-template-image-placeholder=""
@@ -5272,7 +5349,6 @@ function ImportedPptCardCaption({
 }: {
   template: PresentationTemplateSummary;
 }) {
-  const { t } = useTranslation();
   return (
     <div className={TEMPLATE_TILE_CAPTION}>
       <TooltipProvider delayDuration={300}>
@@ -5285,17 +5361,6 @@ function ImportedPptCardCaption({
           <TooltipContent side="bottom">{template.title}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        {template.visibility === "public" ? (
-          <Globe size={12} aria-hidden="true" />
-        ) : null}
-        {t(
-          ($) => {
-            return $.artifacts.templates.importedSlides;
-          },
-          { count: template.pageCount },
-        )}
-      </span>
     </div>
   );
 }
@@ -5340,8 +5405,12 @@ function ImportedPptCard({
       slideCount - 1,
     ),
   );
-  const activeImageUrl =
+  const activeImageSource =
     detail?.pageUrls[activeSlideIndex] ?? template.coverUrl;
+  const activeImageUrl = importedPptImageVariant(
+    activeImageSource,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   const loading =
     requestedTemplateId === template.id && detailLoadable.state === "loading";
   const label = t(
@@ -5438,6 +5507,18 @@ function ImportedPresentationTemplateRenameControl({
   );
 }
 
+const IMPORTED_TEMPLATE_VISIBILITY_OPTIONS = [
+  { value: "private", Icon: Lock },
+  { value: "public", Icon: Users },
+] as const;
+
+/**
+ * Visibility for an imported deck, stated as its consequence rather than as a
+ * setting: a template is only ever "mine" or "everyone's here", so the two
+ * words that name those states carry less than the one sentence that says what
+ * they do. The sentence stays on screen and the picker moves behind `Change`,
+ * because reading the current state is the common act and switching it is not.
+ */
 function ImportedPresentationTemplateVisibilityControl({
   visibility,
   updating,
@@ -5448,43 +5529,106 @@ function ImportedPresentationTemplateVisibilityControl({
   onChange: (visibility: PresentationTemplateSummary["visibility"]) => void;
 }) {
   const { t } = useTranslation();
+  const optionLabel = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.workflows.common.private;
+        })
+      : t(($) => {
+          return $.settings.dialog.groups.workspace;
+        });
+  };
+  const optionState = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.artifacts.templates.visibility.privateState;
+        })
+      : t(($) => {
+          return $.artifacts.templates.visibility.workspaceState;
+        });
+  };
+  const CurrentIcon = visibility === "private" ? Lock : Users;
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.workflows.detail.metadata.visibility;
-        })}
+    <Popover>
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+        <CurrentIcon size={14} className="shrink-0" aria-hidden="true" />
+        <span>{optionState(visibility)}</span>
+        <span aria-hidden="true">·</span>
+        <PopoverTrigger
+          disabled={updating}
+          className="font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:decoration-foreground disabled:opacity-50"
+          aria-label={t(($) => {
+            return $.artifacts.templates.visibility.changeLabel;
+          })}
+        >
+          {t(($) => {
+            return $.artifacts.templates.visibility.change;
+          })}
+        </PopoverTrigger>
       </p>
-      <Select
-        value={visibility}
-        disabled={updating}
-        onValueChange={(nextVisibility) => {
-          if (nextVisibility === "private" || nextVisibility === "public") {
-            onChange(nextVisibility);
-          }
-        }}
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="w-[19rem] p-1.5"
       >
-        <SelectTrigger
+        <div
+          role="radiogroup"
           aria-label={t(($) => {
             return $.workflows.detail.metadata.visibility;
           })}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="private">
-            {t(($) => {
-              return $.workflows.common.private;
-            })}
-          </SelectItem>
-          <SelectItem value="public">
-            {t(($) => {
-              return $.settings.dialog.groups.workspace;
-            })}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+          {IMPORTED_TEMPLATE_VISIBILITY_OPTIONS.map(({ value, Icon }) => {
+            const selected = value === visibility;
+            return (
+              <PopoverClose asChild key={value}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-state-hover",
+                    selected && "bg-state-selected",
+                  )}
+                  onClick={() => {
+                    if (!selected) {
+                      onChange(value);
+                    }
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    className="mt-0.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground">
+                      {optionLabel(value)}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {optionState(value)}
+                    </span>
+                  </span>
+                  {/* The check column is reserved on both rows: letting it
+                      appear only on the selected one narrows that row's text
+                      box, so the description reflows every time the selection
+                      moves. */}
+                  <span className="mt-0.5 w-4 shrink-0">
+                    {selected ? (
+                      <Check
+                        size={16}
+                        className="text-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </span>
+                </button>
+              </PopoverClose>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -5670,30 +5814,43 @@ function ImportedPresentationTemplateMainPreview({
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
+  const previewLabel = t(
+    ($) => {
+      return $.artifacts.templates.slidePreview;
+    },
+    { title },
+  );
+  const highResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+  );
+  const lowResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   return (
     <div
       role="group"
-      aria-label={t(
-        ($) => {
-          return $.artifacts.templates.slidePreview;
-        },
-        { title },
-      )}
+      aria-label={previewLabel}
+      ref={(media) => {
+        syncImportedPptImage(
+          media,
+          highResolutionImageUrl,
+          previewLabel,
+          lowResolutionImageUrl,
+        );
+      }}
+      data-imported-presentation-template-image-container=""
+      data-testid={`${title} imported detail image preview`}
       tabIndex={0}
       onKeyDown={onKeyDown}
       className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {activeImageUrl === null ? null : (
-        <img
-          alt=""
-          data-testid={`${title} imported detail image preview`}
-          src={activeImageUrl}
-          loading="eager"
-          decoding="async"
-          draggable={false}
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        />
-      )}
+      <ImportedPptImage
+        loading="eager"
+        fetchPriority="high"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      />
       <button
         type="button"
         aria-label={t(($) => {
@@ -5739,10 +5896,6 @@ function ImportedPresentationTemplateThumbnails({
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
-  const pageResourceKey = (pageUrl: string) => {
-    const queryStart = pageUrl.indexOf("?");
-    return queryStart === -1 ? pageUrl : pageUrl.slice(0, queryStart);
-  };
   return (
     <div
       className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
@@ -5751,17 +5904,28 @@ function ImportedPresentationTemplateThumbnails({
       {pageUrls.map((pageUrl, index) => {
         const slideNumber = index + 1;
         const active = index === activeSlideIndex;
+        const eagerlyLoad =
+          index < IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT;
+        const thumbnailUrl = importedPptImageVariant(
+          pageUrl,
+          TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
+        );
+        const previewLabel = t(
+          ($) => {
+            return $.artifacts.templates.previewSlide;
+          },
+          { slideNumber },
+        );
         return (
           <button
-            key={pageResourceKey(pageUrl)}
+            key={slideNumber}
             type="button"
-            aria-label={t(
-              ($) => {
-                return $.artifacts.templates.previewSlide;
-              },
-              { slideNumber },
-            )}
+            aria-label={previewLabel}
             aria-pressed={active}
+            ref={(media) => {
+              syncImportedPptImage(media, thumbnailUrl, previewLabel);
+            }}
+            data-imported-presentation-template-image-container=""
             onClick={() => {
               onChange(index);
             }}
@@ -5772,13 +5936,10 @@ function ImportedPresentationTemplateThumbnails({
                 : "border-border hover:border-muted-foreground/50",
             )}
           >
-            <img
-              alt=""
-              src={pageUrl}
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="pointer-events-none h-full w-full object-cover"
+            <ImportedPptImage
+              loading={eagerlyLoad ? "eager" : "lazy"}
+              fetchPriority={active ? "high" : eagerlyLoad ? "auto" : "low"}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
             <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
               {slideNumber}
@@ -6848,11 +7009,15 @@ function ImportedPresentationTemplateResourcePreload({
   return detail?.pageUrls
     .slice(startPageIndex, startPageIndex + pageCount)
     .map((pageUrl) => {
+      const previewUrl = importedPptImageVariant(
+        pageUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
       return (
         <img
-          key={pageUrl}
+          key={previewUrl}
           alt=""
-          src={pageUrl}
+          src={previewUrl}
           loading="eager"
           decoding="async"
           fetchPriority="low"
@@ -6898,7 +7063,11 @@ function ComposerTemplateAttachmentSync({
   );
   const importedTemplateCoverUrls = uniqueTemplatePreviewImageUrls(
     importedTemplates.flatMap((template) => {
-      return template.coverUrl === null ? [] : [template.coverUrl];
+      const coverUrl = importedPptImageVariant(
+        template.coverUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
+      return coverUrl === null ? [] : [coverUrl];
     }),
   );
   const importedTemplatePagePreloads =

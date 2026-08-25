@@ -10,7 +10,7 @@ use api_contracts::generated::types::{
         storage as runner_storage,
     },
     webhooks::agent::{
-        checkpoints,
+        checkpoints::{self, prepare_history},
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
@@ -251,7 +251,7 @@ fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
         cli_agent_session_id: "session-1".to_string(),
         cli_agent_session_history_hash: Some("b".repeat(64)),
         cli_agent_session_history_disposition: None,
-        artifact_snapshots: Some(vec![checkpoints::RequestArtifactSnapshot {
+        artifact_snapshots: Some(vec![checkpoints::ArtifactSnapshot {
             name: "memory".to_string(),
             version: "version-1".to_string(),
             mount_path: "/memory".to_string(),
@@ -331,6 +331,160 @@ fn generated_checkpoint_request_serializes_unavailable_history() {
             "cliAgentSessionHistoryDisposition": "unavailable",
         })
     );
+}
+
+#[test]
+fn generated_checkpoint_response_deserializes_canonical_shapes() {
+    let minimal: checkpoints::Response = serde_json::from_value(json!({
+        "checkpointId": "checkpoint-1",
+        "agentSessionId": "agent-session-1",
+        "conversationId": "conversation-1",
+    }))
+    .unwrap();
+    assert_eq!(minimal.checkpoint_id, "checkpoint-1");
+    assert_eq!(minimal.agent_session_id, "agent-session-1");
+    assert_eq!(minimal.conversation_id, "conversation-1");
+    assert!(minimal.artifacts.is_none());
+    assert!(minimal.volumes.is_none());
+
+    let full: checkpoints::Response = serde_json::from_value(json!({
+        "checkpointId": "checkpoint-2",
+        "agentSessionId": "agent-session-2",
+        "conversationId": "conversation-2",
+        "artifacts": [{
+            "name": "memory",
+            "version": "version-2",
+            "mountPath": "/memory",
+            "missingRootPolicy": "preserveParentVersion",
+        }],
+        "volumes": {
+            "workspace": "volume-version-2",
+        },
+    }))
+    .unwrap();
+    assert_eq!(
+        full.artifacts.unwrap(),
+        vec![checkpoints::ArtifactSnapshot {
+            name: "memory".to_string(),
+            version: "version-2".to_string(),
+            mount_path: "/memory".to_string(),
+            missing_root_policy: Some(
+                runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion,
+            ),
+        }]
+    );
+    assert_eq!(
+        full.volumes.unwrap(),
+        BTreeMap::from([("workspace".to_string(), "volume-version-2".to_string())])
+    );
+}
+
+#[test]
+fn generated_checkpoint_response_rejects_invalid_required_fields() {
+    for response in [
+        json!({
+            "checkpointId": "checkpoint-1",
+            "conversationId": "conversation-1",
+        }),
+        json!({
+            "checkpointId": "checkpoint-1",
+            "agentSessionId": false,
+            "conversationId": "conversation-1",
+        }),
+    ] {
+        assert!(serde_json::from_value::<checkpoints::Response>(response).is_err());
+    }
+}
+
+#[test]
+fn generated_checkpoint_prepare_request_serializes_wire_shape() {
+    let request = prepare_history::Request {
+        run_id: "run-1".to_string(),
+        hash: "a".repeat(64),
+        raw_size: 4096,
+        encoded_size: 1024,
+        encoding: Some(prepare_history::SessionHistoryEncoding::Zstd),
+    };
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "runId": "run-1",
+            "hash": "a".repeat(64),
+            "rawSize": 4096,
+            "encodedSize": 1024,
+            "encoding": "zstd",
+        })
+    );
+
+    let request_without_encoding = prepare_history::Request {
+        run_id: "run-2".to_string(),
+        hash: "b".repeat(64),
+        raw_size: 64,
+        encoded_size: 64,
+        encoding: None,
+    };
+    let value = serde_json::to_value(request_without_encoding).unwrap();
+    assert!(value.get("encoding").is_none());
+}
+
+#[test]
+fn generated_checkpoint_prepare_encoding_serializes_wire_values() {
+    for (encoding, wire_value) in [
+        (
+            prepare_history::SessionHistoryEncoding::Identity,
+            "identity",
+        ),
+        (prepare_history::SessionHistoryEncoding::Gzip, "gzip"),
+        (prepare_history::SessionHistoryEncoding::Zstd, "zstd"),
+    ] {
+        assert_eq!(serde_json::to_value(encoding).unwrap(), json!(wire_value));
+        assert_eq!(
+            serde_json::from_value::<prepare_history::SessionHistoryEncoding>(json!(wire_value))
+                .unwrap(),
+            encoding
+        );
+    }
+}
+
+#[test]
+fn generated_checkpoint_prepare_response_deserializes_canonical_shapes() {
+    let existing: prepare_history::Response = serde_json::from_value(json!({
+        "existing": true,
+        "encoding": "gzip",
+    }))
+    .unwrap();
+    assert!(existing.existing);
+    assert!(existing.presigned_url.is_none());
+    assert_eq!(
+        existing.encoding,
+        Some(prepare_history::SessionHistoryEncoding::Gzip)
+    );
+
+    let upload: prepare_history::Response = serde_json::from_value(json!({
+        "presignedUrl": "https://storage.example.test/session-history",
+        "existing": false,
+        "encoding": "zstd",
+    }))
+    .unwrap();
+    assert!(!upload.existing);
+    assert_eq!(
+        upload.presigned_url.as_deref(),
+        Some("https://storage.example.test/session-history")
+    );
+    assert_eq!(
+        upload.encoding,
+        Some(prepare_history::SessionHistoryEncoding::Zstd)
+    );
+}
+
+#[test]
+fn generated_checkpoint_prepare_response_rejects_invalid_existing() {
+    for response in [
+        json!({"presignedUrl": "https://storage.example.test/session-history"}),
+        json!({"existing": "false"}),
+    ] {
+        assert!(serde_json::from_value::<prepare_history::Response>(response).is_err());
+    }
 }
 
 #[test]

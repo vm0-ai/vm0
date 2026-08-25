@@ -107,9 +107,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
-  const usagePackPlansEnabled =
-    features[FeatureSwitchKey.UsagePackPlans] ?? false;
-  const showUsage = isAdmin || usagePackPlansEnabled;
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -224,24 +221,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       return $.settings.dialog.groups.billing;
     }),
     items: [
-      ...(showUsage
-        ? [
-            {
-              id: "usage" as const,
-              label: sectionMeta.usage.title,
-              icon: Coins,
-            },
-          ]
-        : []),
-      ...(usagePackPlansEnabled
-        ? [
-            {
-              id: "usage-records" as const,
-              label: sectionMeta["usage-records"].title,
-              icon: History,
-            },
-          ]
-        : []),
+      {
+        id: "usage" as const,
+        label: sectionMeta.usage.title,
+        icon: Coins,
+      },
+      {
+        id: "usage-records" as const,
+        label: sectionMeta["usage-records"].title,
+        icon: History,
+      },
       ...(isAdmin
         ? [
             {
@@ -268,20 +257,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
     (!showDebug && activeSection === "debug") ||
-    (!showUsage && activeSection === "usage") ||
-    (!usagePackPlansEnabled && activeSection === "usage-records") ||
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
-  const meta =
-    resolvedSection === "usage" && !usagePackPlansEnabled
-      ? {
-          title: sectionMeta.usage.title,
-          description: t(($) => {
-            return $.settings.dialog.sections.usage.balanceUsageDescription;
-          }),
-        }
-      : sectionMeta[resolvedSection];
+  const meta = sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {
     setActiveSection(section);

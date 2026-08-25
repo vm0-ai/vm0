@@ -14,7 +14,6 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "ahrefs\0oauth": FeatureSwitchKey.AhrefsConnector,
   "bentoml\0api-token": FeatureSwitchKey.BentomlConnector,
   "bill\0api-token": FeatureSwitchKey.BillConnector,
-  "box\0oauth": FeatureSwitchKey.BoxConnector,
   "cal-com\0api-token": FeatureSwitchKey.CalComConnector,
   "cal-com\0oauth": FeatureSwitchKey.CalComConnector,
   "canva\0oauth": FeatureSwitchKey.CanvaConnector,

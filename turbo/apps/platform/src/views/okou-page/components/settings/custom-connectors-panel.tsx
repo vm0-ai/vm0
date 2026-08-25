@@ -639,7 +639,7 @@ function CustomConnectorGrid({
             accountSummaryStatus={accountSummaryStatus}
             accountManagement={connectorAccountsEnabled}
             onManageAccounts={() => {
-              return openAccountManager(connector);
+              return openAccountManager(connector, signal);
             }}
           />
         );
