@@ -129,7 +129,7 @@ async fn run_event_failure_case(
             .json_body_includes(format!(r#"{{"cliAgentSessionId":"{THREAD_ID}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint"}));
+            .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let output = common::command_output_with_timeout(
