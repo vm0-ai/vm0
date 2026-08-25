@@ -66,7 +66,33 @@ def probe_top_level_string_field(
     max_key_bytes: int = 1024,
     max_string_bytes: int = 1024,
 ) -> TopLevelStringFieldProbeResult:
-    """Probe a bounded JSON object prefix for the first top-level string field."""
+    """Probe a bounded JSON object prefix for the first top-level string field.
+
+    This is a prefix prefilter, not a complete JSON validator. The probe
+    inspects the syntax needed to reach the first matching top-level
+    ``field_name``. Once that field's string value is complete, it returns
+    ``found`` without scanning or validating trailing bytes. Syntax before
+    that value is still inspected; callers that require payload validity must
+    perform an authoritative parse of the complete payload after probing.
+
+    Matching is top-level only. Nested fields are skipped, and the first
+    duplicate top-level field wins. ``field_seen`` becomes true at the first
+    matching key-colon boundary, before the value is classified.
+
+    Args:
+        body: JSON bytes or a JSON prefix to inspect.
+        field_name: Top-level field name to find.
+        max_depth: Bound on nested object and array traversal while skipping
+            values before the target field.
+        max_key_bytes: Maximum raw bytes scanned in each JSON object key.
+        max_string_bytes: Maximum raw bytes scanned in each JSON string value,
+            including strings in values skipped before the target.
+
+    All three bounds must be positive integers. Non-integers, including
+    booleans, raise ``TypeError``; non-positive integers raise ``ValueError``.
+    Exceeding a bound while inspecting earlier keys or values can prevent the
+    target field from being reached and returns ``bound_exceeded``.
+    """
 
     _validate_positive_int("max_depth", max_depth)
     _validate_positive_int("max_key_bytes", max_key_bytes)
