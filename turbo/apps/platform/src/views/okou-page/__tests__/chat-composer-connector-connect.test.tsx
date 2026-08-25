@@ -333,10 +333,12 @@ describe("chat composer connector connection", () => {
     let authorizationWrites = 0;
     let selectionWrites = 0;
     let selectionClears = 0;
+    let summaryReads = 0;
     mockThread();
     mockConnectors([{ connectorSlug: "github" }]);
     mockAgentConnectorAuthorizations(["github"]);
     context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      summaryReads += 1;
       return respond(200, {
         summaries: [
           {
@@ -423,6 +425,7 @@ describe("chat composer connector connection", () => {
     const defaultMode = await screen.findByLabelText(
       "GitHub · Using default account: Work",
     );
+    const summaryReadsBeforeSelection = summaryReads;
     await user.click(defaultMode);
     await expect(screen.findByText("Use default")).resolves.toBeInTheDocument();
     const defaultRadio = screen.getByRole("radio", {
@@ -455,6 +458,7 @@ describe("chat composer connector connection", () => {
       expect(selectionClears).toBe(1);
     });
     expect(authorizationWrites).toBe(0);
+    expect(summaryReads).toBe(summaryReadsBeforeSelection);
   });
 
   it("keeps the selected account visible when search has no matches", async () => {

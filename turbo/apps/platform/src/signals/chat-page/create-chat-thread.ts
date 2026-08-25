@@ -2454,6 +2454,7 @@ interface RunTrackingDeps {
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
   reloadConnectorAccounts$: Command<void, []>;
+  reloadConnectorAccountPreference$: Command<void, []>;
 }
 
 interface ChatRenderWindowState {
@@ -2708,6 +2709,7 @@ function createRunTracking({
   automationSignals,
   cancellationRecovery,
   reloadConnectorAccounts$,
+  reloadConnectorAccountPreference$,
 }: RunTrackingDeps) {
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
@@ -2725,7 +2727,7 @@ function createRunTracking({
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(cancellationRecovery.reload$);
-      set(reloadConnectorAccounts$);
+      set(reloadConnectorAccountPreference$);
       return false;
     });
 
@@ -4065,6 +4067,8 @@ function createChatPanelSignalsWithDraft(
     automationSignals: threadOwned,
     cancellationRecovery,
     reloadConnectorAccounts$: composer.connector.accounts.reload$,
+    reloadConnectorAccountPreference$:
+      composer.connector.accounts.reloadPreference$,
   });
   return {
     threadId,

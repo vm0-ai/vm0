@@ -61,6 +61,7 @@ export interface ComposerConnectorAccountSignals {
     Promise<void>,
     [ConnectorAccountTarget, AbortSignal]
   >;
+  readonly reloadPreference$: Command<void, []>;
   readonly reload$: Command<void, []>;
   readonly openPopover$: Command<void, []>;
   readonly resetPendingSelections$: Command<void, []>;
@@ -210,17 +211,17 @@ export function createComposerConnectorAccountSignals(
     },
   );
 
-  const reload$ = command(({ set }) => {
+  const reloadPreference$ = command(({ set }) => {
     set(reloadVersion$, (version) => {
       return version + 1;
     });
+  });
+  const reload$ = command(({ set }) => {
+    set(reloadPreference$);
     set(reloadConnectorAccountSummaries$);
   });
   const openPopover$ = command(({ set }) => {
-    set(reloadVersion$, (version) => {
-      return version + 1;
-    });
-    set(reloadConnectorAccountSummaries$);
+    set(reload$);
   });
   const openTarget$ = command(
     (
@@ -252,7 +253,7 @@ export function createComposerConnectorAccountSignals(
       threadId,
       pendingState$,
       savingTargetKey$,
-      reload$,
+      reload$: reloadPreference$,
     },
   );
 
@@ -280,6 +281,7 @@ export function createComposerConnectorAccountSignals(
     loadMore$: list.loadMore$,
     selectAccount$,
     useDefault$,
+    reloadPreference$,
     reload$,
     openPopover$,
     resetPendingSelections$,
