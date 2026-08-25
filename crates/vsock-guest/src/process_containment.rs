@@ -433,13 +433,12 @@ impl CgroupGuard {
                 io::Error::other("trusted control cgroup has no tools domain"),
             )
         })?;
-        let (workload_cancel_reader, cancel_wake_writer) =
-            placement_cancel_pipe().map_err(|error| {
-                ProcessContainmentError::new("prepare placement cancellation", error)
-            })?;
-        let tool_cancel_reader = workload_cancel_reader.try_clone().map_err(|error| {
-            ProcessContainmentError::new("clone placement cancellation reader", error)
+        let (cancel_reader, cancel_wake_writer) = placement_cancel_pipe().map_err(|error| {
+            ProcessContainmentError::new("prepare placement cancellation", error)
         })?;
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
         let mut cancel_wake_writer = Some(cancel_wake_writer);
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
@@ -1563,8 +1562,10 @@ mod tests {
         let tool_endpoint = format!("{endpoint_base}-tool");
         let workload_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
         let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint).unwrap();
-        let (workload_cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
-        let tool_cancel_reader = workload_cancel_reader.try_clone().unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
         let (ready_tx, ready_rx) = mpsc::channel();
         let worker_done = Arc::new(AtomicU64::new(0));
         let workload_ready_tx = ready_tx.clone();
