@@ -58,8 +58,8 @@ pub(super) async fn restore_codex_session(
     // Only an idle-reused sandbox can retain a prior framework home. Fresh
     // sandboxes may attach a cached workspace drive, but that drive contains
     // only the working directory and cannot contain Codex session rollouts.
-    let logical_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
-        cleanup_existing_codex_session_files(
+    let logical_path = match sandbox_reuse_result {
+        SandboxReuseResult::Reused => cleanup_existing_codex_session_files(
             sandbox,
             context,
             session_id,
@@ -67,9 +67,12 @@ pub(super) async fn restore_codex_session(
             &fallback_logical_path,
         )
         .await?
-        .unwrap_or(fallback_logical_path)
-    } else {
-        fallback_logical_path
+        .unwrap_or(fallback_logical_path),
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::PoolMiss
+        | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::DeviceLimitMismatch
+        | SandboxReuseResult::UnparkFailed => fallback_logical_path,
     };
     let session_path = format!("{logical_path}{physical_suffix}");
 
