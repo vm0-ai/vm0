@@ -7,7 +7,7 @@ import {
   mockSignInResource,
   mockSignUpResource,
 } from "../__tests__/mock-auth.ts";
-import { setupPage } from "../__tests__/page-helper.ts";
+import { detachedSetupPage, setupPage } from "../__tests__/page-helper.ts";
 import { AUTH_V2_DIAGNOSTIC_EVENT, initPostHog } from "../lib/posthog.ts";
 import { testContext } from "./__tests__/test-helpers.ts";
 
@@ -239,7 +239,7 @@ describe("auth v2 password recovery diagnostics", () => {
 
       const path = "/v2/sign-in";
       context.mocks.browser.url(`https://app.vm0.ai${path}`);
-      await setupPage({
+      detachedSetupPage({
         context,
         path,
         session: null,
