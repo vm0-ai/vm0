@@ -1567,7 +1567,7 @@ describe("connectors page", () => {
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     expect(within(dialog).getByText("Work 0")).toBeInTheDocument();
     expect(within(dialog).queryByText("Work 50")).toBeNull();
@@ -1665,7 +1665,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     const actions = within(manager).getAllByLabelText("Account actions");
     const personalActions = actions.at(1);
@@ -1729,7 +1729,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     await expect(
       within(manager).findByText(
@@ -1805,7 +1805,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const firstManager = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     click(within(firstManager).getByLabelText("Account actions"));
     click(menuItemByText("Delete"));
@@ -1814,14 +1814,12 @@ describe("connectors page", () => {
     });
     click(within(firstManager).getByLabelText("Close"));
     await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Manage GitHub accounts" }),
-      ).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "GitHub" })).toBeNull();
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     resolveImpact();
     await waitFor(() => {
@@ -1916,7 +1914,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const dialog = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
+      name: "GitHub",
     });
     click(within(dialog).getByLabelText("Account actions"));
     click(menuItemByText("Rename"));
@@ -2048,7 +2046,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage Stripe accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "Manage Stripe accounts",
+      name: "Stripe",
     });
     const actions = await waitFor(() => {
       expect(accountListRequestCount).toBeGreaterThan(0);
@@ -6334,7 +6332,7 @@ describe("connectors page", () => {
       ),
     );
     const manager = await screen.findByRole("dialog", {
-      name: `Manage ${connector.displayName} accounts`,
+      name: connector.displayName,
     });
     click(buttonByText("Add account", manager));
     const dialog = await screen.findByRole("dialog", {
@@ -6427,7 +6425,7 @@ describe("connectors page", () => {
       ),
     );
     const manager = await screen.findByRole("dialog", {
-      name: `Manage ${connector.displayName} accounts`,
+      name: connector.displayName,
     });
     click(await within(manager).findByLabelText("Account actions"));
     click(menuItemByText("Reconnect"));
@@ -6505,7 +6503,7 @@ describe("connectors page", () => {
     click(await waitForButtonByAriaLabel("Manage Acme MCP accounts"));
 
     const manager = await screen.findByRole("dialog", {
-      name: "Manage Acme MCP accounts",
+      name: "Acme MCP",
     });
     expect(buttonByText("Add account", manager)).toBeDisabled();
     click(within(manager).getByLabelText("Account actions"));
