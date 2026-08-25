@@ -106,6 +106,7 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
+    concurrencyUnitAmountCents: 10_000,
   };
 }
 
@@ -3594,6 +3595,7 @@ describe("organization billing settings", () => {
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: 4200,
         concurrencyPurchaseReviewAvailable: true,
       });
     });
@@ -3638,7 +3640,7 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("$500/month"),
+        within(purchaseDialog).getByText("$210/month"),
       ).toBeInTheDocument();
     });
 
@@ -3681,7 +3683,10 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeTeamBillingStatus());
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: undefined,
+      });
     });
     context.mocks.api(
       billingConcurrencyCheckoutContract.create,
@@ -3699,7 +3704,8 @@ describe("organization billing settings", () => {
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
-    click(buttonByText("Buy $100/month", purchaseDialog));
+    expect(within(purchaseDialog).getByText("—")).toBeInTheDocument();
+    click(buttonByText("Buy concurrency", purchaseDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(1);

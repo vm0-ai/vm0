@@ -81,6 +81,10 @@ const usageAllowanceSchema = z.object({
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   canBuyConcurrency: z.boolean().optional(),
+  // Optional while newer app builds can still reach an older API during
+  // rollout. The amount is emitted only when the configured Stripe Price is
+  // available for workspaces that can buy concurrency.
+  concurrencyUnitAmountCents: z.number().int().positive().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
