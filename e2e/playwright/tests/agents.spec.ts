@@ -146,18 +146,21 @@ async function mockUnreadThread(
       },
     });
   });
-  await page.route("**/api/chat-thread-unreads", async (route) => {
-    await route.fulfill({
-      json: {
-        unreads: [
-          {
-            threadId: unreadThreadStory.id,
-            unreadAt: unreadThreadStory.createdAt,
-          },
-        ],
-      },
-    });
-  });
+  await page.route(
+    (url) => url.pathname === "/api/chat-thread-unreads",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          unreads: [
+            {
+              threadId: unreadThreadStory.id,
+              unreadAt: unreadThreadStory.createdAt,
+            },
+          ],
+        },
+      });
+    },
+  );
 }
 
 async function visibleIndicatorStyle(locator: Locator): Promise<{
