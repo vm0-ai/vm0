@@ -265,12 +265,12 @@ async fn create_checkpoint_impl(
             "Invalid checkpoint API response",
         )
     })?;
-    let response = serde_json::from_value::<checkpoints::Response>(response).map_err(|error| {
+    let response = serde_json::from_value::<checkpoints::Response>(response).map_err(|_| {
         fail(
             mode,
             "checkpoint_api_call",
             api_start,
-            format!("Invalid checkpoint API response: {error}"),
+            "Invalid checkpoint API response",
         )
     })?;
 

@@ -463,15 +463,15 @@ async fn upload_session_history(
                 record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
                 response
             }
-            Err(error) => {
-                let message = format!("Invalid prepare-history response: {error}");
+            Err(_) => {
+                let message = "Invalid prepare-history response";
                 record_sandbox_op(
                     "session_history_prepare",
                     prep_start.elapsed(),
                     false,
-                    Some(&message),
+                    Some(message),
                 );
-                return Err(AgentError::Checkpoint(message));
+                return Err(AgentError::Checkpoint(message.into()));
             }
         },
         Ok(None) => {

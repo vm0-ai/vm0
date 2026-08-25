@@ -99,7 +99,7 @@ async fn success_checkpoint_preserves_small_codex_history() {
 }
 
 #[tokio::test]
-async fn checkpoint_rejects_prepare_response_without_existing_before_upload() {
+async fn checkpoint_rejects_mistyped_prepare_response_before_upload() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
@@ -112,6 +112,7 @@ async fn checkpoint_rejects_prepare_response_without_existing_before_upload() {
     use_test_codex_home(&mut runtime, history_dir.path());
 
     let upload_path = "/test/invalid-prepare-history-upload";
+    let sensitive_response_value = "sensitive-prepare-response-value";
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints/prepare-history");
@@ -119,6 +120,7 @@ async fn checkpoint_rejects_prepare_response_without_existing_before_upload() {
             .header("Content-Type", "application/json")
             .json_body(json!({
                 "presignedUrl": server.url(upload_path),
+                "existing": sensitive_response_value,
                 "encoding": "identity",
             }));
     });
@@ -142,11 +144,9 @@ async fn checkpoint_rejects_prepare_response_without_existing_before_upload() {
     .await
     .unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("Invalid prepare-history response")
-    );
+    let message = error.to_string();
+    assert!(message.contains("Invalid prepare-history response"));
+    assert!(!message.contains(sensitive_response_value));
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
     checkpoint_mock.assert_calls_async(0).await;
