@@ -55,6 +55,7 @@ from .model_tokens import (
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
+    update_model_usage_quantity,
 )
 from .openai_tokens import is_usage_quantity as _is_usage_quantity
 from .openai_tokens import partition_input_tokens as _partition_input_tokens
@@ -497,17 +498,6 @@ def _is_known_non_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in openai_responses_events.KNOWN_NON_USAGE_EVENTS
 
 
-def _store_quantity(target: dict, category: str, value: object) -> None:
-    """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
-
-    Later provider update payloads may report ``0`` for a category that an
-    earlier payload reported as non-zero. Preserve the recorded quantity in
-    that case, while still recording initial zero values for missing categories.
-    """
-    if _is_usage_quantity(value) and (value > 0 or category not in target):
-        target[category] = value
-
-
 def _has_positive_usage_quantity(values: dict) -> bool:
     for category in MODEL_USAGE_CATEGORIES:
         value = values.get(category)
@@ -551,9 +541,9 @@ def _merge_input_partition(target: dict, source: dict) -> None:
         if snapshot is None:
             continue
         input_tokens, cached_tokens, cache_write_tokens = snapshot
-        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_INPUT, input_tokens)
-        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens)
-        _store_quantity(
+        update_model_usage_quantity(merged_raw, MODEL_USAGE_CATEGORY_INPUT, input_tokens)
+        update_model_usage_quantity(merged_raw, MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens)
+        update_model_usage_quantity(
             merged_raw,
             MODEL_USAGE_CATEGORY_CACHE_CREATION,
             cache_write_tokens,
@@ -596,23 +586,23 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cache_write_tokens")),
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_INPUT,
         uncached_input_tokens,
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_OUTPUT,
         values.get((*prefix, "usage", "output_tokens")),
     )
 
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_CACHE_READ,
         cached_tokens,
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_CACHE_CREATION,
         cache_creation_tokens,
@@ -641,7 +631,7 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     target_has_positive_quantity = _has_positive_usage_quantity(target)
     source_has_positive_quantity = _has_positive_usage_quantity(source)
     _merge_input_partition(target, source)
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_OUTPUT,
         source.get(MODEL_USAGE_CATEGORY_OUTPUT),
