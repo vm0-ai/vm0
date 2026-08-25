@@ -535,7 +535,7 @@ export function buildHelpText(
     ),
     ...commandExampleIfVisible(
       "social",
-      "  Analyze social data?   okou social request /youtube/transcript --query url=https://youtu.be/dQw4w9WgXcQ --json",
+      '  Analyze social data?   okou social call youtube_transcript --input \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' --json',
       payload,
     ),
     ...commandExampleIfVisible(

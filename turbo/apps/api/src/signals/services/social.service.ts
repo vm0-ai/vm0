@@ -1,12 +1,14 @@
 import {
-  findManagedSocialKitOperation,
+  findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
-  SOCIALKIT_MAX_QUERY_VALUE_CHARS,
-  type ManagedSocialKitOperation,
+  SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   type ManagedSocialKitPagination,
+  type ManagedSocialKitTool,
   type SocialKitRequest,
   type SocialKitResponse,
+  socialKitResponseSchema,
 } from "@okouai/api-contracts/contracts/social";
+import { z } from "zod";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -72,7 +74,7 @@ interface AuthedSocialKitArgs {
 interface CompleteSocialKitArgs {
   readonly accessKey: string;
   readonly request: SocialKitRequest;
-  readonly operation: ManagedSocialKitOperation;
+  readonly tool: ManagedSocialKitTool;
   readonly recordUsage: (quantity: number) => Promise<number>;
 }
 
@@ -109,12 +111,13 @@ function invalidResponse(): SocialKitErrorResponse {
 }
 
 function logProviderFailure(
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
   failureKind: ProviderFailureKind,
   httpStatus?: number,
 ): void {
   L.warn("Managed SocialKit request failed", {
-    operation: `${operation.method} ${operation.path}`,
+    tool: tool.name,
+    path: tool.path,
     failureKind,
     ...(httpStatus === undefined ? {} : { httpStatus }),
   });
@@ -180,21 +183,49 @@ function providerHttpError(
   }
 }
 
-function providerUrl(request: SocialKitRequest): URL {
-  const url = new URL(request.path, SOCIALKIT_API_BASE);
-  for (const [name, value] of Object.entries(request.query ?? {})) {
-    url.searchParams.set(name, value);
+function requestInputValue(request: SocialKitRequest, name: string): unknown {
+  return Object.entries(request.input).find(([key]) => {
+    return key === name;
+  })?.[1];
+}
+
+function providerInputValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    throw new Error("Validated SocialKit input is not JSON serializable");
+  }
+  return serialized;
+}
+
+function providerUrl(
+  request: SocialKitRequest,
+  tool: ManagedSocialKitTool,
+): URL {
+  const url = new URL(tool.path, SOCIALKIT_API_BASE);
+  for (const [name, value] of Object.entries(request.input)) {
+    url.searchParams.set(name, providerInputValue(value));
+  }
+  if (
+    tool.collection?.defaultLimit !== undefined &&
+    requestInputValue(request, "limit") === undefined
+  ) {
+    url.searchParams.set("limit", String(tool.collection.defaultLimit));
   }
   return url;
 }
 
 function providerRequestInit(
   accessKey: string,
-  request: SocialKitRequest,
   signal: AbortSignal,
 ): RequestInit {
   return {
-    method: request.method,
+    method: "GET",
     headers: { "x-access-key": accessKey },
     signal: AbortSignal.any([
       signal,
@@ -206,21 +237,21 @@ function providerRequestInit(
 async function fetchSocialKit(
   accessKey: string,
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
   signal: AbortSignal,
 ): Promise<SocialKitBodyResult> {
   const settled = await settle(
     (async (): Promise<SocialKitFetchResult> => {
       const response = await fetch(
-        providerUrl(request),
-        providerRequestInit(accessKey, request, signal),
+        providerUrl(request, tool),
+        providerRequestInit(accessKey, signal),
       );
       const textResult = await readBoundedResponseText(
         response,
         MAX_SOCIALKIT_RESPONSE_BYTES,
       );
       if (textResult.kind === "too_large") {
-        logProviderFailure(operation, "response_too_large", response.status);
+        logProviderFailure(tool, "response_too_large", response.status);
         return errorResult(
           badGateway(
             "SocialKit response is too large",
@@ -245,12 +276,12 @@ async function fetchSocialKit(
       error instanceof Error &&
       (error.name === "AbortError" || error.name === "TimeoutError")
     ) {
-      logProviderFailure(operation, "timeout");
+      logProviderFailure(tool, "timeout");
       return errorResult(
         badGateway("SocialKit request timed out", "SOCIALKIT_REQUEST_TIMEOUT"),
       );
     }
-    logProviderFailure(operation, "network");
+    logProviderFailure(tool, "network");
     return errorResult(
       badGateway("SocialKit request failed", "SOCIALKIT_UPSTREAM_ERROR"),
     );
@@ -259,7 +290,7 @@ async function fetchSocialKit(
     return settled.value;
   }
   if (!settled.value.response.ok) {
-    logProviderFailure(operation, "http_error", settled.value.response.status);
+    logProviderFailure(tool, "http_error", settled.value.response.status);
     return errorResult(
       providerHttpError(settled.value.response.status, settled.value.body),
     );
@@ -275,11 +306,11 @@ function providerResult(
   body: unknown,
   accessKey: string,
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
 ):
   | {
       readonly ok: true;
-      readonly result: unknown;
+      readonly result: z.infer<ManagedSocialKitTool["resultSchema"]>;
       readonly collection: SocialKitResponse["collection"];
       readonly billingQuantity: number;
     }
@@ -299,24 +330,27 @@ function providerResult(
   if (serialized.includes(accessKey)) {
     return { ok: false, credentialLeak: true };
   }
-  const collection = validatedCollection(body.data, request, operation);
+  const result = tool.resultSchema.safeParse(body.data);
+  if (!result.success) {
+    return { ok: false, credentialLeak: false };
+  }
+  const collection = validatedCollection(result.data, request, tool);
   if (collection === undefined) {
     return { ok: false, credentialLeak: false };
   }
-  const billingQuantity = operation.collection?.itemsPerBillingUnit
+  const billingQuantity = tool.collection?.itemsPerBillingUnit
     ? Math.max(
         1,
         Math.ceil(
           collection === null
             ? 0
-            : collection.itemsReturned /
-                operation.collection.itemsPerBillingUnit,
+            : collection.itemsReturned / tool.collection.itemsPerBillingUnit,
         ),
       )
     : 1;
   return {
     ok: true,
-    result: body.data,
+    result: result.data,
     collection,
     billingQuantity,
   };
@@ -324,36 +358,23 @@ function providerResult(
 
 function effectiveResultLimit(
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
 ): number | undefined {
-  const defaultLimit = operation.collection?.defaultLimit;
+  const defaultLimit = tool.collection?.defaultLimit;
   if (defaultLimit === undefined) {
     return undefined;
   }
-  const requestedLimit = request.query?.limit;
-  return requestedLimit === undefined ? defaultLimit : Number(requestedLimit);
+  const requestedLimit = requestInputValue(request, "limit");
+  return typeof requestedLimit === "number" ? requestedLimit : defaultLimit;
 }
 
-function requestWithDefaultLimit(
-  request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
-): SocialKitRequest {
-  const defaultLimit = operation.collection?.defaultLimit;
-  return defaultLimit === undefined || request.query?.limit !== undefined
-    ? request
-    : {
-        ...request,
-        query: { ...request.query, limit: String(defaultLimit) },
-      };
-}
-
-function paginationQueryValue(value: unknown): string | undefined {
+function paginationCursorValue(value: unknown): string | undefined {
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return String(value);
   }
   return typeof value === "string" &&
     value.length > 0 &&
-    value.length <= SOCIALKIT_MAX_QUERY_VALUE_CHARS
+    value.length <= SOCIALKIT_MAX_INPUT_VALUE_CHARS
     ? value
     : undefined;
 }
@@ -370,10 +391,10 @@ function validatedCursorPagination(
   if (!result.hasMore) {
     return { state: "complete", itemsReturned };
   }
-  const cursor = paginationQueryValue(result.cursor);
+  const cursor = paginationCursorValue(result.cursor);
   return cursor === undefined
     ? undefined
-    : { state: "more", itemsReturned, nextQuery: { cursor } };
+    : { state: "more", itemsReturned, nextInput: { cursor } };
 }
 
 function validatedNextCursorPagination(
@@ -387,10 +408,10 @@ function validatedNextCursorPagination(
   ) {
     return { state: "complete", itemsReturned };
   }
-  const cursor = paginationQueryValue(result.nextCursor);
+  const cursor = paginationCursorValue(result.nextCursor);
   return cursor === undefined
     ? undefined
-    : { state: "more", itemsReturned, nextQuery: { cursor } };
+    : { state: "more", itemsReturned, nextInput: { cursor } };
 }
 
 function validatedPagePagination(
@@ -410,7 +431,7 @@ function validatedPagePagination(
     : {
         state: "more",
         itemsReturned,
-        nextQuery: { page: String(currentPage + 1) },
+        nextInput: { page: currentPage + 1 },
       };
 }
 
@@ -428,10 +449,11 @@ function validatedPagination(
       return validatedNextCursorPagination(result, itemsReturned);
     }
     case "page": {
+      const page = requestInputValue(request, "page");
       return validatedPagePagination(
         result,
         itemsReturned,
-        Number(request.query?.page ?? "1"),
+        typeof page === "number" ? page : 1,
         pagination.maxPage,
       );
     }
@@ -444,9 +466,9 @@ function validatedPagination(
 function validatedCollection(
   result: unknown,
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
 ): SocialKitResponse["collection"] | undefined {
-  const collection = operation.collection;
+  const collection = tool.collection;
   if (!collection) {
     return null;
   }
@@ -457,7 +479,7 @@ function validatedCollection(
   if (!Array.isArray(items)) {
     return undefined;
   }
-  const effectiveLimit = effectiveResultLimit(request, operation);
+  const effectiveLimit = effectiveResultLimit(request, tool);
   if (effectiveLimit !== undefined && items.length > effectiveLimit) {
     return undefined;
   }
@@ -471,10 +493,10 @@ function validatedCollection(
 
 function preflightBillingQuantity(
   request: SocialKitRequest,
-  operation: ManagedSocialKitOperation,
+  tool: ManagedSocialKitTool,
 ): number {
-  const itemsPerBillingUnit = operation.collection?.itemsPerBillingUnit;
-  const resultLimit = effectiveResultLimit(request, operation);
+  const itemsPerBillingUnit = tool.collection?.itemsPerBillingUnit;
+  const resultLimit = effectiveResultLimit(request, tool);
   return itemsPerBillingUnit === undefined || resultLimit === undefined
     ? 1
     : Math.max(1, Math.ceil(resultLimit / itemsPerBillingUnit));
@@ -493,7 +515,7 @@ async function completeSocialKitRequest(
   const providerResponse = await fetchSocialKit(
     args.accessKey,
     args.request,
-    args.operation,
+    args.tool,
     providerSignal,
   );
   if (providerResponse.kind === "error") {
@@ -503,30 +525,27 @@ async function completeSocialKitRequest(
     providerResponse.body,
     args.accessKey,
     args.request,
-    args.operation,
+    args.tool,
   );
   if (!parsed.ok) {
     const failureKind = parsed.credentialLeak
       ? "credential_leak"
       : "invalid_response";
-    logProviderFailure(args.operation, failureKind);
+    logProviderFailure(args.tool, failureKind);
     return invalidResponse();
   }
   const creditsCharged = await args.recordUsage(parsed.billingQuantity);
   return {
     status: 200,
-    body: {
+    body: socialKitResponseSchema.parse({
       provider: PROVIDER,
-      operation: {
-        method: args.operation.method,
-        path: args.operation.path,
-      },
+      tool: args.tool.name,
       billingCategory: MANAGED_SOCIALKIT_BILLING_CATEGORY,
       billingQuantity: parsed.billingQuantity,
       creditsCharged,
       collection: parsed.collection,
       result: parsed.result,
-    },
+    }),
   };
 }
 
@@ -545,21 +564,17 @@ export const socialKitRequest$ = command(
       );
     }
 
-    const operation = findManagedSocialKitOperation(
-      args.body.method,
-      args.body.path,
-    );
-    if (!operation) {
-      throw new Error("Validated SocialKit request has no reviewed operation");
+    const tool = findManagedSocialKitTool(args.body.tool);
+    if (!tool) {
+      throw new Error("Validated SocialKit request has no reviewed tool");
     }
-    const providerRequest = requestWithDefaultLimit(args.body, operation);
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
     const preflightResource = {
       kind: USAGE_KIND,
       provider: PROVIDER,
       category: MANAGED_SOCIALKIT_BILLING_CATEGORY,
-      quantity: preflightBillingQuantity(providerRequest, operation),
+      quantity: preflightBillingQuantity(args.body, tool),
     };
     const creditError = await set(
       checkManagedCredits$,
@@ -581,8 +596,8 @@ export const socialKitRequest$ = command(
     return completeSocialKitRequest(
       {
         accessKey,
-        request: providerRequest,
-        operation,
+        request: args.body,
+        tool,
         recordUsage: (quantity) => {
           return set(
             recordManagedUsage$,
