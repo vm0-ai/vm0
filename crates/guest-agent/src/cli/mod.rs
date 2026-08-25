@@ -8,6 +8,7 @@
 //! - `command`: Claude Code command construction.
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
+//! - `provider_event_normalization`: provider semantic arrays before sequencing.
 //! - `claude`: Claude result parsing and tool tracking.
 //! - `termination`: process-group termination FSM.
 //!
@@ -35,6 +36,7 @@ mod exec_boundary;
 mod line_reader;
 mod pi_rpc;
 mod process_group;
+mod provider_event_normalization;
 mod termination;
 
 pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
@@ -835,31 +837,33 @@ impl<'a> CliEventIngestor<'a> {
         should_send_events: bool,
         event_tx: &EventDeliverySender,
     ) -> Result<(), AgentError> {
-        let sequence = self.seq;
-        self.seq += 1;
-        if should_send_events {
-            let event = events::prepare_event_for_delivery(event, sequence, masker);
-            if self.framework == env::Framework::Codex {
-                let prepared = codex_event_delivery::prepare_for_delivery(
-                    event,
-                    event_tx.max_serialized_event_bytes(),
-                )?;
-                if let Some(reduction) = prepared.reduction {
-                    log_warn!(
-                        LOG_TAG,
-                        "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
-                        sequence,
-                        reduction.event_type,
-                        reduction.item_type,
-                        reduction.original_bytes,
-                        reduction.delivered_bytes,
-                        reduction.fields.join(","),
-                        reduction.fallback
-                    );
+        for event in provider_event_normalization::normalize_for_sequencing(self.framework, event) {
+            let sequence = self.seq;
+            self.seq += 1;
+            if should_send_events {
+                let event = events::prepare_event_for_delivery(event, sequence, masker);
+                if self.framework == env::Framework::Codex {
+                    let prepared = codex_event_delivery::prepare_for_delivery(
+                        event,
+                        event_tx.max_serialized_event_bytes(),
+                    )?;
+                    if let Some(reduction) = prepared.reduction {
+                        log_warn!(
+                            LOG_TAG,
+                            "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
+                            sequence,
+                            reduction.event_type,
+                            reduction.item_type,
+                            reduction.original_bytes,
+                            reduction.delivered_bytes,
+                            reduction.fields.join(","),
+                            reduction.fallback
+                        );
+                    }
+                    event_tx.try_send_serialized(sequence, prepared.serialized)?;
+                } else {
+                    event_tx.try_send(sequence, event)?;
                 }
-                event_tx.try_send_serialized(sequence, prepared.serialized)?;
-            } else {
-                event_tx.try_send(sequence, event)?;
             }
         }
         Ok(())
