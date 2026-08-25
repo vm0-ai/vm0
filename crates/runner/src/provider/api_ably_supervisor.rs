@@ -553,13 +553,11 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                             config.active_input_notifications.notify(run_id);
                             continue;
                         }
-                        if let Some(notification) = parse_cancel_notification(&msg) {
-                            if let Some(delivery) = prepare_cancel_delivery(
-                                notification,
-                                &config.cancel_tokens,
-                            ).await {
-                                cancel_deliveries.push(delivery);
-                            }
+                        if enqueue_cancel_delivery(
+                            &msg,
+                            &config.cancel_tokens,
+                            &mut cancel_deliveries,
+                        ).await {
                             continue;
                         }
                         handle_ably_message_with_connector_runtime_sync(
@@ -853,6 +851,20 @@ async fn prepare_cancel_delivery(
 ) -> Option<CancelDelivery> {
     let handle = cancel_tokens.handle(notification.run_id).await?;
     Some(Box::pin(deliver_cancel_notification(notification, handle)))
+}
+
+async fn enqueue_cancel_delivery(
+    msg: &ably_subscriber::Message,
+    cancel_tokens: &RunCancellationRegistry,
+    cancel_deliveries: &mut FuturesUnordered<CancelDelivery>,
+) -> bool {
+    let Some(notification) = parse_cancel_notification(msg) else {
+        return false;
+    };
+    if let Some(delivery) = prepare_cancel_delivery(notification, cancel_tokens).await {
+        cancel_deliveries.push(delivery);
+    }
+    true
 }
 
 async fn deliver_cancel_notification(
@@ -1871,12 +1883,8 @@ mod tests {
             Some("cancel"),
             serde_json::json!({ "runId": run_id, "mode": "hard" }),
         );
-        let notification = parse_cancel_notification(&msg).unwrap();
-        let delivery = prepare_cancel_delivery(notification, &tokens)
-            .await
-            .unwrap();
         let mut cancel_deliveries = FuturesUnordered::new();
-        cancel_deliveries.push(delivery);
+        assert!(enqueue_cancel_delivery(&msg, &tokens, &mut cancel_deliveries).await);
 
         assert!(futures_util::poll!(cancel_deliveries.next()).is_pending());
         assert!(registration.unregister().await);
@@ -1926,12 +1934,10 @@ mod tests {
                 Some("cancel"),
                 serde_json::json!({ "runId": run_id, "mode": "hard" }),
             );
-            let notification = parse_cancel_notification(&cancel_msg).unwrap();
-            let delivery = prepare_cancel_delivery(notification, &task_tokens)
-                .await
-                .unwrap();
             let mut cancel_deliveries = FuturesUnordered::new();
-            cancel_deliveries.push(delivery);
+            assert!(
+                enqueue_cancel_delivery(&cancel_msg, &task_tokens, &mut cancel_deliveries).await
+            );
             assert!(futures_util::poll!(cancel_deliveries.next()).is_pending());
 
             let wakeups = PollWakeups::new(true);
