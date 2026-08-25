@@ -41,10 +41,6 @@ vi.mock("posthog-js", () => {
 
 const context = testContext();
 
-afterAll(() => {
-  apiOriginMarker.remove();
-});
-
 beforeEach(() => {
   posthog.capture.mockClear();
   posthog.identify.mockClear();
@@ -52,6 +48,10 @@ beforeEach(() => {
   posthog.register.mockClear();
   posthog.reset.mockClear();
   posthog.unregister.mockClear();
+});
+
+afterAll(() => {
+  apiOriginMarker.remove();
 });
 
 function diagnosticCalls(): unknown[][] {
