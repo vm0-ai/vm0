@@ -14,6 +14,7 @@ import {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
+  readonly hyperframesVideoTemplatesEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
@@ -24,6 +25,7 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }): string {
   const options = {
+    hyperframesVideoTemplatesEnabled: args.hyperframesVideoTemplatesEnabled,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
     latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,

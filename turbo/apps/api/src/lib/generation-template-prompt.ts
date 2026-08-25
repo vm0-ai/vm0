@@ -29,6 +29,14 @@ import {
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
+import {
+  HYPERFRAMES_AUTHORING_SOURCE,
+  HYPERFRAMES_RUNTIME,
+} from "@okouai/core/hyperframes-source";
+import {
+  findHyperframesTemplateItem,
+  type HyperframesTemplateItem,
+} from "@okouai/core/hyperframes-template-items";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -104,6 +112,13 @@ function generationTemplateTypeLabel(
   ) {
     return "avatar";
   }
+  if (
+    generationTemplate.type === "video" &&
+    findHyperframesTemplateItem(generationTemplate.selection.stylePresetId) !==
+      undefined
+  ) {
+    return "intro-video";
+  }
   return generationTemplate.type;
 }
 
@@ -118,6 +133,7 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
+  readonly hyperframesVideoTemplatesEnabled?: boolean;
   readonly latestWebsiteTemplatesEnabled?: boolean;
   readonly latestPresentationTemplatesEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
@@ -133,7 +149,10 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    return buildVideoGenerationTemplatePrompt(generationTemplate);
+    return buildVideoGenerationTemplatePrompt(
+      generationTemplate,
+      options.hyperframesVideoTemplatesEnabled === true,
+    );
   }
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
@@ -406,6 +425,7 @@ function buildWebsiteTemplatePackagePrompt(
 
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
+  hyperframesVideoTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const avatarId = parseAvatarTemplateStylePresetId(
     generationTemplate.selection.stylePresetId,
@@ -419,6 +439,16 @@ function buildVideoGenerationTemplatePrompt(
       avatarOptions.voiceId,
       avatarOptions.aspectRatio,
     );
+  }
+
+  const hyperframesTemplate = findHyperframesTemplateItem(
+    generationTemplate.selection.stylePresetId,
+  );
+  if (hyperframesTemplate) {
+    if (!hyperframesVideoTemplatesEnabled) {
+      return { status: "invalid", message: "Unknown video template" };
+    }
+    return buildHyperframesGenerationTemplatePrompt(hyperframesTemplate);
   }
 
   const template = findVideoTemplate(
@@ -447,6 +477,31 @@ function buildVideoGenerationTemplatePrompt(
       "- Then run final direct video generation from the resolved prompt and parameters without `--template`.",
       "- If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `okou generate video -h` to discover the current flags, models, and providers.",
+    ].join("\n"),
+  };
+}
+
+function buildHyperframesGenerationTemplatePrompt(
+  template: HyperframesTemplateItem,
+): GenerationTemplatePromptResult {
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("an intro video"),
+      "Selected HyperFrames intro-video template:",
+      "- Artifact type: intro video",
+      `- Template: ${template.title} (${template.id})`,
+      `- Template description: ${template.description}`,
+      `- Story pattern: ${template.story.pattern}`,
+      `- Official workflow: ${template.workflow}`,
+      `- Official source: ${HYPERFRAMES_AUTHORING_SOURCE.repo}@${HYPERFRAMES_AUTHORING_SOURCE.ref}`,
+      `- Pinned runtime: ${HYPERFRAMES_RUNTIME.packageSpec}`,
+      "",
+      "When you produce an intro video from the user's request:",
+      `- Run once to fetch the locked authoring packet: okou generate intro-video --template ${template.id} --prompt "<user request>"`,
+      "- Follow that packet and the pinned official HyperFrames source completely; it owns story, motion, authoring, verification, and output paths.",
+      "- Do not substitute direct built-in text-to-video generation for this template.",
+      "- Return the final rendered video or the concrete render blocker named by the packet.",
     ].join("\n"),
   };
 }

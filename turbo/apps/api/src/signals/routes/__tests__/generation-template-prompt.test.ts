@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  HYPERFRAMES_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -415,6 +416,40 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
+  });
+
+  it("gates and resolves the HyperFrames intro-video authoring path", () => {
+    const item = HYPERFRAMES_TEMPLATE_ITEMS[0]!;
+    const selection = {
+      type: "video" as const,
+      selection: { stylePresetId: item.id },
+    };
+
+    expect(buildGenerationTemplatePrompt(selection)).toStrictEqual({
+      status: "invalid",
+      message: "Unknown video template",
+    });
+
+    const result = buildGenerationTemplatesPrompt([selection], {
+      hyperframesVideoTemplatesEnabled: true,
+    });
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("## Template #1 (intro-video)");
+    expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
+    expect(result.prompt).toContain("Official workflow: faceless-explainer");
+    expect(result.prompt).toContain(
+      "heygen-com/hyperframes@6eaa2cb64b280c51cadb3843ce190f6f0b7493cc",
+    );
+    expect(result.prompt).toContain("Pinned runtime: hyperframes@0.8.14");
+    expect(result.prompt).toContain(
+      `okou generate intro-video --template ${item.id}`,
+    );
+    expect(result.prompt).toContain(
+      "Do not substitute direct built-in text-to-video generation",
+    );
   });
 
   it("reads avatar options from the flat fields older bundles wrote", () => {

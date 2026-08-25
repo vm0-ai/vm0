@@ -289,6 +289,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Let the chat composer model picker pin the video model a chat thread generates with.",
     enabled: true,
   },
+  [FeatureSwitchKey.HyperframesVideoTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Expose HyperFrames intro-video templates and their authoring flow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ImageModelSelection]: {
     maintainer: "bingjie@vm0.ai",
     description:

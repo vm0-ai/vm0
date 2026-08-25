@@ -432,6 +432,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly hyperframesVideoTemplatesEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
   readonly videoModelSelectionEnabled: boolean;
@@ -1053,6 +1054,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
+    hyperframesVideoTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.HyperframesVideoTemplates,
+      context,
+    ),
     latestWebsiteTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.LatestWebsiteTemplates,
       context,
@@ -1093,6 +1098,8 @@ function resolveSelectedTemplateContext(
     generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.primaryTemplate,
       explicitTemplates: runtimeBody.templates,
+      hyperframesVideoTemplatesEnabled:
+        featureSwitches.hyperframesVideoTemplatesEnabled,
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
       latestPresentationTemplatesEnabled:
@@ -1134,6 +1141,8 @@ async function validateGenerationTemplatePrompt(
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
+      hyperframesVideoTemplatesEnabled:
+        featureSwitches.hyperframesVideoTemplatesEnabled,
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
       latestPresentationTemplatesEnabled:

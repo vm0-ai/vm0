@@ -198,6 +198,10 @@ export async function materializePendingActiveInputPrompts(
         },
         orgId: auth.orgId,
         userId: auth.userId,
+        hyperframesVideoTemplatesEnabled: isFeatureEnabled(
+          FeatureSwitchKey.HyperframesVideoTemplates,
+          featureSwitchContext,
+        ),
         latestWebsiteTemplatesEnabled: isFeatureEnabled(
           FeatureSwitchKey.LatestWebsiteTemplates,
           featureSwitchContext,
@@ -277,6 +281,7 @@ async function materializeActiveInputPrompt(
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
+    readonly hyperframesVideoTemplatesEnabled: boolean;
     readonly latestWebsiteTemplatesEnabled: boolean;
     readonly latestPresentationTemplatesEnabled: boolean;
     readonly presentationTemplatesEnabled: boolean;
@@ -299,6 +304,7 @@ async function materializeActiveInputPrompt(
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
+    hyperframesVideoTemplatesEnabled: args.hyperframesVideoTemplatesEnabled,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
     latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,

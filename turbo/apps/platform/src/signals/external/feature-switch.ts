@@ -55,6 +55,12 @@ export const videoModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
 });
 
+export const hyperframesVideoTemplatesEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.HyperframesVideoTemplates] ?? false
+  );
+});
+
 export const imageModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ImageModelSelection] ?? false;
 });

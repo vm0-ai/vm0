@@ -131,6 +131,11 @@ import type { IllustrationTemplateItem } from "@okouai/core/illustration-templat
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import type { VideoTemplateItem } from "@okouai/core/video-template-items";
+import {
+  HYPERFRAMES_TEMPLATE_ITEMS,
+  findHyperframesTemplateItem,
+  type HyperframesTemplateItem,
+} from "@okouai/core/hyperframes-template-items";
 import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
@@ -189,6 +194,7 @@ import {
 import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
+  hyperframesVideoTemplatesEnabled$,
   imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
@@ -862,7 +868,8 @@ function selectedTemplateTitle(
   if (value?.type === "video") {
     return (
       avatarTemplateSelection(value)?.title ??
-      selectedVideoTemplateItem(value)?.title
+      selectedVideoTemplateItem(value)?.title ??
+      selectedHyperframesTemplateItem(value)?.title
     );
   }
   if (value?.type === "workflow") {
@@ -958,6 +965,36 @@ function selectedVideoTemplateItem(
     return undefined;
   }
   return findVideoTemplateItem(value.selection.stylePresetId);
+}
+
+function isSelectedHyperframesTemplate(
+  item: HyperframesTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "video" &&
+    findHyperframesTemplateItem(value.selection.stylePresetId)?.id === item.id
+  );
+}
+
+function toHyperframesGenerationTemplate(
+  item: HyperframesTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "video",
+    selection: {
+      stylePresetId: item.id,
+    },
+  };
+}
+
+function selectedHyperframesTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): HyperframesTemplateItem | undefined {
+  if (value?.type !== "video") {
+    return undefined;
+  }
+  return findHyperframesTemplateItem(value.selection.stylePresetId);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1247,15 +1284,29 @@ function VideoTemplateCard({
 
 function VideoTemplateGrid({
   items,
+  hyperframesItems,
   value,
   onSelect,
+  onSelectHyperframes,
 }: {
   items: readonly VideoTemplateItem[];
+  hyperframesItems: readonly HyperframesTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoTemplateItem) => void;
+  onSelectHyperframes: (item: HyperframesTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {hyperframesItems.map((item) => {
+        return (
+          <HyperframesTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedHyperframesTemplate(item, value)}
+            onSelect={onSelectHyperframes}
+          />
+        );
+      })}
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1266,6 +1317,80 @@ function VideoTemplateGrid({
           />
         );
       })}
+    </div>
+  );
+}
+
+function HyperframesTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: HyperframesTemplateItem;
+  selected: boolean;
+  onSelect: (item: HyperframesTemplateItem) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
+        <div className="h-full bg-[#f7f7f5] p-3">
+          <div className="flex h-full flex-col rounded-2xl border border-black/5 bg-white p-3 shadow-[0_8px_24px_rgba(20,20,20,0.06)]">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-violet-600 text-base font-black leading-none text-white">
+                *
+              </span>
+              <span className="text-[11px] font-semibold text-neutral-700">
+                {item.title}
+              </span>
+              <span className="ml-auto rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
+                {item.engineLabel}
+              </span>
+            </div>
+            <div className="mt-3 rounded-xl bg-neutral-100 px-3 py-2 text-[10px] font-medium leading-4 text-neutral-700">
+              {item.previewQuote}
+            </div>
+            <div className="mt-auto flex items-center gap-1.5">
+              <span className="h-1.5 flex-1 rounded-full bg-violet-600" />
+              <span className="h-1.5 flex-1 rounded-full bg-violet-200" />
+              <span className="h-1.5 flex-1 rounded-full bg-neutral-200" />
+            </div>
+          </div>
+        </div>
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            { title: item.title },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={TEMPLATE_TILE_USE}
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
+      </div>
     </div>
   );
 }
@@ -6159,6 +6284,10 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const hyperframesTemplatesEnabled = useGet(hyperframesVideoTemplatesEnabled$);
+  const hyperframesItems = hyperframesTemplatesEnabled
+    ? HYPERFRAMES_TEMPLATE_ITEMS
+    : [];
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
@@ -6320,6 +6449,11 @@ function TemplatePickerDialog({
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectHyperframes = (item: HyperframesTemplateItem) => {
+    onChange(toHyperframesGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -6576,6 +6710,7 @@ function TemplatePickerDialog({
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
+                hyperframesItems={hyperframesItems}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6591,6 +6726,7 @@ function TemplatePickerDialog({
                 onSelectIllustration={handleSelectIllustration}
                 onIllustrationVariantChange={setIllustrationVariantIndex}
                 onSelectVideo={handleSelectVideo}
+                onSelectHyperframes={handleSelectHyperframes}
                 onSelectAvatar={handleSelectAvatar}
                 onWorkflowCategoryChange={setWorkflowCategoryFilter}
                 onSelectWorkflow={handleSelectWorkflow}
@@ -6633,6 +6769,7 @@ function TemplatePickerCategoryContent({
   websiteItems,
   illustrationItems,
   videoItems,
+  hyperframesItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -6648,6 +6785,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
+  onSelectHyperframes,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -6663,6 +6801,7 @@ function TemplatePickerCategoryContent({
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
+  hyperframesItems: readonly HyperframesTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -6687,6 +6826,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
+  onSelectHyperframes: (item: HyperframesTemplateItem) => void;
   onSelectAvatar: (
     avatar: AvatarVideoAvatar,
     voice: AvatarVideoVoice,
@@ -6781,11 +6921,13 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 ? (
+        {videoItems.length > 0 || hyperframesItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
+            hyperframesItems={hyperframesItems}
             value={value}
             onSelect={onSelectVideo}
+            onSelectHyperframes={onSelectHyperframes}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -6902,6 +7044,10 @@ function selectedComposerTemplateAttachment(
   const videoItem = selectedVideoTemplateItem(value);
   if (videoItem) {
     return { type: "video", title: videoItem.title, category: "video" };
+  }
+  const hyperframesItem = selectedHyperframesTemplateItem(value);
+  if (hyperframesItem) {
+    return { type: "video", title: hyperframesItem.title, category: "video" };
   }
   const workflowItem = selectedWorkflowTemplateItem(value);
   if (workflowItem) {
