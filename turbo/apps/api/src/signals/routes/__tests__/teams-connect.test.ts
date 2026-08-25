@@ -146,7 +146,7 @@ async function seedTeamsInstallation(
   return fixture;
 }
 
-describe("GET /api/zero/integrations/teams/connect", () => {
+describe("GET /api/integrations/teams/connect", () => {
   const track = createFixtureTracker<TeamsConnectFixture>((fixture) => {
     return removeTeamsForTest(context.signal, fixture);
   });
@@ -363,7 +363,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
   });
 });
 
-describe("POST /api/zero/integrations/teams/connect", () => {
+describe("POST /api/integrations/teams/connect", () => {
   const track = createFixtureTracker<TeamsConnectFixture>((fixture) => {
     return removeTeamsForTest(context.signal, fixture);
   });
@@ -608,7 +608,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
   });
 });
 
-describe("DELETE /api/zero/integrations/teams/connect", () => {
+describe("DELETE /api/integrations/teams/connect", () => {
   const track = createFixtureTracker<TeamsConnectFixture>((fixture) => {
     return removeTeamsForTest(context.signal, fixture);
   });

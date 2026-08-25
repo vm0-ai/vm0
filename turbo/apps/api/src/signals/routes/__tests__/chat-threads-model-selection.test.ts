@@ -106,7 +106,7 @@ function metadataClient() {
   );
 }
 
-describe("POST /api/zero/chat-threads/:id/model-selection", () => {
+describe("POST /api/chat-threads/:id/model-selection", () => {
   it("updates thread model selection with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = okouToken({
