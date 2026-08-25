@@ -109,7 +109,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.ManagedSocialKit]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "liangyou@vm0.ai",
     description: "Enable vm0-managed SocialKit data and analysis operations",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
