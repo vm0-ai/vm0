@@ -30,7 +30,7 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
-  type ZeroIndicators,
+  type Indicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
@@ -560,7 +560,7 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listIndicators(actor: ApiTestUser): Promise<ZeroIndicators> {
+    async listIndicators(actor: ApiTestUser): Promise<Indicators> {
       const response = await accept(
         threadsClient().indicators({
           headers: authenticate(context, actor),

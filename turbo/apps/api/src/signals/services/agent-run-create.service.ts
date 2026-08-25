@@ -484,10 +484,10 @@ function withFinalRunAppendSystemPrompt(args: {
   readonly imageRecognitionAvailable: boolean;
   readonly mcpConnectorSlugs: readonly string[];
   readonly selectedImageModel: ImageModel | null;
-  readonly zeroCliAvailable: boolean;
+  readonly cliAvailable: boolean;
 }): CreateRunBody {
   const appendedParts: string[] = [];
-  if (args.zeroCliAvailable) {
+  if (args.cliAvailable) {
     const mcpConnectorPrompt = buildMcpConnectorPrompt(args.mcpConnectorSlugs);
     if (mcpConnectorPrompt) {
       appendedParts.push(mcpConnectorPrompt);
@@ -9752,7 +9752,7 @@ function finalizePreparedRunContext(
       mcpConnectorSlugs:
         prepared.context.customConnectorContext.mcpConnectorSlugs,
       selectedImageModel: prepared.context.selectedImageModel,
-      zeroCliAvailable: prepared.args.includeOkouTokenSecret === true,
+      cliAvailable: prepared.args.includeOkouTokenSecret === true,
     }),
   };
 }

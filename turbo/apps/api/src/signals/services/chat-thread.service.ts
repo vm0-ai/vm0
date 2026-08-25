@@ -6,10 +6,10 @@ import {
   type CodexServiceTier,
   type PersistedAttachment,
   type UserMessageInputDocument,
-  type ZeroIndicator,
-  type ZeroIndicators,
+  type Indicator,
+  type Indicators,
   persistedAttachmentSchema,
-  zeroIndicatorSchema,
+  indicatorSchema,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import {
@@ -237,7 +237,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const INDICATOR_UNREAD_LIMIT = 50;
 const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
-const indicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
+const indicatorDecoder = zodEnumDriverValueDecoder(indicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   return notExists(
@@ -360,8 +360,8 @@ export function chatThreadUnreads(args: {
 export function chatIndicators(args: {
   readonly userId: string;
   readonly orgId: string;
-}): Computed<Promise<ZeroIndicators>> {
-  return computed(async (get): Promise<ZeroIndicators> => {
+}): Computed<Promise<Indicators>> {
+  return computed(async (get): Promise<Indicators> => {
     const db = get(db$);
     const unreadCutoff = new Date(now() - INDICATOR_UNREAD_LOOKBACK_MS);
     const activeThreads = db.$with("active_threads").as(
@@ -437,8 +437,8 @@ export function chatIndicators(args: {
       .select()
       .from(indicatorRows);
 
-    const agentIndicators: Record<string, ZeroIndicator> = {};
-    const threads: Record<string, ZeroIndicator> = {};
+    const agentIndicators: Record<string, Indicator> = {};
+    const threads: Record<string, Indicator> = {};
     for (const row of rows) {
       threads[row.threadId] = row.indicator;
       if (

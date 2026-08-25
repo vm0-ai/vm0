@@ -110,7 +110,7 @@ const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
     "Be encouraging and empathetic. Show that you're in the user's corner and proactively offer help.",
 };
 
-interface ZeroAgentRunRecord {
+interface AgentRunRecord {
   readonly id: string;
   readonly name: string;
   readonly orgId: string;
@@ -233,7 +233,7 @@ function forbidden(message: string) {
 }
 
 function buildAgentIdentityPrompt(
-  agent: ZeroAgentRunRecord,
+  agent: AgentRunRecord,
   publicBrand: PublicBrand | undefined,
 ): string | null {
   const parts: string[] = [];
@@ -472,7 +472,7 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 }
 
 function buildAppendSystemPrompt(args: {
-  readonly agent: ZeroAgentRunRecord;
+  readonly agent: AgentRunRecord;
   readonly publicBrand: PublicBrand | undefined;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
@@ -525,7 +525,7 @@ async function inferAgentIdFromSession(
 async function loadZeroAgent(
   db: Db,
   agentId: string,
-): Promise<ZeroAgentRunRecord | null> {
+): Promise<AgentRunRecord | null> {
   const [agent] = await db
     .select({
       id: agents.id,
@@ -595,9 +595,9 @@ function agentRunTimingDimensions(args: {
   };
 }
 
-type ZeroBootstrapCountBucket = "0" | "1" | "2_4" | "5_8" | "9_16" | "17_plus";
+type BootstrapCountBucket = "0" | "1" | "2_4" | "5_8" | "9_16" | "17_plus";
 
-function zeroBootstrapCountBucket(count: number): ZeroBootstrapCountBucket {
+function bootstrapCountBucket(count: number): BootstrapCountBucket {
   if (count <= 0) {
     return "0";
   }
@@ -616,31 +616,32 @@ function zeroBootstrapCountBucket(count: number): ZeroBootstrapCountBucket {
   return "17_plus";
 }
 
-function zeroBootstrapLoadTimingDimensions(
+function bootstrapLoadTimingDimensions(
   rows: RunBootstrapSnapshotRows | undefined,
 ): ApiDispatchTimingDimensions | undefined {
   if (!rows) {
     return undefined;
   }
   return {
-    agent_run_bootstrap_total_row_count_bucket: zeroBootstrapCountBucket(
+    agent_run_bootstrap_total_row_count_bucket: bootstrapCountBucket(
       rows.metadataRows.length + rows.workflowRows.length,
     ),
-    agent_run_bootstrap_workflow_candidate_count_bucket:
-      zeroBootstrapCountBucket(rows.workflowRows.length),
+    agent_run_bootstrap_workflow_candidate_count_bucket: bootstrapCountBucket(
+      rows.workflowRows.length,
+    ),
   };
 }
 
-function zeroBootstrapMaterializeTimingDimensions(
+function bootstrapMaterializeTimingDimensions(
   rows: RunBootstrapSnapshotRows,
   context: RunBootstrapContext | undefined,
 ): ApiDispatchTimingDimensions {
   return {
-    ...zeroBootstrapLoadTimingDimensions(rows),
+    ...bootstrapLoadTimingDimensions(rows),
     ...(context
       ? {
           agent_run_bootstrap_workflow_winner_count_bucket:
-            zeroBootstrapCountBucket(context.workflows.length),
+            bootstrapCountBucket(context.workflows.length),
         }
       : {}),
   };
@@ -660,7 +661,7 @@ function agentRunOrigin(args: {
 
 function createRunBody(args: {
   readonly body: AgentRunCreateBody;
-  readonly agent: ZeroAgentRunRecord;
+  readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource | undefined;
@@ -721,7 +722,7 @@ function measureZeroPreCreate<T>(
   );
 }
 
-function zeroServiceEntryTiming(args: {
+function serviceEntryTiming(args: {
   readonly apiStartTime: number;
   readonly timing?: ApiDispatchTimingCollector;
 }): ApiDispatchTimingCollector {
@@ -778,7 +779,7 @@ async function loadAgentRunPostAuthorizationContext(
       return loadedRows;
     },
     () => {
-      return zeroBootstrapLoadTimingDimensions(measuredSnapshotRows);
+      return bootstrapLoadTimingDimensions(measuredSnapshotRows);
     },
   );
   signal.throwIfAborted();
@@ -796,7 +797,7 @@ async function loadAgentRunPostAuthorizationContext(
       return context;
     },
     () => {
-      return zeroBootstrapMaterializeTimingDimensions(
+      return bootstrapMaterializeTimingDimensions(
         snapshotRows,
         measuredBootstrapContext,
       );
@@ -845,7 +846,7 @@ async function loadAgentRunPostAuthorizationContext(
 
 function buildZeroCreateAgentRunArgs(args: {
   readonly command: AnyCreateAgentRunCommandArgs;
-  readonly agent: ZeroAgentRunRecord;
+  readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: readonly RunWorkflowRef[];
@@ -951,7 +952,7 @@ function buildZeroCreateAgentRunArgs(args: {
 }
 
 interface AgentRunAfterPreCreate {
-  readonly agent: ZeroAgentRunRecord;
+  readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
@@ -1101,7 +1102,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
 const createAgentRunInternal$ = command(
   async ({ set }, args: AnyCreateAgentRunCommandArgs, signal: AbortSignal) => {
     assertThreadBoundAgentRunHasQueueAssociation(args);
-    const timing = zeroServiceEntryTiming({
+    const timing = serviceEntryTiming({
       apiStartTime: args.apiStartTime,
       timing: args.timing,
     });
