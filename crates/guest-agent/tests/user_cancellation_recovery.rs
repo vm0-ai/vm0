@@ -127,7 +127,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             HttpMockResponse::builder()
                 .status(scenario.checkpoint_status)
                 .header("Content-Type", "application/json")
-                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint"}"#)
+                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint","agentSessionId":"test-agent-session","conversationId":"test-conversation"}"#)
                 .build()
         });
     });

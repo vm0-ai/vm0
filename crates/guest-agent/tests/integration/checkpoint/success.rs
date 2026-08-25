@@ -76,7 +76,7 @@ async fn success_checkpoint_preserves_small_codex_history() {
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-unpruned-codex"}));
+            .json_body(json!({"checkpointId": "checkpoint-unpruned-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -96,6 +96,60 @@ async fn success_checkpoint_preserves_small_codex_history() {
         true,
     )
     .unwrap();
+}
+
+#[tokio::test]
+async fn checkpoint_rejects_prepare_response_without_existing_before_upload() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "abababab-abab-4bab-8bab-abababababab";
+    let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
+    std::fs::write(&history_path, &history).unwrap();
+    use_test_codex_home(&mut runtime, history_dir.path());
+
+    let upload_path = "/test/invalid-prepare-history-upload";
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url(upload_path),
+                "encoding": "identity",
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT).path(upload_path);
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200).json_body(json!({
+            "checkpointId": "unreachable",
+            "agentSessionId": "test-agent-session",
+            "conversationId": "test-conversation",
+        }));
+    });
+
+    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(
+        &runtime,
+        &checkpoint_session_metadata(&runtime),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Invalid prepare-history response")
+    );
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
 }
 
 #[tokio::test]
@@ -129,7 +183,7 @@ async fn success_checkpoint_discards_oversized_claude_history_without_compact_bo
                 && body["cliAgentSessionHistoryDisposition"] == "discarded_oversized"
                 && body.get("cliAgentSessionHistoryHash").is_none()
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-discarded-claude"}))
+                json_http_response(200, json!({"checkpointId": "checkpoint-discarded-claude", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
             } else {
                 http_status(400)
             }
@@ -177,7 +231,7 @@ async fn success_checkpoint_discards_codex_history_that_jumps_past_hard_limit() 
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-discarded-codex"}));
+            .json_body(json!({"checkpointId": "checkpoint-discarded-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
@@ -223,7 +277,7 @@ async fn success_checkpoint_discards_codex_history_with_oversized_canonical_cand
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-discarded-candidate"}));
+            .json_body(json!({"checkpointId": "checkpoint-discarded-candidate", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
@@ -257,7 +311,7 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-history-unavailable"}));
+            .json_body(json!({"checkpointId": "checkpoint-history-unavailable", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
@@ -269,6 +323,39 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
         operation["action_type"] == "session_history_read" && operation["success"] == false
     }));
     assert!(!operations.contains("\"action_type\":\"session_history_prune\""));
+}
+
+#[tokio::test]
+async fn checkpoint_rejects_create_response_missing_required_identity() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "acacacac-acac-4cac-8cac-acacacacacac";
+    let home = tempfile::tempdir().unwrap();
+    use_test_codex_home(&mut runtime, home.path());
+    guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "checkpointId": "checkpoint-invalid-response",
+                "conversationId": "test-conversation",
+            }));
+    });
+
+    let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("Invalid checkpoint API response")
+    );
+    checkpoint_mock.assert_calls_async(1).await;
 }
 
 #[tokio::test]
@@ -289,7 +376,7 @@ async fn success_checkpoint_reports_invalid_local_history_as_unavailable() {
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-local-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-invalid-local-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let cases: [(&str, &[u8]); 2] = [
@@ -348,7 +435,7 @@ async fn success_checkpoint_reports_invalid_reused_zstd_history_as_unavailable()
             .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-zstd-history"}));
+            .json_body(json!({"checkpointId": "checkpoint-invalid-zstd-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
@@ -417,7 +504,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
             if std::fs::metadata(&checkpoint_history_path)
                 .is_ok_and(|metadata| metadata.len() == source_size)
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-claude"}))
+                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-claude", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
             } else {
                 http_status(500)
             }
@@ -509,7 +596,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
             if std::fs::metadata(&checkpoint_history_path)
                 .is_ok_and(|metadata| metadata.len() == source_size)
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-codex"}))
+                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
             } else {
                 http_status(500)
             }
@@ -582,7 +669,7 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
             .unwrap();
             json_http_response(
                 200,
-                json!({"checkpointId": "checkpoint-pruned-unreconciled"}),
+                json!({"checkpointId": "checkpoint-pruned-unreconciled", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}),
             )
         });
     });
@@ -689,7 +776,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata()
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-success-large"}));
+            .json_body(json!({"checkpointId": "checkpoint-success-large", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -764,7 +851,7 @@ async fn success_checkpoint_propagates_zstd_prepare_bad_request()
         when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
+            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -823,7 +910,7 @@ async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
         when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
+            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -885,7 +972,7 @@ async fn success_checkpoint_rejects_new_zstd_with_mismatched_encoding_acknowledg
         when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
+            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -950,7 +1037,7 @@ async fn success_checkpoint_accepts_existing_gzip_for_zstd_history()
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-existing-gzip"}));
+            .json_body(json!({"checkpointId": "checkpoint-existing-gzip", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -1005,7 +1092,7 @@ async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn
         when.method(POST).path("/api/webhooks/agent/checkpoints");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected"}));
+            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
@@ -1111,7 +1198,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
             .json_body_includes(r#"{"cliAgentSessionId":"captured-session"}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-explicit-runtime"}));
+            .json_body(json!({"checkpointId": "checkpoint-explicit-runtime", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
