@@ -207,6 +207,16 @@ describe("auth v2 password recovery diagnostics", () => {
           [
             AUTH_V2_DIAGNOSTIC_EVENT,
             {
+              error_category: "none",
+              flow: "sign-in",
+              method: "identifier",
+              outcome: "success",
+              step: "identifier",
+            },
+          ],
+          [
+            AUTH_V2_DIAGNOSTIC_EVENT,
+            {
               error_category: "provider-error",
               flow: "sign-in",
               method,
