@@ -1,5 +1,5 @@
-import { enUS } from "@clerk/localizations";
-import { useGet } from "ccstate-react";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -8,14 +8,9 @@ import {
   type AuthV2SignUpState,
 } from "../../../signals/auth-v2/sign-up-flow.ts";
 import type { AuthBrandContext } from "../../../signals/auth.ts";
-import { locale$ } from "../../../signals/locale.ts";
-import { getClerkLocalization } from "../../auth/clerk-localization.ts";
-
-type ClerkLocalization = ReturnType<typeof getClerkLocalization>;
-
-const CLERK_PROVIDER = "{{provider|titleize}}";
 
 export interface AuthV2SignUpCopy {
+  readonly accessNotAllowed: string;
   readonly alreadyHaveAccount: string;
   readonly back: string;
   readonly captchaError: string;
@@ -35,6 +30,7 @@ export interface AuthV2SignUpCopy {
   readonly emailCodeTitle: string;
   readonly firstNameLabel: string;
   readonly googleMethod: string;
+  readonly hidePassword: string;
   readonly lastNameLabel: string;
   readonly legacySignUp: string;
   readonly legalPrivacyOnly: string;
@@ -49,184 +45,190 @@ export interface AuthV2SignUpCopy {
   readonly resendCodeCooldown: string;
   readonly restart: string;
   readonly retry: string;
+  readonly showPassword: string;
   readonly signIn: string;
   readonly signUpTitle: string;
   readonly unknownError: string;
   readonly unknownMessage: string;
   readonly unknownTitle: string;
+  readonly userBanned: string;
   readonly verify: string;
 }
 
-function localizedString(value: unknown, fallback: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return typeof fallback === "string" ? fallback : "";
-}
-
-function formCopy(localization: ClerkLocalization) {
+function signUpDetailsCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
   return {
-    back: localizedString(localization.backButton, enUS.backButton),
-    codeLabel: localizedString(
-      localization.signUp?.emailCode?.formTitle,
-      enUS.signUp?.emailCode?.formTitle,
+    alreadyHaveAccount: t(($) => {
+      return $.auth.v2.signUp.alreadyHaveAccount;
+    }),
+    continue: t(($) => {
+      return $.auth.v2.signUp.continue;
+    }),
+    description: t(
+      ($) => {
+        return $.auth.v2.signUp.description;
+      },
+      { brandName },
     ),
-    continue: localizedString(
-      localization.formButtonPrimary,
-      enUS.formButtonPrimary,
-    ),
-    editEmailAddress: localizedString(
-      localization.identityPreviewEditButton__emailAddress,
-      enUS.identityPreviewEditButton__emailAddress,
-    ),
-    emailAddressLabel: localizedString(
-      localization.formFieldLabel__emailAddress,
-      enUS.formFieldLabel__emailAddress,
-    ),
-    firstNameLabel: localizedString(
-      localization.formFieldLabel__firstName,
-      enUS.formFieldLabel__firstName,
-    ),
-    lastNameLabel: localizedString(
-      localization.formFieldLabel__lastName,
-      enUS.formFieldLabel__lastName,
-    ),
-    optional: localizedString(
-      localization.formFieldHintText__optional,
-      enUS.formFieldHintText__optional,
-    ),
-    passwordLabel: localizedString(
-      localization.formFieldLabel__password,
-      enUS.formFieldLabel__password,
-    ),
-    verify: localizedString(
-      localization.formButtonPrimary__verify,
-      enUS.formButtonPrimary__verify,
+    emailAddressLabel: t(($) => {
+      return $.auth.v2.signUp.emailAddressLabel;
+    }),
+    firstNameLabel: t(($) => {
+      return $.auth.v2.signUp.firstNameLabel;
+    }),
+    googleMethod: t(($) => {
+      return $.auth.v2.signUp.googleMethod;
+    }),
+    hidePassword: t(($) => {
+      return $.auth.v2.signUp.hidePassword;
+    }),
+    lastNameLabel: t(($) => {
+      return $.auth.v2.signUp.lastNameLabel;
+    }),
+    legalPrivacyOnly: t(($) => {
+      return $.auth.v2.signUp.legalPrivacyOnly;
+    }),
+    legalRequired: t(($) => {
+      return $.auth.v2.signUp.legalRequired;
+    }),
+    legalTermsAndPrivacy: t(($) => {
+      return $.auth.v2.signUp.legalTermsAndPrivacy;
+    }),
+    legalTermsOnly: t(($) => {
+      return $.auth.v2.signUp.legalTermsOnly;
+    }),
+    optional: t(($) => {
+      return $.auth.v2.signUp.optional;
+    }),
+    passwordInvalid: t(($) => {
+      return $.auth.v2.signUp.passwordInvalid;
+    }),
+    passwordLabel: t(($) => {
+      return $.auth.v2.signUp.passwordLabel;
+    }),
+    showPassword: t(($) => {
+      return $.auth.v2.signUp.showPassword;
+    }),
+    signIn: t(($) => {
+      return $.auth.v2.signUp.signIn;
+    }),
+    signUpTitle: t(
+      ($) => {
+        return $.auth.v2.signUp.title;
+      },
+      { brandName },
     ),
   };
 }
 
-function startCopy(localization: ClerkLocalization) {
-  const start = localization.signUp?.start;
-  const fallback = enUS.signUp?.start;
+function signUpVerificationCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
+  const resendCode = t(($) => {
+    return $.auth.v2.signUp.resendCode;
+  });
   return {
-    alreadyHaveAccount: localizedString(
-      start?.actionText,
-      fallback?.actionText,
+    back: t(($) => {
+      return $.auth.v2.signUp.back;
+    }),
+    codeExpired: t(($) => {
+      return $.auth.v2.signUp.codeExpired;
+    }),
+    codeLabel: t(($) => {
+      return $.auth.v2.signUp.codeLabel;
+    }),
+    editEmailAddress: t(($) => {
+      return $.auth.v2.signUp.editEmailAddress;
+    }),
+    emailCodeSubtitle: t(
+      ($) => {
+        return $.auth.v2.signUp.emailCodeSubtitle;
+      },
+      { brandName },
     ),
-    description: localizedString(start?.subtitle, fallback?.subtitle),
-    signIn: localizedString(start?.actionLink, fallback?.actionLink),
+    emailCodeTitle: t(($) => {
+      return $.auth.v2.signUp.emailCodeTitle;
+    }),
+    resendCode,
+    resendCodeCooldown: t(
+      ($) => {
+        return $.auth.v2.signUp.resendCodeCooldown;
+      },
+      {
+        resendCode,
+        seconds: AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
+      },
+    ),
+    retry: t(($) => {
+      return $.auth.v2.signUp.retry;
+    }),
+    verify: t(($) => {
+      return $.auth.v2.signUp.verify;
+    }),
   };
 }
 
-function externalMethodCopy(localization: ClerkLocalization) {
+function signUpTerminalCopy(
+  t: TFunction<"common">,
+  brandName: AuthBrandContext["brandName"],
+) {
+  const supportEmail = publicBrandPresentation(
+    brandName === "Okou" ? "okou" : "vm0",
+  ).supportEmail;
   return {
-    googleMethod: localizedString(
-      localization.socialButtonsBlockButton,
-      enUS.socialButtonsBlockButton,
-    ).replaceAll(CLERK_PROVIDER, "Google"),
-  };
-}
-
-function emailCodeCopy(localization: ClerkLocalization) {
-  const emailCode = localization.signUp?.emailCode;
-  const fallback = enUS.signUp?.emailCode;
-  return {
-    emailCodeSubtitle: localizedString(emailCode?.subtitle, fallback?.subtitle),
-    emailCodeTitle: localizedString(emailCode?.title, fallback?.title),
-    resendCode: localizedString(
-      emailCode?.resendButton,
-      fallback?.resendButton,
-    ),
-  };
-}
-
-function legalCopy(localization: ClerkLocalization) {
-  const legal = localization.signUp?.legalConsent;
-  const fallback = enUS.signUp?.legalConsent;
-  return {
-    legalPrivacyOnly: localizedString(
-      legal?.checkbox?.label__onlyPrivacyPolicy,
-      fallback?.checkbox?.label__onlyPrivacyPolicy,
-    ),
-    legalRequired: localizedString(
-      legal?.continue?.subtitle,
-      fallback?.continue?.subtitle,
-    ),
-    legalTermsAndPrivacy: localizedString(
-      legal?.checkbox?.label__termsOfServiceAndPrivacyPolicy,
-      fallback?.checkbox?.label__termsOfServiceAndPrivacyPolicy,
-    ),
-    legalTermsOnly: localizedString(
-      legal?.checkbox?.label__onlyTermsOfService,
-      fallback?.checkbox?.label__onlyTermsOfService,
-    ),
-  };
-}
-
-function captchaCopy(localization: ClerkLocalization) {
-  const protectCheck = localization.signUp?.protectCheck;
-  const fallbackProtectCheck = enUS.signUp?.protectCheck;
-  return {
-    captchaError: localizedString(
-      localization.unstable__errors?.captcha_unavailable,
-      enUS.unstable__errors?.captcha_unavailable,
-    ),
-    captchaLoading: localizedString(
-      protectCheck?.loading,
-      fallbackProtectCheck?.loading,
-    ),
-    captchaSubtitle: localizedString(
-      protectCheck?.subtitle,
-      fallbackProtectCheck?.subtitle,
-    ),
-    captchaTitle: localizedString(
-      protectCheck?.title,
-      fallbackProtectCheck?.title,
-    ),
-    retry: localizedString(
-      protectCheck?.retryButton,
-      fallbackProtectCheck?.retryButton,
-    ),
-  };
-}
-
-function completionCopy(localization: ClerkLocalization) {
-  return {
-    completeSubtitle: localizedString(
-      localization.signUp?.emailLink?.loading?.title,
-      enUS.signUp?.emailLink?.loading?.title,
-    ),
-    completeTitle: localizedString(
-      localization.signUp?.emailLink?.verified?.title,
-      enUS.signUp?.emailLink?.verified?.title,
-    ),
-    passwordInvalid: localizedString(
-      localization.unstable__errors?.form_password_not_strong_enough,
-      enUS.unstable__errors?.form_password_not_strong_enough,
-    ),
-  };
-}
-
-function recoveryCopy(localization: ClerkLocalization) {
-  const restrictedAccess = localization.signUp?.restrictedAccess;
-  const fallbackRestrictedAccess = enUS.signUp?.restrictedAccess;
-  return {
-    restart: localizedString(
-      localization.footerActionLink__useAnotherMethod,
-      enUS.footerActionLink__useAnotherMethod,
-    ),
-    unknownError: localizedString(
-      localization.unstable__errors?.action_blocked,
-      enUS.unstable__errors?.action_blocked,
-    ),
-    unknownMessage: localizedString(
-      restrictedAccess?.subtitle,
-      fallbackRestrictedAccess?.subtitle,
-    ),
-    unknownTitle: localizedString(
-      restrictedAccess?.title,
-      fallbackRestrictedAccess?.title,
+    accessNotAllowed: t(($) => {
+      return $.auth.clerk.accessNotAllowed;
+    }),
+    captchaError: t(($) => {
+      return $.auth.v2.signUp.captchaError;
+    }),
+    captchaExpired: t(($) => {
+      return $.auth.v2.signUp.captchaExpired;
+    }),
+    captchaLoading: t(($) => {
+      return $.auth.v2.signUp.captchaLoading;
+    }),
+    captchaSubtitle: t(($) => {
+      return $.auth.v2.signUp.captchaSubtitle;
+    }),
+    captchaTitle: t(($) => {
+      return $.auth.v2.signUp.captchaTitle;
+    }),
+    completeSubtitle: t(($) => {
+      return $.auth.v2.signUp.completeSubtitle;
+    }),
+    completeTitle: t(($) => {
+      return $.auth.v2.signUp.completeTitle;
+    }),
+    legacySignUp: t(($) => {
+      return $.auth.v2.signUp.action;
+    }),
+    loading: t(($) => {
+      return $.auth.loading;
+    }),
+    restart: t(($) => {
+      return $.auth.v2.signUp.restart;
+    }),
+    unknownError: t(($) => {
+      return $.auth.v2.signUp.unknownError;
+    }),
+    unknownMessage: t(($) => {
+      return $.auth.v2.signUp.unknownMessage;
+    }),
+    unknownTitle: t(($) => {
+      return $.auth.v2.signUp.unknownTitle;
+    }),
+    userBanned: t(
+      ($) => {
+        return $.auth.clerk.userBanned;
+      },
+      {
+        brandName,
+        supportEmail,
+      },
     ),
   };
 }
@@ -235,44 +237,10 @@ export function useAuthV2SignUpCopy(
   brandName: AuthBrandContext["brandName"],
 ): AuthV2SignUpCopy {
   const { t } = useTranslation();
-  const locale = useGet(locale$);
-  const localization = getClerkLocalization(brandName, locale, t);
   return {
-    ...formCopy(localization),
-    ...startCopy(localization),
-    ...externalMethodCopy(localization),
-    ...emailCodeCopy(localization),
-    ...legalCopy(localization),
-    ...captchaCopy(localization),
-    ...completionCopy(localization),
-    ...recoveryCopy(localization),
-    captchaExpired: t(($) => {
-      return $.auth.v2.signUp.captchaExpired;
-    }),
-    codeExpired: t(($) => {
-      return $.auth.v2.signUp.codeExpired;
-    }),
-    legacySignUp: t(($) => {
-      return $.auth.v2.signUp.action;
-    }),
-    loading: t(($) => {
-      return $.auth.loading;
-    }),
-    resendCodeCooldown: t(
-      ($) => {
-        return $.auth.v2.signUp.resendCodeCooldown;
-      },
-      {
-        count: AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS,
-        resendCode: emailCodeCopy(localization).resendCode,
-      },
-    ),
-    signUpTitle: t(
-      ($) => {
-        return $.auth.v2.signUp.title;
-      },
-      { brandName },
-    ),
+    ...signUpDetailsCopy(t, brandName),
+    ...signUpVerificationCopy(t, brandName),
+    ...signUpTerminalCopy(t, brandName),
   };
 }
 
@@ -286,7 +254,20 @@ export function signUpErrorMessage(
   if (error.code === "password-invalid") {
     return copy.passwordInvalid;
   }
-  return error.message ?? copy.unknownError;
+  if (
+    error.field === "code" &&
+    (error.clerkCode?.toLowerCase().includes("expired") === true ||
+      error.clerkCode?.toLowerCase().includes("timeout") === true)
+  ) {
+    return copy.codeExpired;
+  }
+  if (error.clerkCode === "not_allowed_access") {
+    return copy.accessNotAllowed;
+  }
+  if (error.clerkCode === "user_banned") {
+    return copy.userBanned;
+  }
+  return copy.unknownError;
 }
 
 export function signUpCardDescription(

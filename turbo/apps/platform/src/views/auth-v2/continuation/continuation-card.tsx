@@ -161,6 +161,10 @@ export function AuthV2ContinuationCard({
     return null;
   }
   const heading = continuationHeading(state, copy);
+  const focusKey =
+    "reason" in state
+      ? `continuation:${state.status}:${state.reason}`
+      : `continuation:${state.status}`;
   const content =
     state.status === "incomplete" ? (
       <OrganizationContent copy={copy} signals={signals} state={state} />
@@ -173,7 +177,7 @@ export function AuthV2ContinuationCard({
     <AuthV2Shell
       announcement={heading.description}
       description={heading.description}
-      focusKey={`continuation-${state.status}`}
+      focusKey={focusKey}
       title={heading.title}
     >
       {content}

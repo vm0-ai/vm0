@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -74,6 +75,7 @@ function setupTaskPage(options: {
 
 describe("auth v2 continuation card", () => {
   it("recovers forced selection, switches membership once, and exposes no organization management", async () => {
+    const user = userEvent.setup({ delay: null });
     const memberships = [
       membership("org_alpha", "Alpha Company"),
       membership("org_beta", "Beta Studio"),
@@ -85,6 +87,9 @@ describe("auth v2 continuation card", () => {
     });
 
     const beta = await waitForButton("Continue with Beta Studio");
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Choose an organization" }),
+    );
     expect(buttonNamed("Continue with Alpha Company")).toBeVisible();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/invitation/i)).not.toBeInTheDocument();
@@ -92,8 +97,8 @@ describe("auth v2 continuation card", () => {
     expect(document.body).not.toHaveTextContent("membership_org_alpha");
     expect(document.body).not.toHaveTextContent("org_beta");
 
-    fireEvent.click(beta);
-    fireEvent.click(beta);
+    beta.focus();
+    await user.keyboard("{Enter}{Enter}");
 
     await waitFor(() => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
@@ -118,11 +123,11 @@ describe("auth v2 continuation card", () => {
 
     fireEvent.click(await waitForButton("Continue with Private Workspace"));
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Sign-in couldn't be completed",
-      }),
-    ).resolves.toBeVisible();
+    const heading = await screen.findByRole("heading", {
+      name: "Sign-in couldn't be completed",
+    });
+    expect(heading).toBeVisible();
+    expect(document.activeElement).toBe(heading);
     expect(buttonNamed("Start over")).toBeVisible();
     expect(document.body).not.toHaveTextContent("token=secret");
     expect(document.body).not.toHaveTextContent("membership_private");

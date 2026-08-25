@@ -34,7 +34,7 @@ export function AuthV2Shell({
     >
       <CardHeader className="items-center bg-transparent px-5 pt-6 pb-2 text-center sm:px-6 sm:pt-7">
         <h1
-          className="text-lg font-medium text-foreground outline-none"
+          className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           id={AUTH_V2_TITLE_ID}
           key={focusKey}
           ref={focusHeading}
