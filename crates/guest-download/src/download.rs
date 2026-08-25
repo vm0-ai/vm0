@@ -8,6 +8,7 @@ use guest_common::{log_error, log_info, log_warn};
 use std::any::Any;
 use std::collections::VecDeque;
 use std::fs;
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
@@ -16,7 +17,7 @@ use std::time::{Duration, Instant};
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_CONCURRENT: usize = 4;
-type TaskRunner = fn(PreparedDownloadTask) -> bool;
+type AttemptRunner = fn(&mut StartedDownload) -> Result<(), DownloadError>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
@@ -109,20 +110,236 @@ impl PendingDownload {
     }
 }
 
-struct ActiveDownload {
+struct StartedDownload {
+    id: usize,
+    task: PreparedDownloadTask,
+    start: Instant,
+    attempt: u32,
+    opened_file_compressed_bytes: Option<u64>,
+    remote_metrics: Option<RemoteArchiveTaskMetrics>,
+}
+
+impl StartedDownload {
+    fn new(download: PendingDownload) -> Self {
+        let start = Instant::now();
+        log_info!(
+            LOG_TAG,
+            "Downloading {} to {}",
+            download.task.task.label,
+            download.task.task.mount_path
+        );
+        Self {
+            id: download.id,
+            remote_metrics: download.task.task.telemetry.remote_metrics(),
+            task: download.task,
+            start,
+            attempt: 1,
+            opened_file_compressed_bytes: None,
+        }
+    }
+
+    fn should_retry(&self, error: &DownloadError) -> bool {
+        error.retriable && self.attempt < MAX_RETRIES
+    }
+
+    fn finish(self, result: Result<(), DownloadError>) -> bool {
+        match result {
+            Ok(()) => {
+                let elapsed = self.start.elapsed();
+                self.task.task.telemetry.record_result(
+                    elapsed,
+                    true,
+                    None,
+                    self.opened_file_compressed_bytes,
+                    self.remote_metrics.as_ref(),
+                );
+                log_info!(
+                    LOG_TAG,
+                    "{} downloaded in {}ms",
+                    self.task.task.label,
+                    elapsed.as_millis()
+                );
+                true
+            }
+            Err(error) => {
+                let failure_detail = self.task.failure_detail(&error);
+                self.task.task.telemetry.record_result(
+                    self.start.elapsed(),
+                    false,
+                    Some(&failure_detail),
+                    self.opened_file_compressed_bytes,
+                    self.remote_metrics.as_ref(),
+                );
+                log_error!(LOG_TAG, "{failure_detail}");
+                false
+            }
+        }
+    }
+}
+
+struct DownloadReservation {
     id: usize,
     logical_mount_path: PathBuf,
     effective_mount_path: PathBuf,
 }
 
-struct DownloadCompletion {
-    id: usize,
-    outcome: DownloadOutcome,
+impl DownloadReservation {
+    fn new(download: &StartedDownload) -> Self {
+        Self {
+            id: download.id,
+            logical_mount_path: download.task.logical_mount_path().to_path_buf(),
+            effective_mount_path: download.task.effective_mount_path().to_path_buf(),
+        }
+    }
 }
 
-enum DownloadOutcome {
-    Finished(bool),
+struct WaitingRetry {
+    ready_at: Instant,
+    download: StartedDownload,
+}
+
+enum ReadyDownload {
+    Pending(usize),
+    Retry(usize),
+}
+
+struct DownloadCompletion {
+    download: StartedDownload,
+    completed_at: Instant,
+    outcome: AttemptOutcome,
+}
+
+enum AttemptOutcome {
+    Finished(Result<(), DownloadError>),
     Panicked(String),
+}
+
+struct DownloadScheduler {
+    pending: VecDeque<PendingDownload>,
+    waiting_retries: Vec<WaitingRetry>,
+    reservations: Vec<DownloadReservation>,
+    active_attempts: usize,
+    all_success: bool,
+}
+
+impl DownloadScheduler {
+    fn new(pending: VecDeque<PendingDownload>) -> Self {
+        Self {
+            pending,
+            waiting_retries: Vec::new(),
+            reservations: Vec::new(),
+            active_attempts: 0,
+            all_success: true,
+        }
+    }
+
+    fn has_work(&self) -> bool {
+        !self.pending.is_empty() || !self.reservations.is_empty()
+    }
+
+    fn can_make_progress(&self) -> bool {
+        self.active_attempts > 0 || !self.waiting_retries.is_empty()
+    }
+
+    fn next_retry_deadline(&self) -> Option<Instant> {
+        self.waiting_retries
+            .iter()
+            .map(|retry| retry.ready_at)
+            .min()
+    }
+
+    fn start_ready_attempts<'scope, 'env: 'scope>(
+        &mut self,
+        scope: &'scope thread::Scope<'scope, 'env>,
+        completion_tx: &mpsc::Sender<DownloadCompletion>,
+        attempt_runner: AttemptRunner,
+        telemetry: &mut DownloadRunTelemetry,
+    ) {
+        while self.active_attempts < MAX_CONCURRENT {
+            let now = Instant::now();
+            let retry = self
+                .waiting_retries
+                .iter()
+                .enumerate()
+                .filter(|(_, retry)| retry.ready_at <= now)
+                .min_by_key(|(_, retry)| retry.download.id)
+                .map(|(index, retry)| (index, retry.download.id));
+            let pending = find_startable_download(
+                &self.pending,
+                &self.reservations,
+                &mut |pending_id, pending_path, active_id, active_path| {
+                    telemetry.record_conflict(pending_id, pending_path, active_id, active_path);
+                },
+            );
+            let selection = match (retry, pending) {
+                (Some((retry_index, retry_id)), Some((pending_index, pending_id))) => {
+                    if retry_id < pending_id {
+                        ReadyDownload::Retry(retry_index)
+                    } else {
+                        ReadyDownload::Pending(pending_index)
+                    }
+                }
+                (Some((index, _)), None) => ReadyDownload::Retry(index),
+                (None, Some((index, _))) => ReadyDownload::Pending(index),
+                (None, None) => break,
+            };
+
+            let download = match selection {
+                ReadyDownload::Retry(index) => self.waiting_retries.swap_remove(index).download,
+                ReadyDownload::Pending(index) => {
+                    let Some(download) = self.pending.remove(index) else {
+                        log_error!(LOG_TAG, "Download scheduler selected a missing task");
+                        break;
+                    };
+                    let download = StartedDownload::new(download);
+                    self.reservations.push(DownloadReservation::new(&download));
+                    download
+                }
+            };
+
+            let completion_tx = completion_tx.clone();
+            scope.spawn(move || {
+                let mut download = download;
+                let outcome =
+                    std::panic::catch_unwind(AssertUnwindSafe(|| attempt_runner(&mut download)))
+                        .map(AttemptOutcome::Finished)
+                        .unwrap_or_else(|e| AttemptOutcome::Panicked(panic_message(e.as_ref())));
+                let _ = completion_tx.send(DownloadCompletion {
+                    download,
+                    completed_at: Instant::now(),
+                    outcome,
+                });
+            });
+            self.active_attempts += 1;
+        }
+    }
+
+    fn record_completion(&mut self, mut completion: DownloadCompletion) {
+        self.active_attempts -= 1;
+
+        match completion.outcome {
+            AttemptOutcome::Finished(Err(error)) if completion.download.should_retry(&error) => {
+                completion.download.attempt += 1;
+                self.waiting_retries.push(WaitingRetry {
+                    ready_at: completion.completed_at + RETRY_DELAY,
+                    download: completion.download,
+                });
+            }
+            AttemptOutcome::Finished(result) => {
+                self.reservations
+                    .retain(|reserved| reserved.id != completion.download.id);
+                if !completion.download.finish(result) {
+                    self.all_success = false;
+                }
+            }
+            AttemptOutcome::Panicked(msg) => {
+                self.reservations
+                    .retain(|reserved| reserved.id != completion.download.id);
+                log_error!(LOG_TAG, "Thread panicked: {msg}");
+                self.all_success = false;
+            }
+        }
+    }
 }
 
 /// Prepare download targets before any archive worker can start.
@@ -133,18 +350,18 @@ pub(crate) fn prepare_download_tasks(
 }
 
 /// Download all prepared tasks in parallel using std::thread.
-/// Limits concurrency to MAX_CONCURRENT and serializes logically or physically
-/// overlapping mount paths.
+/// Limits active archive attempts to MAX_CONCURRENT and serializes logically or
+/// physically overlapping mount paths across each task's complete retry cycle.
 /// Returns true if all downloads succeeded, false if any failed.
 pub(crate) fn download_all_parallel(tasks: Vec<PreparedDownloadTask>) -> bool {
-    download_all_parallel_with_runner(tasks, run_download_task)
+    download_all_parallel_with_runner(tasks, run_download_attempt)
 }
 
 fn download_all_parallel_with_runner(
     tasks: Vec<PreparedDownloadTask>,
-    task_runner: TaskRunner,
+    attempt_runner: AttemptRunner,
 ) -> bool {
-    let mut pending = tasks
+    let pending = tasks
         .into_iter()
         .enumerate()
         .map(|(sequence, task)| PendingDownload::new(sequence, task))
@@ -169,129 +386,100 @@ fn download_all_parallel_with_runner(
 
     let success = thread::scope(|scope| {
         let (completion_tx, completion_rx) = mpsc::channel();
-        let mut active = Vec::new();
-        let mut all_success = true;
+        let mut scheduler = DownloadScheduler::new(pending);
 
-        start_ready_downloads(
-            scope,
-            &mut pending,
-            &mut active,
-            &completion_tx,
-            task_runner,
-            &mut |pending_id, pending_path, active_id, active_path| {
-                telemetry.record_conflict(pending_id, pending_path, active_id, active_path);
-            },
-        );
+        while scheduler.has_work() {
+            scheduler.start_ready_attempts(scope, &completion_tx, attempt_runner, &mut telemetry);
 
-        while !active.is_empty() {
-            let completion = match completion_rx.recv() {
-                Ok(completion) => completion,
-                Err(e) => {
-                    log_error!(LOG_TAG, "Download scheduler failed: {e}");
-                    return false;
+            if !scheduler.can_make_progress() {
+                log_error!(LOG_TAG, "Download scheduler cannot make progress");
+                return false;
+            }
+
+            let completion = if scheduler.active_attempts < MAX_CONCURRENT {
+                match scheduler.next_retry_deadline() {
+                    Some(deadline) => {
+                        match completion_rx
+                            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                        {
+                            Ok(completion) => Some(completion),
+                            Err(mpsc::RecvTimeoutError::Timeout) => None,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                                log_error!(LOG_TAG, "Download scheduler completion channel closed");
+                                return false;
+                            }
+                        }
+                    }
+                    None => match completion_rx.recv() {
+                        Ok(completion) => Some(completion),
+                        Err(e) => {
+                            log_error!(LOG_TAG, "Download scheduler failed: {e}");
+                            return false;
+                        }
+                    },
+                }
+            } else {
+                match completion_rx.recv() {
+                    Ok(completion) => Some(completion),
+                    Err(e) => {
+                        log_error!(LOG_TAG, "Download scheduler failed: {e}");
+                        return false;
+                    }
                 }
             };
 
-            active.retain(|download| download.id != completion.id);
-
-            match completion.outcome {
-                DownloadOutcome::Finished(success) => {
-                    if !success {
-                        all_success = false;
-                    }
-                }
-                DownloadOutcome::Panicked(msg) => {
-                    log_error!(LOG_TAG, "Thread panicked: {msg}");
-                    all_success = false;
-                }
-            }
-
-            start_ready_downloads(
-                scope,
-                &mut pending,
-                &mut active,
-                &completion_tx,
-                task_runner,
-                &mut |pending_id, pending_path, active_id, active_path| {
-                    telemetry.record_conflict(pending_id, pending_path, active_id, active_path);
-                },
-            );
+            let Some(completion) = completion else {
+                continue;
+            };
+            scheduler.record_completion(completion);
         }
 
-        all_success && pending.is_empty()
+        scheduler.all_success
     });
     telemetry.finish();
     success
 }
 
-fn start_ready_downloads<'scope, 'env: 'scope>(
-    scope: &'scope thread::Scope<'scope, 'env>,
-    pending: &mut VecDeque<PendingDownload>,
-    active: &mut Vec<ActiveDownload>,
-    completion_tx: &mpsc::Sender<DownloadCompletion>,
-    task_runner: TaskRunner,
-    on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
-) {
-    while active.len() < MAX_CONCURRENT {
-        let Some(index) = find_startable_download(pending, active, on_conflict) else {
-            break;
-        };
-        let Some(download) = pending.remove(index) else {
-            log_error!(LOG_TAG, "Download scheduler selected a missing task");
-            break;
-        };
-        let id = download.id;
-        active.push(ActiveDownload {
-            id,
-            logical_mount_path: download.task.logical_mount_path().to_path_buf(),
-            effective_mount_path: download.task.effective_mount_path().to_path_buf(),
-        });
-
-        let completion_tx = completion_tx.clone();
-        scope.spawn(move || {
-            let outcome = std::panic::catch_unwind(|| task_runner(download.task))
-                .map(DownloadOutcome::Finished)
-                .unwrap_or_else(|e| DownloadOutcome::Panicked(panic_message(e.as_ref())));
-
-            let _ = completion_tx.send(DownloadCompletion { id, outcome });
-        });
-    }
-}
-
 fn find_startable_download(
     pending: &VecDeque<PendingDownload>,
-    active: &[ActiveDownload],
+    reservations: &[DownloadReservation],
     on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
-) -> Option<usize> {
-    // Scan the pending queue instead of using strict FIFO so an active
+) -> Option<(usize, usize)> {
+    // Scan the pending queue instead of using strict FIFO so a reserved
     // parent/child mount-path conflict does not leave a slot idle when a later
     // independent task can start.
     for (index, download) in pending.iter().enumerate() {
-        if let Some((blocking, pending_path, active_path)) =
-            active.iter().find_map(|active_download| {
-                conflicting_mount_paths(&download.task, active_download)
-                    .map(|(pending_path, active_path)| (active_download, pending_path, active_path))
+        if let Some((blocking, pending_path, reserved_path)) =
+            reservations.iter().find_map(|reservation| {
+                conflicting_mount_paths(&download.task, reservation)
+                    .map(|(pending_path, reserved_path)| (reservation, pending_path, reserved_path))
             })
         {
-            on_conflict(download.id, pending_path, blocking.id, active_path);
+            on_conflict(download.id, pending_path, blocking.id, reserved_path);
             continue;
         }
 
-        return Some(index);
+        return Some((index, download.id));
     }
 
     None
 }
 
-fn conflicting_mount_paths<'pending, 'active>(
+fn conflicting_mount_paths<'pending, 'reserved>(
     pending: &'pending PreparedDownloadTask,
-    active: &'active ActiveDownload,
-) -> Option<(&'pending Path, &'active Path)> {
-    if mount_paths_conflict(pending.logical_mount_path(), &active.logical_mount_path) {
-        return Some((pending.logical_mount_path(), &active.logical_mount_path));
+    reserved: &'reserved DownloadReservation,
+) -> Option<(&'pending Path, &'reserved Path)> {
+    if mount_paths_conflict(pending.logical_mount_path(), &reserved.logical_mount_path) {
+        return Some((pending.logical_mount_path(), &reserved.logical_mount_path));
     }
-    if mount_paths_conflict(pending.effective_mount_path(), &active.effective_mount_path) {
-        return Some((pending.effective_mount_path(), &active.effective_mount_path));
+    if mount_paths_conflict(
+        pending.effective_mount_path(),
+        &reserved.effective_mount_path,
+    ) {
+        return Some((
+            pending.effective_mount_path(),
+            &reserved.effective_mount_path,
+        ));
     }
     None
 }
@@ -308,99 +496,32 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn run_download_task(task: PreparedDownloadTask) -> bool {
-    let start = Instant::now();
-    log_info!(
-        LOG_TAG,
-        "Downloading {} to {}",
-        task.task.label,
-        task.task.mount_path
-    );
-    let mut remote_metrics = task.task.telemetry.remote_metrics();
-    let mut opened_file_compressed_bytes = None;
-
-    match download_with_retry(
-        &task.task.url,
-        task.effective_mount_path(),
-        &mut opened_file_compressed_bytes,
-        remote_metrics.as_mut(),
-    ) {
-        Ok(()) => {
-            let elapsed = start.elapsed();
-            task.task.telemetry.record_result(
-                elapsed,
-                true,
-                None,
-                opened_file_compressed_bytes,
-                remote_metrics.as_ref(),
-            );
-            log_info!(
-                LOG_TAG,
-                "{} downloaded in {}ms",
-                task.task.label,
-                elapsed.as_millis()
-            );
-            true
-        }
-        Err(e) => {
-            let failure_detail = task.failure_detail(&e);
-            task.task.telemetry.record_result(
-                start.elapsed(),
-                false,
-                Some(&failure_detail),
-                opened_file_compressed_bytes,
-                remote_metrics.as_ref(),
-            );
-            log_error!(LOG_TAG, "{failure_detail}");
-            false
-        }
-    }
-}
-
-/// Download and extract an archive, retrying retriable failures.
+/// Download and extract one archive attempt.
 ///
-/// Every attempt uses the same `target_path`. The retry loop neither clears the
+/// The scheduler uses the same target for every attempt. It neither clears the
 /// target nor rolls back files written by a failed extraction attempt, so later
 /// attempts run against any filesystem state left by earlier ones.
-fn download_with_retry(
-    url: &str,
-    target_path: &Path,
-    opened_file_compressed_bytes: &mut Option<u64>,
-    mut remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
-) -> Result<(), DownloadError> {
-    let mut last_error = None;
-
-    for attempt in 1..=MAX_RETRIES {
-        if let Some(metrics) = remote_metrics.as_deref_mut() {
-            metrics.begin_attempt();
-        }
-        let attempt_start = Instant::now();
-        match download_and_extract(
-            url,
-            target_path,
-            opened_file_compressed_bytes,
-            remote_metrics.as_deref_mut(),
-        ) {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                log_warn!(
-                    LOG_TAG,
-                    "Attempt {attempt}/{MAX_RETRIES} failed after {}ms: {e}",
-                    attempt_start.elapsed().as_millis()
-                );
-                let should_break = !e.retriable;
-                last_error = Some(e);
-                if should_break {
-                    break;
-                }
-                if attempt < MAX_RETRIES {
-                    thread::sleep(RETRY_DELAY);
-                }
-            }
-        }
+fn run_download_attempt(download: &mut StartedDownload) -> Result<(), DownloadError> {
+    if let Some(metrics) = download.remote_metrics.as_mut() {
+        metrics.begin_attempt();
+    }
+    let attempt_start = Instant::now();
+    let result = download_and_extract(
+        &download.task.task.url,
+        download.task.effective_mount_path(),
+        &mut download.opened_file_compressed_bytes,
+        download.remote_metrics.as_mut(),
+    );
+    if let Err(error) = &result {
+        log_warn!(
+            LOG_TAG,
+            "Attempt {}/{MAX_RETRIES} failed after {}ms: {error}",
+            download.attempt,
+            attempt_start.elapsed().as_millis()
+        );
     }
 
-    Err(last_error.unwrap_or_else(|| DownloadError::fatal("download failed with no error")))
+    result
 }
 
 fn download_and_extract(
@@ -510,11 +631,11 @@ mod tests {
     fn task_panic_returns_false_without_unwinding() {
         guest_common::log::clear_system_log_file();
 
-        fn runner(task: PreparedDownloadTask) -> bool {
-            if task.task.url == "panic" {
+        fn runner(download: &mut StartedDownload) -> Result<(), DownloadError> {
+            if download.task.task.url == "panic" {
                 panic!("expected panic");
             }
-            true
+            Ok(())
         }
 
         let result = std::panic::catch_unwind(|| {
@@ -552,32 +673,35 @@ mod tests {
             pending_at(3, "/tmp/mount/child"),
             pending_at(4, "/tmp/other"),
         ]);
-        let active = vec![ActiveDownload {
+        let reservations = vec![DownloadReservation {
             id: 2,
             logical_mount_path: normalized_path("/tmp/mount"),
             effective_mount_path: normalized_path("/tmp/mount"),
         }];
         let mut conflicts = Vec::new();
 
-        let selected =
-            find_startable_download(&pending, &active, &mut |pending_id, _, active_id, _| {
+        let selected = find_startable_download(
+            &pending,
+            &reservations,
+            &mut |pending_id, _, active_id, _| {
                 conflicts.push((pending_id, active_id));
-            });
+            },
+        );
 
         assert_eq!(conflicts, [(3, 2)]);
-        assert_eq!(selected, Some(1));
+        assert_eq!(selected, Some((1, 4)));
     }
 
     #[test]
     fn find_startable_download_reports_first_active_conflict_on_each_scan() {
         let pending = VecDeque::from([pending_at(4, "/tmp/mount/child")]);
-        let active = vec![
-            ActiveDownload {
+        let reservations = vec![
+            DownloadReservation {
                 id: 2,
                 logical_mount_path: normalized_path("/tmp/mount"),
                 effective_mount_path: normalized_path("/tmp/mount"),
             },
-            ActiveDownload {
+            DownloadReservation {
                 id: 3,
                 logical_mount_path: normalized_path("/tmp/mount/child"),
                 effective_mount_path: normalized_path("/tmp/mount/child"),
@@ -586,10 +710,13 @@ mod tests {
         let mut conflicts = Vec::new();
 
         for _ in 0..2 {
-            let selected =
-                find_startable_download(&pending, &active, &mut |pending_id, _, active_id, _| {
+            let selected = find_startable_download(
+                &pending,
+                &reservations,
+                &mut |pending_id, _, active_id, _| {
                     conflicts.push((pending_id, active_id));
-                });
+                },
+            );
             assert_eq!(selected, None);
         }
 
