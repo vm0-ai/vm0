@@ -1572,17 +1572,27 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     if not flow_metadata.run_id(flow.metadata):
         return
     if getattr(message, "from_client", False):
-        body = message.content.encode() if isinstance(message.content, str) else message.content
-        event = usage.inspect_openai_responses_client_event_json(body)
-        model_provider_failure.observe_websocket_client_event(
-            flow,
-            request_kind=event.request_kind,
-            is_prewarm=event.is_prewarm,
-        )
-        if not model_websocket_usage.is_enabled(flow):
+        failure_client_enabled = model_provider_failure.should_observe_websocket_client_event(flow)
+        usage_enabled = model_websocket_usage.is_enabled(flow)
+        usage_client_enabled = model_websocket_usage.should_observe_client_event(flow)
+        if not failure_client_enabled and not usage_enabled:
             return
-        codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
-        model_websocket_usage.observe_client_event(flow, event)
+        body = message.content.encode() if isinstance(message.content, str) else message.content
+        if not failure_client_enabled and not usage_client_enabled:
+            event = usage.inspect_openai_responses_event_json(body)
+            codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
+            return
+        event = usage.inspect_openai_responses_client_event_json(body)
+        if failure_client_enabled:
+            model_provider_failure.observe_websocket_client_event(
+                flow,
+                request_kind=event.request_kind,
+                is_prewarm=event.is_prewarm,
+            )
+        if usage_enabled:
+            codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
+        if usage_client_enabled:
+            model_websocket_usage.observe_client_event(flow, event)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
     failure_enabled = model_provider_failure.should_observe_websocket_server_event(flow)

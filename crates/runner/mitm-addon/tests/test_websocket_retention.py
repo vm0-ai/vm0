@@ -17,6 +17,7 @@ from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     append_websocket_message,
     capture_deferred_websocket_trims,
+    capture_openai_responses_extractor_feeds,
     openai_websocket_usage_frame,
     run_deferred_websocket_trims,
 )
@@ -267,10 +268,12 @@ class TestRegisteredWebSocketRetention:
         self,
         real_flow,
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+        monkeypatch: pytest.MonkeyPatch,
         from_client: bool,
     ):
         flow = real_flow(with_response=False, host="example.com")
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         message_count = 32
         message_size = 4096
         total_bytes = 0
@@ -291,6 +294,7 @@ class TestRegisteredWebSocketRetention:
 
             assert flow.websocket.messages == messages_before_trim
             assert len(deferred_websocket_trim_scheduler) == 1
+            assert full_body_feeds == []
 
             run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
 
