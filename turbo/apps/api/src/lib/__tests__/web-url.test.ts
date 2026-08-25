@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 
 import { EVENT } from "@axiomhq/logging";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { stubTestWebUrlEnvironment } from "../../__tests__/env-stub";
 import { testContext } from "../../__tests__/test-context";
 import { mockEnv } from "../env";
 import {
@@ -81,6 +82,17 @@ function configureAliases(
   mockEnv(LEGACY_WEB_URL_KEY, legacy);
 }
 
+async function importEnvWithRawWebAliases(
+  canonical: string | undefined,
+  legacy: string | undefined,
+): Promise<void> {
+  // Environment validation happens during module initialization, so reloading
+  // the module is the production boundary for exercising raw process input.
+  vi.resetModules();
+  stubTestWebUrlEnvironment(canonical, legacy);
+  await import("../env");
+}
+
 function aliasEvidence(state: string): Readonly<Record<string, unknown>> {
   return {
     [EVENT]: { source: "api" },
@@ -106,6 +118,11 @@ function expectValueFree(diagnostics: string, values: readonly string[]): void {
 }
 
 describe("web URL aliases", () => {
+  afterEach(() => {
+    stubTestWebUrlEnvironment(undefined, "http://localhost:3001");
+    vi.resetModules();
+  });
+
   it("resolves the non-conflicting matrix with one value-free event per state", () => {
     for (const fixture of WEB_URL_ALIAS_FIXTURES) {
       configureAliases(fixture.canonical, fixture.legacy);
@@ -180,6 +197,26 @@ describe("web URL aliases", () => {
       expect(() => {
         mockEnv(key, value);
       }).toThrow(/Invalid URL/u);
+    },
+  );
+
+  it.each([
+    {
+      key: CANONICAL_WEB_URL_KEY,
+      canonical: "",
+      legacy: "https://legacy-sibling.example.test",
+    },
+    {
+      key: LEGACY_WEB_URL_KEY,
+      canonical: "https://canonical-sibling.example.test",
+      legacy: "",
+    },
+  ])(
+    "rejects empty raw $key input before sibling fallback",
+    async ({ canonical, legacy }) => {
+      await expect(
+        importEnvWithRawWebAliases(canonical, legacy),
+      ).rejects.toThrow(/Invalid URL/u);
     },
   );
 
