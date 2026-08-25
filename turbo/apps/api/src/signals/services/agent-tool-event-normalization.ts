@@ -101,6 +101,92 @@ function decodeCanonicalSingleQuotedWord(value: string): string | null {
   }
 }
 
+interface DecodedShellSegment {
+  readonly value: string;
+  readonly nextCursor: number;
+}
+
+function decodeDoubleQuotedShellSegment(
+  value: string,
+  start: number,
+): DecodedShellSegment | null {
+  if (value[start] !== '"') {
+    return null;
+  }
+
+  let decoded = "";
+  for (let index = start + 1; index < value.length; index++) {
+    const character = value[index]!;
+    if (character === '"') {
+      return { value: decoded, nextCursor: index + 1 };
+    }
+    if (character === "$" || character === "`") {
+      return null;
+    }
+    if (character !== "\\") {
+      decoded += character;
+      continue;
+    }
+    const escaped = value[++index];
+    if (escaped === undefined) {
+      return null;
+    }
+    if (escaped === "\n") {
+      continue;
+    }
+    if (
+      escaped === "\\" ||
+      escaped === '"' ||
+      escaped === "$" ||
+      escaped === "`"
+    ) {
+      decoded += escaped;
+    } else {
+      decoded += `\\${escaped}`;
+    }
+  }
+  return null;
+}
+
+function decodeSingleQuotedShellSegment(
+  value: string,
+  start: number,
+): DecodedShellSegment | null {
+  if (value[start] !== "'") {
+    return null;
+  }
+  const closingQuote = value.indexOf("'", start + 1);
+  return closingQuote === -1
+    ? null
+    : {
+        value: value.slice(start + 1, closingQuote),
+        nextCursor: closingQuote + 1,
+      };
+}
+
+/** Decode the exact three-segment outer word emitted for the managed shell. */
+function decodeManagedConcatenatedOuterShellWord(value: string): string | null {
+  const executableSegment = decodeDoubleQuotedShellSegment(value, 0);
+  if (executableSegment?.value !== `${MANAGED_TOOL_EXECUTABLE} --shell "`) {
+    return null;
+  }
+  const shellArgumentSegment = decodeSingleQuotedShellSegment(
+    value,
+    executableSegment.nextCursor,
+  );
+  if (shellArgumentSegment?.value !== '$0" -c ') {
+    return null;
+  }
+  const commandSegment = decodeDoubleQuotedShellSegment(
+    value,
+    shellArgumentSegment.nextCursor,
+  );
+  if (commandSegment?.nextCursor !== value.length) {
+    return null;
+  }
+  return decodeCanonicalSingleQuotedWord(commandSegment.value);
+}
+
 /** Decode one strictly bounded shell word used as the outer bash command argument. */
 function decodeOuterShellWord(value: string): string | null {
   const singleQuoted = decodeCanonicalSingleQuotedWord(value);
@@ -108,39 +194,9 @@ function decodeOuterShellWord(value: string): string | null {
     return singleQuoted;
   }
 
-  if (value.startsWith('"')) {
-    let decoded = "";
-    for (let index = 1; index < value.length; index++) {
-      const character = value[index]!;
-      if (character === '"') {
-        return index === value.length - 1 ? decoded : null;
-      }
-      if (character === "$" || character === "`") {
-        return null;
-      }
-      if (character !== "\\") {
-        decoded += character;
-        continue;
-      }
-      const escaped = value[++index];
-      if (escaped === undefined) {
-        return null;
-      }
-      if (escaped === "\n") {
-        continue;
-      }
-      if (
-        escaped === "\\" ||
-        escaped === '"' ||
-        escaped === "$" ||
-        escaped === "`"
-      ) {
-        decoded += escaped;
-      } else {
-        decoded += `\\${escaped}`;
-      }
-    }
-    return null;
+  const doubleQuoted = decodeDoubleQuotedShellSegment(value, 0);
+  if (doubleQuoted !== null) {
+    return doubleQuoted.nextCursor === value.length ? doubleQuoted.value : null;
   }
 
   return /^[A-Za-z0-9_@%+=:,./-]+$/u.test(value) ? value : null;
@@ -157,9 +213,10 @@ function decodedToolCommand(value: unknown): string | null {
 
   const outer = /^\/bin\/bash -(?:c|lc) ([\s\S]+)$/u.exec(command);
   if (outer) {
-    const decodedOuter = decodeOuterShellWord(outer[1]!);
+    const outerWord = outer[1]!;
+    const decodedOuter = decodeOuterShellWord(outerWord);
     if (decodedOuter === null) {
-      return null;
+      return decodeManagedConcatenatedOuterShellWord(outerWord);
     }
     command = decodedOuter;
   } else if (/^\/bin\/bash -(?:c|lc)(?:\s|$)/u.test(command)) {

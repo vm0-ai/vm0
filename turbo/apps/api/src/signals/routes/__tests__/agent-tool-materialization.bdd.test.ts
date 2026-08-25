@@ -14,6 +14,28 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const SANITIZED_LIVE_CODEX_COMMAND = String.raw`/bin/bash -lc "exec '/usr/local/bin/guest-tool-exec' --shell \""'$0" -c '"'printf codex-tool-v1'"`;
+const SANITIZED_LIVE_CODEX_STARTED_EVENT = {
+  type: "item.started",
+  sequenceNumber: 5,
+  item: {
+    id: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+    type: "command_execution",
+    status: "in_progress",
+    command: SANITIZED_LIVE_CODEX_COMMAND,
+  },
+} as const;
+const SANITIZED_LIVE_CODEX_COMPLETED_EVENT = {
+  type: "item.completed",
+  sequenceNumber: 6,
+  item: {
+    id: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+    type: "command_execution",
+    status: "completed",
+    command: SANITIZED_LIVE_CODEX_COMMAND,
+    exit_code: 0,
+  },
+} as const;
 
 function assistantEventIdForRunEvent(
   runId: string,
@@ -152,6 +174,15 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
               status: "completed",
               command: "pwd",
               exit_code: 0,
+            },
+          },
+          SANITIZED_LIVE_CODEX_STARTED_EVENT,
+          {
+            ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT,
+            item: {
+              ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT.item,
+              aggregated_output: "DISABLED_CODEX_OUTPUT_MUST_NOT_PERSIST",
+              result: "DISABLED_CODEX_RESULT_MUST_NOT_PERSIST",
             },
           },
         ],
@@ -648,6 +679,38 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         type: "item.completed",
         sequenceNumber: 4,
         item: {
+          id: "codex-message-before-live-command",
+          type: "agent_message",
+          text: "Before live Codex command",
+        },
+      },
+      {
+        ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT,
+        item: {
+          ...SANITIZED_LIVE_CODEX_COMPLETED_EVENT.item,
+          aggregated_output: "CODEX_LIVE_OUTPUT_MUST_NOT_PERSIST",
+          result: "CODEX_LIVE_RESULT_MUST_NOT_PERSIST",
+        },
+      },
+      SANITIZED_LIVE_CODEX_STARTED_EVENT,
+      {
+        type: "turn.completed",
+        sequenceNumber: 7,
+        turn: { status: "completed" },
+      },
+      {
+        type: "item.completed",
+        sequenceNumber: 8,
+        item: {
+          id: "codex-message-after-live-command",
+          type: "agent_message",
+          text: "After live Codex command",
+        },
+      },
+      {
+        type: "item.completed",
+        sequenceNumber: 9,
+        item: {
           id: "codex-file-read-provider-id",
           type: "file_read",
           status: "completed",
@@ -657,7 +720,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 5,
+        sequenceNumber: 10,
         item: {
           id: "codex-file-write-provider-id",
           type: "file_write",
@@ -668,7 +731,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 6,
+        sequenceNumber: 11,
         item: {
           id: "codex-file-edit-provider-id",
           type: "file_edit",
@@ -679,7 +742,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 7,
+        sequenceNumber: 12,
         item: {
           id: "codex-sibling-change-provider-id",
           type: "file_change",
@@ -695,7 +758,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 8,
+        sequenceNumber: 13,
         item: {
           id: "codex-sibling-change-provider-id",
           type: "file_change",
@@ -711,7 +774,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 9,
+        sequenceNumber: 14,
         item: {
           id: "codex-sibling-change-provider-id",
           type: "file_change",
@@ -721,7 +784,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 10,
+        sequenceNumber: 15,
         item: {
           id: "codex-mcp-provider-id",
           type: "mcp_tool_call",
@@ -731,7 +794,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 11,
+        sequenceNumber: 16,
         item: {
           id: "codex-malformed-wrapper-provider-id",
           type: "command_execution",
@@ -742,7 +805,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       },
       {
         type: "item.completed",
-        sequenceNumber: 12,
+        sequenceNumber: 17,
         item: {
           id: "codex-image-provider-id",
           type: "image_view",
@@ -766,7 +829,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     const toolRows = rows.filter((row) => {
       return row.eventType === "output.tool";
     });
-    expect(toolRows).toHaveLength(9);
+    expect(toolRows).toHaveLength(11);
     expect(
       toolRows.map((row) => {
         return {
@@ -802,31 +865,43 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         summary: "Ran dangerous-command",
       },
       {
-        sequenceNumber: 4,
+        sequenceNumber: 5,
+        action: "run",
+        status: "pending",
+        summary: "Ran printf codex-tool-v1",
+      },
+      {
+        sequenceNumber: 6,
+        action: "run",
+        status: "success",
+        summary: "Ran printf codex-tool-v1",
+      },
+      {
+        sequenceNumber: 9,
         action: "read",
         status: "success",
         summary: "Read /workspace/***/read.txt",
       },
       {
-        sequenceNumber: 5,
+        sequenceNumber: 10,
         action: "write",
         status: "error",
         summary: "Wrote /workspace/write.txt",
       },
       {
-        sequenceNumber: 6,
+        sequenceNumber: 11,
         action: "edit",
         status: "cancelled",
         summary: "Edited /workspace/edit.txt",
       },
       {
-        sequenceNumber: 7,
+        sequenceNumber: 12,
         action: "write",
         status: "success",
         summary: "Wrote /workspace/added.txt",
       },
       {
-        sequenceNumber: 8,
+        sequenceNumber: 13,
         action: "edit",
         status: "success",
         summary: "Edited /workspace/modified.txt",
@@ -834,8 +909,13 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     ]);
     expect(toolRows[0]?.payload.toolUseId).toBe(toolRows[1]?.payload.toolUseId);
     expect(toolRows[0]?.id).not.toBe(toolRows[1]?.id);
-    expect(toolRows[7]?.payload.toolUseId).not.toBe(
-      toolRows[8]?.payload.toolUseId,
+    expect(toolRows[4]?.payload.toolUseId).toBe(toolRows[5]?.payload.toolUseId);
+    expect(toolRows[4]?.payload.toolUseId).not.toContain(
+      "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
+    );
+    expect(toolRows[4]?.id).not.toBe(toolRows[5]?.id);
+    expect(toolRows[9]?.payload.toolUseId).not.toBe(
+      toolRows[10]?.payload.toolUseId,
     );
     expect(
       new Set(
@@ -843,14 +923,14 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
           return row.id;
         }),
       ).size,
-    ).toBe(9);
+    ).toBe(11);
     expect(
       new Set(
         toolRows.map((row) => {
           return row.runEventId;
         }),
       ).size,
-    ).toBe(9);
+    ).toBe(11);
     for (const row of toolRows) {
       expect(Object.keys(row.payload).sort()).toStrictEqual([
         "action",
@@ -860,20 +940,51 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       ]);
     }
 
-    const projectedToolEvents = (
+    const projected = (
       await chat.listThreadEvents(actor, threadId)
     ).events.filter((event) => {
-      return event.runId === runId && event.eventType === "output.tool";
+      return (
+        event.runId === runId &&
+        (event.eventType === "output.message" ||
+          event.eventType === "output.tool")
+      );
     });
-    expect(projectedToolEvents).toHaveLength(9);
+    expect(
+      projected
+        .filter((event) => {
+          return (
+            typeof event.sequenceNumber === "number" &&
+            event.sequenceNumber >= 4 &&
+            event.sequenceNumber <= 8
+          );
+        })
+        .map((event) => {
+          return {
+            type: event.eventType,
+            sequenceNumber: event.sequenceNumber,
+          };
+        }),
+    ).toStrictEqual([
+      { type: "output.message", sequenceNumber: 4 },
+      { type: "output.tool", sequenceNumber: 5 },
+      { type: "output.tool", sequenceNumber: 6 },
+      { type: "output.message", sequenceNumber: 8 },
+    ]);
+    const projectedToolEvents = projected.filter((event) => {
+      return event.eventType === "output.tool";
+    });
+    expect(projectedToolEvents).toHaveLength(11);
     const serializedRows = JSON.stringify({ toolRows, projectedToolEvents });
     for (const forbidden of [
       "codex-shared-command-provider-id",
+      "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
       "codex-sibling-change-provider-id",
       "TERMINAL_COMMAND_MUST_NOT_REPLACE_START",
       "CODEX_STDOUT_SECRET",
       "CODEX_STDERR_SECRET",
       "CODEX_RAW_ERROR_SECRET",
+      "CODEX_LIVE_OUTPUT_MUST_NOT_PERSIST",
+      "CODEX_LIVE_RESULT_MUST_NOT_PERSIST",
       "CODEX_READ_RESULT_SECRET",
       "CODEX_FILE_CONTENT_SECRET",
       "CODEX_EDIT_DIFF_SECRET",
