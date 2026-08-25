@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { reloadAgents$ } from "../agent.ts";
 import { apiClient$ } from "../api-client.ts";
-import { createZeroAgent } from "./create-zero-agent.ts";
+import { createAgent } from "./create-agent.ts";
 
 /**
  * Create a sub-agent by composing via the agents API.
@@ -17,7 +17,7 @@ export const createSubagent$ = command(
   ) => {
     const createClient = get(apiClient$);
 
-    await createZeroAgent(
+    await createAgent(
       createClient,
       {
         displayName,

@@ -1,7 +1,7 @@
 import { useLastLoadable } from "ccstate-react";
 
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
-import { ZeroConnectorCallbackPage } from "./connector-callback-page.tsx";
+import { ConnectorCallbackPage } from "./connector-callback-page.tsx";
 
 export function FeishuOAuthCallbackPage(): React.JSX.Element {
   const catalogLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
@@ -11,7 +11,7 @@ export function FeishuOAuthCallbackPage(): React.JSX.Element {
       : undefined;
 
   return (
-    <ZeroConnectorCallbackPage
+    <ConnectorCallbackPage
       connectorIcon={connectorIcon}
       connectorLabel="Feishu"
       status="loading"

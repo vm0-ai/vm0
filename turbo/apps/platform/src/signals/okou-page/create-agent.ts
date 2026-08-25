@@ -7,7 +7,7 @@ import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import type { ApiClientFactory } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
-interface CreateZeroAgentParams {
+interface CreateAgentParams {
   displayName: string;
   sound?: string;
   avatarUrl?: string;
@@ -20,9 +20,9 @@ interface CreateZeroAgentParams {
  * Shared between onboarding (lead agent) and sub-agent creation
  * to keep the two flows in sync.
  */
-export async function createZeroAgent(
+export async function createAgent(
   createClient: ApiClientFactory,
-  params: CreateZeroAgentParams,
+  params: CreateAgentParams,
   signal: AbortSignal,
 ): Promise<AgentResponse> {
   // Step 1: Create agent (compose). The API assigns a random preset avatar

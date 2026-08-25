@@ -10,9 +10,9 @@ import {
 import { brandName$ } from "../../signals/branding.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
-import { ZeroConnectorFlowCard } from "./connector-flow-card.tsx";
+import { ConnectorFlowCard } from "./connector-flow-card.tsx";
 
-export function ZeroConnectorRedirectingPage({
+export function ConnectorRedirectingPage({
   connectorLabel,
   connectorIcon,
   status,
@@ -27,7 +27,7 @@ export function ZeroConnectorRedirectingPage({
   const showMobileWarning = useGet(connectorRedirectingMobileWarningVisible$);
 
   return (
-    <ZeroConnectorFlowCard
+    <ConnectorFlowCard
       connectorIcon={connectorIcon}
       title={
         hasError
@@ -102,6 +102,6 @@ export function ZeroConnectorRedirectingPage({
           </Link>
         </Button>
       </div>
-    </ZeroConnectorFlowCard>
+    </ConnectorFlowCard>
   );
 }
