@@ -721,7 +721,6 @@ function createFlatFeedbackItemNodeView(
 
 function buildFeedbackItemChrome(
   quote: string,
-  showPlaceholder: boolean,
   onRemove: () => void,
 ): HTMLElement {
   const { quoteDom, quoteText, removeButton } = createFeedbackQuoteChip();
@@ -735,22 +734,14 @@ function buildFeedbackItemChrome(
     event.preventDefault();
   });
   removeButton.addEventListener("click", onRemove);
-  if (showPlaceholder) {
-    quoteDom.classList.add("relative");
-    const placeholder = document.createElement("span");
-    // The chip row is 32px plus the item's 6px gap; the first paragraph adds
-    // 4px of top padding, so the placeholder sits at 42px over its text.
-    placeholder.className =
-      "pointer-events-none absolute left-1 top-[42px] w-max " +
-      "text-[0.9375rem] leading-snug text-muted-foreground/40";
-    placeholder.setAttribute("aria-hidden", "true");
-    placeholder.textContent = i18n.t(($) => {
-      return $.chat.feedback.placeholder;
-    });
-    quoteDom.append(placeholder);
-  }
   return quoteDom;
 }
+
+// Rendered through ::before so an empty note never gains or loses real DOM
+// nodes: the placeholder text lives in an attribute and appears via CSS.
+const FLAT_PLACEHOLDER_PARAGRAPH_CLASS =
+  "before:pointer-events-none before:float-left before:h-0 " +
+  "before:text-muted-foreground/40 before:content-[attr(data-placeholder)]";
 
 function buildFeedbackChromeDecorations(
   doc: ProseMirrorNode,
@@ -766,19 +757,20 @@ function buildFeedbackChromeDecorations(
       continue;
     }
     const { feedbackId, quote } = feedbackItemNodeAttributes(child);
-    const showPlaceholder = nodeText(child).length === 0;
     decorations.push(
       Decoration.widget(
         childPosition + 1,
         () => {
-          return buildFeedbackItemChrome(quote, showPlaceholder, () => {
+          return buildFeedbackItemChrome(quote, () => {
             runtime.removeFeedback(feedbackId);
           });
         },
         {
-          // The key carries everything the DOM is built from, so the widget
-          // is only recreated when its content actually changes.
-          key: `feedback-chrome-${feedbackId}-${showPlaceholder ? "empty" : "filled"}-${i18n.language}`,
+          // The key must stay stable while the user types: recreating the
+          // widget replaces a contenteditable=false element right next to the
+          // caret, and WebKit loses the caret when that happens at an IME
+          // composition boundary (typing or backspacing the first character).
+          key: `feedback-chrome-${feedbackId}-${i18n.language}`,
           side: -2,
           ignoreSelection: true,
           stopEvent: () => {
@@ -787,6 +779,20 @@ function buildFeedbackChromeDecorations(
         },
       ),
     );
+    if (nodeText(child).length === 0) {
+      decorations.push(
+        Decoration.node(
+          childPosition + 1,
+          childPosition + 1 + child.child(0).nodeSize,
+          {
+            class: FLAT_PLACEHOLDER_PARAGRAPH_CLASS,
+            "data-placeholder": i18n.t(($) => {
+              return $.chat.feedback.placeholder;
+            }),
+          },
+        ),
+      );
+    }
   }
   return DecorationSet.create(doc, decorations);
 }
