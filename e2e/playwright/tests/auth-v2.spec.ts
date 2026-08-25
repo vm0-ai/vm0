@@ -176,6 +176,7 @@ test("password reset completes through email verification", async ({
   await authV2Root(page)
     .getByRole("button", { name: /forgot password/i })
     .click();
+  await chooseSignInMethod(page, "password-reset");
   const code = authV2Input(page, "code");
   await expect(code).toBeVisible();
   await code.fill(AUTH_V2_TEST_OTP);
