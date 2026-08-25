@@ -2304,6 +2304,21 @@
       "copied": "Copied",
       "deleted": "Chat deleted"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": "Changed files",
+        "read": "Read files",
+        "run": "Ran commands"
+      },
+      "collapse": "Collapse tool activity",
+      "expand": "Expand tool activity",
+      "status": {
+        "cancelled": "Cancelled",
+        "error": "Failed",
+        "pending": "In progress",
+        "success": "Completed"
+      }
+    },
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
