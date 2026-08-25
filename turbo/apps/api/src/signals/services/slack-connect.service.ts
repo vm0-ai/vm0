@@ -96,42 +96,6 @@ async function upsertSlackConnection(
   return existing.id;
 }
 
-/**
- * The API version draining after migrations 0985/0986 can still explicitly
- * write its request-flow brand onto the shared installation row. Repair that
- * DB/API rollout state (observed for up to about 102 minutes) while old and
- * retained rollback writers exist; remove this bridge after #28937 closes its
- * version-floor gate.
- */
-async function normalizeOfficialSlackInstallationBrand(
-  writeDb: Db,
-  installation: SlackInstallation,
-  signal: AbortSignal,
-): Promise<SlackInstallation> {
-  if (installation.publicBrand === OFFICIAL_SLACK_PUBLIC_BRAND) {
-    return installation;
-  }
-
-  const [updated] = await writeDb
-    .update(slackOrgInstallations)
-    .set({
-      publicBrand: OFFICIAL_SLACK_PUBLIC_BRAND,
-      updatedAt: nowDate(),
-    })
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, installation.slackWorkspaceId),
-    )
-    .returning();
-  signal.throwIfAborted();
-
-  if (!updated) {
-    throw new Error(
-      `Slack installation ${installation.slackWorkspaceId} disappeared during official-brand normalization`,
-    );
-  }
-  return updated;
-}
-
 async function resolveDefaultComposeId(
   db: Db,
   orgId: string,
@@ -427,11 +391,7 @@ export const connectSlackWorkspace$ = command(
         if (existing.orgId !== args.orgId) {
           return { kind: "forbidden", message: orgMismatchMessage };
         }
-        boundInstallation = await normalizeOfficialSlackInstallationBrand(
-          writeDb,
-          existing,
-          signal,
-        );
+        boundInstallation = existing;
       }
 
       const connectionId = await upsertSlackConnection(writeDb, {
@@ -456,12 +416,6 @@ export const connectSlackWorkspace$ = command(
       return { kind: "forbidden", message: orgMismatchMessage };
     }
 
-    const brandedInstallation = await normalizeOfficialSlackInstallationBrand(
-      writeDb,
-      installation,
-      signal,
-    );
-
     const connectionId = await upsertSlackConnection(writeDb, {
       slackUserId: args.slackUserId,
       slackWorkspaceId: args.workspaceId,
@@ -473,7 +427,7 @@ export const connectSlackWorkspace$ = command(
       kind: "ok",
       connectionId,
       role: args.orgRole,
-      installation: brandedInstallation,
+      installation,
       slackUserId: args.slackUserId,
       channelId: args.channelId,
       threadTs: args.threadTs,

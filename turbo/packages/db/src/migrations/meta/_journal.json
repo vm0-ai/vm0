@@ -1303,6 +1303,20 @@
       "when": 1787638553789,
       "tag": "0993_contract_legacy_built_in_model_cooldown_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 994,
+      "version": "7",
+      "when": 1787646537746,
+      "tag": "0994_last_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 995,
+      "version": "7",
+      "when": 1787649591954,
+      "tag": "0995_canonicalize_official_slack_installation_brand",
+      "breakpoints": true
     }
   ]
 }

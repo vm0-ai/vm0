@@ -1197,16 +1197,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return response.body;
     },
 
-    async redriveLegacySlackChatCallback(runId: string): Promise<void> {
-      const client = setupApp({ context, routes: testSlackStateRoutes })(
-        testSlackStateContract,
-      );
-      await accept(
-        client.redriveLegacyCallback({ body: { run_id: runId } }),
-        [200],
-      );
-    },
-
     async deleteSlackTestState(teamId: string): Promise<void> {
       const client = setupApp({ context, routes: testSlackStateRoutes })(
         testSlackStateContract,

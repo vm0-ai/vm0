@@ -149,7 +149,6 @@ async function loadSlackChatDeliveryContext(
       slackUserId: slackOrgConnections.slackUserId,
       workspaceId: slackOrgConnections.slackWorkspaceId,
       encryptedBotToken: slackOrgInstallations.encryptedBotToken,
-      publicBrand: slackOrgInstallations.publicBrand,
     })
     .from(slackChatThreadRoutes)
     .innerJoin(
@@ -227,10 +226,6 @@ async function deliverClaimedSlackChatCallback(
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
   signal.throwIfAborted();
-  // Callbacks persisted by the pre-#28795 API can complete while their run
-  // drains for up to two hours. Remove this installation-brand fallback after
-  // #28937 verifies that old callbacks and retained rollback writers are gone.
-  const publicBrand = payload.publicBrand ?? binding.publicBrand;
   const [botToken, presentation] = await Promise.all([
     decryptPersistentSecretValue(binding.encryptedBotToken, featureContext),
     resolveIntegrationAgentResponsePresentation(
@@ -240,7 +235,7 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
-        publicBrand,
+        publicBrand: payload.publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {
