@@ -12,17 +12,39 @@ export const MANAGED_SOCIALKIT_BILLING_CATEGORY = "request";
 
 export type SocialKitRequestMethod = "GET" | "POST";
 
+export type ManagedSocialKitResultField =
+  | "comments"
+  | "items"
+  | "posts"
+  | "results"
+  | "tweets";
+
+export type ManagedSocialKitPagination =
+  | { readonly kind: "cursor" }
+  | { readonly kind: "next_cursor" }
+  | { readonly kind: "none" }
+  | { readonly kind: "page"; readonly maxPage: number };
+
+export interface ManagedSocialKitCollection {
+  readonly resultField: ManagedSocialKitResultField;
+  readonly defaultLimit?: number;
+  readonly itemsPerBillingUnit?: number;
+  readonly pagination: ManagedSocialKitPagination;
+}
+
 export interface ManagedSocialKitOperation {
   readonly method: SocialKitRequestMethod;
   readonly path: string;
   readonly queryNames: readonly string[];
   readonly maxLimit?: number;
+  readonly collection?: ManagedSocialKitCollection;
 }
 
 interface SocialKitPathConfig {
   readonly path: string;
   readonly queryNames: readonly string[];
   readonly maxLimit?: number;
+  readonly collection?: ManagedSocialKitCollection;
 }
 
 const CACHE_QUERY_NAMES = ["cache", "cache_ttl"] as const;
@@ -72,6 +94,11 @@ const PATHS: readonly SocialKitPathConfig[] = [
     path: "/linkedin/company-posts",
     queryNames: ["url", "limit", ...CACHE_QUERY_NAMES],
     maxLimit: 50,
+    collection: {
+      resultField: "posts",
+      defaultLimit: 10,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/linkedin/post",
@@ -89,6 +116,11 @@ const PATHS: readonly SocialKitPathConfig[] = [
     path: "/twitter/tweets",
     queryNames: ["url", "limit", "cursor", ...CACHE_QUERY_NAMES],
     maxLimit: 100,
+    collection: {
+      resultField: "tweets",
+      defaultLimit: 20,
+      pagination: { kind: "next_cursor" },
+    },
   },
   {
     path: "/twitter/tweet",
@@ -117,7 +149,13 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/facebook/comments",
     queryNames: URL_LIMIT_CURSOR_QUERY_NAMES,
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/facebook/summarize",
@@ -138,21 +176,43 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/instagram/comments",
     queryNames: ["url", "limit", "cursor", "sortBy"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/instagram/channel-posts",
     queryNames: URL_LIMIT_CURSOR_QUERY_NAMES,
-    maxLimit: 20,
+    maxLimit: 100,
+    collection: {
+      resultField: "items",
+      defaultLimit: 12,
+      itemsPerBillingUnit: 20,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/instagram/channel-reels",
     queryNames: URL_LIMIT_CURSOR_QUERY_NAMES,
-    maxLimit: 20,
+    maxLimit: 100,
+    collection: {
+      resultField: "items",
+      defaultLimit: 12,
+      itemsPerBillingUnit: 20,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/instagram/reels-search",
     queryNames: ["query", "page"],
+    collection: {
+      resultField: "items",
+      pagination: { kind: "page", maxPage: 2 },
+    },
   },
   {
     path: "/instagram/summarize",
@@ -165,7 +225,13 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/tiktok/comments",
     queryNames: URL_LIMIT_CURSOR_QUERY_NAMES,
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/transcript",
@@ -178,7 +244,12 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/tiktok/channel-videos",
     queryNames: ["url", "limit", "cursor", ...CACHE_QUERY_NAMES],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 30,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/search",
@@ -190,12 +261,24 @@ const PATHS: readonly SocialKitPathConfig[] = [
       "datePosted",
       ...CACHE_QUERY_NAMES,
     ],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/hashtag-search",
     queryNames: ["hashtag", "limit", "cursor", ...CACHE_QUERY_NAMES],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/summarize",
@@ -212,7 +295,13 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/youtube/comments",
     queryNames: ["url", "limit", "sortBy"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/channel-stats",
@@ -228,12 +317,24 @@ const PATHS: readonly SocialKitPathConfig[] = [
       "type",
       ...CACHE_QUERY_NAMES,
     ],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/videos",
     queryNames: ["url", "limit", "full_details", ...CACHE_QUERY_NAMES],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/summarize",
@@ -470,8 +571,25 @@ export const socialKitResponseSchema = z.object({
     path: z.string(),
   }),
   billingCategory: z.literal(MANAGED_SOCIALKIT_BILLING_CATEGORY),
-  billingQuantity: z.literal(1),
+  billingQuantity: z.number().int().positive(),
   creditsCharged: z.number().int().nonnegative(),
+  collection: z
+    .discriminatedUnion("state", [
+      z.object({
+        state: z.literal("more"),
+        itemsReturned: z.number().int().nonnegative(),
+        nextQuery: z.record(z.string(), z.string()),
+      }),
+      z.object({
+        state: z.literal("complete"),
+        itemsReturned: z.number().int().nonnegative(),
+      }),
+      z.object({
+        state: z.literal("provider_limited"),
+        itemsReturned: z.number().int().nonnegative(),
+      }),
+    ])
+    .nullable(),
   result: z.unknown(),
 });
 
