@@ -128,6 +128,14 @@ def block_invalid_registry_sandbox(
     flow: http.HTTPFlow,
     invalid_sandbox: registry.InvalidSandboxEntry,
 ) -> None:
+    """Block a flow for an invalid registry sandbox with a fail-closed 503.
+
+    The JSON response contains the fixed ``invalid_registry_sandbox`` error,
+    ``message`` copied verbatim from ``InvalidSandboxEntry.message``, and
+    ``reason`` copied verbatim from ``InvalidSandboxEntry.reason``. The reason
+    is the stable category; the message is detailed validation text for the
+    individual sandbox entry.
+    """
     flow_metadata.set_firewall_decision(
         flow.metadata,
         "BLOCK",
