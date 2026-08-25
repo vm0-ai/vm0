@@ -160,10 +160,6 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
-import {
-  toggleToolActivityExpanded$,
-  toolActivityExpandedKeys$,
-} from "../../signals/chat-page/tool-activity-folding.ts";
 import { isCancelledRunEvent } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
@@ -3812,14 +3808,16 @@ function ToolActivityGroup({
   anchorEventId,
   events,
   compactTop,
+  thread,
 }: {
   anchorEventId: string;
   events: readonly ToolActivityEvent[];
   compactTop: boolean;
+  thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const expanded = useGet(toolActivityExpandedKeys$).has(anchorEventId);
-  const toggleExpanded = useSet(toggleToolActivityExpanded$);
+  const expanded = useGet(thread.timelineExpandedIds$).has(anchorEventId);
+  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
   const label = toolActivityGroupLabel(events, t);
   return (
     <div
@@ -7686,6 +7684,7 @@ function PagedAssistantGroup({
           anchorEventId={item.anchorEventId}
           events={item.events}
           compactTop={compactTop}
+          thread={thread}
         />
       ) : (
         <PagedAssistantEventItem
