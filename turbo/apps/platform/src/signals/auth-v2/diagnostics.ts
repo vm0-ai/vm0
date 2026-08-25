@@ -98,6 +98,13 @@ function signInErrorCategory(
   error: AuthV2SignInError,
 ): AuthV2DiagnosticErrorCategory {
   switch (error.code) {
+    case "access-not-allowed":
+    case "user-banned": {
+      return "invalid-credentials";
+    }
+    case "code-expired": {
+      return "invalid-code";
+    }
     case "passkey-cancelled": {
       return "cancelled";
     }

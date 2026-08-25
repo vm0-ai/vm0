@@ -41,6 +41,9 @@ const TRUE$ = computed(() => {
 const FALSE$ = computed(() => {
   return false;
 });
+const READY_SIGN_IN_RESEND_STATE$ = computed(() => {
+  return { remainingSeconds: 0, status: "ready" } as const;
+});
 const TEST_PASSWORD$ = computed(() => {
   return "password";
 });
@@ -144,6 +147,7 @@ function createSignInHarness(options?: {
         return get(password$);
       }),
       resendCode$: asyncNoOp$,
+      resendState$: READY_SIGN_IN_RESEND_STATE$,
       restart$: noOp$,
       selectFactor$: stringAsyncNoOp$,
       selectSession$: stringAsyncNoOp$,
@@ -456,6 +460,39 @@ describe("auth v2 diagnostic continuation outcomes", () => {
 });
 
 describe("auth v2 diagnostic privacy", () => {
+  it.each([
+    {
+      error: { code: "access-not-allowed", field: "general" },
+      expectedCategory: "invalid-credentials",
+    },
+    {
+      error: { code: "user-banned", field: "general" },
+      expectedCategory: "invalid-credentials",
+    },
+    {
+      error: { code: "code-expired", field: "code" },
+      expectedCategory: "invalid-code",
+    },
+  ] as const)(
+    "maps $error.code to $expectedCategory",
+    async ({ error, expectedCategory }) => {
+      const harness = createSignInHarness();
+      context.store.set(harness.error$, error);
+      const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+      const signals = instrumentSignIn(harness.signals, capture);
+
+      await context.store.set(signals.submit$, context.signal);
+
+      expect(capture).toHaveBeenLastCalledWith({
+        error_category: expectedCategory,
+        flow: "sign-in",
+        method: "identifier",
+        outcome: "failure",
+        step: "identifier",
+      });
+    },
+  );
+
   it("does not report rerenders or successful refresh recovery", async () => {
     const harness = createSignInHarness();
     const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
@@ -478,15 +515,14 @@ describe("auth v2 diagnostic privacy", () => {
   });
 
   it("maps provider errors to closed categories without forwarding secrets", async () => {
-    const providerMessage = "raw message for private.person@example.com";
-    const providerPayload = "provider_payload_sensitive_4d0ad5";
+    const providerCode = "provider_code_sensitive_4d0ad5";
     const identifier = "private.person@example.com";
     const harness = createSignInHarness();
     context.store.set(harness.identifier$, identifier);
     context.store.set(harness.error$, {
+      clerkCode: providerCode,
       code: "clerk",
       field: "general",
-      message: `${providerMessage} ${providerPayload}`,
     });
     const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
     const signals = instrumentSignIn(harness.signals, capture);
@@ -504,7 +540,6 @@ describe("auth v2 diagnostic privacy", () => {
     context.store.set(harness.error$, {
       code: "unknown",
       field: "general",
-      message: "arbitrary unmapped failure text",
     });
     await context.store.set(signals.submit$, context.signal);
 
@@ -516,9 +551,7 @@ describe("auth v2 diagnostic privacy", () => {
       step: "identifier",
     });
     const serializedCalls = JSON.stringify(capture.mock.calls);
-    expect(serializedCalls).not.toContain(providerMessage);
-    expect(serializedCalls).not.toContain(providerPayload);
+    expect(serializedCalls).not.toContain(providerCode);
     expect(serializedCalls).not.toContain(identifier);
-    expect(serializedCalls).not.toContain("arbitrary unmapped failure text");
   });
 });
