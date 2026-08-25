@@ -1505,6 +1505,207 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain("补充具体日期");
   });
 
+  async function setupFlatFeedbackNoteThread(caseName: string): Promise<{
+    readonly assistantReply: string;
+    readonly sentMessages: RunCreateCapture[];
+  }> {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    const sentMessages: RunCreateCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: `msg-feedback-flat-${caseName}-user`,
+          role: "user",
+          content: "Review this launch summary",
+          runId: `run-feedback-flat-${caseName}`,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `msg-feedback-flat-${caseName}-assistant`,
+          role: "assistant",
+          content: assistantReply,
+          runId: `run-feedback-flat-${caseName}`,
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerFlatFeedbackNote]: true,
+      },
+    });
+    await findComposerEditor();
+    return { assistantReply, sentMessages };
+  }
+
+  it("renders the flat quote block and submits typed text with the flat note switch enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { assistantReply, sentMessages } =
+      await setupFlatFeedbackNoteThread("submit");
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const note = await findFeedbackNote();
+    // The flat block is its own content element: no nested note wrapper.
+    expect(note.dataset.feedbackItem).toBe("");
+    expect(note.querySelector("[data-feedback-note]")).toBeNull();
+    // The chrome widget carries the quote chip and the empty-note placeholder.
+    expect(note).toHaveTextContent(assistantReply);
+    expect(note).toHaveTextContent("What should change about this?");
+
+    await user.click(note);
+    pastePlainText(note, "Make the dates explicit");
+    await waitFor(() => {
+      expect(note).toHaveTextContent("Make the dates explicit");
+    });
+    await waitFor(() => {
+      expect(note).not.toHaveTextContent("What should change about this?");
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.prompt).toContain("Make the dates explicit");
+    expect(sentMessages[0]?.prompt).toContain(assistantReply);
+  });
+
+  it("stays editable after the flat quote block is damaged in place", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { assistantReply, sentMessages } =
+      await setupFlatFeedbackNoteThread("damage");
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const note = await findFeedbackNote();
+    await user.click(note);
+    pastePlainText(note, "Make the dates");
+    await waitFor(() => {
+      expect(note).toHaveTextContent("Make the dates");
+    });
+
+    // Damage the block the way the traced WebKit collapse does, with the DOM
+    // observer live: the paragraph disappears and a bare <br> replaces it.
+    for (const paragraph of Array.from(note.querySelectorAll(":scope > p"))) {
+      paragraph.remove();
+    }
+    note.append(document.createElement("br"));
+
+    // ProseMirror sees the damage (nothing ignores it) and redraws the block
+    // into a consistent, editable state instead of a silent divergence.
+    await waitFor(() => {
+      expect(note.querySelector(":scope > p")).not.toBeNull();
+    });
+
+    await user.click(note);
+    pastePlainText(note, "typed after damage");
+    await waitFor(() => {
+      expect(note).toHaveTextContent("typed after damage");
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.prompt).toContain("typed after damage");
+  });
+
+  it("keeps dropping input after the legacy note wrappers collapse", async () => {
+    // Control for the flat-note tests: with the switch off, the legacy
+    // structure swallows the traced WebKit collapse (wrapper removed, <br>
+    // left behind) and silently drops everything typed afterwards — the
+    // #27787 failure the flat block exists to remove.
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    const sentMessages: RunCreateCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-flat-control-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-flat-control",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-flat-control-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-flat-control",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerFlatFeedbackNote]: false,
+      },
+    });
+    await findComposerEditor();
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const note = await findFeedbackNote();
+    await user.click(note);
+    pastePlainText(note, "Make the dates");
+    await waitFor(() => {
+      expect(note).toHaveTextContent("Make the dates");
+    });
+
+    const item = note.closest("[data-feedback-item]");
+    const wrapper = note.parentElement;
+    if (!(item instanceof HTMLElement) || !(wrapper instanceof HTMLElement)) {
+      throw new Error("Legacy feedback structure not found");
+    }
+    wrapper.remove();
+    item.append(document.createElement("br"));
+    await waitFor(() => {
+      expect(document.querySelector("[data-feedback-note]")).toBeNull();
+    });
+
+    // Later typing lands in the collapsed block; the legacy ignoreMutation
+    // discards it, so it never reaches the document or the submission.
+    item.append(document.createTextNode(" typed after damage"));
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.prompt).toContain("Make the dates");
+    expect(sentMessages[0]?.prompt).not.toContain("typed after damage");
+  });
+
+  it("removes the flat quote block from its widget chrome button", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { assistantReply } = await setupFlatFeedbackNoteThread("remove");
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const note = await findFeedbackNote();
+    await user.click(within(note).getByLabelText("Remove feedback"));
+    await waitFor(() => {
+      expect(document.querySelector("[data-feedback-item]")).toBeNull();
+    });
+  });
+
   it("waits until mouseup before showing the inline feedback toolbar", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
 

@@ -3087,7 +3087,7 @@
           "testReceived": "Webhook de teste do Strapi recebido"
         },
         "webhookUrl": "URL do webhook",
-        "whereZeroWorks": "Onde o {{assistantName}} funciona"
+        "whereAssistantWorks": "Onde o {{assistantName}} funciona"
       },
       "telegram": {
         "addBot": "Adicionar bot",
@@ -3527,7 +3527,7 @@
       "whatItDoes": "O que faz"
     },
     "workflowRun": {
-      "continueWithZero": "Continuar com o {{assistantName}}",
+      "continueWithAssistant": "Continuar com o {{assistantName}}",
       "createWorkflow": "Criar fluxo de trabalho",
       "customNoteLabel": "Descreva seu fluxo de trabalho",
       "customNotePlaceholder": "Descreva o que você quer que o {{assistantName}} construa",
@@ -4712,7 +4712,7 @@
         "start": "Exportar meus dados",
         "starting": "Iniciando exportação"
       },
-      "backToZero": "Voltar ao {{assistantName}}",
+      "backToAssistant": "Voltar ao {{assistantName}}",
       "description": "Baixe os arquivos e registros de texto que você criou no {{assistantName}}.",
       "documentTitle": "Exportar dados",
       "duration": {

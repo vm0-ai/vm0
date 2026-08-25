@@ -157,7 +157,6 @@ function createImportedPresentationTemplateResources$(
   importedPresentationTemplates$: Computed<
     Promise<readonly PresentationTemplateSummary[]>
   >,
-  internalDetailVersion$: State<number>,
 ) {
   return computed(
     async (get): Promise<readonly ImportedPresentationTemplateResource[]> => {
@@ -167,7 +166,6 @@ function createImportedPresentationTemplateResources$(
           summary,
           detail$: computed(
             async (get): Promise<PresentationTemplateDetail | null> => {
-              get(internalDetailVersion$);
               const client = get(apiClient$)(presentationTemplatesContract);
               const result = await accept(
                 client.get({ params: { templateId: summary.id } }),
@@ -323,13 +321,11 @@ export function createImportedPresentationTemplateSignals() {
     catalog$,
     deletedPresentationTemplateIds$,
   );
-  const internalDetailVersion$ = state(0);
   const urlRefresh =
     createImportedPresentationTemplateUrlRefreshSignals(catalog$);
   const importedPresentationTemplateResources$ =
     createImportedPresentationTemplateResources$(
       importedPresentationTemplates$,
-      internalDetailVersion$,
     );
   const { internalRequestedTemplateId$, ...detailSignals } =
     createImportedPresentationTemplateDetailSignals(
@@ -384,9 +380,6 @@ export function createImportedPresentationTemplateSignals() {
         [200],
       );
       signal.throwIfAborted();
-      set(internalDetailVersion$, (version) => {
-        return version + 1;
-      });
       set(refreshPresentationTemplates$);
     },
   );

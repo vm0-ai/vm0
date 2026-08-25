@@ -6,21 +6,18 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ACTION="${REPO_ROOT}/.github/actions/web-api-env/action.yml"
 EXPECTED_BUILD_COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --verify HEAD)"
 TEMP_DIRS=()
-MIGRATED_ZERO_OUTPUT_KEYS=(
+# These are not retired names. Their readers are live: lib/env.ts defines both,
+# host.service.ts resolves the VM0-brand hosted-site host from them,
+# artifact-preview.service.ts accepts the domain, and turbo.json still lists
+# them. The action no longer sources either name and must not start again: an
+# emitted value would restore the retired repo-variable source for live brand
+# configuration, and for ZERO_HOST_SCHEME it would additionally feed the last
+# remaining OKOU_ENV_FALLBACKS entry (OKOU_HOST_SCHEME) and falsify its drain
+# evidence. Both retire with the VM0-brand host under #26701, and these
+# assertions retire with them.
+ZERO_KEYS_WITH_LIVE_READERS=(
   ZERO_HOST_DOMAIN
   ZERO_HOST_SCHEME
-  ZERO_PRICE_PRO
-  ZERO_PRICE_TEAM
-  ZERO_PRICE_USAGE_PACK_PLAN_PRO
-  ZERO_PRICE_USAGE_PACK_PLAN_TEAM
-  ZERO_PRICE_USAGE_PACK_20
-  ZERO_PRICE_USAGE_PACK_50
-  ZERO_PRICE_USAGE_PACK_100
-  ZERO_PRICE_USAGE_PACK_200
-  ZERO_PRICE_CUSTOM_CREDITS
-  ZERO_PRICE_CUSTOM_CREDIT_UNIT
-  ZERO_PRICE_CONCURRENCY
-  ZERO_ONE_TIME_CAMPAIGN
 )
 GITHUB_APP_VAR_SUFFIXES=(
   SLUG
@@ -126,10 +123,10 @@ assert_preview_job_ref_aliases_absent() {
   assert_env_key_absent "$env_file" VM0_PREVIEW_JOB_REF
 }
 
-assert_migrated_zero_outputs_absent() {
+assert_zero_keys_with_live_readers_absent() {
   local env_file="$1"
   local key
-  for key in "${MIGRATED_ZERO_OUTPUT_KEYS[@]}"; do
+  for key in "${ZERO_KEYS_WITH_LIVE_READERS[@]}"; do
     assert_env_key_absent "$env_file" "$key"
   done
 }
@@ -437,7 +434,7 @@ success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir" 2>&1
 success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${success_dir}/github-output")"
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
-assert_migrated_zero_outputs_absent "$success_env_file"
+assert_zero_keys_with_live_readers_absent "$success_env_file"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_ID "doppler-GH_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_ID "doppler-SLACK_OAUTH_CLIENT_ID"
@@ -533,7 +530,7 @@ empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api prev
 empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_dir}/github-output")"
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
-assert_migrated_zero_outputs_absent "$empty_env_file"
+assert_zero_keys_with_live_readers_absent "$empty_env_file"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
 assert_env_value "$empty_env_file" OKOU_PUBLIC_HOST_DOMAIN ""
 assert_env_value "$empty_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN ""
@@ -548,7 +545,7 @@ production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_web_dir}/github-output")"
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
-assert_migrated_zero_outputs_absent "$production_web_env_file"
+assert_zero_keys_with_live_readers_absent "$production_web_env_file"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
@@ -573,7 +570,7 @@ production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
-assert_migrated_zero_outputs_absent "$production_api_env_file"
+assert_zero_keys_with_live_readers_absent "$production_api_env_file"
 assert_env_value "$production_api_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
 assert_env_value "$production_api_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"

@@ -441,7 +441,7 @@ export function ExportPage() {
             >
               <ArrowLeft size={14} />
               {t(($) => {
-                return $.settings.export.backToZero;
+                return $.settings.export.backToAssistant;
               })}
             </Link>
             <ProductBrandMark size="small" />

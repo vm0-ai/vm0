@@ -3036,7 +3036,7 @@
           "testReceived": "Strapi परीक्षण वेबहुक प्राप्त हुआ"
         },
         "webhookUrl": "वेबहुक URL",
-        "whereZeroWorks": "जहां {{assistantName}} काम करता है"
+        "whereAssistantWorks": "जहां {{assistantName}} काम करता है"
       },
       "telegram": {
         "addBot": "बॉट जोड़ें",
@@ -3476,7 +3476,7 @@
       "whatItDoes": "यह क्या करता है"
     },
     "workflowRun": {
-      "continueWithZero": "{{assistantName}} के साथ जारी रखें",
+      "continueWithAssistant": "{{assistantName}} के साथ जारी रखें",
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "customNoteLabel": "अपने वर्कफ़्लो का वर्णन करें",
       "customNotePlaceholder": "बताएं कि आप {{assistantName}} से क्या बनवाना चाहते हैं",
@@ -4655,7 +4655,7 @@
         "start": "मेरा डेटा निर्यात करें",
         "starting": "निर्यात शुरू हो रहा है"
       },
-      "backToZero": "{{assistantName}} पर वापस जाएँ",
+      "backToAssistant": "{{assistantName}} पर वापस जाएँ",
       "description": "{{assistantName}} में आपके द्वारा बनाई गई फ़ाइलें और टेक्स्ट रिकॉर्ड डाउनलोड करें।",
       "documentTitle": "डेटा निर्यात करें",
       "duration": {

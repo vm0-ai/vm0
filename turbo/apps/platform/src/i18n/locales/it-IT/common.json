@@ -3087,7 +3087,7 @@
           "testReceived": "Strapi webhook di prova ricevuto"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Dove lavora {{assistantName}}"
+        "whereAssistantWorks": "Dove lavora {{assistantName}}"
       },
       "telegram": {
         "addBot": "Aggiungi bot",
@@ -3527,7 +3527,7 @@
       "whatItDoes": "Cosa fa"
     },
     "workflowRun": {
-      "continueWithZero": "Continua con {{assistantName}}",
+      "continueWithAssistant": "Continua con {{assistantName}}",
       "createWorkflow": "Crea flusso di lavoro",
       "customNoteLabel": "Descrivi il tuo flusso di lavoro",
       "customNotePlaceholder": "Descrivi cosa vuoi che {{assistantName}} costruisca",
@@ -4712,7 +4712,7 @@
         "start": "Esporta i miei dati",
         "starting": "Avvio dell'esportazione"
       },
-      "backToZero": "Torna a {{assistantName}}",
+      "backToAssistant": "Torna a {{assistantName}}",
       "description": "Scarica i file e i record di testo che hai creato in {{assistantName}}.",
       "documentTitle": "Esporta dati",
       "duration": {

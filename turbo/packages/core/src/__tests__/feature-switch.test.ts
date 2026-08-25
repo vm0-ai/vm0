@@ -99,6 +99,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(
       staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
@@ -131,6 +134,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      false,
+    );
     expect(
       otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(false);
@@ -165,6 +171,7 @@ describe("getAllFeatureStates", () => {
     expect(
       bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(true);
+    expect(bingjieStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -173,6 +180,9 @@ describe("getAllFeatureStates", () => {
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(false);
+    expect(otherStaffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

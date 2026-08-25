@@ -274,7 +274,7 @@ function resolveVisiblePreferencesTab(
   return tab;
 }
 
-export function ZeroPreferencesPage() {
+export function PreferencesPage() {
   const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.OkouDebug] ?? false;

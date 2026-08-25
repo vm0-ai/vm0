@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroOnboardingStatus$ } from "./onboarding.ts";
+import { onboardingStatus$ } from "./onboarding.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
@@ -22,7 +22,7 @@ const serverPinnedIds$ = computed(async (get) => {
  * Effective pinned agent IDs — always reads from server.
  */
 export const pinnedAgentIds$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
+  const status = await get(onboardingStatus$);
   const defaultAgentId = status.defaultAgentId;
   return [
     defaultAgentId,

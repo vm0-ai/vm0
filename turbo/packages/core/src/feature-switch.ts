@@ -198,7 +198,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Enable the managed Zero Banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+      "Enable the managed banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -363,8 +363,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
-    description: "Select healthy fallback routes for VM0 built-in models.",
+    description: "Select healthy fallback routes for built-in platform models.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedChatDatabase]: {
     maintainer: "ethan@vm0.ai",
@@ -385,6 +386,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Validate restored composer attachments against the current account, remove unavailable references, and show a warning.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.ComposerFlatFeedbackNote]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Rebuild the composer quote block on ProseMirror's native machinery: the note content element is the block itself and the quote chip is a widget decoration, removing the editable wrapper elements and the custom mutation filtering that let WebKit damage go unnoticed.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
@@ -447,7 +455,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+      "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

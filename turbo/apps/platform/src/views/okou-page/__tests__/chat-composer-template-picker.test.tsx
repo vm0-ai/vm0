@@ -3990,6 +3990,147 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("keeps loaded uploaded slides mounted while visibility metadata refreshes", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    let template: PresentationTemplateDetail = {
+      id: "ea583da0-6e8c-4ca4-9cb9-3a898c8d1850",
+      title: "Stable preview deck",
+      sourceFilename: "stable-preview-deck.pptx",
+      coverUrl: "https://example.com/stable-preview-cover.png",
+      pageCount: 3,
+      visibility: "private",
+      canManage: true,
+      pageUrls: [
+        "https://example.com/stable-preview-cover.png",
+        "https://example.com/stable-preview-page-2.png",
+        "https://example.com/stable-preview-page-3.png",
+      ],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    };
+    let detailRequestCount = 0;
+    let updateRequestCount = 0;
+    let holdDetailRefresh = false;
+    const detailRefreshRequested = context.mocks.deferred<void>();
+    const releaseDetailRefresh = context.mocks.deferred<void>();
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      return respond(200, [presentationTemplateSummary(template)]);
+    });
+    context.mocks.api(
+      presentationTemplatesContract.get,
+      async ({ params, respond }) => {
+        expect(params.templateId).toBe(template.id);
+        detailRequestCount += 1;
+        if (holdDetailRefresh) {
+          detailRefreshRequested.resolve();
+          await releaseDetailRefresh.promise;
+        }
+        return respond(200, template);
+      },
+    );
+    context.mocks.api(
+      presentationTemplatesContract.update,
+      ({ body, params, respond }) => {
+        expect(params.templateId).toBe(template.id);
+        expect(body).toStrictEqual({ visibility: "public" });
+        updateRequestCount += 1;
+        holdDetailRefresh = true;
+        template = {
+          ...template,
+          coverUrl:
+            "https://example.com/stable-preview-cover.png?signature=renewed",
+          visibility: "public",
+          pageUrls: template.pageUrls.map((pageUrl) => {
+            return `${pageUrl}?signature=renewed`;
+          }),
+          updatedAt: "2026-08-21T02:42:59.522Z",
+        };
+        return respond(200, presentationTemplateSummary(template));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(
+        "Preview Stable preview deck at current slide",
+      ),
+    );
+    const detailImage = await screen.findByTestId(
+      "Stable preview deck imported detail image preview",
+    );
+    await user.click(screen.getByLabelText("Preview slide 3"));
+    expect(detailImage).toHaveAttribute(
+      "src",
+      "https://example.com/stable-preview-page-3.png",
+    );
+    const thumbnailButtons = [1, 2, 3].map((slideNumber) => {
+      return screen.getByLabelText(`Preview slide ${slideNumber.toString()}`);
+    });
+    const thumbnailImages = thumbnailButtons.map((button) => {
+      const image = button.querySelector("img");
+      if (image === null) {
+        throw new Error("Uploaded template thumbnail image not found");
+      }
+      return image;
+    });
+    const detailRequestCountBeforeUpdate = detailRequestCount;
+    expect(detailRequestCountBeforeUpdate).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
+    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    await detailRefreshRequested.promise;
+
+    expect(updateRequestCount).toBe(1);
+    expect(
+      screen.getByTestId("Stable preview deck imported detail image preview"),
+    ).toBe(detailImage);
+    expect(detailImage).toHaveAttribute(
+      "src",
+      "https://example.com/stable-preview-page-3.png",
+    );
+    for (const [index, button] of thumbnailButtons.entries()) {
+      expect(
+        screen.getByLabelText(`Preview slide ${(index + 1).toString()}`),
+      ).toBe(button);
+      expect(button.querySelector("img")).toBe(thumbnailImages[index]);
+    }
+
+    releaseDetailRefresh.resolve();
+    await waitFor(() => {
+      expect(detailRequestCount).toBeGreaterThan(
+        detailRequestCountBeforeUpdate,
+      );
+      expect(
+        screen.getByRole("combobox", { name: "Visibility" }),
+      ).toHaveTextContent("Workspace");
+      expect(detailImage).toHaveAttribute(
+        "src",
+        "https://example.com/stable-preview-page-3.png?signature=renewed",
+      );
+    });
+    expect(
+      screen.getByTestId("Stable preview deck imported detail image preview"),
+    ).toBe(detailImage);
+    for (const [index, button] of thumbnailButtons.entries()) {
+      const expectedPageUrl = template.pageUrls[index];
+      if (expectedPageUrl === undefined) {
+        throw new Error("Renewed uploaded template page URL not found");
+      }
+      expect(
+        screen.getByLabelText(`Preview slide ${(index + 1).toString()}`),
+      ).toBe(button);
+      expect(button.querySelector("img")).toBe(thumbnailImages[index]);
+      expect(thumbnailImages[index]).toHaveAttribute("src", expectedPageUrl);
+    }
+  });
+
   it("keeps remaining uploaded cards mounted while delete refresh is pending", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });

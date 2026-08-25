@@ -6,6 +6,9 @@ const { resolveDesktopBuildConfig } = require("./scripts/desktop-build-config");
 const {
   resolveDesktopNotarizeApiEnvironment,
 } = require("./scripts/desktop-notarize-api-environment");
+const {
+  resolveDesktopSigningIdentityEnvironment,
+} = require("./scripts/desktop-signing-identity-environment");
 
 const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
@@ -18,11 +21,11 @@ const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
 const DEVELOPER_ID_APPLICATION_IDENTITY =
   "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 const codeSigningIdentity =
-  process.env.VM0_DESKTOP_SIGNING_IDENTITY ??
+  resolveDesktopSigningIdentityEnvironment() ??
   (process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY);
 
 function desktopNotarizeOptions() {
-  if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
+  if (process.env.OKOU_DESKTOP_NOTARIZE !== "true") {
     return undefined;
   }
 
