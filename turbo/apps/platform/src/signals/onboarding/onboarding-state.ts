@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 
 export type OnboardingChoice =
+  | "slack"
   | "workflow"
   | "presentation"
   | "video"
@@ -176,6 +177,7 @@ const resetOnboardingUi$ = command(({ set }) => {
 
 function onboardingChoice(value: string | null): OnboardingChoice | null {
   if (
+    value === "slack" ||
     value === "workflow" ||
     value === "presentation" ||
     value === "video" ||

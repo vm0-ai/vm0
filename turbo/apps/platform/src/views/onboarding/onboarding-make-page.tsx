@@ -35,6 +35,9 @@ const BRANCH_STATE_PARAMS = [
 
 function choicePath(choice: OnboardingChoice) {
   switch (choice) {
+    case "slack": {
+      return ROUTES.works;
+    }
     case "workflow": {
       return ROUTES.onboardingWorkflowPicker;
     }
@@ -137,13 +140,13 @@ export function OnboardingMakePage() {
 
   const handleChoice = (choice: OnboardingChoice): void => {
     setDraft({ choice });
-    if (choice === "explore") {
+    if (choice === "slack" || choice === "explore") {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
-      const completeAndOpenHome = async (): Promise<void> => {
+      const completeAndOpenDestination = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
-        navigateTo(ROUTES.home, { preserve: false, replace: true });
+        navigateTo(choicePath(choice), { preserve: false, replace: true });
       };
-      detach(completeAndOpenHome(), Reason.DomCallback);
+      detach(completeAndOpenDestination(), Reason.DomCallback);
       return;
     }
     navigateTo(choicePath(choice), {
@@ -187,7 +190,8 @@ export function OnboardingMakePage() {
                 "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--zero-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
                 "hover:border-primary/55",
                 selected ? "border-primary" : "border-border",
-                option.id === "workflow" && "sm:col-span-2",
+                (option.id === "slack" || option.id === "workflow") &&
+                  "sm:col-span-2",
               )}
             >
               <img
@@ -195,7 +199,10 @@ export function OnboardingMakePage() {
                 alt=""
                 width={48}
                 height={48}
-                className="h-10 w-10 shrink-0 object-contain"
+                className={cn(
+                  "h-10 w-10 shrink-0 object-contain",
+                  option.id === "slack" && "scale-[2.2]",
+                )}
               />
               <span className="min-w-0">
                 <span className="block text-sm font-medium">

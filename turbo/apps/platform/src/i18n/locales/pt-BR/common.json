@@ -3383,6 +3383,10 @@
           "description": "Gerar slides e notas do apresentador",
           "title": "Gerar uma apresentação"
         },
+        "slack": {
+          "description": "Converse com seu colega de IA no seu workspace",
+          "title": "Usar o Slack"
+        },
         "video": {
           "description": "Transforme suas ideias em vídeo",
           "title": "Produção de vídeo"

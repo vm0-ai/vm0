@@ -3324,6 +3324,10 @@
           "description": "スライドとスピーカーを生成する",
           "title": "プレゼンテーションを生成する"
         },
+        "slack": {
+          "description": "ワークスペースでAIチームメイトとチャット",
+          "title": "Slackを使う"
+        },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",
           "title": "映像制作"

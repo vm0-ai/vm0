@@ -3332,6 +3332,10 @@
           "description": "Folien und Referenten erstellen",
           "title": "Erstellen Sie eine Präsentation"
         },
+        "slack": {
+          "description": "Chatten Sie mit Ihrem KI-Teammitglied in Ihrem Workspace",
+          "title": "Slack verwenden"
+        },
         "video": {
           "description": "Verwandeln Sie Ihre Ideen in Videos",
           "title": "Videoproduktion"

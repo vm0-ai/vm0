@@ -3324,6 +3324,10 @@
           "description": "Hasilkan slide dan narasi",
           "title": "Buat presentasi"
         },
+        "slack": {
+          "description": "Chat dengan rekan tim AI Anda di ruang kerja",
+          "title": "Gunakan Slack"
+        },
         "video": {
           "description": "Ubah ide Anda menjadi video",
           "title": "Produksi video"

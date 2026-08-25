@@ -3324,6 +3324,10 @@
           "description": "슬라이드와 발표자 생성",
           "title": "프레젠테이션 생성"
         },
+        "slack": {
+          "description": "워크스페이스에서 AI 팀원과 채팅하세요",
+          "title": "Slack 사용"
+        },
         "video": {
           "description": "아이디어를 비디오로 전환",
           "title": "비디오 제작"

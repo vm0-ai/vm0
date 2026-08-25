@@ -3324,6 +3324,10 @@
           "description": "Generate slides and speaker",
           "title": "Generate a presentation"
         },
+        "slack": {
+          "description": "Chat with your AI teammate in your workspace",
+          "title": "Use Slack"
+        },
         "video": {
           "description": "Turn your ideas into video",
           "title": "Video production"

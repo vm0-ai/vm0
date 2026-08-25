@@ -18,6 +18,7 @@ interface OnboardingMakeOption {
 }
 
 const ONBOARDING_MAKE_OPTION_IDS = [
+  "slack",
   "workflow",
   "presentation",
   "video",
@@ -28,6 +29,8 @@ const ONBOARDING_MAKE_OPTION_IDS = [
 const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
   Record<OnboardingChoice, string>
 > = {
+  slack:
+    "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
   workflow:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
   presentation:

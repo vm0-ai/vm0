@@ -262,6 +262,23 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("leads with Slack and opens its setup after completing onboarding", async () => {
+    await openMakePage();
+
+    const slackOption = firstItem(screen.getAllByRole("radio"));
+    expect(slackOption).toHaveTextContent("Use Slack");
+    expect(slackOption.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("slack-198390069136.svg"),
+    );
+
+    click(slackOption);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(ROUTES.works);
+    });
+  });
+
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();

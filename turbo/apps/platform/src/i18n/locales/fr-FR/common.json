@@ -3383,6 +3383,10 @@
           "description": "Générer des diapositives et un présentateur",
           "title": "Générer une présentation"
         },
+        "slack": {
+          "description": "Discutez avec votre coéquipier IA dans votre espace de travail",
+          "title": "Utiliser Slack"
+        },
         "video": {
           "description": "Transformez vos idées en vidéo",
           "title": "Production vidéo"
