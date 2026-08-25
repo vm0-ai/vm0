@@ -1674,6 +1674,7 @@ describe("connectors page", () => {
         { search: "Work 2", cursor: null },
       ]);
       expect(within(dialog).getByText("Work 2")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
 
     fireEvent.input(searchInput, {
@@ -1685,6 +1686,7 @@ describe("connectors page", () => {
         cursor: null,
       });
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
   });
 
