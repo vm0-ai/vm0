@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -40,7 +41,6 @@ const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_EVENTS_FILE: &str = "pids.events";
 const PIDS_MAX_FILE: &str = "pids.max";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-const WORKLOAD_BOOTSTRAP_ACCEPT_POLL: Duration = Duration::from_millis(100);
 const WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX: &str = "-workload-placement";
 const TOOL_PLACEMENT_ENDPOINT_SUFFIX: &str = "-tool-placement";
 const TOOL_PLACEMENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -105,6 +105,7 @@ pub(crate) struct WorkloadPlacementBootstrap {
     endpoint: String,
     tool_endpoint: String,
     cancel: Arc<AtomicBool>,
+    cancel_wake_writer: Option<OwnedFd>,
     workers: Vec<JoinHandle<()>>,
 }
 
@@ -121,6 +122,8 @@ impl WorkloadPlacementBootstrap {
 impl Drop for WorkloadPlacementBootstrap {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Release);
+        // Closing the sole pipe writer wakes every worker poll through POLLHUP.
+        drop(self.cancel_wake_writer.take());
         for worker in self.workers.drain(..) {
             if let Err(error) = worker.join() {
                 log(
@@ -430,6 +433,13 @@ impl CgroupGuard {
                 io::Error::other("trusted control cgroup has no tools domain"),
             )
         })?;
+        let (cancel_reader, cancel_wake_writer) = placement_cancel_pipe().map_err(|error| {
+            ProcessContainmentError::new("prepare placement cancellation", error)
+        })?;
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let mut cancel_wake_writer = Some(cancel_wake_writer);
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
         let workload_worker = thread::Builder::new()
@@ -441,6 +451,7 @@ impl CgroupGuard {
                     expected_uid,
                     &expected_cgroup,
                     &worker_cancel,
+                    workload_cancel_reader.as_raw_fd(),
                 );
             })
             .map_err(|error| {
@@ -456,11 +467,13 @@ impl CgroupGuard {
                     &expected_runtime_cgroup,
                     &tools_path,
                     &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
                 );
             }) {
             Ok(worker) => worker,
             Err(error) => {
                 cancel.store(true, Ordering::Release);
+                drop(cancel_wake_writer.take());
                 let _ = workload_worker.join();
                 return Err(ProcessContainmentError::new(
                     "start tool placement worker",
@@ -472,6 +485,7 @@ impl CgroupGuard {
             endpoint,
             tool_endpoint,
             cancel,
+            cancel_wake_writer,
             workers: vec![workload_worker, tool_worker],
         })
     }
@@ -823,20 +837,123 @@ fn install_process_inspection_denial(command: &mut Command) {
     }
 }
 
+fn placement_cancel_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0; 2];
+    // SAFETY: `pipe2` initializes two file descriptors in `fds` on success.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors were freshly returned by `pipe2` and ownership
+    // is transferred to the returned `OwnedFd` values.
+    let reader = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    // SAFETY: see above; this is the distinct writer descriptor.
+    let writer = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    Ok((reader, writer))
+}
+
+enum PlacementWaitOutcome {
+    ListenerReady,
+    Cancelled,
+}
+
+fn wait_for_placement_or_cancelled(
+    listener: &UnixListener,
+    cancel_fd: RawFd,
+) -> io::Result<PlacementWaitOutcome> {
+    loop {
+        let mut pollfds = [
+            libc::pollfd {
+                fd: listener.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: `pollfds` points to two initialized descriptor entries that
+        // remain owned by the caller for the duration of this call.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
+        if result > 0 {
+            let listener_revents = pollfds[0].revents;
+            let cancel_revents = pollfds[1].revents;
+            if cancel_revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                return Ok(PlacementWaitOutcome::Cancelled);
+            }
+            if cancel_revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                return Err(io::Error::other(
+                    "placement cancellation descriptor became unavailable",
+                ));
+            }
+            if listener_revents & libc::POLLIN != 0 {
+                return Ok(PlacementWaitOutcome::ListenerReady);
+            }
+            if listener_revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::other(
+                    "placement listener descriptor became unavailable",
+                ));
+            }
+            if listener_revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+                return Err(listener
+                    .take_error()?
+                    .unwrap_or_else(|| io::Error::other("placement listener became unavailable")));
+            }
+            continue;
+        }
+        if result == 0 {
+            continue;
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+fn accept_placement_or_cancelled(
+    listener: &UnixListener,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<Option<UnixStream>> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        match wait_for_placement_or_cancelled(listener, cancel_fd)? {
+            PlacementWaitOutcome::Cancelled => return Ok(None),
+            PlacementWaitOutcome::ListenerReady => {
+                if cancel.load(Ordering::Acquire) {
+                    return Ok(None);
+                }
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        if cancel.load(Ordering::Acquire) {
+                            return Ok(None);
+                        }
+                        return Ok(Some(stream));
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+}
+
 fn serve_workload_placement(
-    listener: std::os::unix::net::UnixListener,
+    listener: UnixListener,
     placement: OwnedFd,
     expected_uid: libc::uid_t,
     expected_cgroup: &Path,
     cancel: &AtomicBool,
+    cancel_fd: RawFd,
 ) {
-    while !cancel.load(Ordering::Acquire) {
-        let stream = match process_control_ipc::accept_with_timeout(
-            &listener,
-            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
-        ) {
-            Ok(stream) => stream,
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
+    loop {
+        let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return,
             Err(error) => {
                 log(
                     "WARN",
@@ -875,20 +992,18 @@ fn serve_workload_placement(
 }
 
 fn serve_tool_placement(
-    listener: std::os::unix::net::UnixListener,
+    listener: UnixListener,
     expected_uid: libc::uid_t,
     expected_runtime_cgroup: &Path,
     tools_path: &Path,
     cancel: &AtomicBool,
+    cancel_fd: RawFd,
 ) {
     let mut next_tool_id = 1_u64;
-    while !cancel.load(Ordering::Acquire) {
-        let stream = match process_control_ipc::accept_with_timeout(
-            &listener,
-            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
-        ) {
-            Ok(stream) => stream,
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
+    loop {
+        let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return,
             Err(error) => {
                 log("WARN", &format!("tool placement accept failed: {error}"));
                 return;
@@ -1303,6 +1418,7 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
     use std::process::{Child, Stdio};
+    use std::sync::mpsc;
 
     struct ChildGuard(Child);
 
@@ -1413,6 +1529,130 @@ mod tests {
             !workload_bootstrap_peer_matches(&peer, uid, &expected.join("not-the-peer-cgroup"))
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn placement_accept_returns_connection_while_active() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-placement-accept-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = AtomicBool::new(false);
+
+        let accepted =
+            accept_placement_or_cancelled(&listener, &cancel, cancel_reader.as_raw_fd()).unwrap();
+
+        assert!(accepted.is_some());
+        drop(cancel_writer);
+        drop(client);
+    }
+
+    #[test]
+    fn placement_cancel_wins_over_ready_connection() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-placement-cancel-ready-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let _client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = AtomicBool::new(false);
+        drop(cancel_writer);
+
+        let accepted =
+            accept_placement_or_cancelled(&listener, &cancel, cancel_reader.as_raw_fd()).unwrap();
+
+        assert!(accepted.is_none());
+    }
+
+    #[test]
+    fn placement_bootstrap_drop_wakes_all_idle_accept_workers() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint_base = format!(
+            "vm0-test-placement-cancel-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let endpoint = format!("{endpoint_base}-workload");
+        let tool_endpoint = format!("{endpoint_base}-tool");
+        let workload_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let worker_done = Arc::new(AtomicU64::new(0));
+        let workload_ready_tx = ready_tx.clone();
+        let workload_done = Arc::clone(&worker_done);
+        let workload_worker = thread::Builder::new()
+            .name("test-workload-placement-cancel".to_owned())
+            .spawn(move || {
+                workload_ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &workload_listener,
+                    workload_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle workload placement listener unexpectedly became ready");
+                    }
+                }
+                workload_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let tool_done = Arc::clone(&worker_done);
+        let tool_worker = thread::Builder::new()
+            .name("test-tool-placement-cancel".to_owned())
+            .spawn(move || {
+                ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &tool_listener,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle tool placement listener unexpectedly became ready");
+                    }
+                }
+                tool_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_after_drop = Arc::clone(&cancel);
+        let bootstrap = WorkloadPlacementBootstrap {
+            endpoint,
+            tool_endpoint,
+            cancel,
+            cancel_wake_writer: Some(cancel_writer),
+            workers: vec![workload_worker, tool_worker],
+        };
+
+        for _ in 0..2 {
+            ready_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("placement worker should enter its idle wait");
+        }
+        let (drop_done_tx, drop_done_rx) = mpsc::channel();
+        let drop_worker = thread::spawn(move || {
+            drop(bootstrap);
+            drop_done_tx.send(()).unwrap();
+        });
+
+        drop_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("bootstrap drop should actively wake and join the idle worker");
+        drop_worker.join().unwrap();
+        assert!(cancel_after_drop.load(Ordering::Acquire));
+        assert_eq!(worker_done.load(Ordering::Acquire), 2);
     }
 
     #[test]
