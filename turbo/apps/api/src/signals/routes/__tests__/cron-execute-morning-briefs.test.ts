@@ -966,6 +966,8 @@ describe("cron execute morning briefs", () => {
   });
 
   it("delivers an Okou brief from persisted schedule context when no connectors are connected", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("VM0_API_BACKEND_URL", undefined);
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-threads-only-brief" },
       error: null,
@@ -1041,6 +1043,14 @@ describe("cron execute morning briefs", () => {
       "https://app.okou.ai/chats/123e4567-e89b-12d3-a456-426614174000",
     );
     expect(email.html).not.toContain("evil.example.com");
+    const oneClickHeader = email.headers?.["List-Unsubscribe"];
+    expect(oneClickHeader).toBeDefined();
+    if (!oneClickHeader) {
+      throw new Error("Expected an Okou one-click unsubscribe header");
+    }
+    const oneClickUrl = new URL(oneClickHeader.slice(1, -1));
+    expect(oneClickUrl.origin).toBe("https://api.okou.ai");
+    expect(oneClickUrl.pathname).toBe("/api/email/morning-brief/unsubscribe");
     clearMockNow();
   });
 

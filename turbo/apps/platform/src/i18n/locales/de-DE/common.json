@@ -1083,6 +1083,7 @@
         "chooseAccountTitle": "Wählen Sie ein Konto",
         "chooseMethodSubtitle": "Haben Sie Probleme? Sie können eine der folgenden Methoden zur Anmeldung verwenden.",
         "chooseMethodTitle": "Verwenden Sie eine andere Methode",
+        "clientTrustNotice": "Sie melden sich von einem neuen Gerät an. Wir bitten um eine Überprüfung, um Ihr Konto sicher zu halten.",
         "codeExpired": "Dieser Bestätigungscode ist abgelaufen. Fordere einen neuen Code an.",
         "codeLabel": "Bestätigungscode",
         "completeSubtitle": "Sie werden in Kürze weitergeleitet",
