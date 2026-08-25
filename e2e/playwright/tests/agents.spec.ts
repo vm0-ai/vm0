@@ -146,6 +146,18 @@ async function mockUnreadThread(
       },
     });
   });
+  await page.route("**/api/chat-thread-unreads", async (route) => {
+    await route.fulfill({
+      json: {
+        unreads: [
+          {
+            threadId: unreadThreadStory.id,
+            unreadAt: unreadThreadStory.createdAt,
+          },
+        ],
+      },
+    });
+  });
 }
 
 async function visibleIndicatorStyle(locator: Locator): Promise<{
@@ -202,6 +214,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
       "/api/user-preferences",
       "/api/chat-threads/snapshot",
       "/api/indicators",
+      "/api/chat-thread-unreads",
     ].map((pathname) => {
       return page.waitForResponse((response) => {
         return (
