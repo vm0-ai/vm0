@@ -3842,7 +3842,7 @@ function ToolActivityGroup({
         onClick={() => {
           toggleExpanded(anchorEventId);
         }}
-        className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-muted-foreground/70 transition-colors hover:bg-state-hover hover:text-muted-foreground"
+        className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-muted-foreground transition-colors hover:bg-state-hover"
       >
         <span className="min-w-0 truncate text-[13px]">{label}</span>
         <ChevronRight
@@ -3862,7 +3862,7 @@ function ToolActivityGroup({
               <li
                 key={event.id}
                 data-chat-scroll-anchor-event-id={event.id}
-                className="flex min-w-0 items-start gap-2 px-2 py-1 text-[13px] leading-5 text-muted-foreground/75"
+                className="flex min-w-0 items-start gap-2 px-2 py-1 text-[13px] leading-5 text-muted-foreground"
               >
                 <Icon
                   aria-hidden
