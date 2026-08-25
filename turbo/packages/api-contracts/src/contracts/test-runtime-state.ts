@@ -175,6 +175,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
   }),
   z.object({
+    action: z.literal("delete-chat-event-snapshot-head"),
+    thread_id: z.uuid(),
+    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS),
+  }),
+  z.object({
     action: z.literal("clear-run-api-start"),
     run_id: z.uuid(),
   }),

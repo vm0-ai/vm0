@@ -665,6 +665,38 @@ describe("chat event snapshot read endpoints", () => {
     );
     expect(restoredDownload.body.projection).toBe("full");
     expect(gunzipSync(fullObject).toString("utf8")).toContain(toolEventId);
+
+    const v5Headers = {
+      ...authenticate(owner),
+      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: (
+        CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1
+      ).toString(),
+    };
+    const v5Rows = await accept(
+      eventsClient().rows({
+        headers: v5Headers,
+        params: { threadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    expect(v5Rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(v5Rows.body.projection).toBe("tool-redacted");
+    expect(
+      v5Rows.body.rows.some((row) => {
+        return row.eventType === "output.tool";
+      }),
+    ).toBeFalsy();
+
+    const v5Download = await accept(
+      eventsClient().snapshot({
+        headers: v5Headers,
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(v5Download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(v5Download.body.projection).toBe("tool-redacted");
   }, 60_000);
 
   it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {

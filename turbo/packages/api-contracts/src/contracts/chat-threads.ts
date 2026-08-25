@@ -1779,7 +1779,10 @@ export const chatThreadEventsContract = c.router({
         expiresInSeconds: z.number().int().positive(),
         lastEventId: z.string().uuid(),
         lastSeqId: z.number().int().positive(),
-        /** Optional only for compatibility with an older deployed API. */
+        /**
+         * New app/CLI -> old API fallback. Remove with #29244 after the old API
+         * leaves rollback and contexts pinned to this client have drained.
+         */
         projection: chatEventSnapshotProjectionSchema.optional(),
       }),
       400: apiErrorSchema,
@@ -1811,7 +1814,10 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
-        /** Optional only for compatibility with an older deployed client. */
+        /**
+         * Old app/CLI -> new API fallback. Remove with #29244 after the V6 app
+         * floor is live and pre-V6 queued/claimed contexts have drained.
+         */
         sinceProjection: chatEventSnapshotProjectionSchema.optional(),
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
@@ -1819,11 +1825,14 @@ export const chatThreadEventsContract = c.router({
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
-        /** New APIs always return the physical cursor, even for empty pages. */
+        /**
+         * New app/CLI -> old API fallback. Remove with #29244 after the old API
+         * leaves rollback and contexts pinned to this client have drained.
+         */
         cursor: chatEventCursorSchema.optional(),
-        /** New APIs always return this physical-page continuation decision. */
+        /** Same bounded old-API fallback and removal gate as `cursor`. */
         hasMore: z.boolean().optional(),
-        /** Optional only for compatibility with an older deployed API. */
+        /** Same bounded old-API fallback and removal gate as `cursor`. */
         projection: chatEventSnapshotProjectionSchema.optional(),
       }),
       400: apiErrorSchema,

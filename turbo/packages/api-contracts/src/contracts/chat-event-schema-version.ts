@@ -5,6 +5,12 @@
  */
 export const CURRENT_CHAT_EVENT_SCHEMA_VERSION = 6 as const;
 
+/**
+ * Old app and pinned CLI -> new API fallback. Remove with #29244 after the V6
+ * app floor is live and pre-V6 queued/claimed contexts have drained.
+ */
+export const CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR = 5 as const;
+
 export const CHAT_EVENT_SCHEMA_VERSION_HEADER = "X-Chat-Event-Schema-Version";
 
 export const CHAT_EVENT_SNAPSHOT_PROJECTIONS = [
@@ -20,6 +26,9 @@ export type ChatEventCursor =
   | {
       readonly lastEventId: string;
       readonly lastSeqId: number;
-      /** Absent only on caches written by an older deployed client. */
+      /**
+       * Old browser cache -> new app fallback. Remove with #29244 after the V6
+       * app floor is live and legacy IndexedDB chat caches have been rebuilt.
+       */
       readonly projection?: ChatEventSnapshotProjection;
     };

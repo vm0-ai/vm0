@@ -1,5 +1,6 @@
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
@@ -76,7 +77,14 @@ function isValidChatThreadId(id: string): boolean {
 
 function chatEventSnapshotProjection(
   featureSwitchContext: FeatureSwitchContext,
+  schemaVersion: number,
 ): ChatEventSnapshotProjection {
+  // V5 app and pinned CLI contexts cannot parse output.tool. Keep their API
+  // and R2 delivery redacted until the bounded bridge tracked by #29244 is
+  // removed after the V6 app floor and queued contexts have drained.
+  if (schemaVersion < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
+    return "tool-redacted";
+  }
   return isFeatureEnabled(
     FeatureSwitchKey.ChatToolActivity,
     featureSwitchContext,
@@ -183,7 +191,10 @@ const getChatEventSnapshotInner$ = command(
       ? await get(userFeatureSwitchContext(auth.orgId, auth.userId))
       : { userId: auth.userId };
     signal.throwIfAborted();
-    const projection = chatEventSnapshotProjection(featureSwitchContext);
+    const projection = chatEventSnapshotProjection(
+      featureSwitchContext,
+      version.version,
+    );
     const snapshot = await set(
       chatThreadEventSnapshot({
         threadId: params.threadId,
@@ -240,7 +251,10 @@ const listChatEventRowsInner$ = command(
       ? await get(userFeatureSwitchContext(auth.orgId, auth.userId))
       : { userId: auth.userId };
     signal.throwIfAborted();
-    const projection = chatEventSnapshotProjection(featureSwitchContext);
+    const projection = chatEventSnapshotProjection(
+      featureSwitchContext,
+      version.version,
+    );
     const page = await get(
       chatThreadEventRows({
         threadId: params.threadId,

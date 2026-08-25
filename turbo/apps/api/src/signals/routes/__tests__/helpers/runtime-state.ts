@@ -567,6 +567,18 @@ export async function setChatEventSnapshotHeadVersion(
   });
 }
 
+export async function deleteChatEventSnapshotHead(
+  context: TestContext,
+  threadId: string,
+  projection: ChatEventSnapshotProjection,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-chat-event-snapshot-head",
+    thread_id: threadId,
+    projection,
+  });
+}
+
 export async function advanceChatEventSequenceAsPreviousApi(
   context: TestContext,
   threadId: string,
