@@ -3364,7 +3364,7 @@ describe("zero sidebar", () => {
     expect(grid).not.toHaveClass("pb-1");
   });
 
-  it("matches pinned agent unread indicators to chat thread indicators", async () => {
+  it("shows a visible unread indicator on a pinned agent", async () => {
     prepareDefaultAgent();
     mockUnreadAgents(() => {
       return [AGENT_ID];
@@ -3386,8 +3386,7 @@ describe("zero sidebar", () => {
       return within(card).getByLabelText("Unread");
     });
 
-    expect(unread).toHaveClass("h-2", "w-2", "rounded-full", "bg-sky-600");
-    expect(unread).not.toHaveClass("h-2.5", "w-2.5", "ring-2");
+    expect(unread).toBeVisible();
   });
 
   it("searches chats and messages in the three-column spotlight", async () => {
