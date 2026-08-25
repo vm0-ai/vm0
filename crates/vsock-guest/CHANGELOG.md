@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.103](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.102...vsock-guest-v0.19.103) (2026-08-25)
+
+
+### Bug Fixes
+
+* **runner:** wake placement workers during shutdown ([#29132](https://github.com/vm0-ai/vm0/issues/29132)) ([385c1aa](https://github.com/vm0-ai/vm0/commit/385c1aa78a479fd2938596cee1b9e769bb5e017a))
+
 ## [0.19.102](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.101...vsock-guest-v0.19.102) (2026-08-24)
 
 

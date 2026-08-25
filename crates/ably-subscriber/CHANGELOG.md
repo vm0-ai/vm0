@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.17](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.16...ably-subscriber-v1.0.17) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** space short-lived token renewals ([#29129](https://github.com/vm0-ai/vm0/issues/29129)) ([b7ec813](https://github.com/vm0-ai/vm0/commit/b7ec8136c26d04d693bda315a73a5e7790d11ba3))
+
 ## [1.0.16](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.15...ably-subscriber-v1.0.16) (2026-08-20)
 
 

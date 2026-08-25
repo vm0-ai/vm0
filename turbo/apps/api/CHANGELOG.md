@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.485.0](https://github.com/vm0-ai/vm0/compare/api-v1.484.2...api-v1.485.0) (2026-08-25)
+
+
+### Features
+
+* let staff cancel built-in model cooldowns ([#29142](https://github.com/vm0-ai/vm0/issues/29142)) ([d0ab9d6](https://github.com/vm0-ai/vm0/commit/d0ab9d6c8534491a06878c9d705f726e440cb4c5)), closes [#29121](https://github.com/vm0-ai/vm0/issues/29121)
+* serve direct-html website templates behind the latest switch ([#29053](https://github.com/vm0-ai/vm0/issues/29053)) ([508d9ec](https://github.com/vm0-ai/vm0/commit/508d9eca8eeb05694499d28d6f8114f2f336b69a))
+
+
+### Bug Fixes
+
+* **api:** let fetch set google drive upload content length ([#29138](https://github.com/vm0-ai/vm0/issues/29138)) ([30807be](https://github.com/vm0-ai/vm0/commit/30807be2837a5a34fa78c2e9d5e02e9672e5bcaa))
+
+
+### Refactoring
+
+* **api:** drop the branded compatibility rows whose producers cut over ([#28939](https://github.com/vm0-ai/vm0/issues/28939)) ([89e2bf6](https://github.com/vm0-ai/vm0/commit/89e2bf6c74a385eb9f8fb5b660625a8093248ba3))
+* **api:** dual-write codex service-tier environment aliases ([#29168](https://github.com/vm0-ai/vm0/issues/29168)) ([0cc5d7e](https://github.com/vm0-ai/vm0/commit/0cc5d7e5753fbcc6eb6132f33758ad0bac0c6730)), closes [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **api:** dual-write preview job reference aliases ([#29140](https://github.com/vm0-ai/vm0/issues/29140)) ([f4cc406](https://github.com/vm0-ai/vm0/commit/f4cc4066ea21b4158d75d104b737750ce90392a3))
+* **feishu:** require public brand in oauth state ([#29166](https://github.com/vm0-ai/vm0/issues/29166)) ([f66362e](https://github.com/vm0-ai/vm0/commit/f66362edb5503609b1b121bd8aecd8d41d5db551))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.361.0
+    * @okouai/core bumped to 8.588.0
+    * @okouai/db bumped to 1.221.3
+
 ## [1.484.2](https://github.com/vm0-ai/vm0/compare/api-v1.484.1...api-v1.484.2) (2026-08-25)
 
 

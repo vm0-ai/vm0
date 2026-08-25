@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.588.0](https://github.com/vm0-ai/vm0/compare/core-v8.587.3...core-v8.588.0) (2026-08-25)
+
+
+### Features
+
+* serve direct-html website templates behind the latest switch ([#29053](https://github.com/vm0-ai/vm0/issues/29053)) ([508d9ec](https://github.com/vm0-ai/vm0/commit/508d9eca8eeb05694499d28d6f8114f2f336b69a))
+
+
+### Bug Fixes
+
+* **cli:** name the actual default video model in help text ([#29139](https://github.com/vm0-ai/vm0/issues/29139)) ([f143071](https://github.com/vm0-ai/vm0/commit/f1430712cbf1e56db0d590b8d7796ad8896cd72e))
+
+
+### Refactoring
+
+* remove the composer submit dom reconcile switch ([#29144](https://github.com/vm0-ai/vm0/issues/29144)) ([1704de4](https://github.com/vm0-ai/vm0/commit/1704de411b2d0f47e395492668ef24348312f11e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.361.0
+
 ## [8.587.3](https://github.com/vm0-ai/vm0/compare/core-v8.587.2...core-v8.587.3) (2026-08-25)
 
 
