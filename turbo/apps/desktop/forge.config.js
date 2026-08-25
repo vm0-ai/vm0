@@ -7,6 +7,9 @@ const {
   resolveDesktopNotarizeApiEnvironment,
 } = require("./scripts/desktop-notarize-api-environment");
 const {
+  resolveDesktopNotarizeKeychainEnvironment,
+} = require("./scripts/desktop-notarize-keychain-environment");
+const {
   resolveDesktopSigningIdentityEnvironment,
 } = require("./scripts/desktop-signing-identity-environment");
 
@@ -29,12 +32,11 @@ function desktopNotarizeOptions() {
     return undefined;
   }
 
-  if (process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE?.trim()) {
+  const keychainEnvironment = resolveDesktopNotarizeKeychainEnvironment();
+  if (keychainEnvironment) {
     return {
-      keychainProfile: process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE,
-      keychain:
-        process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN?.trim() ||
-        DEFAULT_NOTARIZE_KEYCHAIN,
+      keychainProfile: keychainEnvironment.keychainProfile,
+      keychain: keychainEnvironment.keychain ?? DEFAULT_NOTARIZE_KEYCHAIN,
     };
   }
 
