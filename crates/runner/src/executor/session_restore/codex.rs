@@ -8,7 +8,7 @@ use api_contracts::generated::constants::runners::paths::{
 
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::{
@@ -36,6 +36,7 @@ pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
+    sandbox_reuse_result: SandboxReuseResult,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
@@ -54,15 +55,25 @@ pub(super) async fn restore_codex_session(
         codex_rollout_relative_path(&thread_id, timestamp)
     );
 
-    let logical_path = cleanup_existing_codex_session_files(
-        sandbox,
-        context,
-        session_id,
-        &session_filename_key,
-        &fallback_logical_path,
-    )
-    .await?
-    .unwrap_or(fallback_logical_path);
+    // Only an idle-reused sandbox can retain a prior framework home. Fresh
+    // sandboxes may attach a cached workspace drive, but that drive contains
+    // only the working directory and cannot contain Codex session rollouts.
+    let logical_path = match sandbox_reuse_result {
+        SandboxReuseResult::Reused => cleanup_existing_codex_session_files(
+            sandbox,
+            context,
+            session_id,
+            &session_filename_key,
+            &fallback_logical_path,
+        )
+        .await?
+        .unwrap_or(fallback_logical_path),
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::PoolMiss
+        | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::DeviceLimitMismatch
+        | SandboxReuseResult::UnparkFailed => fallback_logical_path,
+    };
     let session_path = format!("{logical_path}{physical_suffix}");
 
     write_session_history_file(sandbox, &session_path, session_history).await?;
