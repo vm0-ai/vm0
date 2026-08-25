@@ -198,7 +198,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Enable the managed banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+      "Enable the managed banking gateway and banking:read OKOU_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
