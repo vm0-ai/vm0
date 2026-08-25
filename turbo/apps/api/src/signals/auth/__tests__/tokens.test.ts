@@ -315,6 +315,12 @@ describe("auth tokens", () => {
     );
   });
 
+  it("grants translation capability by default", () => {
+    const token = generateOkouToken("user_okou", "run_okou", "org_okou");
+
+    expect(verifyOkouToken(token)?.capabilities).toContain("translation:write");
+  });
+
   it("gates image recognition on run eligibility", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ineligibleToken = generateOkouToken(

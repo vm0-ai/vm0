@@ -35,6 +35,7 @@ export const CAPABILITIES = [
   "web-search:read",
   "social:read",
   "image-recognition:write",
+  "translation:write",
   "finance:read",
   "seo:read",
   "computer-use:write",
@@ -162,6 +163,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "image-recognition:write": {
     group: "Image Recognition",
     label: "Recognize uploaded images",
+  },
+  "translation:write": {
+    group: "Translation",
+    label: "Translate text",
   },
   "finance:read": {
     group: "Finance",

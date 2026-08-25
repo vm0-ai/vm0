@@ -119,6 +119,7 @@ import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
 import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
+import { translationRoutes } from "./routes/translation";
 import { runDetailRoutes } from "./routes/run-detail";
 import { runsRoutes } from "./routes/runs";
 import { runsCancelRoutes } from "./routes/runs-cancel";
@@ -321,6 +322,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...queuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
+  ...translationRoutes,
   ...runDetailRoutes,
   ...runsRoutes,
   ...runsCancelRoutes,
