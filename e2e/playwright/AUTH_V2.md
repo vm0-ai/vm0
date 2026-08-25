@@ -43,9 +43,10 @@ The `auth-v2.spec.ts` project covers:
   activation;
 - an existing Clerk session selecting its account and continuing without any
   organization-creation affordance;
-- Google One Tap invocation only at the base-route boundary, Google OAuth's
-  HTTPS handoff boundary, and passkey cancellation/fallback when those methods
-  are enabled in the development Clerk configuration.
+- Google One Tap invocation only at the base-route boundary, including its
+  FedCM initialization and terminal-moment contract, Google OAuth's HTTPS
+  handoff boundary, and passkey cancellation/fallback when those methods are
+  enabled in the development Clerk configuration.
 
 Expired-code coverage fulfills the first matching Clerk verification attempt
 with the provider's `form_code_expired` response. This makes recovery and

@@ -162,9 +162,12 @@ test("password sign-in recovers from a server error and honors an allowed redire
   await expect(password).toHaveAttribute("aria-invalid", "true");
   await expectStepAnnouncement(page);
 
-  await password.fill(identity.password);
-  await expect(password).toHaveAttribute("aria-invalid", "false");
+  const changedPassword = authV2Resources.createPassword();
+  await password.fill(changedPassword);
   await expect(serverError).toHaveCount(0);
+  await expect(password).not.toHaveAttribute("aria-invalid");
+  await expect(password).not.toHaveAttribute("aria-describedby");
+  await password.fill(identity.password);
   await password.press("Enter");
   await finishAuthV2Continuation(page, redirect, ORGANIZATION_BETA);
 });
@@ -440,8 +443,12 @@ test("bounds Google One Tap, OAuth, and passkey behavior at external handoffs", 
         return await googleBoundaryCount(page, "prompts");
       })
       .toBe(1);
+    expect(await googleBoundaryCount(page, "initializes")).toBe(1);
+    expect(await googleBoundaryCount(page, "fedCmInitializes")).toBe(1);
     await openAuthV2(page, "/v2/sign-in/factor-one");
     expect(await googleBoundaryCount(page, "prompts")).toBe(1);
+    expect(await googleBoundaryCount(page, "initializes")).toBe(1);
+    expect(await googleBoundaryCount(page, "fedCmInitializes")).toBe(1);
   } else {
     testInfo.annotations.push({
       description: "Google is disabled in this Clerk development instance",
@@ -571,16 +578,27 @@ function organizationButton(page: Page, organizationName: string): Locator {
 }
 
 interface GoogleBoundaryState {
+  readonly fedCmInitializes: number;
   readonly initializes: number;
   readonly prompts: number;
 }
 
 async function installExternalAuthBoundaryStubs(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const storedFedCmInitializes = Number(
+      sessionStorage.getItem("auth-v2-google-fedcm-initializes") ?? "0",
+    );
+    const storedInitializes = Number(
+      sessionStorage.getItem("auth-v2-google-initializes") ?? "0",
+    );
     const storedPrompts = Number(
       sessionStorage.getItem("auth-v2-google-prompts") ?? "0",
     );
-    const state = { initializes: 0, prompts: storedPrompts };
+    const state = {
+      fedCmInitializes: storedFedCmInitializes,
+      initializes: storedInitializes,
+      prompts: storedPrompts,
+    };
     const boundaryWindow = window as Window & {
       __authV2GoogleBoundary?: GoogleBoundaryState;
       google?: unknown;
@@ -592,14 +610,25 @@ async function installExternalAuthBoundaryStubs(page: Page): Promise<void> {
         accounts: {
           id: {
             cancel: () => undefined,
-            initialize: () => {
+            initialize: (options: {
+              readonly use_fedcm_for_prompt?: boolean;
+            }) => {
               state.initializes += 1;
+              sessionStorage.setItem(
+                "auth-v2-google-initializes",
+                String(state.initializes),
+              );
+              if (options.use_fedcm_for_prompt === true) {
+                state.fedCmInitializes += 1;
+                sessionStorage.setItem(
+                  "auth-v2-google-fedcm-initializes",
+                  String(state.fedCmInitializes),
+                );
+              }
             },
             prompt: (
               callback: (notification: {
-                isDismissedMoment: () => boolean;
-                isNotDisplayed: () => boolean;
-                isSkippedMoment: () => boolean;
+                getMomentType: () => "dismissed" | "display" | "skipped";
               }) => void,
             ) => {
               state.prompts += 1;
@@ -608,9 +637,7 @@ async function installExternalAuthBoundaryStubs(page: Page): Promise<void> {
                 String(state.prompts),
               );
               callback({
-                isDismissedMoment: () => false,
-                isNotDisplayed: () => true,
-                isSkippedMoment: () => false,
+                getMomentType: () => "skipped",
               });
             },
           },
