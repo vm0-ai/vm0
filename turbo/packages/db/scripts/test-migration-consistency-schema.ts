@@ -53,6 +53,8 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
+import { validateBuiltInModelCooldownContraction } from "./test-built-in-model-cooldown-contraction";
+import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
@@ -60,7 +62,6 @@ import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provid
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
 import { validateBuiltInModelCandidateCooldownExpansion } from "./test-built-in-model-candidate-cooldown-expansion";
-import { validateBuiltInModelTerminologyCutover } from "./test-built-in-model-terminology-cutover";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10835,7 +10836,7 @@ async function main(): Promise<void> {
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateBuiltInModelCandidateCooldownExpansion();
-    await validateBuiltInModelTerminologyCutover();
+    await validateBuiltInModelCooldownContraction();
     await validateSlackOfficialBrandMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
@@ -10859,6 +10860,7 @@ async function main(): Promise<void> {
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
+    await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
@@ -10880,6 +10882,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
+    await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
 
