@@ -39,7 +39,7 @@ fn guest_agent_command() -> Command {
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-        "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
+        "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
     ] {
         command.env_remove(key);
     }
