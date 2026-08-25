@@ -891,13 +891,29 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
 }
 
 #[test]
-fn build_env_json_preserves_guest_agent_tuning_env() {
+fn build_env_json_keeps_guest_agent_tuning_writer_legacy_only() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
         ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), "4".into()),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(), "2".into()),
+        (
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
+            "canonical-must-not-write".into(),
+        ),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
+            "canonical-must-not-write".into(),
+        ),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV.into(),
+            "canonical-must-not-write".into(),
+        ),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
+            "canonical-must-not-write".into(),
+        ),
     ]));
 
     let env = build_env_for_test(&ctx, "http://localhost");
@@ -906,6 +922,14 @@ fn build_env_json_preserves_guest_agent_tuning_env() {
     assert_eq!(env.get("VM0_POST_RESULT_SIGTERM_GRACE_SECS").unwrap(), "1");
     assert_eq!(env.get("VM0_POST_RESULT_TOTAL_CAP_SECS").unwrap(), "4");
     assert_eq!(env.get("VM0_POST_RESULT_SIGKILL_GRACE_SECS").unwrap(), "2");
+    for key in [
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ] {
+        assert!(!env.contains_key(key), "runner writer emitted {key}");
+    }
 }
 
 #[test]

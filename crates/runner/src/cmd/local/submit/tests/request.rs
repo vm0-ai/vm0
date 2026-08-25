@@ -267,7 +267,7 @@ async fn rejects_invalid_env_entries_before_submit() {
 
 #[tokio::test]
 async fn rejects_reserved_okou_env_keys_without_exposing_values() {
-    let cases = [
+    let mut cases = vec![
         (
             vec!["OKOU_TOKEN=ordinary-boundary-secret".to_string()],
             Vec::new(),
@@ -283,6 +283,29 @@ async fn rejects_reserved_okou_env_keys_without_exposing_values() {
             "secret-boundary-secret",
         ),
     ];
+
+    const RESERVED_TUNING_VALUE: &str = "reserved-tuning-value-must-not-leak";
+    for key in [
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ] {
+        cases.push((
+            vec![format!("{key}={RESERVED_TUNING_VALUE}")],
+            Vec::new(),
+            "--env",
+            key,
+            RESERVED_TUNING_VALUE,
+        ));
+        cases.push((
+            Vec::new(),
+            vec![format!("{key}={RESERVED_TUNING_VALUE}")],
+            "--secret-env",
+            key,
+            RESERVED_TUNING_VALUE,
+        ));
+    }
 
     for (env, secret_env, flag, key, value) in cases {
         let dir = tempfile::tempdir().unwrap();

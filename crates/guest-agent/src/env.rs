@@ -152,6 +152,38 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
     Ok(value)
 }
 
+/// Resolve one Guest Agent timing alias pair at the single process-env capture
+/// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
+/// runner writer and supported local tuning interface remain legacy-only.
+/// Remove the legacy reader only after #28914's existing runner/sandbox drain
+/// and rollback gates close and source telemetry shows zero legacy-only reads.
+fn guest_agent_tuning_env_or_empty(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<String, String> {
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting guest agent tuning environment aliases: \
+                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "guest_agent_tuning_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
 #[derive(Clone, Copy)]
 enum RunMetadataEnvSource {
     CanonicalOnly,
@@ -399,6 +431,23 @@ impl GuestConfigRaw {
     ) -> Result<Self, String> {
         let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
 
+        let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        )?;
+        let post_result_sigterm_grace_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        )?;
+        let post_result_total_cap_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        )?;
+        let post_result_sigkill_grace_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        )?;
+
         let (user_env_file, user_env_file_source) = private_payload_file_env(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
             USER_ENV_FILE_ENV_KEY,
@@ -461,18 +510,10 @@ impl GuestConfigRaw {
             test_codex_home_dir: std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
-            stuck_tool_timeout_secs: env_or_empty(
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            ),
-            post_result_sigterm_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            ),
-            post_result_total_cap_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-            ),
-            post_result_sigkill_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ),
+            stuck_tool_timeout_secs,
+            post_result_sigterm_grace_secs,
+            post_result_total_cap_secs,
+            post_result_sigkill_grace_secs,
         })
     }
 
