@@ -38,6 +38,11 @@ interface ConnectorSelectionRow {
   readonly customConnectorId: string | null;
 }
 
+interface ConnectorTargetOwnership extends ConnectorSelectionRow {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
 export type PreparedChatThreadConnectorSelection = ConnectorAccountSelection;
 
 type PrepareChatThreadConnectorSelectionsResult =
@@ -207,14 +212,12 @@ async function loadConnectorTarget(
   return row ? targetFromRow(row) : undefined;
 }
 
-async function loadOwnedConnectorTargets(
+async function loadConnectorTargetOwnerships(
   db: ReadonlyDb,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
     readonly connectorIds: readonly string[];
   },
-): Promise<ReadonlyMap<string, ConnectorAccountTarget>> {
+): Promise<ReadonlyMap<string, ConnectorTargetOwnership>> {
   if (args.connectorIds.length === 0) {
     return new Map();
   }
@@ -223,18 +226,14 @@ async function loadOwnedConnectorTargets(
       connectorId: connectors.id,
       connectorSlug: connectors.connectorSlug,
       customConnectorId: connectors.customConnectorId,
+      orgId: connectors.orgId,
+      userId: connectors.userId,
     })
     .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-        inArray(connectors.id, [...new Set(args.connectorIds)]),
-      ),
-    );
+    .where(inArray(connectors.id, [...new Set(args.connectorIds)]));
   return new Map(
     rows.map((row) => {
-      return [row.connectorId, targetFromRow(row)];
+      return [row.connectorId, row];
     }),
   );
 }
@@ -338,9 +337,7 @@ export async function prepareChatThreadConnectorSelections(
   const connectionIds = selections.map((selection) => {
     return selection.connectionId;
   });
-  const ownedTargets = await loadOwnedConnectorTargets(db, {
-    orgId: args.orgId,
-    userId: args.userId,
+  const targetOwnerships = await loadConnectorTargetOwnerships(db, {
     connectorIds: connectionIds,
   });
   const projectedConnections = await listConnectorAccountsByIds(db, {
@@ -354,8 +351,8 @@ export async function prepareChatThreadConnectorSelections(
     }),
   );
   for (const [key, selection] of byTarget) {
-    const ownedTarget = ownedTargets.get(selection.connectionId);
-    if (!ownedTarget) {
+    const ownership = targetOwnerships.get(selection.connectionId);
+    if (!ownership) {
       if (args.missingAccountPolicy === "omit") {
         byTarget.delete(key);
         continue;
@@ -365,6 +362,13 @@ export async function prepareChatThreadConnectorSelections(
         message: "Connector account does not match the requested target",
       };
     }
+    if (ownership.orgId !== args.orgId || ownership.userId !== args.userId) {
+      return {
+        kind: "invalid",
+        message: "Connector account does not match the requested target",
+      };
+    }
+    const ownedTarget = targetFromRow(ownership);
     if (
       connectorAccountTargetKey(ownedTarget) !==
       connectorAccountTargetKey(selection.target)

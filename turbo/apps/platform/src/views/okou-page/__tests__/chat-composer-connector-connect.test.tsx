@@ -412,7 +412,11 @@ describe("chat composer connector connection", () => {
     );
     await user.click(defaultMode);
     await expect(screen.findByText("Use default")).resolves.toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "Work Connected" }));
+    const defaultRadio = screen.getByRole("radio", {
+      name: /Use default/u,
+    });
+    defaultRadio.focus();
+    await user.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(selectionWrites).toBe(1);
     });

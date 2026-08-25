@@ -435,6 +435,28 @@ describe("POST /api/zero/chat-threads", () => {
       { orgId: fixture.orgId, userId: foreignActor.userId },
       context.signal,
     );
+    const foreignConnection = await connectorApi.connectManualGrant(
+      foreignActor,
+      "openai",
+      "api-token",
+      { apiKey: "foreign-openai-key" },
+    );
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: foreignConnection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [400],
+    );
     const foreignToken = okouToken({
       userId: foreignActor.userId,
       orgId: fixture.orgId,

@@ -7977,6 +7977,38 @@ function ComposerConnectorAccountModeButton({
   );
 }
 
+function handleConnectorAccountRadioKeyDown(
+  event: ReactKeyboardEvent<HTMLDivElement>,
+): void {
+  const buttons = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="radio"]:not(:disabled)',
+    ),
+  ];
+  if (buttons.length === 0 || !(event.target instanceof HTMLButtonElement)) {
+    return;
+  }
+  const currentIndex = buttons.indexOf(event.target);
+  if (currentIndex === -1) {
+    return;
+  }
+  let nextIndex: number;
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    nextIndex = (currentIndex + 1) % buttons.length;
+  } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = buttons.length - 1;
+  } else {
+    return;
+  }
+  event.preventDefault();
+  buttons[nextIndex]?.focus();
+  buttons[nextIndex]?.click();
+}
+
 function ComposerConnectorAccountChoices({
   connectorLabel,
   connections,
@@ -7986,6 +8018,7 @@ function ComposerConnectorAccountChoices({
   loading,
   unavailable,
   noResults,
+  loadingAccountCount,
   onSelect,
   onUseDefault,
 }: {
@@ -7997,10 +8030,15 @@ function ComposerConnectorAccountChoices({
   readonly loading: boolean;
   readonly unavailable: boolean;
   readonly noResults: boolean;
+  readonly loadingAccountCount: number;
   readonly onSelect: (connection: ConnectorAccountConnection) => void;
   readonly onUseDefault: () => void;
 }) {
   const { t } = useTranslation();
+  const choiceClassName = cn(
+    "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    saving && "cursor-default opacity-50",
+  );
   const accountLabel = (connection: ConnectorAccountConnection): string => {
     return connectorAccountEffectiveLabel(
       connection,
@@ -8017,6 +8055,9 @@ function ComposerConnectorAccountChoices({
     : t(($) => {
         return $.chat.connectors.noUsableAccount;
       });
+  const hasCheckedConnection = connections.some((connection) => {
+    return selection?.connectionId === connection.id;
+  });
   const accountStatus = (connection: ConnectorAccountConnection): string => {
     if (connection.connectionStatus === "connected") {
       return t(($) => {
@@ -8046,16 +8087,18 @@ function ComposerConnectorAccountChoices({
 
   return (
     <div
-      className="flex max-h-64 min-h-0 flex-col overflow-y-auto p-1"
+      className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto p-1"
       role="radiogroup"
       aria-label={connectorLabel}
+      onKeyDown={handleConnectorAccountRadioKeyDown}
     >
       <button
         type="button"
         role="radio"
         aria-checked={!selection}
+        tabIndex={!selection || !hasCheckedConnection ? 0 : -1}
         disabled={saving}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover disabled:opacity-50"
+        className={choiceClassName}
         onClick={onUseDefault}
       >
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
@@ -8078,24 +8121,39 @@ function ComposerConnectorAccountChoices({
         </span>
       </button>
       {loading ? (
-        <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-          <Loader2 size={14} className="animate-spin" />
-          {t(($) => {
-            return $.connectors.accounts.loading;
-          })}
-        </div>
+        <>
+          <div className="flex flex-col" aria-hidden="true">
+            {Array.from(
+              {
+                length: Math.max(1, Math.min(loadingAccountCount, 4)),
+              },
+              (_, index) => {
+                return (
+                  <div
+                    key={index}
+                    className="flex h-[52px] shrink-0 animate-pulse items-center gap-2 px-2 py-2"
+                  >
+                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <span className="h-3.5 w-28 rounded bg-muted/50" />
+                      <span className="h-3 w-16 rounded bg-muted/50" />
+                    </span>
+                  </div>
+                );
+              },
+            )}
+          </div>
+          <span className="sr-only" role="status">
+            {t(($) => {
+              return $.connectors.accounts.loading;
+            })}
+          </span>
+        </>
       ) : null}
       {unavailable ? (
         <div className="px-2 py-3 text-sm text-muted-foreground">
           {t(($) => {
             return $.connectors.accounts.accountsUnavailable;
-          })}
-        </div>
-      ) : null}
-      {noResults ? (
-        <div className="px-2 py-3 text-sm text-muted-foreground">
-          {t(($) => {
-            return $.connectors.accounts.noAccountsFound;
           })}
         </div>
       ) : null}
@@ -8107,8 +8165,9 @@ function ComposerConnectorAccountChoices({
             type="button"
             role="radio"
             aria-checked={checked}
+            tabIndex={checked ? 0 : -1}
             disabled={saving}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover disabled:opacity-50"
+            className={choiceClassName}
             onClick={() => {
               onSelect(connection);
             }}
@@ -8127,6 +8186,13 @@ function ComposerConnectorAccountChoices({
           </button>
         );
       })}
+      {noResults ? (
+        <div className="px-2 py-3 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.connectors.accounts.noAccountsFound;
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -8197,8 +8263,8 @@ function ComposerConnectorAccountPanel({
   const saving = savingTargetKey === targetKey;
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-border/60 px-2 py-2">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-2 py-2">
         <Button
           type="button"
           variant="quiet"
@@ -8208,7 +8274,7 @@ function ComposerConnectorAccountPanel({
             return $.chat.connectors.back;
           })}
           onClick={() => {
-            closePanel(signal);
+            closePanel();
           }}
         >
           <ArrowLeft size={15} />
@@ -8221,7 +8287,7 @@ function ComposerConnectorAccountPanel({
         </span>
       </div>
       {showSearch ? (
-        <div className="border-b border-border/50 px-3 py-2">
+        <div className="shrink-0 border-b border-border/50 px-3 py-2">
           <Input
             value={search}
             onChange={(event) => {
@@ -8244,12 +8310,13 @@ function ComposerConnectorAccountPanel({
         unavailable={
           accountsLoadable.state === "hasError" || !accountList.available
         }
-        noResults={
-          accountsLoadable.state === "hasData" &&
-          accountList.available &&
-          connections.length === 0 &&
-          Boolean(search.trim())
-        }
+        noResults={connectorAccountSearchHasNoResults({
+          state: accountsLoadable.state,
+          available: accountList.available,
+          resultCount: accountList.connections.length,
+          search,
+        })}
+        loadingAccountCount={summary?.accountCount ?? 0}
         onSelect={(connection) => {
           detach(selectAccount(connection, signal), Reason.DomCallback);
         }}
@@ -8258,7 +8325,7 @@ function ComposerConnectorAccountPanel({
         }}
       />
       {accountList.nextCursor ? (
-        <div className="border-t border-border/50 p-2">
+        <div className="shrink-0 border-t border-border/50 p-2">
           <Button
             type="button"
             variant="outline"
@@ -8280,6 +8347,20 @@ function ComposerConnectorAccountPanel({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function connectorAccountSearchHasNoResults(args: {
+  readonly state: Loadable<unknown>["state"];
+  readonly available: boolean;
+  readonly resultCount: number;
+  readonly search: string;
+}): boolean {
+  return (
+    args.state === "hasData" &&
+    args.available &&
+    args.resultCount === 0 &&
+    Boolean(args.search.trim())
   );
 }
 
@@ -8531,7 +8612,7 @@ function ConnectorsPopoverButton({
       openAccountsPopover();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
-      closeAccountPanel(signal);
+      closeAccountPanel();
     }
   };
 
@@ -8787,7 +8868,7 @@ function ConnectorsPopoverButton({
             aria-hidden={!accountPanelVisible}
           >
             <div className="min-h-0 overflow-hidden">
-              <div className="min-h-[min(15rem,var(--available-height))]">
+              <div className="flex max-h-[min(25rem,var(--available-height))] min-h-[min(15rem,var(--available-height))] flex-col">
                 {accountPanelTarget && accountPanelItem ? (
                   <ComposerConnectorAccountPanel
                     signals={signals}

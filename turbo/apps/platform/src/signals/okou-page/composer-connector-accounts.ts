@@ -46,7 +46,7 @@ export interface ComposerConnectorAccountSignals {
     typeof createConnectorAccountListSignals
   >["accounts$"];
   readonly openTarget$: Command<void, [ConnectorAccountTarget, AbortSignal]>;
-  readonly closePanel$: Command<void, [AbortSignal]>;
+  readonly closePanel$: Command<void, []>;
   readonly setSearch$: ReturnType<
     typeof createConnectorAccountListSignals
   >["setSearch$"];
@@ -242,9 +242,9 @@ export function createComposerConnectorAccountSignals(
       set(panelOpen$, true);
     },
   );
-  const closePanel$ = command(({ set }, signal: AbortSignal): void => {
+  const closePanel$ = command(({ set }): void => {
     set(panelOpen$, false);
-    set(list.setSearch$, "", signal);
+    set(list.resetSearch$);
   });
 
   const { selectAccount$, useDefault$ } = createConnectorAccountMutationSignals(

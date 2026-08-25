@@ -251,6 +251,12 @@ function createConnectorAccountFirstPageSignals() {
     },
   );
 
+  const resetSearch$ = command(({ set }) => {
+    set(resetQuerySignal$);
+    set(search$, "");
+    set(effectiveSearch$, "");
+  });
+
   const reload$ = command(({ get, set }, signal: AbortSignal) => {
     const target = get(target$);
     if (!target) {
@@ -274,6 +280,7 @@ function createConnectorAccountFirstPageSignals() {
     setTarget$,
     clearTarget$,
     setSearch$,
+    resetSearch$,
     reload$,
   };
 }
@@ -338,6 +345,7 @@ export function createConnectorAccountListSignals() {
     setTarget$: firstPageSignals.setTarget$,
     clearTarget$: firstPageSignals.clearTarget$,
     setSearch$: firstPageSignals.setSearch$,
+    resetSearch$: firstPageSignals.resetSearch$,
     reload$: firstPageSignals.reload$,
     loadMore$,
   };
