@@ -174,13 +174,15 @@ done
 
 jq -e '
   any(.jobs.check.steps[];
-    .name == "Check runner and mitm-addon version contract" and
+    .name == "Check runner and mitm-addon contracts" and
     .if == "needs.detect.outputs.mitm-addon-only-changed == '\''true'\''" and
     (.run | contains("cargo test -p runner --bin runner")) and
     (.run | contains("deps::tests::mitmproxy_version_contract_matches_python_runtime_and_tests")) and
+    (.run | contains("proxy::process::tests::embedded_addon_reads_runner_token_environment")) and
+    (.run | contains("proxy::process::tests::addon_scripts_are_embedded")) and
     (.run | contains("--exact"))
   )
-' <<<"$crates_json" >/dev/null || fail "addon-only check must run the focused runner contract"
+' <<<"$crates_json" >/dev/null || fail "addon-only check must run the focused runner contracts"
 
 jq -e '
   (.jobs.coverage.if | contains("needs.detect.outputs.any-changed == '\''true'\''")) and

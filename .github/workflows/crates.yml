@@ -348,12 +348,18 @@ jobs:
           cd crates
           cargo doc --workspace --all-features --no-deps
 
-      - name: Check runner and mitm-addon version contract
+      - name: Check runner and mitm-addon contracts
         if: needs.detect.outputs.mitm-addon-only-changed == 'true'
         run: |
           cd crates
           cargo test -p runner --bin runner \
             deps::tests::mitmproxy_version_contract_matches_python_runtime_and_tests -- \
+            --exact
+          cargo test -p runner --bin runner \
+            proxy::process::tests::embedded_addon_reads_runner_token_environment -- \
+            --exact
+          cargo test -p runner --bin runner \
+            proxy::process::tests::addon_scripts_are_embedded -- \
             --exact
 
       - name: Run ably-subscriber smoke test
