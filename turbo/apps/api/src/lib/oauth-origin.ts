@@ -1,3 +1,4 @@
+import { apiBackendUrl } from "./api-backend-url";
 import { env } from "./env";
 
 const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
@@ -103,7 +104,7 @@ export function getOAuthWebOrigin(_request: Request): string {
 }
 
 export function getOAuthApiOrigin(_request: Request): string {
-  const backendUrl = env("VM0_API_BACKEND_URL");
+  const backendUrl = apiBackendUrl();
   if (backendUrl) {
     const configuredApiOrigin = new URL(backendUrl).origin;
     if (isTrustedHostedOrigin(configuredApiOrigin, "api")) {

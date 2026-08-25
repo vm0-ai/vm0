@@ -19,6 +19,7 @@ import {
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
 
+import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -146,7 +147,7 @@ function getResendClient(): Resend {
 
 function apiUrl(publicBrand: PublicBrand): string {
   return apiUrlForPublicBrand(
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? env("VM0_WEB_URL"),
     publicBrand,
   );
 }
