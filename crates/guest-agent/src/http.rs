@@ -31,7 +31,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 #[cfg(debug_assertions)]
-const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "VM0_TEST_DISABLE_HTTP_RETRY_DELAY";
+const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "OKOU_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
     "VM0 API response body exceeds the configured limit";

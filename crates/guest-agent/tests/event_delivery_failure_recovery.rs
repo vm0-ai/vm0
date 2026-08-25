@@ -135,7 +135,7 @@ async fn run_event_failure_case(
     let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
             .env_clear()
-            .env("VM0_TEST_DISABLE_HTTP_RETRY_DELAY", "1")
+            .env("OKOU_TEST_DISABLE_HTTP_RETRY_DELAY", "1")
             .env(
                 "PATH",
                 std::env::var("PATH")
