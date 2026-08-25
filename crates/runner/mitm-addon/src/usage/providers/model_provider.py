@@ -54,7 +54,11 @@ from ..model_tokens import (
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
 from ..quantities import is_usage_quantity
-from ..reporting_context import UsageReportingContext, usage_reporting_context
+from ..reporting_context import (
+    UsageReportingContext,
+    log_usage_reporting_context_missing,
+    usage_reporting_context,
+)
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
@@ -295,7 +299,7 @@ def report_model_provider_usage_source(
     if not context.is_complete:
         if usage_events:
             firewall_name = flow_metadata.firewall_name(flow.metadata)
-            _log_usage_reporting_context_missing(context, run_id, firewall_name)
+            log_usage_reporting_context_missing(context, run_id, firewall_name)
         if observations:
             _log_model_usage_observation_context_missing(context)
         return
@@ -437,7 +441,7 @@ def _buffer_model_provider_usage_events(
 ) -> bool:
     context = usage_reporting_context(flow)
     if not context.is_complete:
-        _log_usage_reporting_context_missing(context, run_id, firewall_name)
+        log_usage_reporting_context_missing(context, run_id, firewall_name)
         return False
     buffer_usage_events(
         context.usage_event_url(),
@@ -546,21 +550,6 @@ def _model_input_partition_source_key(
     return derive_usage_idempotency_key(
         namespace,
         (run_id, source_id, "model_input_partition", "atomic_source"),
-    )
-
-
-def _log_usage_reporting_context_missing(
-    context: UsageReportingContext, run_id: str, firewall_name: str
-) -> None:
-    log_usage_underbilling(
-        context.proxy_log_path,
-        "Cannot report usage event: missing sandbox_token or api_url",
-        "missing_reporting_context",
-        "confirmed",
-        run_id=run_id,
-        firewall_name=firewall_name,
-        missing_sandbox_token=context.missing_sandbox_token,
-        missing_api_url=context.missing_api_url,
     )
 
 
