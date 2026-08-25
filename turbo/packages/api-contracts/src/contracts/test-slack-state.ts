@@ -44,15 +44,6 @@ export const testSlackStatePostResponseSchema = z.object({
   default_agent_id: z.string().nullable(),
 });
 
-export const testSlackLegacyCallbackRedriveBodySchema = z.object({
-  run_id: z.string().uuid(),
-});
-
-export const testSlackLegacyCallbackRedriveResponseSchema = z.object({
-  ok: z.literal(true),
-  callback_id: z.string().uuid(),
-});
-
 export const testSlackStateResponseSchema = z.object({
   installation: z
     .object({
@@ -162,17 +153,6 @@ export const testSlackStateContract = c.router({
       404: z.string(),
     },
     summary: "Seed Slack API integration test state",
-  },
-  redriveLegacyCallback: {
-    method: "POST",
-    path: "/api/test/slack-state/legacy-callback-redrive",
-    body: testSlackLegacyCallbackRedriveBodySchema,
-    responses: {
-      200: testSlackLegacyCallbackRedriveResponseSchema,
-      400: testSlackStateErrorSchema,
-      404: z.string(),
-    },
-    summary: "Redrive a pre-publicBrand Slack callback test fixture",
   },
   delete: {
     method: "DELETE",

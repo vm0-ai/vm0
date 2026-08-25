@@ -60,7 +60,7 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
-import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
+import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -10833,7 +10833,6 @@ async function main(): Promise<void> {
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
-    await validateSlackOfficialBrandMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -10858,6 +10857,7 @@ async function main(): Promise<void> {
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
+    await validatePermanentSlackPublicBrandState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
@@ -10880,6 +10880,7 @@ async function main(): Promise<void> {
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
+    await validatePermanentSlackPublicBrandState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
 
     // Step 4: Restore original migrations
