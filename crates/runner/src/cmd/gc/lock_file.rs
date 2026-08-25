@@ -59,12 +59,7 @@ pub(super) async fn remove_unused_lock_after_probe(
         return true;
     }
 
-    if remove_lock_file(lock_path).await {
-        info!("removed unused lock {name}");
-        true
-    } else {
-        false
-    }
+    remove_lock_file(lock_path).await
 }
 
 fn lock_guard_matches_path(lock_path: &Path, lock: &Flock<std::fs::File>) -> bool {
