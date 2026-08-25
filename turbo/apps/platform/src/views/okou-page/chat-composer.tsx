@@ -352,6 +352,7 @@ const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
 );
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
+const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -5009,6 +5010,25 @@ function ImportedPptCardMediaControls({
 // Keep one rendered image stable while its replacement loads and decodes
 // off-DOM, then swap the src atomically. Stale requests are ignored by URL.
 
+function importedPptImageVariant(
+  imageUrl: string,
+  size: TemplatePreviewImageSize,
+): string;
+function importedPptImageVariant(
+  imageUrl: null,
+  size: TemplatePreviewImageSize,
+): null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null {
+  return imageUrl === null ? null : r2ImageTransformUrl(imageUrl, size);
+}
+
 function importedPptImage(media: HTMLElement): HTMLImageElement | null {
   return media.querySelector<HTMLImageElement>(
     "[data-imported-presentation-template-image]",
@@ -5383,8 +5403,12 @@ function ImportedPptCard({
       slideCount - 1,
     ),
   );
-  const activeImageUrl =
+  const activeImageSource =
     detail?.pageUrls[activeSlideIndex] ?? template.coverUrl;
+  const activeImageUrl = importedPptImageVariant(
+    activeImageSource,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   const loading =
     requestedTemplateId === template.id && detailLoadable.state === "loading";
   const label = t(
@@ -5719,12 +5743,25 @@ function ImportedPresentationTemplateMainPreview({
     },
     { title },
   );
+  const highResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+  );
+  const lowResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   return (
     <div
       role="group"
       aria-label={previewLabel}
       ref={(media) => {
-        syncImportedPptImage(media, activeImageUrl, previewLabel);
+        syncImportedPptImage(
+          media,
+          highResolutionImageUrl,
+          previewLabel,
+          lowResolutionImageUrl,
+        );
       }}
       data-imported-presentation-template-image-container=""
       data-testid={`${title} imported detail image preview`}
@@ -5790,6 +5827,12 @@ function ImportedPresentationTemplateThumbnails({
       {pageUrls.map((pageUrl, index) => {
         const slideNumber = index + 1;
         const active = index === activeSlideIndex;
+        const eagerlyLoad =
+          index < IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT;
+        const thumbnailUrl = importedPptImageVariant(
+          pageUrl,
+          TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
+        );
         const previewLabel = t(
           ($) => {
             return $.artifacts.templates.previewSlide;
@@ -5803,7 +5846,7 @@ function ImportedPresentationTemplateThumbnails({
             aria-label={previewLabel}
             aria-pressed={active}
             ref={(media) => {
-              syncImportedPptImage(media, pageUrl, previewLabel);
+              syncImportedPptImage(media, thumbnailUrl, previewLabel);
             }}
             data-imported-presentation-template-image-container=""
             onClick={() => {
@@ -5817,8 +5860,8 @@ function ImportedPresentationTemplateThumbnails({
             )}
           >
             <ImportedPptImage
-              loading="lazy"
-              fetchPriority="auto"
+              loading={eagerlyLoad ? "eager" : "lazy"}
+              fetchPriority={active ? "high" : eagerlyLoad ? "auto" : "low"}
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
             <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
@@ -6889,11 +6932,15 @@ function ImportedPresentationTemplateResourcePreload({
   return detail?.pageUrls
     .slice(startPageIndex, startPageIndex + pageCount)
     .map((pageUrl) => {
+      const previewUrl = importedPptImageVariant(
+        pageUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
       return (
         <img
-          key={pageUrl}
+          key={previewUrl}
           alt=""
-          src={pageUrl}
+          src={previewUrl}
           loading="eager"
           decoding="async"
           fetchPriority="low"
@@ -6939,7 +6986,11 @@ function ComposerTemplateAttachmentSync({
   );
   const importedTemplateCoverUrls = uniqueTemplatePreviewImageUrls(
     importedTemplates.flatMap((template) => {
-      return template.coverUrl === null ? [] : [template.coverUrl];
+      const coverUrl = importedPptImageVariant(
+        template.coverUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
+      return coverUrl === null ? [] : [coverUrl];
     }),
   );
   const importedTemplatePagePreloads =

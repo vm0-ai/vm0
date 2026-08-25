@@ -3873,6 +3873,129 @@ describe("chat composer templates", () => {
     expect(secondaryDetailRequestCount).toBe(0);
   });
 
+  it("loads resized uploaded deck previews with bounded thumbnail priority", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "6fbcce0d-cb09-42de-8d8a-d525f813f312";
+    const pageUrls = Array.from({ length: 18 }, (_, index) => {
+      const slideNumber = (index + 1).toString().padStart(3, "0");
+      return `https://cdn.vm0.io/artifacts/user/template/page-${slideNumber}.png?X-Amz-Signature=slide-${slideNumber}`;
+    });
+    const coverUrl = pageUrls[0];
+    if (coverUrl === undefined) {
+      throw new Error("Uploaded template cover URL not found");
+    }
+    const cardCoverUrl = r2ImageTransformUrl(coverUrl, {
+      width: 480,
+      height: 270,
+    });
+    const highResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 708,
+      height: 398,
+    });
+    const imageDecodes = controlImportedTemplateImageDecodes([
+      highResolutionUrl,
+    ]);
+    const template = {
+      id: templateId,
+      title: "Edge resized deck",
+      sourceFilename: "edge-resized-deck.pptx",
+      coverUrl,
+      pageCount: pageUrls.length,
+      visibility: "private" as const,
+      canManage: true,
+      pageUrls,
+      createdAt: "2026-08-25T03:00:00.000Z",
+      updatedAt: "2026-08-25T03:00:00.000Z",
+    };
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      return respond(200, [presentationTemplateSummary(template)]);
+    });
+    context.mocks.api(
+      presentationTemplatesContract.get,
+      ({ params, respond }) => {
+        expect(params.templateId).toBe(templateId);
+        return respond(200, template);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const preloadedCover = await waitFor(() => {
+      const found = document.querySelector(`img[src="${cardCoverUrl}"]`);
+      if (!(found instanceof HTMLImageElement)) {
+        throw new Error("Resized uploaded template cover was not prefetched");
+      }
+      return found;
+    });
+    expect(preloadedCover).toHaveAttribute("loading", "eager");
+    expect(preloadedCover).toHaveAttribute("fetchpriority", "high");
+    expect(document.querySelector(`img[src="${coverUrl}"]`)).toBeNull();
+
+    await user.click(screen.getByLabelText("Template"));
+    const dialog = screen.getByRole("dialog");
+    const card = await waitFor(() => {
+      const found = dialog.querySelector(
+        `[data-imported-presentation-template="${templateId}"]`,
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Resized uploaded template card not found");
+      }
+      return found;
+    });
+    const previewButton = within(card).getByLabelText(
+      "Preview Edge resized deck at current slide",
+    );
+    const cardMedia = previewButton.parentElement;
+    if (cardMedia === null) {
+      throw new Error("Resized uploaded template card media not found");
+    }
+    await loadImportedTemplateImage(cardMedia, cardCoverUrl);
+    click(previewButton);
+
+    const detailPreview = await screen.findByTestId(
+      "Edge resized deck imported detail image preview",
+    );
+    const detailImage = activeImportedTemplateImage(detailPreview);
+    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
+    expect(detailImage).not.toHaveAttribute("src", highResolutionUrl);
+    await loadImportedTemplateImage(detailPreview, cardCoverUrl);
+    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
+    await imageDecodes.complete(highResolutionUrl);
+    await waitFor(() => {
+      expect(detailImage).toHaveAttribute("src", highResolutionUrl);
+    });
+    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+
+    const thumbnailCases = [
+      { slideNumber: 1, loading: "eager", priority: "high" },
+      { slideNumber: 16, loading: "eager", priority: "auto" },
+      { slideNumber: 17, loading: "lazy", priority: "low" },
+    ] as const;
+    for (const { slideNumber, loading, priority } of thumbnailCases) {
+      const thumbnailButton = await screen.findByLabelText(
+        `Preview slide ${slideNumber.toString()}`,
+      );
+      const pageUrl = pageUrls[slideNumber - 1];
+      if (pageUrl === undefined) {
+        throw new Error("Uploaded template thumbnail URL not found");
+      }
+      const thumbnailUrl = r2ImageTransformUrl(pageUrl, {
+        width: 224,
+        height: 126,
+      });
+      const thumbnailImage = activeImportedTemplateImage(thumbnailButton);
+      expect(thumbnailImage).toHaveAttribute("src", thumbnailUrl);
+      expect(thumbnailImage).toHaveAttribute("loading", loading);
+      expect(thumbnailImage).toHaveAttribute("fetchpriority", priority);
+    }
+  });
+
   it("makes a workspace template published after navigating away usable in the other thread", async () => {
     const user = userEvent.setup({ delay: null });
     const analysisCatalogLoaded = context.mocks.deferred<void>();
