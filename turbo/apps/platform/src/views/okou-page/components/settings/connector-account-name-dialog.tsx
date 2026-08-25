@@ -68,7 +68,7 @@ export function ConnectorAccountNameDialog() {
       <DialogContent className="max-w-md">
         <form className="flex flex-col gap-5" onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
               {t(
                 ($) => {
                   return $.connectors.accounts.namePromptTitle;

@@ -2312,6 +2312,7 @@
       "deleteDescription": "Threads using this account will return to default inheritance.",
       "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
       "deleteTitle": "Delete {{account}}?",
+      "fallbackName": "Account #{{id}}",
       "find": "Find accounts",
       "loading": "Loading accounts…",
       "loadingMore": "Loading…",

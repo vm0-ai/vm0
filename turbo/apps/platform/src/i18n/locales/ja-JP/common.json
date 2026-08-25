@@ -2309,6 +2309,7 @@
       "deleteDescriptionWithCount": "{{value}} 件のスレッドがデフォルトの継承に戻ります。",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}} を削除しますか？",
+      "fallbackName": "アカウント #{{id}}",
       "find": "アカウントを検索",
       "loading": "アカウントを読み込み中…",
       "loadingMore": "読み込み中…",

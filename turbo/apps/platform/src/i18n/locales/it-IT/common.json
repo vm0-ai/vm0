@@ -2359,6 +2359,7 @@
       "deleteDescriptionWithCount_many": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "Eliminare {{account}}?",
+      "fallbackName": "Account #{{id}}",
       "find": "Cerca account",
       "loading": "Caricamento account…",
       "loadingMore": "Caricamento…",

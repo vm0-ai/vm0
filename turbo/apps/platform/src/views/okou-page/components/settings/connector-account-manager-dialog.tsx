@@ -53,6 +53,8 @@ interface ConnectorAccountManagerDialogProps {
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }
 
+const MAX_ACCOUNTS_WITHOUT_SEARCH = 6;
+
 function accountIdentity(account: ConnectorAccountConnection): string | null {
   return (
     account.externalEmail ??
@@ -100,7 +102,7 @@ function AccountActions({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="quiet"
           size="icon"
           aria-label={t(($) => {
             return $.connectors.accounts.actions;
@@ -165,24 +167,31 @@ function AccountActions({
 function AccountRow({
   target,
   account,
-  connectorLabel,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
-  readonly connectorLabel: string;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
   const identity = accountIdentity(account);
+  const label = connectorAccountEffectiveLabel(
+    account,
+    t(
+      ($) => {
+        return $.connectors.accounts.fallbackName;
+      },
+      { id: account.id.slice(0, 8) },
+    ),
+  );
   return (
     <div className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">
-            {connectorAccountEffectiveLabel(account, connectorLabel)}
+          <span className="truncate text-sm font-medium text-foreground">
+            {label}
           </span>
           {account.isDefault ? (
             <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
@@ -194,7 +203,7 @@ function AccountRow({
         </div>
         <div className="flex gap-2 truncate text-xs">
           <AccountStatus account={account} />
-          {identity ? (
+          {identity && identity !== label ? (
             <span className="truncate text-muted-foreground">{identity}</span>
           ) : null}
         </div>
@@ -212,13 +221,11 @@ function AccountRow({
 function AccountList({
   loadable,
   target,
-  connectorLabel,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly target: ConnectorAccountTarget;
-  readonly connectorLabel: string;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
@@ -266,7 +273,6 @@ function AccountList({
         key={`${account.id}-row`}
         target={target}
         account={account}
-        connectorLabel={connectorLabel}
         connectionActionsEnabled={connectionActionsEnabled}
         onReconnect={onReconnect}
       />,
@@ -337,10 +343,8 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
 
 function DeleteAccountConfirmation({
   target,
-  connectorLabel,
 }: {
   readonly target: ConnectorAccountTarget;
-  readonly connectorLabel: string;
 }) {
   const { t } = useTranslation();
   const draft = useGet(connectorAccountDeletionDraft$);
@@ -370,7 +374,7 @@ function DeleteAccountConfirmation({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
             {t(
               ($) => {
                 return $.connectors.accounts.deleteTitle;
@@ -378,7 +382,12 @@ function DeleteAccountConfirmation({
               {
                 account: connectorAccountEffectiveLabel(
                   draft.account,
-                  connectorLabel,
+                  t(
+                    ($) => {
+                      return $.connectors.accounts.fallbackName;
+                    },
+                    { id: draft.account.id.slice(0, 8) },
+                  ),
                 ),
               },
             )}
@@ -443,7 +452,8 @@ export function ConnectorAccountManagerDialog({
   const showSearch =
     search.length > 0 ||
     (accountsLoadable.state === "hasData" &&
-      (accountsLoadable.data.connections.length > 1 || nextCursor !== null));
+      (accountsLoadable.data.connections.length > MAX_ACCOUNTS_WITHOUT_SEARCH ||
+        nextCursor !== null));
   const leave = (next: () => void) => {
     resetDrafts();
     next();
@@ -459,22 +469,17 @@ export function ConnectorAccountManagerDialog({
         className="max-w-xl gap-0 overflow-hidden p-0"
         aria-describedby={undefined}
       >
-        <DialogHeader className="border-b border-border px-6 py-5">
-          <div className="flex items-center justify-between gap-4 pr-6">
+        <DialogHeader className="border-b border-border bg-muted/40 py-4 pl-6 pr-16">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {icon}
-              <DialogTitle className="truncate">
-                {t(
-                  ($) => {
-                    return $.connectors.accounts.managerTitle;
-                  },
-                  { connector: connectorLabel },
-                )}
+              <DialogTitle className="truncate leading-6">
+                {connectorLabel}
               </DialogTitle>
             </div>
             <Button
               type="button"
-              size="sm"
+              className="shrink-0"
               disabled={
                 !connectionActionsEnabled ||
                 accountsLoadable.state === "hasError" ||
@@ -508,7 +513,6 @@ export function ConnectorAccountManagerDialog({
           <AccountList
             loadable={accountsLoadable}
             target={target}
-            connectorLabel={connectorLabel}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={(account) => {
               leave(() => {
@@ -538,10 +542,7 @@ export function ConnectorAccountManagerDialog({
             </Button>
           </div>
         ) : null}
-        <DeleteAccountConfirmation
-          target={target}
-          connectorLabel={connectorLabel}
-        />
+        <DeleteAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>
   );

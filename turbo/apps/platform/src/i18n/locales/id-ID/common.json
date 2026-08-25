@@ -2309,6 +2309,7 @@
       "deleteDescriptionWithCount": "{{value}} thread akan kembali ke pewarisan default.",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "Hapus {{account}}?",
+      "fallbackName": "Akun #{{id}}",
       "find": "Cari akun",
       "loading": "Memuat akun…",
       "loadingMore": "Memuat…",

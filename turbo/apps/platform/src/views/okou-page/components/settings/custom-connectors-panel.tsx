@@ -245,7 +245,6 @@ function CustomConnectorCardFooter({
           <ConnectorAccountSummaryText
             summary={accountSummary}
             status={accountSummaryStatus}
-            connectorLabel={connector.displayName}
             className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
           />
         )

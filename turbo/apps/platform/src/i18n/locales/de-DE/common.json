@@ -2314,6 +2314,7 @@
       "deleteDescriptionWithCount_one": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}} löschen?",
+      "fallbackName": "Konto #{{id}}",
       "find": "Konten suchen",
       "loading": "Konten werden geladen…",
       "loadingMore": "Wird geladen…",

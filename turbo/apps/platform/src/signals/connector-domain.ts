@@ -30,13 +30,13 @@ export const singleAccountConnectorMutation = {
 
 export function connectorAccountEffectiveLabel(
   account: ConnectorAccountConnection,
-  connectorLabel: string,
+  fallbackLabel: string,
 ): string {
   return (
     account.displayName ??
     account.externalEmail ??
     account.externalUsername ??
     account.externalId ??
-    `${connectorLabel} · ${account.id.slice(0, 8)}`
+    fallbackLabel
   );
 }
