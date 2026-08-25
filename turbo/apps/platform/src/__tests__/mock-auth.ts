@@ -82,8 +82,11 @@ export interface MockedSignInResourceState {
   readonly createdSessionId?: string | null;
   readonly identifier?: string | null;
   readonly isTransferable?: boolean;
+  readonly secondFactorVerificationStatus?: string | null;
+  readonly secondFactorVerificationStrategy?: string | null;
   readonly status: string | null;
   readonly supportedFirstFactors?: readonly MockedSignInFactor[] | null;
+  readonly supportedSecondFactors?: readonly MockedSignInFactor[] | null;
 }
 
 export interface MockedSignUpResourceState {
@@ -165,8 +168,11 @@ let internalMockedSignInResourceState: Required<MockedSignInResourceState> = {
   createdSessionId: null,
   identifier: null,
   isTransferable: false,
+  secondFactorVerificationStatus: null,
+  secondFactorVerificationStrategy: null,
   status: "needs_identifier",
   supportedFirstFactors: null,
+  supportedSecondFactors: null,
 };
 let internalMockedSignUpResourceState: Required<MockedSignUpResourceState> = {
   createdSessionId: null,
@@ -237,8 +243,13 @@ export function mockSignInResource(state: MockedSignInResourceState): void {
     createdSessionId: state.createdSessionId ?? null,
     identifier: state.identifier ?? null,
     isTransferable: state.isTransferable ?? false,
+    secondFactorVerificationStatus:
+      state.secondFactorVerificationStatus ?? null,
+    secondFactorVerificationStrategy:
+      state.secondFactorVerificationStrategy ?? null,
     status: state.status,
     supportedFirstFactors: state.supportedFirstFactors ?? null,
+    supportedSecondFactors: state.supportedSecondFactors ?? null,
   };
 }
 
@@ -557,6 +568,14 @@ function clearMockedAuth() {
   mockedClerk.signInAttemptFirstFactor.mockImplementation(
     defaultSignInResourceOperationImpl,
   );
+  mockedClerk.signInPrepareSecondFactor.mockReset();
+  mockedClerk.signInPrepareSecondFactor.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
+  mockedClerk.signInAttemptSecondFactor.mockReset();
+  mockedClerk.signInAttemptSecondFactor.mockImplementation(
+    defaultSignInResourceOperationImpl,
+  );
   mockedClerk.signInResetPassword.mockReset();
   mockedClerk.signInResetPassword.mockImplementation(
     defaultSignInResourceOperationImpl,
@@ -676,6 +695,12 @@ const signInPrepareFirstFactor = vi.fn<
 const signInAttemptFirstFactor = vi.fn<
   typeof defaultSignInResourceOperationImpl
 >(defaultSignInResourceOperationImpl);
+const signInPrepareSecondFactor = vi.fn<
+  typeof defaultSignInResourceOperationImpl
+>(defaultSignInResourceOperationImpl);
+const signInAttemptSecondFactor = vi.fn<
+  typeof defaultSignInResourceOperationImpl
+>(defaultSignInResourceOperationImpl);
 const signInAuthenticateWithPasskey = vi.fn<
   typeof defaultSignInResourceOperationImpl
 >(defaultSignInResourceOperationImpl);
@@ -746,12 +771,24 @@ const mockedClientSignIn = {
   get supportedFirstFactors() {
     return internalMockedSignInResourceState.supportedFirstFactors;
   },
+  get supportedSecondFactors() {
+    return internalMockedSignInResourceState.supportedSecondFactors;
+  },
+  get secondFactorVerification() {
+    const status =
+      internalMockedSignInResourceState.secondFactorVerificationStatus;
+    const strategy =
+      internalMockedSignInResourceState.secondFactorVerificationStrategy;
+    return status || strategy ? { status, strategy } : undefined;
+  },
   get createdSessionId() {
     return internalMockedSignInResourceState.createdSessionId;
   },
   create: clientSignInCreate,
   prepareFirstFactor: signInPrepareFirstFactor,
   attemptFirstFactor: signInAttemptFirstFactor,
+  prepareSecondFactor: signInPrepareSecondFactor,
+  attemptSecondFactor: signInAttemptSecondFactor,
   authenticateWithPasskey: signInAuthenticateWithPasskey,
   authenticateWithRedirect: signInAuthenticateWithRedirect,
   resetPassword: signInResetPassword,
@@ -1053,6 +1090,8 @@ export const mockedClerk = {
   clientSignInCreate,
   signInPrepareFirstFactor,
   signInAttemptFirstFactor,
+  signInPrepareSecondFactor,
+  signInAttemptSecondFactor,
   signInAuthenticateWithPasskey,
   signInAuthenticateWithRedirect,
   signInResetPassword,
