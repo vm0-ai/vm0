@@ -73,7 +73,17 @@ function sentInlineTemplate(
   return undefined;
 }
 
-async function loadImportedTemplateCardImage(
+function activeImportedTemplateImage(media: HTMLElement): HTMLImageElement {
+  const image = media.querySelector(
+    "[data-imported-presentation-template-image]",
+  );
+  if (!(image instanceof HTMLImageElement)) {
+    throw new Error("Active imported template image not found");
+  }
+  return image;
+}
+
+async function loadImportedTemplateImage(
   media: HTMLElement,
   url: string,
 ): Promise<HTMLImageElement> {
@@ -92,9 +102,63 @@ async function loadImportedTemplateCardImage(
   });
   fireEvent.load(image);
   await waitFor(() => {
-    expect(image).toHaveAttribute("data-active", "true");
+    expect(image).toHaveAttribute("data-loaded-image-url", url);
   });
   return image;
+}
+
+function controlImportedTemplateImageDecodes(
+  heldImageUrls: readonly string[],
+): {
+  complete: (imageUrl: string) => Promise<void>;
+  hold: (imageUrl: string) => void;
+} {
+  const held = new Set(heldImageUrls);
+  const pending = new Map<string, TestDeferred[]>();
+
+  class ControlledImage {
+    decoding = "auto";
+    loading = "eager";
+    fetchPriority = "auto";
+    #src = "";
+
+    get src(): string {
+      return this.#src;
+    }
+
+    set src(value: string) {
+      this.#src = value;
+    }
+
+    decode(): Promise<void> {
+      if (!held.has(this.#src)) {
+        return Promise.resolve();
+      }
+      const deferred = context.mocks.deferred<void>();
+      const requests = pending.get(this.#src) ?? [];
+      requests.push(deferred);
+      pending.set(this.#src, requests);
+      return deferred.promise;
+    }
+  }
+
+  vi.stubGlobal("Image", ControlledImage as unknown as typeof Image);
+
+  return {
+    complete: async (imageUrl) => {
+      const request = await waitFor(() => {
+        const found = pending.get(imageUrl)?.shift();
+        if (found === undefined) {
+          throw new Error(`Decoded image request not found: ${imageUrl}`);
+        }
+        return found;
+      });
+      request.resolve();
+    },
+    hold: (imageUrl) => {
+      held.add(imageUrl);
+    },
+  };
 }
 
 function presentationTemplateSummary(
@@ -3521,6 +3585,9 @@ describe("chat composer templates", () => {
     const renewedSecondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
       return `https://example.com/renewed-secondary-page-${index + 1}.png`;
     });
+    const imageDecodes = controlImportedTemplateImageDecodes([
+      renewedPrimaryPageUrls[0]!,
+    ]);
     const primaryTemplate = {
       id: primaryTemplateId,
       title: "Primary draft deck",
@@ -3568,13 +3635,15 @@ describe("chat composer templates", () => {
     let catalogRequestCount = 0;
     let primaryDetailRequestCount = 0;
     let secondaryDetailRequestCount = 0;
+    let serveRenewedUrls = false;
     context.mocks.api(
       presentationTemplatesContract.list,
       async ({ respond }) => {
         catalogRequestCount += 1;
-        if (catalogRequestCount > 2) {
+        if (catalogRequestCount > 3) {
           refreshCatalogRequested.resolve();
           await releaseRefreshCatalog.promise;
+          serveRenewedUrls = true;
           return respond(200, [renewedPrimarySummary, renewedSecondarySummary]);
         }
         return respond(200, [primarySummary, secondarySummary]);
@@ -3585,8 +3654,10 @@ describe("chat composer templates", () => {
       ({ params, respond }) => {
         if (params.templateId === primaryTemplateId) {
           primaryDetailRequestCount += 1;
-          if (primaryDetailRequestCount > 2) {
-            refreshedPrimaryDetailRequested.resolve();
+          if (serveRenewedUrls) {
+            if (!refreshedPrimaryDetailRequested.settled()) {
+              refreshedPrimaryDetailRequested.resolve();
+            }
             return respond(200, renewedPrimaryTemplate);
           }
           return respond(200, primaryTemplate);
@@ -3687,7 +3758,7 @@ describe("chat composer templates", () => {
     fireEvent.load(within(preview).getByRole("img"));
     fireEvent.mouseEnter(preview);
     fireEvent.mouseMove(preview, { clientX: 4, clientY: 80 });
-    await loadImportedTemplateCardImage(
+    await loadImportedTemplateImage(
       preview,
       "https://example.com/prefetch-primary-page-2.png",
     );
@@ -3704,18 +3775,27 @@ describe("chat composer templates", () => {
       );
     });
     expect(catalogRequestCount).toBe(2);
-    expect(primaryDetailRequestCount).toBe(2);
+    expect(primaryDetailRequestCount).toBe(3);
     expect(secondaryDetailRequestCount).toBe(0);
 
-    await user.keyboard("{Escape}");
+    // A metadata-only refresh must not reset the independent signed-detail URL
+    // age, or frequent renames and visibility changes can postpone renewal
+    // until the page URLs have expired.
+    mockNow(context.signal, loadedAtMs + 5 * 60 * 1000);
+    context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(catalogRequestCount).toBe(3);
+      expect(primaryDetailRequestCount).toBe(4);
     });
     // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
     // overlap with the API's 15-minute expiry. Opening is also a non-blocking
     // catch-up point for a suspended tab whose timer did not run.
     mockNow(context.signal, loadedAtMs + 10 * 60 * 1000 + 1);
-    await user.click(screen.getByLabelText("Template"));
+    click(within(dialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Template"));
     await refreshCatalogRequested.promise;
 
     const refreshingDialog = screen.getByRole("dialog");
@@ -3736,6 +3816,11 @@ describe("chat composer templates", () => {
 
     releaseRefreshCatalog.resolve();
     await refreshedPrimaryDetailRequested.promise;
+    await waitFor(() => {
+      // Catalog reconciliation recreates the preload resource. The separate
+      // detail-version renewal is observed on the next card hover below.
+      expect(primaryDetailRequestCount).toBe(5);
+    });
     const refreshedPreviewButton = within(refreshingCard).getByLabelText(
       "Preview Primary draft deck at current slide",
     );
@@ -3743,27 +3828,13 @@ describe("chat composer templates", () => {
     if (!refreshedPreview) {
       throw new Error("Refreshed imported template preview not found");
     }
-    const renewedCover = await waitFor(() => {
-      const found = Array.from(
-        refreshedPreview.querySelectorAll<HTMLImageElement>(
-          "[data-imported-presentation-template-image]",
-        ),
-      ).find((candidate) => {
-        return (
-          candidate.getAttribute("src") ===
-          "https://example.com/renewed-primary-page-1.png"
-        );
-      });
-      if (found === undefined) {
-        throw new Error("Renewed uploaded template cover was not requested");
-      }
-      return found;
-    });
     expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
       "src",
       "https://example.com/prefetch-primary-page-1.png",
     );
-    fireEvent.load(renewedCover);
+    await imageDecodes.complete(
+      "https://example.com/renewed-primary-page-1.png",
+    );
     await waitFor(() => {
       expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
         "src",
@@ -3776,9 +3847,15 @@ describe("chat composer templates", () => {
         return new DOMRect(0, 0, 300, 160);
       },
     });
+    const detailRequestsBeforeRenewedHover = primaryDetailRequestCount;
     fireEvent.mouseEnter(refreshedPreview);
+    await waitFor(() => {
+      expect(primaryDetailRequestCount).toBeGreaterThan(
+        detailRequestsBeforeRenewedHover,
+      );
+    });
     fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
-    await loadImportedTemplateCardImage(
+    await loadImportedTemplateImage(
       refreshedPreview,
       "https://example.com/renewed-primary-page-100.png",
     );
@@ -3787,8 +3864,8 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/renewed-primary-page-100.png",
     );
-    expect(catalogRequestCount).toBe(3);
-    expect(primaryDetailRequestCount).toBe(3);
+    expect(catalogRequestCount).toBe(4);
+    expect(primaryDetailRequestCount).toBeGreaterThan(3);
     expect(secondaryDetailRequestCount).toBe(0);
   });
 
@@ -3883,6 +3960,9 @@ describe("chat composer templates", () => {
 
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
     const user = userEvent.setup({ delay: null });
+    const imageDecodes = controlImportedTemplateImageDecodes([
+      "https://example.com/imported-page-3.png",
+    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const templateId = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
     setMockPresentationTemplates([
@@ -3927,7 +4007,7 @@ describe("chat composer templates", () => {
     fireEvent.load(within(preview).getByRole("img"));
     fireEvent.mouseEnter(preview);
     fireEvent.mouseMove(preview, { clientX: 150, clientY: 80 });
-    await loadImportedTemplateCardImage(
+    await loadImportedTemplateImage(
       preview,
       "https://example.com/imported-page-2.png",
     );
@@ -3937,17 +4017,59 @@ describe("chat composer templates", () => {
     );
 
     click(previewButton);
-    const detailImage = await screen.findByTestId(
+    const detailPreview = await screen.findByTestId(
       "Brand system imported detail image preview",
     );
-    expect(detailImage).toHaveAttribute(
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-2.png",
+    );
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-2.png",
     );
     await user.click(screen.getByLabelText("Preview slide 3"));
-    expect(detailImage).toHaveAttribute(
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-2.png",
+    );
+    await user.click(screen.getByLabelText("Preview slide 2"));
+    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-2.png",
+    );
+    await user.click(screen.getByLabelText("Preview slide 3"));
+    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    await waitFor(() => {
+      expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+        "src",
+        "https://example.com/imported-page-3.png",
+      );
+    });
+    imageDecodes.hold("https://example.com/imported-page-2.png");
+    imageDecodes.hold("https://example.com/imported-cover.png");
+    await user.click(screen.getByLabelText("Preview slide 2"));
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-3.png",
+    );
+    await user.click(screen.getByLabelText("Preview slide 1"));
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+      "src",
+      "https://example.com/imported-page-3.png",
+    );
+    await imageDecodes.complete("https://example.com/imported-cover.png");
+    await waitFor(() => {
+      expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+        "src",
+        "https://example.com/imported-cover.png",
+      );
+    });
+    await imageDecodes.complete("https://example.com/imported-page-2.png");
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
+      "src",
+      "https://example.com/imported-cover.png",
     );
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
@@ -4011,21 +4133,14 @@ describe("chat composer templates", () => {
     };
     let detailRequestCount = 0;
     let updateRequestCount = 0;
-    let holdDetailRefresh = false;
-    const detailRefreshRequested = context.mocks.deferred<void>();
-    const releaseDetailRefresh = context.mocks.deferred<void>();
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
       return respond(200, [presentationTemplateSummary(template)]);
     });
     context.mocks.api(
       presentationTemplatesContract.get,
-      async ({ params, respond }) => {
+      ({ params, respond }) => {
         expect(params.templateId).toBe(template.id);
         detailRequestCount += 1;
-        if (holdDetailRefresh) {
-          detailRefreshRequested.resolve();
-          await releaseDetailRefresh.promise;
-        }
         return respond(200, template);
       },
     );
@@ -4035,7 +4150,6 @@ describe("chat composer templates", () => {
         expect(params.templateId).toBe(template.id);
         expect(body).toStrictEqual({ visibility: "public" });
         updateRequestCount += 1;
-        holdDetailRefresh = true;
         template = {
           ...template,
           coverUrl:
@@ -4062,72 +4176,59 @@ describe("chat composer templates", () => {
         "Preview Stable preview deck at current slide",
       ),
     );
-    const detailImage = await screen.findByTestId(
+    const detailPreview = await screen.findByTestId(
       "Stable preview deck imported detail image preview",
     );
     await user.click(screen.getByLabelText("Preview slide 3"));
-    expect(detailImage).toHaveAttribute(
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/stable-preview-page-3.png",
+    );
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/stable-preview-page-3.png",
     );
     const thumbnailButtons = [1, 2, 3].map((slideNumber) => {
       return screen.getByLabelText(`Preview slide ${slideNumber.toString()}`);
     });
-    const thumbnailImages = thumbnailButtons.map((button) => {
-      const image = button.querySelector("img");
-      if (image === null) {
-        throw new Error("Uploaded template thumbnail image not found");
+    const initialPageUrls = template.pageUrls;
+    for (const [index, button] of thumbnailButtons.entries()) {
+      const pageUrl = initialPageUrls[index];
+      if (pageUrl === undefined) {
+        throw new Error("Uploaded template page URL not found");
       }
-      return image;
-    });
+      await loadImportedTemplateImage(button, pageUrl);
+    }
     const detailRequestCountBeforeUpdate = detailRequestCount;
     expect(detailRequestCountBeforeUpdate).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("combobox", { name: "Visibility" }));
     await user.click(screen.getByRole("option", { name: "Workspace" }));
-    await detailRefreshRequested.promise;
-
-    expect(updateRequestCount).toBe(1);
+    await waitFor(() => {
+      expect(updateRequestCount).toBe(1);
+      expect(
+        screen.getByRole("combobox", { name: "Visibility" }),
+      ).toHaveTextContent("Workspace");
+    });
     expect(
       screen.getByTestId("Stable preview deck imported detail image preview"),
-    ).toBe(detailImage);
-    expect(detailImage).toHaveAttribute(
+    ).toBe(detailPreview);
+    expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/stable-preview-page-3.png",
     );
     for (const [index, button] of thumbnailButtons.entries()) {
-      expect(
-        screen.getByLabelText(`Preview slide ${(index + 1).toString()}`),
-      ).toBe(button);
-      expect(button.querySelector("img")).toBe(thumbnailImages[index]);
-    }
-
-    releaseDetailRefresh.resolve();
-    await waitFor(() => {
-      expect(detailRequestCount).toBeGreaterThan(
-        detailRequestCountBeforeUpdate,
-      );
-      expect(
-        screen.getByRole("combobox", { name: "Visibility" }),
-      ).toHaveTextContent("Workspace");
-      expect(detailImage).toHaveAttribute(
-        "src",
-        "https://example.com/stable-preview-page-3.png?signature=renewed",
-      );
-    });
-    expect(
-      screen.getByTestId("Stable preview deck imported detail image preview"),
-    ).toBe(detailImage);
-    for (const [index, button] of thumbnailButtons.entries()) {
-      const expectedPageUrl = template.pageUrls[index];
+      const expectedPageUrl = initialPageUrls[index];
       if (expectedPageUrl === undefined) {
-        throw new Error("Renewed uploaded template page URL not found");
+        throw new Error("Uploaded template page URL not found");
       }
       expect(
         screen.getByLabelText(`Preview slide ${(index + 1).toString()}`),
       ).toBe(button);
-      expect(button.querySelector("img")).toBe(thumbnailImages[index]);
-      expect(thumbnailImages[index]).toHaveAttribute("src", expectedPageUrl);
+      expect(activeImportedTemplateImage(button)).toHaveAttribute(
+        "src",
+        expectedPageUrl,
+      );
     }
   });
 
@@ -4241,7 +4342,10 @@ describe("chat composer templates", () => {
     }
     fireEvent.load(remainingCover);
     await waitFor(() => {
-      expect(remainingCover).toHaveAttribute("data-active", "true");
+      expect(remainingCover).toHaveAttribute(
+        "data-loaded-image-url",
+        remainingTemplate.coverUrl,
+      );
     });
     const scrollContainer = presentationTemplateGridScrollContainer();
     scrollContainer.scrollTop = 187;
@@ -4274,7 +4378,10 @@ describe("chat composer templates", () => {
       ),
     ).toBe(remainingCard);
     expect(remainingCover).toBeInTheDocument();
-    expect(remainingCover).toHaveAttribute("data-active", "true");
+    expect(remainingCover).toHaveAttribute(
+      "data-loaded-image-url",
+      remainingTemplate.coverUrl,
+    );
     expect(scrollContainer.scrollTop).toBe(187);
 
     releaseDeleteRefresh.resolve();

@@ -5006,19 +5006,17 @@ function ImportedPptCardMediaControls({
   );
 }
 
-type ImportedPptCardImageSlot = "a" | "b";
+// Keep one rendered image stable while its replacement loads and decodes
+// off-DOM, then swap the src atomically. Stale requests are ignored by URL.
 
-function importedPptCardImage(
-  media: HTMLDivElement,
-  slot: ImportedPptCardImageSlot,
-): HTMLImageElement | null {
+function importedPptImage(media: HTMLElement): HTMLImageElement | null {
   return media.querySelector<HTMLImageElement>(
-    `[data-imported-presentation-template-image="${slot}"]`,
+    "[data-imported-presentation-template-image]",
   );
 }
 
-function setImportedPptCardPlaceholder(
-  media: HTMLDivElement,
+function setImportedPptImagePlaceholder(
+  media: HTMLElement,
   state: "error" | "hidden" | "loading",
 ): void {
   const placeholder = media.querySelector<HTMLElement>(
@@ -5031,136 +5029,219 @@ function setImportedPptCardPlaceholder(
   placeholder.dataset.state = state;
 }
 
-function activateImportedPptCardImage(
-  media: HTMLDivElement,
-  slot: ImportedPptCardImageSlot,
-): void {
-  const active = importedPptCardImage(media, slot);
-  const inactive = importedPptCardImage(media, slot === "a" ? "b" : "a");
-  if (active === null || inactive === null) {
-    return;
-  }
-  media.dataset.activeImageSlot = slot;
-  active.dataset.active = "true";
-  active.alt = media.dataset.imageLabel ?? "";
-  active.title = media.dataset.imageLabel ?? "";
-  active.removeAttribute("aria-hidden");
-  inactive.dataset.active = "false";
-  inactive.alt = "";
-  inactive.removeAttribute("title");
-  inactive.setAttribute("aria-hidden", "true");
-  setImportedPptCardPlaceholder(media, "hidden");
-}
-
-function completeImportedPptCardImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLDivElement>(
-    "[data-imported-presentation-template-media]",
-  );
-  const slot = image.dataset.importedPresentationTemplateImage;
-  if (
-    media === null ||
-    (slot !== "a" && slot !== "b") ||
-    image.getAttribute("src") !== media.dataset.desiredImageUrl
-  ) {
-    return;
-  }
-  image.dataset.loadedImageUrl = media.dataset.desiredImageUrl;
-  activateImportedPptCardImage(media, slot);
-}
-
-async function decodeImportedPptCardImage(
+function showImportedPptImage(
+  media: HTMLElement,
   image: HTMLImageElement,
+  imageUrl: string,
+): void {
+  if (image.getAttribute("src") !== imageUrl) {
+    image.src = imageUrl;
+  }
+  image.dataset.loadedImageUrl = imageUrl;
+  image.alt = media.dataset.imageLabel ?? "";
+  image.title = media.dataset.imageLabel ?? "";
+  image.removeAttribute("aria-hidden");
+  setImportedPptImagePlaceholder(media, "hidden");
+}
+
+async function loadDecodedImportedPptImage(
+  imageUrl: string,
+  referenceImage: HTMLImageElement,
+): Promise<boolean> {
+  const candidate = new Image();
+  candidate.decoding = "async";
+  candidate.loading = "eager";
+  candidate.fetchPriority = referenceImage.fetchPriority;
+  candidate.src = imageUrl;
+  let decodeFailed = false;
+  await tapError(candidate.decode(), () => {
+    decodeFailed = true;
+  });
+  return !decodeFailed;
+}
+
+async function replaceImportedPptImageAfterDecode(
+  media: HTMLElement,
+  imageUrl: string,
+): Promise<void> {
+  const image = importedPptImage(media);
+  if (image === null) {
+    return;
+  }
+  const decoded = await loadDecodedImportedPptImage(imageUrl, image);
+  if (!decoded) {
+    if (
+      media.dataset.desiredImageUrl === imageUrl &&
+      image.dataset.loadedImageUrl === undefined
+    ) {
+      setImportedPptImagePlaceholder(media, "error");
+    }
+    if (media.dataset.pendingImageUrl === imageUrl) {
+      delete media.dataset.pendingImageUrl;
+    }
+    return;
+  }
+  if (media.dataset.pendingImageUrl === imageUrl) {
+    delete media.dataset.pendingImageUrl;
+  }
+  if (media.dataset.desiredImageUrl !== imageUrl || !media.isConnected) {
+    return;
+  }
+  showImportedPptImage(media, image, imageUrl);
+}
+
+function requestDecodedImportedPptImage(
+  media: HTMLElement,
+  imageUrl: string,
+): void {
+  if (media.dataset.pendingImageUrl === imageUrl) {
+    return;
+  }
+  media.dataset.pendingImageUrl = imageUrl;
+  detach(
+    replaceImportedPptImageAfterDecode(media, imageUrl),
+    Reason.DomCallback,
+  );
+}
+
+function completeImportedPptImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLElement>(
+    "[data-imported-presentation-template-image-container]",
+  );
+  const imageUrl = image.getAttribute("src");
+  if (media === null || imageUrl === null) {
+    return;
+  }
+  showImportedPptImage(media, image, imageUrl);
+  if (
+    imageUrl === media.dataset.previewImageUrl &&
+    imageUrl !== media.dataset.desiredImageUrl &&
+    media.dataset.desiredImageUrl !== undefined
+  ) {
+    requestDecodedImportedPptImage(media, media.dataset.desiredImageUrl);
+  }
+}
+
+async function decodeImportedPptImage(
+  image: HTMLImageElement,
+  imageUrl: string,
 ): Promise<void> {
   await bestEffort(image.decode());
-  completeImportedPptCardImage(image);
+  if (image.getAttribute("src") === imageUrl) {
+    completeImportedPptImage(image);
+  }
 }
 
-function prepareImportedPptCardImage(image: HTMLImageElement): void {
+function prepareImportedPptImage(image: HTMLImageElement): void {
   if (image.decode === undefined) {
-    completeImportedPptCardImage(image);
+    completeImportedPptImage(image);
     return;
   }
-  detach(decodeImportedPptCardImage(image), Reason.DomCallback);
-}
-
-function failImportedPptCardImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLDivElement>(
-    "[data-imported-presentation-template-media]",
-  );
-  if (
-    media !== null &&
-    image.dataset.importedPresentationTemplateImage ===
-      media.dataset.activeImageSlot
-  ) {
-    delete image.dataset.loadedImageUrl;
-    setImportedPptCardPlaceholder(media, "error");
+  const imageUrl = image.getAttribute("src");
+  if (imageUrl !== null) {
+    detach(decodeImportedPptImage(image, imageUrl), Reason.DomCallback);
   }
 }
 
-function syncImportedPptCardImage(
-  media: HTMLDivElement | null,
+function failImportedPptImage(image: HTMLImageElement): void {
+  const media = image.closest<HTMLElement>(
+    "[data-imported-presentation-template-image-container]",
+  );
+  const imageUrl = image.getAttribute("src");
+  if (media === null || imageUrl === null) {
+    return;
+  }
+  delete image.dataset.loadedImageUrl;
+  if (
+    imageUrl === media.dataset.previewImageUrl &&
+    imageUrl !== media.dataset.desiredImageUrl &&
+    media.dataset.desiredImageUrl !== undefined
+  ) {
+    image.src = media.dataset.desiredImageUrl;
+    return;
+  }
+  setImportedPptImagePlaceholder(media, "error");
+}
+
+function syncImportedPptImage(
+  media: HTMLElement | null,
   imageUrl: string | null,
   label: string,
+  previewImageUrl: string | null = imageUrl,
 ): void {
   if (media === null) {
     return;
   }
-  const activeSlot = media.dataset.activeImageSlot === "b" ? "b" : "a";
-  const inactiveSlot = activeSlot === "a" ? "b" : "a";
-  const active = importedPptCardImage(media, activeSlot);
-  const inactive = importedPptCardImage(media, inactiveSlot);
-  if (active === null || inactive === null) {
+  const image = importedPptImage(media);
+  if (image === null) {
     return;
   }
-  media.dataset.activeImageSlot = activeSlot;
   media.dataset.imageLabel = label;
-  media.dataset.desiredImageUrl = imageUrl ?? "";
-  active.dataset.active = "true";
-  active.alt = label;
-  active.title = label;
-  active.removeAttribute("aria-hidden");
-  inactive.dataset.active = "false";
-  inactive.alt = "";
-  inactive.removeAttribute("title");
-  inactive.setAttribute("aria-hidden", "true");
+  image.alt = label;
+  image.title = label;
 
   if (imageUrl === null) {
-    active.removeAttribute("src");
-    inactive.removeAttribute("src");
-    setImportedPptCardPlaceholder(media, "error");
+    delete media.dataset.desiredImageUrl;
+    delete media.dataset.previewImageUrl;
+    delete media.dataset.pendingImageUrl;
+    image.removeAttribute("src");
+    delete image.dataset.loadedImageUrl;
+    image.setAttribute("aria-hidden", "true");
+    setImportedPptImagePlaceholder(media, "error");
     return;
   }
-  if (active.getAttribute("src") === imageUrl) {
-    if (
-      active.dataset.loadedImageUrl === imageUrl ||
-      (active.complete && active.naturalWidth > 0)
-    ) {
-      setImportedPptCardPlaceholder(media, "hidden");
-    }
-    return;
-  }
+  const resolvedPreviewImageUrl = previewImageUrl ?? imageUrl;
+  image.removeAttribute("aria-hidden");
   if (
-    inactive.getAttribute("src") === imageUrl &&
-    (inactive.dataset.loadedImageUrl === imageUrl ||
-      (inactive.complete && inactive.naturalWidth > 0))
+    media.dataset.desiredImageUrl === imageUrl &&
+    media.dataset.previewImageUrl === resolvedPreviewImageUrl
   ) {
-    activateImportedPptCardImage(media, inactiveSlot);
     return;
   }
-  if (active.getAttribute("src") === null) {
-    active.loading = "eager";
-    active.fetchPriority = "high";
-    delete active.dataset.loadedImageUrl;
-    setImportedPptCardPlaceholder(media, "loading");
-    active.src = imageUrl;
+  media.dataset.desiredImageUrl = imageUrl;
+  media.dataset.previewImageUrl = resolvedPreviewImageUrl;
+
+  if (image.dataset.loadedImageUrl === imageUrl) {
+    setImportedPptImagePlaceholder(media, "hidden");
     return;
   }
-  if (inactive.getAttribute("src") !== imageUrl) {
-    inactive.loading = "eager";
-    inactive.fetchPriority = "high";
-    delete inactive.dataset.loadedImageUrl;
-    inactive.src = imageUrl;
+  const currentImageUrl = image.getAttribute("src");
+  if (currentImageUrl === null || image.dataset.loadedImageUrl === undefined) {
+    delete image.dataset.loadedImageUrl;
+    setImportedPptImagePlaceholder(media, "loading");
+    image.src = resolvedPreviewImageUrl;
+    return;
   }
+  requestDecodedImportedPptImage(media, imageUrl);
+}
+
+function ImportedPptImage({
+  className,
+  fetchPriority,
+  loading,
+}: {
+  className: string;
+  fetchPriority: "auto" | "high" | "low";
+  loading: "eager" | "lazy";
+}) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      data-imported-presentation-template-image=""
+      loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
+      draggable={false}
+      className={className}
+      onLoad={(event) => {
+        prepareImportedPptImage(event.currentTarget);
+      }}
+      onError={(event) => {
+        failImportedPptImage(event.currentTarget);
+      }}
+    />
+  );
 }
 
 function ImportedPptCardMedia({
@@ -5191,8 +5272,9 @@ function ImportedPptCardMedia({
   return (
     <div
       ref={(media) => {
-        syncImportedPptCardImage(media, activeImageUrl, label);
+        syncImportedPptImage(media, activeImageUrl, label);
       }}
+      data-imported-presentation-template-image-container=""
       data-imported-presentation-template-media=""
       className={cn(
         TEMPLATE_TILE_MEDIA,
@@ -5217,37 +5299,10 @@ function ImportedPptCardMedia({
         onHover(null);
       }}
     >
-      <img
-        alt=""
-        aria-hidden="true"
-        data-imported-presentation-template-image="a"
+      <ImportedPptImage
         loading="eager"
-        decoding="async"
         fetchPriority="high"
-        draggable={false}
-        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
-        onLoad={(event) => {
-          prepareImportedPptCardImage(event.currentTarget);
-        }}
-        onError={(event) => {
-          failImportedPptCardImage(event.currentTarget);
-        }}
-      />
-      <img
-        alt=""
-        aria-hidden="true"
-        data-imported-presentation-template-image="b"
-        loading="eager"
-        decoding="async"
-        fetchPriority="high"
-        draggable={false}
-        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100"
-        onLoad={(event) => {
-          prepareImportedPptCardImage(event.currentTarget);
-        }}
-        onError={(event) => {
-          failImportedPptCardImage(event.currentTarget);
-        }}
+        className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
       />
       <div
         data-imported-presentation-template-image-placeholder=""
@@ -5670,30 +5725,30 @@ function ImportedPresentationTemplateMainPreview({
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
+  const previewLabel = t(
+    ($) => {
+      return $.artifacts.templates.slidePreview;
+    },
+    { title },
+  );
   return (
     <div
       role="group"
-      aria-label={t(
-        ($) => {
-          return $.artifacts.templates.slidePreview;
-        },
-        { title },
-      )}
+      aria-label={previewLabel}
+      ref={(media) => {
+        syncImportedPptImage(media, activeImageUrl, previewLabel);
+      }}
+      data-imported-presentation-template-image-container=""
+      data-testid={`${title} imported detail image preview`}
       tabIndex={0}
       onKeyDown={onKeyDown}
       className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {activeImageUrl === null ? null : (
-        <img
-          alt=""
-          data-testid={`${title} imported detail image preview`}
-          src={activeImageUrl}
-          loading="eager"
-          decoding="async"
-          draggable={false}
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        />
-      )}
+      <ImportedPptImage
+        loading="eager"
+        fetchPriority="high"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      />
       <button
         type="button"
         aria-label={t(($) => {
@@ -5739,10 +5794,6 @@ function ImportedPresentationTemplateThumbnails({
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
-  const pageResourceKey = (pageUrl: string) => {
-    const queryStart = pageUrl.indexOf("?");
-    return queryStart === -1 ? pageUrl : pageUrl.slice(0, queryStart);
-  };
   return (
     <div
       className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
@@ -5751,17 +5802,22 @@ function ImportedPresentationTemplateThumbnails({
       {pageUrls.map((pageUrl, index) => {
         const slideNumber = index + 1;
         const active = index === activeSlideIndex;
+        const previewLabel = t(
+          ($) => {
+            return $.artifacts.templates.previewSlide;
+          },
+          { slideNumber },
+        );
         return (
           <button
-            key={pageResourceKey(pageUrl)}
+            key={slideNumber}
             type="button"
-            aria-label={t(
-              ($) => {
-                return $.artifacts.templates.previewSlide;
-              },
-              { slideNumber },
-            )}
+            aria-label={previewLabel}
             aria-pressed={active}
+            ref={(media) => {
+              syncImportedPptImage(media, pageUrl, previewLabel);
+            }}
+            data-imported-presentation-template-image-container=""
             onClick={() => {
               onChange(index);
             }}
@@ -5772,13 +5828,10 @@ function ImportedPresentationTemplateThumbnails({
                 : "border-border hover:border-muted-foreground/50",
             )}
           >
-            <img
-              alt=""
-              src={pageUrl}
+            <ImportedPptImage
               loading="lazy"
-              decoding="async"
-              draggable={false}
-              className="pointer-events-none h-full w-full object-cover"
+              fetchPriority="auto"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
             <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
               {slideNumber}

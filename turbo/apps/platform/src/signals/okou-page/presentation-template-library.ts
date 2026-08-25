@@ -206,35 +206,66 @@ function createImportedPresentationTemplateHoverSignals() {
 
 function createImportedPresentationTemplateUrlRefreshSignals(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
+  detailUrlsVersion$: State<number>,
 ) {
-  const internalRequestedAtMs$ = state<number | null>(null);
-  const freshAtMs = (loadedAtMs: number, requestedAtMs: number | null) => {
-    return Math.max(loadedAtMs, requestedAtMs ?? Number.NEGATIVE_INFINITY);
-  };
+  const internalDetailUrlsFreshAtMs$ = state<number | null>(null);
+  const initializeImportedPresentationTemplateDetailUrlsFreshAtMs$ = command(
+    ({ get, set }, catalogLoadedAtMs: number): number => {
+      const detailUrlsFreshAtMs = get(internalDetailUrlsFreshAtMs$);
+      if (detailUrlsFreshAtMs !== null) {
+        return detailUrlsFreshAtMs;
+      }
+      set(internalDetailUrlsFreshAtMs$, catalogLoadedAtMs);
+      return catalogLoadedAtMs;
+    },
+  );
   const refreshImportedPresentationTemplateUrlsIfStale$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const catalog = await get(catalog$);
       signal.throwIfAborted();
+      const detailUrlsFreshAtMs = set(
+        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
+        catalog.loadedAtMs,
+      );
       const requestedAt = now();
       if (
-        requestedAt -
-          freshAtMs(catalog.loadedAtMs, get(internalRequestedAtMs$)) <
+        requestedAt - detailUrlsFreshAtMs <
         PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS
       ) {
         return;
       }
-      set(internalRequestedAtMs$, requestedAt);
+      set(internalDetailUrlsFreshAtMs$, requestedAt);
       await set(refreshAndReconcilePresentationTemplates$, signal);
+      set(detailUrlsVersion$, (version) => {
+        return version + 1;
+      });
     },
   );
   const refreshImportedPresentationTemplateUrlsAfterPickerOpen$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
       // Let the picker mount the last resolved catalog before catch-up makes
       // the catalog pending, so a suspended tab still opens without a blank
       // first frame.
       await delay(0, { signal });
-      set(internalRequestedAtMs$, now());
+      const catalog = await get(catalog$);
+      signal.throwIfAborted();
+      const detailUrlsFreshAtMs = set(
+        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
+        catalog.loadedAtMs,
+      );
+      const requestedAt = now();
+      const refreshDetailUrls =
+        requestedAt - detailUrlsFreshAtMs >=
+        PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS;
+      if (refreshDetailUrls) {
+        set(internalDetailUrlsFreshAtMs$, requestedAt);
+      }
       await set(refreshAndReconcilePresentationTemplates$, signal);
+      if (refreshDetailUrls) {
+        set(detailUrlsVersion$, (version) => {
+          return version + 1;
+        });
+      }
     },
   );
   const importedPresentationTemplateUrlRefreshLifecycleRef$ = onRef(
@@ -248,15 +279,15 @@ function createImportedPresentationTemplateUrlRefreshSignals(
           async (loopSignal) => {
             const catalog = await get(catalog$);
             loopSignal.throwIfAborted();
-            const loadedOrRequestedAtMs = freshAtMs(
+            const detailUrlsFreshAtMs = set(
+              initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
               catalog.loadedAtMs,
-              get(internalRequestedAtMs$),
             );
             await delay(
               Math.max(
                 0,
                 PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
-                  (now() - loadedOrRequestedAtMs),
+                  (now() - detailUrlsFreshAtMs),
               ),
               { signal: loopSignal },
             );
@@ -280,9 +311,7 @@ function createImportedPresentationTemplateUrlRefreshSignals(
 }
 
 function createImportedPresentationTemplateDetailSignals(
-  resources$: Computed<
-    Promise<readonly ImportedPresentationTemplateResource[]>
-  >,
+  detailUrlsVersion$: State<number>,
 ) {
   const internalRequestedTemplateId$ = state<string | null>(null);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -294,11 +323,15 @@ function createImportedPresentationTemplateDetailSignals(
       if (templateId === null) {
         return null;
       }
-      const resources = await get(resources$);
-      const resource = resources.find((candidate) => {
-        return candidate.summary.id === templateId;
-      });
-      return resource === undefined ? null : await get(resource.detail$);
+      // Catalog changes carry mutable metadata. Page URLs rotate only on the
+      // TTL lifecycle so rename and visibility updates cannot reload slides.
+      get(detailUrlsVersion$);
+      const client = get(apiClient$)(presentationTemplatesContract);
+      const result = await accept(
+        client.get({ params: { templateId } }),
+        [200, 404],
+      );
+      return result.status === 404 ? null : result.body;
     },
   );
   const requestImportedPresentationTemplateDetail$ = command(
@@ -321,16 +354,17 @@ export function createImportedPresentationTemplateSignals() {
     catalog$,
     deletedPresentationTemplateIds$,
   );
-  const urlRefresh =
-    createImportedPresentationTemplateUrlRefreshSignals(catalog$);
+  const internalDetailUrlsVersion$ = state(0);
+  const urlRefresh = createImportedPresentationTemplateUrlRefreshSignals(
+    catalog$,
+    internalDetailUrlsVersion$,
+  );
   const importedPresentationTemplateResources$ =
     createImportedPresentationTemplateResources$(
       importedPresentationTemplates$,
     );
   const { internalRequestedTemplateId$, ...detailSignals } =
-    createImportedPresentationTemplateDetailSignals(
-      importedPresentationTemplateResources$,
-    );
+    createImportedPresentationTemplateDetailSignals(internalDetailUrlsVersion$);
 
   const internalPreviewTemplateId$ = state<string | null>(null);
   const importedPresentationTemplatePreviewId$ = computed((get) => {
