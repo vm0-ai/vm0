@@ -12,8 +12,8 @@ import {
 } from "@okouai/db/schema/strapi-integration";
 import { and, asc, eq } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
+import { webUrl } from "../../lib/web-url";
 import type { Db, ReadonlyDb } from "../external/db";
 import { safeUrlParse } from "../utils";
 import {
@@ -29,7 +29,7 @@ function strapiWebhookUrl(
 ): string {
   return new URL(
     `/api/strapi/events/${encodeURIComponent(integrationId)}`,
-    apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand),
+    apiUrlForPublicBrand(webUrl(), publicBrand),
   ).toString();
 }
 

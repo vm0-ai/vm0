@@ -59,6 +59,7 @@ vi.stubEnv("ZERO_HOST_SCHEME", "https");
 vi.stubEnv("OKOU_API_BACKEND_URL", undefined);
 vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("FEISHU_CALLBACK_BASE_URL", "http://localhost:3000");
+vi.stubEnv("OKOU_WEB_URL", undefined);
 vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
