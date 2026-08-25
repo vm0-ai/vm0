@@ -24,6 +24,7 @@ import {
   desc,
   eq,
   ilike,
+  inArray,
   isNotNull,
   lt,
   lte,
@@ -162,6 +163,7 @@ async function loadConnectorAccountRows(
     readonly userId: string;
     readonly target?: ConnectorAccountTarget;
     readonly connectionId?: string;
+    readonly connectionIds?: readonly string[];
     readonly cursor?: ConnectorAccountCursor;
     readonly limit?: number;
     readonly search?: string;
@@ -230,6 +232,9 @@ async function loadConnectorAccountRows(
         eq(connectors.userId, args.userId),
         args.target ? targetCondition(args.target) : undefined,
         args.connectionId ? eq(connectors.id, args.connectionId) : undefined,
+        args.connectionIds
+          ? inArray(connectors.id, [...args.connectionIds])
+          : undefined,
         args.defaultOnly ? eq(connectors.isDefault, true) : undefined,
         cursorCondition,
         searchCondition,
@@ -689,6 +694,30 @@ export async function getConnectorAccount(
   }
   const snapshot = await loadCurrentConnectorRuntimeSnapshot(db);
   return projectConnection(row, snapshot, nowDate());
+}
+
+export async function listConnectorAccountsByIds(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectionIds: readonly string[];
+  },
+): Promise<readonly ConnectorAccountConnection[]> {
+  const connectionIds = [...new Set(args.connectionIds)];
+  if (connectionIds.length === 0) {
+    return [];
+  }
+  const rows = await loadConnectorAccountRows(db, {
+    ...args,
+    connectionIds,
+  });
+  const snapshot = await loadCurrentConnectorRuntimeSnapshot(db);
+  const now = nowDate();
+  return rows.flatMap((row) => {
+    const connection = projectConnection(row, snapshot, now);
+    return connection ? [connection] : [];
+  });
 }
 
 async function exactOwnedAccountExists(

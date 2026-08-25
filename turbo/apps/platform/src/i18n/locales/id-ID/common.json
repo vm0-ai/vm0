@@ -1906,11 +1906,17 @@
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
+      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
+      "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
+      "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
+      "noUsableAccount": "Tidak ada akun yang dapat digunakan",
       "remove": "Hapus {{connectorName}}",
-      "title": "Konektor"
+      "selectedAccountFor": "{{connector}} · Akun terpilih: {{account}}",
+      "title": "Konektor",
+      "useDefault": "Gunakan default"
     },
     "documentTitle": "Chat",
     "errors": {

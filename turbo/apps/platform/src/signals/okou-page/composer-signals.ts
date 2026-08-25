@@ -273,6 +273,7 @@ interface CreateComposerSignalsOptions {
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
+  readonly connector?: ComposerConnectorSignals;
   readonly singleLineOnMobile: boolean;
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
@@ -522,7 +523,9 @@ export function createComposerSignals(
       ...workflowPrompt,
     },
     suggestion: composerSuggestionSignals(workflowComposer),
-    connector: createComposerConnectorSignals(options.agentId),
+    connector:
+      options.connector ??
+      createComposerConnectorSignals(options.agentId, options.threadId),
     draft: {
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,

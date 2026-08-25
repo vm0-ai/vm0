@@ -1906,11 +1906,17 @@
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
+      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
+      "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",
+      "fallsBackTo": "{{account}} 계정으로 대체",
       "find": "커넥터 찾기...",
+      "noUsableAccount": "사용 가능한 계정 없음",
       "remove": "{{connectorName}} 제거",
-      "title": "커넥터"
+      "selectedAccountFor": "{{connector}} · 선택한 계정: {{account}}",
+      "title": "커넥터",
+      "useDefault": "기본값 사용"
     },
     "documentTitle": "채팅",
     "errors": {

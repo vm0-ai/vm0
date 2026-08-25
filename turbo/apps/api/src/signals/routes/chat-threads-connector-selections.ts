@@ -29,15 +29,21 @@ const getSelectionsInner$ = computed(async (get): Promise<unknown> => {
     return notFound("Resource not found");
   }
   const params = get(pathParamsOf(chatThreadConnectorSelectionContract.get));
-  const selections = await listChatThreadConnectorSelections(get(db$), {
+  const result = await listChatThreadConnectorSelections(get(db$), {
     orgId: auth.orgId,
     userId: auth.userId,
     chatThreadId: params.id,
   });
-  if (!selections) {
+  if (!result) {
     return notFound("Chat thread not found");
   }
-  return { status: 200 as const, body: { selections: [...selections] } };
+  return {
+    status: 200 as const,
+    body: {
+      selections: [...result.selections],
+      selectedConnections: [...result.selectedConnections],
+    },
+  };
 });
 
 const updateSelectionInner$ = command(

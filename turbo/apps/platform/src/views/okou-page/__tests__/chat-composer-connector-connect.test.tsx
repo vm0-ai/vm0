@@ -20,6 +20,12 @@ import {
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSelection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
@@ -29,7 +35,11 @@ import {
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
 } from "../../../signals/okou-page/settings/custom-connectors.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import {
+  fillComposer,
+  mockChatLifecycle,
+  PLACEHOLDER,
+} from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
   THREAD_ID,
@@ -205,6 +215,29 @@ function createMockAuthWindow(): Window {
   return authWindow;
 }
 
+function githubAccount(
+  id: string,
+  displayName: string,
+  isDefault: boolean,
+): ConnectorAccountConnection {
+  return {
+    id,
+    target: { kind: "builtin", connectorSlug: "github" },
+    authMethod: "oauth",
+    displayName,
+    isDefault,
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: [],
+    connectionStatus: "connected",
+    reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-08-25T00:00:00.000Z",
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  };
+}
+
 async function openAddConnectorsDialog(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
@@ -228,6 +261,250 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("keeps one-account connector rows unchanged", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = githubAccount(
+      "10000000-0000-4000-8000-000000000003",
+      "Only account",
+      true,
+    );
+    mockThread();
+    mockConnectors([{ connectorSlug: "github" }]);
+    mockAgentConnectorAuthorizations(["github"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await expect(
+      screen.findByLabelText("Remove GitHub"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText(/GitHub ·/u)).not.toBeInTheDocument();
+  });
+
+  it("selects a thread account inside the connectors popover", async () => {
+    const user = userEvent.setup({ delay: null });
+    const defaultAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000001",
+      "Work",
+      true,
+    );
+    const personalAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000002",
+      "Personal",
+      false,
+    );
+    let selectedAccount: ConnectorAccountConnection | null = null;
+    let authorizationWrites = 0;
+    let selectionWrites = 0;
+    let selectionClears = 0;
+    mockThread();
+    mockConnectors([{ connectorSlug: "github" }]);
+    mockAgentConnectorAuthorizations(["github"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "builtin", connectorSlug: "github" },
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        expect(query).toMatchObject({
+          kind: "builtin",
+          connectorSlug: "github",
+          limit: 50,
+        });
+        return respond(200, {
+          connections: [defaultAccount, personalAccount],
+          nextCursor: null,
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(THREAD_ID);
+        return respond(200, {
+          selections: selectedAccount
+            ? [
+                {
+                  connectionId: selectedAccount.id,
+                  target: selectedAccount.target,
+                },
+              ]
+            : [],
+          selectedConnections: selectedAccount ? [selectedAccount] : [],
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        selectionWrites += 1;
+        selectedAccount =
+          [defaultAccount, personalAccount].find((account) => {
+            return account.id === body.connectionId;
+          }) ?? null;
+        if (!selectedAccount) {
+          throw new Error("Expected a known account selection");
+        }
+        return respond(200, body);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.clear,
+      ({ body, respond }) => {
+        selectionClears += 1;
+        expect(body).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "github",
+        });
+        selectedAccount = null;
+        return respond(204);
+      },
+    );
+    context.mocks.api(userConnectorsContract.update, ({ respond }) => {
+      authorizationWrites += 1;
+      return respond(200, { enabledConnectorSlugs: ["github"] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    const defaultMode = await screen.findByLabelText(
+      "GitHub · Using default account: Work",
+    );
+    await user.click(defaultMode);
+    await expect(screen.findByText("Use default")).resolves.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Work Connected" }));
+    await waitFor(() => {
+      expect(selectionWrites).toBe(1);
+    });
+    await user.click(screen.getByLabelText("Back"));
+    await expect(
+      screen.findByLabelText("GitHub · Selected account: Work"),
+    ).resolves.toBeInTheDocument();
+    await user.click(screen.getByLabelText("GitHub · Selected account: Work"));
+    await user.click(screen.getByRole("radio", { name: /Personal/u }));
+    await waitFor(() => {
+      expect(selectionWrites).toBe(2);
+    });
+    await user.click(screen.getByLabelText("Back"));
+    await expect(
+      screen.findByLabelText("GitHub · Selected account: Personal"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByLabelText("GitHub · Selected account: Personal"),
+    );
+    await user.click(screen.getByRole("radio", { name: /Use default/u }));
+    await waitFor(() => {
+      expect(selectionClears).toBe(1);
+    });
+    expect(authorizationWrites).toBe(0);
+  });
+
+  it("applies a pending account selection when creating a thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const defaultAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000011",
+      "Work",
+      true,
+    );
+    const personalAccount = githubAccount(
+      "10000000-0000-4000-8000-000000000012",
+      "Personal",
+      false,
+    );
+    let createdSelections: readonly ConnectorAccountSelection[] | undefined;
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdSelections = body.connectorSelections;
+      },
+    });
+    mockConnectors([{ connectorSlug: "github" }]);
+    mockAgentConnectorAuthorizations(["github"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, {
+        connections: [defaultAccount, personalAccount],
+        nextCursor: null,
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const input = await screen.findByPlaceholderText(PLACEHOLDER);
+    const composer = composerElementFrom(input);
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(
+      await screen.findByLabelText("GitHub · Using default account: Work"),
+    );
+    await user.click(screen.getByRole("radio", { name: /Personal/u }));
+    await user.keyboard("{Escape}");
+    await fillComposer(input, "Use my personal GitHub account");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(createdSelections).toStrictEqual([
+        {
+          connectionId: personalAccount.id,
+          target: personalAccount.target,
+        },
+      ]);
+    });
+  });
+
   it("authorizes connector access for the thread agent", async () => {
     const user = userEvent.setup({ delay: null });
     mockThread();
@@ -338,10 +615,23 @@ describe("chat composer connector connection", () => {
         ],
       });
     });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "custom", customConnectorId: connector.id },
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: null,
+          },
+        ],
+      });
+    });
 
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const composer = composerElementFrom(
@@ -352,6 +642,7 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByLabelText("Remove Feishu"),
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Feishu ·/u)).not.toBeInTheDocument();
   });
 
   it("keeps authorized MCP custom connectors removable while disabled", async () => {

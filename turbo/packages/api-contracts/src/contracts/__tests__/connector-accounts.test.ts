@@ -8,6 +8,7 @@ import {
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
 } from "../connector-accounts";
+import { chatThreadConnectorSelectionContract } from "../chat-threads";
 import {
   connectorExternalCodeSessionContract,
   connectorManualGrantContract,
@@ -143,6 +144,14 @@ describe("connector account contracts", () => {
       connectionId,
       target: { kind: "custom", customConnectorId },
     });
+  });
+
+  it("requires batched selected account details on thread selection reads", () => {
+    const response = chatThreadConnectorSelectionContract.get.responses[200];
+    expect(
+      response.safeParse({ selections: [], selectedConnections: [] }).success,
+    ).toBe(true);
+    expect(response.safeParse({ selections: [] }).success).toBe(false);
   });
 
   it("requires one target for bounded account detail queries", () => {
