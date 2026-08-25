@@ -1083,6 +1083,7 @@
         "chooseAccountTitle": "Choose an account",
         "chooseMethodSubtitle": "Facing issues? You can use any of these methods to sign in.",
         "chooseMethodTitle": "Use another method",
+        "clientTrustNotice": "You're signing in from a new device. We're asking for verification to keep your account secure.",
         "codeExpired": "This verification code has expired. Request a new code.",
         "codeLabel": "Verification code",
         "completeSubtitle": "You will be redirected soon",

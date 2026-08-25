@@ -393,7 +393,15 @@ describe("auth v2 sign-in flow", () => {
       await clientTrustPreparation.promise;
     });
     const codeInput = await screen.findByLabelText("Verification code");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Check your email" }),
+    ).toBeVisible();
     expect(screen.getByText("p***@example.com")).toBeVisible();
+    expect(
+      screen.getByText(
+        "You're signing in from a new device. We're asking for verification to keep your account secure.",
+      ),
+    ).toBeVisible();
     await expect(waitForRoleElement("button", "Back")).resolves.toBeVisible();
     expect(roleElement("button", "Use another method")).toBeUndefined();
     expect(roleElement("link", "Sign up")).toBeUndefined();

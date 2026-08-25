@@ -1082,6 +1082,7 @@
         "chooseAccountTitle": "계정 선택",
         "chooseMethodSubtitle": "문제가 있나요? 다른 방법으로 로그인할 수 있어요.",
         "chooseMethodTitle": "다른 방법 사용하기",
+        "clientTrustNotice": "새로운 기기에서 로그인 중이에요. 계정 보안을 위해 확인을 요청하고 있어요.",
         "codeExpired": "이 인증 코드는 만료되었습니다. 새 코드를 요청하세요.",
         "codeLabel": "인증 코드",
         "completeSubtitle": "곧 이동돼요",

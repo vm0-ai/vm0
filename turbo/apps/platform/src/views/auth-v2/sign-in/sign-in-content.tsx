@@ -785,6 +785,23 @@ function HelpStep({ copy, signals }: SignInStepProps) {
   );
 }
 
+function ClientTrustNotice({
+  copy,
+  visible,
+}: {
+  readonly copy: AuthV2SignInCopy;
+  readonly visible: boolean;
+}) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center text-xs leading-4 text-amber-700 dark:text-amber-300">
+      {copy.clientTrustNotice}
+    </p>
+  );
+}
+
 function CodeStep({
   copy,
   signals,
@@ -870,6 +887,7 @@ function CodeStep({
               ? copy.resendCodeCooldown(resendState.remainingSeconds)
               : copy.resendCode}
           </Button>
+          <ClientTrustNotice copy={copy} visible={clientTrust} />
         </div>
         <AuthV2SubmitButton
           busy={submitting}
