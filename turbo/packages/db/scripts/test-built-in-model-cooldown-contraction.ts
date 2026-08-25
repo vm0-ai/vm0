@@ -100,6 +100,26 @@ export async function validateBuiltInModelCooldownContraction(): Promise<void> {
     const rowsBeforeContraction = serializedRows(
       await readCanonicalRows(client),
     );
+    assert.deepEqual(rowsBeforeContraction, [
+      {
+        providerType: "provider-c",
+        selectedModel: "built-in-only",
+        unavailableUntil: new Date(2026, 7, 24, 6).toISOString(),
+        upstreamModel: "upstream-c",
+      },
+      {
+        providerType: "provider-b",
+        selectedModel: "later-built-in",
+        unavailableUntil: new Date(2026, 7, 24, 5).toISOString(),
+        upstreamModel: "upstream-b",
+      },
+      {
+        providerType: "provider-a",
+        selectedModel: "legacy-only",
+        unavailableUntil: new Date(2026, 7, 24, 3).toISOString(),
+        upstreamModel: "upstream-a",
+      },
+    ]);
 
     await applyMigrationsFromDirectoryUpToTag(
       client,
