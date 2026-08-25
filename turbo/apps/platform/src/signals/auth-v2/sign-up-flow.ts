@@ -15,12 +15,19 @@ import {
   type Computed,
   type State,
 } from "ccstate";
+import { timeout } from "signal-timers";
 
 import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
 import { locale$ } from "../locale.ts";
 import { logger } from "../log.ts";
-import { createDeferredPromise, onRef, settle, withCleanup } from "../utils.ts";
+import {
+  createChildAbortController,
+  createDeferredPromise,
+  onRef,
+  settle,
+  withCleanup,
+} from "../utils.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import {
@@ -214,8 +221,8 @@ interface SignUpFlowAtoms {
 
 interface SignUpFlowRuntime {
   readonly automaticPreparationAttempted$: State<boolean>;
-  readonly cooldownTimer$: State<number | null>;
-  readonly expiryTimer$: State<number | null>;
+  readonly cooldownController$: State<AbortController | null>;
+  readonly expiryController$: State<AbortController | null>;
   readonly inFlight$: State<Promise<void> | null>;
 }
 
@@ -777,8 +784,8 @@ function createSignUpFlowAtoms(): SignUpFlowAtoms {
 function createSignUpFlowRuntime(): SignUpFlowRuntime {
   return {
     automaticPreparationAttempted$: state(false),
-    cooldownTimer$: state<number | null>(null),
-    expiryTimer$: state<number | null>(null),
+    cooldownController$: state<AbortController | null>(null),
+    expiryController$: state<AbortController | null>(null),
     inFlight$: state<Promise<void> | null>(null),
   };
 }
@@ -813,51 +820,45 @@ const clerkSignUpConfiguration$ = computed(async (get) => {
   } satisfies SignUpConfiguration;
 });
 
-function clearTimer(
-  timer: number | null,
-  setTimer: (timer: number | null) => void,
-): void {
-  if (timer !== null) {
-    window.clearTimeout(timer);
-    setTimer(null);
-  }
-}
-
 function createScheduleExpiryCommand(
   atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
 ): Command<void, [number | null, AbortSignal]> {
-  const markExpired$ = command(({ set }) => {
-    set(atoms.verificationExpired$, true);
-    set(runtime.expiryTimer$, null);
-  });
   return command(
     ({ get, set }, expireAtMs: number | null, signal: AbortSignal): void => {
-      clearTimer(get(runtime.expiryTimer$), (timer) => {
-        set(runtime.expiryTimer$, timer);
-      });
+      signal.throwIfAborted();
+      get(runtime.expiryController$)?.abort();
+      set(runtime.expiryController$, null);
       set(atoms.verificationExpired$, false);
       if (expireAtMs === null) {
         return;
       }
       const delay = Math.max(0, expireAtMs - now());
       if (delay === 0) {
-        set(markExpired$);
+        set(atoms.verificationExpired$, true);
         return;
       }
-      const timer = window.setTimeout(() => {
-        set(markExpired$);
-      }, delay);
-      set(runtime.expiryTimer$, timer);
-      signal.addEventListener(
+      const controller = createChildAbortController(signal);
+      set(runtime.expiryController$, controller);
+      controller.signal.addEventListener(
         "abort",
         () => {
-          if (get(runtime.expiryTimer$) === timer) {
-            window.clearTimeout(timer);
-            set(runtime.expiryTimer$, null);
+          if (get(runtime.expiryController$) === controller) {
+            set(runtime.expiryController$, null);
           }
         },
         { once: true },
+      );
+      timeout(
+        () => {
+          if (get(runtime.expiryController$) !== controller) {
+            return;
+          }
+          set(atoms.verificationExpired$, true);
+          controller.abort();
+        },
+        delay,
+        { signal: controller.signal },
       );
     },
   );
@@ -867,28 +868,31 @@ function createStartCooldownCommand(
   atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
 ): Command<void, [AbortSignal]> {
-  const finishCooldown$ = command(({ set }) => {
-    set(atoms.resendCoolingDown$, false);
-    set(runtime.cooldownTimer$, null);
-  });
   return command(({ get, set }, signal: AbortSignal): void => {
-    clearTimer(get(runtime.cooldownTimer$), (timer) => {
-      set(runtime.cooldownTimer$, timer);
-    });
+    signal.throwIfAborted();
+    get(runtime.cooldownController$)?.abort();
+    const controller = createChildAbortController(signal);
+    set(runtime.cooldownController$, controller);
     set(atoms.resendCoolingDown$, true);
-    const timer = window.setTimeout(() => {
-      set(finishCooldown$);
-    }, AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS);
-    set(runtime.cooldownTimer$, timer);
-    signal.addEventListener(
+    controller.signal.addEventListener(
       "abort",
       () => {
-        if (get(runtime.cooldownTimer$) === timer) {
-          window.clearTimeout(timer);
-          set(runtime.cooldownTimer$, null);
+        if (get(runtime.cooldownController$) === controller) {
+          set(runtime.cooldownController$, null);
         }
       },
       { once: true },
+    );
+    timeout(
+      () => {
+        if (get(runtime.cooldownController$) !== controller) {
+          return;
+        }
+        set(atoms.resendCoolingDown$, false);
+        controller.abort();
+      },
+      AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS,
+      { signal: controller.signal },
     );
   });
 }
