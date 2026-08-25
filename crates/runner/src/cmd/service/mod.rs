@@ -31,7 +31,7 @@ pub(crate) use unit_config::read_unit_config_path;
 
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use drain_override_cleanup::{DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal};
-use gate::check_active_jobs_gate;
+use gate::{ActiveJobsGateOps, check_active_jobs_gate};
 use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use systemctl::{
     SystemdUnitEnablement, journalctl_logs_status, read_unit_enablement, restore_unit_enablement,
@@ -512,12 +512,62 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
 /// `service uninstall` — stop + disable + remove unit file.
 ///
 /// Refuses when the runner has active jobs unless `--force` is passed.
+trait ServiceUninstallOps: ActiveJobsGateOps {
+    type LockGuard;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a;
+
+    fn uninstall_unit<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+}
+
+struct RealServiceUninstallOps;
+
+impl ActiveJobsGateOps for RealServiceUninstallOps {
+    fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+}
+
+impl ServiceUninstallOps for RealServiceUninstallOps {
+    type LockGuard = nix::fcntl::Flock<std::fs::File>;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a,
+    {
+        Box::pin(async move { acquire_service_lock(unit, home).await })
+    }
+
+    fn uninstall_unit<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { uninstall_service_unit(unit).await })
+    }
+}
+
 async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
-    let _service_lock = acquire_service_lock(&unit, &home).await?;
-    check_active_jobs_gate(&unit, args.force, "uninstall").await?;
-    uninstall_service_unit(&unit).await
+    uninstall_with_ops(&unit, &home, args.force, &mut RealServiceUninstallOps).await
+}
+
+async fn uninstall_with_ops(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    force: bool,
+    ops: &mut impl ServiceUninstallOps,
+) -> RunnerResult<()> {
+    let _service_lock = ops.acquire_lock(unit, home).await?;
+    check_active_jobs_gate(unit, home, force, "uninstall", ops).await?;
+    ops.uninstall_unit(unit).await
 }
 
 fn readiness_base_dir_from_live_instances(
@@ -666,6 +716,7 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
@@ -910,6 +961,46 @@ profiles:
         RunnerServiceUnit::from_suffix("test").unwrap()
     }
 
+    struct FakeUninstallOps {
+        events: Vec<&'static str>,
+        gate_active_results: VecDeque<RunnerResult<bool>>,
+    }
+
+    impl ActiveJobsGateOps for FakeUninstallOps {
+        fn is_unit_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, bool> {
+            self.events.push("gate_is_active");
+            Box::pin(std::future::ready(
+                self.gate_active_results
+                    .pop_front()
+                    .expect("unexpected gate unit-active query"),
+            ))
+        }
+    }
+
+    impl ServiceUninstallOps for FakeUninstallOps {
+        type LockGuard = ();
+
+        fn acquire_lock<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _home: &'a HomePaths,
+        ) -> ServiceFuture<'a, Self::LockGuard>
+        where
+            Self::LockGuard: 'a,
+        {
+            self.events.push("acquire_lock");
+            Box::pin(std::future::ready(Ok(())))
+        }
+
+        fn uninstall_unit<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("uninstall_unit");
+            Box::pin(std::future::ready(Ok(())))
+        }
+    }
+
     fn live_runner_instance(runner_name: &str, base_dir: PathBuf) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid: 123,
@@ -921,6 +1012,58 @@ profiles:
             subcommand: "start".to_string(),
             started_at: "2026-01-01T00:00:00.000Z".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn uninstall_active_draining_jobs_refuses_before_service_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let unit = service_unit();
+        let base_dir = home.runners_dir().join(unit.suffix());
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        let started_at = (chrono::Utc::now() - chrono::Duration::minutes(18))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            format!(
+                r#"{{
+                    "mode":"draining",
+                    "active_runs":[
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000003"}}
+                    ],
+                    "started_at":"{started_at}"
+                }}"#
+            ),
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeUninstallOps {
+            events: Vec::new(),
+            gate_active_results: VecDeque::from([Ok(true)]),
+        };
+
+        let error = uninstall_with_ops(&unit, &home, false, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+        let RunnerError::ActiveJobs(error) = error else {
+            panic!("expected active-jobs refusal");
+        };
+        assert_eq!(error.unit, "vm0-runner-test");
+        assert_eq!(error.suffix, "test");
+        assert_eq!(
+            error
+                .run_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["0191c4e0-0000-7000-8000-000000000003"]
+        );
+        assert!(error.runner_uptime >= std::time::Duration::from_secs(1080));
+        assert!(error.runner_uptime < std::time::Duration::from_secs(1085));
+        assert_eq!(error.command_name, "uninstall");
+        assert!(error.draining);
     }
 
     #[test]

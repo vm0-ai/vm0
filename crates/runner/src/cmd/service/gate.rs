@@ -6,19 +6,22 @@ use crate::paths::HomePaths;
 use crate::status_file::{self, StatusFileReadError, StatusForGate};
 use tracing::{info, warn};
 
+use super::ServiceFuture;
 use super::diagnostic::status_field_preview;
-use super::systemctl::is_unit_active;
 use super::target::RunnerServiceUnit;
 
-/// Resolve the runner's base_dir from its service name suffix using the
-/// project-wide convention: `/var/lib/vm0-runner/runners/<suffix>/`.
+pub(super) trait ActiveJobsGateOps {
+    fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+}
+
+/// Resolve the runner's base_dir from its service name suffix and the caller's
+/// runner home using the project-wide `runners/<suffix>/` convention.
 ///
 /// This matches `ansible/playbooks/build-runner.yml` and the `--runner-dirname`
-/// default in `runner config`. Non-standard `base_dir` overrides (dev-only)
-/// will fail to locate status.json and fall through to forceful stop.
-pub(super) fn runner_base_dir(unit: &RunnerServiceUnit) -> Option<PathBuf> {
-    let home = HomePaths::new().ok()?;
-    Some(home.runners_dir().join(unit.suffix()))
+/// default in `runner config`. In production the home is
+/// `/var/lib/vm0-runner`; tests can supply an isolated home root.
+fn runner_base_dir(home: &HomePaths, unit: &RunnerServiceUnit) -> PathBuf {
+    home.runners_dir().join(unit.suffix())
 }
 
 /// Parsed snapshot of the runner's status.json.
@@ -167,10 +170,7 @@ pub(super) async fn read_runner_status(
 ///    `run_with_config`) and systemd noticing the process has exited
 ///    (marking the unit inactive). Without this, the gate could spuriously
 ///    refuse a stop issued during that window.
-/// 3. **Base-dir unresolvable** — non-standard deployments that override
-///    `base_dir` away from the `/var/lib/vm0-runner/runners/<suffix>`
-///    convention fall here. Warn-log and fall through.
-/// 4. **Status file unreadable / malformed** — missing file, permission
+/// 3. **Status file unreadable / malformed** — missing file, permission
 ///    denied, JSON parse error, bad `started_at`: warn-log and fall
 ///    through. Matches the acceptance criteria.
 ///
@@ -189,8 +189,10 @@ pub(super) async fn read_runner_status(
 /// SIGUSR1 first and waiting — which is exactly what `drain` does.
 pub(super) async fn check_active_jobs_gate(
     unit: &RunnerServiceUnit,
+    home: &HomePaths,
     force: bool,
     command_name: &'static str,
+    ops: &mut impl ActiveJobsGateOps,
 ) -> RunnerResult<()> {
     if force {
         // Leave an audit trail — --force is valid but destructive, so
@@ -204,7 +206,7 @@ pub(super) async fn check_active_jobs_gate(
     }
 
     // (1) Dead-runner short-circuit.
-    let active = is_unit_active(unit).await.unwrap_or_else(|e| {
+    let active = ops.is_unit_active(unit).await.unwrap_or_else(|e| {
         warn!(unit = %unit.unit_name(), error = %e, "cannot check unit state — skipping active-jobs gate");
         false
     });
@@ -212,13 +214,7 @@ pub(super) async fn check_active_jobs_gate(
         return Ok(());
     }
 
-    let Some(base_dir) = runner_base_dir(unit) else {
-        warn!(
-            unit = %unit.unit_name(),
-            "cannot determine vm0-runner home — skipping active-jobs gate"
-        );
-        return Ok(());
-    };
+    let base_dir = runner_base_dir(home, unit);
     let status = match read_runner_status(&base_dir).await {
         Ok(status) => status,
         Err(e) => {
@@ -247,7 +243,45 @@ pub(super) async fn check_active_jobs_gate(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::*;
+
+    struct FakeGateOps {
+        active_results: VecDeque<RunnerResult<bool>>,
+        active_queries: usize,
+    }
+
+    impl FakeGateOps {
+        fn from_results(results: impl IntoIterator<Item = RunnerResult<bool>>) -> Self {
+            Self {
+                active_results: results.into_iter().collect(),
+                active_queries: 0,
+            }
+        }
+    }
+
+    impl ActiveJobsGateOps for FakeGateOps {
+        fn is_unit_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, bool> {
+            self.active_queries += 1;
+            let result = self
+                .active_results
+                .pop_front()
+                .expect("unexpected unit-active query");
+            Box::pin(std::future::ready(result))
+        }
+    }
+
+    fn service_unit() -> RunnerServiceUnit {
+        RunnerServiceUnit::from_suffix("test").unwrap()
+    }
+
+    fn fake_home(dir: &tempfile::TempDir) -> HomePaths {
+        HomePaths::with_root(dir.path().join("vm0-runner"))
+    }
 
     // -----------------------------------------------------------------
     // status.json reader
@@ -542,5 +576,67 @@ mod tests {
             decide_gate(&snapshot("paused", 1)),
             GateDecision::Refuse { draining: false }
         );
+    }
+
+    // -----------------------------------------------------------------
+    // concrete gate orchestration
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_force_skips_unit_and_status_queries() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ops = FakeGateOps::from_results([]);
+
+        check_active_jobs_gate(&service_unit(), &fake_home(&dir), true, "stop", &mut ops)
+            .await
+            .unwrap();
+
+        assert_eq!(ops.active_queries, 0);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_bypasses_unavailable_unit_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+
+        for result in [
+            Ok(false),
+            Err(RunnerError::Internal("systemd unavailable".to_string())),
+        ] {
+            let mut ops = FakeGateOps::from_results([result]);
+
+            check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
+                .await
+                .unwrap();
+
+            assert_eq!(ops.active_queries, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_bypasses_missing_and_malformed_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+
+        let mut missing_ops = FakeGateOps::from_results([Ok(true)]);
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut missing_ops)
+            .await
+            .unwrap();
+
+        let base_dir = runner_base_dir(&home, &unit);
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(base_dir.join("status.json"), "not json")
+            .await
+            .unwrap();
+
+        let mut malformed_ops = FakeGateOps::from_results([Ok(true)]);
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut malformed_ops)
+            .await
+            .unwrap();
+
+        assert_eq!(missing_ops.active_queries, 1);
+        assert_eq!(malformed_ops.active_queries, 1);
     }
 }
