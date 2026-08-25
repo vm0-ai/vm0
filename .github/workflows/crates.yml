@@ -59,8 +59,6 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -89,10 +87,6 @@ jobs:
           PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          # In CI containers, the repo may be owned by a different user (host vs container).
-          # Git 2.35.2+ rejects such repos unless marked as safe.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
-
           BASE_REF=$(.github/scripts/changed-base-ref.sh)
           echo "${{ github.event_name }} mode: comparing against base $BASE_REF"
           # Check if the workflow file or ansible playbooks changed
