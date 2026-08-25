@@ -20,7 +20,7 @@ export const orgContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get current org (zero proxy)",
+    summary: "Get current org",
   },
   update: {
     method: "PUT",
@@ -35,7 +35,7 @@ export const orgContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update org profile (zero proxy)",
+    summary: "Update org profile",
   },
 });
 
@@ -57,7 +57,7 @@ export const orgLeaveContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Leave the current org (zero proxy)",
+    summary: "Leave the current org",
   },
 });
 
@@ -80,7 +80,7 @@ export const orgDeleteContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Delete the current org (zero proxy)",
+    summary: "Delete the current org",
   },
 });
 

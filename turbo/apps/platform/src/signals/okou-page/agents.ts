@@ -4,7 +4,7 @@ import { apiClient$ } from "../api-client.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 
 /**
- * Create a sub-agent by composing via the zero agents API.
+ * Create a sub-agent by composing via the agents API.
  * Follows the same flow as onboarding: create agent → upload instructions.
  */
 export const createSubagent$ = command(

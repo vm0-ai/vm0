@@ -1726,7 +1726,7 @@ export const chatSearchContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Search chat messages within caller's org (zero proxy)",
+    summary: "Search chat messages within caller's org",
   },
 });
 

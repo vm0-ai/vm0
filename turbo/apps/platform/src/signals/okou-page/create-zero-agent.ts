@@ -15,7 +15,7 @@ interface CreateZeroAgentParams {
 }
 
 /**
- * Create a zero agent and upload seed instructions.
+ * Create an agent and upload seed instructions.
  *
  * Shared between onboarding (lead agent) and sub-agent creation
  * to keep the two flows in sync.

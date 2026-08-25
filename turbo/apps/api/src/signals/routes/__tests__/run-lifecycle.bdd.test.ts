@@ -14499,7 +14499,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("mounts workflows for claude-code zero agents", async () => {
+  it("mounts workflows for Claude Code agents", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const misc = createMiscRoutesApi(context);
