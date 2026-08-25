@@ -39,12 +39,17 @@ interface DiagnosticAttempt {
   readonly step: AuthV2DiagnosticStep;
 }
 
+interface SignInInitializeAttempt extends DiagnosticAttempt {
+  readonly resourceAttemptVersion: number;
+}
+
 interface DiagnosticResult {
   readonly errorCategory: AuthV2DiagnosticErrorCategory;
   readonly outcome: "failure" | "success";
 }
 
 interface DiagnosticCommandRuntime {
+  readonly attemptVersion$?: State<number>;
   readonly inFlight$: State<Promise<void> | null>;
 }
 
@@ -247,16 +252,21 @@ function diagnosticProperties(
   };
 }
 
-function createAsyncDiagnosticCommand(
+function createAsyncDiagnosticCommand<Attempt extends DiagnosticAttempt>(
   source$: Command<Promise<void>, [AbortSignal]>,
-  attempt$: Computed<DiagnosticAttempt | null>,
-  finish$: Command<AuthV2DiagnosticProperties | null, [DiagnosticAttempt]>,
+  attempt$: Computed<Attempt | null>,
+  finish$: Command<AuthV2DiagnosticProperties | null, [Attempt]>,
   capture: CaptureAuthV2Diagnostic,
   runtime: DiagnosticCommandRuntime,
 ): Command<Promise<void>, [AbortSignal]> {
   const run$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const attempt = get(attempt$);
+      if (attempt && runtime.attemptVersion$) {
+        set(runtime.attemptVersion$, (version) => {
+          return version + 1;
+        });
+      }
       await set(source$, signal);
       signal.throwIfAborted();
       if (!attempt) {
@@ -296,6 +306,11 @@ function createStringDiagnosticCommand(
   const run$ = command(
     async ({ set }, value: string, signal: AbortSignal): Promise<void> => {
       const attempt = set(describe$, value);
+      if (attempt && runtime.attemptVersion$) {
+        set(runtime.attemptVersion$, (version) => {
+          return version + 1;
+        });
+      }
       await set(source$, value, signal);
       signal.throwIfAborted();
       if (!attempt) {
@@ -368,11 +383,12 @@ function createSignInFinishCommands(
   flow: AuthV2DiagnosticsFlow,
   signals: AuthV2SignInSignals,
   options: AuthV2SignInDiagnosticOptions,
+  resourceAttemptVersion$: State<number>,
 ): {
   readonly finish$: Command<AuthV2DiagnosticProperties, [DiagnosticAttempt]>;
   readonly finishInitialize$: Command<
     AuthV2DiagnosticProperties | null,
-    [DiagnosticAttempt]
+    [SignInInitializeAttempt]
   >;
 } {
   const finish$ = command(
@@ -391,8 +407,11 @@ function createSignInFinishCommands(
   const finishInitialize$ = command(
     (
       { get },
-      attempt: DiagnosticAttempt,
+      attempt: SignInInitializeAttempt,
     ): AuthV2DiagnosticProperties | null => {
+      if (get(resourceAttemptVersion$) !== attempt.resourceAttemptVersion) {
+        return null;
+      }
       const flowState = get(signals.state$);
       const error = get(signals.error$);
       const result = signInResult(
@@ -422,16 +441,18 @@ function createSignInFinishCommands(
 function createSignInAttemptSignals(
   signals: AuthV2SignInSignals,
   options: AuthV2SignInDiagnosticOptions,
+  resourceAttemptVersion$: State<number>,
 ): {
   readonly describeFactor$: Command<DiagnosticAttempt | null, [string]>;
   readonly describeSession$: Command<DiagnosticAttempt | null, [string]>;
-  readonly initializeAttempt$: Computed<DiagnosticAttempt>;
+  readonly initializeAttempt$: Computed<SignInInitializeAttempt>;
   readonly resendAttempt$: Computed<DiagnosticAttempt | null>;
   readonly submitAttempt$: Computed<DiagnosticAttempt | null>;
 } {
-  const initializeAttempt$ = computed((): DiagnosticAttempt => {
+  const initializeAttempt$ = computed((get): SignInInitializeAttempt => {
     return {
       method: options.isOAuthCallbackRoute ? "google-oauth" : "unknown",
+      resourceAttemptVersion: get(resourceAttemptVersion$),
       step: options.isOAuthCallbackRoute ? "oauth-callback" : "initialize",
     };
   });
@@ -527,13 +548,19 @@ function createSignInInstrumentation(
   signals: AuthV2SignInSignals,
   options: AuthV2SignInDiagnosticOptions,
 ): AuthV2SignInSignals {
-  const runtime: DiagnosticCommandRuntime = {
+  const resourceAttemptVersion$ = state(0);
+  const initializeRuntime: DiagnosticCommandRuntime = {
+    inFlight$: state<Promise<void> | null>(null),
+  };
+  const resourceRuntime: DiagnosticCommandRuntime = {
+    attemptVersion$: resourceAttemptVersion$,
     inFlight$: state<Promise<void> | null>(null),
   };
   const { finish$, finishInitialize$ } = createSignInFinishCommands(
     flow,
     signals,
     options,
+    resourceAttemptVersion$,
   );
   const {
     describeFactor$,
@@ -541,7 +568,7 @@ function createSignInInstrumentation(
     initializeAttempt$,
     resendAttempt$,
     submitAttempt$,
-  } = createSignInAttemptSignals(signals, options);
+  } = createSignInAttemptSignals(signals, options, resourceAttemptVersion$);
 
   return {
     ...signals,
@@ -550,14 +577,14 @@ function createSignInInstrumentation(
       initializeAttempt$,
       finishInitialize$,
       capture,
-      runtime,
+      initializeRuntime,
     ),
     resendCode$: createAsyncDiagnosticCommand(
       signals.resendCode$,
       resendAttempt$,
       finish$,
       capture,
-      runtime,
+      resourceRuntime,
     ),
     restart$: createSyncDiagnosticCommand(
       signals.restart$,
@@ -570,21 +597,21 @@ function createSignInInstrumentation(
       describeFactor$,
       finish$,
       capture,
-      runtime,
+      resourceRuntime,
     ),
     selectSession$: createStringDiagnosticCommand(
       signals.selectSession$,
       describeSession$,
       finish$,
       capture,
-      runtime,
+      resourceRuntime,
     ),
     submit$: createAsyncDiagnosticCommand(
       signals.submit$,
       submitAttempt$,
       finish$,
       capture,
-      runtime,
+      resourceRuntime,
     ),
   };
 }

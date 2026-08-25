@@ -46,7 +46,9 @@ const TEST_PASSWORD$ = computed(() => {
 });
 
 function createSignInHarness(options?: {
+  readonly initialize?: () => Promise<void>;
   readonly submit?: () => Promise<void>;
+  readonly submitState?: AuthV2SignInState;
 }) {
   const flowState$ = state<AuthV2SignInState>({
     accounts: [],
@@ -67,11 +69,23 @@ function createSignInHarness(options?: {
         return Promise.resolve();
       }),
   );
+  const sourceInitialize = vi.fn(
+    options?.initialize ??
+      (() => {
+        return Promise.resolve();
+      }),
+  );
   const noOp$ = command((): void => {});
   const asyncNoOp$ = command((_context, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
     return Promise.resolve();
   });
+  const initialize$ = command(
+    async (_context, signal: AbortSignal): Promise<void> => {
+      await sourceInitialize();
+      signal.throwIfAborted();
+    },
+  );
   const stringAsyncNoOp$ = command(
     (_context, _value: string, signal: AbortSignal): Promise<void> => {
       signal.throwIfAborted();
@@ -94,9 +108,12 @@ function createSignInHarness(options?: {
     set(password$, value);
   });
   const submit$ = command(
-    async (_context, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       await sourceSubmit();
       signal.throwIfAborted();
+      if (options?.submitState) {
+        set(flowState$, options.submitState);
+      }
     },
   );
 
@@ -119,7 +136,7 @@ function createSignInHarness(options?: {
       identifier$: computed((get) => {
         return get(identifier$);
       }),
-      initialize$: asyncNoOp$,
+      initialize$,
       newPassword$: computed((get) => {
         return get(newPassword$);
       }),
@@ -141,6 +158,7 @@ function createSignInHarness(options?: {
       submit$,
       useAnotherAccount$: noOp$,
     } satisfies AuthV2SignInSignals,
+    sourceInitialize,
     sourceSubmit,
   };
 }
@@ -324,6 +342,48 @@ describe("auth v2 diagnostic attempt ownership", () => {
 
     expect(harness.sourceGoogleOAuth).toHaveBeenCalledOnce();
     expect(capture).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps resource attempts independent from pending initialization", async () => {
+    const initializationDeferred = createDeferredPromise<void>(context.signal);
+    const harness = createSignInHarness({
+      initialize: async () => {
+        await initializationDeferred.promise;
+      },
+      submitState: { status: "complete" },
+    });
+    const capture = vi.fn<(properties: AuthV2DiagnosticProperties) => void>();
+    const signals = createAuthV2Diagnostics(
+      "sign-in",
+      capture,
+    ).instrumentSignIn(harness.signals, {
+      continuationState$: INACTIVE_CONTINUATION_STATE$,
+      isBaseRoute: true,
+      isOAuthCallbackRoute: false,
+    });
+
+    const initialization = context.store.set(
+      signals.initialize$,
+      context.signal,
+    );
+    expect(harness.sourceInitialize).toHaveBeenCalledOnce();
+
+    await context.store.set(signals.submit$, context.signal);
+
+    expect(harness.sourceSubmit).toHaveBeenCalledOnce();
+    expect(capture).toHaveBeenCalledOnce();
+    expect(capture).toHaveBeenLastCalledWith({
+      error_category: "none",
+      flow: "sign-in",
+      method: "identifier",
+      outcome: "success",
+      step: "identifier",
+    });
+
+    initializationDeferred.resolve();
+    await initialization;
+
+    expect(capture).toHaveBeenCalledOnce();
   });
 });
 
