@@ -8,7 +8,6 @@ export enum FeatureSwitchKey {
   AhrefsConnector = "ahrefsConnector",
   BillConnector = "billConnector",
   BentomlConnector = "bentomlConnector",
-  BoxConnector = "boxConnector",
   CanvaConnector = "canvaConnector",
   CalComConnector = "calComConnector",
   CopperConnector = "copperConnector",
