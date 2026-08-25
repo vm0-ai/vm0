@@ -20,7 +20,7 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x19`
+//! Non-error message types currently occupy the contiguous range `0x00..=0x1B`
 //! in allocation order. Existing values are stable wire assignments: do not
 //! renumber or reuse them. Allocate new non-error messages at the next unused
 //! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
@@ -55,13 +55,15 @@
 //! | 0x17 | G→H       | guest_dns_readiness_result | `[termination][4B duration_ms][1B flags][2B answer_len][answer][2B diagnostic_len][diagnostic]` |
 //! | 0x18 | H→G       | guest_storage_manifest | `[4B positive timeout_ms][2B run_id_len][run_id][2B runtime_dir_len][runtime_dir][4B manifest_len][manifest]` |
 //! | 0x19 | G→H       | guest_storage_manifest_result | same payload as `exec_result`, with both streams captured and bounded to 1 MiB each |
+//! | 0x1A | H→G       | guest_state_restore | `[4B positive timeout_ms][8B unix_seconds][4B unix_nanoseconds][1B timezone_mode][2B timezone_len][timezone][256B entropy]` |
+//! | 0x1B | G→H       | guest_state_restore_result | same payload as `exec_result`, with empty stdout and stderr bounded to 64 KiB |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
 //! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`,
-//! `exec_control`, `guest_dns_readiness`, and `guest_storage_manifest`;
-//! operation replies reuse the
-//! original non-zero request sequence. `exec_output.output_seq` is per exec
+//! `exec_control`, `guest_dns_readiness`, `guest_storage_manifest`, and
+//! `guest_state_restore`; operation replies reuse the original non-zero request
+//! sequence. `exec_output.output_seq` is per exec
 //! operation and starts at 0, incrementing by 1 for each output frame across
 //! stdout and stderr.
 //! `write_file_result.success` / `write_files_result.success` use 0=false and

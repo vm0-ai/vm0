@@ -431,6 +431,17 @@ mod tests {
             )
             .is_err()
         );
+        let oversized_timezone = "A".repeat(GUEST_STATE_RESTORE_MAX_TIMEZONE_BYTES + 1);
+        assert!(
+            encode_guest_state_restore_request(
+                1,
+                1,
+                0,
+                &entropy,
+                GuestStateRestoreTimezone::Required(&oversized_timezone)
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -441,6 +452,34 @@ mod tests {
                 .unwrap();
         payload[16] = TIMEZONE_REQUIRED;
         assert!(decode_guest_state_restore_request(&payload).is_err());
+
+        let mut invalid_mode =
+            encode_guest_state_restore_request(1, 1, 0, &entropy, GuestStateRestoreTimezone::None)
+                .unwrap();
+        invalid_mode[16] = u8::MAX;
+        assert!(decode_guest_state_restore_request(&invalid_mode).is_err());
+
+        let mut none_with_name = encode_guest_state_restore_request(
+            1,
+            1,
+            0,
+            &entropy,
+            GuestStateRestoreTimezone::BestEffort("UTC"),
+        )
+        .unwrap();
+        none_with_name[16] = TIMEZONE_NONE;
+        assert!(decode_guest_state_restore_request(&none_with_name).is_err());
+
+        let mut invalid_utf8 = encode_guest_state_restore_request(
+            1,
+            1,
+            0,
+            &entropy,
+            GuestStateRestoreTimezone::Required("A"),
+        )
+        .unwrap();
+        invalid_utf8[19] = u8::MAX;
+        assert!(decode_guest_state_restore_request(&invalid_utf8).is_err());
 
         let mut truncated = payload;
         truncated.pop();
