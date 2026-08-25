@@ -53,6 +53,8 @@ interface ConnectorAccountManagerDialogProps {
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }
 
+const MAX_ACCOUNTS_WITHOUT_SEARCH = 6;
+
 function accountIdentity(account: ConnectorAccountConnection): string | null {
   return (
     account.externalEmail ??
@@ -443,7 +445,8 @@ export function ConnectorAccountManagerDialog({
   const showSearch =
     search.length > 0 ||
     (accountsLoadable.state === "hasData" &&
-      (accountsLoadable.data.connections.length > 1 || nextCursor !== null));
+      (accountsLoadable.data.connections.length > MAX_ACCOUNTS_WITHOUT_SEARCH ||
+        nextCursor !== null));
   const leave = (next: () => void) => {
     resetDrafts();
     next();

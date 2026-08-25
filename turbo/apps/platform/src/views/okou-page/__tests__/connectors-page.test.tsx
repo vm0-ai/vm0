@@ -1667,6 +1667,7 @@ describe("connectors page", () => {
     const manager = await screen.findByRole("dialog", {
       name: "GitHub",
     });
+    expect(within(manager).queryByPlaceholderText("Find accounts")).toBeNull();
     const actions = within(manager).getAllByLabelText("Account actions");
     const personalActions = actions.at(1);
     if (!personalActions) {
