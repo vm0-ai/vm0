@@ -14028,8 +14028,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "okou web-search --help",
       "okou finance --help",
       "Financial instruments and market data",
-      'okou translate "<text>" --to <language> [--from <language>]',
-      "managed translation model",
       "`okou web-search --help` for the current interface. Queries are sent to an external provider, so they must not contain secrets or private internal context",
       "Keep general public-web discovery on `okou web-search`. Queries are sent to an external provider",
       "must not contain secrets or private internal context",
@@ -14179,7 +14177,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed search and translation tools for regular runs", async () => {
+  it("advertises managed research tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -14199,9 +14197,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain("okou finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("okou seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("okou scrape --help");
-    expect(claim.appendSystemPrompt ?? "").toContain(
-      'okou translate "<text>" --to <language> [--from <language>]',
-    );
     expect(claim.appendSystemPrompt ?? "").toContain(
       "okou people-search <query>",
     );

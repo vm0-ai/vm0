@@ -64,7 +64,6 @@ describe("Okou CLI program", () => {
       "people-search",
       "social",
       "recognize",
-      "translate",
       "finance",
       "seo",
       "banking",
@@ -99,7 +98,7 @@ describe("Okou CLI program", () => {
     expect(publicCommandNames).not.toContain("__agent-loop");
   });
 
-  it("should have exactly 40 public commands", () => {
-    expect(publicCommandNames).toHaveLength(40);
+  it("should have exactly 39 public commands", () => {
+    expect(publicCommandNames).toHaveLength(39);
   });
 });
