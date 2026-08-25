@@ -165,9 +165,6 @@ describe("getAllFeatureStates", () => {
     expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       true,
     );
-    expect(bingjieStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
-      true,
-    );
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -176,9 +173,6 @@ describe("getAllFeatureStates", () => {
     expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
-    expect(
-      otherStaffStates[FeatureSwitchKey.ComposerNoteEditableIsolation],
-    ).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

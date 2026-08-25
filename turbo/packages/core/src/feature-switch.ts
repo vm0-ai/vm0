@@ -388,13 +388,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.ComposerNoteEditableIsolation]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the feedback note's wrapper elements outside the editable flow, with the note content opting back in as its own editing host, so WebKit's editing machinery can neither restructure the wrappers during an IME composition nor land the caret between them.",
-    enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
-  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:

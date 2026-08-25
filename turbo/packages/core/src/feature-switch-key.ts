@@ -83,5 +83,4 @@ export enum FeatureSwitchKey {
   SharedChatDatabase = "sharedChatDatabase",
   ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
   ComposerImageAnnotation = "composerImageAnnotation",
-  ComposerNoteEditableIsolation = "composerNoteEditableIsolation",
 }
