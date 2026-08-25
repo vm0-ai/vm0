@@ -17,8 +17,8 @@ from .model_http import (
     combined_value_presence_paths,
     failure_evidence_from_result,
 )
-from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
-from .quantities import MAX_USAGE_QUANTITY, is_usage_quantity
+from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES, update_model_usage_quantity
+from .quantities import MAX_USAGE_QUANTITY
 from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
@@ -77,9 +77,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
     initial zero values when a category has not appeared yet.
     """
     for raw_field, category in ANTHROPIC_USAGE_FIELD_CATEGORIES.items():
-        value = values.get((*prefix, raw_field))
-        if is_usage_quantity(value) and (value > 0 or category not in target):
-            target[category] = value
+        update_model_usage_quantity(target, category, values.get((*prefix, raw_field)))
 
 
 def create_anthropic_messages_sse_usage_extractor(
