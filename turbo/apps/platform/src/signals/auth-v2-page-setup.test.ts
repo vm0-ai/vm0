@@ -1,6 +1,12 @@
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { mockedClerk, mockSignInResource } from "../__tests__/mock-auth.ts";
+import {
+  mockAuthV2Capabilities,
+  mockedClerk,
+  mockSignInResource,
+  mockSignUpResource,
+} from "../__tests__/mock-auth.ts";
 import { setupPage } from "../__tests__/page-helper.ts";
 import { AUTH_V2_DIAGNOSTIC_EVENT, initPostHog } from "../lib/posthog.ts";
 import { testContext } from "./__tests__/test-helpers.ts";
@@ -161,6 +167,117 @@ describe("auth v2 route diagnostics", () => {
   );
 });
 
+describe("auth v2 password recovery diagnostics", () => {
+  it.each([
+    {
+      action: "Reset your password",
+      method: "password-reset",
+      operation: "prepare",
+    },
+    {
+      action: "Continue with Apple",
+      method: "apple-oauth",
+      operation: "oauth",
+    },
+    {
+      action: "Email code to p***@example.com",
+      method: "email-code",
+      operation: "prepare",
+    },
+    {
+      action: "Sign in with your passkey",
+      method: "passkey",
+      operation: "passkey",
+    },
+  ] as const)(
+    "attributes the $method recovery action through the rendered page",
+    async ({ action, method, operation }) => {
+      const privateIdentifier = "private.recovery@example.com";
+      const privateProviderCode = `private_${method}_provider_code`;
+      const privateProviderMessage = `Private ${method} provider detail`;
+      const providerFailure = {
+        errors: [
+          {
+            code: privateProviderCode,
+            longMessage: privateProviderMessage,
+          },
+        ],
+      };
+      mockAuthV2Capabilities({ appleOAuth: true, passkey: true });
+      mockSignInResource({
+        identifier: privateIdentifier,
+        status: "needs_first_factor",
+        supportedFirstFactors: [
+          { strategy: "password" },
+          {
+            emailAddressId: "email_private",
+            safeIdentifier: "p***@example.com",
+            strategy: "reset_password_email_code",
+          },
+          { strategy: "oauth_apple" },
+          {
+            emailAddressId: "email_private",
+            safeIdentifier: "p***@example.com",
+            strategy: "email_code",
+          },
+          { strategy: "passkey" },
+        ],
+      });
+      if (operation === "prepare") {
+        mockedClerk.signInPrepareFirstFactor.mockRejectedValueOnce(
+          providerFailure,
+        );
+      } else if (operation === "oauth") {
+        mockedClerk.signInAuthenticateWithRedirect.mockRejectedValueOnce(
+          providerFailure,
+        );
+      } else {
+        mockedClerk.signInAuthenticateWithPasskey.mockRejectedValueOnce(
+          providerFailure,
+        );
+      }
+
+      const path = "/v2/sign-in";
+      context.mocks.browser.url(`https://app.vm0.ai${path}`);
+      await setupPage({
+        context,
+        path,
+        session: null,
+        user: null,
+      });
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Forgot password?" }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: action }));
+
+      await waitFor(() => {
+        expect(diagnosticCalls()).toStrictEqual([
+          [
+            AUTH_V2_DIAGNOSTIC_EVENT,
+            {
+              error_category: "provider-error",
+              flow: "sign-in",
+              method,
+              outcome: "failure",
+              step: "recovery",
+            },
+          ],
+        ]);
+      });
+      const serializedCalls = JSON.stringify(diagnosticCalls());
+      for (const prohibitedValue of [
+        privateIdentifier,
+        privateProviderCode,
+        privateProviderMessage,
+        "email_private",
+      ]) {
+        expect(serializedCalls).not.toContain(prohibitedValue);
+      }
+    },
+  );
+});
+
 describe("auth v2 callback privacy", () => {
   it("does not forward Clerk callback codes, messages, or payloads", async () => {
     const path =
@@ -224,6 +341,57 @@ describe("auth v2 callback privacy", () => {
       "ticket_private_2fb1",
       "https://private.example/finish",
       "hash_private_902e",
+    ]) {
+      expect(serializedCalls).not.toContain(prohibitedValue);
+    }
+  });
+
+  it("keeps sign-up callback attribution provider-neutral and private", async () => {
+    const privateProviderCode = "private_sign_up_oauth_callback_code";
+    const privateProviderMessage = "Private sign-up OAuth callback detail";
+    const path =
+      "/v2/sign-up/sso-callback?ticket=ticket_private_sign_up_2fb1" +
+      "&redirect_url=https%3A%2F%2Fprivate.example%2Ffinish%3Fcode%3Dcallback_private_sign_up_5c12" +
+      "#token=hash_private_sign_up_902e";
+    context.mocks.browser.url(`https://app.vm0.ai${path}`);
+    mockSignUpResource({
+      externalAccountError: {
+        code: privateProviderCode,
+        longMessage: privateProviderMessage,
+        message: privateProviderMessage,
+      },
+      externalAccountStatus: "failed",
+      status: null,
+    });
+
+    await setupPage({
+      context,
+      path,
+      session: null,
+      user: null,
+      withoutRender: true,
+    });
+
+    expect(diagnosticCalls()).toStrictEqual([
+      [
+        AUTH_V2_DIAGNOSTIC_EVENT,
+        {
+          error_category: "provider-error",
+          flow: "sign-up",
+          method: "unknown",
+          outcome: "failure",
+          step: "oauth-callback",
+        },
+      ],
+    ]);
+    const serializedCalls = JSON.stringify(diagnosticCalls());
+    for (const prohibitedValue of [
+      privateProviderCode,
+      privateProviderMessage,
+      "ticket_private_sign_up_2fb1",
+      "https://private.example/finish",
+      "callback_private_sign_up_5c12",
+      "hash_private_sign_up_902e",
     ]) {
       expect(serializedCalls).not.toContain(prohibitedValue);
     }
