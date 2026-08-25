@@ -54,8 +54,8 @@ def test_ascii_label_contract(label, expected):
     assert host_normalization.normalize_idna_label(label) == expected
 
 
-def test_unicode_label_at_dns_limit_is_accepted():
-    normalized = host_normalization.normalize_idna_label("é" * 57)
+def test_decomposed_unicode_label_at_dns_limit_is_accepted():
+    normalized = host_normalization.normalize_idna_label("e\u0301" * 57)
 
     assert normalized == f"xn--9c{'a' * 57}"
     assert len(normalized) == 63
