@@ -23,6 +23,7 @@ const ONBOARDING_MAKE_OPTION_IDS = [
   "presentation",
   "video",
   "images",
+  "website",
   "explore",
 ] as const satisfies readonly OnboardingChoice[];
 
@@ -38,6 +39,8 @@ const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
     "https://static.vm0.io/web/assets/onboarding/v2-choice-video_80x80.png",
   images:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-images_80x80.png",
+  website:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-website_80x80.png",
   explore:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-explore_80x80.png",
 };

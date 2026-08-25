@@ -3391,6 +3391,10 @@
           "description": "Convierte tus ideas en vídeo",
           "title": "Producción de vídeo"
         },
+        "website": {
+          "description": "Crea y publica una página que puedas compartir",
+          "title": "Crear un sitio web"
+        },
         "workflow": {
           "description": "Explorar desde plantillas preestablecidas",
           "title": "Automatización de flujos de trabajo"

@@ -7,6 +7,7 @@ export type OnboardingChoice =
   | "presentation"
   | "video"
   | "images"
+  | "website"
   | "explore";
 
 export type OnboardingRouteStep =
@@ -182,6 +183,7 @@ function onboardingChoice(value: string | null): OnboardingChoice | null {
     value === "presentation" ||
     value === "video" ||
     value === "images" ||
+    value === "website" ||
     value === "explore"
   ) {
     return value;

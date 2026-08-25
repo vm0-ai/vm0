@@ -3332,6 +3332,10 @@
           "description": "Ubah ide Anda menjadi video",
           "title": "Produksi video"
         },
+        "website": {
+          "description": "Buat halaman yang bisa dibagikan",
+          "title": "Buat situs web"
+        },
         "workflow": {
           "description": "Jelajahi dari template prasetel",
           "title": "Otomatisasi alur kerja"

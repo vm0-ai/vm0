@@ -3340,6 +3340,10 @@
           "description": "Verwandeln Sie Ihre Ideen in Videos",
           "title": "Videoproduktion"
         },
+        "website": {
+          "description": "Erstellen Sie eine teilbare Seite",
+          "title": "Website erstellen"
+        },
         "workflow": {
           "description": "Entdecken Sie anhand voreingestellter Vorlagen",
           "title": "Workflow-Automatisierung"

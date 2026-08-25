@@ -3332,6 +3332,10 @@
           "description": "Turn your ideas into video",
           "title": "Video production"
         },
+        "website": {
+          "description": "Create and publish a shareable page",
+          "title": "Build a website"
+        },
         "workflow": {
           "description": "Explore from preset templates",
           "title": "Workflow automation"

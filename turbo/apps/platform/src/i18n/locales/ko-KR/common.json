@@ -3332,6 +3332,10 @@
           "description": "아이디어를 비디오로 전환",
           "title": "비디오 제작"
         },
+        "website": {
+          "description": "공유할 수 있는 페이지를 만들어 게시하세요",
+          "title": "웹사이트 만들기"
+        },
         "workflow": {
           "description": "사전 설정된 템플릿에서 탐색",
           "title": "워크플로 자동화"
