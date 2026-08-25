@@ -699,6 +699,12 @@
       "tryDifferentSearch": "다른 검색어를 시도해 보세요.",
       "use": "사용",
       "useThisTemplate": "이 템플릿 사용",
+      "visibility": {
+        "change": "변경",
+        "changeLabel": "템플릿 공개 범위 변경",
+        "privateState": "나만 보고 사용할 수 있습니다",
+        "workspaceState": "이 워크스페이스의 모든 사람이 사용할 수 있습니다"
+      },
       "website": "웹사이트",
       "websitePreview": "{{title}} 웹사이트 템플릿 미리보기",
       "workflow": "워크플로",

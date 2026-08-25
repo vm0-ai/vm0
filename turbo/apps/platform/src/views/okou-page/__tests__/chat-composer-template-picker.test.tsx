@@ -4090,12 +4090,22 @@ describe("chat composer templates", () => {
       screen.findByTestId("Brand refresh imported detail image preview"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
-    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    const changeVisibilityButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") === "Change template visibility"
+        );
+      },
+    );
+    if (!changeVisibilityButton) {
+      throw new Error("Imported template Change visibility button not found");
+    }
+    await user.click(changeVisibilityButton);
+    await user.click(screen.getByRole("radio", { name: /^Workspace/ }));
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Visibility" }),
-      ).toHaveTextContent("Workspace");
+        screen.getByText("Anyone in this workspace can use it"),
+      ).toBeInTheDocument();
     });
 
     const initialDeleteButton = queryAllByRoleFast("button").find(
@@ -4206,13 +4216,23 @@ describe("chat composer templates", () => {
     const detailRequestCountBeforeUpdate = detailRequestCount;
     expect(detailRequestCountBeforeUpdate).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
-    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    const changeVisibilityButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") === "Change template visibility"
+        );
+      },
+    );
+    if (!changeVisibilityButton) {
+      throw new Error("Imported template Change visibility button not found");
+    }
+    await user.click(changeVisibilityButton);
+    await user.click(screen.getByRole("radio", { name: /^Workspace/ }));
     await waitFor(() => {
       expect(updateRequestCount).toBe(1);
       expect(
-        screen.getByRole("combobox", { name: "Visibility" }),
-      ).toHaveTextContent("Workspace");
+        screen.getByText("Anyone in this workspace can use it"),
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByTestId("Stable preview deck imported detail image preview"),

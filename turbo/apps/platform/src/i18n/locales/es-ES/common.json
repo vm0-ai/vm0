@@ -719,6 +719,12 @@
       "tryDifferentSearch": "Prueba con otra búsqueda.",
       "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
+      "visibility": {
+        "change": "Cambiar",
+        "changeLabel": "Cambiar la visibilidad de la plantilla",
+        "privateState": "Solo tú puedes verla y usarla",
+        "workspaceState": "Cualquier persona de este espacio de trabajo puede usarla"
+      },
       "website": "Sitio web",
       "websitePreview": "Vista previa de la plantilla de sitio web {{title}}",
       "workflow": "Flujo de trabajo",

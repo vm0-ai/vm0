@@ -699,6 +699,12 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "visibility": {
+        "change": "Ubah",
+        "changeLabel": "Ubah visibilitas templat",
+        "privateState": "Hanya Anda yang dapat melihat dan menggunakannya",
+        "workspaceState": "Siapa pun di ruang kerja ini dapat menggunakannya"
+      },
       "website": "Website",
       "websitePreview": "pratinjau template website {{title}}",
       "workflow": "Alur kerja",
