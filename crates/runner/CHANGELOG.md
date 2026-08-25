@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.171.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.11...runner-rs-v0.171.12) (2026-08-25)
+
+
+### Bug Fixes
+
+* **python:** lint unbound metadata mutation calls ([#29124](https://github.com/vm0-ai/vm0/issues/29124)) ([c906c06](https://github.com/vm0-ai/vm0/commit/c906c067e2ba16777e0a1d5b1a9ce815f4196f3f))
+
+
+### Documentation
+
+* **python:** define proxy registry unavailability reason contract ([#29156](https://github.com/vm0-ai/vm0/issues/29156)) ([c31a72a](https://github.com/vm0-ai/vm0/commit/c31a72a0c68e5435179097d73e498b60b6de0bd4))
+* **python:** define the shared model http failure evidence contract ([#29123](https://github.com/vm0-ai/vm0/issues/29123)) ([2adbb0f](https://github.com/vm0-ai/vm0/commit/2adbb0f7abcc40a9ef6a5e6f35b583dc519b3728))
+
+
+### Refactoring
+
+* **python:** consolidate model-provider flow metadata setup ([#29126](https://github.com/vm0-ai/vm0/issues/29126)) ([82bb2ab](https://github.com/vm0-ai/vm0/commit/82bb2abf5bb68c9962f40352ad39bb68c670d27c))
+
+
+### Performance Improvements
+
+* **python:** skip irrelevant websocket client parsing ([#29127](https://github.com/vm0-ai/vm0/issues/29127)) ([2131e63](https://github.com/vm0-ai/vm0/commit/2131e63052fd57131942d4f76522ff3d09da3f7e))
+
 ## [0.171.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.10...runner-rs-v0.171.11) (2026-08-24)
 
 
