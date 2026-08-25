@@ -103,9 +103,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
-    expect(
-      staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -137,9 +134,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
-    expect(
-      otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -171,9 +165,6 @@ describe("getAllFeatureStates", () => {
     expect(bingjieStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       true,
     );
-    expect(
-      bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(true);
     expect(bingjieStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
       true,
     );
@@ -185,9 +176,6 @@ describe("getAllFeatureStates", () => {
     expect(otherStaffStates[FeatureSwitchKey.ComposerSubmitDomReconcile]).toBe(
       false,
     );
-    expect(
-      otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerNoteEditableIsolation],
     ).toBe(false);
