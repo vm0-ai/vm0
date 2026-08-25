@@ -47,9 +47,15 @@ _METADATA_METHODS_WITH_KEY_ARGUMENTS = {
 }
 _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
 _DIRECT_UNBOUND_METADATA_KEY_CALL_ARGUMENTS = {
+    ("dict", "__delitem__"): (0, 1),
     ("dict", "__getitem__"): (0, 1),
+    ("dict", "__setitem__"): (0, 1),
     ("dict", "get"): (0, 1),
+    ("dict", "pop"): (0, 1),
+    ("dict", "setdefault"): (0, 1),
+    ("operator", "delitem"): (0, 1),
     ("operator", "getitem"): (0, 1),
+    ("operator", "setitem"): (0, 1),
 }
 
 

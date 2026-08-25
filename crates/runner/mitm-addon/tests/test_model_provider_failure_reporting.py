@@ -1672,6 +1672,7 @@ def test_websocket_failure_only_flow_uses_one_parse_per_server_frame(
     mitm_addon.responseheaders(flow)
     assert not model_websocket_usage.is_enabled(flow)
     full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
+    client_frame = b'{"type":"response.create"}'
     created_frame = b'{"type":"response.created","response":{"id":"failure-only"}}'
     failed_frame = (
         b'{"type":"response.failed","response":{"id":"failure-only",'
@@ -1683,7 +1684,7 @@ def test_websocket_failure_only_flow_uses_one_parse_per_server_frame(
         set_websocket_message(
             flow,
             from_client=True,
-            content=b'{"type":"response.create"}',
+            content=client_frame,
         )
         mitm_addon.websocket_message(flow)
         set_websocket_message(flow, from_client=False, content=created_frame)
@@ -1692,6 +1693,7 @@ def test_websocket_failure_only_flow_uses_one_parse_per_server_frame(
         mitm_addon.websocket_message(flow)
         mitm_addon.websocket_end(flow)
 
+    assert full_body_feeds.count(client_frame) == 1
     assert full_body_feeds.count(created_frame) == 1
     assert full_body_feeds.count(failed_frame) == 1
     assert _reported_payloads(model_provider_failure_api) == [
