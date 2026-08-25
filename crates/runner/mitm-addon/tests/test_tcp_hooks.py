@@ -2,7 +2,6 @@
 
 import json
 import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -10,32 +9,16 @@ import pytest
 from mitmproxy import tcp
 from mitmproxy.flow import Error
 
-import deferred_callbacks
 import flow_metadata_keys as metadata_keys
 import logging_utils
 import mitm_addon
 import registry
+from tests.deferred_callback_helpers import (
+    capture_deferred_callbacks,
+    run_deferred_callbacks,
+)
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
-
-_ScheduledTcpDrain = tuple[Callable[[tcp.TCPFlow], None], tcp.TCPFlow]
-
-
-def _capture_tcp_drains(monkeypatch: pytest.MonkeyPatch) -> list[_ScheduledTcpDrain]:
-    scheduled: list[_ScheduledTcpDrain] = []
-
-    def call_soon(callback: Callable[[tcp.TCPFlow], None], flow: tcp.TCPFlow) -> None:
-        scheduled.append((callback, flow))
-
-    monkeypatch.setattr(deferred_callbacks, "call_soon", call_soon)
-    return scheduled
-
-
-def _run_scheduled_tcp_drains(scheduled: list[_ScheduledTcpDrain]) -> None:
-    pending = list(scheduled)
-    scheduled.clear()
-    for callback, flow in pending:
-        callback(flow)
 
 
 class TestTcpStart:
@@ -205,7 +188,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
-        scheduled = _capture_tcp_drains(monkeypatch)
+        scheduled = capture_deferred_callbacks(monkeypatch)
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
@@ -214,7 +197,7 @@ class TestTcpLog:
         assert flow.messages == messages
         assert len(scheduled) == 1
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
 
         assert flow.messages == []
 
@@ -236,7 +219,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
-        scheduled = _capture_tcp_drains(monkeypatch)
+        scheduled = capture_deferred_callbacks(monkeypatch)
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
@@ -247,7 +230,7 @@ class TestTcpLog:
         assert entry["response_size"] == len(b"server-response")
         assert flow.messages == []
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
         assert flow.messages == []
 
     def test_tcp_message_reschedules_after_previous_drain(
@@ -259,12 +242,12 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
-        scheduled = _capture_tcp_drains(monkeypatch)
+        scheduled = capture_deferred_callbacks(monkeypatch)
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
         assert flow.messages == []
 
         second_client = tcp.TCPMessage(True, b"second-client")
@@ -276,7 +259,7 @@ class TestTcpLog:
 
         assert len(scheduled) == 1
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -291,7 +274,7 @@ class TestTcpLog:
     ):
         messages = [tcp.TCPMessage(True, b"client")]
         flow = real_tcp_flow(messages=messages)
-        scheduled = _capture_tcp_drains(monkeypatch)
+        scheduled = capture_deferred_callbacks(monkeypatch)
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
@@ -310,14 +293,14 @@ class TestTcpLog:
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         monkeypatch.setattr(logging_utils, "NETWORK_LOG_MAX_SAFE_SIZE", max_log_size)
-        scheduled = _capture_tcp_drains(monkeypatch)
+        scheduled = capture_deferred_callbacks(monkeypatch)
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
 
         assert len(scheduled) == 1
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
         assert flow.messages == []
 
         flow.messages.append(second_client)
@@ -333,5 +316,5 @@ class TestTcpLog:
         assert entry["response_size"] == 0
         assert flow.messages == []
 
-        _run_scheduled_tcp_drains(scheduled)
+        run_deferred_callbacks(scheduled)
         assert flow.messages == []
