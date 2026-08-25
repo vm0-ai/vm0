@@ -284,7 +284,7 @@ function serializeBuiltInModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   };
 }
 
-type Vm0BuiltInModelAction = Extract<
+type BuiltInModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
@@ -300,7 +300,7 @@ type Vm0BuiltInModelAction = Extract<
 
 function isVm0BuiltInModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0BuiltInModelAction {
+): body is BuiltInModelAction {
   return [
     "seed-vm0-built-in-default-model-key",
     "seed-vm0-built-in-model-key",
@@ -313,7 +313,7 @@ function isVm0BuiltInModelAction(
 }
 
 type SetVm0BuiltInCandidateCooldownAction = Extract<
-  Vm0BuiltInModelAction,
+  BuiltInModelAction,
   { action: "set-vm0-built-in-candidate-cooldown" }
 >;
 
@@ -341,7 +341,7 @@ async function setVm0BuiltInCandidateCooldown(
 }
 
 type DeleteVm0BuiltInCandidateCooldownAction = Extract<
-  Vm0BuiltInModelAction,
+  BuiltInModelAction,
   { action: "delete-vm0-built-in-candidate-cooldown" }
 >;
 
@@ -362,7 +362,7 @@ async function deleteVm0BuiltInCandidateCooldown(
 
 async function vm0BuiltInModelActionResponse(
   db: Db,
-  body: Vm0BuiltInModelAction,
+  body: BuiltInModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {

@@ -13,7 +13,7 @@ const vm0BuiltInModelKeyFixtureLabelSchema = z.object({
   preservedLabel: z.string().nullable().optional(),
 });
 
-interface Vm0BuiltInModelKeyRow {
+interface BuiltInModelKeyRow {
   readonly vendor: string;
   readonly apiKey: string;
 }
@@ -49,9 +49,9 @@ function parseVm0BuiltInModelKeyFixtureLabel(label: string | null) {
 export async function acquireBuiltInModelKeyFixture(
   db: Db,
   fixtureId: string,
-  rows: readonly Vm0BuiltInModelKeyRow[],
-): Promise<readonly Vm0BuiltInModelKeyRow[]> {
-  const acquiredRows: Vm0BuiltInModelKeyRow[] = [];
+  rows: readonly BuiltInModelKeyRow[],
+): Promise<readonly BuiltInModelKeyRow[]> {
+  const acquiredRows: BuiltInModelKeyRow[] = [];
   for (const value of rows) {
     const apiKey = await db.transaction(async (tx) => {
       const [row] = await tx

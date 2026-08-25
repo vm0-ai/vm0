@@ -23,7 +23,7 @@ export const SUPPORTED_RUN_MODELS = [
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
 
-export type Vm0ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
+export type ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 
 /**
  * User-facing credit cost tier for Built-in model offerings. Only applies to
@@ -31,7 +31,7 @@ export type Vm0ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
  * carry a platform tier.
  */
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
-  Record<SupportedRunModel, Vm0ModelPriceTier>
+  Record<SupportedRunModel, ModelPriceTier>
 >({
   "claude-fable-5": "$$$$",
   "claude-opus-5": "$$$",

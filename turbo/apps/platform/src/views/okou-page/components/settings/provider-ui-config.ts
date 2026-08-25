@@ -3,7 +3,7 @@ import {
   getVm0ModelPriceTier,
   type ModelProviderType,
   type SupportedRunModel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { i18n } from "../../../../i18n/index.ts";
 
@@ -38,7 +38,7 @@ export function getUILabel(type: ModelProviderType): string {
   }
 }
 
-export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
+export function getVm0ModelPriceTierLabel(tier: ModelPriceTier): string {
   switch (tier) {
     case "$": {
       return i18n.t(($) => {
@@ -68,7 +68,7 @@ export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
  * so they read as cost per artifact rather than as the run-model capability
  * ladder the same badge carries for chat.
  */
-export function getMediaModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
+export function getMediaModelPriceTierLabel(tier: ModelPriceTier): string {
   switch (tier) {
     case "$": {
       return i18n.t(($) => {
@@ -113,4 +113,4 @@ export function getModelBrandIconType(
 ): ModelProviderType {
   return MODEL_BRAND_ICON[model];
 }
-export { getVm0ModelPriceTier, type Vm0ModelPriceTier };
+export { getVm0ModelPriceTier, type ModelPriceTier };

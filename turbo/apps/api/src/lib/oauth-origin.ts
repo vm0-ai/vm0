@@ -2,9 +2,9 @@ import { env } from "./env";
 
 const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
-type Vm0HostRole = "api" | "www";
+type HostRole = "api" | "www";
 
-function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
+function isVm0Host(hostname: string, role: HostRole): boolean {
   return (
     (role === "www" &&
       (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
@@ -16,7 +16,7 @@ function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
   );
 }
 
-function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
+function isTrustedOrigin(origin: string, role: HostRole): boolean {
   if (!URL.canParse(origin)) {
     return false;
   }
@@ -33,7 +33,7 @@ function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
   return url.protocol === "https:" && isVm0Host(url.hostname, role);
 }
 
-function isTrustedHostedOrigin(origin: string, role: Vm0HostRole): boolean {
+function isTrustedHostedOrigin(origin: string, role: HostRole): boolean {
   if (!URL.canParse(origin)) {
     return false;
   }
@@ -58,8 +58,8 @@ function isTrustedApiOrigin(origin: string): boolean {
 
 function canonicalSiblingOriginForHost(
   url: URL,
-  fromRole: Vm0HostRole,
-  toRole: Vm0HostRole,
+  fromRole: HostRole,
+  toRole: HostRole,
 ): string | null {
   const leadingRole = `${fromRole}.`;
   const delimitedRole = `-${fromRole}.`;

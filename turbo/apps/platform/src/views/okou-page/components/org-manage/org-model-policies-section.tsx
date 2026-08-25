@@ -103,7 +103,7 @@ import {
   getUILabel,
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
@@ -404,7 +404,7 @@ function getPolicyDetail(policy: OrgModelPolicy): string | null {
   return null;
 }
 
-function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
+function PriceTierBadge({ tier }: { tier: ModelPriceTier }) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
