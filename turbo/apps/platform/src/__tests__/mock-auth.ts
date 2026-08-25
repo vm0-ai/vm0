@@ -321,14 +321,16 @@ export function mockUser(
 }
 
 interface MockedGoogleOneTapInitializeOptions {
+  readonly auto_select: boolean;
   readonly callback: (response: { readonly credential?: string }) => void;
+  readonly cancel_on_tap_outside: boolean;
   readonly client_id: string;
+  readonly itp_support: boolean;
+  readonly use_fedcm_for_prompt: boolean;
 }
 
 type MockedGoogleOneTapMomentCallback = (notification: {
-  isDismissedMoment(): boolean;
-  isNotDisplayed(): boolean;
-  isSkippedMoment(): boolean;
+  getMomentType(): "dismissed" | "display" | "skipped";
 }) => void;
 
 let internalMockedGoogleOneTapCredential: string | null = null;
@@ -349,13 +351,10 @@ function defaultGoogleOneTapPromptImpl(
     internalMockedGoogleOneTapCallback?.({
       credential: internalMockedGoogleOneTapCredential,
     });
+    callback({ getMomentType: () => "dismissed" });
     return;
   }
-  callback({
-    isDismissedMoment: () => false,
-    isNotDisplayed: () => true,
-    isSkippedMoment: () => false,
-  });
+  callback({ getMomentType: () => "skipped" });
 }
 
 export const mockedGoogleOneTap = {

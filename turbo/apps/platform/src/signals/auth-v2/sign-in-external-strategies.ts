@@ -26,9 +26,7 @@ interface GoogleCredentialResponse {
 }
 
 interface GooglePromptMomentNotification {
-  isDismissedMoment(): boolean;
-  isNotDisplayed(): boolean;
-  isSkippedMoment(): boolean;
+  getMomentType(): "dismissed" | "display" | "skipped";
 }
 
 interface GoogleIdentityApi {
@@ -39,6 +37,7 @@ interface GoogleIdentityApi {
     readonly cancel_on_tap_outside: boolean;
     readonly client_id: string;
     readonly itp_support: boolean;
+    readonly use_fedcm_for_prompt: boolean;
   }): void;
   prompt(
     callback: (notification: GooglePromptMomentNotification) => void,
@@ -120,13 +119,11 @@ async function startGoogleOneTapPrompt(
     cancel_on_tap_outside: true,
     client_id: clientId,
     itp_support: true,
+    use_fedcm_for_prompt: true,
   });
   api.prompt((notification) => {
-    if (
-      notification.isDismissedMoment() ||
-      notification.isNotDisplayed() ||
-      notification.isSkippedMoment()
-    ) {
+    const momentType = notification.getMomentType();
+    if (momentType === "dismissed" || momentType === "skipped") {
       finish(null);
     }
   });
