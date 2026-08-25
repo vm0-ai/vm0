@@ -155,6 +155,8 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
 /// Resolve one Guest Agent timing alias pair at the single process-env capture
 /// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
 /// runner writer and supported local tuning interface remain legacy-only.
+/// Remove the legacy reader only after #28914's existing runner/sandbox drain
+/// and rollback gates close and source telemetry shows zero legacy-only reads.
 fn guest_agent_tuning_env_or_empty(
     canonical_key: &'static str,
     legacy_key: &'static str,
