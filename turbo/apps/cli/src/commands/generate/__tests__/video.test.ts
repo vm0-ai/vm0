@@ -493,7 +493,7 @@ describe("okou generate video command", () => {
 
     const collapsed = help.replace(/\s+/g, " ");
     expect(collapsed).toContain(
-      "Omitting --model uses the caller's selected video model, falling back to dreamina-seedance-2.0 ",
+      "Omitting --model generates with dreamina-seedance-2.0 ",
     );
     expect(collapsed).not.toContain("dreamina-seedance-2.0-fast (default)");
   });

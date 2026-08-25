@@ -455,8 +455,7 @@ Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
   - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
-  - Omitting --model uses the caller's selected video model, falling back to
-    ${DEFAULT_VIDEO_MODEL_ALIAS}
+  - Omitting --model generates with ${DEFAULT_VIDEO_MODEL_ALIAS}
 
 Models:
   - Dreamina Seedance 2.5: dreamina-seedance-2.5. Supports 4s-30s,
