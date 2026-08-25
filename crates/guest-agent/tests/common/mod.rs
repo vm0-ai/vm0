@@ -107,6 +107,27 @@ pub async fn command_output_with_timeout(
     timeout: Duration,
     timeout_context: &str,
 ) -> io::Result<Output> {
+    command_output_with_optional_stdin_timeout(command, None, timeout, timeout_context).await
+}
+
+pub async fn command_output_with_stdin_timeout(
+    command: &mut Command,
+    stdin: &[u8],
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    command_output_with_optional_stdin_timeout(command, Some(stdin), timeout, timeout_context).await
+}
+
+async fn command_output_with_optional_stdin_timeout(
+    command: &mut Command,
+    stdin: Option<&[u8]>,
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    if stdin.is_some() {
+        command.stdin(Stdio::piped());
+    }
     CommandSession::configure(command);
     let mut child = command
         .stdout(Stdio::piped())
@@ -124,16 +145,39 @@ pub async fn command_output_with_timeout(
             ))),
         };
     };
+    let stdin = if let Some(stdin_bytes) = stdin {
+        let Some(child_stdin) = child.stdin.take() else {
+            return match terminate_command(&mut child, &session).await {
+                Ok(_) => Err(io::Error::other(
+                    "captured child omitted its configured stdin pipe",
+                )),
+                Err(error) => Err(io::Error::other(format!(
+                    "captured child omitted its configured stdin pipe; cleanup failed: {error}"
+                ))),
+            };
+        };
+        Some((child_stdin, stdin_bytes))
+    } else {
+        None
+    };
     let mut stdout_bytes = Vec::new();
     let mut stderr_bytes = Vec::new();
 
     let output = {
         let wait_with_output = async {
-            let (stdout_result, stderr_result) = tokio::join!(
+            let write_stdin = async move {
+                if let Some((mut child_stdin, stdin_bytes)) = stdin {
+                    child_stdin.write_all(stdin_bytes).await?;
+                }
+                Ok::<(), io::Error>(())
+            };
+            let (stdin_result, stdout_result, stderr_result) = tokio::join!(
+                write_stdin,
                 stdout.read_to_end(&mut stdout_bytes),
                 stderr.read_to_end(&mut stderr_bytes),
             );
             let status = child.wait().await?;
+            stdin_result?;
             stdout_result?;
             stderr_result?;
             Ok(Output {

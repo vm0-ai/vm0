@@ -57,6 +57,24 @@ async fn command_output_timeout_preserves_completed_output()
 }
 
 #[tokio::test]
+async fn command_output_with_stdin_timeout_writes_payload_and_eof()
+-> Result<(), Box<dyn std::error::Error>> {
+    let input = b"serialized request\n";
+    let output = common::command_output_with_stdin_timeout(
+        &mut Command::new("/bin/cat"),
+        input,
+        Duration::from_secs(5),
+        "stdin echo exceeded its budget",
+    )
+    .await?;
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout, input);
+    assert!(output.stderr.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
 async fn command_output_timeout_reaps_child_before_returning()
 -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
@@ -75,7 +93,7 @@ async fn command_output_timeout_reaps_child_before_returning()
         .await
     });
 
-    common::wait_for_path(&pid_file, Duration::from_secs(5)).await?;
+    common::wait_for_file_contains(&pid_file, "\n", Duration::from_secs(5)).await?;
     let pid = std::fs::read_to_string(&pid_file)?.trim().parse::<u32>()?;
     let process_path = PathBuf::from(format!("/proc/{pid}"));
     assert!(
