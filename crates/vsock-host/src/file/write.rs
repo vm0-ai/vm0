@@ -556,13 +556,15 @@ impl VsockHost {
                 .await;
         }
 
+        validate_write_file_chunk_request(WriteFileChunkRequest::standard(path, &[], sudo, false))?;
         let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
 
-        // Write chunks to a per-call temp file, then atomic rename. The
-        // suffix prevents concurrent large writes to the same destination
-        // from appending to or cleaning up each other's staging file.
-        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_temp_seq());
+        // Write chunks to a bounded per-call sibling, then atomic rename. The UUID
+        // prevents concurrent writes from sharing or cleaning up a staging file.
+        let tmp_path = std::path::Path::new(path)
+            .with_file_name(format!(".vm0tmp-{}", uuid::Uuid::new_v4().simple()));
+        let tmp = tmp_path.to_string_lossy();
         let quoted_tmp = quote_shell_arg(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
         let cleanup_armed = Arc::new(AtomicBool::new(false));
