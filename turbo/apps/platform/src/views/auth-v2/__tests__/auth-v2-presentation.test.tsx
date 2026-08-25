@@ -61,6 +61,13 @@ function buttonByLabel(label: string): HTMLButtonElement {
   return button;
 }
 
+const AUTH_V2_PAGE_ACTION_SEMANTICS = [
+  ["--color-primary", "var(--color-foreground)"],
+  ["--color-primary-foreground", "var(--color-background)"],
+  ["--color-primary-hover", "var(--color-foreground-hover)"],
+  ["--color-primary-pressed", "var(--color-foreground-pressed)"],
+] as const;
+
 describe("auth v2 presentation", () => {
   it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
@@ -96,10 +103,29 @@ describe("auth v2 presentation", () => {
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
 
-    expect(linkByText("Use current sign-in")).toHaveAttribute(
-      "href",
-      "/sign-in",
+    const currentSignInAction = linkByText("Use current sign-in");
+    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
+    expect(currentSignInAction).toHaveClass("text-primary");
+    expect(currentSignInAction.closest('[data-testid="app-auth-v2"]')).toBe(
+      screen.getByTestId("app-auth-v2"),
     );
+  });
+
+  it("scopes neutral page-action semantics to the Auth v2 region", async () => {
+    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+
+    detachedSetupPage({ context, path: "/v2/sign-in" });
+
+    const region = await screen.findByTestId("app-auth-v2");
+    const sharedAuthLayout = screen.getByTestId("app-auth-layout");
+
+    for (const [property, value] of AUTH_V2_PAGE_ACTION_SEMANTICS) {
+      expect(region.style.getPropertyValue(property)).toBe(value);
+      expect(sharedAuthLayout.style.getPropertyValue(property)).toBe("");
+      expect(document.documentElement.style.getPropertyValue(property)).toBe(
+        "",
+      );
+    }
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {

@@ -1,11 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader } from "@okouai/ui";
 import { useSet } from "ccstate-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
 
 const AUTH_V2_TITLE_ID = "auth-v2-title";
 const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
+
+function authV2PageActionSemantics(): CSSProperties &
+  Record<`--${string}`, string> {
+  return {
+    "--color-primary": "var(--color-foreground)",
+    "--color-primary-foreground": "var(--color-background)",
+    "--color-primary-hover": "var(--color-foreground-hover)",
+    "--color-primary-pressed": "var(--color-foreground-pressed)",
+  };
+}
 
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
@@ -31,6 +41,7 @@ export function AuthV2Shell({
       className="zero-composer relative w-full max-w-md overflow-visible"
       data-testid="app-auth-v2"
       role="region"
+      style={authV2PageActionSemantics()}
     >
       <CardHeader className="items-center bg-transparent px-5 pt-6 pb-2 text-center sm:px-6 sm:pt-7">
         <h1
