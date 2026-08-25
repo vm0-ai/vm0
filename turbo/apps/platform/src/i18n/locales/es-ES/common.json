@@ -3386,9 +3386,17 @@
           "description": "Genera diapositivas y contenido para presentarlas",
           "title": "Generar una presentación"
         },
+        "slack": {
+          "description": "Chatea con tu compañero de IA en tu espacio de trabajo",
+          "title": "Usar Slack"
+        },
         "video": {
           "description": "Convierte tus ideas en vídeo",
           "title": "Producción de vídeo"
+        },
+        "website": {
+          "description": "Crea y publica una página que puedas compartir",
+          "title": "Crear un sitio web"
         },
         "workflow": {
           "description": "Explorar desde plantillas preestablecidas",

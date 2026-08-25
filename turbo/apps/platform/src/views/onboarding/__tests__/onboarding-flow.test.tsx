@@ -266,6 +266,50 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("leads with Slack and opens its setup after completing onboarding", async () => {
+    await openMakePage();
+
+    const slackOption = firstItem(screen.getAllByRole("radio"));
+    expect(slackOption).toHaveTextContent("Use Slack");
+    expect(
+      screen.getByTestId("onboarding-slack-illustration"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+      "src",
+      expect.stringContaining("slack-198390069136.svg"),
+    );
+
+    click(slackOption);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(ROUTES.works);
+    });
+  });
+
+  it("opens website templates from the make page", async () => {
+    await openMakePage();
+
+    const websiteOption = screen.getByRole("radio", {
+      name: /Build a website/u,
+    });
+    expect(websiteOption.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("v2-choice-website_80x80.png"),
+    );
+
+    click(websiteOption);
+
+    await waitFor(() => {
+      const websiteTab = queryAllByRoleFast("tab").find((candidate) => {
+        return (
+          candidate.textContent === "Website" &&
+          candidate.getAttribute("aria-selected") === "true"
+        );
+      });
+      expect(websiteTab).toBeInTheDocument();
+    });
+  });
+
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();

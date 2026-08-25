@@ -3386,9 +3386,17 @@
           "description": "Gerar slides e notas do apresentador",
           "title": "Gerar uma apresentação"
         },
+        "slack": {
+          "description": "Converse com seu colega de IA no seu workspace",
+          "title": "Usar o Slack"
+        },
         "video": {
           "description": "Transforme suas ideias em vídeo",
           "title": "Produção de vídeo"
+        },
+        "website": {
+          "description": "Crie e publique uma página compartilhável",
+          "title": "Criar um site"
         },
         "workflow": {
           "description": "Explore a partir de modelos pré-definidos",

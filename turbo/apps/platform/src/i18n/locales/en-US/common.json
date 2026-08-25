@@ -3327,9 +3327,17 @@
           "description": "Generate slides and speaker",
           "title": "Generate a presentation"
         },
+        "slack": {
+          "description": "Chat with your AI teammate in your workspace",
+          "title": "Use Slack"
+        },
         "video": {
           "description": "Turn your ideas into video",
           "title": "Video production"
+        },
+        "website": {
+          "description": "Create and publish a shareable page",
+          "title": "Build a website"
         },
         "workflow": {
           "description": "Explore from preset templates",
