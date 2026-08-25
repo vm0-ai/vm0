@@ -216,25 +216,42 @@ target_commit=$target_commit_before
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
 ruby -e '
+  require "json"
   require "yaml"
   workflow = YAML.safe_load(File.read(ARGV[0]), aliases: true)
   release_job = workflow.fetch("jobs").fetch("release-please")
   release_target_step = release_job.fetch("steps").find { |step| step["id"] == "release-target" }
   raise "missing release target resolver step" unless release_target_step
+
+  resolver_env = release_target_step.fetch("env")
+  unless resolver_env.keys == ["RELEASE_SHAS"]
+    raise "release target resolver environment must contain only RELEASE_SHAS"
+  end
+
+  projection = resolver_env.fetch("RELEASE_SHAS")
+  projected_paths = projection.scan(/steps\.release\.outputs\[\x27([^\x27]+)--sha\x27\]/).flatten
+  output_reference_count = projection.scan(/steps\.release\.outputs/).length
+  unless output_reference_count == projected_paths.length
+    raise "release bodies, changelogs, and complete outputs must not enter the release target resolver environment"
+  end
+
+  configured_paths = JSON.parse(File.read(ARGV[1])).fetch("packages").keys
+  missing_paths = configured_paths - projected_paths
+  unknown_paths = projected_paths - configured_paths
+  duplicate_paths = projected_paths.group_by(&:itself).select { |_, paths| paths.length > 1 }.keys
+  unless missing_paths.empty? && unknown_paths.empty? && duplicate_paths.empty?
+    raise "release SHA projection mismatch: missing=#{missing_paths.sort}, unknown=#{unknown_paths.sort}, duplicates=#{duplicate_paths.sort}"
+  end
+
   puts release_target_step.fetch("run")
-' "${repo_root}/.github/workflows/release-please.yml" >"$release_target_script"
+' \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/release-please-config.json" \
+  >"$release_target_script"
 
 release_target=cccccccccccccccccccccccccccccccccccccccc
-release_outputs=$(jq -nc \
-  --arg target "$release_target" \
-  '{
-    "turbo/apps/api--sha": $target,
-    "turbo/apps/platform--sha": $target,
-    "turbo/apps/api--body": "release notes",
-    releases_created: "true"
-  }')
 release_target_output="${tmp_dir}/release-target.output"
-RELEASE_OUTPUTS="$release_outputs" \
+RELEASE_SHAS="$(jq -nc --arg target "$release_target" '["", $target, "", $target]')" \
   GITHUB_OUTPUT="$release_target_output" \
   bash "$release_target_script"
 grep -qx "sha=${release_target}" "$release_target_output" || fail "release target resolver did not publish the unique release SHA"
@@ -243,20 +260,29 @@ missing_release_target_output="${tmp_dir}/missing-release-target.output"
 assert_failure \
   "release-please returned no release SHA" \
   env \
-  RELEASE_OUTPUTS='{"releases_created":"true"}' \
+  RELEASE_SHAS='["", ""]' \
   GITHUB_OUTPUT="$missing_release_target_output" \
   bash "$release_target_script"
 [ ! -s "$missing_release_target_output" ] || fail "missing release SHA must not publish an output"
 
-multiple_release_targets=$(jq -nc '{
-  "turbo/apps/api--sha": "cccccccccccccccccccccccccccccccccccccccc",
-  "turbo/apps/platform--sha": "dddddddddddddddddddddddddddddddddddddddd"
-}')
+invalid_release_target_output="${tmp_dir}/invalid-release-target.output"
+assert_failure \
+  "release-please returned invalid release SHA" \
+  env \
+  RELEASE_SHAS='["cccccccccccccccccccccccccccccccccccccccc", "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"]' \
+  GITHUB_OUTPUT="$invalid_release_target_output" \
+  bash "$release_target_script"
+[ ! -s "$invalid_release_target_output" ] || fail "invalid release SHA must not publish an output"
+
+multiple_release_targets=$(jq -nc '[
+  "cccccccccccccccccccccccccccccccccccccccc",
+  "dddddddddddddddddddddddddddddddddddddddd"
+]')
 multiple_release_target_output="${tmp_dir}/multiple-release-target.output"
 assert_failure \
   "release-please returned multiple release SHAs" \
   env \
-  RELEASE_OUTPUTS="$multiple_release_targets" \
+  RELEASE_SHAS="$multiple_release_targets" \
   GITHUB_OUTPUT="$multiple_release_target_output" \
   bash "$release_target_script"
 [ ! -s "$multiple_release_target_output" ] || fail "ambiguous release SHAs must not publish an output"
