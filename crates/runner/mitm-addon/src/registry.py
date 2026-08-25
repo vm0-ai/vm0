@@ -35,7 +35,33 @@ class _RegistryFormatError(ValueError):
 
 @dataclass(frozen=True)
 class InvalidSandboxEntry:
-    """Registry entry present for an IP but invalid for runtime sandbox context use."""
+    """Registry entry present for an IP but invalid for runtime sandbox context use.
+
+    ``reason`` is the stable, client-visible diagnostic category. The supported
+    values and their validation conditions are:
+
+    - ``invalid_sandbox_entry``: the entry is not an object.
+    - ``missing_run_id``: the ``runId`` field is absent.
+    - ``invalid_run_id``: ``runId`` is not a string or has leading or trailing
+      whitespace.
+    - ``empty_run_id``: ``runId`` is a string whose stripped value is empty.
+    - ``invalid_billable_firewalls``: ``billableFirewalls`` is not a list of
+      strings.
+    - ``missing_cli_agent_type``: the ``cliAgentType`` field is absent.
+    - ``invalid_cli_agent_type``: ``cliAgentType`` is not a string.
+    - ``empty_cli_agent_type``: ``cliAgentType`` is an empty string.
+    - ``invalid_firewalls``: ``firewalls`` is a non-null non-list, or firewall
+      entry resolution fails.
+    - ``invalid_omitted_intents``: omitted firewall or connector ID metadata is
+      not a list of non-empty strings or contains duplicates.
+    - ``invalid_connector_routing_variables``: connector routing metadata is
+      not an object with connector identities and string-map values.
+
+    ``message`` is the detailed validation text for the individual entry. Both
+    fields are copied verbatim into the local ``invalid_registry_sandbox`` 503
+    response. Consumers should use ``reason`` for category-level handling and
+    treat ``message`` as diagnostic text.
+    """
 
     reason: str
     message: str
@@ -472,6 +498,11 @@ def load_registry_state(registry_path: str) -> RegistryState:
     failed key so repeated reads of the same bad bytes do not reparse or
     re-warn. File read errors keep retrying that key, and internal
     compile/eviction errors are allowed to propagate.
+
+    Per-entry validation failures remain in ``invalid_sandboxes`` within the
+    successful snapshot while valid entries remain in ``sandboxes`` and stay
+    available for enforcement. They do not make the whole registry unavailable;
+    requests for an invalid entry are blocked as ``invalid_registry_sandbox``.
 
     ``stat_failed`` covers failures before a file identity is available, and
     later calls retry opening the path while the stat warning guard suppresses
