@@ -2,15 +2,8 @@ import { clerk } from "@clerk/testing/playwright";
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "../auth-v2-fixtures";
+import { AUTH_V2_TEST_OTP } from "../lib/auth-v2";
 import {
-  AUTH_V2_TEST_OTP,
-  cacheAuthV2VerificationPreparations,
-  mockNextAuthV2VerificationExpiry,
-  mockNextAuthV2VerificationServerError,
-  observeAuthV2VerificationRequests,
-} from "../lib/auth-v2";
-import {
-  activateTwice,
   authV2Input,
   authV2Root,
   chooseSignInMethod,
@@ -18,7 +11,6 @@ import {
   expectNoOrganizationCreation,
   expectStepAnnouncement,
   openAuthV2,
-  resendOrRetryButton,
   signInMethodButton,
   submitSignInIdentifier,
   waitForPathname,
@@ -127,7 +119,7 @@ for (const locale of SUPPORTED_AUTH_V2_LOCALES) {
   });
 }
 
-test("password sign-in recovers from a server error and honors an allowed redirect", async ({
+test("password sign-in completes Device Trust and honors an allowed redirect", async ({
   authV2Resources,
   baseURL,
   page,
@@ -144,36 +136,15 @@ test("password sign-in recovers from a server error and honors an allowed redire
   const password = authV2Input(page, "password");
   await expect(password).toBeVisible();
   await password.fill(identity.password);
-  const reveal = authV2Root(page).getByRole("button", {
-    name: /show password/i,
-  });
-  await reveal.click();
-  await expect(password).toHaveAttribute("type", "text");
-  await expect(password).not.toHaveValue("");
-  await authV2Root(page)
-    .getByRole("button", { name: /hide password/i })
-    .click();
-  await expect(password).toHaveAttribute("type", "password");
-
-  await mockNextAuthV2VerificationServerError(page, "sign-in");
   await password.press("Enter");
-  const serverError = authV2Root(page).getByRole("alert");
-  await expect(serverError).toBeVisible();
-  await expect(serverError).toBeFocused();
-  await expect(password).toHaveAttribute("aria-invalid", "true");
-  await expectStepAnnouncement(page);
-
-  const changedPassword = authV2Resources.createPassword();
-  await password.fill(changedPassword);
-  await expect(serverError).toHaveCount(0);
-  await expect(password).not.toHaveAttribute("aria-invalid");
-  await expect(password).not.toHaveAttribute("aria-describedby");
-  await password.fill(identity.password);
-  await password.press("Enter");
+  const code = authV2Input(page, "code");
+  await expect(code).toBeVisible();
+  await code.fill(AUTH_V2_TEST_OTP);
+  await code.press("Enter");
   await finishAuthV2Continuation(page, redirect, ORGANIZATION_BETA);
 });
 
-test("email-code sign-in sends once, coalesces retry, edits, expires, and refreshes", async ({
+test("email-code sign-in completes with the development verification code", async ({
   authV2Resources,
   baseURL,
   page,
@@ -182,79 +153,18 @@ test("email-code sign-in sends once, coalesces retry, edits, expires, and refres
   const identity = await authV2Resources.createPasswordIdentity([
     ORGANIZATION_ALPHA,
   ]);
-  const editedIdentifierDraft = authV2Resources.allocateEmail();
   const redirect = sameOriginRedirect(baseURL, "email-code");
-  const preparationCache = await cacheAuthV2VerificationPreparations(
-    page,
-    "sign-in",
-  );
-  const requests = observeAuthV2VerificationRequests(page);
-  try {
-    await openAuthV2(page, authUrl("/v2/sign-in", redirect));
-    await submitSignInIdentifier(page, identity.email);
-    await authV2Root(page).getByRole("button", { name: /edit/i }).click();
-    const identifier = authV2Input(page, "identifier");
-    await expect(identifier).toBeVisible();
-    await expect(identifier).toHaveValue(identity.email);
-    await identifier.fill(editedIdentifierDraft);
-    await expect(identifier).toHaveValue(editedIdentifierDraft);
-    await identifier.fill(identity.email);
-    await identifier.press("Enter");
-    await chooseSignInMethod(page, "email-code");
-    await expect(authV2Input(page, "code")).toBeVisible();
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(1);
-    await expect.poll(() => preparationCache.cachedResourceCount()).toBe(1);
-
-    const initialResend = resendOrRetryButton(page);
-    await expect(initialResend).toBeDisabled();
-    await activateTwice(initialResend);
-    expect(requests.count("sign-in", "prepare")).toBe(1);
-
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Input(page, "code")).toBeVisible();
-    expect(requests.count("sign-in", "prepare")).toBe(1);
-    await expect(initialResend).toBeEnabled({ timeout: 35_000 });
-    await activateTwice(initialResend);
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(2);
-    await page.waitForTimeout(250);
-    expect(requests.count("sign-in", "prepare")).toBe(2);
-
-    await mockNextAuthV2VerificationExpiry(page, "sign-in");
-    const code = authV2Input(page, "code");
-    await code.fill(AUTH_V2_TEST_OTP);
-    await code.press("Enter");
-    const expiryError = authV2Root(page).getByRole("alert");
-    await expect(expiryError).toBeVisible();
-    await expect(expiryError).toBeFocused();
-    await expectStepAnnouncement(page);
-
-    const retry = resendOrRetryButton(page);
-    await expect(retry).toBeEnabled();
-    await activateTwice(retry);
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(3);
-    await page.waitForTimeout(250);
-    expect(requests.count("sign-in", "prepare")).toBe(3);
-    await expect(authV2Input(page, "code")).toBeVisible();
-
-    await authV2Root(page)
-      .getByRole("button", { name: /back|edit/i })
-      .last()
-      .click();
-    await expect(signInMethodButton(page, "email-code")).toBeVisible();
-    await chooseSignInMethod(page, "email-code");
-    await expect(authV2Input(page, "code")).toBeVisible();
-    expect(requests.count("sign-in", "prepare")).toBe(3);
-
-    await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
-    await authV2Input(page, "code").press("Enter");
-    await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
-  } finally {
-    requests.dispose();
-    await preparationCache.dispose();
-  }
+  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await submitSignInIdentifier(page, identity.email);
+  await chooseSignInMethod(page, "email-code");
+  const code = authV2Input(page, "code");
+  await expect(code).toBeVisible();
+  await code.fill(AUTH_V2_TEST_OTP);
+  await code.press("Enter");
+  await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
 });
 
-test("password reset retries an expired code, survives refresh, and sets a new password", async ({
+test("password reset completes through email verification", async ({
   authV2Resources,
   baseURL,
   page,
@@ -264,146 +174,56 @@ test("password reset retries an expired code, survives refresh, and sets a new p
   ]);
   const newPassword = authV2Resources.createPassword();
   const redirect = sameOriginRedirect(baseURL, "password-reset");
-  const requests = observeAuthV2VerificationRequests(page);
-  try {
-    await openAuthV2(page, authUrl("/v2/sign-in", redirect));
-    await submitSignInIdentifier(page, identity.email);
-    await chooseSignInMethod(page, "password");
-    await authV2Root(page)
-      .getByRole("button", { name: /forgot password/i })
-      .click();
-    await expect(authV2Input(page, "code")).toBeVisible();
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(1);
-    await expect(resendOrRetryButton(page)).toBeDisabled();
+  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await submitSignInIdentifier(page, identity.email);
+  await chooseSignInMethod(page, "password");
+  await authV2Root(page)
+    .getByRole("button", { name: /forgot password/i })
+    .click();
+  const code = authV2Input(page, "code");
+  await expect(code).toBeVisible();
+  await code.fill(AUTH_V2_TEST_OTP);
+  await code.press("Enter");
 
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Input(page, "code")).toBeVisible();
-    expect(requests.count("sign-in", "prepare")).toBe(1);
-
-    await mockNextAuthV2VerificationExpiry(page, "sign-in");
-    await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
-    await authV2Input(page, "code").press("Enter");
-    const retry = resendOrRetryButton(page);
-    await expect(retry).toBeEnabled();
-    await activateTwice(retry);
-    await expect.poll(() => requests.count("sign-in", "prepare")).toBe(2);
-    await page.waitForTimeout(250);
-    expect(requests.count("sign-in", "prepare")).toBe(2);
-
-    await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
-    await authV2Input(page, "code").press("Enter");
-    await expect(authV2Input(page, "new-password")).toBeVisible();
-    await page.reload({ waitUntil: "domcontentloaded" });
-    const newPasswordInput = authV2Input(page, "new-password");
-    const confirmation = authV2Input(page, "confirm-password");
-    await expect(newPasswordInput).toBeVisible();
-
-    await newPasswordInput.fill(newPassword);
-    await confirmation.fill(identity.password);
-    await confirmation.press("Enter");
-    const mismatchError = authV2Root(page).getByRole("alert");
-    await expect(mismatchError).toBeVisible();
-    await expect(mismatchError).toBeFocused();
-    await expect(newPasswordInput).toHaveAttribute("aria-invalid", "true");
-    await expect(confirmation).toHaveAttribute("aria-invalid", "true");
-    await confirmation.fill(newPassword);
-    await expect(mismatchError).toHaveCount(0);
-    await expect(newPasswordInput).not.toHaveAttribute("aria-invalid");
-    await expect(newPasswordInput).not.toHaveAttribute("aria-describedby");
-    await expect(confirmation).not.toHaveAttribute("aria-invalid");
-    await expect(confirmation).not.toHaveAttribute("aria-describedby");
-    await confirmation.press("Enter");
-    await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
-  } finally {
-    requests.dispose();
-  }
+  const newPasswordInput = authV2Input(page, "new-password");
+  const confirmation = authV2Input(page, "confirm-password");
+  await expect(newPasswordInput).toBeVisible();
+  await newPasswordInput.fill(newPassword);
+  await confirmation.fill(newPassword);
+  await confirmation.press("Enter");
+  await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
 });
 
-test("progressive sign-up validates details and activates after one verification", async ({
+test("progressive sign-up activates after email verification", async ({
   authV2Resources,
   baseURL,
   page,
 }) => {
-  const initialEmail = authV2Resources.allocateEmail();
-  const editedEmail = authV2Resources.allocateEmail();
+  const emailAddress = authV2Resources.allocateEmail();
   const password = authV2Resources.createPassword();
   const redirect = sameOriginRedirect(baseURL, "sign-up");
-  const requests = observeAuthV2VerificationRequests(page);
-  try {
-    await openAuthV2(page, authUrl("/v2/sign-up", redirect));
-    const email = authV2Input(page, "email-address");
-    const passwordInput = authV2Input(page, "password");
-    const firstName = authV2Input(page, "first-name");
-    const lastName = authV2Input(page, "last-name");
-    await expect(email).toBeVisible();
-    await expect(passwordInput).toBeVisible();
-    await expect(firstName).toBeVisible();
-    await expect(lastName).toBeVisible();
-    await email.fill(initialEmail);
-    await passwordInput.fill("short");
-    await firstName.fill("Auth");
-    await lastName.fill("Browser");
-
-    const legal = authV2Root(page).getByRole("checkbox");
-    await expect(legal).toBeVisible();
-    await passwordInput.press("Enter");
-    await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-    expect(requests.count("sign-up", "prepare")).toBe(0);
+  await openAuthV2(page, authUrl("/v2/sign-up", redirect));
+  const email = authV2Input(page, "email-address");
+  const passwordInput = authV2Input(page, "password");
+  const firstName = authV2Input(page, "first-name");
+  const lastName = authV2Input(page, "last-name");
+  await expect(email).toBeVisible();
+  await email.fill(emailAddress);
+  await passwordInput.fill(password);
+  await firstName.fill("Auth");
+  await lastName.fill("Browser");
+  const legal = authV2Root(page).getByRole("checkbox");
+  if (await legal.isVisible()) {
     await legal.check();
-    await expect(authV2Root(page).getByRole("alert")).toHaveCount(0);
-    await passwordInput.press("Enter");
-    const passwordError = authV2Root(page).getByRole("alert");
-    await expect(passwordError).toBeVisible();
-    await expect(passwordError).toBeFocused();
-    await expect(passwordInput).toHaveAttribute("aria-invalid", "true");
-    expect(requests.count("sign-up", "prepare")).toBe(0);
-
-    await passwordInput.fill(password);
-    await expect(passwordError).toHaveCount(0);
-    await expect(passwordInput).not.toHaveAttribute("aria-invalid", "true");
-    await expect(passwordInput).not.toHaveAttribute("aria-describedby");
-    await passwordInput.press("Enter");
-    await expect(authV2Input(page, "code")).toBeVisible();
-    await expect.poll(() => requests.count("sign-up", "prepare")).toBe(1);
-    const initialResend = resendOrRetryButton(page);
-    await expect(initialResend).toBeDisabled();
-    await activateTwice(initialResend);
-    expect(requests.count("sign-up", "prepare")).toBe(1);
-
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Input(page, "code")).toBeVisible();
-    expect(requests.count("sign-up", "prepare")).toBe(1);
-
-    await mockNextAuthV2VerificationExpiry(page, "sign-up");
-    await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
-    await authV2Input(page, "code").press("Enter");
-    await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-    const retry = resendOrRetryButton(page);
-    await expect(retry).toBeEnabled();
-    await activateTwice(retry);
-    await expect.poll(() => requests.count("sign-up", "prepare")).toBe(2);
-    await page.waitForTimeout(250);
-    expect(requests.count("sign-up", "prepare")).toBe(2);
-
-    await authV2Root(page)
-      .getByRole("button", { name: /edit email|back/i })
-      .click();
-    const editedEmailInput = authV2Input(page, "email-address");
-    await expect(editedEmailInput).toBeVisible();
-    await editedEmailInput.fill(editedEmail);
-    await editedEmailInput.press("Enter");
-    await expect(authV2Input(page, "code")).toBeVisible();
-    await expect.poll(() => requests.count("sign-up", "prepare")).toBe(3);
-
-    await page.reload({ waitUntil: "domcontentloaded" });
-    expect(requests.count("sign-up", "prepare")).toBe(3);
-    await authV2Input(page, "code").fill(AUTH_V2_TEST_OTP);
-    await authV2Input(page, "code").press("Enter");
-    await waitForActivatedSessionOrRedirect(page, redirect);
-    await expectNoOrganizationCreation(page);
-  } finally {
-    requests.dispose();
   }
+  await passwordInput.press("Enter");
+
+  const code = authV2Input(page, "code");
+  await expect(code).toBeVisible();
+  await code.fill(AUTH_V2_TEST_OTP);
+  await code.press("Enter");
+  await waitForActivatedSessionOrRedirect(page, redirect);
+  await expectNoOrganizationCreation(page);
 });
 
 test("existing sessions continue without exposing organization creation", async ({

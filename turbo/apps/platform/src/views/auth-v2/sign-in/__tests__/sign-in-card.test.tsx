@@ -327,6 +327,105 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
+  it("completes password sign-in through Clerk Device Trust", async () => {
+    const passwordAttempt = createDeferredPromise<
+      ReturnType<typeof currentSignInResource>
+    >(context.signal);
+    const clientTrustPreparation = createDeferredPromise<
+      ReturnType<typeof currentSignInResource>
+    >(context.signal);
+    const clientTrustAttempt = createDeferredPromise<
+      ReturnType<typeof currentSignInResource>
+    >(context.signal);
+    mockedClerk.signInAttemptFirstFactor.mockReturnValue(
+      passwordAttempt.promise,
+    );
+    mockedClerk.signInPrepareSecondFactor.mockReturnValue(
+      clientTrustPreparation.promise,
+    );
+    mockedClerk.signInAttemptSecondFactor.mockReturnValue(
+      clientTrustAttempt.promise,
+    );
+
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [passwordFactor()]);
+    fireEvent.click(
+      await waitForRoleElement("button", "Sign in with your password"),
+    );
+
+    const passwordInput = await screen.findByLabelText("Password");
+    fireEvent.change(passwordInput, { target: { value: "correct-password" } });
+    fireEvent.submit(containingForm(passwordInput));
+
+    await act(async () => {
+      passwordAttempt.resolve(
+        moveSignInTo({
+          identifier: "person@example.com",
+          status: "needs_client_trust",
+          supportedSecondFactors: [emailCodeFactor()],
+        }),
+      );
+      await passwordAttempt.promise;
+    });
+
+    await waitFor(() => {
+      expect(mockedClerk.signInPrepareSecondFactor).toHaveBeenCalledWith({
+        emailAddressId: "email_primary",
+        strategy: "email_code",
+      });
+    });
+    await act(async () => {
+      clientTrustPreparation.resolve(
+        moveSignInTo({
+          identifier: "person@example.com",
+          secondFactorVerificationStatus: "unverified",
+          secondFactorVerificationStrategy: "email_code",
+          status: "needs_client_trust",
+          supportedSecondFactors: [emailCodeFactor()],
+        }),
+      );
+      await clientTrustPreparation.promise;
+    });
+    const codeInput = await screen.findByLabelText("Verification code");
+    expect(screen.getByText("p***@example.com")).toBeVisible();
+    fireEvent.change(codeInput, { target: { value: "424242" } });
+    fireEvent.submit(containingForm(codeInput));
+
+    await act(async () => {
+      clientTrustAttempt.resolve(
+        moveSignInTo({
+          createdSessionId: "session_device_trust",
+          status: "complete",
+        }),
+      );
+      await clientTrustAttempt.promise;
+    });
+
+    await waitFor(() => {
+      expect(mockedClerk.signInAttemptSecondFactor).toHaveBeenCalledWith({
+        code: "424242",
+        strategy: "email_code",
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      navigate: expect.any(Function),
+      session: "session_device_trust",
+    });
+  });
+
+  it("fails closed for an unsupported Device Trust factor", async () => {
+    setupSignInPage({
+      status: "needs_client_trust",
+      supportedSecondFactors: [{ strategy: "totp" }],
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Cannot sign in" }),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInPrepareSecondFactor).not.toHaveBeenCalled();
+  });
+
   it("associates only typed password errors and clears them on change", async () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);

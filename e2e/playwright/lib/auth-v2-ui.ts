@@ -67,19 +67,6 @@ export async function chooseSignInMethod(
   await button.click();
 }
 
-export function resendOrRetryButton(page: Page): Locator {
-  return authV2Root(page)
-    .getByRole("button", { name: /resend|retry|try again/i })
-    .first();
-}
-
-export async function activateTwice(locator: Locator): Promise<void> {
-  await locator.evaluate((element: HTMLElement) => {
-    element.click();
-    element.click();
-  });
-}
-
 export async function expectStepAnnouncement(page: Page): Promise<void> {
   const announcer = page.getByTestId("auth-v2-announcer");
   await expect(announcer).not.toHaveText("");

@@ -32,18 +32,13 @@ The `auth-v2.spec.ts` project covers:
   v1/v2 route coexistence;
 - all ten supported platform locales, a French mobile viewport, light/dark
   theme switching, keyboard focus, live announcements, and overflow safety;
-- password sign-in, password reveal, a bounded Clerk server failure and retry,
-  same-origin redirect preservation, and organization continuation when the
-  development session produces the Clerk organization task;
-- email-code sign-in with one initial preparation, refresh without a second
-  send, cooldown enforcement, coalesced retry, edit/back, a provider-shaped
-  expired-code response, `424242`, and completion;
-- password reset through email code and a new password, including mismatch,
-  expired-code retry, coalescing, and refresh at both reset steps;
-- progressive sign-up with email, password, names, legal consent, password
-  validation, exactly one automatic verification preparation, cooldown,
-  coalesced expired-code recovery, edited email, refresh, and session
-  activation;
+- password sign-in through Clerk Device Trust email verification, same-origin
+  redirect preservation, and organization continuation when the development
+  session produces the Clerk organization task;
+- email-code sign-in with Clerk's development verification code and completion;
+- password reset through email verification and a new password;
+- progressive sign-up with email, password, names, legal consent, email
+  verification, and session activation;
 - an existing Clerk session selecting its account and continuing without any
   organization-creation affordance;
 - Google One Tap invocation only at the base-route boundary, including its
@@ -51,15 +46,10 @@ The `auth-v2.spec.ts` project covers:
   handoff boundary, and passkey cancellation/fallback when those methods are
   enabled in the development Clerk configuration.
 
-Expired-code coverage fulfills the first matching Clerk verification attempt
-with the provider's `form_code_expired` response. This makes recovery and
-request-count assertions deterministic without waiting beyond the eight-minute
-CI budget. In the email-code recovery test, the Clerk resource's first
-verification preparation uses the real development API; later resend/retry
-preparations for that same resource replay the successful provider response in
-memory. The editable identifier is changed and restored before that real
-preparation. This preserves UI request counts and real completion while avoiding
-a self-induced provider rate limit.
+Error recovery, resend cooldowns, request coalescing, editable identifiers, and
+form validation stay in platform entry-point integration tests. The
+provider-backed Playwright lane covers happy paths only so it does not create
+avoidable Clerk requests or rely on synthetic provider responses.
 
 ## Exact-preview and manual checkpoints
 
@@ -72,9 +62,9 @@ explicit QA checkpoints on the final PR's exact preview SHA:
 2. Complete a hardware-backed passkey ceremony. CI asserts cancellation and
    local fallback only when the development Clerk instance exposes passkeys;
    otherwise it records the configuration limitation.
-3. Let a real email verification expire by provider wall clock. CI covers the
-   identical provider error boundary synthetically and uses the real API for
-   resend and successful completion.
+3. Let a real email verification expire by provider wall clock and confirm the
+   recovery flow. Entry-point integration tests cover the provider error
+   boundary, while CI uses the real API for successful completion only.
 4. Verify VM0 branding on `app.vm0.ai`. PR app previews resolve to the Okou
    preview domain, so Okou branding is automated while the VM0 production-host
    boundary is a read-only live check.
