@@ -100,6 +100,14 @@ def block_registry_unavailable(
     flow: http.HTTPFlow,
     unavailable: registry.RegistryUnavailable,
 ) -> None:
+    """Block the flow with a fail-closed 503 response for an unavailable registry.
+
+    The JSON response contains the fixed ``registry_unavailable`` error, the
+    fixed user-visible ``message`` ``Proxy registry is unavailable``, and the
+    ``reason`` copied from ``RegistryUnavailable.reason``. The response message
+    is intentionally distinct from ``RegistryUnavailable.message``, which
+    remains detailed internal failure context.
+    """
     flow_metadata.set_firewall_decision(
         flow.metadata,
         "BLOCK",
