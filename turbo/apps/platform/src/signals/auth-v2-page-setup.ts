@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../i18n/index.ts";
+import { captureAuthV2DiagnosticEvent } from "../lib/posthog.ts";
 import {
   AuthV2Page,
   type AuthV2PageMode,
@@ -10,6 +11,7 @@ import {
   createAuthV2ContinuationSignals,
   isAuthV2ContinuationLocation,
 } from "./auth-v2/continuation.ts";
+import { createAuthV2Diagnostics } from "./auth-v2/diagnostics.ts";
 import { resolveAuthV2PlatformContext } from "./auth-v2/platform-context.ts";
 import {
   createAuthV2SignInSignals,
@@ -28,7 +30,11 @@ import { ROUTES } from "./route-paths.ts";
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const platformContext = resolveAuthV2PlatformContext(mode);
-    const continuationSignals = createAuthV2ContinuationSignals({
+    const diagnostics = createAuthV2Diagnostics(
+      mode,
+      captureAuthV2DiagnosticEvent,
+    );
+    const continuationController = createAuthV2ContinuationSignals({
       isContinuationRoute: isAuthV2ContinuationLocation(
         location.pathname,
         location.hash,
@@ -36,17 +42,29 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       mode,
       navigation: platformContext.navigation,
     });
+    const continuationSignals = diagnostics.instrumentContinuation(
+      continuationController,
+    );
     let signInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
-      signInSignals = createAuthV2SignInSignals({
-        continuation: continuationSignals,
-        isBaseRoute: location.pathname === ROUTES.signInV2,
-        isOAuthCallbackRoute:
-          location.pathname ===
-          `${ROUTES.signInV2}${AUTH_V2_OAUTH_CALLBACK_PATH}`,
-        navigation: platformContext.navigation,
-      });
+      const isBaseRoute = location.pathname === ROUTES.signInV2;
+      const isOAuthCallbackRoute =
+        location.pathname ===
+        `${ROUTES.signInV2}${AUTH_V2_OAUTH_CALLBACK_PATH}`;
+      signInSignals = diagnostics.instrumentSignIn(
+        createAuthV2SignInSignals({
+          continuation: continuationController,
+          isBaseRoute,
+          isOAuthCallbackRoute,
+          navigation: platformContext.navigation,
+        }),
+        {
+          continuationState$: continuationController.state$,
+          isBaseRoute,
+          isOAuthCallbackRoute,
+        },
+      );
       set(
         updatePage$,
         createElement(AuthV2Page, {
@@ -57,13 +75,20 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
         }),
       );
     } else {
-      signUpSignals = createAuthV2SignUpSignals({
-        continuation: continuationSignals,
-        isOAuthCallbackRoute:
-          location.pathname ===
-          `${ROUTES.signUpV2}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`,
-        navigation: platformContext.navigation,
-      });
+      const isOAuthCallbackRoute =
+        location.pathname ===
+        `${ROUTES.signUpV2}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`;
+      signUpSignals = diagnostics.instrumentSignUp(
+        createAuthV2SignUpSignals({
+          continuation: continuationController,
+          isOAuthCallbackRoute,
+          navigation: platformContext.navigation,
+        }),
+        {
+          continuationState$: continuationController.state$,
+          isOAuthCallbackRoute,
+        },
+      );
       set(
         updatePage$,
         createElement(AuthV2Page, {

@@ -48,6 +48,7 @@ import {
   type AnnotationInk,
   type AnnotationPoint,
   type AnnotationStroke,
+  type AnnotationTarget,
   type AnnotationTool,
 } from "../../signals/okou-page/image-annotation.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
@@ -719,13 +720,27 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+/**
+ * Mounted at the app root, so it must not touch page-scoped state until a
+ * session actually exists — `useResolvedAttachmentUrl` reads the resolver that
+ * belongs to the current page, and reaching for it before any page is set up
+ * throws. Splitting the surface into its own component keeps that read behind
+ * the session check.
+ */
 export function ImageAnnotationEditor() {
   const target = useGet(annotationSessionTarget$);
+  if (!target) {
+    return null;
+  }
+  return <AnnotationSurface target={target} />;
+}
+
+function AnnotationSurface({ target }: { target: AnnotationTarget }) {
   const annotation = useGet(annotationDraft$);
   const selectedId = useGet(annotationSelectedMarkId$);
-  const resolvedUrl = useResolvedAttachmentUrl(target?.url ?? "");
+  const resolvedUrl = useResolvedAttachmentUrl(target.url);
 
-  if (!target || resolvedUrl === null) {
+  if (resolvedUrl === null) {
     return null;
   }
 
@@ -735,7 +750,7 @@ export function ImageAnnotationEditor() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
+      className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
       data-testid="image-annotation-editor"
     >
       <div className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-2xl bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]">
