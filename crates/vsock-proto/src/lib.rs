@@ -29,7 +29,7 @@
 //!
 //! | Type | Direction | Name              | Payload |
 //! |------|-----------|-------------------|---------|
-//! | 0x00 | G→H       | ready             | empty for legacy guests, otherwise `[8B capability_bits]` |
+//! | 0x00 | G→H       | ready             | (empty) |
 //! | 0x01 | H→G       | ping              | (empty) |
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | shutdown          | (empty) |
