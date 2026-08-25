@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import type { TeamComposeItem } from "@okouai/core";
 import { createElement } from "react";
-import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
+import { AgentDetailPage } from "../../views/team-page/agent-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";

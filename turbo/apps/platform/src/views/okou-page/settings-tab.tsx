@@ -48,7 +48,7 @@ import {
   setAgentDemoteConfirmOpen$,
 } from "../../signals/okou-page/settings/settings-tab.ts";
 
-interface ZeroSettingsTabProps {
+interface SettingsTabProps {
   agentId: string;
   displayName: string;
   description: string;
@@ -85,7 +85,7 @@ interface ZeroSettingsTabProps {
   onDelete?: () => Promise<void>;
 }
 
-export function ZeroSettingsTab({
+export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
   description: initialDescription,
@@ -100,7 +100,7 @@ export function ZeroSettingsTab({
   deleteWorkflows = [],
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
-}: ZeroSettingsTabProps) {
+}: SettingsTabProps) {
   const { t } = useTranslation("agents");
   const defaults = {
     name: resolvedAgentName,

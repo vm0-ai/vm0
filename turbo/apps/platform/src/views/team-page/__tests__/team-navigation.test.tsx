@@ -60,7 +60,7 @@ import { testConnectorPermissionDetails } from "../../../mocks/handlers/connecto
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
-const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
+const agentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
 const PAGE_LOAD_TIMEOUT_MS = 5000;
 
@@ -427,7 +427,7 @@ function mockTeamAPIs({
   readonly onCustomConnectorUpdate?: () => void;
 } = {}): void {
   context.mocks.data.team([
-    createAgent(zeroAgentId, "Zero"),
+    createAgent(agentId, "Support Agent"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
   context.mocks.data.connectors([
@@ -492,7 +492,7 @@ function mockTeamAPIs({
     return respond(200, { agents: {}, threads: {} });
   });
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
-    const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+    const agent = params.id === agentId ? "Support Agent" : "Research Agent";
     return respond(200, {
       agentId: params.id,
       ownerId: "test-owner-id",
@@ -531,9 +531,9 @@ function mockAgentWorkflowApis(): void {
     }),
     createWorkflowSummary({
       id: "d0000000-0000-4000-a000-000000000703",
-      agentId: zeroAgentId,
-      agentName: "zero",
-      agentDisplayName: "Zero",
+      agentId,
+      agentName: "support-agent",
+      agentDisplayName: "Support Agent",
       displayName: "Support Intake",
       visibility: "public",
     }),
@@ -791,11 +791,11 @@ describe("team page navigation", () => {
     click(buttonByText("Allow", permissionRow));
 
     context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
-      pathParams: { agentId: zeroAgentId },
+      pathParams: { agentId },
       searchParams: new URLSearchParams(),
     });
 
-    await screen.findByRole("heading", { name: "Zero" });
+    await screen.findByRole("heading", { name: "Support Agent" });
     await waitFor(() => {
       expect(
         screen.queryByText("messages:send-as-user"),
@@ -846,12 +846,14 @@ describe("team page navigation", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
-      pathParams: { agentId: zeroAgentId },
+      pathParams: { agentId },
       searchParams: new URLSearchParams(),
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Support Agent" }),
+      ).toBeInTheDocument();
       expect(screen.getByText("@octocat")).toBeInTheDocument();
       expect(screen.getByLabelText("Grant GitHub access")).toBeInTheDocument();
       expect(
@@ -1113,7 +1115,7 @@ describe("team page navigation", () => {
           },
         });
       }
-      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      const agent = params.id === agentId ? "Support Agent" : "Research Agent";
       return respond(200, {
         agentId: params.id,
         ownerId: "test-owner-id",
@@ -1171,9 +1173,9 @@ describe("team page navigation", () => {
           201,
           createWorkflowSummary({
             id: "d0000000-0000-4000-a000-0000000007ff",
-            agentId: zeroAgentId,
-            agentName: "zero",
-            agentDisplayName: "Zero",
+            agentId,
+            agentName: "support-agent",
+            agentDisplayName: "Support Agent",
             displayName: "Sales Research",
             visibility: "private",
           }),
@@ -1196,7 +1198,7 @@ describe("team page navigation", () => {
           },
         });
       }
-      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      const agent = params.id === agentId ? "Support Agent" : "Research Agent";
       return respond(200, {
         agentId: params.id,
         ownerId: "test-owner-id",
@@ -1233,10 +1235,10 @@ describe("team page navigation", () => {
       ).toBeInTheDocument();
     });
 
-    // Copy "Sales Research" onto Zero; leave "Ops Playbook" to be deleted.
+    // Copy "Sales Research" onto Support Agent; leave "Ops Playbook" deleted.
     selectOptionByLabel(
       "Handle workflow Sales Research",
-      /Copy to Zero/,
+      /Copy to Support Agent/,
       deleteDialog,
     );
 
@@ -1247,7 +1249,7 @@ describe("team page navigation", () => {
       expect(copyRequests).toStrictEqual([
         {
           workflowId: "d0000000-0000-4000-a000-000000000701",
-          toAgentId: zeroAgentId,
+          toAgentId: agentId,
         },
       ]);
     });
