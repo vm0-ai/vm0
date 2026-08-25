@@ -12,12 +12,35 @@ use crate::error::AgentError;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+#[derive(Default)]
+struct PiAssistantTerminal {
+    failed: bool,
+    result: String,
+}
+
+impl PiAssistantTerminal {
+    fn from_message(message: &Value) -> Self {
+        let stop_reason = message.get("stopReason").and_then(Value::as_str);
+        let failed = matches!(stop_reason, Some("error" | "aborted"));
+        let result = message
+            .get("errorMessage")
+            .and_then(Value::as_str)
+            .map_or_else(|| assistant_text(message), ToString::to_string);
+        let result = if result.is_empty() {
+            stop_reason.map_or_else(String::new, |reason| format!("Pi model turn {reason}"))
+        } else {
+            result
+        };
+        Self { failed, result }
+    }
+}
+
 pub(super) struct PiRpcProjection {
     run_id: String,
     session_id: String,
     started_at: Instant,
     emitted_session_init: bool,
-    final_assistant: Option<Value>,
+    assistant_terminal: Option<PiAssistantTerminal>,
     terminal_error: bool,
 }
 
@@ -28,7 +51,7 @@ impl PiRpcProjection {
             session_id: session_id.to_string(),
             started_at: Instant::now(),
             emitted_session_init: false,
-            final_assistant: None,
+            assistant_terminal: None,
             terminal_error: false,
         }
     }
@@ -119,7 +142,7 @@ impl PiRpcProjection {
     }
 
     fn project_assistant_message(&mut self, message: &Value) -> Result<Option<Value>, AgentError> {
-        self.final_assistant = Some(message.clone());
+        self.assistant_terminal = Some(PiAssistantTerminal::from_message(message));
         let content = assistant_content(message)?;
         if content.is_empty() {
             return Ok(None);
@@ -200,27 +223,12 @@ impl PiRpcProjection {
     }
 
     fn project_agent_settled(&mut self) -> Value {
-        let assistant = self.final_assistant.take();
-        let stop_reason = assistant
-            .as_ref()
-            .and_then(|message| message.get("stopReason"))
-            .and_then(Value::as_str);
-        let failed = matches!(stop_reason, Some("error" | "aborted"));
-        let result = assistant
-            .as_ref()
-            .and_then(|message| message.get("errorMessage"))
-            .and_then(Value::as_str)
-            .map(ToString::to_string)
-            .or_else(|| assistant.as_ref().map(assistant_text))
-            .filter(|text| !text.is_empty())
-            .unwrap_or_else(|| {
-                stop_reason.map_or_else(String::new, |reason| format!("Pi model turn {reason}"))
-            });
+        let assistant = self.assistant_terminal.take().unwrap_or_default();
         json!({
             "type": "result",
-            "subtype": if failed { "error_during_execution" } else { "success" },
-            "is_error": failed,
-            "result": result,
+            "subtype": if assistant.failed { "error_during_execution" } else { "success" },
+            "is_error": assistant.failed,
+            "result": assistant.result,
             "session_id": self.session_id,
             "duration_ms": self.started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         })
