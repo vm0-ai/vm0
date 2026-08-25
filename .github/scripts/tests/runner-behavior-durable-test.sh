@@ -3,8 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-balloon.sh"
-REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-balloon-remote.sh"
+BALLOON_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-balloon.sh"
+BALLOON_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-balloon-remote.sh"
+WORKSPACE_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-workspace-cache-promotion.sh"
+WORKSPACE_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-workspace-cache-promotion-remote.sh"
 
 assert_contains() {
   local file="$1"
@@ -51,8 +53,7 @@ trap cleanup EXIT
 
 fake_bin="$tmp/bin"
 state_dir="$tmp/state"
-runner_temp="$tmp/runner-temp"
-mkdir -p "$fake_bin" "$state_dir" "$runner_temp"
+mkdir -p "$fake_bin" "$state_dir"
 
 cat > "$fake_bin/ssh" <<'FAKE_SSH'
 #!/usr/bin/env bash
@@ -76,6 +77,12 @@ if [ "$#" -eq 2 ] && [[ "$2" == *"runner config"* ]]; then
   exit 0
 fi
 
+if [ "$#" -eq 8 ] && [ "$2" = "bash" ] && [ "$3" = "-s" ]; then
+  cat > "$FAKE_SSH_STATE_DIR/cleanup-script"
+  increment cleanup-count >/dev/null
+  exit 0
+fi
+
 if [ "$#" -eq 2 ] && [[ "$2" == *"worker.XXXXXX"* ]]; then
   cmp - "$EXPECTED_REMOTE_WORKER"
   mkdir -p "$FAKE_REMOTE_DIR"
@@ -84,7 +91,7 @@ if [ "$#" -eq 2 ] && [[ "$2" == *"worker.XXXXXX"* ]]; then
 while [ ! -f "$FAKE_WORKER_RELEASE" ]; do
   /bin/sleep 0.01
 done
-echo "durable balloon output"
+echo "$FAKE_DURABLE_OUTPUT"
 exit 37
 FAKE_REMOTE_WORKER_SCRIPT
   chmod +x "$FAKE_REMOTE_WORKER"
@@ -230,73 +237,118 @@ touch "$FAKE_SYSTEMD_ACTIVE"
 FAKE_SYSTEMD_RUN
 chmod +x "$fake_bin/systemd-run"
 
-fake_remote_dir="$state_dir/remote"
-fake_remote_worker="$fake_remote_dir/worker.sh"
-fake_remote_log="$fake_remote_dir/output.log"
-fake_remote_status="$fake_remote_dir/status"
-fake_remote_home="$state_dir/home"
-fake_remote_cwd="$state_dir/cwd"
-mkdir -p "$fake_remote_home" "$fake_remote_cwd"
+LAST_CASE_DIR=""
+LAST_REMOTE_HOME=""
+LAST_REMOTE_CWD=""
 
-status=0
-PATH="$fake_bin:$PATH" \
-  FAKE_SLEEP_INVOCATIONS="$state_dir/sleep-invocations" \
-  FAKE_SSH_STATE_DIR="$state_dir" \
-  EXPECTED_REMOTE_WORKER="$REMOTE_WORKER" \
-  FAKE_REMOTE_DIR="$fake_remote_dir" \
-  FAKE_REMOTE_WORKER="$fake_remote_worker" \
-  FAKE_REMOTE_LOG="$fake_remote_log" \
-  FAKE_REMOTE_STATUS="$fake_remote_status" \
-  FAKE_REMOTE_HOME="$fake_remote_home" \
-  FAKE_REMOTE_CWD="$fake_remote_cwd" \
-  FAKE_WORKER_RELEASE="$state_dir/release-worker" \
-  FAKE_SYSTEMCTL_MODE="runtime" \
-  FAKE_SYSTEMD_ACTIVE="$state_dir/systemd-active" \
-  FAKE_SYSTEMD_RUN_COUNT_FILE="$state_dir/execution-count" \
-  FAKE_SYSTEMD_RUN_ARGS_FILE="$state_dir/systemd-run-args" \
-  FAKE_SYSTEMD_COMMAND_STATUS_FILE="$state_dir/systemd-command-status" \
-  RUNNER_TEMP="$runner_temp" \
-  METAL_USER="metal" \
-  HOST="runner.example.test" \
-  BIN_DIR="/opt/vm0" \
-  JOB_REF="behavior-a" \
-  DEFAULT_ROOTFS_HASH="rootfs" \
-  DEFAULT_SNAPSHOT_HASH="snapshot" \
-  OFFICIAL_RUNNER_SECRET="test-secret" \
-  GITHUB_RUN_ID="30429172938" \
-  GITHUB_RUN_ATTEMPT="1" \
-  bash "$DRIVER" > "$state_dir/stdout" 2> "$state_dir/stderr" || status=$?
+run_driver_case() {
+  local case_name="$1"
+  local driver="$2"
+  local remote_worker="$3"
+  local expected_cleanup_count="$4"
+  local case_dir="$state_dir/$case_name"
+  local runner_temp="$case_dir/runner-temp"
+  local fake_remote_dir="$case_dir/remote"
+  local fake_remote_worker="$fake_remote_dir/worker.sh"
+  local fake_remote_log="$fake_remote_dir/output.log"
+  local fake_remote_status="$fake_remote_dir/status"
+  local fake_remote_home="$case_dir/home"
+  local fake_remote_cwd="$case_dir/cwd"
+  local durable_output="durable ${case_name} output"
+  local status=0
 
-[ "$status" -eq 37 ] || {
-  echo "expected driver to propagate exit 37; got ${status}" >&2
-  cat "$state_dir/stdout" >&2
-  cat "$state_dir/stderr" >&2
-  exit 1
+  mkdir -p "$runner_temp" "$fake_remote_home" "$fake_remote_cwd"
+
+  PATH="$fake_bin:$PATH" \
+    FAKE_SLEEP_INVOCATIONS="$case_dir/sleep-invocations" \
+    FAKE_SSH_STATE_DIR="$case_dir" \
+    EXPECTED_REMOTE_WORKER="$remote_worker" \
+    FAKE_REMOTE_DIR="$fake_remote_dir" \
+    FAKE_REMOTE_WORKER="$fake_remote_worker" \
+    FAKE_REMOTE_LOG="$fake_remote_log" \
+    FAKE_REMOTE_STATUS="$fake_remote_status" \
+    FAKE_REMOTE_HOME="$fake_remote_home" \
+    FAKE_REMOTE_CWD="$fake_remote_cwd" \
+    FAKE_WORKER_RELEASE="$case_dir/release-worker" \
+    FAKE_DURABLE_OUTPUT="$durable_output" \
+    FAKE_SYSTEMCTL_MODE="runtime" \
+    FAKE_SYSTEMD_ACTIVE="$case_dir/systemd-active" \
+    FAKE_SYSTEMD_RUN_COUNT_FILE="$case_dir/execution-count" \
+    FAKE_SYSTEMD_RUN_ARGS_FILE="$case_dir/systemd-run-args" \
+    FAKE_SYSTEMD_COMMAND_STATUS_FILE="$case_dir/systemd-command-status" \
+    RUNNER_TEMP="$runner_temp" \
+    METAL_USER="metal" \
+    HOST="runner.example.test" \
+    BIN_DIR="/opt/vm0" \
+    JOB_REF="behavior-a" \
+    DEFAULT_ROOTFS_HASH="rootfs" \
+    DEFAULT_SNAPSHOT_HASH="snapshot" \
+    OFFICIAL_RUNNER_SECRET="test-secret" \
+    GITHUB_RUN_ID="30429172938" \
+    GITHUB_RUN_ATTEMPT="1" \
+    bash "$driver" > "$case_dir/stdout" 2> "$case_dir/stderr" || status=$?
+
+  [ "$status" -eq 37 ] || {
+    echo "expected ${case_name} driver to propagate exit 37; got ${status}" >&2
+    cat "$case_dir/stdout" >&2
+    cat "$case_dir/stderr" >&2
+    exit 1
+  }
+
+  assert_value "$case_dir/config-count" "1"
+  assert_value "$case_dir/stage-count" "1"
+  assert_value "$case_dir/launch-attempt-count" "2"
+  assert_value "$case_dir/execution-count" "1"
+  assert_value "$case_dir/state-attempt-count" "3"
+  assert_value "$case_dir/fetch-count" "1"
+  assert_value "$case_dir/remove-count" "1"
+  assert_value "$case_dir/systemd-command-status" "37"
+  test -f "$case_dir/atomic-status-observed"
+  test ! -e "$fake_remote_dir"
+  test ! -e "$case_dir/systemd-active"
+  assert_contains "$case_dir/launch-script" "flock 9"
+  assert_contains "$case_dir/systemd-run-args" "--collect"
+  assert_contains "$case_dir/systemd-run-args" "--expand-environment=no"
+  assert_contains "$case_dir/systemd-run-args" "--uid=$(id -u)"
+  assert_contains "$case_dir/systemd-run-args" "--gid=$(id -g)"
+  assert_contains "$case_dir/systemd-run-args" "--working-directory=$fake_remote_cwd"
+  assert_contains "$case_dir/systemd-run-args" "--setenv=HOME=$fake_remote_home"
+  assert_count "$case_dir/stdout" "1" "$durable_output"
+  assert_contains "$case_dir/stderr" "Lost SSH launch response"
+  assert_contains "$case_dir/stderr" "Transient SSH failure while observing ${case_name} result"
+
+  if [ "$expected_cleanup_count" -eq 0 ]; then
+    test ! -e "$case_dir/cleanup-count"
+  else
+    assert_value "$case_dir/cleanup-count" "$expected_cleanup_count"
+    assert_contains "$case_dir/cleanup-script" "sudo \"\$BIN_DIR/runner\" service stop --name \"\$SVC\" --force"
+    assert_contains "$case_dir/cleanup-script" "sudo rm -rf \"\$GROUP_DIR\" \"\$RUNNER_DIR\""
+  fi
+
+  if grep -Fq 'OFFICIAL_RUNNER_SECRET' "$remote_worker"; then
+    echo "expected ${remote_worker} not to consume the official runner secret" >&2
+    exit 1
+  fi
+
+  if find "$runner_temp" -mindepth 1 -print -quit | grep -q .; then
+    echo "expected ${case_name} driver to remove its local result file" >&2
+    find "$runner_temp" -mindepth 1 -print >&2
+    exit 1
+  fi
+
+  LAST_CASE_DIR="$case_dir"
+  LAST_REMOTE_HOME="$fake_remote_home"
+  LAST_REMOTE_CWD="$fake_remote_cwd"
 }
 
-assert_value "$state_dir/config-count" "1"
-assert_value "$state_dir/stage-count" "1"
-assert_value "$state_dir/launch-attempt-count" "2"
-assert_value "$state_dir/execution-count" "1"
-assert_value "$state_dir/state-attempt-count" "3"
-assert_value "$state_dir/fetch-count" "1"
-assert_value "$state_dir/remove-count" "1"
-assert_value "$state_dir/systemd-command-status" "37"
-test -f "$state_dir/atomic-status-observed"
-test ! -e "$fake_remote_dir"
-test ! -e "$state_dir/systemd-active"
-assert_contains "$state_dir/launch-script" "flock 9"
-assert_contains "$state_dir/systemd-run-args" "--collect"
-assert_contains "$state_dir/systemd-run-args" "--expand-environment=no"
-assert_contains "$state_dir/systemd-run-args" "--uid=$(id -u)"
-assert_contains "$state_dir/systemd-run-args" "--gid=$(id -g)"
-assert_contains "$state_dir/systemd-run-args" "--working-directory=$fake_remote_cwd"
-assert_contains "$state_dir/systemd-run-args" "--setenv=HOME=$fake_remote_home"
-assert_count "$state_dir/stdout" "1" "durable balloon output"
-assert_contains "$state_dir/stderr" "Lost SSH launch response"
-assert_contains "$state_dir/stderr" "Transient SSH failure while observing balloon result"
+run_driver_case balloon "$BALLOON_DRIVER" "$BALLOON_REMOTE_WORKER" 0
+run_driver_case workspace-cache-promotion "$WORKSPACE_DRIVER" "$WORKSPACE_REMOTE_WORKER" 1
 
-success_dir="$state_dir/success"
+case_dir="$LAST_CASE_DIR"
+fake_remote_home="$LAST_REMOTE_HOME"
+fake_remote_cwd="$LAST_REMOTE_CWD"
+
+success_dir="$case_dir/success"
 success_worker="$success_dir/worker.sh"
 success_log="$success_dir/output.log"
 success_status="$success_dir/status"
@@ -307,7 +359,7 @@ success_command_status="$success_dir/command-status"
 mkdir -p "$success_dir"
 cat > "$success_worker" <<'SUCCESS_WORKER'
 #!/usr/bin/env bash
-echo "successful balloon output"
+echo "successful durable output"
 SUCCESS_WORKER
 chmod +x "$success_worker"
 
@@ -322,7 +374,7 @@ for _ in 1 2; do
       FAKE_SYSTEMD_COMMAND_STATUS_FILE="$success_command_status" \
       FAKE_WORKER_RELEASE="$success_dir/release-worker" \
       PATH="$fake_bin:$PATH" \
-      bash "$state_dir/launch-script" \
+      bash "$case_dir/launch-script" \
         "$success_dir" "$success_worker" "$success_log" "$success_status" \
         "success-unit" "/opt/vm0" "behavior-a"
   )
@@ -342,16 +394,16 @@ assert_value "$success_count" "1"
 assert_value "$success_status" "0"
 assert_value "$success_command_status" "0"
 test ! -e "${success_status}.tmp"
-assert_count "$success_log" "1" "successful balloon output"
+assert_count "$success_log" "1" "successful durable output"
 
-race_status="$state_dir/race-status"
+race_status="$case_dir/race-status"
 FAKE_SYSTEMCTL_MODE="publication-race" RACE_STATUS_FILE="$race_status" \
   PATH="$fake_bin:$PATH" \
-  bash "$state_dir/state-script" "$race_status" "race-unit" \
-  > "$state_dir/race-state"
-assert_value "$state_dir/race-state" "done:37"
+  bash "$case_dir/state-script" "$race_status" "race-unit" \
+  > "$case_dir/race-state"
+assert_value "$case_dir/race-state" "done:37"
 
-launch_race_dir="$state_dir/launch-race"
+launch_race_dir="$case_dir/launch-race"
 launch_race_status="$launch_race_dir/status"
 replay_marker="$launch_race_dir/replayed"
 mkdir -p "$launch_race_dir"
@@ -362,7 +414,7 @@ FAKE_SYSTEMCTL_MODE="publication-race" RACE_STATUS_FILE="$launch_race_status" \
   FAKE_SYSTEMD_RUN_ARGS_FILE="$launch_race_dir/args" \
   FAKE_SYSTEMD_COMMAND_STATUS_FILE="$launch_race_dir/command-status" \
   PATH="$fake_bin:$PATH" \
-  bash "$state_dir/launch-script" \
+  bash "$case_dir/launch-script" \
     "$launch_race_dir" "$launch_race_dir/worker.sh" \
     "$launch_race_dir/output.log" "$launch_race_status" \
     "race-unit" "/opt/vm0" "behavior-a" || launch_race_result=$?
@@ -375,10 +427,4 @@ if [ -e "$replay_marker" ]; then
   exit 1
 fi
 
-if find "$runner_temp" -mindepth 1 -print -quit | grep -q .; then
-  echo "expected driver to remove its local result file" >&2
-  find "$runner_temp" -mindepth 1 -print >&2
-  exit 1
-fi
-
-echo "runner-behavior-balloon-test: ok"
+echo "runner-behavior-durable-test: ok"
