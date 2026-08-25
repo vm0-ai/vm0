@@ -20,6 +20,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
+pub(crate) const AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC: &str = "agent execution timeout";
 #[cfg(debug_assertions)]
 const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "VM0_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
@@ -117,6 +118,36 @@ fn api_token_env_or_empty() -> Result<String, String> {
     log_info!(
         LOG_TAG,
         "api_token_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
+/// Resolve the runner-owned agent execution timeout at the single process-env
+/// capture boundary. Both aliases are reader-only during #28914 migration
+/// Stage 1; the runner writer remains
+/// [`guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
+fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
+    let canonical_key = guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV;
+    let legacy_key = guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV;
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting agent execution timeout environment aliases: \
+                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "agent_execution_timeout_env_source key={canonical_key} source={source}"
     );
     Ok(value)
 }
@@ -411,9 +442,7 @@ impl GuestConfigRaw {
                 guest_contracts::env::CANONICAL_API_START_TIME_ENV,
                 guest_contracts::env::API_START_TIME_ENV,
             )?,
-            agent_execution_timeout_secs: env_or_empty(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-            ),
+            agent_execution_timeout_secs: agent_execution_timeout_env_or_empty()?,
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
@@ -551,7 +580,7 @@ impl GuestConfig {
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
             agent_execution_timeout: optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC,
                 non_empty(&raw.agent_execution_timeout_secs),
             )?,
             secret_values: payload.secret_values,
@@ -1006,30 +1035,29 @@ mod tests {
     #[test]
     fn agent_execution_timeout_is_optional_and_strict() {
         assert_eq!(
-            optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                None,
-            )
-            .unwrap(),
+            optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, None,).unwrap(),
             None
         );
         assert_eq!(
-            optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                Some("7200"),
-            )
-            .unwrap(),
+            optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, Some("7200"),)
+                .unwrap(),
             Some(Duration::from_secs(7200))
         );
 
         for invalid in ["0", "-1", "not-a-number", "18446744073709551615"] {
-            let error = optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                Some(invalid),
-            )
-            .unwrap_err();
+            let error =
+                optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, Some(invalid))
+                    .unwrap_err();
             assert!(
-                error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
+                error.contains(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC),
+                "{error}"
+            );
+            assert!(
+                !error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
+                "{error}"
+            );
+            assert!(
+                !error.contains(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV),
                 "{error}"
             );
         }
