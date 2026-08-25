@@ -614,7 +614,7 @@ mod tests {
             Self {
                 events: Vec::new(),
                 acquire_lock_error: false,
-                gate_active_results: VecDeque::from([Ok(true)]),
+                gate_active_results: VecDeque::from([Ok(false)]),
                 active_results: VecDeque::from([Ok(true)]),
                 stop_results: VecDeque::from([Ok(())]),
                 bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Success)]),
@@ -857,7 +857,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let mut ops = FakeStopOps::default();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
 
         let error = stop_with_ops(&unit, &home, false, None, &mut ops)
             .await
