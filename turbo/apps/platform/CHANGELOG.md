@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.794.1](https://github.com/vm0-ai/vm0/compare/app-v0.794.0...app-v0.794.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **auth:** improve v2 action contrast ([#29267](https://github.com/vm0-ai/vm0/issues/29267)) ([fe7a5f8](https://github.com/vm0-ai/vm0/commit/fe7a5f8f8e58102885a4f61acc959fe8378c7ed9))
+* **auth:** preserve v2 sign-up switch context ([#29262](https://github.com/vm0-ai/vm0/issues/29262)) ([b4e79f8](https://github.com/vm0-ai/vm0/commit/b4e79f88b9999d304aaa85c1883657fb09173b9c))
+* **connectors:** keep default accounts visible in manager ([#29282](https://github.com/vm0-ai/vm0/issues/29282)) ([2887b08](https://github.com/vm0-ai/vm0/commit/2887b0846676a0b47f3e4378cee54ef61ec0ee91))
+
+
+### Refactoring
+
+* **platform:** migrate auth v2 timers to signal ownership ([#29303](https://github.com/vm0-ai/vm0/issues/29303)) ([1d48084](https://github.com/vm0-ai/vm0/commit/1d480843a89810a181e9285b79722aa446c6925b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.590.2
+
 ## [0.794.0](https://github.com/vm0-ai/vm0/compare/app-v0.793.0...app-v0.794.0) (2026-08-25)
 
 

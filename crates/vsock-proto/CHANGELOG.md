@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.36](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.35...vsock-proto-v0.18.36) (2026-08-25)
+
+
+### Documentation
+
+* **rust:** document encode_exec_result error conditions ([#29302](https://github.com/vm0-ai/vm0/issues/29302)) ([ce9c119](https://github.com/vm0-ai/vm0/commit/ce9c119be404e55d69db7b5613ee37ff8f0d1714))
+
 ## [0.18.35](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.34...vsock-proto-v0.18.35) (2026-08-24)
 
 
