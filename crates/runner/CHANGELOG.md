@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.173.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.2...runner-rs-v0.173.3) (2026-08-25)
+
+
+### Performance Improvements
+
+* **runner:** aggregate routine gc logs ([#29328](https://github.com/vm0-ai/vm0/issues/29328)) ([d26c53e](https://github.com/vm0-ai/vm0/commit/d26c53e7767c5444961cd67c79950b34e6e240a2))
+* **runner:** expand fresh archive delivery scan ([#29313](https://github.com/vm0-ai/vm0/issues/29313)) ([fbb7a4a](https://github.com/vm0-ai/vm0/commit/fbb7a4a7a8907254b9b98592cd4f5c8f18051edf))
+
 ## [0.173.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.1...runner-rs-v0.173.2) (2026-08-25)
 
 

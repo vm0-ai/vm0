@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.286.0](https://github.com/vm0-ai/vm0/compare/cli-v9.285.2...cli-v9.286.0) (2026-08-25)
+
+
+### Features
+
+* **cli:** expose managed socialkit operation catalog ([#29335](https://github.com/vm0-ai/vm0/issues/29335)) ([b490247](https://github.com/vm0-ai/vm0/commit/b490247c5036f8dd6c6523134d9160a4181a0141))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.365.0
+    * @okouai/core bumped to 8.590.3
+
 ## [9.285.2](https://github.com/vm0-ai/vm0/compare/cli-v9.285.1...cli-v9.285.2) (2026-08-25)
 
 
