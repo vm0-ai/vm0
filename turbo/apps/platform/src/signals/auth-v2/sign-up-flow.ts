@@ -1,4 +1,7 @@
 import type {
+  Attribute,
+  AttributeData,
+  Attributes,
   PasswordValidation,
   SignUpCreateParams,
   SignUpField,
@@ -32,12 +35,16 @@ export const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS * 1000;
 
-const SUPPORTED_SIGN_UP_FIELDS = [
+const SUPPORTED_SIGN_UP_ATTRIBUTES = [
   "email_address",
   "first_name",
   "last_name",
-  "legal_accepted",
   "password",
+] as const satisfies readonly Attribute[];
+
+const SUPPORTED_SIGN_UP_FIELDS = [
+  ...SUPPORTED_SIGN_UP_ATTRIBUTES,
+  "legal_accepted",
 ] as const satisfies readonly SignUpField[];
 
 type SupportedSignUpField = (typeof SUPPORTED_SIGN_UP_FIELDS)[number];
@@ -152,8 +159,11 @@ export interface AuthV2SignUpSignals {
 }
 
 interface SignUpConfiguration {
+  readonly attributes: Attributes;
   readonly captchaEnabled: boolean;
+  readonly legalConsentEnabled: boolean;
   readonly privacyPolicyUrl: string | null;
+  readonly progressive: boolean;
   readonly termsUrl: string | null;
 }
 
@@ -172,7 +182,7 @@ interface SignUpResourceSnapshot {
   readonly legal: AuthV2SignUpLegalConfig;
   readonly missingFields: readonly SignUpField[];
   readonly transferable: boolean;
-  readonly unsupportedFields: readonly SignUpField[];
+  readonly unsupportedFields: readonly string[];
   readonly unverifiedEmailAddress: boolean;
   readonly verification: SignUpVerificationSnapshot;
 }
@@ -235,7 +245,169 @@ function fieldRequirement(
   return optionalFields.has(field) ? "optional" : "hidden";
 }
 
-function signUpFields(resource: SignUpResource): AuthV2SignUpFields {
+interface ConfiguredIdentifierRequirements {
+  readonly emailAddress: boolean;
+  readonly phoneNumber: boolean;
+  readonly username: boolean;
+}
+
+interface ConfiguredIdentifierAttribute {
+  readonly enabled: boolean;
+  readonly firstFactor: boolean;
+  readonly required: boolean;
+}
+
+function configuredEmailIdentifierRequired(
+  email: ConfiguredIdentifierAttribute,
+  phone: ConfiguredIdentifierAttribute,
+  username: ConfiguredIdentifierAttribute,
+): boolean {
+  return (
+    (email.enabled && !phone.enabled && !username.enabled) ||
+    (email.enabled && !email.required && phone.enabled && !phone.required) ||
+    (username.firstFactor &&
+      !username.required &&
+      email.enabled &&
+      !email.required) ||
+    (username.required &&
+      !username.firstFactor &&
+      email.enabled &&
+      phone.enabled)
+  );
+}
+
+function configuredPhoneIdentifierRequired(
+  email: ConfiguredIdentifierAttribute,
+  phone: ConfiguredIdentifierAttribute,
+  username: ConfiguredIdentifierAttribute,
+): boolean {
+  return (
+    (phone.enabled && !email.required && !phone.required) ||
+    (username.firstFactor &&
+      !username.required &&
+      phone.enabled &&
+      !phone.required) ||
+    (phone.firstFactor && !email.firstFactor && !username.firstFactor) ||
+    (username.required &&
+      !username.firstFactor &&
+      phone.enabled &&
+      email.enabled) ||
+    (!email.enabled && phone.enabled && username.enabled)
+  );
+}
+
+function configuredUsernameIdentifierRequired(
+  email: ConfiguredIdentifierAttribute,
+  phone: ConfiguredIdentifierAttribute,
+  username: ConfiguredIdentifierAttribute,
+): boolean {
+  return (
+    (username.enabled &&
+      username.firstFactor &&
+      !email.enabled &&
+      !phone.enabled) ||
+    (username.required &&
+      !username.firstFactor &&
+      email.enabled &&
+      phone.enabled)
+  );
+}
+
+function configuredIdentifierRequirements(
+  attributes: Attributes,
+): ConfiguredIdentifierRequirements {
+  const email = {
+    enabled: attributes.email_address.enabled,
+    firstFactor: attributes.email_address.used_for_first_factor,
+    required: attributes.email_address.required,
+  };
+  const phone = {
+    enabled: attributes.phone_number.enabled,
+    firstFactor: attributes.phone_number.used_for_first_factor,
+    required: attributes.phone_number.required,
+  };
+  const username = {
+    enabled: attributes.username.enabled,
+    firstFactor: attributes.username.used_for_first_factor,
+    required: attributes.username.required,
+  };
+  const passwordRequired =
+    attributes.password.enabled && attributes.password.required;
+
+  if (
+    !passwordRequired ||
+    email.required ||
+    phone.required ||
+    (username.required && username.firstFactor)
+  ) {
+    return {
+      emailAddress: email.required,
+      phoneNumber: phone.required,
+      username: username.required,
+    };
+  }
+  if (!email.enabled && !phone.enabled && !username.enabled) {
+    return { emailAddress: false, phoneNumber: false, username: false };
+  }
+
+  const emailAddress = configuredEmailIdentifierRequired(
+    email,
+    phone,
+    username,
+  );
+  const phoneNumber = configuredPhoneIdentifierRequired(email, phone, username);
+  const usernameRequired = configuredUsernameIdentifierRequired(
+    email,
+    phone,
+    username,
+  );
+
+  if (!emailAddress && !phoneNumber && !usernameRequired) {
+    return { emailAddress: true, phoneNumber: false, username: false };
+  }
+  return {
+    emailAddress,
+    phoneNumber,
+    username: usernameRequired,
+  };
+}
+
+function configuredAttributeRequirement(
+  attribute: AttributeData,
+): FieldRequirement {
+  if (!attribute.enabled) {
+    return "hidden";
+  }
+  return attribute.required ? "required" : "optional";
+}
+
+function configuredSignUpFields(
+  configuration: SignUpConfiguration,
+): AuthV2SignUpFields {
+  const { attributes } = configuration;
+  const identifierRequirements = configuredIdentifierRequirements(attributes);
+  const emailEnabled =
+    attributes.email_address.enabled &&
+    (configuration.progressive ||
+      attributes.email_address.used_for_first_factor);
+  return {
+    emailAddress: emailEnabled
+      ? configuration.progressive
+        ? identifierRequirements.emailAddress
+          ? "required"
+          : "optional"
+        : "required"
+      : "hidden",
+    firstName: configuredAttributeRequirement(attributes.first_name),
+    lastName: configuredAttributeRequirement(attributes.last_name),
+    password:
+      attributes.password.enabled && attributes.password.required
+        ? "required"
+        : "hidden",
+  };
+}
+
+function resourceSignUpFields(resource: SignUpResource): AuthV2SignUpFields {
   const requiredFields = new Set(resource.requiredFields);
   const optionalFields = new Set(resource.optionalFields);
   return {
@@ -252,9 +424,48 @@ function signUpFields(resource: SignUpResource): AuthV2SignUpFields {
   };
 }
 
+function usesConfiguredInitialRequirements(resource: SignUpResource): boolean {
+  return (
+    resource.status === null &&
+    resource.requiredFields.length === 0 &&
+    resource.optionalFields.length === 0 &&
+    resource.missingFields.length === 0
+  );
+}
+
+function signUpFields(
+  resource: SignUpResource,
+  configuration: SignUpConfiguration,
+): AuthV2SignUpFields {
+  return usesConfiguredInitialRequirements(resource)
+    ? configuredSignUpFields(configuration)
+    : resourceSignUpFields(resource);
+}
+
+function unsupportedConfiguredSignUpFields(
+  configuration: SignUpConfiguration,
+): readonly string[] {
+  const supportedAttributes = new Set<string>(SUPPORTED_SIGN_UP_ATTRIBUTES);
+  return Object.entries(configuration.attributes)
+    .filter(([attributeName, attribute]) => {
+      return (
+        attribute.enabled &&
+        attribute.required &&
+        !supportedAttributes.has(attributeName)
+      );
+    })
+    .map(([attributeName]) => {
+      return attributeName;
+    });
+}
+
 function unsupportedSignUpFields(
   resource: SignUpResource,
-): readonly SignUpField[] {
+  configuration: SignUpConfiguration,
+): readonly string[] {
+  if (usesConfiguredInitialRequirements(resource)) {
+    return unsupportedConfiguredSignUpFields(configuration);
+  }
   const supportedFields = new Set<SignUpField>(SUPPORTED_SIGN_UP_FIELDS);
   return [...resource.requiredFields, ...resource.missingFields].filter(
     (field, index, fields) => {
@@ -268,15 +479,18 @@ function snapshotSignUpResource(
   configuration: SignUpConfiguration,
 ): SignUpResourceSnapshot {
   const verification = resource.verifications.emailAddress;
-  const legalRequired =
-    resource.requiredFields.includes("legal_accepted") &&
-    resource.missingFields.includes("legal_accepted");
+  const configuredInitialRequirements =
+    usesConfiguredInitialRequirements(resource);
+  const legalRequired = configuredInitialRequirements
+    ? configuration.legalConsentEnabled
+    : resource.requiredFields.includes("legal_accepted") &&
+      resource.missingFields.includes("legal_accepted");
   return {
     captchaEnabled: configuration.captchaEnabled,
     clerkStatus: resource.status,
     createdSessionId: resource.createdSessionId,
     emailAddress: resource.emailAddress,
-    fields: signUpFields(resource),
+    fields: signUpFields(resource, configuration),
     legal: {
       privacyPolicyUrl: configuration.privacyPolicyUrl,
       required: legalRequired,
@@ -284,7 +498,7 @@ function snapshotSignUpResource(
     },
     missingFields: [...resource.missingFields],
     transferable: resource.__internal_future.isTransferable,
-    unsupportedFields: unsupportedSignUpFields(resource),
+    unsupportedFields: unsupportedSignUpFields(resource, configuration),
     unverifiedEmailAddress: resource.unverifiedFields.includes("email_address"),
     verification: {
       expireAtMs: verification.expireAt?.getTime() ?? null,
@@ -579,18 +793,22 @@ export const clerkSignUpResource$ = computed(async (get) => {
 
 const clerkSignUpConfiguration$ = computed(async (get) => {
   const clerk = await get(clerk$);
-  const displayConfig = clerk.__internal_environment?.displayConfig;
-  if (!displayConfig) {
+  const environment = clerk.__internal_environment;
+  if (!environment) {
     throw new Error(
-      "Loaded Clerk instance did not provide display configuration",
+      "Loaded Clerk instance did not provide environment configuration",
     );
   }
+  const { displayConfig, userSettings } = environment;
   return {
+    attributes: userSettings.attributes,
     captchaEnabled:
       displayConfig.captchaWidgetType !== null &&
       (displayConfig.captchaPublicKey !== null ||
         displayConfig.captchaPublicKeyInvisible !== null),
+    legalConsentEnabled: userSettings.signUp.legal_consent_enabled,
     privacyPolicyUrl: displayConfig.privacyPolicyUrl || null,
+    progressive: userSettings.signUp.progressive,
     termsUrl: displayConfig.termsUrl || null,
   } satisfies SignUpConfiguration;
 });
