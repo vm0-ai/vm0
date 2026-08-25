@@ -5,6 +5,8 @@ from mitmproxy import http
 import flow_metadata
 from platform_api import get_api_url
 
+from .underbilling import log_usage_underbilling
+
 USAGE_EVENT_WEBHOOK_PATH = "/api/webhooks/agent/usage-event"
 MODEL_USAGE_OBSERVATION_WEBHOOK_PATH = "/api/webhooks/agent/model-usage-observation"
 AGENT_TELEMETRY_WEBHOOK_PATH = "/api/webhooks/agent/telemetry"
@@ -43,6 +45,27 @@ class UsageReportingContext:
 
     def telemetry_url(self) -> str:
         return self._url_for(AGENT_TELEMETRY_WEBHOOK_PATH)
+
+
+def log_usage_reporting_context_missing(
+    context: UsageReportingContext,
+    run_id: str,
+    firewall_name: str,
+    /,
+    **extra: object,
+) -> None:
+    """Log confirmed underbilling when usage cannot reach the platform."""
+    log_usage_underbilling(
+        context.proxy_log_path,
+        "Cannot report usage event: missing sandbox_token or api_url",
+        "missing_reporting_context",
+        "confirmed",
+        run_id=run_id,
+        firewall_name=firewall_name,
+        missing_sandbox_token=context.missing_sandbox_token,
+        missing_api_url=context.missing_api_url,
+        **extra,
+    )
 
 
 def usage_reporting_context(flow: http.HTTPFlow) -> UsageReportingContext:

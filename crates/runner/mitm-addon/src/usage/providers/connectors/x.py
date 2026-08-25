@@ -24,7 +24,10 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
-from ...reporting_context import usage_reporting_context
+from ...reporting_context import (
+    log_usage_reporting_context_missing,
+    usage_reporting_context,
+)
 from ...underbilling import log_usage_underbilling
 from .x_billing import (
     INCLUDES_OVERFLOW_CATEGORY,
@@ -765,16 +768,11 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
 
     reporting_context = usage_reporting_context(flow)
     if not reporting_context.is_complete:
-        log_usage_underbilling(
-            reporting_context.proxy_log_path,
-            "Cannot report usage event: missing sandbox_token or api_url",
-            "missing_reporting_context",
-            "confirmed",
-            run_id=run_id,
-            firewall_name=firewall_name,
+        log_usage_reporting_context_missing(
+            reporting_context,
+            run_id,
+            firewall_name,
             permission=permission,
-            missing_sandbox_token=reporting_context.missing_sandbox_token,
-            missing_api_url=reporting_context.missing_api_url,
         )
         return
     events: list[UsageEvent] = []
