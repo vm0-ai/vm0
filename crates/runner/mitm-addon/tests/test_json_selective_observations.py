@@ -20,6 +20,12 @@ _COMMON_SCALAR_FIELDS = {
 _COMMON_ARRAY_COUNT_PATHS = {("data",), ("errors",)}
 _COMMON_WILDCARD_ARRAY_COUNT_PATHS = {("includes", "*")}
 _COMMON_OBJECT_PRESENCE_PATHS = {(), ("data",)}
+_WILDCARD_INTERNAL_MARKER_KEYS = frozenset(
+    (
+        "\0__vm0_json_unknown_key__",
+        "\0__vm0_json_array_element__",
+    )
+)
 
 
 def _get_path(data: object, path: tuple[str, ...]) -> tuple[object, bool]:
@@ -56,7 +62,7 @@ def _expected_common_extraction(data: object):
             for key, value in includes.items()
             if isinstance(key, str)
             and isinstance(value, list)
-            and not key.startswith("\0__vm0_json_")
+            and key not in _WILDCARD_INTERNAL_MARKER_KEYS
         }
         if counts:
             wildcard_array_counts[("includes", "*")] = counts
@@ -115,6 +121,11 @@ def test_common_extraction_matches_json_loads_across_chunk_sizes():
             b'{"id":"msg_2","data":{"id":"1"},'
             b'"usage":{"input_tokens":0,"output_tokens":7},'
             b'"meta":{"total_tweet_count":9}}'
+        ),
+        (
+            b'{"includes":{"\\u0000__vm0_json_unknown_key__":[{"id":"internal-1"}],'
+            b'"\\u0000__vm0_json_array_element__":[{"id":"internal-2"}],'
+            b'"\\u0000__vm0_json_custom":[{"id":"custom-1"},{"id":"custom-2"}]}}'
         ),
     ]
 
