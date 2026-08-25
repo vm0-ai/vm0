@@ -46,6 +46,7 @@ delete the workflow, probe, focused validator, and this entry together.
 | #28080                            | Checkpoint configuration-independence manifest              | #26938 Stage 8 |
 | #28080                            | Checkpoint v7 protected partition                           | #26938 Stage 8 |
 | #28304                            | Usage-pack pending snapshot dirty upgrade                   | #28372         |
+| #28795                            | Official Slack installation Okou brand finalization         | #28937         |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#27896|legacy-execution-plan-preflight-classifier|removal-owner:#26938-stage-8 -->
@@ -56,6 +57,7 @@ delete the workflow, probe, focused validator, and this entry together.
 <!-- vm0-transition-validator:#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372 -->
+<!-- vm0-transition-validator:#28795|official-slack-installation-okou-brand-finalization|removal-owner:#28937 -->
 
 ## Migration patterns
 

@@ -60,6 +60,7 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10833,6 +10834,7 @@ async function main(): Promise<void> {
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
+    await validateSlackOfficialBrandMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
