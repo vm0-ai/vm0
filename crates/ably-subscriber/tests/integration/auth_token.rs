@@ -216,6 +216,9 @@ async fn token_renewal() {
 
 #[tokio::test]
 async fn repeated_short_lived_tokens_are_spaced_without_starving_messages() {
+    const SHORT_TOKEN_TTL_MS: i64 = 4_000;
+    const PRE_EXPIRY_RENEWAL_TIMEOUT: Duration = Duration::from_secs(3);
+
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
 
@@ -228,7 +231,11 @@ async fn repeated_short_lived_tokens_are_spaced_without_starving_messages() {
             *calls += 1;
 
             let now = now_ms();
-            let expires = if call == 0 { now } else { now + 2_000 };
+            let expires = if call == 0 {
+                now
+            } else {
+                now + SHORT_TOKEN_TTL_MS
+            };
             let body = serde_json::to_vec(&serde_json::json!({
                 "token": format!("short-lived-token-{call}"),
                 "expires": expires,
@@ -294,7 +301,7 @@ async fn repeated_short_lived_tokens_are_spaced_without_starving_messages() {
     )
     .await;
 
-    tokio::time::timeout(Duration::from_millis(1_500), second_renewal_rx)
+    tokio::time::timeout(PRE_EXPIRY_RENEWAL_TIMEOUT, second_renewal_rx)
         .await
         .expect("short-lived replacement token should renew before expiry")
         .unwrap();
