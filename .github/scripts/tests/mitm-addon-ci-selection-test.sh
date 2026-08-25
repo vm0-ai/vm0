@@ -154,9 +154,10 @@ jq -e '
     .id == "detect" and
     (.run | contains(".github/scripts/mitm-addon-only-changed.sh \"$BASE_REF\"")) and
     (.run | contains("mitm-addon-only-changed=true")) and
-    (.run | contains("mitm-addon-only-changed=false"))
+    (.run | contains("mitm-addon-only-changed=false")) and
+    (.run | contains("exit \"$mitm_addon_only_rc\""))
   )
-' <<<"$crates_json" >/dev/null || fail "detect must map classifier statuses to explicit outputs"
+' <<<"$crates_json" >/dev/null || fail "detect must map classifier statuses and propagate errors"
 
 jq -e '
   .jobs.check.if == "needs.detect.outputs.any-changed == '\''true'\''"
