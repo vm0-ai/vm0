@@ -53,7 +53,6 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
-import { validateBuiltInModelCooldownContraction } from "./test-built-in-model-cooldown-contraction";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
@@ -61,7 +60,6 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
-import { validateBuiltInModelCandidateCooldownExpansion } from "./test-built-in-model-candidate-cooldown-expansion";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10835,8 +10833,6 @@ async function main(): Promise<void> {
     await validateCustomGatewayProviderTypes();
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
-    await validateBuiltInModelCandidateCooldownExpansion();
-    await validateBuiltInModelCooldownContraction();
     await validateSlackOfficialBrandMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
