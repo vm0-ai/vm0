@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.488.1](https://github.com/vm0-ai/vm0/compare/api-v1.488.0...api-v1.488.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **connectors:** make fallback account names searchable ([#29279](https://github.com/vm0-ai/vm0/issues/29279)) ([a2281d4](https://github.com/vm0-ai/vm0/commit/a2281d4a1e43a3427fcca1792c36012212c99a2c))
+
+
+### Performance Improvements
+
+* **api:** reuse expanded connector firewall defaults ([#29276](https://github.com/vm0-ai/vm0/issues/29276)) ([36a77d4](https://github.com/vm0-ai/vm0/commit/36a77d4bcdbb5e6938b241001dc30f60b1e726a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.590.2
+    * @okouai/db bumped to 1.223.2
+
 ## [1.488.0](https://github.com/vm0-ai/vm0/compare/api-v1.487.0...api-v1.488.0) (2026-08-25)
 
 

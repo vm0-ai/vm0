@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.590.2](https://github.com/vm0-ai/vm0/compare/core-v8.590.1...core-v8.590.2) (2026-08-25)
+
+
+### Documentation
+
+* correct retired token and environment claims in cli cutover record ([#29278](https://github.com/vm0-ai/vm0/issues/29278)) ([0b33ca1](https://github.com/vm0-ai/vm0/commit/0b33ca1f62bc0b52a61d25bcf466c013675834c3))
+
 ## [8.590.1](https://github.com/vm0-ai/vm0/compare/core-v8.590.0...core-v8.590.1) (2026-08-25)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.173.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.1...runner-rs-v0.173.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **runner:** tolerate missing physical cpu topology ([#29275](https://github.com/vm0-ai/vm0/issues/29275)) ([c49f7a2](https://github.com/vm0-ai/vm0/commit/c49f7a22f456287043ad69c4169761112d2968d8))
+
+
+### Documentation
+
+* **python:** clarify bounded JSON probe prefix contract ([#29284](https://github.com/vm0-ai/vm0/issues/29284)) ([#29300](https://github.com/vm0-ai/vm0/issues/29300)) ([6d9b1c1](https://github.com/vm0-ai/vm0/commit/6d9b1c122b667a49ce1b9c6c1637bd3358fff329))
+* **python:** document HTTP header helper contracts ([#29298](https://github.com/vm0-ai/vm0/issues/29298)) ([f4c9c67](https://github.com/vm0-ai/vm0/commit/f4c9c67713c3a0ff588123b805f5afb3207f81e7))
+
+
+### Performance Improvements
+
+* **python:** batch resolved auth header injection ([#29301](https://github.com/vm0-ai/vm0/issues/29301)) ([5cd1219](https://github.com/vm0-ai/vm0/commit/5cd1219e314cf2dc1b2b851f967bb173f9a76b74))
+
 ## [0.173.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.0...runner-rs-v0.173.1) (2026-08-25)
 
 
