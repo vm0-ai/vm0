@@ -343,13 +343,13 @@ async function waitForBatch(
 }
 
 const startCommand = new Command("start")
-  .description("Start a detached presentation image batch")
+  .description("Start a detached image batch")
   .argument("<manifest.tsv>", "ID, raw prompt, and optional size per line")
   .argument("<state-dir>", "New directory for batch state and results")
   .action(withErrorHandler(startBatch));
 
 const waitCommand = new Command("wait")
-  .description("Wait for a presentation image batch and print its results")
+  .description("Wait for an image batch and print its results")
   .argument("<state-dir>", "State directory returned by start")
   .option("--timeout <seconds>", "Maximum wait time", parseTimeout, 300)
   .action(withErrorHandler(waitForBatch));
@@ -361,7 +361,7 @@ const runCommand = new Command("__run")
 
 export const imageBatchCommand = new Command("image-batch")
   .description(
-    "Run presentation image jobs with at most three concurrent requests and one transient retry",
+    "Run image jobs with at most three concurrent requests and one transient retry",
   )
   .addCommand(startCommand)
   .addCommand(waitCommand)

@@ -9800,6 +9800,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(websitePrompt).toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("use `seedream4` by default");
+    expect(websitePrompt).not.toContain("okou generate image-batch start");
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
 
@@ -9822,9 +9823,17 @@ describe("CHAT-02: generation templates and attachments", () => {
       "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(latestWebsitePrompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      "Image workflow: use supplied images first;",
     );
+    expect(latestWebsitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
+    );
+    expect(latestWebsitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(latestWebsitePrompt).not.toContain("tools/generate-images.mjs");
     expect(latestWebsitePrompt).not.toContain("resolve-images.mjs");
+    expect(latestWebsitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, latestWebsite.runId);
   }, 90_000);
 
