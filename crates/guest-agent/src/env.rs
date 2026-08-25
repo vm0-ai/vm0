@@ -22,9 +22,9 @@ const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_EN
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
 pub(crate) const AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC: &str = "agent execution timeout";
 #[cfg(debug_assertions)]
-const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "VM0_TEST_CLAUDE_CONFIG_DIR";
+const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
-const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "VM0_TEST_CODEX_HOME_DIR";
+const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()

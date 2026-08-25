@@ -1047,8 +1047,8 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
-        "VM0_TEST_CLAUDE_CONFIG_DIR",
-        "VM0_TEST_CODEX_HOME_DIR",
+        "OKOU_TEST_CLAUDE_CONFIG_DIR",
+        "OKOU_TEST_CODEX_HOME_DIR",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -1134,7 +1134,7 @@ pub unsafe fn setup_codex_app_server_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
-        std::env::set_var("VM0_TEST_CODEX_HOME_DIR", home.join("codex-home"));
+        std::env::set_var("OKOU_TEST_CODEX_HOME_DIR", home.join("codex-home"));
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(home, config.run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         set_run_payload_file_env_for_test(
@@ -1293,7 +1293,7 @@ pub unsafe fn setup_env(
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
-        std::env::set_var("VM0_TEST_CLAUDE_CONFIG_DIR", workdir.join(".claude"));
+        std::env::set_var("OKOU_TEST_CLAUDE_CONFIG_DIR", workdir.join(".claude"));
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     ensure_canonical_workspace_for_test()?;

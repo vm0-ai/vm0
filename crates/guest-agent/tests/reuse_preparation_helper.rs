@@ -859,7 +859,7 @@ fn run_helper_with_current_group_and_codex_home(
         .env_clear()
         .env("OKOU_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env("OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
-        .env("VM0_TEST_CODEX_HOME_DIR", codex_home)
+        .env("OKOU_TEST_CODEX_HOME_DIR", codex_home)
         .arg("prepare-for-reuse")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -887,7 +887,7 @@ fn run_helper_with_bind_mount(
             "OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
             "/vm0-exec/exec-current/workload",
         )
-        .env("VM0_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
+        .env("OKOU_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
         .env("OKOU_MOUNT_SOURCE", mount_source)
         .env("OKOU_MOUNT_TARGET", mount_target)
         .env("OKOU_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
