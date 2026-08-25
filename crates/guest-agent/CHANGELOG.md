@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.79.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.0...guest-agent-v0.79.1) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** rename debug http retry-delay key ([#29390](https://github.com/vm0-ai/vm0/issues/29390)) ([688fb07](https://github.com/vm0-ai/vm0/commit/688fb07a5429bdac8c4ddbd5c8f121ebc72c31a5))
+* **guest:** dual-read mock binary path aliases ([#29385](https://github.com/vm0-ai/vm0/issues/29385)) ([15e79f4](https://github.com/vm0-ai/vm0/commit/15e79f42c3522856c4debe98c19af6b47bf54a30))
+
 ## [0.79.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.78.0...guest-agent-v0.79.0) (2026-08-25)
 
 

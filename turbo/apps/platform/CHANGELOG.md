@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.795.1](https://github.com/vm0-ai/vm0/compare/app-v0.795.0...app-v0.795.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **auth:** match auth v2 visual hierarchy ([#29346](https://github.com/vm0-ai/vm0/issues/29346)) ([80700b1](https://github.com/vm0-ai/vm0/commit/80700b179404d79316eaa8cfd4a71abcca63c76b))
+
 ## [0.795.0](https://github.com/vm0-ai/vm0/compare/app-v0.794.2...app-v0.795.0) (2026-08-25)
 
 

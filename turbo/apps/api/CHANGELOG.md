@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.491.0](https://github.com/vm0-ai/vm0/compare/api-v1.490.0...api-v1.491.0) (2026-08-25)
+
+
+### Features
+
+* make presentation templates org scoped ([#29382](https://github.com/vm0-ai/vm0/issues/29382)) ([c7106e1](https://github.com/vm0-ai/vm0/commit/c7106e12bb4b94facd532ca5115a3ea4a6aab7d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.224.1
+
 ## [1.490.0](https://github.com/vm0-ai/vm0/compare/api-v1.489.0...api-v1.490.0) (2026-08-25)
 
 

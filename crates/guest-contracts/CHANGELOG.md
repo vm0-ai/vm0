@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.21...guest-contracts-v0.11.22) (2026-08-25)
+
+
+### Refactoring
+
+* **guest:** dual-read mock binary path aliases ([#29385](https://github.com/vm0-ai/vm0/issues/29385)) ([15e79f4](https://github.com/vm0-ai/vm0/commit/15e79f42c3522856c4debe98c19af6b47bf54a30))
+
 ## [0.11.21](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.20...guest-contracts-v0.11.21) (2026-08-25)
 
 
