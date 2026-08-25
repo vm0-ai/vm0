@@ -174,9 +174,6 @@ describe("getAllFeatureStates", () => {
     expect(
       bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
     ).toBe(true);
-    expect(bingjieStates[FeatureSwitchKey.ComposerNoteEditableIsolation]).toBe(
-      true,
-    );
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
@@ -187,9 +184,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(
       otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
-    expect(
-      otherStaffStates[FeatureSwitchKey.ComposerNoteEditableIsolation],
     ).toBe(false);
   });
 

@@ -1692,65 +1692,6 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("keeps the note editable and submits typed text with editable isolation enabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const assistantReply = "The rollout dates are unclear in this summary.";
-    const sentMessages: RunCreateCapture[] = [];
-
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatEvents: [
-        {
-          id: "msg-feedback-isolation-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-isolation",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-isolation-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-isolation",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentMessages.push(body);
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerNoteEditableIsolation]: true,
-      },
-    });
-
-    await findComposerEditor();
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Quote"));
-
-    const feedbackComment = await findFeedbackNote();
-    const [feedbackItem] = await findFeedbackItems(1);
-    expect(feedbackItem?.getAttribute("contenteditable")).toBe("false");
-    expect(feedbackComment.getAttribute("contenteditable")).toBe("true");
-
-    await user.click(feedbackComment);
-    pastePlainText(feedbackComment, "Make the dates explicit");
-    await waitFor(() => {
-      expect(feedbackComment).toHaveTextContent("Make the dates explicit");
-    });
-
-    await user.click(screen.getByLabelText("Send"));
-    await waitFor(() => {
-      expect(sentMessages).toHaveLength(1);
-    });
-    expect(sentMessages[0]?.prompt).toContain("Make the dates explicit");
-  });
-
   it("waits until mouseup before showing the inline feedback toolbar", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
 

@@ -84,5 +84,4 @@ export enum FeatureSwitchKey {
   ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
   ComposerImageAnnotation = "composerImageAnnotation",
   ComposerRestoredAttachmentValidation = "composerRestoredAttachmentValidation",
-  ComposerNoteEditableIsolation = "composerNoteEditableIsolation",
 }
