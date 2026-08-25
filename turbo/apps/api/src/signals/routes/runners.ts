@@ -2627,7 +2627,7 @@ const modelProviderFailureInner$ = command(
       retryAfterSeconds: cooldownSeconds,
     });
     signal.throwIfAborted();
-    L.debug("Built-in model provider failure report recorded", {
+    L.error("Built-in model provider failure report recorded", {
       type: "built_in_model_provider_cooldown",
       runId,
       selectedModel: run.selectedModel,

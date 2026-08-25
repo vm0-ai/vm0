@@ -470,7 +470,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
             ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
           }),
         ).resolves.toStrictEqual({ outcome: "recorded" });
-        expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+        expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
           "Built-in model provider failure report recorded",
           expect.objectContaining({
             type: "built_in_model_provider_cooldown",
