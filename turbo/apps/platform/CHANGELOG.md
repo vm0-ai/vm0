@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.795.0](https://github.com/vm0-ai/vm0/compare/app-v0.794.2...app-v0.795.0) (2026-08-25)
+
+
+### Features
+
+* add output tool transport foundation ([#29361](https://github.com/vm0-ai/vm0/issues/29361)) ([0820224](https://github.com/vm0-ai/vm0/commit/0820224394881c0a76d2376bcbff728061b0dd55))
+* **onboarding:** add slack entry card ([#29263](https://github.com/vm0-ai/vm0/issues/29263)) ([345ea87](https://github.com/vm0-ai/vm0/commit/345ea87a70a0049001828ce37214211e6efb2783))
+* **platform:** show only the title on imported deck tiles ([#29348](https://github.com/vm0-ai/vm0/issues/29348)) ([83be786](https://github.com/vm0-ai/vm0/commit/83be78698a15cea7e6e483564f3ae01a9d6d8b79))
+* **platform:** state template visibility as a sentence with a change popover ([#29334](https://github.com/vm0-ai/vm0/issues/29334)) ([5f734a5](https://github.com/vm0-ai/vm0/commit/5f734a56928a6781617c71a7e6969fee3c3278ee))
+
+
+### Bug Fixes
+
+* **auth:** handle clerk device trust in auth v2 ([#29194](https://github.com/vm0-ai/vm0/issues/29194)) ([2fe2b71](https://github.com/vm0-ai/vm0/commit/2fe2b71922ed66954e6ac7197488848d77477b70))
+* **composer:** keep the flat note chrome stable while typing ([#29354](https://github.com/vm0-ai/vm0/issues/29354)) ([a69df64](https://github.com/vm0-ai/vm0/commit/a69df6423f296837d547e8fa811520fca4865e19))
+* keep uploaded template images visible while refreshing ([#29308](https://github.com/vm0-ai/vm0/issues/29308)) ([959a8c9](https://github.com/vm0-ai/vm0/commit/959a8c932573954cdeb5d905717eb0d33fd35942))
+* **platform:** show marks in the viewer and edit notes on the image ([#29331](https://github.com/vm0-ai/vm0/issues/29331)) ([e32196e](https://github.com/vm0-ai/vm0/commit/e32196e45d554e9133fc886b34ea36dcedac7e17))
+
+
+### Refactoring
+
+* remove usage pack plans feature switch ([#29349](https://github.com/vm0-ai/vm0/issues/29349)) ([eb8a72a](https://github.com/vm0-ai/vm0/commit/eb8a72a5ae960eb4e2ff70c2c15e45e2c351b6b8))
+
+
+### Performance Improvements
+
+* **connectors:** debounce account search requests ([#29307](https://github.com/vm0-ai/vm0/issues/29307)) ([ce3ba01](https://github.com/vm0-ai/vm0/commit/ce3ba013c741b1f3e8e260b2ef49d5f09fdb8616))
+* resize uploaded template previews ([#29330](https://github.com/vm0-ai/vm0/issues/29330)) ([4fc670c](https://github.com/vm0-ai/vm0/commit/4fc670c0af68f3513ba1e426cf194b7ddd667ebf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.366.0
+    * @okouai/core bumped to 8.591.0
+
 ## [0.794.2](https://github.com/vm0-ai/vm0/compare/app-v0.794.1...app-v0.794.2) (2026-08-25)
 
 
