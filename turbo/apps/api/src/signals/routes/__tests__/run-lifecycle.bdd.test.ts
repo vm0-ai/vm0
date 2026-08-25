@@ -15814,7 +15814,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       return message.eventType === "output.message" && message.runId === runId;
     });
     expect(firstAssistant?.id).toBe(
-      assistantEventIdForRunEvent(runId, "msg_bdd_1"),
+      assistantEventIdForRunEvent(runId, "event:1"),
     );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
     expect(
@@ -16020,13 +16020,15 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       }),
     ).toHaveLength(3);
 
+    // Repeating an already persisted canonical sequence is idempotent even if
+    // the redelivered payload differs.
     await webhooks.requestAgentEvents(
       {
         runId,
         events: [
           {
             type: "assistant",
-            sequenceNumber: 11,
+            sequenceNumber: 1,
             message: {
               id: "msg_bdd_1",
               content: [{ type: "text", text: "Duplicate text" }],
@@ -16039,7 +16041,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     await flushWaitUntilForTest();
     const afterDuplicate = await chat.listThreadEvents(actor, threadId);
-    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "msg_bdd_1");
+    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "event:1");
     const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
       return (
         message.eventType === "output.message" &&
