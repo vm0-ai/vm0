@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.490.0](https://github.com/vm0-ai/vm0/compare/api-v1.489.0...api-v1.490.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add built-in model cooldown axiom event ([#29373](https://github.com/vm0-ai/vm0/issues/29373)) ([973db00](https://github.com/vm0-ai/vm0/commit/973db005c07b4c3ef0bbfe3b7a2ba4a5d6f956ec))
+* materialize provider tool activity ([#29372](https://github.com/vm0-ai/vm0/issues/29372)) ([0383cb8](https://github.com/vm0-ai/vm0/commit/0383cb83c9d370a730c97dade61994165ab69023))
+
 ## [1.489.0](https://github.com/vm0-ai/vm0/compare/api-v1.488.2...api-v1.489.0) (2026-08-25)
 
 
