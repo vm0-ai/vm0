@@ -78,7 +78,7 @@ runner_chat_event_rows() {
     local page_number
 
     for ((page_number = 1; page_number <= 100; page_number += 1)); do
-        request_path="/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
+        request_path="/api/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
         if ((since_seq_id > 0)); then
             request_path+="&sinceEventId=${since_event_id}"
         fi
@@ -283,7 +283,7 @@ runner_chat_send_parts() {
             } + if $captureNetworkBodies then {captureNetworkBodies: true} else {} end')"
     fi
 
-    runner_api_curl "/api/okou/chat/events" -X POST -d "$payload"
+    runner_api_curl "/api/chat/events" -X POST -d "$payload"
 }
 
 runner_wait_for_run() {

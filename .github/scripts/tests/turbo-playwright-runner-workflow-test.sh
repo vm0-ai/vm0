@@ -395,8 +395,8 @@ model_defaults_step = bootstrap_steps.find do |step|
 end
 raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
-unless model_defaults_script.include?("/api/okou/model-policies") &&
-    model_defaults_script.include?("/api/okou/user-model-preference") &&
+unless model_defaults_script.include?("/api/model-policies") &&
+    model_defaults_script.include?("/api/user-model-preference") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
@@ -431,9 +431,9 @@ unless mock_claude_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
 end
 mock_claude_script = File.read(ARGV.fetch(1))
 %w[
-  /api/zero/me/model-providers
-  /api/zero/model-policies
-  /api/zero/feature-switches
+  /api/me/model-providers
+  /api/model-policies
+  /api/feature-switches
   claude-code-oauth-token
   claude-sonnet-4-6
   realAgentInPreview
@@ -458,8 +458,8 @@ raise "missing real Codex account bootstrap" unless codex_step
 codex_script = codex_step.fetch("run")
 %w[
   /api/model-providers
-  /api/okou/model-policies
-  /api/okou/feature-switches
+  /api/model-policies
+  /api/feature-switches
   gpt-5.6-luna
   realAgentInPreview
 ].each do |required_fragment|
@@ -477,8 +477,8 @@ end
 raise "missing real Claude account bootstrap" unless claude_step
 claude_script = claude_step.fetch("run")
 %w[
-  /api/okou/model-policies
-  /api/okou/feature-switches
+  /api/model-policies
+  /api/feature-switches
   realAgentInPreview
   builtInModelProviderFallback
 ].each do |required_fragment|

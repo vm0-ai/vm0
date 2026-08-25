@@ -2580,8 +2580,8 @@ jobs:
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/user-model-preference" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
@@ -2626,7 +2626,7 @@ jobs:
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/model-policies")
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (
@@ -2654,13 +2654,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/okou/model-policies" \
+            "${api_url}/api/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
-            "${api_url}/api/okou/feature-switches" \
+            "${api_url}/api/feature-switches" \
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
@@ -2680,7 +2680,7 @@ jobs:
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/model-policies")
           policy_payload=$(jq -c --arg model "$claude_model" '
             {
               policies: (
@@ -2708,13 +2708,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/okou/model-policies" \
+            "${api_url}/api/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true,"builtInModelProviderFallback":true}}' \
-            "${api_url}/api/okou/feature-switches" \
+            "${api_url}/api/feature-switches" \
             | jq -e '
                 .effectiveSwitches.realAgentInPreview == true and
                 .effectiveSwitches.builtInModelProviderFallback == true

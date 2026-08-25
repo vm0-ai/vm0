@@ -289,6 +289,16 @@ export function withApiNamespaceAliases(
  *   holds — is still there. Read a row against the traffic of the loop it
  *   belongs to, not only against its own. This is #28917's call-rate rule
  *   reached from the other direction.
+ *
+ * A production traffic sweep does not see this repository's own CI. E2E runs
+ * against preview deployments, so a row called only by a workflow step or an
+ * `e2e/` helper reads as zero-traffic in `vm0-request-log-prod` and looks
+ * drained when it is not — the next E2E run after its removal is what finds
+ * out. Six rows were held open by CI alone until #29169 moved those callers to
+ * neutral paths. Before removing a row, grep `e2e/`, `.github/scripts/` and
+ * `.github/workflows/` for both of its branded forms; treat a hit as a caller
+ * to repoint in the same commit, not as evidence the row is still owed. That
+ * grep returns nothing today, and this note is here so it stays that way.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
