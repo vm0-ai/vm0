@@ -2947,7 +2947,7 @@
           "testReceived": "Strapi 테스트 웹후크 수신됨"
         },
         "webhookUrl": "웹후크 URL",
-        "whereZeroWorks": "{{assistantName}}가 작동하는 위치"
+        "whereAssistantWorks": "{{assistantName}}가 작동하는 위치"
       },
       "telegram": {
         "addBot": "봇 추가",
@@ -3387,7 +3387,7 @@
       "whatItDoes": "기능"
     },
     "workflowRun": {
-      "continueWithZero": "{{assistantName}}와 계속하기",
+      "continueWithAssistant": "{{assistantName}}와 계속하기",
       "createWorkflow": "워크플로 생성",
       "customNoteLabel": "워크플로 설명",
       "customNotePlaceholder": "{{assistantName}}가 만들기를 원하는 내용을 설명하세요",
@@ -4566,7 +4566,7 @@
         "start": "내 데이터 내보내기",
         "starting": "내보내기 시작 중"
       },
-      "backToZero": "{{assistantName}}로 돌아가기",
+      "backToAssistant": "{{assistantName}}로 돌아가기",
       "description": "{{assistantName}}에서 생성한 파일과 텍스트 기록을 다운로드하세요.",
       "documentTitle": "데이터 내보내기",
       "duration": {
