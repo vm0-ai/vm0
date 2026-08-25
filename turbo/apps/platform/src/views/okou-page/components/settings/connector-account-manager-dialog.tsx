@@ -102,7 +102,7 @@ function AccountActions({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="quiet"
           size="icon"
           aria-label={t(($) => {
             return $.connectors.accounts.actions;
@@ -462,7 +462,7 @@ export function ConnectorAccountManagerDialog({
         className="max-w-xl gap-0 overflow-hidden p-0"
         aria-describedby={undefined}
       >
-        <DialogHeader className="border-b border-border py-4 pl-6 pr-16">
+        <DialogHeader className="border-b border-border bg-muted/40 py-4 pl-6 pr-16">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {icon}
