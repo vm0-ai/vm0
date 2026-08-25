@@ -1567,7 +1567,12 @@ describe("connectors page", () => {
       const candidate = connectorCardByLabel("GitHub");
       expect(candidate).toHaveTextContent("101 accounts");
     });
-    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manageAccounts = await waitForButtonByAriaLabel(
+      "Manage GitHub accounts",
+    );
+    expect(manageAccounts.tagName).toBe("BUTTON");
+    expect(manageAccounts.querySelector("button")).toBeNull();
+    click(manageAccounts);
 
     const dialog = await screen.findByRole("dialog", {
       name: "GitHub",
@@ -1934,7 +1939,7 @@ describe("connectors page", () => {
     click(buttonByText("Save", dialog));
     await waitFor(() => {
       expect(renamedDisplayNames).toStrictEqual(["Personal", null]);
-      expect(within(dialog).getAllByText("octocat")).toHaveLength(2);
+      expect(within(dialog).getAllByText("octocat")).toHaveLength(1);
     });
     click(within(dialog).getByLabelText("Account actions"));
     click(menuItemByText("Delete"));

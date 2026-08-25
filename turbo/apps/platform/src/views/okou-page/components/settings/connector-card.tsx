@@ -462,37 +462,26 @@ function AccountsConnectorCard({
     );
   }
   const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
-  const manage = () => {
-    if (canManage) {
-      onManage();
-    }
-  };
   return (
     <div
-      role={canManage ? "button" : undefined}
-      tabIndex={canManage ? 0 : undefined}
-      aria-label={
-        canManage
-          ? t(
-              ($) => {
-                return $.connectors.accounts.managerTitle;
-              },
-              { connector: connector.label },
-            )
-          : undefined
-      }
       className={cn(
-        "zero-card flex flex-col text-left",
+        "zero-card relative flex flex-col text-left",
         canManage && "cursor-pointer",
       )}
-      onClick={manage}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          manage();
-        }
-      }}
     >
+      {canManage ? (
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.connectors.accounts.managerTitle;
+            },
+            { connector: connector.label },
+          )}
+          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={onManage}
+        />
+      ) : null}
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           <ConnectorIcon icon={connector.icon} size={20} />
@@ -532,16 +521,7 @@ function AccountsConnectorCard({
             className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
           />
         )}
-        <div
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-          }}
-        >
-          {manageAccess}
-        </div>
+        <div className="relative z-20">{manageAccess}</div>
       </div>
     </div>
   );

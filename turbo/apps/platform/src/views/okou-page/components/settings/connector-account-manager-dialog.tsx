@@ -177,20 +177,21 @@ function AccountRow({
 }) {
   const { t } = useTranslation();
   const identity = accountIdentity(account);
+  const label = connectorAccountEffectiveLabel(
+    account,
+    t(
+      ($) => {
+        return $.connectors.accounts.fallbackName;
+      },
+      { id: account.id.slice(0, 8) },
+    ),
+  );
   return (
     <div className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">
-            {connectorAccountEffectiveLabel(
-              account,
-              t(
-                ($) => {
-                  return $.connectors.accounts.fallbackName;
-                },
-                { id: account.id.slice(0, 8) },
-              ),
-            )}
+            {label}
           </span>
           {account.isDefault ? (
             <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
@@ -202,7 +203,7 @@ function AccountRow({
         </div>
         <div className="flex gap-2 truncate text-xs">
           <AccountStatus account={account} />
-          {identity ? (
+          {identity && identity !== label ? (
             <span className="truncate text-muted-foreground">{identity}</span>
           ) : null}
         </div>
@@ -373,7 +374,7 @@ function DeleteAccountConfirmation({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
             {t(
               ($) => {
                 return $.connectors.accounts.deleteTitle;
