@@ -214,9 +214,52 @@ if [ "$#" -eq 2 ] && [ "$1" = "uname" ] && [ "$2" = "-m" ]; then
 fi
 
 if [ "${1:-}" = "bash" ] && [ "${2:-}" = "-s" ]; then
+  if [[ "${4:-}" = *.tmp ]]; then
+    exit 0
+  fi
+
   "$@"
-  # Keep this test scoped to remote preparation. A successful preparation
-  # stops at the next SSH boundary instead of emulating binary installation.
+  if [ "${SSH_REACH_GC:-}" != "1" ]; then
+    # Service cleanup cases stop before emulating binary installation.
+    exit 42
+  fi
+  exit 0
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${2:-}" = "install" ]; then
+  exit 0
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${2:-}" = "flock" ]; then
+  gc_attempt=$(( $(< "$SSH_GC_COUNT_FILE") + 1 ))
+  printf '%s\n' "$gc_attempt" > "$SSH_GC_COUNT_FILE"
+  IFS=',' read -r -a gc_statuses <<< "$SSH_GC_STATUSES"
+  if [ "$gc_attempt" -gt "${#gc_statuses[@]}" ]; then
+    echo "unexpected GC attempt ${gc_attempt}" >&2
+    exit 1
+  fi
+  if [ -n "${SSH_GC_SERIALIZATION_DIR:-}" ]; then
+    case "$gc_attempt" in
+      1)
+        read -r < "${SSH_GC_SERIALIZATION_DIR}/holder-ready"
+        ;;
+      2)
+        if flock --exclusive --nonblock \
+          "${SSH_GC_SERIALIZATION_DIR}/deployment-gc.lock" true; then
+          echo "GC retry acquired the surviving invocation's lock" >&2
+          exit 1
+        fi
+        printf 'retry arrived\n' > "${SSH_GC_SERIALIZATION_DIR}/retry-arrived"
+        flock --exclusive \
+          "${SSH_GC_SERIALIZATION_DIR}/deployment-gc.lock" true
+        printf 'serialized\n' > "${SSH_GC_SERIALIZATION_DIR}/serialized"
+        ;;
+    esac
+  fi
+  exit "${gc_statuses[$((gc_attempt - 1))]}"
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${3:-}" = "setup" ]; then
   exit 42
 fi
 
@@ -312,6 +355,7 @@ prepare_remote_case() {
   mkdir -p "${case_dir}/state"
   : > "${case_dir}/ssh.log"
   : > "${case_dir}/systemctl.log"
+  printf '0\n' > "${case_dir}/gc-count"
 }
 
 set_unit_state() {
@@ -328,6 +372,10 @@ run_remote_case() {
   local sticky_unit=${4:-}
   if PATH="${TMPDIR}/bin:${PATH}" \
     SSH_LOG="${case_dir}/ssh.log" \
+    SSH_GC_COUNT_FILE="${case_dir}/gc-count" \
+    SSH_GC_SERIALIZATION_DIR="${REMOTE_GC_SERIALIZATION_DIR:-}" \
+    SSH_GC_STATUSES="${REMOTE_GC_STATUSES:-}" \
+    SSH_REACH_GC="${REMOTE_REACH_GC:-}" \
     SYSTEMCTL_LOG="${case_dir}/systemctl.log" \
     SYSTEMCTL_STATE_DIR="${case_dir}/state" \
     SYSTEMCTL_LIST_FAILURE="$list_failure" \
@@ -408,5 +456,61 @@ if grep -q '^mutate ' "${verification_failure_case}/systemctl.log"; then
   fail "verification failure must prevent shared-path mutation"
 fi
 grep -q 'runner service vm0-runner-pr-123-2.service is active after stop' "${verification_failure_case}/out" || fail "expected verification failure output"
+
+gc_command='ci@dev-arm-1 sudo flock --exclusive /var/lib/vm0-runner/locks/deployment-gc.lock /var/lib/vm0-runner/bin/pr-123/runner gc --keep-latest 6'
+setup_command='ci@dev-arm-1 sudo /var/lib/vm0-runner/bin/pr-123/runner setup'
+
+gc_success_case="${TMPDIR}/gc-success"
+prepare_remote_case "$gc_success_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=0 run_remote_case "$gc_success_case"
+[ "$(< "${gc_success_case}/gc-count")" -eq 1 ] || fail "successful GC must run once"
+[ "$(grep -Fxc -- "$gc_command" "${gc_success_case}/ssh.log")" -eq 1 ] || fail "successful GC must use the deployment lock once"
+grep -Fqx -- "$setup_command" "${gc_success_case}/ssh.log" || fail "successful GC must continue to runner setup"
+
+gc_retry_case="${TMPDIR}/gc-retry"
+prepare_remote_case "$gc_retry_case"
+mkfifo "${gc_retry_case}/holder-ready" "${gc_retry_case}/retry-arrived"
+(
+  exec 9> "${gc_retry_case}/deployment-gc.lock"
+  flock --exclusive 9
+  printf 'lock held\n' > "${gc_retry_case}/holder-ready"
+  read -r < "${gc_retry_case}/retry-arrived"
+) &
+gc_holder_pid=$!
+REMOTE_REACH_GC=1 \
+REMOTE_GC_STATUSES=255,0 \
+REMOTE_GC_SERIALIZATION_DIR="$gc_retry_case" \
+  run_remote_case "$gc_retry_case"
+gc_retry_count=$(< "${gc_retry_case}/gc-count")
+if [ "$gc_retry_count" -ne 2 ]; then
+  kill "$gc_holder_pid" 2>/dev/null || true
+  wait "$gc_holder_pid" 2>/dev/null || true
+  fail "SSH status 255 must retry GC once"
+fi
+wait "$gc_holder_pid"
+[ -f "${gc_retry_case}/serialized" ] || fail "GC retry must wait for a surviving invocation's lock"
+[ "$(grep -Fxc -- "$gc_command" "${gc_retry_case}/ssh.log")" -eq 2 ] || fail "each GC retry must use the deployment lock"
+grep -Fq 'runner GC SSH transport failed on dev-arm-1 with status 255; retrying once' "${gc_retry_case}/out" || fail "expected transient GC retry diagnostic"
+grep -Fqx -- "$setup_command" "${gc_retry_case}/ssh.log" || fail "recovered GC must continue to runner setup"
+
+gc_failure_case="${TMPDIR}/gc-failure"
+prepare_remote_case "$gc_failure_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=7 run_remote_case "$gc_failure_case"
+[ "$(< "${gc_failure_case}/gc-count")" -eq 1 ] || fail "ordinary GC failure must not retry"
+grep -Fq 'runner GC failed on dev-arm-1 with status 7' "${gc_failure_case}/out" || fail "expected ordinary GC failure status"
+if grep -Fqx -- "$setup_command" "${gc_failure_case}/ssh.log"; then
+  fail "failed GC must not continue to runner setup"
+fi
+
+gc_transport_failure_case="${TMPDIR}/gc-transport-failure"
+prepare_remote_case "$gc_transport_failure_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=255,255 \
+  run_remote_case "$gc_transport_failure_case"
+[ "$(< "${gc_transport_failure_case}/gc-count")" -eq 2 ] || fail "persistent SSH failure must stop after one GC retry"
+[ "$(grep -Fxc -- "$gc_command" "${gc_transport_failure_case}/ssh.log")" -eq 2 ] || fail "persistent SSH attempts must use the deployment lock"
+grep -Fq 'runner GC failed on dev-arm-1 with status 255' "${gc_transport_failure_case}/out" || fail "expected final SSH failure status"
+if grep -Fqx -- "$setup_command" "${gc_transport_failure_case}/ssh.log"; then
+  fail "persistent SSH failure must not continue to runner setup"
+fi
 
 echo "prepare-runner-image-test: ok"
