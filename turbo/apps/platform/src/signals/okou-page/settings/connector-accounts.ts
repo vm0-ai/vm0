@@ -17,7 +17,9 @@ const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 
 export type ConnectorAccountMutationVersion = number | string | null;
 
-function connectorAccountTargetKey(target: ConnectorAccountTarget): string {
+export function connectorAccountTargetKey(
+  target: ConnectorAccountTarget,
+): string {
   return target.kind === "builtin"
     ? `builtin:${target.connectorSlug}`
     : `custom:${target.customConnectorId}`;
