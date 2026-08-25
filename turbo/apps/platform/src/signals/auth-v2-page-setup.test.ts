@@ -203,7 +203,7 @@ describe("auth v2 callback privacy", () => {
         {
           error_category: "invalid-credentials",
           flow: "sign-in",
-          method: "google-oauth",
+          method: "unknown",
           outcome: "failure",
           step: "oauth-callback",
         },
