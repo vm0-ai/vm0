@@ -69,19 +69,27 @@ export const customAccountConnectDialog$ = computed((get) => {
 });
 
 export const openBuiltinAccountManager$ = command(
-  ({ set }, connector: PlatformConnectorCatalogStatusItem) => {
+  (
+    { set },
+    connector: PlatformConnectorCatalogStatusItem,
+    signal: AbortSignal,
+  ) => {
     set(internalBuiltinAccountManager$, connector);
     set(internalBuiltinAccountConnectDialog$, null);
-    set(settingsConnectorAccounts.setTarget$, {
-      kind: "builtin",
-      connectorSlug: connector.slug,
-    });
+    set(
+      settingsConnectorAccounts.setTarget$,
+      {
+        kind: "builtin",
+        connectorSlug: connector.slug,
+      },
+      signal,
+    );
   },
 );
 
 export const closeBuiltinAccountManager$ = command(({ set }) => {
   set(internalBuiltinAccountManager$, null);
-  set(settingsConnectorAccounts.setTarget$, null);
+  set(settingsConnectorAccounts.clearTarget$);
 });
 
 export const openBuiltinAccountConnectDialog$ = command(
@@ -91,7 +99,7 @@ export const openBuiltinAccountConnectDialog$ = command(
     mode: ConnectorAccountConnectMode,
   ) => {
     set(internalBuiltinAccountManager$, null);
-    set(settingsConnectorAccounts.setTarget$, null);
+    set(settingsConnectorAccounts.clearTarget$);
     set(internalBuiltinAccountConnectDialog$, { connector, mode });
   },
 );
@@ -101,19 +109,23 @@ export const closeBuiltinAccountConnectDialog$ = command(({ set }) => {
 });
 
 export const openCustomAccountManager$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
+  ({ set }, connector: CustomConnectorResponse, signal: AbortSignal) => {
     set(internalCustomAccountManager$, connector);
     set(internalCustomAccountConnectDialog$, null);
-    set(settingsConnectorAccounts.setTarget$, {
-      kind: "custom",
-      customConnectorId: connector.id,
-    });
+    set(
+      settingsConnectorAccounts.setTarget$,
+      {
+        kind: "custom",
+        customConnectorId: connector.id,
+      },
+      signal,
+    );
   },
 );
 
 export const closeCustomAccountManager$ = command(({ set }) => {
   set(internalCustomAccountManager$, null);
-  set(settingsConnectorAccounts.setTarget$, null);
+  set(settingsConnectorAccounts.clearTarget$);
 });
 
 export const openCustomAccountConnectDialog$ = command(
@@ -123,7 +135,7 @@ export const openCustomAccountConnectDialog$ = command(
     mode: ConnectorAccountConnectMode,
   ) => {
     set(internalCustomAccountManager$, null);
-    set(settingsConnectorAccounts.setTarget$, null);
+    set(settingsConnectorAccounts.clearTarget$);
     set(internalCustomAccountConnectDialog$, { connector, mode });
   },
 );
@@ -177,7 +189,6 @@ export const finishConnectorAccountConnection$ = command(
     },
   ) => {
     set(reloadConnectorAccountSummaries$);
-    set(settingsConnectorAccounts.reload$);
     if (args.mode.kind !== "add" || !args.connectionId) {
       return;
     }
@@ -289,5 +300,5 @@ export const resetConnectorAccountDialogs$ = command(({ set }) => {
   set(internalConnectorAccountNamePrompt$, null);
   set(internalConnectorAccountNamePromptValue$, "");
   set(resetConnectorAccountManagerDrafts$);
-  set(settingsConnectorAccounts.setTarget$, null);
+  set(settingsConnectorAccounts.clearTarget$);
 });
