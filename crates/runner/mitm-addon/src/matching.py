@@ -22,6 +22,7 @@ from firewall_auth_config import auth_config_injects_ordinary_upstream_credentia
 from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
 from firewall_matching.base_url import (
+    _BaseSpecificity,
     _BaseUrlParts,
     _compile_firewall_config_base,
     _CompiledBase,
@@ -1217,7 +1218,7 @@ class _FirewallMatchCollection:
     )
 
     api_matches: list[_MatchedApi]
-    best_base_specificity: int | None
+    best_base_specificity: _BaseSpecificity | None
     best_rule_specificity: _PathSpecificity | None
     winning_rule_api_orders: set[int]
 
@@ -1267,7 +1268,7 @@ class _FirewallDecisionState:
 
     allowed_match: _AllowedRuleMatch | None
     base_match: _BaseMatch | None
-    best_base_specificity: int | None
+    best_base_specificity: _BaseSpecificity | None
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
