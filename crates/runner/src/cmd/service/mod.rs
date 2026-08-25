@@ -1023,6 +1023,9 @@ profiles:
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         let started_at = (chrono::Utc::now() - chrono::Duration::minutes(18))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let parsed_started_at = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
         tokio::fs::write(
             base_dir.join("status.json"),
             format!(
@@ -1042,9 +1045,11 @@ profiles:
             gate_active_results: VecDeque::from([Ok(true)]),
         };
 
+        let before_gate = chrono::Utc::now();
         let error = uninstall_with_ops(&unit, &home, false, &mut ops)
             .await
             .unwrap_err();
+        let after_gate = chrono::Utc::now();
 
         assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
         let RunnerError::ActiveJobs(error) = error else {
@@ -1060,8 +1065,8 @@ profiles:
                 .collect::<Vec<_>>(),
             ["0191c4e0-0000-7000-8000-000000000003"]
         );
-        assert!(error.runner_uptime >= std::time::Duration::from_secs(1080));
-        assert!(error.runner_uptime < std::time::Duration::from_secs(1085));
+        assert!(error.runner_uptime >= (before_gate - parsed_started_at).to_std().unwrap());
+        assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
         assert_eq!(error.command_name, "uninstall");
         assert!(error.draining);
     }

@@ -842,6 +842,9 @@ mod tests {
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         let started_at = (chrono::Utc::now() - chrono::Duration::minutes(10))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let parsed_started_at = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
         tokio::fs::write(
             base_dir.join("status.json"),
             format!(
@@ -862,9 +865,11 @@ mod tests {
             ..FakeStopOps::default()
         };
 
+        let before_gate = chrono::Utc::now();
         let error = stop_with_ops(&unit, &home, false, None, &mut ops)
             .await
             .unwrap_err();
+        let after_gate = chrono::Utc::now();
 
         assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
         let RunnerError::ActiveJobs(error) = error else {
@@ -883,8 +888,8 @@ mod tests {
                 "0191c4e0-0000-7000-8000-000000000002",
             ]
         );
-        assert!(error.runner_uptime >= std::time::Duration::from_secs(600));
-        assert!(error.runner_uptime < std::time::Duration::from_secs(605));
+        assert!(error.runner_uptime >= (before_gate - parsed_started_at).to_std().unwrap());
+        assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
         assert_eq!(error.command_name, "stop");
         assert!(!error.draining);
     }
