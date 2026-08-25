@@ -95,9 +95,9 @@ type WorkflowArtIcon = StartCardConnectorIcon | undefined;
  * The mark is not framed. A round chip made the square four-colour logo read as
  * a cropped profile picture, and the bubble beside it already supplies the
  * white bordered object every other tile is built from. The artwork covers 45%
- * of its own canvas, so the box is scaled up to land the mark at 26px — under
- * the avatar tile's 32px portrait, which is the largest anything in this row
- * gets.
+ * of its own canvas, so the box is scaled up to land the mark around 24px —
+ * under the avatar tile's 32px portrait, which is the largest anything in this
+ * row gets.
  */
 function SlackArt({ accent }: { accent: string }) {
   return (
@@ -116,7 +116,7 @@ function SlackArt({ accent }: { accent: string }) {
         />
       </span>
       <span className="absolute bottom-0 left-0 grid size-[26px] place-items-center">
-        <img src={slackIconImg} alt="" className="size-[26px] scale-[2.2]" />
+        <img src={slackIconImg} alt="" className="size-[26px] scale-[2]" />
       </span>
     </div>
   );
