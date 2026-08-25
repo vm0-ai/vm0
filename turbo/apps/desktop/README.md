@@ -38,8 +38,8 @@ with:
 pnpm desktop:dev
 ```
 
-This packages and runs `Zero CU Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to
-the local proxy. Set `VM0_DESKTOP_PRODUCT=okou` to package `Okou Dev.app`
+This packages and runs `Zero CU Dev.app` with `OKOU_DESKTOP_PLATFORM_URL` set to
+the local proxy. Set `OKOU_DESKTOP_PRODUCT=okou` to package `Okou Dev.app`
 instead. Use packaged development apps for sign-in callback, URL scheme, and
 permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
@@ -65,8 +65,8 @@ notarization ticket, and writes the zip artifact under `apps/desktop/out/make`.
 Build the independent Okou identity with:
 
 ```bash
-VM0_DESKTOP_PRODUCT=okou \
-VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+OKOU_DESKTOP_PRODUCT=okou \
+OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
 pnpm -F @okouai/desktop make
 ```
 
@@ -87,14 +87,14 @@ is also the path included in packaged macOS artifacts.
 Point it at a local or staging platform URL with:
 
 ```bash
-VM0_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @okouai/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @okouai/desktop dev:packaged
-VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @okouai/desktop dev:packaged
+OKOU_DESKTOP_PLATFORM_URL=https://staging-app.omby.ai pnpm -F @okouai/desktop dev:packaged
+OKOU_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @okouai/desktop dev:packaged
+OKOU_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @okouai/desktop dev:packaged
 ```
 
 The desktop app does not start platform/web/api/proxy services itself. Start the
 target platform surface separately, then pass its URL through
-`VM0_DESKTOP_PLATFORM_URL`.
+`OKOU_DESKTOP_PLATFORM_URL`.
 
 ## Internal macOS artifacts
 
@@ -168,7 +168,7 @@ Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their
 packaged identity; they do not discover or switch products at runtime.
 
-`VM0_DESKTOP_PRODUCT` defaults to `zero`, preserving existing local and CI
+`OKOU_DESKTOP_PRODUCT` defaults to `zero`, preserving existing local and CI
 builds. Okou production builds package a runtime configuration containing
 `product: okou` and `https://app.okou.ai`. That app origin routes API calls to
 `api.okou.ai`, while Clerk and OAuth web flows remain canonical on

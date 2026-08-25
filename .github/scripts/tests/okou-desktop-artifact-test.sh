@@ -135,8 +135,8 @@ forgeConfig.hooks
 NODE
 
 OKOU_DESKTOP_SKIP_SIGNING=true \
-VM0_DESKTOP_PRODUCT=okou \
-VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+OKOU_DESKTOP_PRODUCT=okou \
+OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
 node - "$repo_root" <<'NODE'
 const path = require("node:path");
 
