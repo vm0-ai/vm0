@@ -199,9 +199,24 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  if ! ssh "$remote" sudo "${BIN_DIR}/runner" gc --keep-latest 6; then
-    return 1
-  fi
+  local gc_attempt gc_status
+  gc_status=0
+  for gc_attempt in 1 2; do
+    if ssh "$remote" sudo flock --exclusive \
+      /var/lib/vm0-runner/locks/deployment-gc.lock \
+      "${BIN_DIR}/runner" gc --keep-latest 6; then
+      gc_status=0
+      break
+    else
+      gc_status=$?
+    fi
+
+    if [ "$gc_status" -ne 255 ] || [ "$gc_attempt" -eq 2 ]; then
+      echo "runner GC failed on ${host} with status ${gc_status}" >&2
+      return "$gc_status"
+    fi
+    echo "runner GC SSH transport failed on ${host} with status 255; retrying once" >&2
+  done
 
   if ! ssh "$remote" sudo "${BIN_DIR}/runner" setup; then
     return 1
