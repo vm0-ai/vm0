@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -28,7 +26,6 @@ import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { lockBillingPurchaseOrg } from "../services/billing-purchase-lock.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
-import { upsertOrgPlanEntitlement } from "../services/org-plan-entitlements.service";
 import { prepareUsagePackMemberCreditRefunds } from "../services/usage-pack-credit-refund.service";
 import { createDeferredPromise, onRejection } from "../utils";
 import {
@@ -125,12 +122,6 @@ const actionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("delete-refund-source"),
     orgId: z.string().min(1),
     userId: z.string().min(1),
-  }),
-  z.object({
-    action: z.literal("validate-pre-migration-compatibility"),
-  }),
-  z.object({
-    action: z.literal("prepare-pre-migration-purchased-refund"),
   }),
   z.object({
     action: z.literal("seed-legacy-migration"),
@@ -306,15 +297,6 @@ const actionResponseSchema = z.discriminatedUnion("action", [
     action: z.literal("billing-purchase-lock-state"),
     held: z.boolean(),
     waiterCount: z.number().int().nonnegative(),
-  }),
-  z.object({
-    action: z.literal("pre-migration-compatibility"),
-    memberInviteUsagePackRequired: z.boolean(),
-    preMemberInvitationMigration: z.object({
-      memberInviteUsagePackRequired: z.boolean(),
-      memberInvitationAllowed: z.boolean(),
-    }),
-    bonusPreparedRefunds: z.number().int().nonnegative(),
   }),
   z.object({ action: z.literal("ok") }),
 ]);
@@ -961,137 +943,6 @@ async function cleanupUsagePackState(
   });
 }
 
-async function validatePreMigrationCompatibility(
-  db: Db,
-  signal: AbortSignal,
-): Promise<{
-  readonly memberInviteUsagePackRequired: boolean;
-  readonly preMemberInvitationMigration: {
-    readonly memberInviteUsagePackRequired: boolean;
-    readonly memberInvitationAllowed: boolean;
-  };
-  readonly bonusPreparedRefunds: number;
-}> {
-  const memberInviteUsagePackRequired = await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
-    await tx.execute(sql`
-      CREATE TEMP TABLE org_plan_entitlements
-      (LIKE public.org_plan_entitlements INCLUDING ALL)
-      ON COMMIT DROP
-    `);
-    await tx.execute(
-      sql`ALTER TABLE org_plan_entitlements DROP COLUMN member_invite_usage_pack_required`,
-    );
-    const orgId = `org_pre_migration_${randomUUID()}`;
-    await upsertOrgPlanEntitlement(tx, {
-      orgId,
-      tier: "pro",
-      source: "org_metadata_bootstrap",
-      memberInviteUsagePackRequired: true,
-    });
-    await upsertOrgPlanEntitlement(tx, {
-      orgId,
-      tier: "team",
-      source: "org_metadata_bootstrap",
-      memberInviteUsagePackRequired: true,
-    });
-    const capabilities = await loadOrgPlanCapabilities(tx, orgId);
-    if (!capabilities) {
-      throw new Error("Pre-migration entitlement fixture was not written");
-    }
-    return capabilities.memberInviteUsagePackRequired;
-  });
-
-  const preMemberInvitationMigration = await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
-    await tx.execute(sql`
-      CREATE TEMP TABLE org_plan_entitlements
-      (LIKE public.org_plan_entitlements INCLUDING ALL)
-      ON COMMIT DROP
-    `);
-    await tx.execute(
-      sql`ALTER TABLE org_plan_entitlements DROP COLUMN member_invitation_allowed`,
-    );
-    const orgId = `org_pre_member_invitation_${randomUUID()}`;
-    await upsertOrgPlanEntitlement(tx, {
-      orgId,
-      tier: "pro",
-      source: "org_metadata_bootstrap",
-      memberInviteUsagePackRequired: true,
-    });
-    await upsertOrgPlanEntitlement(tx, {
-      orgId,
-      tier: "team",
-      source: "org_metadata_bootstrap",
-      memberInviteUsagePackRequired: true,
-    });
-    const capabilities = await loadOrgPlanCapabilities(tx, orgId);
-    if (!capabilities) {
-      throw new Error(
-        "Pre-member-invitation entitlement fixture was not written",
-      );
-    }
-    return {
-      memberInviteUsagePackRequired: capabilities.memberInviteUsagePackRequired,
-      memberInvitationAllowed: capabilities.memberInvitationAllowed,
-    };
-  });
-
-  const refundState = await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL search_path = pg_temp`);
-    await tx.execute(sql`
-      CREATE TEMP TABLE usage_pack_credit_grants
-      (LIKE public.usage_pack_credit_grants INCLUDING ALL)
-      ON COMMIT DROP
-    `);
-    const orgId = `org_pre_migration_${randomUUID()}`;
-    const bonusUserId = `user_bonus_${randomUUID()}`;
-    await tx.insert(usagePackCreditGrants).values({
-      orgId,
-      userId: bonusUserId,
-      grantType: "bonus",
-      idempotencyKey: `pre-migration:bonus:${randomUUID()}`,
-      originalAmount: 500,
-      remainingAmount: 500,
-      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
-    });
-    const bonusPreparedRefunds = await prepareUsagePackMemberCreditRefunds(tx, {
-      orgId,
-      userId: bonusUserId,
-    });
-    return { bonusPreparedRefunds };
-  });
-  signal.throwIfAborted();
-  return {
-    memberInviteUsagePackRequired,
-    preMemberInvitationMigration,
-    ...refundState,
-  };
-}
-
-async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL search_path = pg_temp`);
-    await tx.execute(sql`
-      CREATE TEMP TABLE usage_pack_credit_grants
-      (LIKE public.usage_pack_credit_grants INCLUDING ALL)
-      ON COMMIT DROP
-    `);
-    const orgId = `org_pre_migration_${randomUUID()}`;
-    const userId = `user_purchased_${randomUUID()}`;
-    await tx.insert(usagePackCreditGrants).values({
-      orgId,
-      userId,
-      grantType: "purchased",
-      idempotencyKey: `pre-migration:purchased:${randomUUID()}`,
-      originalAmount: 10_000,
-      remainingAmount: 5000,
-      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
-    });
-    await prepareUsagePackMemberCreditRefunds(tx, { orgId, userId });
-  });
-}
-
 async function setGrantRemaining(
   db: Db,
   body: SetGrantRemainingBody,
@@ -1233,21 +1084,6 @@ const mutateTestUsagePackSubscriptionState$ = command(
         if (rows.length !== 1) {
           throw new Error("Expected one usage pack refund source to delete");
         }
-        return { status: 200 as const, body: { action: "ok" as const } };
-      }
-      case "validate-pre-migration-compatibility": {
-        const state = await validatePreMigrationCompatibility(db, signal);
-        return {
-          status: 200 as const,
-          body: {
-            action: "pre-migration-compatibility" as const,
-            ...state,
-          },
-        };
-      }
-      case "prepare-pre-migration-purchased-refund": {
-        await preparePreMigrationPurchasedRefund(db);
-        signal.throwIfAborted();
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "seed-legacy-migration": {

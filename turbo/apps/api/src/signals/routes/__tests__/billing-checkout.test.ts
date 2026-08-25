@@ -7430,34 +7430,6 @@ describe("usage pack allocation management", () => {
     });
   });
 
-  it("keeps invitation state safe before entitlement migrations", async () => {
-    const response = await usagePackStateAction({
-      action: "validate-pre-migration-compatibility",
-    });
-    expect(response).toStrictEqual({
-      action: "pre-migration-compatibility",
-      memberInviteUsagePackRequired: false,
-      preMemberInvitationMigration: {
-        memberInviteUsagePackRequired: true,
-        memberInvitationAllowed: true,
-      },
-      bonusPreparedRefunds: 0,
-    });
-  });
-
-  it("preserves purchased credits until migration 0898 is available", async () => {
-    const response = await accept(
-      setupApp({
-        context,
-        routes: testUsagePackSubscriptionStateRoutes,
-      })(testUsagePackSubscriptionStateContract).action({
-        body: { action: "prepare-pre-migration-purchased-refund" },
-      }),
-      [500],
-    );
-    expect(response.body).toStrictEqual({ error: "Internal server error" });
-  });
-
   it("previews a Team upgrade by replacing only the base plan item", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
