@@ -4,6 +4,7 @@ import {
   type AdAttributionMetadata,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 
+import indexHtml from "../../../index.html?raw";
 import {
   clearMockedAuthOnAbort,
   mockOrganization,
@@ -22,6 +23,7 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
+const ADSMARCH_SIGNUP_SEND_TO = "AW-18407336975/8mCZCLORrOccEI_YpslE";
 const storedAdAttributionStorage = sessionStorageSignals(
   STORED_AD_ATTRIBUTION_KEY,
 );
@@ -29,6 +31,66 @@ const storedAdAttributionStorage = sessionStorageSignals(
 type WindowWithGtag = Window & {
   gtag?: (...args: unknown[]) => void;
 };
+
+type WindowWithMarketingQueue = WindowWithGtag & {
+  dataLayer?: IArguments[];
+};
+
+type MarketingEntrypointScript = (
+  windowObject: Window,
+  documentObject: Document,
+) => void;
+
+function marketingEntrypointSource(): string {
+  const source = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)]
+    .map((match) => {
+      return match[1];
+    })
+    .find((script) => {
+      return script?.includes('window.gtag("config", "AW-18407336975")');
+    });
+  if (source === undefined) {
+    throw new Error("Unable to locate the marketing loader in index.html");
+  }
+  return source;
+}
+
+function executeMarketingEntrypoint(): WindowWithMarketingQueue {
+  const marketingWindow = window as WindowWithMarketingQueue;
+  const originalDataLayer = marketingWindow.dataLayer;
+  const originalGtag = marketingWindow.gtag;
+  context.mocks.browser.url("https://app.vm0.ai/");
+  const timeout = vi.spyOn(window, "setTimeout").mockImplementation(() => {
+    return 1;
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      timeout.mockRestore();
+      if (originalDataLayer === undefined) {
+        Reflect.deleteProperty(marketingWindow, "dataLayer");
+      } else {
+        marketingWindow.dataLayer = originalDataLayer;
+      }
+      if (originalGtag === undefined) {
+        Reflect.deleteProperty(marketingWindow, "gtag");
+      } else {
+        marketingWindow.gtag = originalGtag;
+      }
+    },
+    { once: true },
+  );
+  Reflect.deleteProperty(marketingWindow, "dataLayer");
+  Reflect.deleteProperty(marketingWindow, "gtag");
+
+  const executeEntrypointScript = new Function(
+    "window",
+    "document",
+    `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
+  ) as MarketingEntrypointScript;
+  executeEntrypointScript(window, document);
+  return marketingWindow;
+}
 
 function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
   mockNow(context.signal);
@@ -53,7 +115,7 @@ function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
 function installGtagMock() {
   const windowWithGtag = window as WindowWithGtag;
   const originalGtag = windowWithGtag.gtag;
-  const gtag = vi.fn();
+  const gtag = vi.fn<(...args: unknown[]) => void>();
 
   Object.defineProperty(windowWithGtag, "gtag", {
     configurable: true,
@@ -94,6 +156,43 @@ function setGoogleAnalyticsCookie(value: string): void {
 }
 
 describe("signup attribution Google Ads conversion", () => {
+  it("queues Signup conversions before external marketing scripts load", async () => {
+    const marketingWindow = executeMarketingEntrypoint();
+    const queuedBeforeSignup = marketingWindow.dataLayer?.map((entry) => {
+      return [...entry];
+    });
+    expect(queuedBeforeSignup).toStrictEqual([
+      ["js", expect.any(Date)],
+      ["config", "AW-18144854014"],
+      ["config", "AW-18407336975"],
+    ]);
+
+    mockSignedInUser();
+    storePaidSignupAttribution();
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ respond }) => {
+        return respond(200, { recorded: true });
+      },
+    );
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    const queuedAfterSignup = marketingWindow.dataLayer?.map((entry) => {
+      return [...entry];
+    });
+    expect(queuedAfterSignup).toContainEqual([
+      "event",
+      "conversion",
+      expect.objectContaining({ send_to: SIGNUP_SEND_TO }),
+    ]);
+    expect(queuedAfterSignup).toContainEqual([
+      "event",
+      "conversion",
+      expect.objectContaining({ send_to: ADSMARCH_SIGNUP_SEND_TO }),
+    ]);
+  });
+
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
     const gtag = installGtagMock();
     let recordedAttribution: AdAttributionMetadata | undefined;
@@ -129,10 +228,20 @@ describe("signup attribution Google Ads conversion", () => {
         currency: "USD",
       }),
     );
+    expect(gtag).toHaveBeenCalledWith(
+      "event",
+      "conversion",
+      expect.objectContaining({
+        send_to: ADSMARCH_SIGNUP_SEND_TO,
+        value: 1,
+        currency: "USD",
+        transaction_id: "test-user-123",
+      }),
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
-    expect(gtag).toHaveBeenCalledTimes(1);
+    expect(gtag).toHaveBeenCalledTimes(2);
   });
 
   it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {

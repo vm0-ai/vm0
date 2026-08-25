@@ -450,21 +450,6 @@ async function prepareUsagePackCheckoutOrg(
   );
 }
 
-function cleanupUsagePackSnapshotOnTestFinished(
-  fixture: BillingOrgFixture,
-  usagePackSubscriptionId: string,
-): void {
-  onTestFinished(async () => {
-    await usagePackStateAction({
-      action: "cleanup",
-      orgId: fixture.orgId,
-      usagePackSubscriptionId,
-      deleteGrants: false,
-      deleteOrgMetadata: false,
-    });
-  });
-}
-
 async function createSubscriptionOrg(args: {
   readonly tier: "pro" | "team" | "custom";
   readonly customerId?: string;
@@ -2665,6 +2650,126 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
       expect.objectContaining({ preview_mode: "recurring" }),
     );
+    if (!("previewToken" in response.body)) {
+      throw new Error("Expected a usage pack purchase preview");
+    }
+
+    const subscriptionId = `sub_${randomUUID()}`;
+    const invoiceId = `in_${randomUUID()}`;
+    const billingPeriod = {
+      start: currentSecond(),
+      end: currentSecond() + 30 * 86_400,
+    };
+    let usagePackSubscriptionId: string | undefined;
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.create.mockImplementation((input) => {
+      const metadata = stripeInputMetadata(input);
+      usagePackSubscriptionId = metadata.usagePackSubscriptionId;
+      const paidInvoice = {
+        id: invoiceId,
+        customer: customerId,
+        metadata,
+        status: "paid" as const,
+        paid: true,
+        amount_due: 2000,
+        amount_paid: 2000,
+        currency: "usd",
+        hosted_invoice_url: null,
+        parent: {
+          subscription_details: { subscription: subscriptionId, metadata },
+        },
+        lines: {
+          has_more: false,
+          data: [
+            {
+              id: `il_${randomUUID()}`,
+              amount: 2000,
+              subtotal: 2000,
+              quantity: 1,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              period: billingPeriod,
+              parent: {
+                type: "subscription_item_details" as const,
+                subscription_item_details: { proration: false },
+              },
+            },
+          ],
+        },
+      };
+      const subscription = {
+        id: subscriptionId,
+        customer: customerId,
+        status: "active",
+        cancel_at: null,
+        cancel_at_period_end: false,
+        schedule: null,
+        metadata,
+        items: {
+          data: [
+            {
+              id: `si_${randomUUID()}`,
+              price: {
+                id: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+                recurring: { interval: "month", interval_count: 1 },
+              },
+              quantity: 1,
+              current_period_start: billingPeriod.start,
+              current_period_end: billingPeriod.end,
+            },
+            {
+              id: `si_${randomUUID()}`,
+              price: {
+                id: TEST_PRICE_USAGE_PACK_20,
+                recurring: { interval: "month", interval_count: 1 },
+              },
+              quantity: 1,
+              current_period_start: billingPeriod.start,
+              current_period_end: billingPeriod.end,
+            },
+          ],
+        },
+        latest_invoice: paidInvoice,
+      };
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+        subscription,
+      );
+      return Promise.resolve(subscription);
+    });
+
+    const confirmation = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).confirm({
+        body: { previewToken: response.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmation.body).toStrictEqual({
+      status: "completed",
+      hostedInvoiceUrl: null,
+      googleAdsConversion: {
+        transactionId: invoiceId,
+        valueUsd: 20,
+      },
+    });
+    if (!usagePackSubscriptionId) {
+      throw new Error("Expected the confirmed usage pack subscription ID");
+    }
+    const confirmedUsagePackSubscriptionId = usagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId: confirmedUsagePackSubscriptionId,
+        deleteGrants: true,
+        deleteOrgMetadata: true,
+      });
+    });
   });
 
   it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
@@ -14943,7 +15048,7 @@ describe("POST /api/billing/checkout/complete", () => {
     expect(status.currentPeriodEnd).toBeNull();
   });
 
-  it("allows completion when the same subscription is already stored", async () => {
+  it("returns the paid invoice conversion when the subscription is already stored", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const fixture = await trackedSeed({
@@ -14965,6 +15070,12 @@ describe("POST /api/billing/checkout/complete", () => {
       id: subscriptionId,
       status: "active",
       cancel_at_period_end: false,
+      latest_invoice: {
+        id: "in_checkout_paid",
+        status: "paid",
+        currency: "usd",
+        amount_paid: 20_000,
+      },
       items: {
         data: [
           {
@@ -14987,7 +15098,13 @@ describe("POST /api/billing/checkout/complete", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ completed: true });
+    expect(response.body).toStrictEqual({
+      completed: true,
+      googleAdsConversion: {
+        transactionId: "in_checkout_paid",
+        valueUsd: 200,
+      },
+    });
   });
 
   it("returns 400 when completed checkout would downgrade the current tier", async () => {

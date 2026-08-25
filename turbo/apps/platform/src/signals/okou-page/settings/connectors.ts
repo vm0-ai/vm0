@@ -49,7 +49,13 @@ import {
   apiClient$,
   type ApiClientFactory,
 } from "../../api-client.ts";
-import { resetSignal, setLoop, tapError, withCleanup } from "../../utils.ts";
+import {
+  resetSignal,
+  setLoop,
+  settle,
+  tapError,
+  withCleanup,
+} from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { subagents$ } from "../../agent.ts";
@@ -70,6 +76,7 @@ import {
   readConnectorAccountMutationVersion,
   type ConnectorAccountMutationVersion,
 } from "./connector-accounts.ts";
+import { syncGoogleAdsConversionMilestones$ } from "../../bootstrap/google-ads-conversion-milestones.ts";
 
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
@@ -877,6 +884,7 @@ const finishConnectorConnection$ = command(
     if (options.clearSelectedConnector) {
       set(internalSelectedConnectorSlug$, null);
     }
+    await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
     return true;
   },
 );

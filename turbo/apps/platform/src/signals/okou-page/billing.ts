@@ -25,6 +25,7 @@ import {
   type UsagePackCheckoutRequest,
   type UsagePackPurchasePreviewResponse,
   type UsagePackMigrationStateResponse,
+  type GoogleAdsPaidConversion,
 } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -45,6 +46,10 @@ import {
   capturePaidOnboardingCheckoutCreated$,
   capturePaidOnboardingRedirectToStripe$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
+import {
+  completeGoogleAdsPaidCheckout$,
+  fireGoogleAdsPaidConversion$,
+} from "../bootstrap/google-ads-paid-conversion.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { refreshOrgMembers$ } from "../external/org-members.ts";
@@ -656,10 +661,23 @@ export const handleBillingRedirect$ = command(
 
     const searchParams = new URLSearchParams(get(searchParams$));
     const billing = searchParams.get("billing");
+    const billingSessionId = searchParams.get("billing_session_id");
     const credits = searchParams.get("credits");
     const concurrency = searchParams.get("concurrency");
     if (!billing && !credits && !concurrency) {
       return;
+    }
+
+    if ((billing === "pro" || billing === "team") && billingSessionId) {
+      await set(
+        completeGoogleAdsPaidCheckout$,
+        {
+          sessionId: billingSessionId,
+          kind: "paid_after_onboarding",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
     }
 
     searchParams.delete("billing");
@@ -903,6 +921,15 @@ export const startUsagePackCheckout$ = command(
   },
 );
 
+const fireConfirmedGoogleAdsConversion$ = command(
+  ({ set }, conversion: GoogleAdsPaidConversion | undefined): void => {
+    if (!conversion) {
+      return;
+    }
+    set(fireGoogleAdsPaidConversion$, "paid_after_onboarding", conversion);
+  },
+);
+
 export const confirmSubscriptionPurchase$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const state = get(internalSubscriptionPurchasePreview$);
@@ -1010,6 +1037,7 @@ export const confirmSubscriptionPurchase$ = command(
       }
       return;
     }
+    set(fireConfirmedGoogleAdsConversion$, response.body.googleAdsConversion);
     set(internalSubscriptionPurchasePreview$, null);
     set(reloadBillingStatus$);
     toast.success(

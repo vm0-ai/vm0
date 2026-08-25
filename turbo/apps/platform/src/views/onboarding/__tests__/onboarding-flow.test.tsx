@@ -73,6 +73,10 @@ function firstItem<Item>(items: readonly Item[]): Item {
 
 const ONBOARDING_START_SEND_TO = "AW-18144854014/GVKdCLbQ9LscEP7_kcxD";
 const CHECKOUT_START_SEND_TO = "AW-18144854014/EEovCKmuvbscEP7_kcxD";
+const ADSMARCH_ONBOARDING_START_SEND_TO = "AW-18407336975/xkGcCLaRrOccEI_YpslE";
+const ADSMARCH_CHECKOUT_START_SEND_TO = "AW-18407336975/hWi8CPWRrOccEI_YpslE";
+const ADSMARCH_PAID_IN_ONBOARDING_SEND_TO =
+  "AW-18407336975/M7QYCPiRrOccEI_YpslE";
 
 type GtagFn = (...args: unknown[]) => void;
 
@@ -1311,6 +1315,7 @@ describe("onboarding flow", () => {
   });
 
   it("resumes a video run after checkout and completes onboarding", async () => {
+    const gtag = installGtagMock();
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     let runPrompt: string | undefined;
     let generationType: string | undefined;
@@ -1323,7 +1328,18 @@ describe("onboarding flow", () => {
     });
     context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       checkoutCompletionAttempts += 1;
-      return respond(200, { completed: checkoutCompletionAttempts >= 2 });
+      return respond(
+        200,
+        checkoutCompletionAttempts >= 2
+          ? {
+              completed: true,
+              googleAdsConversion: {
+                transactionId: "in_onboarding_paid",
+                valueUsd: 49,
+              },
+            }
+          : { completed: false },
+      );
     });
     mockOnboardingNeeded();
     const params = new URLSearchParams({
@@ -1344,6 +1360,12 @@ describe("onboarding flow", () => {
       expect(generationType).toBe("video");
       expect(checkoutCompletionAttempts).toBe(2);
       expect(pathname()).toMatch(/^\/chats\//u);
+    });
+    expect(gtag).toHaveBeenCalledWith("event", "conversion", {
+      send_to: ADSMARCH_PAID_IN_ONBOARDING_SEND_TO,
+      value: 49,
+      currency: "USD",
+      transaction_id: "in_onboarding_paid",
     });
   });
 
@@ -1420,7 +1442,10 @@ describe("onboarding flow", () => {
 
     await openMakePage();
 
-    expect(sentConversions(gtag)).toStrictEqual([ONBOARDING_START_SEND_TO]);
+    expect(sentConversions(gtag)).toStrictEqual([
+      ONBOARDING_START_SEND_TO,
+      ADSMARCH_ONBOARDING_START_SEND_TO,
+    ]);
 
     chooseMakeOption("Video production");
     await expect(
@@ -1446,7 +1471,9 @@ describe("onboarding flow", () => {
     await waitFor(() => {
       expect(sentConversions(gtag)).toStrictEqual([
         ONBOARDING_START_SEND_TO,
+        ADSMARCH_ONBOARDING_START_SEND_TO,
         CHECKOUT_START_SEND_TO,
+        ADSMARCH_CHECKOUT_START_SEND_TO,
       ]);
     });
   });

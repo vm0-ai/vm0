@@ -13,6 +13,7 @@ import {
   parseStoredSignupAttribution,
   persistOrgAcquisitionAttribution$,
 } from "../services/acquisition-attribution.service";
+import { googleAdsConversionMilestonesForUser$ } from "../services/google-ads-conversion-milestones.service";
 import type { RouteEntry } from "../route-entry";
 
 const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
@@ -23,6 +24,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const recordSignupBody$ = bodyResultOf(
   acquisitionAttributionContract.recordSignup,
+);
+
+const googleAdsMilestonesInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const milestones = await set(
+      googleAdsConversionMilestonesForUser$,
+      auth.userId,
+      signal,
+    );
+    signal.throwIfAborted();
+    return { status: 200 as const, body: { milestones } };
+  },
 );
 
 const recordSignupInner$ = command(
@@ -98,6 +112,10 @@ const recordSignupInner$ = command(
 );
 
 export const acquisitionAttributionRoutes: readonly RouteEntry[] = [
+  {
+    route: acquisitionAttributionContract.googleAdsMilestones,
+    handler: authRoute({ accept: ["session"] }, googleAdsMilestonesInner$),
+  },
   {
     route: acquisitionAttributionContract.recordSignup,
     handler: authRoute({ accept: ["session"] }, recordSignupInner$),

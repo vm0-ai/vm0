@@ -12,6 +12,7 @@ import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
+import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
 import {
@@ -69,7 +70,7 @@ function reportNewCompletedRuns({
 }: {
   persistentEvents: readonly PersistedChatEvent[];
   events: readonly PersistedChatEvent[];
-}): void {
+}): boolean {
   const reportedCompletedRunIds = new Set(
     completedRunIdsFromEvents(persistentEvents),
   );
@@ -81,6 +82,7 @@ function reportNewCompletedRuns({
   for (const _ of newlyCompletedRunIds) {
     captureTaskCompletedSuccessfully();
   }
+  return newlyCompletedRunIds.length > 0;
 }
 
 function mergePersistentEvents(
@@ -408,7 +410,7 @@ export function createChatEventStorageSignals({
       if (events.length === 0) {
         return;
       }
-      reportNewCompletedRuns({
+      const hasNewCompletedRun = reportNewCompletedRuns({
         persistentEvents: get(persistentChatEvents$),
         events,
       });
@@ -418,6 +420,9 @@ export function createChatEventStorageSignals({
       set(reconcileOptimisticChatEvents$, { threadId, events });
       await set(notifyChatEventsChanged$, chatEvents$, signal);
       signal.throwIfAborted();
+      if (hasNewCompletedRun) {
+        await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
+      }
     },
   );
   const syncLegacyRemoteEvents$ = createSyncRemoteRowsCommand({
