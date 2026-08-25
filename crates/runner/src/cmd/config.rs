@@ -41,8 +41,12 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// vm0 API URL
-    #[arg(long, env = "VM0_API_BACKEND_URL")]
+    /// vm0 API URL (`OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
+    #[arg(
+        long,
+        env = crate::operator_api_url::clap_environment_name(),
+        hide_env_values = true
+    )]
     api_url: String,
     /// Runner authentication token (`OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
     #[arg(
@@ -55,6 +59,10 @@ pub struct ConfigArgs {
 
 #[cfg(test)]
 impl ConfigArgs {
+    pub(crate) fn api_url_for_test(&self) -> &str {
+        &self.api_url
+    }
+
     pub(crate) fn token_for_test(&self) -> &str {
         &self.token
     }
