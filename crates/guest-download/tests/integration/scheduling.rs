@@ -28,7 +28,6 @@ const NEGATIVE_START_TIMEOUT: Duration = Duration::from_millis(300);
 const COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
 const RESPONDER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
-const PRE_RETRY_DEADLINE: Duration = Duration::from_millis(900);
 
 fn gzip_response(body: Vec<u8>) -> HttpMockResponse {
     HttpMockResponse::builder()
@@ -826,32 +825,21 @@ fn retry_backoff_releases_attempt_slot_but_retains_mount_reservation() {
         ]
     );
 
-    let release_at = Instant::now();
     retry_release.release_many(4);
-    let pre_retry_deadline = release_at + PRE_RETRY_DEADLINE;
-    let mut seen_events = Vec::new();
-    wait_for_event(
-        &event_rx,
-        &mut seen_events,
-        "healthy",
-        pre_retry_deadline.saturating_duration_since(Instant::now()),
-    )
-    .unwrap();
-    let overlapping_before_retry = wait_for_event(
-        &event_rx,
-        &mut seen_events,
-        "overlapping",
-        pre_retry_deadline.saturating_duration_since(Instant::now()),
+    assert_eq!(
+        event_rx.recv_timeout(REQUEST_START_TIMEOUT).unwrap(),
+        "healthy"
     );
-    assert!(overlapping_before_retry.is_err());
 
-    wait_for_event(
-        &event_rx,
-        &mut seen_events,
-        "retry-0-attempt-2",
-        REQUEST_START_TIMEOUT,
-    )
-    .unwrap();
+    let mut seen_events = Vec::new();
+    while !seen_events.iter().any(|event| event == "retry-0-attempt-2") {
+        let event = event_rx.recv_timeout(REQUEST_START_TIMEOUT).unwrap();
+        assert_ne!(
+            event, "overlapping",
+            "overlapping mount started while its parent retained a retry reservation"
+        );
+        seen_events.push(event);
+    }
     wait_for_event(
         &event_rx,
         &mut seen_events,
