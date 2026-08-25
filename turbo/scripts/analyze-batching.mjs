@@ -14,7 +14,7 @@
  * (all within the same React batch), not N separate work loops.
  *
  * Usage:
- *   node scripts/analyze-batching.mjs <file.cpuprofile> [--component ZeroSidebar]
+ *   node scripts/analyze-batching.mjs <file.cpuprofile> [--component Sidebar]
  */
 
 import { readFileSync } from "fs";

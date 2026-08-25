@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { ZeroWorksPage } from "../../views/okou-page/works-page.tsx";
+import { WorksPage } from "../../views/okou-page/works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
@@ -44,7 +44,7 @@ const initWorksRedirect$ = command(({ get, set }) => {
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(resetAgentPhoneConnectUi$);
   set(setAgentPhoneConnectDialogOpen$, false);
-  set(updatePage$, createElement(ZeroWorksPage), "sidebar");
+  set(updatePage$, createElement(WorksPage), "sidebar");
   set(
     updateDocumentTitle$,
     i18n.t(($) => {

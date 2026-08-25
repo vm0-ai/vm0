@@ -409,7 +409,7 @@ export function ThreadSidebarSlot({
       return <ThreadArtifactDetail thread={thread} source={target.source} />;
     }
     case "automations": {
-      // Rendered by ZeroChatThreadPage directly: the automations body lives in
+      // Rendered by ChatThreadPage directly: the automations body lives in
       // the page module and importing it here would create an import cycle.
       return null;
     }

@@ -308,7 +308,7 @@ function InvalidGithubConnectParams({
   return <InvalidState title={title} message={messages[code]} />;
 }
 
-export function ZeroGithubConnectPage(): JSX.Element {
+export function GithubConnectPage(): JSX.Element {
   const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);

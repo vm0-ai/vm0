@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.283.0](https://github.com/vm0-ai/vm0/compare/cli-v9.282.3...cli-v9.283.0) (2026-08-25)
+
+
+### Features
+
+* serve direct-html website templates behind the latest switch ([#29053](https://github.com/vm0-ai/vm0/issues/29053)) ([508d9ec](https://github.com/vm0-ai/vm0/commit/508d9eca8eeb05694499d28d6f8114f2f336b69a))
+
+
+### Bug Fixes
+
+* **cli:** name the actual default video model in help text ([#29139](https://github.com/vm0-ai/vm0/issues/29139)) ([f143071](https://github.com/vm0-ai/vm0/commit/f1430712cbf1e56db0d590b8d7796ad8896cd72e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.361.0
+    * @okouai/core bumped to 8.588.0
+
 ## [9.282.3](https://github.com/vm0-ai/vm0/compare/cli-v9.282.2...cli-v9.282.3) (2026-08-25)
 
 

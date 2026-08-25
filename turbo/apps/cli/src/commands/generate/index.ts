@@ -43,7 +43,7 @@ const documentCommand = createListerOnlyCommand({
 function buildGenerateHelpText(): string {
   const examples = [
     '  Generate image:        okou generate image --raw-prompt "A watercolor fox"',
-    "  Batch deck images:     okou generate image-batch start images.tsv .image-batch",
+    "  Batch artifact images: okou generate image-batch start images.tsv .image-batch",
     '  Generate deck:         okou generate presentation --prompt "A product roadmap"',
     '  Generate report:       okou generate report --prompt "A Q2 usage report"',
     '  Generate docs:         okou generate docs-design --prompt "A setup guide"',

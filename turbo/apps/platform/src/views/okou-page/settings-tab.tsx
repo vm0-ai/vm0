@@ -27,7 +27,7 @@ import {
 } from "@okouai/ui/components/ui/alert";
 import { type Tone, TONE_OPTIONS } from "./tone-constants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { ZeroUnsavedBar } from "./unsaved-bar.tsx";
+import { UnsavedBar } from "./unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
 import {
@@ -48,7 +48,7 @@ import {
   setAgentDemoteConfirmOpen$,
 } from "../../signals/okou-page/settings/settings-tab.ts";
 
-interface ZeroSettingsTabProps {
+interface SettingsTabProps {
   agentId: string;
   displayName: string;
   description: string;
@@ -85,7 +85,7 @@ interface ZeroSettingsTabProps {
   onDelete?: () => Promise<void>;
 }
 
-export function ZeroSettingsTab({
+export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
   description: initialDescription,
@@ -100,7 +100,7 @@ export function ZeroSettingsTab({
   deleteWorkflows = [],
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
-}: ZeroSettingsTabProps) {
+}: SettingsTabProps) {
   const { t } = useTranslation("agents");
   const defaults = {
     name: resolvedAgentName,
@@ -464,7 +464,7 @@ export function ZeroSettingsTab({
       </div>
 
       {isSettingsDirty && (
-        <ZeroUnsavedBar
+        <UnsavedBar
           onDiscard={handleResetSettings}
           onSave={handleSaveSettings}
           saving={saving}

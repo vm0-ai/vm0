@@ -122,7 +122,7 @@ function getAgentPhoneConnectErrorMessage(error: unknown): string {
       });
 }
 
-export function ZeroAgentPhoneConnectPage(): JSX.Element {
+export function AgentPhoneConnectPage(): JSX.Element {
   const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);

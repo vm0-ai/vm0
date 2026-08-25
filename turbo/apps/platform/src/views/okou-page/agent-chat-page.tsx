@@ -22,12 +22,10 @@ import {
 } from "../../signals/okou-page/pinned-agents.ts";
 
 import { detach, Reason } from "../../signals/utils.ts";
-import { ZeroChatComposer } from "./chat-composer.tsx";
+import { ChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
-import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
-import { annotationSessionActive$ } from "../../signals/okou-page/image-annotation.ts";
 import { chatPageTaglineIndex$ } from "../../signals/okou-page/chat-page.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
@@ -356,7 +354,6 @@ export function AgentChatPage() {
   );
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const annotationSessionActive = useGet(annotationSessionActive$);
 
   const handleInputChange = (value: string) => {
     setInput(value);
@@ -383,7 +380,7 @@ export function AgentChatPage() {
             </div>
           </div>
 
-          <ZeroChatComposer signals={composerSignals} />
+          <ChatComposer signals={composerSignals} />
 
           <StartCards onSelectPrompt={handleInputChange} />
         </div>
@@ -391,9 +388,6 @@ export function AgentChatPage() {
       <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />
       {lightboxUrl && <AttachmentLightbox />}
-      {/* Mounted beside the viewer rather than inside it: opening the editor
-          closes the lightbox, so nesting would unmount the editor immediately. */}
-      {annotationSessionActive && <ImageAnnotationEditor />}
     </div>
   );
 }

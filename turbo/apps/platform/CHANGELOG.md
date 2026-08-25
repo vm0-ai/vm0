@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.791.0](https://github.com/vm0-ai/vm0/compare/app-v0.790.1...app-v0.791.0) (2026-08-25)
+
+
+### Features
+
+* let staff cancel built-in model cooldowns ([#29142](https://github.com/vm0-ai/vm0/issues/29142)) ([d0ab9d6](https://github.com/vm0-ai/vm0/commit/d0ab9d6c8534491a06878c9d705f726e440cb4c5)), closes [#29121](https://github.com/vm0-ai/vm0/issues/29121)
+
+
+### Refactoring
+
+* **activity:** neutralize the activity vertical in platform ([#29159](https://github.com/vm0-ai/vm0/issues/29159)) ([d49855b](https://github.com/vm0-ai/vm0/commit/d49855b1aa7405e653b43a5c34d1816118deade4)), closes [#29151](https://github.com/vm0-ai/vm0/issues/29151)
+* **agent-detail:** neutralize agent detail and creation vertical ([#29161](https://github.com/vm0-ai/vm0/issues/29161)) ([5f3ba5c](https://github.com/vm0-ai/vm0/commit/5f3ba5c5ef9ceeb4cca41080fa263f599a4ada57))
+* **connectors:** neutralize the connector and provider connect flows in platform ([#29157](https://github.com/vm0-ai/vm0/issues/29157)) ([6d3162e](https://github.com/vm0-ai/vm0/commit/6d3162eeb9a12a2d452e16d3fccd6242a2ad01aa)), closes [#29153](https://github.com/vm0-ai/vm0/issues/29153)
+* remove the composer submit dom reconcile switch ([#29144](https://github.com/vm0-ai/vm0/issues/29144)) ([1704de4](https://github.com/vm0-ai/vm0/commit/1704de411b2d0f47e395492668ef24348312f11e))
+* **shell:** neutralize the remaining okou-page shell symbols in platform ([#29163](https://github.com/vm0-ai/vm0/issues/29163)) ([c124279](https://github.com/vm0-ai/vm0/commit/c124279826510c90cfcf75ffd632f784bd1034c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.361.0
+    * @okouai/core bumped to 8.588.0
+
 ## [0.790.1](https://github.com/vm0-ai/vm0/compare/app-v0.790.0...app-v0.790.1) (2026-08-25)
 
 

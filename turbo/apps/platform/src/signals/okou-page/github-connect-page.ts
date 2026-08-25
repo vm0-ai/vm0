@@ -6,7 +6,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
-import { ZeroGithubConnectPage } from "../../views/okou-page/github-connect-page.tsx";
+import { GithubConnectPage } from "../../views/okou-page/github-connect-page.tsx";
 import { parseGithubConnectParams } from "./github-connect-params.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
@@ -23,7 +23,7 @@ export const setupGithubConnectPage$ = command(
       },
     });
 
-    set(updatePage$, createElement(ZeroGithubConnectPage));
+    set(updatePage$, createElement(GithubConnectPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

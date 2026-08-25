@@ -25,7 +25,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroChatAttachment } from "../../signals/okou-page/chat-draft";
+import type { ChatAttachment } from "../../signals/okou-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -1275,8 +1275,14 @@ function ArtifactPreviewDialogActions({
         <Button
           type="button"
           variant="quiet"
-          size="sm"
+          size="icon-sm"
           data-testid="artifact-dialog-annotate"
+          aria-label={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
+          title={t(($) => {
+            return $.artifacts.annotation.open;
+          })}
           onClick={() => {
             // The editor owns the whole surface while it is open, so the
             // read-only viewer steps aside rather than stacking behind it.
@@ -1284,10 +1290,7 @@ function ArtifactPreviewDialogActions({
             closeLightboxWithDialogExit(rootSignal);
           }}
         >
-          <Pencil size={16} />
-          {t(($) => {
-            return $.artifacts.annotation.open;
-          })}
+          <Pencil size={18} />
         </Button>
       )}
       {showShare && (
@@ -1771,7 +1774,7 @@ function AttachmentChip({
   attachment,
   onRemove,
 }: {
-  attachment: ZeroChatAttachment;
+  attachment: ChatAttachment;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -1867,8 +1870,8 @@ export function AttachmentChips({
   attachments,
   onRemove,
 }: {
-  attachments: ZeroChatAttachment[];
-  onRemove: (attachment: ZeroChatAttachment) => void;
+  attachments: ChatAttachment[];
+  onRemove: (attachment: ChatAttachment) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">
