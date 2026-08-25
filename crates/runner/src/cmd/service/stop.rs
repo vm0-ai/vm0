@@ -8,7 +8,7 @@ use crate::paths::HomePaths;
 use super::drain_override_cleanup::{
     DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal,
 };
-use super::gate::check_active_jobs_gate;
+use super::gate::{ActiveJobsGateOps, check_active_jobs_gate};
 use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
@@ -49,7 +49,7 @@ impl CleanupPolicy {
     }
 }
 
-trait ServiceStopOps {
+trait ServiceStopOps: ActiveJobsGateOps {
     type LockGuard;
 
     fn acquire_lock<'a>(
@@ -60,12 +60,6 @@ trait ServiceStopOps {
     ) -> ServiceFuture<'a, Self::LockGuard>
     where
         Self::LockGuard: 'a;
-
-    fn check_active_jobs_gate<'a>(
-        &'a mut self,
-        unit: &'a RunnerServiceUnit,
-        force: bool,
-    ) -> ServiceFuture<'a, ()>;
 
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn stop<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
@@ -162,14 +156,6 @@ impl ServiceStopOps for RealServiceStopOps {
                 acquire_service_lock(unit, home).await
             }
         })
-    }
-
-    fn check_active_jobs_gate<'a>(
-        &'a mut self,
-        unit: &'a RunnerServiceUnit,
-        force: bool,
-    ) -> ServiceFuture<'a, ()> {
-        Box::pin(async move { check_active_jobs_gate(unit, force, "stop").await })
     }
 
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
@@ -289,6 +275,12 @@ impl ServiceStopOps for RealServiceStopOps {
     }
 }
 
+impl ActiveJobsGateOps for RealServiceStopOps {
+    fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+}
+
 async fn stop_with_ops(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
@@ -303,12 +295,12 @@ async fn stop_with_ops(
                     .to_string(),
             ));
         }
-        ops.check_active_jobs_gate(unit, force).await?;
+        check_active_jobs_gate(unit, home, force, "stop", ops).await?;
         let _service_lock = ops.acquire_lock(unit, home, Some(cleanup)).await?;
         stop_cleanup_with_ops(unit, cleanup, ops).await
     } else {
         let _service_lock = ops.acquire_lock(unit, home, cleanup).await?;
-        ops.check_active_jobs_gate(unit, force).await?;
+        check_active_jobs_gate(unit, home, force, "stop", ops).await?;
         stop_default_with_ops(unit, ops).await
     }
 }
@@ -603,7 +595,7 @@ mod tests {
     struct FakeStopOps {
         events: Vec<&'static str>,
         acquire_lock_error: bool,
-        gate_error: bool,
+        gate_active_results: VecDeque<RunnerResult<bool>>,
         active_results: VecDeque<RunnerResult<bool>>,
         stop_results: VecDeque<RunnerResult<()>>,
         bounded_stop_results: VecDeque<RunnerResult<BoundedSystemctlOutcome>>,
@@ -622,7 +614,7 @@ mod tests {
             Self {
                 events: Vec::new(),
                 acquire_lock_error: false,
-                gate_error: false,
+                gate_active_results: VecDeque::from([Ok(false)]),
                 active_results: VecDeque::from([Ok(true)]),
                 stop_results: VecDeque::from([Ok(())]),
                 bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Success)]),
@@ -637,6 +629,20 @@ mod tests {
                 cleanup_drain_error: false,
                 advance_time_on_sleep: false,
             }
+        }
+    }
+
+    impl ActiveJobsGateOps for FakeStopOps {
+        fn is_unit_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, bool> {
+            self.events.push("gate_is_active");
+            Box::pin(std::future::ready(
+                self.gate_active_results
+                    .pop_front()
+                    .expect("unexpected gate unit-active query"),
+            ))
         }
     }
 
@@ -659,19 +665,6 @@ mod tests {
             });
             Box::pin(std::future::ready(if self.acquire_lock_error {
                 Err(fake_error("lock busy"))
-            } else {
-                Ok(())
-            }))
-        }
-
-        fn check_active_jobs_gate<'a>(
-            &'a mut self,
-            _unit: &'a RunnerServiceUnit,
-            _force: bool,
-        ) -> ServiceFuture<'a, ()> {
-            self.events.push("check_gate");
-            Box::pin(std::future::ready(if self.gate_error {
-                Err(fake_error("active jobs"))
             } else {
                 Ok(())
             }))
@@ -831,13 +824,74 @@ mod tests {
             ops.events,
             [
                 "acquire_lock",
-                "check_gate",
+                "gate_is_active",
                 "is_active",
                 "stop",
                 "reset_failed",
                 "cleanup_drain_restart_override",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn stop_default_active_jobs_refuses_before_service_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let unit = service_unit();
+        let base_dir = home.runners_dir().join(unit.suffix());
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        let started_at = (chrono::Utc::now() - chrono::Duration::minutes(10))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let parsed_started_at = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            format!(
+                r#"{{
+                    "mode":"running",
+                    "active_runs":[
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000001"}},
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000002"}}
+                    ],
+                    "started_at":"{started_at}"
+                }}"#
+            ),
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
+
+        let before_gate = chrono::Utc::now();
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+        let after_gate = chrono::Utc::now();
+
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+        let RunnerError::ActiveJobs(error) = error else {
+            panic!("expected active-jobs refusal");
+        };
+        assert_eq!(error.unit, "vm0-runner-test");
+        assert_eq!(error.suffix, "test");
+        assert_eq!(
+            error
+                .run_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            [
+                "0191c4e0-0000-7000-8000-000000000001",
+                "0191c4e0-0000-7000-8000-000000000002",
+            ]
+        );
+        assert!(error.runner_uptime >= (before_gate - parsed_started_at).to_std().unwrap());
+        assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
+        assert_eq!(error.command_name, "stop");
+        assert!(!error.draining);
     }
 
     #[tokio::test]
@@ -914,7 +968,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -966,7 +1019,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1004,7 +1056,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1039,7 +1090,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1078,7 +1128,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1197,7 +1246,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1236,7 +1284,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1275,7 +1322,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1315,7 +1361,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1353,7 +1398,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1392,7 +1436,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1431,7 +1474,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1476,7 +1518,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1534,6 +1575,6 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("lock busy"));
-        assert_eq!(ops.events, ["check_gate", "acquire_cleanup_lock"]);
+        assert_eq!(ops.events, ["acquire_cleanup_lock"]);
     }
 }
