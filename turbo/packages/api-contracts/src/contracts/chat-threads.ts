@@ -7,6 +7,7 @@ import {
 } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES, outputToolPayloadSchema } from "./chat-events";
 import {
+  connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
 } from "./connector-accounts";
@@ -1496,6 +1497,7 @@ export const chatThreadConnectorSelectionContract = c.router({
     responses: {
       200: z.object({
         selections: z.array(connectorAccountSelectionSchema),
+        selectedConnections: z.array(connectorAccountConnectionSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

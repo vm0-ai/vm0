@@ -1,4 +1,7 @@
-import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountTargetKey,
+  type ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
 import {
   and,
@@ -52,13 +55,7 @@ interface ConnectorAccountIdentityRow {
   readonly storageVersion: number;
 }
 
-export function connectorAccountTargetKey(
-  target: ConnectorAccountTarget,
-): string {
-  return target.kind === "builtin"
-    ? `builtin:${target.connectorSlug}`
-    : `custom:${target.customConnectorId}`;
-}
+export { connectorAccountTargetKey };
 
 function connectorAccountTargetFromRow(
   row: ConnectorAccountIdentityRow,

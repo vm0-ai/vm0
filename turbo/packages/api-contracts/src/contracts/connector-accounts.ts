@@ -276,6 +276,13 @@ export const connectorAccountsContract = c.router({
 export type ConnectorAccountTarget = z.infer<
   typeof connectorAccountTargetSchema
 >;
+export function connectorAccountTargetKey(
+  target: ConnectorAccountTarget,
+): string {
+  return target.kind === "builtin"
+    ? `builtin:${target.connectorSlug}`
+    : `custom:${target.customConnectorId}`;
+}
 export type ConnectorAccountConnection = z.infer<
   typeof connectorAccountConnectionSchema
 >;

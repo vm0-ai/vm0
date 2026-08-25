@@ -1966,11 +1966,17 @@
       "available_one": "Conectores disponíveis para conectar ({{count}})",
       "available_many": "Conectores disponíveis para conectar ({{count}})",
       "available_other": "Conectores disponíveis para conectar ({{count}})",
+      "back": "Voltar",
       "configurePermissions": "Configurar permissões de {{connectorName}}",
       "customAuthorizeDescription": "Revise, conecte e autorize este conector personalizado para o agente.",
+      "defaultAccountFor": "{{connector}} · Usando a conta padrão: {{account}}",
+      "fallsBackTo": "Usa {{account}} como alternativa",
       "find": "Buscar conectores...",
+      "noUsableAccount": "Nenhuma conta utilizável",
       "remove": "Remover {{connectorName}}",
-      "title": "Conectores"
+      "selectedAccountFor": "{{connector}} · Conta selecionada: {{account}}",
+      "title": "Conectores",
+      "useDefault": "Usar padrão"
     },
     "documentTitle": "Conversa",
     "errors": {
@@ -2341,6 +2347,21 @@
     "toasts": {
       "copied": "Copiado",
       "deleted": "Conversa excluída"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "Arquivos alterados",
+        "read": "Arquivos lidos",
+        "run": "Comandos executados"
+      },
+      "collapse": "Recolher atividade de ferramentas",
+      "expand": "Expandir atividade de ferramentas",
+      "status": {
+        "cancelled": "Cancelado",
+        "error": "Falhou",
+        "pending": "Em andamento",
+        "success": "Concluído"
+      }
     },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",

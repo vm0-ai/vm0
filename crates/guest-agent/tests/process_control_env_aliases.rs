@@ -182,7 +182,7 @@ fn configure_case(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
-        std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
+        std::env::set_var("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
         common::set_run_payload_file_env_for_test(
             &runtime_dir,
             &guest_contracts::env::RunPayload::default(),

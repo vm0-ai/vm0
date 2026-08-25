@@ -25,6 +25,10 @@ import {
   customConnectorAuthorizationReloadVersion$,
   reloadCustomConnectorAuthorizedAgents$,
 } from "./settings/custom-connectors.ts";
+import {
+  createComposerConnectorAccountSignals,
+  type ComposerConnectorAccountSignals,
+} from "./composer-connector-accounts.ts";
 
 export interface ComposerConnectorAuthorizationState {
   readonly agentId: string;
@@ -81,6 +85,7 @@ export interface ComposerConnectorSignals {
   readonly connectorPermissionGrants$: Computed<
     Promise<readonly PlatformUserPermissionGrant[]>
   >;
+  readonly accounts: ComposerConnectorAccountSignals;
 }
 
 const relatedConnectorCatalogKeyword$ = computed(() => {
@@ -341,6 +346,7 @@ function createConnectorUiSignals(): Pick<
 
 export function createComposerConnectorSignals(
   agentId: string,
+  threadId?: string,
 ): ComposerConnectorSignals {
   const ui = createConnectorUiSignals();
   const addDialogKeyword$ = computed((get) => {
@@ -374,5 +380,6 @@ export function createComposerConnectorSignals(
     ...ui,
     connectorPermissionMetadata$,
     connectorPermissionGrants$,
+    accounts: createComposerConnectorAccountSignals(threadId),
   };
 }

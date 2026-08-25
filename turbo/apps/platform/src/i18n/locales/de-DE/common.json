@@ -1935,11 +1935,17 @@
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
+      "back": "Zurück",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
+      "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",
+      "fallsBackTo": "Wechselt zu {{account}} zurück",
       "find": "Integrationen suchen...",
+      "noUsableAccount": "Kein verwendbares Konto",
       "remove": "{{connectorName}} entfernen",
-      "title": "Integrationen"
+      "selectedAccountFor": "{{connector}} · Ausgewähltes Konto: {{account}}",
+      "title": "Integrationen",
+      "useDefault": "Standard verwenden"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2297,6 +2303,21 @@
     "toasts": {
       "copied": "Kopiert",
       "deleted": "Chat gelöscht"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "Dateien geändert",
+        "read": "Dateien gelesen",
+        "run": "Befehle ausgeführt"
+      },
+      "collapse": "Tool-Aktivität einklappen",
+      "expand": "Tool-Aktivität ausklappen",
+      "status": {
+        "cancelled": "Abgebrochen",
+        "error": "Fehlgeschlagen",
+        "pending": "In Bearbeitung",
+        "success": "Abgeschlossen"
+      }
     },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",

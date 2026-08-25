@@ -1932,11 +1932,17 @@
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
+      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
+      "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
+      "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
+      "noUsableAccount": "Tidak ada akun yang dapat digunakan",
       "remove": "Hapus {{connectorName}}",
-      "title": "Konektor"
+      "selectedAccountFor": "{{connector}} · Akun terpilih: {{account}}",
+      "title": "Konektor",
+      "useDefault": "Gunakan default"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2293,6 +2299,21 @@
     "toasts": {
       "copied": "Disalin",
       "deleted": "Chat dihapus"
+    },
+    "toolActivity": {
+      "categories": {
+        "changes": "File diubah",
+        "read": "File dibaca",
+        "run": "Perintah dijalankan"
+      },
+      "collapse": "Ciutkan aktivitas alat",
+      "expand": "Luaskan aktivitas alat",
+      "status": {
+        "cancelled": "Dibatalkan",
+        "error": "Gagal",
+        "pending": "Sedang berlangsung",
+        "success": "Selesai"
+      }
     },
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
