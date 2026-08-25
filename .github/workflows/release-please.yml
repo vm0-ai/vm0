@@ -9,6 +9,12 @@ name: release-please
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      recovery_release_sha:
+        description: "Existing release commit to deploy without creating releases"
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -34,6 +40,7 @@ jobs:
         env:
           COMMIT_MESSAGES: ${{ toJSON(github.event.commits.*.message) }}
           HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          RECOVERY_RELEASE_SHA: ${{ inputs.recovery_release_sha || '' }}
         run: |
           set -euo pipefail
 
@@ -43,11 +50,19 @@ jobs:
           fi
 
           release=false
-          while IFS= read -r subject; do
-            case "$subject" in
-            'chore: release'*) release=true ;;
-            esac
-          done <<<"$subjects"
+          if [ -n "$RECOVERY_RELEASE_SHA" ]; then
+            if [[ ! "$RECOVERY_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Recovery release SHA must be a full lowercase SHA-1: $RECOVERY_RELEASE_SHA"
+              exit 1
+            fi
+            release=true
+          else
+            while IFS= read -r subject; do
+              case "$subject" in
+              'chore: release'*) release=true ;;
+              esac
+            done <<<"$subjects"
+          fi
 
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "release commit in this push: $release"
@@ -74,31 +89,132 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ needs.detect-release-commit.outputs.release == 'true' }}
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      release_target: ${{ steps.release-target.outputs.sha }}
-      api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
-      core_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] }}
-      api_contracts_release_created: ${{ steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
-      connectors_release_created: ${{ steps.release.outputs['turbo/packages/connectors--release_created'] }}
-      db_release_created: ${{ steps.release.outputs['turbo/packages/db--release_created'] }}
-      app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
-      desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
-      host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
-      runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
-      api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
-      api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
-      runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
-      api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
-      app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
-      desktop_version: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
+      releases_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.releases_created || steps.release.outputs.releases_created }}
+      release_target: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.release_target || steps.release-target.outputs.sha }}
+      api_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_release_created || steps.release.outputs['turbo/apps/api--release_created'] }}
+      core_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.core_release_created || steps.release.outputs['turbo/packages/core--release_created'] }}
+      api_contracts_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_contracts_release_created || steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
+      connectors_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.connectors_release_created || steps.release.outputs['turbo/packages/connectors--release_created'] }}
+      db_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.db_release_created || steps.release.outputs['turbo/packages/db--release_created'] }}
+      app_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.app_release_created || steps.release.outputs['turbo/apps/platform--release_created'] }}
+      desktop_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.desktop_release_created || steps.release.outputs['turbo/apps/desktop--release_created'] }}
+      host_worker_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.host_worker_release_created || steps.release.outputs['turbo/apps/host-worker--release_created'] }}
+      runner_rs_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.runner_rs_release_created || steps.release.outputs['crates/runner--release_created'] }}
+      api_runtime_dependency_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_runtime_dependency_release_created || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
+      api_deploy_required: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_deploy_required || steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
+      runner_rs_version: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.runner_rs_version || steps.release.outputs['crates/runner--version'] }}
+      api_version: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_version || steps.release.outputs['turbo/apps/api--version'] }}
+      app_version: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.app_version || steps.release.outputs['turbo/apps/platform--version'] }}
+      desktop_version: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.desktop_version || steps.release.outputs['turbo/apps/desktop--version'] }}
     steps:
       - uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
         id: release
+        if: ${{ inputs.recovery_release_sha == '' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-pull-request: true
+
+      - name: Reuse existing releases for recovery
+        id: recovery_release
+        if: ${{ inputs.recovery_release_sha != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RECOVERY_RELEASE_SHA: ${{ inputs.recovery_release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          main_sha=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          gh api "repos/$REPO/commits/$RECOVERY_RELEASE_SHA" --jq .sha >/dev/null
+          lineage=$(gh api "repos/$REPO/compare/$RECOVERY_RELEASE_SHA...$main_sha" --jq .status)
+          case "$lineage" in
+            identical|ahead) ;;
+            *)
+              echo "::error::Recovery release $RECOVERY_RELEASE_SHA is not an ancestor of main ($main_sha): $lineage"
+              exit 1
+              ;;
+          esac
+
+          releases_json=$(gh api "repos/$REPO/releases?per_page=100")
+          release_count=$(jq --arg sha "$RECOVERY_RELEASE_SHA" '[.[] | select(.target_commitish == $sha and (.draft | not))] | length' <<<"$releases_json")
+          if [ "$release_count" -eq 0 ]; then
+            echo "::error::No published GitHub release targets recovery SHA $RECOVERY_RELEASE_SHA"
+            exit 1
+          fi
+
+          release_tag_for_prefix() {
+            local prefix=$1
+            jq -er --arg sha "$RECOVERY_RELEASE_SHA" --arg prefix "$prefix" '
+              [.[] | select(.target_commitish == $sha and (.draft | not) and (.tag_name | startswith($prefix))) | .tag_name]
+              | if length == 1 then .[0]
+                elif length == 0 then ""
+                else error("multiple releases for prefix " + $prefix)
+                end
+            ' <<<"$releases_json"
+          }
+
+          assert_tag_target() {
+            local tag=$1
+            local tag_sha
+            tag_sha=$(gh api "repos/$REPO/commits/$tag" --jq .sha)
+            if [ "$tag_sha" != "$RECOVERY_RELEASE_SHA" ]; then
+              echo "::error::Release tag $tag targets $tag_sha, expected $RECOVERY_RELEASE_SHA"
+              exit 1
+            fi
+          }
+
+          api_tag=$(release_tag_for_prefix api-v)
+          db_tag=$(release_tag_for_prefix db-v)
+          app_tag=$(release_tag_for_prefix app-v)
+          runner_tag=$(release_tag_for_prefix runner-rs-v)
+          core_tag=$(release_tag_for_prefix core-v)
+          api_contracts_tag=$(release_tag_for_prefix api-contracts-v)
+          connectors_tag=$(release_tag_for_prefix connectors-v)
+          desktop_tag=$(release_tag_for_prefix desktop-v)
+          host_worker_tag=$(release_tag_for_prefix host-worker-v)
+
+          for required_tag in "$api_tag" "$db_tag" "$app_tag" "$runner_tag"; do
+            if [ -z "$required_tag" ]; then
+              echo "::error::Recovery release $RECOVERY_RELEASE_SHA is missing a required API/DB/App/Runner release"
+              exit 1
+            fi
+            assert_tag_target "$required_tag"
+          done
+
+          api_version=${api_tag#api-v}
+          app_version=${app_tag#app-v}
+          runner_rs_version=${runner_tag#runner-rs-v}
+          desktop_version=${desktop_tag#desktop-v}
+          api_runtime_dependency=false
+          if [ -n "$core_tag$api_contracts_tag$connectors_tag" ]; then
+            api_runtime_dependency=true
+          fi
+
+          {
+            echo "releases_created=true"
+            echo "release_target=$RECOVERY_RELEASE_SHA"
+            echo "api_release_created=true"
+            echo "core_release_created=$( [ -n "$core_tag" ] && echo true || echo false )"
+            echo "api_contracts_release_created=$( [ -n "$api_contracts_tag" ] && echo true || echo false )"
+            echo "connectors_release_created=$( [ -n "$connectors_tag" ] && echo true || echo false )"
+            echo "db_release_created=true"
+            echo "app_release_created=true"
+            echo "desktop_release_created=$( [ -n "$desktop_tag" ] && echo true || echo false )"
+            echo "host_worker_release_created=$( [ -n "$host_worker_tag" ] && echo true || echo false )"
+            echo "runner_rs_release_created=true"
+            echo "api_runtime_dependency_release_created=$api_runtime_dependency"
+            echo "api_deploy_required=true"
+            echo "runner_rs_version=$runner_rs_version"
+            echo "api_version=$api_version"
+            echo "app_version=$app_version"
+            echo "desktop_version=$desktop_version"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Recovery mode will reuse $release_count published release(s) targeting $RECOVERY_RELEASE_SHA"
+          echo "API=$api_tag DB=$db_tag App=$app_tag Runner=$runner_tag"
 
       - name: Resolve release target
         id: release-target
@@ -179,6 +295,7 @@ jobs:
   # the next push to main.
   refresh-release-pull-request:
     needs: release-please
+    if: ${{ inputs.recovery_release_sha == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
