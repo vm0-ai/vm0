@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.22](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.21...guest-download-v0.23.22) (2026-08-25)
+
+
+### Performance Improvements
+
+* **guest-download:** release slots during retry backoff ([#29216](https://github.com/vm0-ai/vm0/issues/29216)) ([974d5e6](https://github.com/vm0-ai/vm0/commit/974d5e6cbe8387297c0fafb089ed5f7245ee6469))
+
 ## [0.23.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.20...guest-download-v0.23.21) (2026-08-24)
 
 

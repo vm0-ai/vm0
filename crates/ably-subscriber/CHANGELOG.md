@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.18](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.17...ably-subscriber-v1.0.18) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** bound token exchange responses ([#29218](https://github.com/vm0-ai/vm0/issues/29218)) ([723cae9](https://github.com/vm0-ai/vm0/commit/723cae9fffd97b08f325c577e95d789bc2979bfb))
+
 ## [1.0.17](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.16...ably-subscriber-v1.0.17) (2026-08-25)
 
 
