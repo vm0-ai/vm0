@@ -136,7 +136,7 @@ for fragment in (
     "Access-Control-Request-Method: GET",
     "%header{access-control-allow-origin}",
     "%header{access-control-allow-credentials}",
-    "/api/okou/__brand-smoke__",
+    "/api/__brand-smoke__",
     "api-promotion",
 ):
     if fragment not in production_verifier_source:

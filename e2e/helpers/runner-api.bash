@@ -189,7 +189,7 @@ runner_e2e_start_checkpointed_chat_run() {
 
 runner_e2e_delete_chat_thread() {
     local thread_id="$1"
-    runner_api_curl "/api/okou/chat-threads/${thread_id}" -X DELETE
+    runner_api_curl "/api/chat-threads/${thread_id}" -X DELETE
 }
 
 runner_e2e_delete_workflow() {

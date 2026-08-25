@@ -131,23 +131,23 @@ export E2E_API_URL="https://pr-27981-api.vm6.ai/"
 export E2E_API_TOKEN="sensitive-api-token"
 export VERCEL_AUTOMATION_BYPASS_SECRET="sensitive-bypass-secret"
 payload='{"secret":"sensitive-request-payload"}'
-MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fokou%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fokou%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
 
 MOCK_CURL_MODE=success
-MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/chat/events"
-run_request "/api/okou/chat/events" -X POST -d "$payload"
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/chat/events"
+run_request "/api/chat/events" -X POST -d "$payload"
 assert_status 0
 assert_file_equals $'{"ok":true}\n' "$stdout_file"
 assert_file_equals '' "$stderr_file"
 
 MOCK_CURL_MODE=failure
-MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/chat/events?cursor=sensitive-query-value"
-run_request "/api/okou/chat/events?cursor=sensitive-query-value" -X POST -d "$payload"
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/chat/events?cursor=sensitive-query-value"
+run_request "/api/chat/events?cursor=sensitive-query-value" -X POST -d "$payload"
 assert_status 22
 assert_file_equals $'{"error":"rate limited"}\n' "$stdout_file"
 assert_file_equals \
-    $'curl: (22) The requested URL returned error: 429\nVercel logs: '"$MOCK_CURL_EXPECTED_VERCEL_URL"$'\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/okou/chat/events curl_status=22\n' \
+    $'curl: (22) The requested URL returned error: 429\nVercel logs: '"$MOCK_CURL_EXPECTED_VERCEL_URL"$'\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/chat/events curl_status=22\n' \
     "$stderr_file"
 assert_file_excludes "$stderr_file" "$E2E_API_TOKEN"
 assert_file_excludes "$stderr_file" "$VERCEL_AUTOMATION_BYPASS_SECRET"

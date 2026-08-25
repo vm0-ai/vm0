@@ -448,7 +448,7 @@ const preview = await requestSharedPage({
 assert.equal(preview.response.status, 200);
 assert.equal(
   preview.observedUrl,
-  `${previewOrigin}/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `${previewOrigin}/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   preview.observedHeaders.get("x-vercel-protection-bypass"),
@@ -485,7 +485,7 @@ const production = await requestSharedPage({
 assert.equal(production.response.status, 200);
 assert.equal(
   production.observedUrl,
-  `https://api.okou.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
@@ -539,7 +539,7 @@ const missing = await requestSharedPage({
 assert.equal(missing.response.status, 404);
 assert.equal(
   missing.observedUrl,
-  `https://api.vm0.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `https://api.vm0.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   missing.response.headers.get("cache-control"),
