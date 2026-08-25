@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.484.2](https://github.com/vm0-ai/vm0/compare/api-v1.484.1...api-v1.484.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **connectors:** simplify multi-account settings interactions ([#29094](https://github.com/vm0-ai/vm0/issues/29094)) ([023b916](https://github.com/vm0-ai/vm0/commit/023b916626ff1488f54ed6c5d10658fbf0f34e7c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.360.1
+    * @okouai/core bumped to 8.587.3
+    * @okouai/db bumped to 1.221.2
+
 ## [1.484.1](https://github.com/vm0-ai/vm0/compare/api-v1.484.0...api-v1.484.1) (2026-08-24)
 
 
