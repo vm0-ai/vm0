@@ -60,6 +60,7 @@ import {
   SwatchBook,
   Target,
   User,
+  UserCheck,
   Users,
   Video,
   X,
@@ -7956,10 +7957,8 @@ function ComposerConnectorAccountModeButton({
           variant="quiet"
           size="icon-2xs"
           className={cn(
-            "shrink-0 border",
-            explicit
-              ? "border-primary/50 bg-primary/10 text-primary"
-              : "border-border/60 text-muted-foreground",
+            "shrink-0 border border-border/60",
+            explicit ? "text-foreground" : "text-muted-foreground",
           )}
           aria-label={accessibleLabel}
           onClick={(event) => {
@@ -7968,11 +7967,7 @@ function ComposerConnectorAccountModeButton({
             onOpen();
           }}
         >
-          {explicit ? (
-            <Check size={14} strokeWidth={2.5} />
-          ) : (
-            <User size={14} />
-          )}
+          {explicit ? <UserCheck size={14} /> : <User size={14} />}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-xs">
