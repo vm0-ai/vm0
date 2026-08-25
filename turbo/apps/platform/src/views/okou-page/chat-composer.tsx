@@ -5057,7 +5057,7 @@ async function loadDecodedImportedPptImage(
   await tapError(candidate.decode(), () => {
     decodeFailed = true;
   });
-  return !decodeFailed || (candidate.complete && candidate.naturalWidth > 0);
+  return !decodeFailed;
 }
 
 async function replaceImportedPptImageAfterDecode(

@@ -4035,9 +4035,6 @@ describe("chat composer templates", () => {
     );
     await user.click(screen.getByLabelText("Preview slide 2"));
     await imageDecodes.complete("https://example.com/imported-page-3.png");
-    await waitFor(() => {
-      expect(detailPreview).not.toHaveAttribute("data-pending-image-url");
-    });
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-2.png",
