@@ -1013,17 +1013,25 @@ async fn run_in_sandbox_materializes_prune_eligible_codex_zstd_sidecar_as_raw() 
 async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = sandbox_mock::MockSandbox::with_overrides("test", Arc::clone(&overrides));
+    let write_gate = MockLifecycleGate::new();
+    sandbox.set_write_file_lifecycle_gate(write_gate.clone());
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let history =
-        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let mut history =
+        "{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n"
+            .to_string();
+    history.push_str(&"{}\n".repeat(22 * 1024));
+    assert!(history.len() > 64 * 1024);
     let sidecar_path = dir.path().join("session-history.jsonl");
-    tokio::fs::write(&sidecar_path, history).await.unwrap();
+    tokio::fs::write(&sidecar_path, history.as_bytes())
+        .await
+        .unwrap();
     let server = MockServer::start_async().await;
     let history_mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/history.blob");
-            then.status(200).body(history);
+            then.status(200).body(history.clone());
         })
         .await;
     let mut ctx = minimal_context();
@@ -1033,7 +1041,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
+                hash: hex::encode(Sha256::digest(history.as_bytes())),
                 url: server.url("/history.blob?token=secret"),
                 encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
@@ -1056,59 +1064,6 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     )
     .await;
     let mut telemetry = test_telemetry(&config, &ctx);
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::PoolMiss,
-            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    let writes = sandbox.write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
-    );
-    assert_eq!(writes[0].content, history);
-    assert!(
-        sandbox
-            .exec_calls()
-            .iter()
-            .all(|call| !call.cmd.contains("collect_matching_session_entries")),
-        "fresh workspace restore must not scan retained Codex sessions"
-    );
-    history_mock.assert_calls_async(0).await;
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_large_inline_codex_history_before_spawn_without_cleanup() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let sandbox = sandbox_mock::MockSandbox::with_overrides("test", Arc::clone(&overrides));
-    let write_gate = MockLifecycleGate::new();
-    sandbox.set_write_file_lifecycle_gate(write_gate.clone());
-    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let mut history =
-        "{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n"
-            .to_string();
-    history.push_str(&"{}\n".repeat(22 * 1024));
-    assert!(history.len() > 64 * 1024);
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.resume_session = Some(ResumeSession::inline(session_id.into(), history.clone()));
-
-    let mut telemetry = test_telemetry(&config, &ctx);
     let run = run_in_sandbox(
         &sandbox,
         &ctx,
@@ -1116,35 +1071,35 @@ async fn run_in_sandbox_restores_large_inline_codex_history_before_spawn_without
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
-            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::Reused,
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
     );
     tokio::pin!(run);
     tokio::select! {
-        _ = &mut run => panic!("run reached spawn before session restore gate"),
+        _ = &mut run => panic!("workspace run reached spawn before session restore gate"),
         entered = write_gate.wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT) => {
-            entered.expect("session restore should reach the guest write gate");
+            entered.expect("workspace session restore should reach the guest write gate");
         }
     }
 
     assert!(
         overrides.start_process_calls().is_empty(),
-        "agent process must not start before session restore completes"
+        "agent process must not start before workspace session restore completes"
     );
     assert!(
         sandbox
             .exec_calls()
             .iter()
             .all(|call| !call.cmd.contains("collect_matching_session_entries")),
-        "fresh cold restore must not scan retained Codex sessions"
+        "fresh workspace restore must not scan retained Codex sessions"
     );
     write_gate.release_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
         .await
-        .expect("run should finish after session restore is released")
+        .expect("workspace run should finish after session restore is released")
         .unwrap();
 
     assert!(result.failure.is_none());
@@ -1156,6 +1111,56 @@ async fn run_in_sandbox_restores_large_inline_codex_history_before_spawn_without
     );
     assert_eq!(writes[0].content, history.as_bytes());
     assert_eq!(overrides.start_process_calls().len(), 1);
+    assert!(
+        sandbox
+            .exec_calls()
+            .iter()
+            .all(|call| !call.cmd.contains("collect_matching_session_entries")),
+        "fresh workspace restore must not scan retained Codex sessions"
+    );
+    history_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_large_inline_codex_history_without_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let mut history =
+        "{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n"
+            .to_string();
+    history.push_str(&"{}\n".repeat(22 * 1024));
+    assert!(history.len() > 64 * 1024);
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession::inline(session_id.into(), history.clone()));
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history.as_bytes());
     assert!(
         sandbox
             .exec_calls()
