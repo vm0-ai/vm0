@@ -887,7 +887,7 @@ set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 printf '%s\n%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
   "$VM0_MITMDUMP_RUNTIME_DIR" "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
-cp "/proc/$$/environ" "$0.environ"
+cp -f "/proc/$$/environ" "$0.environ"
 port=""
 ready_path=""
 usage_state_id=""
