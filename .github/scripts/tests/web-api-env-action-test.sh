@@ -96,6 +96,36 @@ assert_env_key_absent() {
   fi
 }
 
+assert_env_key_count() {
+  local env_file="$1"
+  local key="$2"
+  local expected="$3"
+  local count
+  count="$(awk -F= -v key="$key" '$1 == key { count++ } END { print count + 0 }' "$env_file")"
+  if [[ "$count" != "$expected" ]]; then
+    fail "expected ${key} exactly ${expected} time(s) in ${env_file}"
+  fi
+}
+
+assert_env_values_equal() {
+  local env_file="$1"
+  local first_key="$2"
+  local second_key="$3"
+  local first_value
+  local second_value
+  first_value="$(awk -F= -v key="$first_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
+  second_value="$(awk -F= -v key="$second_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
+  if [[ "$first_value" != "$second_value" ]]; then
+    fail "expected ${first_key} and ${second_key} values to be equal"
+  fi
+}
+
+assert_preview_job_ref_aliases_absent() {
+  local env_file="$1"
+  assert_env_key_absent "$env_file" OKOU_PREVIEW_JOB_REF
+  assert_env_key_absent "$env_file" VM0_PREVIEW_JOB_REF
+}
+
 assert_migrated_zero_outputs_absent() {
   local env_file="$1"
   local key
@@ -259,6 +289,7 @@ run_action() {
   local branded_config="${6:-canonical}"
   local github_app_vars_json="${7:-}"
   local github_app_secrets_json="${8:-}"
+  local input_job_ref="${9-pr-123}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -290,7 +321,7 @@ run_action() {
     INPUT_APP="$input_app" \
     INPUT_ENVIRONMENT="$input_environment" \
     INPUT_DATABASE_URL="postgres://preview-db" \
-    INPUT_JOB_REF="pr-123" \
+    INPUT_JOB_REF="$input_job_ref" \
     INPUT_WEB_URL="https://pr-123-www.vm0.test" \
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
@@ -438,7 +469,11 @@ assert_env_value "$success_env_file" UNSPLASH_ACCESS_KEY "github-unsplash-access
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
+assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
+assert_env_key_count "$success_env_file" VM0_PREVIEW_JOB_REF 1
+assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
+assert_env_values_equal "$success_env_file" OKOU_PREVIEW_JOB_REF VM0_PREVIEW_JOB_REF
 assert_env_value "$success_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
@@ -477,6 +512,20 @@ assert_env_absent_value "$success_env_file" "github-slack-client-secret"
 assert_env_absent_value "$success_env_file" "github-posthog-key"
 assert_env_absent_value "$success_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$success_env_file" "github-artifact-preview-waf-secret"
+
+preview_web_dir="$(mktemp -d)"
+TEMP_DIRS+=("$preview_web_dir")
+preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_dir" web preview 2>&1)"
+preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
+assert_contains "$preview_web_output" "Rendered"
+assert_preview_job_ref_aliases_absent "$preview_web_env_file"
+
+empty_job_ref_dir="$(mktemp -d)"
+TEMP_DIRS+=("$empty_job_ref_dir")
+empty_job_ref_output="$(run_action "$(build_doppler_secrets_json)" "$empty_job_ref_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" canonical "" "" "" 2>&1)"
+empty_job_ref_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_job_ref_dir}/github-output")"
+assert_contains "$empty_job_ref_output" "Rendered"
+assert_preview_job_ref_aliases_absent "$empty_job_ref_env_file"
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")
@@ -551,6 +600,7 @@ assert_env_value "$production_api_env_file" STRIPE_WEBHOOK_SECRET "github-stripe
 assert_env_value "$production_api_env_file" STRIPE_AUTOMATION_WEBHOOK_SECRET "github-stripe-automation-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-billing-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-automation-webhook-secret"
+assert_preview_job_ref_aliases_absent "$production_api_env_file"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")
