@@ -153,6 +153,59 @@ async fn checkpoint_rejects_mistyped_prepare_response_before_upload() {
 }
 
 #[tokio::test]
+async fn checkpoint_rejects_prepare_response_without_upload_url() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "adadadad-adad-4dad-8dad-adadadadadad";
+    let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
+    std::fs::write(&history_path, &history).unwrap();
+    use_test_codex_home(&mut runtime, history_dir.path());
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "existing": false,
+                "encoding": "identity",
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT);
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200).json_body(json!({
+            "checkpointId": "unreachable",
+            "agentSessionId": "test-agent-session",
+            "conversationId": "test-conversation",
+        }));
+    });
+
+    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(
+        &runtime,
+        &checkpoint_session_metadata(&runtime),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains("No presignedUrl in prepare-history response")
+    );
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
 async fn success_checkpoint_discards_oversized_claude_history_without_compact_boundary() {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -710,9 +763,7 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
             .json_body_includes(format!(
                 r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
             ));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({}));
+        then.status(200).header("Content-Type", "application/json");
     });
 
     let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
