@@ -516,7 +516,9 @@ export function ConnectorAccountManagerDialog({
       ? accountsLoadable.data.nextCursor
       : null;
   const defaultConnection =
-    summariesLoadable.state === "hasData"
+    summariesLoadable.state === "hasData" &&
+    accountsLoadable.state === "hasData" &&
+    accountsLoadable.data.available
       ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
           ?.defaultConnection ?? null)
       : null;

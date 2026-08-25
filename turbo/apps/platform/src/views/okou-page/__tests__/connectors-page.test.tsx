@@ -1804,6 +1804,9 @@ describe("connectors page", () => {
       ),
     ).resolves.toBeInTheDocument();
     expect(buttonByText("Add account", manager)).toBeDisabled();
+    expect(
+      within(manager).queryByRole("group", { name: "Default" }),
+    ).toBeNull();
   });
 
   it("does not restore a pending deletion draft after the manager closes", async () => {
