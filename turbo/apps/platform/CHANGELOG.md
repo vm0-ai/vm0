@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.792.0](https://github.com/vm0-ai/vm0/compare/app-v0.791.0...app-v0.792.0) (2026-08-25)
+
+
+### Features
+
+* **auth:** add privacy-safe v2 diagnostics ([#29131](https://github.com/vm0-ai/vm0/issues/29131)) ([4be6f12](https://github.com/vm0-ai/vm0/commit/4be6f1284f3369404cd9be7b466d96f8ae1fd0e7))
+* **auth:** complete auth v2 sign-in ux parity ([#29141](https://github.com/vm0-ai/vm0/issues/29141)) ([10fbb8e](https://github.com/vm0-ai/vm0/commit/10fbb8ea6b69d90f09d0b0a71042a088a87c3d7c))
+* roll out image and video model selection to all users ([#29042](https://github.com/vm0-ai/vm0/issues/29042)) ([9c61cec](https://github.com/vm0-ai/vm0/commit/9c61cecb5a6f5a4dfcaa045910a4646d1576f5fe))
+
+
+### Bug Fixes
+
+* **composer:** rebuild the quote block on native prosemirror machinery ([#29137](https://github.com/vm0-ai/vm0/issues/29137)) ([626a055](https://github.com/vm0-ai/vm0/commit/626a055c38c9dfd936d5011c875fcd39a82c91b2))
+* keep uploaded template preview stable on visibility updates ([#29165](https://github.com/vm0-ai/vm0/issues/29165)) ([30bbbde](https://github.com/vm0-ai/vm0/commit/30bbbde846e8bdc0d90ab0e72e8c4a9d462be497))
+* **platform:** open the image annotation editor from any surface ([#29173](https://github.com/vm0-ai/vm0/issues/29173)) ([6ce64f0](https://github.com/vm0-ai/vm0/commit/6ce64f0da3be32e11a8834b0645d145e6673e2dc))
+* **rebranding:** neutralize agent-facing brand copy ([#29167](https://github.com/vm0-ai/vm0/issues/29167)) ([d1a4cc6](https://github.com/vm0-ai/vm0/commit/d1a4cc63dfc912c36e636315772d9353ee190334))
+
+
+### Refactoring
+
+* **platform:** drop zero prefix from onboarding and preferences symbols ([#29162](https://github.com/vm0-ai/vm0/issues/29162)) ([1ad7ff8](https://github.com/vm0-ai/vm0/commit/1ad7ff8222c75243bcaab26feea87f4d535b5cc7)), closes [#29154](https://github.com/vm0-ai/vm0/issues/29154)
+* **platform:** remove restored attachment validation switch ([#29130](https://github.com/vm0-ai/vm0/issues/29130)) ([c57004f](https://github.com/vm0-ai/vm0/commit/c57004f83e9a556554afc6d063e6dc91425f6f4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.362.0
+    * @okouai/core bumped to 8.589.0
+
 ## [0.791.0](https://github.com/vm0-ai/vm0/compare/app-v0.790.1...app-v0.791.0) (2026-08-25)
 
 

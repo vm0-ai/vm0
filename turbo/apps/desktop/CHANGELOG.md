@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.38.80](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.79...desktop-v0.38.80) (2026-08-25)
+
+
+### Refactoring
+
+* **api:** move computer-use off the brand namespace ([#28487](https://github.com/vm0-ai/vm0/issues/28487)) ([5edd3c9](https://github.com/vm0-ai/vm0/commit/5edd3c9c01c0a781cb4bd8d05b4de3c55faa06a8))
+* **api:** move desktop update routes off the brand namespace ([#28489](https://github.com/vm0-ai/vm0/issues/28489)) ([cef2269](https://github.com/vm0-ai/vm0/commit/cef2269fb823155ef359347544683ed3219149a9)), closes [#28465](https://github.com/vm0-ai/vm0/issues/28465)
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+* **core:** rename zeroDebug feature switch to okouDebug ([#28816](https://github.com/vm0-ai/vm0/issues/28816)) ([9d86a26](https://github.com/vm0-ai/vm0/commit/9d86a26650ef5c7ac400356fb9f0fc6c173611e6))
+* **desktop:** dual-read notarization api credential aliases ([#29102](https://github.com/vm0-ai/vm0/issues/29102)) ([5862b50](https://github.com/vm0-ai/vm0/commit/5862b5099ea14459ec1e5b8775825ec64e226346))
+* **desktop:** dual-read notarization keychain aliases ([#29195](https://github.com/vm0-ai/vm0/issues/29195)) ([8e28456](https://github.com/vm0-ai/vm0/commit/8e284563b736d1d9df9f81efffe40dc403cb0e3a)), closes [#29189](https://github.com/vm0-ai/vm0/issues/29189) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **desktop:** dual-read product and platform environment aliases ([#29105](https://github.com/vm0-ai/vm0/issues/29105)) ([7dec03f](https://github.com/vm0-ai/vm0/commit/7dec03fddb922deb901cede8703dde5e7c9e450e))
+* **desktop:** dual-read signing identity aliases ([#29176](https://github.com/vm0-ai/vm0/issues/29176)) ([0921d61](https://github.com/vm0-ai/vm0/commit/0921d618b6daf04c515322bc24c2027bee77e387)), closes [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **desktop:** rename native helper Sentry environment keys ([#29089](https://github.com/vm0-ai/vm0/issues/29089)) ([8011fe5](https://github.com/vm0-ai/vm0/commit/8011fe5283f6d570e911284c67ec47a9acc89302))
+* **desktop:** rename notarization toggle environment key ([#29188](https://github.com/vm0-ai/vm0/issues/29188)) ([4069e2a](https://github.com/vm0-ai/vm0/commit/4069e2a30f8dc2b9beaccaeda44edc1116b5de70))
+* **desktop:** rename packaged smoke app path environment key ([#29100](https://github.com/vm0-ai/vm0/issues/29100)) ([421c50e](https://github.com/vm0-ai/vm0/commit/421c50efb1593716ff76d367da2067ed1af5b6b9))
+* **desktop:** rename unsigned-build signing bypass environment key ([#29093](https://github.com/vm0-ai/vm0/issues/29093)) ([7a50ad0](https://github.com/vm0-ai/vm0/commit/7a50ad0d95dd7665de73c7d0bc2165eebec92af2))
+* **desktop:** switch notarization api writer to okou aliases ([#29106](https://github.com/vm0-ai/vm0/issues/29106)) ([5d0e3bf](https://github.com/vm0-ai/vm0/commit/5d0e3bf7ce6a27d403518696c225572272ccde5e))
+* **desktop:** switch product and platform writers to okou aliases ([#29145](https://github.com/vm0-ai/vm0/issues/29145)) ([dd70d1f](https://github.com/vm0-ai/vm0/commit/dd70d1f9e8010405efe856cfadb439e170dc6c5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.362.0
+
 ## [0.38.79](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.78...desktop-v0.38.79) (2026-08-25)
 
 
