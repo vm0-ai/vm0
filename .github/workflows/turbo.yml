@@ -1844,6 +1844,8 @@ jobs:
             project: features
           - lane: paid-onboarding
             project: paid-onboarding
+          - lane: auth-v2
+            project: auth-v2
     concurrency:
       group: cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -1964,7 +1966,7 @@ jobs:
             kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
           fi
       - name: Upload Playwright blob report
-        if: always()
+        if: always() && matrix.project != 'auth-v2'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-blob-${{ matrix.lane }}
