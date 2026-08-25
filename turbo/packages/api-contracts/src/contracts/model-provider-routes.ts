@@ -12,13 +12,17 @@ const c = initContract();
 const orgUpsertModelProviderRequestSchema =
   upsertModelProviderRequestSchema.omit({ selectedModel: true });
 
+const builtInModelCooldownIdentitySchema = z.object({
+  selectedModel: z.string(),
+  providerType: z.string(),
+  upstreamModel: z.string(),
+});
+
 export const builtInModelCooldownDiagnosticsSchema = z.object({
   fallbackEnabled: z.boolean(),
+  canCancelCooldowns: z.boolean().optional(),
   activeCooldowns: z.array(
-    z.object({
-      selectedModel: z.string(),
-      providerType: z.string(),
-      upstreamModel: z.string(),
+    builtInModelCooldownIdentitySchema.extend({
       unavailableUntil: z.iso.datetime(),
     }),
   ),
@@ -79,6 +83,20 @@ export const modelProviderCooldownDiagnosticsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get built-in model cooldown diagnostics",
+  },
+  cancel: {
+    method: "DELETE",
+    path: "/api/model-providers/cooldown-diagnostics",
+    headers: authHeadersSchema,
+    body: builtInModelCooldownIdentitySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Cancel a built-in model cooldown (staff only)",
   },
 });
 

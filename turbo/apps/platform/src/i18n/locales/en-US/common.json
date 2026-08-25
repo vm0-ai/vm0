@@ -4866,6 +4866,11 @@
       },
       "debug": {
         "builtInModelCooldown": {
+          "cancelAction": "Cancel cooldown",
+          "cancelDescription": "Cancelling this global cooldown makes the route immediately eligible for every workspace with built-in model fallback enabled.",
+          "cancelling": "Cancelling...",
+          "cancelTitle": "Cancel global cooldown?",
+          "cancelWarning": "A later qualifying failure can place this route back in cooldown.",
           "description": "Inspect the built-in model routes temporarily excluded from fallback selection.",
           "disabled": "disabled",
           "disabledExplanation": "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
@@ -4873,6 +4878,7 @@
           "enabled": "enabled",
           "globalActive": "global active cooldowns",
           "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while built-in model fallback is enabled here.",
+          "keepCooldown": "Keep cooldown",
           "loading": "Loading built-in model cooldown diagnostics...",
           "providerType": "Provider type",
           "refresh": "Refresh",
