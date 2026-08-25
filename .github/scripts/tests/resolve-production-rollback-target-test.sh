@@ -251,7 +251,7 @@ ruby -e '
 
 release_target=cccccccccccccccccccccccccccccccccccccccc
 release_target_output="${tmp_dir}/release-target.output"
-RELEASE_SHAS="$(jq -nc --arg target "$release_target" '["", $target, "", $target]')" \
+RELEASE_SHAS="$(jq -nc --arg target "$release_target" '[null, "", $target, null]')" \
   GITHUB_OUTPUT="$release_target_output" \
   bash "$release_target_script"
 grep -qx "sha=${release_target}" "$release_target_output" || fail "release target resolver did not publish the unique release SHA"
