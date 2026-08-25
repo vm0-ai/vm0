@@ -56,7 +56,7 @@ export function AuthV2PasswordInput({
         aria-controls={id}
         aria-label={label}
         aria-pressed={revealed}
-        className="absolute top-0 right-0 text-muted-foreground"
+        className="absolute top-0 right-0"
         onClick={() => {
           setRevealed(id, !revealed);
         }}

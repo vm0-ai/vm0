@@ -112,12 +112,22 @@ describe("auth v2 presentation", () => {
   });
 
   it("scopes neutral page-action semantics to the Auth v2 region", async () => {
-    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+    setBrowserUrl("https://app.vm0.ai/v2/sign-up");
 
-    detachedSetupPage({ context, path: "/v2/sign-in" });
+    detachedSetupPage({ context, path: "/v2/sign-up" });
 
-    const region = await screen.findByTestId("app-auth-v2");
+    await screen.findByLabelText("Password");
+    const region = screen.getByTestId("app-auth-v2");
     const sharedAuthLayout = screen.getByTestId("app-auth-layout");
+    const passwordVisibilityAction = buttonByLabel("Show password");
+
+    expect(region).toContainElement(passwordVisibilityAction);
+    expect(passwordVisibilityAction).toHaveClass(
+      "text-primary",
+      "hover:bg-state-hover",
+      "active:bg-state-pressed",
+    );
+    expect(passwordVisibilityAction).not.toHaveClass("text-muted-foreground");
 
     for (const [property, value] of AUTH_V2_PAGE_ACTION_SEMANTICS) {
       expect(region.style.getPropertyValue(property)).toBe(value);
