@@ -1607,6 +1607,10 @@ async function chatEventFixtureActionResponse(
   body: ChatEventFixtureAction,
   signal: AbortSignal,
 ) {
+  const projection =
+    "projection" in body && body.projection !== undefined
+      ? body.projection
+      : "full";
   if (body.action === "advance-chat-event-sequence-as-previous-api") {
     const [updated] = await db
       .update(chatThreads)
@@ -1627,7 +1631,12 @@ async function chatEventFixtureActionResponse(
     const [pointer] = await db
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      )
       .orderBy(
         desc(chatEventSnapshots.archiveSchemaVersion),
         desc(chatEventSnapshots.lastSeqId),
@@ -1666,7 +1675,12 @@ async function chatEventFixtureActionResponse(
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      )
       .orderBy(
         desc(chatEventSnapshots.archiveSchemaVersion),
         desc(chatEventSnapshots.lastSeqId),
@@ -1676,7 +1690,12 @@ async function chatEventFixtureActionResponse(
     db
       .select({ value: count() })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      ),
   ]);
   signal.throwIfAborted();
   if (!snapshotCount) {
@@ -1808,6 +1827,29 @@ const postRuntimeStateAction$ = command(
       case "set-runner-job-connector-runtime-targets": {
         await setRunnerJobConnectorRuntimeTargets(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "read-run-chat-tool-activity-decision": {
+        const [run] = await db
+          .select({
+            runId: agentRuns.id,
+            chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
+          })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, body.run_id))
+          .limit(1);
+        signal.throwIfAborted();
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            run_chat_tool_activity_decision: run
+              ? {
+                  run_id: run.runId,
+                  chat_tool_activity_enabled: run.chatToolActivityEnabled,
+                }
+              : null,
+          },
+        };
       }
       case "hold-org-admission-lock": {
         await holdOrgAdmissionLock(db, body.org_id, signal);

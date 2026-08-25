@@ -3,13 +3,18 @@ import { gunzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -34,8 +39,11 @@ import {
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { seedRetentionToolEvent$ } from "../../../test-fixtures/chat-event-retention";
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -72,7 +80,8 @@ function authenticate(actor: ApiTestUser) {
   );
   return {
     authorization: "Bearer clerk-session",
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
   };
 }
 
@@ -135,7 +144,11 @@ async function sendNoCreditMessage(
 async function replaceHeadWithRetiredVersion(
   threadId: string,
 ): Promise<string> {
-  const head = await readChatEventSnapshotHead(context, threadId);
+  const head = await readChatEventSnapshotHead(
+    context,
+    threadId,
+    "tool-redacted",
+  );
   const body = readFakeChatEventObject(head.object_key);
   if (body === undefined) {
     throw new Error("Expected a current snapshot object");
@@ -143,7 +156,14 @@ async function replaceHeadWithRetiredVersion(
   const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
   writeFakeChatEventObject(retiredKey, body);
   await trackFakeChatEventObject(Promise.resolve(retiredKey));
-  await setChatEventSnapshotHeadVersion(context, threadId, 3, retiredKey);
+  await setChatEventSnapshotHeadVersion(
+    context,
+    threadId,
+    3,
+    retiredKey,
+    undefined,
+    "tool-redacted",
+  );
   return retiredKey;
 }
 
@@ -199,12 +219,15 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
     expect(download.body).toStrictEqual({
       url: FAKE_CHAT_EVENT_SNAPSHOT_URL,
       expiresInSeconds: 900,
       lastEventId: head.last_event_id,
       lastSeqId: head.last_seq_id,
+      projection: "tool-redacted",
     });
 
     const snapshotObject = readFakeChatEventObject(head.object_key);
@@ -236,9 +259,9 @@ describe("chat event snapshot read endpoints", () => {
     });
 
     await expect(
-      readChatEventSnapshotHead(context, threadId),
+      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
     ).resolves.toMatchObject({
-      archive_schema_version: 5,
+      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       last_event_id: head.last_event_id,
       last_seq_id: head.last_seq_id,
       object_key: head.object_key,
@@ -318,7 +341,7 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
       },
       {
-        version: "6",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION + 1).toString(),
         status: 409,
         message:
           "The requested Chat Event schema version is newer than this API",
@@ -374,7 +397,9 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(fromStart.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(fromStart.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
     const firstRow = fromStart.body.rows[0];
     if (firstRow === undefined) {
       throw new Error("Expected seeded chat events");
@@ -409,7 +434,9 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
     for (const row of rows.body.rows) {
       chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
@@ -479,6 +506,167 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
+  it("hides and restores retained tool rows across Snapshot and physical Raw Event cursors", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    if (!owner.orgId) {
+      throw new Error("Expected the tool projection owner to have an org");
+    }
+    const featureActor = { ...owner, orgId: owner.orgId };
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Tool projection agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `tool-projection-before-${randomUUID()}`,
+    });
+    const toolEventId = await store.set(
+      seedRetentionToolEvent$,
+      {
+        chatThreadId: threadId,
+        toolUseId: "tool-use-projection-test",
+        summary: "Read the projection fixture",
+      },
+      context.signal,
+    );
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `tool-projection-after-${randomUUID()}`,
+    });
+    await updateFeatureSwitchesForUser(context, featureActor, {
+      [FeatureSwitchKey.ChatToolActivity]: true,
+    });
+    const full = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    expect(full.body.projection).toBe("full");
+    const toolIndex = full.body.rows.findIndex((row) => {
+      return row.id === toolEventId;
+    });
+    expect(toolIndex).toBeGreaterThan(0);
+    const toolRow = full.body.rows[toolIndex];
+    const previousRow = full.body.rows[toolIndex - 1];
+    if (toolRow?.eventType !== "output.tool" || previousRow === undefined) {
+      throw new Error("Expected a tool row with a physical predecessor");
+    }
+    expect(toolRow.payload).toStrictEqual({
+      toolUseId: "tool-use-projection-test",
+      action: "read",
+      status: "success",
+      summary: "Read the projection fixture",
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const fullHead = await readChatEventSnapshotHead(context, threadId, "full");
+    const fullObject = readFakeChatEventObject(fullHead.object_key);
+    if (fullObject === undefined) {
+      throw new Error("Expected a full tool Snapshot object");
+    }
+    expect(gunzipSync(fullObject).toString("utf8")).toContain(toolEventId);
+
+    await updateFeatureSwitchesForUser(context, featureActor, {
+      [FeatureSwitchKey.ChatToolActivity]: false,
+    });
+    const redactedDownload = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(redactedDownload.body).toMatchObject({
+      projection: "tool-redacted",
+      lastEventId: fullHead.last_event_id,
+      lastSeqId: fullHead.last_seq_id,
+    });
+    const redactedHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    const redactedObject = readFakeChatEventObject(redactedHead.object_key);
+    if (redactedObject === undefined) {
+      throw new Error("Expected a redacted tool Snapshot object");
+    }
+    expect(gunzipSync(redactedObject).toString("utf8")).not.toContain(
+      toolEventId,
+    );
+
+    const omittedPhysicalPage = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {
+          sinceSeqId: previousRow.seqId,
+          sinceEventId: previousRow.id,
+          limit: 1,
+        },
+      }),
+      [200],
+    );
+    expect(omittedPhysicalPage.body.rows).toStrictEqual([]);
+    expect(omittedPhysicalPage.body.hasMore).toBeTruthy();
+    expect(omittedPhysicalPage.body.cursor).toStrictEqual({
+      lastEventId: toolRow.id,
+      lastSeqId: toolRow.seqId,
+      projection: "tool-redacted",
+    });
+    const omittedCursor = omittedPhysicalPage.body.cursor;
+    if (
+      omittedCursor === undefined ||
+      omittedCursor.lastEventId === null ||
+      omittedCursor.projection === undefined
+    ) {
+      throw new Error("Expected the omitted tool row's physical cursor");
+    }
+    const afterTool = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {
+          sinceSeqId: omittedCursor.lastSeqId,
+          sinceEventId: omittedCursor.lastEventId,
+          sinceProjection: omittedCursor.projection,
+          limit: 1,
+        },
+      }),
+      [200],
+    );
+    expect(afterTool.body.rows[0]?.seqId).toBeGreaterThan(toolRow.seqId);
+    expect(afterTool.body.rows[0]?.eventType).not.toBe("output.tool");
+
+    await updateFeatureSwitchesForUser(context, featureActor, {
+      [FeatureSwitchKey.ChatToolActivity]: true,
+    });
+    const staleProjection = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {
+          sinceSeqId: omittedCursor.lastSeqId,
+          sinceEventId: omittedCursor.lastEventId,
+          sinceProjection: "tool-redacted",
+        },
+      }),
+      [410],
+    );
+    expect(staleProjection.body.error.code).toBe("CHAT_EVENTS_EXPIRED");
+    const restoredDownload = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(restoredDownload.body.projection).toBe("full");
+    expect(gunzipSync(fullObject).toString("utf8")).toContain(toolEventId);
+  }, 60_000);
+
   it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -508,7 +696,7 @@ describe("chat event snapshot read endpoints", () => {
     });
     expect(readFakeChatEventObject(retiredKey)).toBeDefined();
     await expect(
-      readChatEventSnapshotHead(context, threadId),
+      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
     ).resolves.toMatchObject({
       archive_schema_version: 3,
       object_key: retiredKey,
@@ -530,7 +718,29 @@ describe("chat event snapshot read endpoints", () => {
     await runSnapshotCron([threadId]);
 
     const head = await readChatEventSnapshotHead(context, threadId);
-    expect(readFakeChatEventObject(head.object_key)).toBeDefined();
+    const sharedBody = readFakeChatEventObject(head.object_key);
+    if (sharedBody === undefined) {
+      throw new Error("Expected a shared full/redacted Snapshot object");
+    }
+    const redactedHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    expect(redactedHead.object_key).toBe(head.object_key);
+    const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(head.object_key)?.[1];
+    if (digest === undefined) {
+      throw new Error("Expected a content-addressed Snapshot key");
+    }
+    const fullOnlyKey = `chat-events/${threadId}/manual-${digest}.ndjson.gz`;
+    writeFakeChatEventObject(fullOnlyKey, sharedBody);
+    await trackFakeChatEventObject(Promise.resolve(fullOnlyKey));
+    await setChatEventSnapshotHeadVersion(
+      context,
+      threadId,
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      fullOnlyKey,
+    );
 
     const future = mockR2GcWindowForKey(
       head.object_key,

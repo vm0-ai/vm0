@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -342,7 +343,9 @@ describe("cron snapshot chat events", () => {
     expect(firstRaw).toContain(`${marker} first`);
     expect(firstRaw).toContain(`${marker} second`);
     const firstHead = await readChatEventSnapshotHead(context, threadId);
-    expect(firstHead.archive_schema_version).toBe(5);
+    expect(firstHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
     expect(firstHead.last_event_id).toBe(firstLines.at(-1)?.id);
     expect(firstHead.object_key).toBe(firstPut.key);
 
@@ -375,12 +378,67 @@ describe("cron snapshot chat events", () => {
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
-    expect(secondHead.archive_schema_version).toBe(5);
+    expect(secondHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
     expect(secondHead.last_event_id).toBe(secondLines.at(-1)?.id);
     expect(secondHead.object_key).toBe(secondPut.key);
 
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
+  it("upgrades both V5 snapshot projections while appending the physical tail", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot V5 upgrade agent",
+    });
+    const marker = `snapshot-upgrade-${randomUUID()}`;
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `${marker}-prefix`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+
+    await setChatEventSnapshotHeadVersion(context, threadId, 5);
+    await setChatEventSnapshotHeadVersion(
+      context,
+      threadId,
+      5,
+      undefined,
+      undefined,
+      "tool-redacted",
+    );
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `${marker}-tail`,
+    });
+    await projectChatEventSearch(threadId);
+
+    const upgraded = await runSnapshotCron([threadId]);
+    expect(upgraded.success).toBeTruthy();
+    const fullHead = await readChatEventSnapshotHead(context, threadId, "full");
+    const redactedHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    expect(fullHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
+    expect(redactedHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
+    expect(fullHead.last_seq_id).toBe(redactedHead.last_seq_id);
+    const latestPut = putsForThread(threadId).at(-1);
+    if (latestPut === undefined) {
+      throw new Error("Expected an upgraded snapshot object");
+    }
+    const body = gunzipSync(latestPut.body).toString("utf8");
+    expect(body).toContain(`${marker}-prefix`);
+    expect(body).toContain(`${marker}-tail`);
   }, 60_000);
 
   it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
@@ -532,13 +590,13 @@ describe("cron snapshot chat events", () => {
     await setChatEventSnapshotHeadVersion(
       context,
       firstThreadId,
-      5,
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       firstFixture.objectKey,
     );
     await setChatEventSnapshotHeadVersion(
       context,
       secondThreadId,
-      5,
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       secondFixture.objectKey,
     );
 
@@ -574,7 +632,7 @@ describe("cron snapshot chat events", () => {
       runSnapshotCron([firstThreadId]),
       runSnapshotCron([firstThreadId]),
     ]);
-    expect(firstThreadArrivals).toBe(2);
+    expect(firstThreadArrivals).toBe(4);
     for (const result of retryResults) {
       expect(result).toMatchObject({
         duplicateEventIdConflictThreads: 1,
@@ -585,7 +643,7 @@ describe("cron snapshot chat events", () => {
     }
 
     const firstRetryPuts = putsForThread(firstThreadId).slice(1);
-    expect(firstRetryPuts).toHaveLength(2);
+    expect(firstRetryPuts).toHaveLength(4);
     const firstRetryPut = firstRetryPuts[0];
     const secondRetryPut = firstRetryPuts[1];
     if (firstRetryPut === undefined || secondRetryPut === undefined) {
@@ -749,8 +807,12 @@ describe("cron snapshot chat events", () => {
     expect(JSON.stringify(warningCalls)).not.toContain(secondMarker);
     const firstHead = await readChatEventSnapshotHead(context, firstThreadId);
     const secondHead = await readChatEventSnapshotHead(context, secondThreadId);
-    expect(firstHead.archive_schema_version).toBe(5);
-    expect(secondHead.archive_schema_version).toBe(5);
+    expect(firstHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
+    expect(secondHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
   }, 180_000);
 
   it("limits projection and snapshots to explicitly owned threads", async () => {
@@ -878,12 +940,29 @@ describe("cron snapshot chat events", () => {
           fixture.threadId,
           RETIRED_ARCHIVE_SCHEMA_VERSION,
         );
-      } else if (fixture.kind === "unreadable") {
         await setChatEventSnapshotHeadVersion(
           context,
           fixture.threadId,
-          5,
-          `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`,
+          RETIRED_ARCHIVE_SCHEMA_VERSION,
+          undefined,
+          undefined,
+          "tool-redacted",
+        );
+      } else if (fixture.kind === "unreadable") {
+        const missingObjectKey = `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`;
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          missingObjectKey,
+        );
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          missingObjectKey,
+          undefined,
+          "tool-redacted",
         );
       } else if (fixture.kind === "undecodable") {
         writeFakeChatEventObject(initialPut.key, Buffer.from("not-gzip"));
@@ -891,9 +970,17 @@ describe("cron snapshot chat events", () => {
         await setChatEventSnapshotHeadVersion(
           context,
           fixture.threadId,
-          5,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           undefined,
           0,
+        );
+        await setChatEventSnapshotHeadVersion(
+          context,
+          fixture.threadId,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          undefined,
+          0,
+          "tool-redacted",
         );
       }
 
@@ -918,11 +1005,11 @@ describe("cron snapshot chat events", () => {
     const skipped = await runSnapshotCron(threadIds);
     expect(skipped).toMatchObject({
       snapshots: 0,
-      skippedUnreadableHeads: 1,
-      skippedUndecodableHeads: 1,
-      skippedIncompleteHeads: 1,
-      skippedUnsupportedHeads: 1,
-      unreadableParents: 2,
+      skippedUnreadableHeads: 2,
+      skippedUndecodableHeads: 2,
+      skippedIncompleteHeads: 2,
+      skippedUnsupportedHeads: 2,
+      unreadableParents: 4,
     });
 
     for (const fixture of fixtures) {
@@ -979,7 +1066,7 @@ describe("cron snapshot chat events", () => {
     expect(arrivals).toBe(2);
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(head.snapshot_count).toBe(parentHead.snapshot_count);
-    expect(head.archive_schema_version).toBe(5);
+    expect(head.archive_schema_version).toBe(CURRENT_CHAT_EVENT_SCHEMA_VERSION);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
   }, 90_000);

@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
+import {
+  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventSnapshotProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
 import {
   activeInputDeliveries,
@@ -57,6 +62,36 @@ export const seedRetentionOutputEvent$ = command(
     signal.throwIfAborted();
     if (inserted === null) {
       throw new Error("Expected retention output event insertion");
+    }
+    return inserted.id;
+  },
+);
+
+export const seedRetentionToolEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly chatThreadId: string;
+      readonly runId?: string;
+      readonly toolUseId?: string;
+      readonly summary?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const inserted = await set(writeDb$).transaction(async (tx) => {
+      return await insertChatEvent(tx, {
+        chatThreadId: args.chatThreadId,
+        eventType: "output.tool",
+        runId: args.runId ?? randomUUID(),
+        toolUseId: args.toolUseId ?? `tool-use-${randomUUID()}`,
+        action: "read",
+        status: "success",
+        summary: args.summary ?? "Read the requested file",
+      });
+    });
+    signal.throwIfAborted();
+    if (inserted === null) {
+      throw new Error("Expected retention tool event insertion");
     }
     return inserted.id;
   },
@@ -325,6 +360,7 @@ export const coverRetentionThread$ = command(
       readonly archiveSchemaVersion?: number;
       readonly snapshotLastSeqId?: number;
       readonly indexedSeqId?: number;
+      readonly snapshotProjections?: readonly ChatEventSnapshotProjection[];
     },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -353,42 +389,48 @@ export const coverRetentionThread$ = command(
     if (terminal === undefined) {
       throw new Error("Expected retention fixture snapshot terminal event");
     }
-    const archiveSchemaVersion = args.archiveSchemaVersion ?? 5;
+    const archiveSchemaVersion =
+      args.archiveSchemaVersion ?? CURRENT_CHAT_EVENT_SCHEMA_VERSION;
     const digest = createHash("sha256")
       .update(
         `${args.chatThreadId}:${lastSeqId.toString()}:${archiveSchemaVersion.toString()}`,
       )
       .digest("hex");
     const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
-    const [head] = await database
-      .select({ id: chatEventSnapshots.id })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
-          eq(chatEventSnapshots.archiveSchemaVersion, archiveSchemaVersion),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (head === undefined) {
-      await database.insert(chatEventSnapshots).values({
-        chatThreadId: args.chatThreadId,
-        lastSeqId,
-        lastEventId: terminal.id,
-        archiveSchemaVersion,
-        objectKey,
-      });
-    } else {
-      await database
-        .update(chatEventSnapshots)
-        .set({
+    for (const projection of args.snapshotProjections ??
+      CHAT_EVENT_SNAPSHOT_PROJECTIONS) {
+      const [head] = await database
+        .select({ id: chatEventSnapshots.id })
+        .from(chatEventSnapshots)
+        .where(
+          and(
+            eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
+            eq(chatEventSnapshots.archiveSchemaVersion, archiveSchemaVersion),
+            eq(chatEventSnapshots.projection, projection),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (head === undefined) {
+        await database.insert(chatEventSnapshots).values({
+          chatThreadId: args.chatThreadId,
           lastSeqId,
           lastEventId: terminal.id,
           archiveSchemaVersion,
+          projection,
           objectKey,
-        })
-        .where(eq(chatEventSnapshots.id, head.id));
+        });
+      } else {
+        await database
+          .update(chatEventSnapshots)
+          .set({
+            lastSeqId,
+            lastEventId: terminal.id,
+            archiveSchemaVersion,
+            objectKey,
+          })
+          .where(eq(chatEventSnapshots.id, head.id));
+      }
     }
     await database
       .insert(chatEventSearchMessageWatermarks)

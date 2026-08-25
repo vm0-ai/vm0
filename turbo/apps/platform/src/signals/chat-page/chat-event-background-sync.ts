@@ -11,7 +11,6 @@ import {
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
-  CHAT_EVENT_ROWS_PAGE_LIMIT,
   fetchChatEventSnapshotRows$,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
@@ -92,6 +91,7 @@ const coldStartChatThreadRows$ = command(
         cursor: {
           lastEventId: snapshot.lastEventId,
           lastSeqId: snapshot.lastSeqId,
+          projection: snapshot.projection,
         },
       },
       signal,
@@ -103,6 +103,7 @@ const coldStartChatThreadRows$ = command(
       cursor: {
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
+        projection: snapshot.projection,
       },
     };
   },
@@ -172,14 +173,7 @@ const syncChatThreadRowsToIndexedDb$ = command(
         cursorFromServer = true;
         continue;
       }
-      if (page.rows.length === 0) {
-        return syncedEvents;
-      }
-      const lastRow = page.rows.at(-1);
-      if (lastRow === undefined) {
-        return syncedEvents;
-      }
-      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
+      cursor = page.cursor;
       await set(
         writeIndexedDbChatEventRows$,
         { threadId, rows: page.rows, cursor },
@@ -190,7 +184,7 @@ const syncChatThreadRowsToIndexedDb$ = command(
           return chatEventFromRow(row);
         }),
       );
-      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+      shouldLoadNextPage = page.hasMore;
     }
     return syncedEvents;
   },

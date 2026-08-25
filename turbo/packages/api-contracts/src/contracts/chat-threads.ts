@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
-import { CHAT_EVENT_TYPES } from "./chat-events";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
+} from "./chat-event-schema-version";
+import { CHAT_EVENT_TYPES, outputToolPayloadSchema } from "./chat-events";
 import {
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
@@ -28,6 +31,24 @@ const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
+const chatEventSnapshotProjectionSchema = z.enum(
+  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
+);
+const chatEventCursorSchema = z.union([
+  z
+    .object({
+      lastEventId: z.null(),
+      lastSeqId: z.literal(0),
+    })
+    .strict(),
+  z
+    .object({
+      lastEventId: z.string().uuid(),
+      lastSeqId: z.number().int().positive(),
+      projection: chatEventSnapshotProjectionSchema.optional(),
+    })
+    .strict(),
+]);
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -780,6 +801,14 @@ const outputFollowupsEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const outputToolEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.tool"),
+    content: z.null(),
+    ...outputToolPayloadSchema.shape,
+  })
+  .strict();
+
 const runQueuedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("run.queued"),
@@ -905,6 +934,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   outputErrorEventSchema,
   outputThinkingEventSchema,
   outputFollowupsEventSchema,
+  outputToolEventSchema,
   runQueuedEventSchema,
   runDequeuedEventSchema,
   runCompletedEventSchema,
@@ -1749,6 +1779,8 @@ export const chatThreadEventsContract = c.router({
         expiresInSeconds: z.number().int().positive(),
         lastEventId: z.string().uuid(),
         lastSeqId: z.number().int().positive(),
+        /** Optional only for compatibility with an older deployed API. */
+        projection: chatEventSnapshotProjectionSchema.optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1779,12 +1811,20 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
+        /** Optional only for compatibility with an older deployed client. */
+        sinceProjection: chatEventSnapshotProjectionSchema.optional(),
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
     ]),
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
+        /** New APIs always return the physical cursor, even for empty pages. */
+        cursor: chatEventCursorSchema.optional(),
+        /** New APIs always return this physical-page continuation decision. */
+        hasMore: z.boolean().optional(),
+        /** Optional only for compatibility with an older deployed API. */
+        projection: chatEventSnapshotProjectionSchema.optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1989,6 +2029,7 @@ export type ChatFollowupsEvent = Extract<
   ChatEvent,
   { eventType: "output.followups" }
 >;
+export type ChatToolEvent = Extract<ChatEvent, { eventType: "output.tool" }>;
 export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }

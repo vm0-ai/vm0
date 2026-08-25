@@ -17,7 +17,12 @@ const L = logger("ChatEventRowRemote");
 export const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 
 type ChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | {
+      readonly kind: "rows";
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+      readonly hasMore: boolean;
+    }
   | { readonly kind: "expired" };
 
 export const listRowsAfter$ = command(
@@ -43,6 +48,9 @@ export const listRowsAfter$ = command(
             : {
                 sinceSeqId: cursor.lastSeqId,
                 sinceEventId: cursor.lastEventId,
+                ...(cursor.projection === undefined
+                  ? {}
+                  : { sinceProjection: cursor.projection }),
                 limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
               },
         fetchOptions: { signal },
@@ -62,7 +70,28 @@ export const listRowsAfter$ = command(
       cursor,
       count: result.body.rows.length,
     });
-    return { kind: "rows", rows: result.body.rows };
+    const projection =
+      result.body.projection ??
+      ("projection" in cursor ? cursor.projection : undefined) ??
+      "full";
+    const lastRow = result.body.rows.at(-1);
+    const responseCursor =
+      result.body.cursor ??
+      (lastRow === undefined
+        ? cursor
+        : {
+            lastEventId: lastRow.id,
+            lastSeqId: lastRow.seqId,
+            projection,
+          });
+    return {
+      kind: "rows",
+      rows: result.body.rows,
+      cursor: responseCursor,
+      hasMore:
+        result.body.hasMore ??
+        result.body.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT,
+    };
   },
 );
 
@@ -82,6 +111,7 @@ export const fetchChatEventSnapshotRows$ = command(
     readonly rows: readonly ChatEventRow[];
     readonly lastEventId: string;
     readonly lastSeqId: number;
+    readonly projection: "full" | "tool-redacted";
   } | null> => {
     const client = get(apiClient$)(chatThreadEventsContract);
     const download = await accept(
@@ -107,15 +137,18 @@ export const fetchChatEventSnapshotRows$ = command(
     }
     const text = await response.text();
     signal.throwIfAborted();
-    if (text.length === 0 || !text.endsWith("\n")) {
+    if (text.length > 0 && !text.endsWith("\n")) {
       throw new Error("chat event snapshot must be newline-delimited JSON");
     }
-    const rows = text
-      .slice(0, -1)
-      .split("\n")
-      .map((line) => {
-        return chatEventRowSchema.parse(JSON.parse(line));
-      });
+    const rows =
+      text.length === 0
+        ? []
+        : text
+            .slice(0, -1)
+            .split("\n")
+            .map((line) => {
+              return chatEventRowSchema.parse(JSON.parse(line));
+            });
     L.debug("fetchChatEventSnapshotRows$", {
       threadId,
       count: rows.length,
@@ -125,6 +158,7 @@ export const fetchChatEventSnapshotRows$ = command(
       rows,
       lastEventId: download.body.lastEventId,
       lastSeqId: download.body.lastSeqId,
+      projection: download.body.projection ?? "full",
     };
   },
 );

@@ -20,6 +20,7 @@ import { resetSignal } from "../../utils.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { createChatEventSignals } from "../chat-event-signals.ts";
+import { semanticChatEventsFromChatEvents } from "../chat-event-state.ts";
 import { createChatEventStorageSignals } from "../chat-event-storage-signals.ts";
 
 vi.mock("idb", async () => {
@@ -83,6 +84,20 @@ function promptRow(
         version: 1,
         parts: [{ type: "text", text }],
       },
+    },
+  };
+}
+
+function toolRow(threadId: string, seqId: number): ChatEventRow {
+  return {
+    ...baseRow(threadId, seqId),
+    runId: crypto.randomUUID(),
+    eventType: "output.tool",
+    payload: {
+      toolUseId: `tool-use-${seqId.toString()}`,
+      action: "read",
+      status: "success",
+      summary: "Read the requested file",
     },
   };
 }
@@ -265,6 +280,85 @@ describe("chat event snapshot read", () => {
       { id: assistantEventRow.id, seqId: 2 },
     ]);
     expect(rowRequests).toStrictEqual([0, 2]);
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
+    ).resolves.toStrictEqual(assistantEventRow);
+  });
+
+  it("caches output.tool rows without rendering them and advances physical cursors", async () => {
+    mockSignedInUser();
+    const threadId = crypto.randomUUID();
+    const toolEventRow = toolRow(threadId, 1);
+    const assistantEventRow = baseRow(threadId, 2);
+    const appDb = await openTestChatDb();
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    const requests: {
+      readonly seqId: number;
+      readonly projection: string | undefined;
+    }[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      requests.push({
+        seqId: query.sinceSeqId,
+        projection:
+          "sinceProjection" in query ? query.sinceProjection : undefined,
+      });
+      if (query.sinceSeqId === 0) {
+        return respond(200, {
+          rows: [toolEventRow],
+          cursor: {
+            lastEventId: toolEventRow.id,
+            lastSeqId: toolEventRow.seqId,
+            projection: "full",
+          },
+          hasMore: true,
+          projection: "full",
+        });
+      }
+      if (query.sinceSeqId === toolEventRow.seqId) {
+        return respond(200, {
+          rows: [assistantEventRow],
+          cursor: {
+            lastEventId: assistantEventRow.id,
+            lastSeqId: assistantEventRow.seqId,
+            projection: "full",
+          },
+          hasMore: false,
+          projection: "full",
+        });
+      }
+      throw new Error(`Unexpected row cursor: ${JSON.stringify(query)}`);
+    });
+
+    const signals = createSignals(threadId);
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    await context.store.set(signals.syncRemoteEvents$, context.signal);
+
+    const events = context.store.get(signals.chatEvents$);
+    expect(
+      events.map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
+    expect(
+      semanticChatEventsFromChatEvents(events).map(({ event }) => {
+        return event.id;
+      }),
+    ).toStrictEqual([assistantEventRow.id]);
+    expect(requests).toStrictEqual([
+      { seqId: 0, projection: undefined },
+      { seqId: 1, projection: "full" },
+    ]);
+    await expect(
+      appDb.get(CHAT_EVENT_ROWS_STORE, toolEventRow.id),
+    ).resolves.toStrictEqual(toolEventRow);
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
     ).resolves.toStrictEqual(assistantEventRow);

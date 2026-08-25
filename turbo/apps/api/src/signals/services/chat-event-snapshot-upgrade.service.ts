@@ -13,6 +13,12 @@ function adjacentSnapshotUpgrade(
   sourceVersion: number,
 ): ((rows: readonly ChatEventRow[]) => readonly ChatEventRow[]) | undefined {
   switch (sourceVersion) {
+    case 5: {
+      // V6 adds output.tool; every valid V5 row remains valid unchanged.
+      return (rows) => {
+        return rows;
+      };
+    }
     default: {
       return undefined;
     }

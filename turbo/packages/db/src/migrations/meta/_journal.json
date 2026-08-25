@@ -1317,6 +1317,13 @@
       "when": 1787649591954,
       "tag": "0995_canonicalize_official_slack_installation_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 996,
+      "version": "7",
+      "when": 1787656280903,
+      "tag": "0996_curvy_ben_urich",
+      "breakpoints": true
     }
   ]
 }

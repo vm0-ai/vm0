@@ -10,7 +10,10 @@ import {
 import { join } from "node:path";
 
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type {
+  ChatEventCursor,
+  ChatEventSnapshotProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import {
   getChatEventSnapshot,
@@ -19,14 +22,22 @@ import {
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
-const SNAPSHOT_FILE_PATTERN = /^snapshot-to-(\d+)\.ndjson$/;
+const SNAPSHOT_FILE_PATTERN =
+  /^snapshot(?:-(full|tool-redacted))?-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
 
-interface ManagedHistoryFile {
-  readonly name: string;
-  readonly kind: "snapshot" | "event";
-  readonly seqId: number;
-}
+type ManagedHistoryFile =
+  | {
+      readonly name: string;
+      readonly kind: "snapshot";
+      readonly seqId: number;
+      readonly projection: ChatEventSnapshotProjection;
+    }
+  | {
+      readonly name: string;
+      readonly kind: "event";
+      readonly seqId: number;
+    };
 
 interface RawChatHistorySyncResult {
   readonly directory: string;
@@ -39,8 +50,8 @@ type LocalHistoryState =
   | { readonly kind: "valid"; readonly cursor: ChatEventCursor };
 
 interface ParsedSnapshot {
-  readonly lastEventId: string;
-  readonly lastRowSeqId: number;
+  readonly lastEventId: string | null;
+  readonly lastRowSeqId: number | null;
 }
 
 function managedHistoryFile(name: string): ManagedHistoryFile | null {
@@ -49,7 +60,8 @@ function managedHistoryFile(name: string): ManagedHistoryFile | null {
     return {
       name,
       kind: "snapshot",
-      seqId: Number(snapshot[1]),
+      seqId: Number(snapshot[2]),
+      projection: snapshot[1] === "tool-redacted" ? "tool-redacted" : "full",
     };
   }
   const event = EVENT_FILE_PATTERN.exec(name);
@@ -83,8 +95,12 @@ async function listManagedHistoryFiles(
 function parseSnapshot(args: {
   readonly text: string;
   readonly threadId: string;
+  readonly projection: ChatEventSnapshotProjection;
 }): ParsedSnapshot {
-  if (args.text.length === 0 || !args.text.endsWith("\n")) {
+  if (args.text.length === 0) {
+    return { lastEventId: null, lastRowSeqId: null };
+  }
+  if (!args.text.endsWith("\n")) {
     throw new Error("Chat event snapshot must be newline-delimited JSON");
   }
   let lastEventId: string | undefined;
@@ -94,6 +110,12 @@ function parseSnapshot(args: {
     if (row.chatThreadId !== args.threadId) {
       throw new Error("Chat event snapshot belongs to another thread");
     }
+    if (
+      args.projection === "tool-redacted" &&
+      row.eventType === "output.tool"
+    ) {
+      throw new Error("Redacted Chat event snapshot contains tool activity");
+    }
     if (lastRowSeqId !== undefined && row.seqId <= lastRowSeqId) {
       throw new Error(
         "Chat event snapshot rows must be ordered by sequence ID",
@@ -102,10 +124,10 @@ function parseSnapshot(args: {
     lastEventId = row.id;
     lastRowSeqId = row.seqId;
   }
-  if (lastEventId === undefined || lastRowSeqId === undefined) {
-    throw new Error("Chat event snapshot must contain at least one row");
-  }
-  return { lastEventId, lastRowSeqId };
+  return {
+    lastEventId: lastEventId ?? null,
+    lastRowSeqId: lastRowSeqId ?? null,
+  };
 }
 
 async function localHistoryState(args: {
@@ -134,13 +156,21 @@ async function localHistoryState(args: {
   if (snapshot !== undefined) {
     try {
       const text = await readFile(join(args.directory, snapshot.name), "utf8");
-      const parsed = parseSnapshot({ text, threadId: args.threadId });
-      if (parsed.lastRowSeqId > snapshot.seqId) {
+      const parsed = parseSnapshot({
+        text,
+        threadId: args.threadId,
+        projection: snapshot.projection,
+      });
+      if (
+        parsed.lastEventId === null ||
+        parsed.lastRowSeqId !== snapshot.seqId
+      ) {
         return { kind: "invalid" };
       }
       cursor = {
         lastEventId: parsed.lastEventId,
         lastSeqId: snapshot.seqId,
+        projection: snapshot.projection,
       };
     } catch {
       return { kind: "invalid" };
@@ -160,7 +190,12 @@ async function localHistoryState(args: {
       if (row.chatThreadId !== args.threadId || row.seqId !== event.seqId) {
         return { kind: "invalid" };
       }
-      cursor = { lastEventId: row.id, lastSeqId: row.seqId };
+      cursor = {
+        lastEventId: row.id,
+        lastSeqId: row.seqId,
+        projection:
+          ("projection" in cursor ? cursor.projection : undefined) ?? "full",
+      };
     } catch {
       return { kind: "invalid" };
     }
@@ -175,6 +210,8 @@ async function downloadSnapshot(args: {
   readonly url: string;
   readonly threadId: string;
   readonly expectedLastEventId: string;
+  readonly expectedLastSeqId: number;
+  readonly projection: ChatEventSnapshotProjection;
 }): Promise<string> {
   const response = await fetch(args.url);
   if (!response.ok) {
@@ -183,8 +220,28 @@ async function downloadSnapshot(args: {
     );
   }
   const text = await response.text();
-  const parsed = parseSnapshot({ text, threadId: args.threadId });
-  if (args.expectedLastEventId !== parsed.lastEventId) {
+  const parsed = parseSnapshot({
+    text,
+    threadId: args.threadId,
+    projection: args.projection,
+  });
+  if (
+    args.projection === "full" &&
+    (parsed.lastEventId !== args.expectedLastEventId ||
+      parsed.lastRowSeqId !== args.expectedLastSeqId)
+  ) {
+    throw new Error("Chat event snapshot terminal event ID does not match");
+  }
+  if (
+    parsed.lastRowSeqId !== null &&
+    parsed.lastRowSeqId > args.expectedLastSeqId
+  ) {
+    throw new Error("Chat event snapshot exceeds its physical cursor");
+  }
+  if (
+    parsed.lastRowSeqId === args.expectedLastSeqId &&
+    parsed.lastEventId !== args.expectedLastEventId
+  ) {
     throw new Error("Chat event snapshot terminal event ID does not match");
   }
   return text;
@@ -209,6 +266,9 @@ async function syncRows(args: {
             threadId: args.threadId,
             sinceEventId: cursor.lastEventId,
             sinceSeqId: cursor.lastSeqId,
+            ...(cursor.projection === undefined
+              ? {}
+              : { sinceProjection: cursor.projection }),
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
           },
     );
@@ -244,11 +304,8 @@ async function syncRows(args: {
     } finally {
       await rm(stagedDirectory, { recursive: true, force: true });
     }
-    const lastRow = page.rows.at(-1);
-    if (lastRow !== undefined) {
-      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
-    }
-    if (page.rows.length < CHAT_EVENT_ROWS_PAGE_LIMIT) {
+    cursor = page.cursor;
+    if (!page.hasMore) {
       return "complete";
     }
   }
@@ -296,15 +353,22 @@ async function rebuildRawChatHistory(args: {
         url: snapshot.url,
         threadId: args.threadId,
         expectedLastEventId: snapshot.lastEventId,
+        expectedLastSeqId: snapshot.lastSeqId,
+        projection: snapshot.projection,
       });
+      const snapshotFileName =
+        snapshot.projection === "full"
+          ? `snapshot-to-${snapshot.lastSeqId}.ndjson`
+          : `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
       await writeFile(
-        join(temporaryDirectory, `snapshot-to-${snapshot.lastSeqId}.ndjson`),
+        join(temporaryDirectory, snapshotFileName),
         downloaded,
         "utf8",
       );
       cursor = {
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
+        projection: snapshot.projection,
       };
     }
 

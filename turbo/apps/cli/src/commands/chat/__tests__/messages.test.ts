@@ -154,6 +154,103 @@ describe("okou chat messages command", () => {
     expect(output).toContain(join(threadDirectory, "event-SEQ_ID_3.json"));
   });
 
+  it("advances through empty tool-redacted snapshots and physical pages", async () => {
+    const outputDirectory = await createOutputDirectory();
+    const snapshotCursor = rawEventRow(2);
+    const omittedPageCursor = rawEventRow(3);
+    const visibleRow = rawEventRow(4);
+    const cursors: {
+      readonly eventId: string | null;
+      readonly seqId: string | null;
+      readonly projection: string | null;
+    }[] = [];
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        return HttpResponse.json(
+          {
+            url: SNAPSHOT_DOWNLOAD_URL,
+            expiresInSeconds: 900,
+            lastEventId: snapshotCursor.id,
+            lastSeqId: snapshotCursor.seqId,
+            projection: "tool-redacted",
+          },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
+      }),
+      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
+        return new HttpResponse("");
+      }),
+      http.get(ROWS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        cursors.push({
+          eventId: url.searchParams.get("sinceEventId"),
+          seqId: url.searchParams.get("sinceSeqId"),
+          projection: url.searchParams.get("sinceProjection"),
+        });
+        if (cursors.length === 1) {
+          return HttpResponse.json(
+            {
+              rows: [],
+              cursor: {
+                lastEventId: omittedPageCursor.id,
+                lastSeqId: omittedPageCursor.seqId,
+                projection: "tool-redacted",
+              },
+              hasMore: true,
+              projection: "tool-redacted",
+            },
+            { headers: CHAT_EVENT_SCHEMA_HEADERS },
+          );
+        }
+        return HttpResponse.json(
+          {
+            rows: [visibleRow],
+            cursor: {
+              lastEventId: visibleRow.id,
+              lastSeqId: visibleRow.seqId,
+              projection: "tool-redacted",
+            },
+            hasMore: false,
+            projection: "tool-redacted",
+          },
+          { headers: CHAT_EVENT_SCHEMA_HEADERS },
+        );
+      }),
+    );
+
+    await chatCommand.parseAsync([
+      "node",
+      "cli",
+      "messages",
+      "--output-dir",
+      outputDirectory,
+    ]);
+
+    expect(cursors).toStrictEqual([
+      {
+        eventId: snapshotCursor.id,
+        seqId: snapshotCursor.seqId.toString(),
+        projection: "tool-redacted",
+      },
+      {
+        eventId: omittedPageCursor.id,
+        seqId: omittedPageCursor.seqId.toString(),
+        projection: "tool-redacted",
+      },
+    ]);
+    const threadDirectory = join(outputDirectory, THREAD_ID);
+    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
+      "event-SEQ_ID_4.json",
+      "snapshot-tool-redacted-to-2.ndjson",
+    ]);
+    await expect(
+      readFile(
+        join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
+        "utf8",
+      ),
+    ).resolves.toBe("");
+  });
+
   it("uses the latest local event and sequence cursor for an incremental sync", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);

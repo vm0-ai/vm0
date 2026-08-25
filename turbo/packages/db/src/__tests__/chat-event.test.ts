@@ -1,9 +1,10 @@
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import { schema } from "../index";
 import { chatAgentRunContext } from "../schema/chat-agent-run-context";
 import { chatEvents } from "../schema/chat-event";
+import { chatEventSnapshots } from "../schema/chat-event-snapshot";
 
 describe("chatAgentRunContext schema", () => {
   it("exports durable source-run provenance without live-entity references", () => {
@@ -81,6 +82,7 @@ describe("chatEvents schema", () => {
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
         "chat_events_goal_marker_payload_check",
+        "chat_events_output_tool_payload_check",
       ]),
     );
     expect(checkNames).not.toEqual(
@@ -91,6 +93,30 @@ describe("chatEvents schema", () => {
         "chat_events_goal_close_content_check",
       ]),
     );
+  });
+
+  it("enforces the strict output.tool payload at the storage boundary", () => {
+    const config = getTableConfig(chatEvents);
+    const payloadCheck = config.checks.find((check) => {
+      return check.name === "chat_events_output_tool_payload_check";
+    });
+    expect(payloadCheck).toBeDefined();
+    if (!payloadCheck) {
+      throw new Error("Missing output.tool payload check");
+    }
+    const payloadSql = new PgDialect().sqlToQuery(payloadCheck.value).sql;
+
+    expect(payloadSql).toContain("toolUseId");
+    expect(payloadSql).toContain("action");
+    expect(payloadSql).toContain("status");
+    expect(payloadSql).toContain("summary");
+    expect(payloadSql).toContain("'run', 'read', 'write', 'edit'");
+    expect(payloadSql).toContain("'pending', 'success', 'error', 'cancelled'");
+    expect(payloadSql).toContain("-\n              'toolUseId'");
+    expect(payloadSql).toContain("= '{}'::jsonb");
+    expect(payloadSql).toContain("char_length");
+    expect(payloadSql).toContain("<= 240");
+    expect(payloadSql.match(/position\(E'/gu)).toHaveLength(2);
   });
 
   it("keeps run references after runs are deleted", () => {
@@ -114,5 +140,36 @@ describe("chatEvents schema", () => {
         onDelete: "cascade",
       },
     ]);
+  });
+});
+
+describe("chatEventSnapshots schema", () => {
+  it("stores independent full and tool-redacted heads with shared objects", () => {
+    const config = getTableConfig(chatEventSnapshots);
+
+    expect(chatEventSnapshots.projection.notNull).toBe(true);
+    expect(chatEventSnapshots.projection.hasDefault).toBe(true);
+    expect(chatEventSnapshots.projection.default).toBe("full");
+    expect(
+      config.indexes.map((index) => {
+        return { name: index.config.name, unique: index.config.unique };
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          name: "chat_event_snapshots_object_key_idx",
+          unique: false,
+        },
+        {
+          name: "chat_event_snapshots_thread_version_projection_unique",
+          unique: true,
+        },
+      ]),
+    );
+    expect(
+      config.checks.map((check) => {
+        return check.name;
+      }),
+    ).toContain("chat_event_snapshots_projection_check");
   });
 });

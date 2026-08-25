@@ -5,6 +5,7 @@ import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
+import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -550,8 +551,11 @@ export async function setChatEventSnapshotHeadVersion(
   context: TestContext,
   threadId: string,
   archiveSchemaVersion: number,
-  objectKey?: string,
-  lastSeqId?: number,
+  ...[objectKey, lastSeqId, projection]: [
+    objectKey?: string,
+    lastSeqId?: number,
+    projection?: ChatEventSnapshotProjection,
+  ]
 ): Promise<void> {
   await postAction(context, {
     action: "set-chat-event-snapshot-head-version",
@@ -559,6 +563,7 @@ export async function setChatEventSnapshotHeadVersion(
     archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
     ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
+    ...(projection === undefined ? {} : { projection }),
   });
 }
 
@@ -577,17 +582,35 @@ export async function advanceChatEventSequenceAsPreviousApi(
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
+  projection?: ChatEventSnapshotProjection,
 ): Promise<
   NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_head"]>
 > {
   const response = await postAction(context, {
     action: "read-chat-event-snapshot-head",
     thread_id: threadId,
+    ...(projection === undefined ? {} : { projection }),
   });
   if (!response.chat_event_snapshot_head) {
     throw new Error("readChatEventSnapshotHead missing snapshot head");
   }
   return response.chat_event_snapshot_head;
+}
+
+export async function readRunChatToolActivityDecision(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["run_chat_tool_activity_decision"]>
+> {
+  const response = await postAction(context, {
+    action: "read-run-chat-tool-activity-decision",
+    run_id: runId,
+  });
+  if (!response.run_chat_tool_activity_decision) {
+    throw new Error("readRunChatToolActivityDecision missing run");
+  }
+  return response.run_chat_tool_activity_decision;
 }
 
 export async function insertHostedSiteAsPreviousApi(

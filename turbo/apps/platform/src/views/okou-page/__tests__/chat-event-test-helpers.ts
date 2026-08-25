@@ -5,7 +5,10 @@ import {
   type ChatRecommendedFollowup,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  chatEventRowSchema,
+  type ChatEventRow,
+} from "@okouai/api-contracts/contracts/chat-event-rows";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -182,6 +185,16 @@ const mockChatEventOverrides = {
       content:
         message.content ??
         serializeChatFollowupsContent(message.followups ?? []),
+    };
+  },
+  "output.tool": (message, id) => {
+    return {
+      content: null,
+      runId: message.runId ?? `mock-run-${id}`,
+      toolUseId: message.toolUseId ?? `mock-tool-use-${id}`,
+      action: message.action ?? "run",
+      status: message.status ?? "success",
+      summary: message.summary ?? "Run mock tool",
     };
   },
   "run.queued": (message, id) => {
@@ -388,6 +401,14 @@ function mockChatEventRowPayload(event: ChatEvent): ChatEventRow["payload"] {
     case "output.thinking": {
       return { thinking: event.thinking };
     }
+    case "output.tool": {
+      return {
+        toolUseId: event.toolUseId,
+        action: event.action,
+        status: event.status,
+        summary: event.summary,
+      };
+    }
     case "run.failed":
     case "run.cancelled": {
       return event.error === undefined ? null : { error: event.error };
@@ -404,7 +425,7 @@ export function mockChatEventRows(
 ): ChatEventRow[] {
   return events.map((event) => {
     const goalContextId = event.runGroupId ?? null;
-    return {
+    return chatEventRowSchema.parse({
       id: event.id,
       chatThreadId: event.threadId,
       runId:
@@ -420,6 +441,6 @@ export function mockChatEventRows(
       runEventId: event.runEventId ?? null,
       seqId: event.seqId,
       createdAt: event.createdAt,
-    };
+    });
   });
 }
