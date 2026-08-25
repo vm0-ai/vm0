@@ -892,7 +892,7 @@ function StrapiCard() {
   );
 }
 
-export function ZeroWorksPage() {
+export function WorksPage() {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const features = useGet(featureSwitch$);

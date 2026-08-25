@@ -1,10 +1,7 @@
 import { command } from "ccstate";
 import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
 import { getModelImageInputSupport } from "@okouai/api-contracts/contracts/model-providers";
-import type {
-  DraftSignals,
-  ZeroChatAttachment,
-} from "../okou-page/chat-draft.ts";
+import type { DraftSignals, ChatAttachment } from "../okou-page/chat-draft.ts";
 import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedAttachments$ } from "./flatten-annotated-attachments.ts";
 
@@ -37,7 +34,7 @@ interface AttachmentFileInfo {
 }
 
 interface ResolvedDraftAttachment {
-  attachment: ZeroChatAttachment;
+  attachment: ChatAttachment;
   info: AttachmentFileInfo;
 }
 
@@ -78,7 +75,7 @@ export function shouldExcludeVisualAttachmentsForModel(
 }
 
 export function collectSuccessfulAttachmentInfos(
-  attachments: readonly ZeroChatAttachment[],
+  attachments: readonly ChatAttachment[],
   results: readonly PromiseSettledResult<AttachmentFileInfo | null>[],
 ): ResolvedDraftAttachment[] {
   return results.flatMap((result, index) => {
@@ -92,7 +89,7 @@ export function collectSuccessfulAttachmentInfos(
 }
 
 function attachmentUploadFailureMessage(
-  attachments: readonly ZeroChatAttachment[],
+  attachments: readonly ChatAttachment[],
   results: readonly PromiseSettledResult<AttachmentFileInfo | null>[],
 ): string | null {
   const failedFilenames = results.flatMap((result, index) => {

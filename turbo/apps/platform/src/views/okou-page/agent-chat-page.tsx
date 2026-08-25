@@ -22,7 +22,7 @@ import {
 } from "../../signals/okou-page/pinned-agents.ts";
 
 import { detach, Reason } from "../../signals/utils.ts";
-import { ZeroChatComposer } from "./chat-composer.tsx";
+import { ChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
@@ -383,7 +383,7 @@ export function AgentChatPage() {
             </div>
           </div>
 
-          <ZeroChatComposer signals={composerSignals} />
+          <ChatComposer signals={composerSignals} />
 
           <StartCards onSelectPrompt={handleInputChange} />
         </div>

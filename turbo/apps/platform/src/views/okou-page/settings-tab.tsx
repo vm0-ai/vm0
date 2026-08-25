@@ -27,7 +27,7 @@ import {
 } from "@okouai/ui/components/ui/alert";
 import { type Tone, TONE_OPTIONS } from "./tone-constants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { ZeroUnsavedBar } from "./unsaved-bar.tsx";
+import { UnsavedBar } from "./unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
 import {
@@ -464,7 +464,7 @@ export function SettingsTab({
       </div>
 
       {isSettingsDirty && (
-        <ZeroUnsavedBar
+        <UnsavedBar
           onDiscard={handleResetSettings}
           onSave={handleSaveSettings}
           saving={saving}

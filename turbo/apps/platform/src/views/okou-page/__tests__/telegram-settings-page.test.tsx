@@ -15,7 +15,7 @@ const context = testContext();
 const ZERO_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const SUPPORT_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 
-function zeroAgent(): TeamComposeItem {
+function agent(): TeamComposeItem {
   return {
     id: ZERO_AGENT_ID,
     displayName: null,
@@ -38,7 +38,7 @@ function supportAgent(): TeamComposeItem {
 }
 
 function setupTelegramPage(): void {
-  context.mocks.data.team([zeroAgent(), supportAgent()]);
+  context.mocks.data.team([agent(), supportAgent()]);
   detachedSetupPage({
     context,
     path: "/settings/telegram",

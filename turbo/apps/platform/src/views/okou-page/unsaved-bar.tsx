@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { Pencil, Loader2 } from "lucide-react";
 import { Button } from "@okouai/ui";
 
-interface ZeroUnsavedBarProps {
+interface UnsavedBarProps {
   onDiscard: () => void;
   onSave: () => void;
   saving: boolean;
@@ -11,14 +11,14 @@ interface ZeroUnsavedBarProps {
   saveLabel?: string;
 }
 
-export function ZeroUnsavedBar({
+export function UnsavedBar({
   onDiscard,
   onSave,
   saving,
   message = "You have unsaved changes",
   discardLabel = "Discard",
   saveLabel = "Save",
-}: ZeroUnsavedBarProps) {
+}: UnsavedBarProps) {
   const bar = (
     <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
       <div

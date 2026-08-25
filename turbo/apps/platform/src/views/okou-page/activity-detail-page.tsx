@@ -321,7 +321,7 @@ export function ActivityHeaderCard({
                 return $.activity.detail.fields.status;
               })}
             </span>
-            <StatusBadge status={status} zeroStyle />
+            <StatusBadge status={status} shellStyle />
           </div>
           <span
             className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -1105,7 +1105,7 @@ function ActivityDetailContent({
   );
 }
 
-export function ZeroActivityDetailPage() {
+export function ActivityDetailPage() {
   const { t } = useTranslation();
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(activityDetail$);
