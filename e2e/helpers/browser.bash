@@ -148,7 +148,7 @@ seed_preview_bypass_cookies() {
   fi
 
   local base_url
-  for base_url in "$VM0_API_BACKEND_URL" "${VM0_AUTH_URL:-}"; do
+  for base_url in "$VM0_API_BACKEND_URL" "${OKOU_AUTH_URL:-}"; do
     if [[ -z "$base_url" ]]; then
       continue
     fi
