@@ -202,6 +202,9 @@ cmd_deploy() {
   ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
     --config $RUNNER_DIR/runner.yaml $LOCAL_FLAG $MOCK_FLAG"
 
+  log "Waiting for Runner readiness..."
+  ssh_cmd "$RUNNER_BIN service wait-running --name $RUNNER_NAME --timeout-secs 120" >/dev/null
+
   log "Done! Runner $RUNNER_NAME deployed to $HOST"
 }
 

@@ -68,6 +68,25 @@ case "$command" in
     ;;
   *" service start "*)
     ;;
+  *" service wait-running "*)
+    case "${READINESS_RESULT:-success}" in
+      success)
+        printf '%s\n' "4"
+        ;;
+      inactive)
+        echo "vm0-runner-local-test.service is not active while waiting for running" >&2
+        exit 1
+        ;;
+      timeout)
+        echo "timed out waiting 120s for vm0-runner-local-test.service to reach running" >&2
+        exit 1
+        ;;
+      *)
+        echo "unexpected readiness result: $READINESS_RESULT" >&2
+        exit 2
+        ;;
+    esac
+    ;;
   *)
     echo "unexpected cf-ssh command: $command" >&2
     exit 2
@@ -139,6 +158,31 @@ gc_command=$(grep " gc --keep-latest 3$" "${TMPDIR}/x86-success/cf-ssh.log")
 [[ "$gc_command" != *"R2_"* ]] || fail "gc should not receive R2 credentials"
 build_command=$(grep " build --profile vm0/default$" "${TMPDIR}/x86-success/cf-ssh.log")
 [[ "$build_command" == *"R2_ACCOUNT_ID="* ]] || fail "build should retain R2 credentials"
+grep -q " service wait-running --name local-test --timeout-secs 120$" "${TMPDIR}/x86-success/cf-ssh.log" || fail "expected readiness command"
+start_line=$(grep -n " service start " "${TMPDIR}/x86-success/cf-ssh.log" | cut -d: -f1)
+readiness_line=$(grep -n " service wait-running " "${TMPDIR}/x86-success/cf-ssh.log" | cut -d: -f1)
+[ "$start_line" -lt "$readiness_line" ] || fail "readiness should follow service start"
+grep -q "\[runner\] Waiting for Runner readiness..." "${TMPDIR}/x86-success.err" || fail "expected readiness progress"
+grep -q "\[runner\] Done! Runner local-test deployed to dev-host" "${TMPDIR}/x86-success.err" || fail "expected completion after readiness"
+if grep -q '^4$' "${TMPDIR}/x86-success.out"; then
+  fail "readiness capacity should not be printed"
+fi
+
+if run_deploy readiness-inactive x86_64 env READINESS_RESULT=inactive >"${TMPDIR}/readiness-inactive.out" 2>"${TMPDIR}/readiness-inactive.err"; then
+  fail "expected inactive Runner readiness to fail"
+fi
+grep -q "is not active while waiting for running" "${TMPDIR}/readiness-inactive.err" || fail "expected inactive Runner diagnostic"
+if grep -q "\[runner\] Done!" "${TMPDIR}/readiness-inactive.err"; then
+  fail "inactive Runner should not report completion"
+fi
+
+if run_deploy readiness-timeout x86_64 env READINESS_RESULT=timeout >"${TMPDIR}/readiness-timeout.out" 2>"${TMPDIR}/readiness-timeout.err"; then
+  fail "expected Runner readiness timeout to fail"
+fi
+grep -q "timed out waiting 120s" "${TMPDIR}/readiness-timeout.err" || fail "expected Runner readiness timeout diagnostic"
+if grep -q "\[runner\] Done!" "${TMPDIR}/readiness-timeout.err"; then
+  fail "timed out Runner should not report completion"
+fi
 
 run_deploy x86-explicit-success x86_64 env RUNNER_TARGET_TRIPLE=x86_64-unknown-linux-musl >"${TMPDIR}/x86-explicit-success.out" 2>"${TMPDIR}/x86-explicit-success.err"
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-explicit-success/cargo.log" || fail "expected explicit x86_64 cargo target"
