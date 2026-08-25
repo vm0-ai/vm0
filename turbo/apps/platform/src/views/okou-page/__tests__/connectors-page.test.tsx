@@ -61,7 +61,7 @@ import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
-import { resetSignal } from "../../../signals/utils.ts";
+import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/okou-page/settings/connectors.ts";
 import { customConnectorCreateForm$ } from "../../../signals/okou-page/settings/custom-connectors.ts";
@@ -1543,9 +1543,31 @@ describe("connectors page", () => {
         ],
       });
     });
+    const accountQueries: {
+      readonly search: string | null;
+      readonly cursor: string | null;
+    }[] = [];
+    const heldSearchRequest: {
+      signal: AbortSignal | null;
+      release: (() => void) | null;
+      completed: boolean;
+    } = { signal: null, release: null, completed: false };
     context.mocks.api(
       connectorAccountsContract.connections,
-      ({ query, respond }) => {
+      async ({ query, request, respond }) => {
+        accountQueries.push({
+          search: query.search ?? null,
+          cursor: query.cursor ?? null,
+        });
+        if (query.search === "Work 1") {
+          const heldSearch = createDeferredPromise<void>(context.signal);
+          heldSearchRequest.signal = request.signal;
+          heldSearchRequest.release = () => {
+            heldSearch.resolve();
+          };
+          await heldSearch.promise;
+          heldSearchRequest.completed = true;
+        }
         const search = query.search;
         const filtered = search
           ? accounts.filter((account) => {
@@ -1622,21 +1644,51 @@ describe("connectors page", () => {
       expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
       expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
-    await fill(
-      within(dialog).getByPlaceholderText("Find accounts"),
-      "Work 100",
-    );
+    const searchInput = within(dialog).getByPlaceholderText("Find accounts");
+    const queryCountBeforeSearch = accountQueries.length;
+    fireEvent.input(searchInput, { target: { value: "W" } });
+    fireEvent.input(searchInput, { target: { value: "Work" } });
+    fireEvent.input(searchInput, { target: { value: "Work 10" } });
+    expect(searchInput).toHaveValue("Work 10");
+    expect(accountQueries).toHaveLength(queryCountBeforeSearch);
     await waitFor(() => {
-      expect(within(dialog).getByText("Work 100")).toBeInTheDocument();
+      expect(accountQueries.slice(queryCountBeforeSearch)).toStrictEqual([
+        { search: "Work 10", cursor: null },
+      ]);
+      expect(within(dialog).getByText("Work 10")).toBeInTheDocument();
       expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
-    await fill(
-      within(dialog).getByPlaceholderText("Find accounts"),
-      "No matching account",
-    );
+
+    fireEvent.input(searchInput, {
+      target: { value: "No matching account" },
+    });
     await waitFor(() => {
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
       expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    });
+
+    fireEvent.input(searchInput, { target: { value: "Work 1" } });
+    await waitFor(() => {
+      expect(heldSearchRequest.signal).not.toBeNull();
+    });
+    fireEvent.input(searchInput, { target: { value: "" } });
+    expect(searchInput).toHaveValue("");
+    expect(heldSearchRequest.signal?.aborted).toBeTruthy();
+    await waitFor(() => {
+      expect(accountQueries.at(-1)).toStrictEqual({
+        search: null,
+        cursor: null,
+      });
+    });
+    const releaseHeldSearch = heldSearchRequest.release;
+    if (!releaseHeldSearch) {
+      throw new Error("Expected held account search request");
+    }
+    releaseHeldSearch();
+    await waitFor(() => {
+      expect(heldSearchRequest.completed).toBeTruthy();
+      expect(within(dialog).getByText("Account #00000000")).toBeInTheDocument();
+      expect(within(dialog).queryByText("Work 1")).toBeNull();
     });
   });
 
