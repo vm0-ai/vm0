@@ -146,10 +146,10 @@ function SlackChoiceIllustration() {
         />
         <path
           fill="white"
-          stroke="#263238"
+          stroke="#758087"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="2.2"
+          strokeWidth="1.2"
           d="M10.4 9.3c4.4-3.4 12.4-3.1 17 .1 5 3.4 6.2 10.5 3.2 15.3-3 4.8-9.8 7.2-15.2 5.5l-6.8 3.9 1.6-6.1c-5.1-4-4.9-14.8.2-18.7Z"
         />
       </svg>
