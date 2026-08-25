@@ -37,27 +37,27 @@ export function AuthV2SignUpCard({
   return (
     <AuthV2Shell
       announcement={description}
+      cardFooter={
+        flowState.status === "incomplete" && flowState.step === "details" ? (
+          <SignUpSwitch copy={copy} signInHref={signInHref} />
+        ) : null
+      }
       description={description}
       focusKey={focusKey}
       footer={
-        <>
-          {flowState.status === "incomplete" && flowState.step === "details" ? (
-            <SignUpSwitch copy={copy} signInHref={signInHref} />
-          ) : null}
-          <div className="flex justify-center">
-            <Button asChild size="sm" variant="link">
-              <Link
-                options={{
-                  hash: location.hash,
-                  searchParams: new URLSearchParams(location.search),
-                }}
-                pathname={ROUTES.signUp}
-              >
-                {copy.legacySignUp}
-              </Link>
-            </Button>
-          </div>
-        </>
+        <div className="flex justify-center">
+          <Button asChild size="sm" variant="link">
+            <Link
+              options={{
+                hash: location.hash,
+                searchParams: new URLSearchParams(location.search),
+              }}
+              pathname={ROUTES.signUp}
+            >
+              {copy.legacySignUp}
+            </Link>
+          </Button>
+        </div>
       }
       headerDetail={
         flowState.status === "incomplete" && flowState.step === "email-code" ? (

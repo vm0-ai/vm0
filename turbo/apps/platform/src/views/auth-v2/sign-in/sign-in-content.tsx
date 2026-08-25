@@ -34,6 +34,9 @@ type IncompleteSignInState = Extract<
   AuthV2SignInState,
   { status: "incomplete" }
 >;
+type SignInFactorKind = NonNullable<
+  IncompleteSignInState["selectedFactor"]
+>["kind"];
 
 interface SignInStepProps {
   readonly copy: AuthV2SignInCopy;
@@ -718,7 +721,6 @@ function CodeStep({
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
   const clientTrust = selectedFactor?.kind === "client-trust-email-code";
-  const showsMethodChooser = state.selectedFactor?.kind === "email-code";
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     detach(submit(pageSignal), Reason.DomCallback, "submit auth v2 sign in");
@@ -740,6 +742,11 @@ function CodeStep({
             handledFields={["code"]}
             signals={signals}
           />
+          {clientTrust ? (
+            <p className="text-center text-sm text-muted-foreground">
+              {selectedFactor.safeIdentifier}
+            </p>
+          ) : null}
           <AuthV2OtpInput
             errorId={AUTH_V2_SIGN_IN_ERROR_ID}
             invalid={error?.field === "code"}
@@ -780,29 +787,56 @@ function CodeStep({
           label={copy.continue}
         />
       </form>
-      {showsMethodChooser ? (
-        <Button
-          className="mx-auto h-auto w-fit p-0 text-sm leading-5"
-          disabled={operationPending}
-          type="button"
-          variant="link"
-          onClick={backToMethods}
-        >
-          {copy.useAnotherMethod}
-        </Button>
-      ) : null}
-      {clientTrust ? (
-        <Button
-          className="mx-auto h-auto w-fit p-0 text-sm leading-5"
-          disabled={operationPending}
-          type="button"
-          variant="link"
-          onClick={backToIdentifier}
-        >
-          {copy.back}
-        </Button>
-      ) : null}
+      <CodeStepBottomAction
+        backToIdentifier={backToIdentifier}
+        backToMethods={backToMethods}
+        copy={copy}
+        disabled={operationPending}
+        factorKind={selectedFactor?.kind ?? null}
+      />
     </div>
+  );
+}
+
+function CodeStepBottomAction({
+  backToIdentifier,
+  backToMethods,
+  copy,
+  disabled,
+  factorKind,
+}: {
+  readonly backToIdentifier: () => void;
+  readonly backToMethods: () => void;
+  readonly copy: AuthV2SignInCopy;
+  readonly disabled: boolean;
+  readonly factorKind: SignInFactorKind | null;
+}) {
+  if (factorKind === "email-code") {
+    return (
+      <Button
+        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        disabled={disabled}
+        type="button"
+        variant="link"
+        onClick={backToMethods}
+      >
+        {copy.useAnotherMethod}
+      </Button>
+    );
+  }
+  if (factorKind !== "client-trust-email-code") {
+    return null;
+  }
+  return (
+    <Button
+      className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+      disabled={disabled}
+      type="button"
+      variant="link"
+      onClick={backToIdentifier}
+    >
+      {copy.back}
+    </Button>
   );
 }
 
@@ -999,9 +1033,7 @@ export function SignInCardContent({
     return <CodeStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "client-trust-code") {
-    return (
-      <CodeStep copy={copy} reset={false} signals={signals} state={state} />
-    );
+    return <CodeStep copy={copy} signals={signals} state={state} />;
   }
   if (state.step === "password-reset-code") {
     return <CodeStep copy={copy} signals={signals} state={state} />;

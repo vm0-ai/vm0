@@ -85,6 +85,18 @@ body {
   margin: 0;
 }
 
+@keyframes auth-v2-otp-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 #root {
   box-sizing: border-box;
   /* Base UI appends top-level portals after #root and nests descendant portals

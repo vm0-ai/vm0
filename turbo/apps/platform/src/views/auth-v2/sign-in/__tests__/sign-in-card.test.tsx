@@ -260,6 +260,9 @@ describe("auth v2 sign-in flow", () => {
 
     const signUp = await waitForRoleElement("link", "Sign up");
     expect(signUp).toHaveAttribute("href", expectedHref);
+    expect(
+      screen.getByRole("region", { name: /^Sign in to / }),
+    ).toContainElement(signUp);
     expect(signUp.parentElement).toHaveTextContent(
       "Don’t have an account? Sign up",
     );
@@ -349,9 +352,6 @@ describe("auth v2 sign-in flow", () => {
 
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
-    fireEvent.click(
-      await waitForRoleElement("button", "Sign in with your password"),
-    );
 
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "correct-password" } });
@@ -388,6 +388,9 @@ describe("auth v2 sign-in flow", () => {
     });
     const codeInput = await screen.findByLabelText("Verification code");
     expect(screen.getByText("p***@example.com")).toBeVisible();
+    await expect(waitForRoleElement("button", "Back")).resolves.toBeVisible();
+    expect(roleElement("button", "Use another method")).toBeUndefined();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
     fireEvent.change(codeInput, { target: { value: "424242" } });
     fireEvent.submit(containingForm(codeInput));
 
@@ -444,18 +447,22 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Use another method" }),
     ).resolves.toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Continue with Apple"),
-    ).toHaveTextContent("Apple");
-    expect(
-      await waitForRoleElement("button", "Continue with Google"),
-    ).toHaveTextContent("Google");
-    expect(
-      await waitForRoleElement("button", "Email code to p***@example.com"),
-    ).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Apple"),
+    ).resolves.toHaveTextContent("Apple");
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toHaveTextContent("Google");
+    await expect(
+      waitForRoleElement("button", "Email code to p***@example.com"),
+    ).resolves.toBeVisible();
     expect(roleElement("button", "Sign in with your password")).toBeUndefined();
     expect(roleElement("button", "Reset your password")).toBeUndefined();
-    expect(await waitForRoleElement("button", "Get help")).toBeVisible();
+    const getHelp = await waitForRoleElement("button", "Get help");
+    expect(getHelp).toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "Use another method" }),
+    ).toContainElement(getHelp);
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));
@@ -1046,27 +1053,58 @@ describe("auth v2 sign-in flow", () => {
     });
 
     const codeInput = await screen.findByLabelText("Verification code");
+    const visualCodeGroup = codeInput.nextElementSibling;
+    if (!(visualCodeGroup instanceof HTMLDivElement)) {
+      throw new Error("Expected the verification code presentation");
+    }
+    const codeSlots = Array.from(
+      visualCodeGroup.querySelectorAll<HTMLElement>("[data-auth-v2-otp-slot]"),
+    );
+    expect(codeSlots).toHaveLength(6);
+    codeInput.focus();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(codeInput);
+      expect(
+        codeSlots[0]?.querySelector('[data-auth-v2-otp-caret="true"]'),
+      ).toBeVisible();
+    });
+    fireEvent.change(codeInput, { target: { value: "1" } });
+    await waitFor(() => {
+      expect(codeSlots[0]).toHaveTextContent("1");
+      expect(
+        codeSlots[1]?.querySelector('[data-auth-v2-otp-caret="true"]'),
+      ).toBeVisible();
+    });
+    fireEvent.change(codeInput, { target: { value: "12" } });
+    await waitFor(() => {
+      expect(codeSlots[0]).toHaveTextContent("1");
+      expect(codeSlots[1]).toHaveTextContent("2");
+      expect(
+        codeSlots[2]?.querySelector('[data-auth-v2-otp-caret="true"]'),
+      ).toBeVisible();
+    });
+    fireEvent.change(codeInput, { target: { value: "" } });
     expect(
       screen.getByRole("heading", { level: 1, name: "Check your email" }),
     ).toBeVisible();
     expect(screen.getAllByRole("heading")).toHaveLength(1);
-    expect(
-      await waitForRoleElement("button", "Use another method"),
-    ).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Use another method"),
+    ).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
     await expect(
       screen.findByRole("heading", { name: "Use another method" }),
     ).resolves.toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Sign in with your password"),
-    ).toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Continue with Apple"),
-    ).toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Continue with Google"),
-    ).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Sign in with your password"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Apple"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toBeVisible();
     expect(
       roleElement("button", "Email code to p***@example.com"),
     ).toBeUndefined();
@@ -1196,9 +1234,10 @@ describe("auth v2 sign-in flow", () => {
       expect(roleElement("button", "Back")).toBeUndefined();
       expect(roleElement("button", "Use another method")).toBeUndefined();
     } else {
-      expect(
-        await waitForRoleElement("button", "Use another method"),
-      ).toBeVisible();
+      await expect(
+        waitForRoleElement("button", "Use another method"),
+      ).resolves.toBeVisible();
+      expect(roleElement("button", "Back")).toBeUndefined();
     }
     fireEvent.change(codeInput, { target: { value: "123456" } });
     fireEvent.submit(containingForm(codeInput));
@@ -1246,14 +1285,12 @@ describe("auth v2 sign-in flow", () => {
   it.each([
     {
       factor: emailCodeFactor(),
-      method: "Email code to p***@example.com",
       name: "email-code",
       showsMethodChooser: true,
       strategy: "email_code" as const,
     },
     {
       factor: passwordResetFactor(),
-      method: "Reset your password",
       name: "password-reset-code",
       showsMethodChooser: false,
       strategy: "reset_password_email_code" as const,
@@ -1279,7 +1316,10 @@ describe("auth v2 sign-in flow", () => {
         fireEvent.click(
           await waitForRoleElement("button", "Use another method"),
         );
-        fireEvent.click(await waitForRoleElement("button", testCase.method));
+        await expect(
+          screen.findByRole("heading", { name: "Use another method" }),
+        ).resolves.toBeVisible();
+        fireEvent.click(await waitForRoleElement("button", "Back"));
         await expect(
           screen.findByLabelText("Verification code"),
         ).resolves.toBeVisible();
@@ -1408,7 +1448,9 @@ describe("auth v2 sign-in flow", () => {
     ).resolves.toBeVisible();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(await waitForRoleElement("button", "Get help")).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Get help"),
+    ).resolves.toBeVisible();
     fireEvent.click(await waitForRoleElement("button", "Reset your password"));
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledWith({
@@ -1561,11 +1603,12 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Sign in to Okou" }),
     ).resolves.toBeVisible();
-    expect(await screen.findByLabelText("Email address")).toBeVisible();
-    expect(await waitForRoleElement("link", "Sign up")).toHaveAttribute(
-      "href",
-      expectedHref,
-    );
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("link", "Sign up"),
+    ).resolves.toHaveAttribute("href", expectedHref);
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
   });
 
@@ -1589,10 +1632,9 @@ describe("auth v2 sign-in flow", () => {
     ).toHaveAccessibleDescription(
       "If you have trouble signing into your account, email us and we will work with you to restore access as soon as possible.",
     );
-    expect(await waitForRoleElement("link", "Email support")).toHaveAttribute(
-      "href",
-      "mailto:support@vm0.ai",
-    );
+    await expect(
+      waitForRoleElement("link", "Email support"),
+    ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
     expect(roleElement("link", "Sign up")).toBeUndefined();
     expect(roleElement("link", "Use current sign-in")).toBeDefined();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
@@ -1601,9 +1643,9 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Use another method" }),
     ).resolves.toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Email code to p***@example.com"),
-    ).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Email code to p***@example.com"),
+    ).resolves.toBeVisible();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));
     fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
@@ -1615,9 +1657,9 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByRole("heading", { name: "Forgot Password?" }),
     ).resolves.toBeVisible();
-    expect(
-      await waitForRoleElement("button", "Reset your password"),
-    ).toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Reset your password"),
+    ).resolves.toBeVisible();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
   });
 

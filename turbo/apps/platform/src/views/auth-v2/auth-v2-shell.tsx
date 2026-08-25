@@ -1,4 +1,10 @@
-import { Card, CardContent, CardDescription, CardHeader } from "@okouai/ui";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+} from "@okouai/ui";
 import { useSet } from "ccstate-react";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -19,6 +25,7 @@ function authV2PageActionSemantics(): CSSProperties &
 
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
+  readonly cardFooter?: ReactNode;
   readonly children: ReactNode;
   readonly description?: ReactNode;
   readonly focusKey: string;
@@ -29,6 +36,7 @@ interface AuthV2ShellProps {
 
 export function AuthV2Shell({
   announcement,
+  cardFooter,
   children,
   description,
   focusKey,
@@ -46,32 +54,39 @@ export function AuthV2Shell({
       <Card
         aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}
-        className="relative flex w-full flex-col gap-8 overflow-visible rounded-[12px] border-border px-10 py-8 shadow-none"
+        className="relative w-full rounded-[12px] border-border p-0 shadow-none"
         data-testid="app-auth-v2"
         role="region"
         style={authV2PageActionSemantics()}
       >
-        <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">
-          <h1
-            className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            id={AUTH_V2_TITLE_ID}
-            key={focusKey}
-            ref={focusHeading}
-            tabIndex={-1}
-          >
-            {title}
-          </h1>
-          {description ? (
-            <CardDescription
-              className="max-w-sm leading-5"
-              id={AUTH_V2_DESCRIPTION_ID}
+        <div className="flex flex-col gap-8 px-10 py-8">
+          <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">
+            <h1
+              className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              id={AUTH_V2_TITLE_ID}
+              key={focusKey}
+              ref={focusHeading}
+              tabIndex={-1}
             >
-              {description}
-            </CardDescription>
-          ) : null}
-          {headerDetail}
-        </CardHeader>
-        <CardContent className="p-0">{children}</CardContent>
+              {title}
+            </h1>
+            {description ? (
+              <CardDescription
+                className="max-w-sm leading-5"
+                id={AUTH_V2_DESCRIPTION_ID}
+              >
+                {description}
+              </CardDescription>
+            ) : null}
+            {headerDetail}
+          </CardHeader>
+          <CardContent className="p-0">{children}</CardContent>
+        </div>
+        {cardFooter ? (
+          <CardFooter className="justify-center border-t border-border px-10 py-4">
+            {cardFooter}
+          </CardFooter>
+        ) : null}
       </Card>
       {footer ? <div className="space-y-1">{footer}</div> : null}
       <p

@@ -192,6 +192,31 @@ type AuthV2SignInUnknownState = Extract<
   AuthV2SignInState,
   { status: "unknown" }
 >;
+type AuthV2IncompleteSignInState = Extract<
+  AuthV2SignInState,
+  { status: "incomplete" }
+>;
+
+interface SignInSubmitValues {
+  readonly code: string;
+  readonly confirmPassword: string;
+  readonly identifier: string;
+  readonly newPassword: string;
+  readonly password: string;
+  readonly signOutOfOtherSessions: boolean;
+}
+
+type SignInSubmitPreparation =
+  | {
+      readonly error: AuthV2SignInError;
+      readonly fallbackField: "new-password";
+      readonly request: null;
+    }
+  | {
+      readonly error: null;
+      readonly fallbackField: AuthV2SignInErrorField;
+      readonly request: Promise<SignInResource>;
+    };
 
 interface SignInFlowAtoms {
   readonly accounts$: State<readonly AuthV2ExistingAccount[]>;
@@ -558,6 +583,94 @@ function deriveClientTrustState(
   );
 }
 
+function unsupportedFactorState(
+  snapshot: SignInResourceSnapshot,
+): AuthV2SignInUnknownState {
+  return {
+    clerkStatus: snapshot.clerkStatus,
+    reason: "unsupported-factor",
+    status: "unknown",
+  };
+}
+
+function deriveFirstFactorState(
+  snapshot: SignInResourceSnapshot,
+  options: DeriveSignInFlowOptions,
+): AuthV2SignInState {
+  if (
+    snapshot.factors.length === 0 ||
+    snapshot.unknownFactorStrategies.length > 0
+  ) {
+    return unsupportedFactorState(snapshot);
+  }
+  const currentFactor = selectedFactorForSnapshot(
+    snapshot,
+    options.selectedFactor,
+  );
+  if (options.helpOrigin) {
+    return incompleteState(snapshot, options.accounts, "help", currentFactor);
+  }
+  if (
+    options.passwordRecovery &&
+    snapshot.factors.some((factor) => {
+      return factor.kind === "password-reset";
+    })
+  ) {
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "password-recovery",
+      currentFactor,
+    );
+  }
+  if (options.methodChooser) {
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "choose-factor",
+      currentFactor,
+    );
+  }
+  return incompleteState(
+    snapshot,
+    options.accounts,
+    stepForSelectedFactor(currentFactor),
+    currentFactor,
+  );
+}
+
+function deriveNewPasswordState(
+  snapshot: SignInResourceSnapshot,
+  options: DeriveSignInFlowOptions,
+): AuthV2SignInState {
+  const currentFactor = selectedFactorForSnapshot(
+    snapshot,
+    options.selectedFactor,
+  );
+  if (options.helpOrigin) {
+    return incompleteState(snapshot, options.accounts, "help", currentFactor);
+  }
+  if (
+    options.passwordRecovery &&
+    snapshot.factors.some((factor) => {
+      return factor.kind === "password-reset";
+    })
+  ) {
+    return incompleteState(
+      snapshot,
+      options.accounts,
+      "password-recovery",
+      currentFactor,
+    );
+  }
+  return incompleteState(
+    snapshot,
+    options.accounts,
+    "new-password",
+    options.selectedFactor,
+  );
+}
+
 function deriveSignInFlowState(
   snapshot: SignInResourceSnapshot | null,
   options: DeriveSignInFlowOptions,
@@ -587,88 +700,13 @@ function deriveSignInFlowState(
     );
   }
   if (snapshot.clerkStatus === "needs_first_factor") {
-    if (
-      snapshot.factors.length === 0 ||
-      snapshot.unknownFactorStrategies.length > 0
-    ) {
-      return {
-        clerkStatus: snapshot.clerkStatus,
-        reason: "unsupported-factor",
-        status: "unknown",
-      };
-    }
-    if (options.helpOrigin) {
-      return incompleteState(
-        snapshot,
-        options.accounts,
-        "help",
-        selectedFactorForSnapshot(snapshot, options.selectedFactor),
-      );
-    }
-    if (
-      options.passwordRecovery &&
-      snapshot.factors.some((factor) => {
-        return factor.kind === "password-reset";
-      })
-    ) {
-      return incompleteState(
-        snapshot,
-        options.accounts,
-        "password-recovery",
-        selectedFactorForSnapshot(snapshot, options.selectedFactor),
-      );
-    }
-    if (options.methodChooser) {
-      return incompleteState(
-        snapshot,
-        options.accounts,
-        "choose-factor",
-        selectedFactorForSnapshot(snapshot, options.selectedFactor),
-      );
-    }
-    const currentFactor = selectedFactorForSnapshot(
-      snapshot,
-      options.selectedFactor,
-    );
-    return incompleteState(
-      snapshot,
-      options.accounts,
-      stepForSelectedFactor(currentFactor),
-      currentFactor,
-    );
+    return deriveFirstFactorState(snapshot, options);
   }
   if (snapshot.clerkStatus === "needs_client_trust") {
     return deriveClientTrustState(snapshot, options);
   }
-  if (snapshot.clerkStatus === "needs_new_password" && options.helpOrigin) {
-    return incompleteState(
-      snapshot,
-      options.accounts,
-      "help",
-      selectedFactorForSnapshot(snapshot, options.selectedFactor),
-    );
-  }
-  if (
-    snapshot.clerkStatus === "needs_new_password" &&
-    options.passwordRecovery &&
-    snapshot.factors.some((factor) => {
-      return factor.kind === "password-reset";
-    })
-  ) {
-    return incompleteState(
-      snapshot,
-      options.accounts,
-      "password-recovery",
-      selectedFactorForSnapshot(snapshot, options.selectedFactor),
-    );
-  }
   if (snapshot.clerkStatus === "needs_new_password") {
-    return incompleteState(
-      snapshot,
-      options.accounts,
-      "new-password",
-      options.selectedFactor,
-    );
+    return deriveNewPasswordState(snapshot, options);
   }
   if (snapshot.clerkStatus === "complete") {
     return snapshot.createdSessionId
@@ -992,6 +1030,100 @@ function createCoalescedOperation$<Key extends CoalescedOperation>(
   });
 }
 
+function prepareSignInSubmission(
+  flowState: AuthV2IncompleteSignInState,
+  resource: SignInResource,
+  values: SignInSubmitValues,
+): SignInSubmitPreparation | null {
+  switch (flowState.step) {
+    case "identifier": {
+      if (!values.identifier) {
+        return null;
+      }
+      return {
+        error: null,
+        fallbackField: "identifier",
+        request: resource.create({ identifier: values.identifier }),
+      };
+    }
+    case "password": {
+      if (!values.password) {
+        return null;
+      }
+      return {
+        error: null,
+        fallbackField: "password",
+        request: resource.attemptFirstFactor({
+          password: values.password,
+          strategy: "password",
+        }),
+      };
+    }
+    case "email-code": {
+      if (!values.code) {
+        return null;
+      }
+      return {
+        error: null,
+        fallbackField: "code",
+        request: resource.attemptFirstFactor({
+          code: values.code,
+          strategy: "email_code",
+        }),
+      };
+    }
+    case "client-trust-code": {
+      if (!values.code) {
+        return null;
+      }
+      return {
+        error: null,
+        fallbackField: "code",
+        request: resource.attemptSecondFactor({
+          code: values.code,
+          strategy: "email_code",
+        }),
+      };
+    }
+    case "password-reset-code": {
+      if (!values.code) {
+        return null;
+      }
+      return {
+        error: null,
+        fallbackField: "code",
+        request: resource.attemptFirstFactor({
+          code: values.code,
+          strategy: "reset_password_email_code",
+        }),
+      };
+    }
+    case "new-password": {
+      if (!values.newPassword) {
+        return null;
+      }
+      if (values.newPassword !== values.confirmPassword) {
+        return {
+          error: { code: "password-mismatch", field: "new-password" },
+          fallbackField: "new-password",
+          request: null,
+        };
+      }
+      return {
+        error: null,
+        fallbackField: "new-password",
+        request: resource.resetPassword({
+          password: values.newPassword,
+          signOutOfOtherSessions: values.signOutOfOtherSessions,
+        }),
+      };
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function createSubmitOperation$(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
@@ -1006,71 +1138,31 @@ function createSubmitOperation$(
     const resource = await get(clerkSignInResource$);
     signal.throwIfAborted();
     set(atoms.error$, null);
-    let fallbackField: AuthV2SignInErrorField = "general";
-    let request: Promise<SignInResource> | null = null;
-
-    if (flowState.step === "identifier") {
-      const identifier = get(atoms.identifier$).trim();
-      if (!identifier) {
-        return;
-      }
-      fallbackField = "identifier";
-      set(runtime.preparedFactorId$, null);
-      request = resource.create({ identifier });
-    } else if (flowState.step === "password") {
-      const password = get(atoms.password$);
-      if (!password) {
-        return;
-      }
-      fallbackField = "password";
-      request = resource.attemptFirstFactor({
-        password,
-        strategy: "password",
-      });
-    } else if (
-      flowState.step === "email-code" ||
-      flowState.step === "client-trust-code" ||
-      flowState.step === "password-reset-code"
-    ) {
-      const code = get(atoms.code$).trim();
-      if (!code) {
-        return;
-      }
-      fallbackField = "code";
-      request =
-        flowState.step === "client-trust-code"
-          ? resource.attemptSecondFactor({ code, strategy: "email_code" })
-          : resource.attemptFirstFactor({
-              code,
-              strategy:
-                flowState.step === "email-code"
-                  ? "email_code"
-                  : "reset_password_email_code",
-            });
-    } else if (flowState.step === "new-password") {
-      const password = get(atoms.newPassword$);
-      if (!password) {
-        return;
-      }
-      fallbackField = "new-password";
-      if (password !== get(atoms.confirmPassword$)) {
-        set(atoms.error$, {
-          code: "password-mismatch",
-          field: "new-password",
-        });
-        return;
-      }
-      request = resource.resetPassword({
-        password,
-        signOutOfOtherSessions: get(atoms.signOutOfOtherSessions$),
-      });
-    } else {
+    const preparation = prepareSignInSubmission(flowState, resource, {
+      code: get(atoms.code$).trim(),
+      confirmPassword: get(atoms.confirmPassword$),
+      identifier: get(atoms.identifier$).trim(),
+      newPassword: get(atoms.newPassword$),
+      password: get(atoms.password$),
+      signOutOfOtherSessions: get(atoms.signOutOfOtherSessions$),
+    });
+    if (!preparation) {
       return;
     }
+    if (preparation.error) {
+      set(atoms.error$, preparation.error);
+      return;
+    }
+    if (flowState.step === "identifier") {
+      set(runtime.preparedFactorId$, null);
+    }
 
-    const result = await settle(request, signal);
+    const result = await settle(preparation.request, signal);
     if (!result.ok) {
-      set(atoms.error$, normalizeClerkError(result.error, fallbackField));
+      set(
+        atoms.error$,
+        normalizeClerkError(result.error, preparation.fallbackField),
+      );
       return;
     }
     if (flowState.step === "identifier") {
@@ -1439,7 +1531,7 @@ function createResendCodeOperation$(
   });
 }
 
-function createFormCommands(
+function createEntryNavigationCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
 ) {
@@ -1515,6 +1607,16 @@ function createFormCommands(
     set(atoms.identifierLocallyModified$, true);
     set(atoms.identifier$, "");
   });
+  return {
+    backFromMethods$,
+    backToIdentifier$,
+    backToMethods$,
+    restart$,
+    useAnotherAccount$,
+  };
+}
+
+function createValueCommands(atoms: SignInFlowAtoms) {
   const setIdentifier$ = command(({ get, set }, value: string) => {
     if (get(atoms.identifier$) === value) {
       return;
@@ -1557,6 +1659,20 @@ function createFormCommands(
     }
     set(atoms.signOutOfOtherSessions$, value);
   });
+  return {
+    setCode$,
+    setConfirmPassword$,
+    setIdentifier$,
+    setNewPassword$,
+    setPassword$,
+    setSignOutOfOtherSessions$,
+  };
+}
+
+function createRecoveryPresentationCommands(
+  atoms: SignInFlowAtoms,
+  backToIdentifier$: Command<void, []>,
+) {
   const showPasswordRecovery$ = command(({ get, set }) => {
     const snapshot = get(atoms.snapshot$);
     if (
@@ -1608,21 +1724,22 @@ function createFormCommands(
   });
   return {
     backFromHelp$,
-    backFromMethods$,
     backFromNewPassword$,
     backFromPasswordRecovery$,
-    backToIdentifier$,
-    backToMethods$,
-    restart$,
-    setCode$,
-    setConfirmPassword$,
-    setIdentifier$,
-    setNewPassword$,
-    setPassword$,
-    setSignOutOfOtherSessions$,
     showHelp$,
     showPasswordRecovery$,
-    useAnotherAccount$,
+  };
+}
+
+function createFormCommands(
+  atoms: SignInFlowAtoms,
+  runtime: SignInFlowRuntime,
+) {
+  const navigation = createEntryNavigationCommands(atoms, runtime);
+  return {
+    ...navigation,
+    ...createRecoveryPresentationCommands(atoms, navigation.backToIdentifier$),
+    ...createValueCommands(atoms),
   };
 }
 

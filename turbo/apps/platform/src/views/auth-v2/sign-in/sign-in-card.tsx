@@ -51,30 +51,29 @@ export function AuthV2SignInCard({
   return (
     <AuthV2Shell
       announcement={description ?? title}
+      cardFooter={
+        showsMethodsHelp ? (
+          <SignInMethodsHelpFooter copy={copy} signals={signals} />
+        ) : showsAccountSwitch ? (
+          <SignInSwitch copy={copy} signUpHref={signUpHref} />
+        ) : null
+      }
       description={description}
       focusKey={focusKey}
       footer={
-        <>
-          {showsMethodsHelp ? (
-            <SignInMethodsHelpFooter copy={copy} signals={signals} />
-          ) : null}
-          {showsAccountSwitch ? (
-            <SignInSwitch copy={copy} signUpHref={signUpHref} />
-          ) : null}
-          <div className="flex justify-center">
-            <Button asChild size="sm" variant="link">
-              <Link
-                pathname={ROUTES.signIn}
-                options={{
-                  hash: location.hash,
-                  searchParams: new URLSearchParams(location.search),
-                }}
-              >
-                {copy.legacySignIn}
-              </Link>
-            </Button>
-          </div>
-        </>
+        <div className="flex justify-center">
+          <Button asChild size="sm" variant="link">
+            <Link
+              pathname={ROUTES.signIn}
+              options={{
+                hash: location.hash,
+                searchParams: new URLSearchParams(location.search),
+              }}
+            >
+              {copy.legacySignIn}
+            </Link>
+          </Button>
+        </div>
       }
       headerDetail={
         showsIdentifierPreview ? (

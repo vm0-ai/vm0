@@ -191,7 +191,10 @@ describe("auth v2 sign-up flow", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Create your account" }),
     ).toBeVisible();
-    expect(roleElement("link", "Sign in")).toBeDefined();
+    const signIn = await waitForRoleElement("link", "Sign in");
+    expect(
+      screen.getByRole("region", { name: "Create your account" }),
+    ).toContainElement(signIn);
     expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.getByRole("checkbox")).toBeVisible();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(

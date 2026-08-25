@@ -48,6 +48,25 @@ const TEST_PASSWORD$ = computed(() => {
   return "password";
 });
 
+const SIGN_IN_NO_OP$ = command((): void => {});
+const SIGN_IN_NO_OP_REF$ = onRef(
+  command((_context, _element: HTMLSpanElement, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+  }),
+);
+const SIGN_IN_ASYNC_NO_OP$ = command(
+  (_context, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
+const SIGN_IN_STRING_ASYNC_NO_OP$ = command(
+  (_context, _value: string, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
+
 function createSignInHarness(options?: {
   readonly initialize?: () => Promise<void>;
   readonly submit?: () => Promise<void>;
@@ -67,6 +86,7 @@ function createSignInHarness(options?: {
   const identifier$ = state("person@example.com");
   const newPassword$ = state("");
   const password$ = state("");
+  const signOutOfOtherSessions$ = state(true);
   const sourceSubmit = vi.fn(
     options?.submit ??
       (() => {
@@ -79,28 +99,10 @@ function createSignInHarness(options?: {
         return Promise.resolve();
       }),
   );
-  const noOp$ = command((): void => {});
-  const noOpRef$ = onRef(
-    command(
-      (_context, _element: HTMLSpanElement, signal: AbortSignal): void => {
-        signal.throwIfAborted();
-      },
-    ),
-  );
-  const asyncNoOp$ = command((_context, signal: AbortSignal): Promise<void> => {
-    signal.throwIfAborted();
-    return Promise.resolve();
-  });
   const initialize$ = command(
     async (_context, signal: AbortSignal): Promise<void> => {
       await sourceInitialize();
       signal.throwIfAborted();
-    },
-  );
-  const stringAsyncNoOp$ = command(
-    (_context, _value: string, signal: AbortSignal): Promise<void> => {
-      signal.throwIfAborted();
-      return Promise.resolve();
     },
   );
   const setCode$ = command(({ set }, value: string): void => {
@@ -118,6 +120,11 @@ function createSignInHarness(options?: {
   const setPassword$ = command(({ set }, value: string): void => {
     set(password$, value);
   });
+  const setSignOutOfOtherSessions$ = command(
+    ({ set }, value: boolean): void => {
+      set(signOutOfOtherSessions$, value);
+    },
+  );
   const submit$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       await sourceSubmit();
@@ -133,8 +140,12 @@ function createSignInHarness(options?: {
     flowState$,
     identifier$,
     signals: {
-      backToIdentifier$: noOp$,
-      backToMethods$: noOp$,
+      backFromHelp$: SIGN_IN_NO_OP$,
+      backFromMethods$: SIGN_IN_NO_OP$,
+      backFromNewPassword$: SIGN_IN_NO_OP$,
+      backFromPasswordRecovery$: SIGN_IN_NO_OP$,
+      backToIdentifier$: SIGN_IN_NO_OP$,
+      backToMethods$: SIGN_IN_NO_OP$,
       code$: computed((get) => {
         return get(code$);
       }),
@@ -154,22 +165,28 @@ function createSignInHarness(options?: {
       password$: computed((get) => {
         return get(password$);
       }),
-      resendCode$: asyncNoOp$,
-      resendCooldownLifecycleRef$: noOpRef$,
+      resendCode$: SIGN_IN_ASYNC_NO_OP$,
+      resendCooldownLifecycleRef$: SIGN_IN_NO_OP_REF$,
       resendState$: READY_SIGN_IN_RESEND_STATE$,
-      restart$: noOp$,
-      selectFactor$: stringAsyncNoOp$,
-      selectSession$: stringAsyncNoOp$,
+      restart$: SIGN_IN_NO_OP$,
+      selectFactor$: SIGN_IN_STRING_ASYNC_NO_OP$,
+      selectSession$: SIGN_IN_STRING_ASYNC_NO_OP$,
       setCode$,
       setConfirmPassword$,
       setIdentifier$,
       setNewPassword$,
       setPassword$,
+      setSignOutOfOtherSessions$,
+      showHelp$: SIGN_IN_NO_OP$,
+      showPasswordRecovery$: SIGN_IN_NO_OP$,
+      signOutOfOtherSessions$: computed((get) => {
+        return get(signOutOfOtherSessions$);
+      }),
       state$: computed((get) => {
         return get(flowState$);
       }),
       submit$,
-      useAnotherAccount$: noOp$,
+      useAnotherAccount$: SIGN_IN_NO_OP$,
     } satisfies AuthV2SignInSignals,
     sourceInitialize,
     sourceSubmit,
