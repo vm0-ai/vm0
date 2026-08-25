@@ -8,13 +8,9 @@ import type { ConnectorServerFirewallPermissionIndex } from "./connector-server-
 export function defaultFirewallPolicyForPermissionIndex(
   index: ConnectorServerFirewallPermissionIndex,
 ): FirewallPolicy {
-  const policies: FirewallPolicy["policies"] = {};
-  for (const name of index.permissionNames) {
-    policies[name] = index.policyResolver.permission(name);
-  }
   return {
-    policies,
-    unknownPolicy: index.policyResolver.unknown(),
+    policies: { ...index.defaultPermissionPolicies },
+    unknownPolicy: index.defaultPolicy.unknownPolicy,
   };
 }
 

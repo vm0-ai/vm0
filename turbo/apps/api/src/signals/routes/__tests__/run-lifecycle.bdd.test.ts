@@ -13565,7 +13565,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
-  it("uses connector-specific unknown endpoint defaults with user grant overrides", async () => {
+  it("preserves defaults and overrides across a broad Zero connector scope", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -13580,7 +13580,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       authMethod: "oauth",
       accessToken: "cloudflare-bdd-token",
     });
-    await api.enableAgentConnectors(actor, agentId, ["cloudflare"]);
+    // Nintendo Store owns a catalog skill, so enabling it without its account
+    // intentionally fails run preparation before firewall policy assembly.
+    const broadConnectorScope = API_TEST_CONNECTOR_FIREWALL_CONFIGS.filter(
+      (firewall) => {
+        return firewall.name !== "nintendo-store";
+      },
+    ).map((firewall) => {
+      return firewall.name;
+    });
+    expect(broadConnectorScope.length).toBeGreaterThanOrEqual(17);
+    await api.enableAgentConnectors(actor, agentId, broadConnectorScope);
 
     async function claimCloudflarePolicy(prompt: string): Promise<{
       readonly allow: readonly string[];
@@ -13610,13 +13620,20 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorSlug: "cloudflare",
+      permission: "dns-firewall.write",
+      action: "allow",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorSlug: "cloudflare",
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "allow",
     });
 
     const overridden = await claimCloudflarePolicy("allow unknown endpoints");
     expect(overridden.allow).toContain("dns-firewall.read");
-    expect(overridden.deny).toContain("dns-firewall.write");
+    expect(overridden.allow).toContain("dns-firewall.write");
+    expect(overridden.deny).not.toContain("dns-firewall.write");
     expect(overridden.unknownPolicy).toBe("allow");
   });
 
