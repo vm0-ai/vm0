@@ -498,7 +498,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: runner-firewall-contract
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: true
 
       - name: Check runner firewall base URL contract
         working-directory: crates
