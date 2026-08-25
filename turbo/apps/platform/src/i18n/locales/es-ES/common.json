@@ -1102,6 +1102,7 @@
         "chooseAccountTitle": "Elija una cuenta",
         "chooseMethodSubtitle": "¿Tienes problemas? Puedes usar cualquiera de estos métodos para iniciar sesión.",
         "chooseMethodTitle": "Usa otro método",
+        "clientTrustNotice": "Estás iniciando sesión desde un dispositivo nuevo. Estamos pidiendo verificación para mantener tu cuenta segura.",
         "codeExpired": "Este código de verificación ha caducado. Solicita uno nuevo.",
         "codeLabel": "Código de verificación",
         "completeSubtitle": "Serás redirigido pronto",

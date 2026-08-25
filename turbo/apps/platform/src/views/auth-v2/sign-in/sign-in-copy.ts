@@ -22,6 +22,7 @@ export interface AuthV2SignInCopy {
   readonly chooseAccountTitle: string;
   readonly chooseMethodSubtitle: string;
   readonly chooseMethodTitle: string;
+  readonly clientTrustNotice: string;
   readonly codeExpired: string;
   readonly codeLabel: string;
   readonly completeSubtitle: string;
@@ -186,6 +187,9 @@ function signInCodeCopy(
   return {
     back: t(($) => {
       return $.auth.v2.signIn.back;
+    }),
+    clientTrustNotice: t(($) => {
+      return $.auth.v2.signIn.clientTrustNotice;
     }),
     codeExpired: t(($) => {
       return $.auth.v2.signIn.codeExpired;
@@ -473,7 +477,10 @@ export function signInCardTitle(
   if (flowState.step === "help") {
     return copy.helpTitle;
   }
-  if (flowState.step === "email-code") {
+  if (
+    flowState.step === "email-code" ||
+    flowState.step === "client-trust-code"
+  ) {
     return copy.emailCodeTitle;
   }
   if (flowState.step === "password-reset-code") {

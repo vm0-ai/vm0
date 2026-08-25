@@ -1082,6 +1082,7 @@
         "chooseAccountTitle": "アカウントを選択",
         "chooseMethodSubtitle": "問題が発生していますか？これらの方法を使用してサインインすることができます。",
         "chooseMethodTitle": "別の方法を使用",
+        "clientTrustNotice": "新しいデバイスからサインインしています。アカウントのセキュリティを保つため、確認をお願いしています。",
         "codeExpired": "この確認コードは期限切れです。新しいコードをリクエストしてください。",
         "codeLabel": "検証コード",
         "completeSubtitle": "まもなくリダイレクトされます",
