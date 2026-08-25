@@ -253,6 +253,56 @@ function mockConnectors(
   return responses;
 }
 
+function mockGitHubConnectorAccounts(
+  accountCount: number,
+): ConnectorAccountConnection[] {
+  mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+  const accounts = Array.from({ length: accountCount }, (_, index) => {
+    const isDefault = index === 0;
+    return {
+      id: isDefault
+        ? "00000000-0000-4000-a000-000000000001"
+        : crypto.randomUUID(),
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: "oauth",
+      displayName: isDefault ? null : `Work ${index}`,
+      isDefault,
+      externalId: null,
+      externalUsername: isDefault ? null : `octocat-${index}`,
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: isDefault
+        ? ("reconnect-required" as const)
+        : ("connected" as const),
+      reconnectReason: isDefault
+        ? ("authorization_expired_or_revoked" as const)
+        : null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+  }).reverse();
+  const defaultAccount = accounts.find((account) => {
+    return account.isDefault;
+  });
+  if (!defaultAccount) {
+    throw new Error("Expected a default account fixture");
+  }
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: { kind: "builtin", connectorSlug: "github" },
+          accountCount: accounts.length,
+          attentionCount: 1,
+          defaultConnection: defaultAccount,
+        },
+      ],
+    });
+  });
+  return accounts;
+}
+
 async function setupAwsExternalCodeConnection(): Promise<{
   dialog: HTMLElement;
   complete: HTMLElement;
@@ -1493,98 +1543,11 @@ describe("connectors page", () => {
     expect(submittedAuthorizeAgent).toBeUndefined();
   });
 
-  it("paginates and searches a feature-on account manager", async () => {
-    const [connector] = mockConnectors([
-      { connectorSlug: "github", externalUsername: "octocat" },
-    ]);
-    if (!connector) {
-      throw new Error("Expected GitHub fixture connector");
-    }
-    const accounts = Array.from({ length: 101 }, (_, index) => {
-      const isDefault = index === 0;
-      return {
-        id: isDefault
-          ? "00000000-0000-4000-a000-000000000001"
-          : crypto.randomUUID(),
-        target: { kind: "builtin" as const, connectorSlug: "github" },
-        authMethod: "oauth",
-        displayName: isDefault ? null : `Work ${index}`,
-        isDefault,
-        externalId: null,
-        externalUsername: isDefault ? null : `octocat-${index}`,
-        externalEmail: null,
-        oauthScopes: [],
-        connectionStatus: isDefault
-          ? ("reconnect-required" as const)
-          : ("connected" as const),
-        reconnectReason: isDefault
-          ? ("authorization_expired_or_revoked" as const)
-          : null,
-        tokenExpiresAt: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      } satisfies ConnectorAccountConnection;
-    }).reverse();
-    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
-      const defaultAccount = accounts.find((account) => {
-        return account.isDefault;
-      });
-      if (!defaultAccount) {
-        throw new Error("Expected a default account fixture");
-      }
-      return respond(200, {
-        summaries: [
-          {
-            target: { kind: "builtin", connectorSlug: "github" },
-            accountCount: accounts.length,
-            attentionCount: 1,
-            defaultConnection: defaultAccount,
-          },
-        ],
-      });
+  it("opens feature-on account and access managers independently", async () => {
+    const accounts = mockGitHubConnectorAccounts(7);
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: accounts, nextCursor: null });
     });
-    const accountQueries: {
-      readonly search: string | null;
-      readonly cursor: string | null;
-    }[] = [];
-    const heldSearchRequest: {
-      signal: AbortSignal | null;
-      release: (() => void) | null;
-      completed: boolean;
-    } = { signal: null, release: null, completed: false };
-    context.mocks.api(
-      connectorAccountsContract.connections,
-      async ({ query, request, respond }) => {
-        accountQueries.push({
-          search: query.search ?? null,
-          cursor: query.cursor ?? null,
-        });
-        if (query.search === "Work 1") {
-          const heldSearch = createDeferredPromise<void>(context.signal);
-          heldSearchRequest.signal = request.signal;
-          heldSearchRequest.release = () => {
-            heldSearch.resolve();
-          };
-          await heldSearch.promise;
-          heldSearchRequest.completed = true;
-        }
-        const search = query.search;
-        const filtered = search
-          ? accounts.filter((account) => {
-              return account.displayName
-                ?.toLowerCase()
-                .includes(search.toLowerCase());
-            })
-          : accounts;
-        const start = query.cursor ? Number(query.cursor) : 0;
-        const page = filtered.slice(start, start + query.limit);
-        const next = start + page.length;
-        return respond(200, {
-          connections: page,
-          nextCursor: next < filtered.length ? String(next) : null,
-        });
-      },
-    );
     detachedSetupPage({
       context,
       path: "/connectors",
@@ -1592,8 +1555,7 @@ describe("connectors page", () => {
     });
 
     await waitFor(() => {
-      const candidate = connectorCardByLabel("GitHub");
-      expect(candidate).toHaveTextContent("101 accounts");
+      expect(connectorCardByLabel("GitHub")).toHaveTextContent("7 accounts");
     });
     const manageAccounts = await waitForButtonByAriaLabel(
       "Manage GitHub accounts",
@@ -1617,9 +1579,7 @@ describe("connectors page", () => {
     });
     click(manageAccounts);
 
-    const dialog = await screen.findByRole("dialog", {
-      name: "GitHub",
-    });
+    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
     const defaultGroup = within(dialog).getByRole("group", {
       name: "Default",
     });
@@ -1633,6 +1593,30 @@ describe("connectors page", () => {
       within(defaultGroup).getByLabelText("Account actions"),
     ).toBeInTheDocument();
     expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+  });
+
+  it("paginates a feature-on account manager", async () => {
+    const accounts = mockGitHubConnectorAccounts(101);
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        const start = query.cursor ? Number(query.cursor) : 0;
+        const page = accounts.slice(start, start + query.limit);
+        const next = start + page.length;
+        return respond(200, {
+          connections: page,
+          nextCursor: next < accounts.length ? String(next) : null,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
     expect(within(dialog).queryByText("Work 50")).toBeNull();
     click(buttonByText("Load more", dialog));
     await waitFor(() => {
@@ -1644,30 +1628,122 @@ describe("connectors page", () => {
       expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
       expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
+  });
+
+  it("debounces feature-on account manager searches", async () => {
+    const accounts = mockGitHubConnectorAccounts(7);
+    const accountQueries: {
+      readonly search: string | null;
+      readonly cursor: string | null;
+    }[] = [];
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        accountQueries.push({
+          search: query.search ?? null,
+          cursor: query.cursor ?? null,
+        });
+        const search = query.search;
+        const filtered = search
+          ? accounts.filter((account) => {
+              return account.displayName
+                ?.toLowerCase()
+                .includes(search.toLowerCase());
+            })
+          : accounts;
+        return respond(200, { connections: filtered, nextCursor: null });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
     const searchInput = within(dialog).getByPlaceholderText("Find accounts");
     const queryCountBeforeSearch = accountQueries.length;
     fireEvent.input(searchInput, { target: { value: "W" } });
     fireEvent.input(searchInput, { target: { value: "Work" } });
-    fireEvent.input(searchInput, { target: { value: "Work 10" } });
-    expect(searchInput).toHaveValue("Work 10");
+    fireEvent.input(searchInput, { target: { value: "Work 2" } });
+    expect(searchInput).toHaveValue("Work 2");
     expect(accountQueries).toHaveLength(queryCountBeforeSearch);
     await waitFor(() => {
       expect(accountQueries.slice(queryCountBeforeSearch)).toStrictEqual([
-        { search: "Work 10", cursor: null },
+        { search: "Work 2", cursor: null },
       ]);
-      expect(within(dialog).getByText("Work 10")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+      expect(within(dialog).getByText("Work 2")).toBeInTheDocument();
     });
 
     fireEvent.input(searchInput, {
       target: { value: "No matching account" },
     });
     await waitFor(() => {
+      expect(accountQueries.at(-1)).toStrictEqual({
+        search: "No matching account",
+        cursor: null,
+      });
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    });
+  });
+
+  it("cancels stale feature-on account manager searches", async () => {
+    const accounts = mockGitHubConnectorAccounts(7);
+    const defaultAccount = accounts.find((account) => {
+      return account.isDefault;
+    });
+    if (!defaultAccount) {
+      throw new Error("Expected a default account fixture");
+    }
+    const staleAccount: ConnectorAccountConnection = {
+      ...defaultAccount,
+      id: crypto.randomUUID(),
+      displayName: "Stale result",
+      isDefault: false,
+    };
+    const accountQueries: {
+      readonly search: string | null;
+      readonly cursor: string | null;
+    }[] = [];
+    const heldSearchRequest: {
+      signal: AbortSignal | null;
+      release: (() => void) | null;
+      completed: boolean;
+    } = { signal: null, release: null, completed: false };
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      async ({ query, request, respond }) => {
+        accountQueries.push({
+          search: query.search ?? null,
+          cursor: query.cursor ?? null,
+        });
+        if (query.search === "Stale") {
+          const heldSearch = createDeferredPromise<void>(context.signal);
+          heldSearchRequest.signal = request.signal;
+          heldSearchRequest.release = () => {
+            heldSearch.resolve();
+          };
+          await heldSearch.promise;
+          heldSearchRequest.completed = true;
+          return respond(200, {
+            connections: [staleAccount],
+            nextCursor: null,
+          });
+        }
+        return respond(200, { connections: accounts, nextCursor: null });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    fireEvent.input(searchInput, { target: { value: "Work 1" } });
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
+    const searchInput = within(dialog).getByPlaceholderText("Find accounts");
+    fireEvent.input(searchInput, { target: { value: "Stale" } });
     await waitFor(() => {
       expect(heldSearchRequest.signal).not.toBeNull();
     });
@@ -1687,8 +1763,8 @@ describe("connectors page", () => {
     releaseHeldSearch();
     await waitFor(() => {
       expect(heldSearchRequest.completed).toBeTruthy();
-      expect(within(dialog).getByText("Account #00000000")).toBeInTheDocument();
-      expect(within(dialog).queryByText("Work 1")).toBeNull();
+      expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
+      expect(within(dialog).queryByText("Stale result")).toBeNull();
     });
   });
 
