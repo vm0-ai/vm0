@@ -238,6 +238,19 @@ function githubAccount(
   };
 }
 
+function customAccount(
+  id: string,
+  customConnectorId: string,
+  displayName: string,
+  isDefault: boolean,
+): ConnectorAccountConnection {
+  return {
+    ...githubAccount(id, displayName, isDefault),
+    target: { kind: "custom", customConnectorId },
+    authMethod: "manual",
+  };
+}
+
 async function openAddConnectorsDialog(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
@@ -674,6 +687,112 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(updateCount).toBe(1);
       expect(screen.getByLabelText("Remove DeepWiki")).toBeInTheDocument();
+    });
+  });
+
+  it("selects an MCP custom connector account", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = mcpCustomConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+    });
+    const teamAccount = customAccount(
+      "10000000-0000-4000-8000-000000000031",
+      connector.id,
+      "Team",
+      true,
+    );
+    const personalAccount = customAccount(
+      "10000000-0000-4000-8000-000000000032",
+      connector.id,
+      "Personal",
+      false,
+    );
+    let selectedAccount: ConnectorAccountConnection | null = null;
+    mockThread();
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: teamAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: teamAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        expect(query).toMatchObject({
+          kind: "custom",
+          customConnectorId: connector.id,
+          limit: 50,
+        });
+        return respond(200, {
+          connections: [teamAccount, personalAccount],
+          nextCursor: null,
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          selections: selectedAccount
+            ? [
+                {
+                  connectionId: selectedAccount.id,
+                  target: selectedAccount.target,
+                },
+              ]
+            : [],
+          selectedConnections: selectedAccount ? [selectedAccount] : [],
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          connectionId: personalAccount.id,
+          target: personalAccount.target,
+        });
+        selectedAccount = personalAccount;
+        return respond(200, body);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+      },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(
+      await screen.findByLabelText("DeepWiki · Using default account: Team"),
+    );
+    await user.click(screen.getByRole("radio", { name: /Personal/u }));
+
+    await waitFor(() => {
+      expect(selectedAccount).toBe(personalAccount);
     });
   });
 
