@@ -1,5 +1,116 @@
 # Changelog
 
+## [0.173.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.172.0...runner-rs-v0.173.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+* **runner:** report trusted model provider failures ([#28532](https://github.com/vm0-ai/vm0/issues/28532)) ([95a6ecd](https://github.com/vm0-ai/vm0/commit/95a6ecd44582d3bedf35b97f6874a01f2d7c6a34))
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* **python:** bound request header name work ([#28342](https://github.com/vm0-ai/vm0/issues/28342)) ([ffcd0fa](https://github.com/vm0-ai/vm0/commit/ffcd0fa83312ab7f20ed517ba717ee01721fca28))
+* **python:** clamp managed provider retry-after delays ([#28652](https://github.com/vm0-ai/vm0/issues/28652)) ([525dd58](https://github.com/vm0-ai/vm0/commit/525dd588b1cef082c5ced8e419e07e73c469b1de))
+* **python:** classify openrouter 500 responses by body ([#28644](https://github.com/vm0-ai/vm0/issues/28644)) ([16bd0b2](https://github.com/vm0-ai/vm0/commit/16bd0b2bca552eee731b7d53cfedf5475b9b5bf3))
+* **python:** drain retained diagnostics after webhook shutdown ([#28981](https://github.com/vm0-ai/vm0/issues/28981)) ([6eae21b](https://github.com/vm0-ai/vm0/commit/6eae21bde1096293028cf6a6d1161a2e0e6ae7dd))
+* **python:** lint unbound metadata mutation calls ([#29124](https://github.com/vm0-ai/vm0/issues/29124)) ([c906c06](https://github.com/vm0-ai/vm0/commit/c906c067e2ba16777e0a1d5b1a9ce815f4196f3f))
+* **python:** reject negative x response counts ([#28985](https://github.com/vm0-ai/vm0/issues/28985)) ([f6d0ec2](https://github.com/vm0-ai/vm0/commit/f6d0ec2054fa004fffef60619afd1466eac61876))
+* **python:** reject oversized firewall auth expiries ([#28390](https://github.com/vm0-ai/vm0/issues/28390)) ([424cefa](https://github.com/vm0-ai/vm0/commit/424cefa243b6045847ac53cfc6bc831ae4187311))
+* **python:** retain multiple prewarm response ids ([#28401](https://github.com/vm0-ai/vm0/issues/28401)) ([dbc7222](https://github.com/vm0-ai/vm0/commit/dbc722260de69a3124d8981e6cb3bb1b56c1ef25))
+* **python:** share model response classification ([#28633](https://github.com/vm0-ai/vm0/issues/28633)) ([e129ab0](https://github.com/vm0-ai/vm0/commit/e129ab06050e0c71da083fe3afdeb0c294a75c81))
+* **python:** track nested break exits in metadata linter ([#28907](https://github.com/vm0-ai/vm0/issues/28907)) ([93164bb](https://github.com/vm0-ai/vm0/commit/93164bb7165f8ce5978c8b2be5de832cee61b87c))
+* **runner:** bound firewall catalog response bodies ([#28399](https://github.com/vm0-ai/vm0/issues/28399)) ([1732568](https://github.com/vm0-ai/vm0/commit/17325687f4950e089ce565d1e33737b5822b19be))
+* **runner:** continue cleanup after bounded stop errors ([#28947](https://github.com/vm0-ai/vm0/issues/28947)) ([4b0161f](https://github.com/vm0-ai/vm0/commit/4b0161f361f512444e8a532cf9bdac8d1f13e8da))
+* **runner:** defer connector diagnostics until upstream auth errors ([#28445](https://github.com/vm0-ai/vm0/issues/28445)) ([ff31fcd](https://github.com/vm0-ai/vm0/commit/ff31fcdb6195ce9ab0c5f8977156c446e6ad2117))
+* **runner:** guard connector runtime publications ([#28495](https://github.com/vm0-ai/vm0/issues/28495)) ([641136f](https://github.com/vm0-ai/vm0/commit/641136ff637c4436f6f55871faee2647c675edf2))
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+* **runner:** keep cancellation waits off ably supervisor loop ([#29184](https://github.com/vm0-ai/vm0/issues/29184)) ([4639a0d](https://github.com/vm0-ai/vm0/commit/4639a0d109bf50975c9e74db3c1ea5d547bf4c09))
+* **runner:** log execution time limit at info ([#28750](https://github.com/vm0-ai/vm0/issues/28750)) ([9823447](https://github.com/vm0-ai/vm0/commit/9823447ca397e8ea7d15de12d6de725091987a6c))
+* **runner:** prevent pid reuse during mitmdump cleanup ([#28834](https://github.com/vm0-ai/vm0/issues/28834)) ([504690c](https://github.com/vm0-ai/vm0/commit/504690c1a68d03e074fabb20eb02db2bcdacbbc9))
+* **runner:** reconcile stale drain override cleanup ([#28363](https://github.com/vm0-ai/vm0/issues/28363)) ([6e631e3](https://github.com/vm0-ai/vm0/commit/6e631e340efd2084a5a174487e901d0982ddd4fb))
+* **runner:** recover evicted websocket usage pricing ([#28584](https://github.com/vm0-ai/vm0/issues/28584)) ([6d677e5](https://github.com/vm0-ai/vm0/commit/6d677e500ee8f952a1350db74336ae0e8de5581b))
+* **runner:** recover mitmdump startup port collisions ([#28846](https://github.com/vm0-ai/vm0/issues/28846)) ([9aa1984](https://github.com/vm0-ai/vm0/commit/9aa198463d2b731ce69f12b75487b9ca7a82db31))
+* **runner:** treat reuse capacity rejection as informational ([#28789](https://github.com/vm0-ai/vm0/issues/28789)) ([13456e3](https://github.com/vm0-ai/vm0/commit/13456e3bb2cc1bdd3cbb10df49bb7dc4ccbcd087))
+* **rust:** align mock codex rollout paths ([#28692](https://github.com/vm0-ai/vm0/issues/28692)) ([59ecfdb](https://github.com/vm0-ai/vm0/commit/59ecfdbbf4a1402dc5fc85ee460ef88cb0a26e55))
+* **usage:** bound model usage quantities ([#28351](https://github.com/vm0-ai/vm0/issues/28351)) ([d91265c](https://github.com/vm0-ai/vm0/commit/d91265c8761b3c40eb7e91a8ac6bcfaa0bdad4f8))
+
+
+### Documentation
+
+* **python:** clarify model-provider failure shutdown delivery semantics ([#28843](https://github.com/vm0-ai/vm0/issues/28843)) ([8924f63](https://github.com/vm0-ai/vm0/commit/8924f63dade934b3caa6d5629013447a6c70fc3c))
+* **python:** define invalid registry sandbox diagnostic contract ([#29219](https://github.com/vm0-ai/vm0/issues/29219)) ([1722111](https://github.com/vm0-ai/vm0/commit/1722111341447bb9d708a86d2ded7f28ff1be2fe))
+* **python:** define proxy registry unavailability reason contract ([#29156](https://github.com/vm0-ai/vm0/issues/29156)) ([c31a72a](https://github.com/vm0-ai/vm0/commit/c31a72a0c68e5435179097d73e498b60b6de0bd4))
+* **python:** define the shared model http failure evidence contract ([#29123](https://github.com/vm0-ai/vm0/issues/29123)) ([2adbb0f](https://github.com/vm0-ai/vm0/commit/2adbb0f7abcc40a9ef6a5e6f35b583dc519b3728))
+* **python:** distinguish expired firewall auth entries from eviction ([#28867](https://github.com/vm0-ai/vm0/issues/28867)) ([5d67c3c](https://github.com/vm0-ai/vm0/commit/5d67c3ce28a43d15f13b20c37ba0c27238a1a93b))
+* **python:** document percent-decoded host contract ([#28901](https://github.com/vm0-ai/vm0/issues/28901)) ([be56585](https://github.com/vm0-ai/vm0/commit/be565851b852545c7cf90ac30707dc9ff8bb1ef8))
+* **python:** document provider timing store locking and retention contract ([#28394](https://github.com/vm0-ai/vm0/issues/28394)) ([7bbaf7d](https://github.com/vm0-ai/vm0/commit/7bbaf7d410c1b7ac0b7d21ede9a08973c367861b))
+* **python:** document selective JSON duplicate-key semantics ([#29007](https://github.com/vm0-ai/vm0/issues/29007)) ([0a05d54](https://github.com/vm0-ai/vm0/commit/0a05d54320d3ffc8494fc28bcbdddb4e9651cd2d))
+* **runner:** document host directory trust modes ([#28403](https://github.com/vm0-ai/vm0/issues/28403)) ([7ab2b8c](https://github.com/vm0-ai/vm0/commit/7ab2b8c355988177272860bb04d9a6b86f21d8cb))
+* **runner:** document wait-running stdout contract ([#29003](https://github.com/vm0-ai/vm0/issues/29003)) ([1c98e0a](https://github.com/vm0-ai/vm0/commit/1c98e0a5dfe057e981593970cb04716f38cb7401))
+* **runner:** remove retired compose contract reference ([#29013](https://github.com/vm0-ai/vm0/issues/29013)) ([8e85227](https://github.com/vm0-ai/vm0/commit/8e852273c1d008c8a8a4d7fe08b92c2cc73ee200))
+* **rust:** document drain override cleanup invariants ([#29227](https://github.com/vm0-ai/vm0/issues/29227)) ([37e2220](https://github.com/vm0-ai/vm0/commit/37e222072b498e3c097652c86fb1b2e4905046a5))
+* **rust:** document session history probe telemetry semantics ([#28581](https://github.com/vm0-ai/vm0/issues/28581)) ([79f3c94](https://github.com/vm0-ai/vm0/commit/79f3c94be735383764b6ce464326865cbb6d7e73))
+* **rust:** document session-history CPU pool invariants ([#29025](https://github.com/vm0-ai/vm0/issues/29025)) ([21a07e5](https://github.com/vm0-ai/vm0/commit/21a07e53497f3b1d89ffd0fdbb330f8c8652529a))
+
+
+### Refactoring
+
+* **python:** centralize buffered auth body framing ([#28752](https://github.com/vm0-ai/vm0/issues/28752)) ([91c4e5d](https://github.com/vm0-ai/vm0/commit/91c4e5d91fb3ae3cd6caf6853df81f22ec68328e))
+* **python:** centralize client peer validation ([#28868](https://github.com/vm0-ai/vm0/issues/28868)) ([038fa22](https://github.com/vm0-ai/vm0/commit/038fa226f3e035d75dec571e98656e37ad7754ec))
+* **python:** centralize openai responses event taxonomy ([#28530](https://github.com/vm0-ai/vm0/issues/28530)) ([1a9c18b](https://github.com/vm0-ai/vm0/commit/1a9c18b0756c1439d83640dc1177f4e585e4544c))
+* **python:** centralize streaming encoding capabilities ([#28526](https://github.com/vm0-ai/vm0/issues/28526)) ([4928434](https://github.com/vm0-ai/vm0/commit/4928434db79ca61bc8db5c058d67c26071c7993f))
+* **python:** centralize websocket handshake header parsing ([#28405](https://github.com/vm0-ai/vm0/issues/28405)) ([d4ea49c](https://github.com/vm0-ai/vm0/commit/d4ea49c389eb40a43521cfea74a9118072d8d1c7))
+* **python:** consolidate model-provider flow metadata setup ([#29126](https://github.com/vm0-ai/vm0/issues/29126)) ([82bb2ab](https://github.com/vm0-ai/vm0/commit/82bb2abf5bb68c9962f40352ad39bb68c670d27c))
+* **python:** reuse shared usage-event assertions ([#29170](https://github.com/vm0-ai/vm0/issues/29170)) ([eb0b817](https://github.com/vm0-ai/vm0/commit/eb0b817c4a6ddbf23025d46a4e9e5f28a084029c))
+* **runner:** centralize gc lock probes ([#28493](https://github.com/vm0-ai/vm0/issues/28493)) ([14a8359](https://github.com/vm0-ai/vm0/commit/14a83594b6f01730b6a53561cac801f686d1fcbd))
+* **runner:** centralize idle sandbox activation ([#28630](https://github.com/vm0-ai/vm0/issues/28630)) ([f1ac1d9](https://github.com/vm0-ai/vm0/commit/f1ac1d991d29248de4f55cdfad38962d0e711a78))
+* **runner:** centralize procfs process generation ([#28576](https://github.com/vm0-ai/vm0/issues/28576)) ([e35d103](https://github.com/vm0-ai/vm0/commit/e35d1031e8ffcb860e317a4b101831a4d72cdade))
+* **runner:** consolidate mock provider operation gates ([#29203](https://github.com/vm0-ai/vm0/issues/29203)) ([e76130d](https://github.com/vm0-ai/vm0/commit/e76130d84211d65eb2ed29cae1d1b33ea1ae016a))
+* **runner:** dual-read and dual-write mitmdump runtime markers ([#29030](https://github.com/vm0-ai/vm0/issues/29030)) ([29b82dd](https://github.com/vm0-ai/vm0/commit/29b82dd28d8693471db0a7a00800be0830650ae3))
+* **runner:** dual-read canonical host tuning environment aliases ([#28964](https://github.com/vm0-ai/vm0/issues/28964)) ([88cf421](https://github.com/vm0-ai/vm0/commit/88cf42132c3150a1f116d888049f083010fd598f))
+* **runner:** dual-read runner token environment aliases ([#28977](https://github.com/vm0-ai/vm0/issues/28977)) ([a9164f6](https://github.com/vm0-ai/vm0/commit/a9164f6aa4129610eb268c90773879b4d4af4b17))
+* **runner:** generate firewall cache contract constants ([#28842](https://github.com/vm0-ai/vm0/issues/28842)) ([04a15da](https://github.com/vm0-ai/vm0/commit/04a15daa1c14a7196038fa573ebf2be2ec49791f))
+* **runner:** migrate status to sandbox terminology ([#29010](https://github.com/vm0-ai/vm0/issues/29010)) ([6bead98](https://github.com/vm0-ai/vm0/commit/6bead98eb35336befe162e76e862da608d1fb1b6))
+* **runner:** reject reserved OKOU keys in local user environment ([#28971](https://github.com/vm0-ai/vm0/issues/28971)) ([3bff5c4](https://github.com/vm0-ai/vm0/commit/3bff5c4998d0a692212ef2abc44513e09c0ba3f1))
+* **runner:** remove legacy idle status mirror ([#29072](https://github.com/vm0-ai/vm0/issues/29072)) ([3677fcf](https://github.com/vm0-ai/vm0/commit/3677fcf6f9a4fb92105e5c97d15b92775e6236e0))
+* **runner:** rename embedded mitm credential key ([#28952](https://github.com/vm0-ai/vm0/issues/28952)) ([fecae1b](https://github.com/vm0-ai/vm0/commit/fecae1b8917fc01eec9afe9b4395b002ea016c5c))
+* **runner:** rename private codex cleanup environment keys ([#28959](https://github.com/vm0-ai/vm0/issues/28959)) ([4e8fec7](https://github.com/vm0-ai/vm0/commit/4e8fec7512e82f44ddc683d30f7014a600fea002)), closes [#28922](https://github.com/vm0-ai/vm0/issues/28922)
+* **runner:** rename proxy registry and mitm-addon sandbox contract ([#28967](https://github.com/vm0-ai/vm0/issues/28967)) ([cdc2220](https://github.com/vm0-ai/vm0/commit/cdc2220859e38b82058424e3b7cd05d846cfb2ca))
+* **runtime:** add a trusted platform environment channel ([#28970](https://github.com/vm0-ai/vm0/issues/28970)) ([7d6e40b](https://github.com/vm0-ai/vm0/commit/7d6e40b7a8da820582587d96479f4da9f02932b6))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+* **runtime:** reserve okou namespace in cloud execution ([#29040](https://github.com/vm0-ai/vm0/issues/29040)) ([233bc7e](https://github.com/vm0-ai/vm0/commit/233bc7eb29e9c03b4391e91f1fe15ce48d576de6))
+* **rust:** enforce exec-control payload limit parity ([#28825](https://github.com/vm0-ai/vm0/issues/28825)) ([6202aee](https://github.com/vm0-ai/vm0/commit/6202aeed5db6e25b6fb845267a20dc4503dfbb79))
+* **rust:** generate pi runtime config dtos ([#28928](https://github.com/vm0-ai/vm0/issues/28928)) ([1ae995e](https://github.com/vm0-ai/vm0/commit/1ae995e88763e37f6659581dea03f8aa97c840ad))
+
+
+### Performance Improvements
+
+* **mitm-addon:** reuse chat completions extractor across sse events ([#28629](https://github.com/vm0-ai/vm0/issues/28629)) ([3ca0aea](https://github.com/vm0-ai/vm0/commit/3ca0aea8b5ff3ed249064c7422f18bd16e5fa290))
+* **mitm-addon:** reuse x unicode label classification ([#28983](https://github.com/vm0-ai/vm0/issues/28983)) ([49fd493](https://github.com/vm0-ai/vm0/commit/49fd493137938781ddadd667ad2707a426d7b8cc))
+* **python:** avoid duplicate responses sse probes ([#28851](https://github.com/vm0-ai/vm0/issues/28851)) ([85adf1e](https://github.com/vm0-ai/vm0/commit/85adf1eab49d6af3342cdc897c48f675d5fc32c3))
+* **python:** reduce x tld redirect test shutdown latency ([#28865](https://github.com/vm0-ai/vm0/issues/28865)) ([b18d95a](https://github.com/vm0-ai/vm0/commit/b18d95ac8f2a043d9cc8a38ea419824ba93876b5))
+* **python:** resolve jsonl flush paths once per watcher ([#28349](https://github.com/vm0-ai/vm0/issues/28349)) ([7e730de](https://github.com/vm0-ai/vm0/commit/7e730dec29d40eaf539ad17362bfdaf1f4540e25))
+* **python:** share model http response parsing ([#28822](https://github.com/vm0-ai/vm0/issues/28822)) ([242af40](https://github.com/vm0-ai/vm0/commit/242af400b657a717258692557e93d1d19aec280e))
+* **python:** share responses websocket parsing ([#28757](https://github.com/vm0-ai/vm0/issues/28757)) ([8671c2b](https://github.com/vm0-ai/vm0/commit/8671c2bc617aeb0e4aab3318b992524d437e1929))
+* **python:** skip irrelevant websocket client parsing ([#29127](https://github.com/vm0-ai/vm0/issues/29127)) ([2131e63](https://github.com/vm0-ai/vm0/commit/2131e63052fd57131942d4f76522ff3d09da3f7e))
+* **runner:** attribute pre-spawn concurrency ([#28839](https://github.com/vm0-ai/vm0/issues/28839)) ([5e11ce3](https://github.com/vm0-ai/vm0/commit/5e11ce3b6aedbd502c94dd07ff68a5209cb4e101))
+* **runner:** bound burst pre-spawn concurrency ([#28882](https://github.com/vm0-ai/vm0/issues/28882)) ([97bcd42](https://github.com/vm0-ai/vm0/commit/97bcd42706fb53c60d6dd101fb69a96362bc6b14))
+* **runner:** bound command output capture ([#28909](https://github.com/vm0-ai/vm0/issues/28909)) ([5279ac7](https://github.com/vm0-ai/vm0/commit/5279ac7a4707242d4566127133fc72dde43179d6))
+* **runner:** bound local queue job reads ([#28395](https://github.com/vm0-ai/vm0/issues/28395)) ([bf6499b](https://github.com/vm0-ai/vm0/commit/bf6499bebd8d138a75f1bae1547e96178b50c750))
+* **runner:** coordinate routine cache gc per host ([#28373](https://github.com/vm0-ai/vm0/issues/28373)) ([ab154d5](https://github.com/vm0-ai/vm0/commit/ab154d56a6545cbd716661d9c57e407d6838bfb5))
+* **runner:** reduce workspace cache path allocations ([#28498](https://github.com/vm0-ai/vm0/issues/28498)) ([d08a325](https://github.com/vm0-ai/vm0/commit/d08a3255808888a2962d1ba9737f5f2a1ddff43f))
+* **runner:** skip codex cleanup in fresh sandboxes ([#29183](https://github.com/vm0-ai/vm0/issues/29183)) ([126fc49](https://github.com/vm0-ai/vm0/commit/126fc499fb949f47f8b3be823f2e120ab0b4f46f))
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.172.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.12...runner-rs-v0.172.0) (2026-08-25)
 
 

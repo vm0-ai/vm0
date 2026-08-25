@@ -1,5 +1,65 @@
 # Changelog
 
+## [9.285.0](https://github.com/vm0-ai/vm0/compare/cli-v9.284.0...cli-v9.285.0) (2026-08-25)
+
+
+### Features
+
+* add flux.2 pro and ideogram 4 ([#28640](https://github.com/vm0-ai/vm0/issues/28640)) ([7022170](https://github.com/vm0-ai/vm0/commit/7022170536a28805f6cbcb7e625e84755552b898))
+* add qwen image 3 and nano banana 2 lite built-in image models ([#28518](https://github.com/vm0-ai/vm0/issues/28518)) ([9691fc3](https://github.com/vm0-ai/vm0/commit/9691fc30b999724efd07d2d82c384c47ff59c150))
+* **api:** add managed socialkit service ([#28343](https://github.com/vm0-ai/vm0/issues/28343)) ([94f6768](https://github.com/vm0-ai/vm0/commit/94f67682a19fd19310449075a7cf9bcf40e5a52f))
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+* **api:** publish an analysed deck as a presentation template ([#28298](https://github.com/vm0-ai/vm0/issues/28298)) ([2080670](https://github.com/vm0-ai/vm0/commit/20806707e9adbcd9bd87043976d8327dc36a4f69))
+* **banking:** add chat-based mastercard connect flow ([#28832](https://github.com/vm0-ai/vm0/issues/28832)) ([faf1021](https://github.com/vm0-ai/vm0/commit/faf10210ffc1a956a1c3f077e3410bcc27ae4cb8))
+* **cli:** centralize presentation image batches ([#28702](https://github.com/vm0-ai/vm0/issues/28702)) ([20d4d4a](https://github.com/vm0-ai/vm0/commit/20d4d4ab952501195939c64236dab143bbbdd159))
+* **presentation:** switch built-in decks to the latest template archives ([#28645](https://github.com/vm0-ai/vm0/issues/28645)) ([7c4a3a9](https://github.com/vm0-ai/vm0/commit/7c4a3a9fc7a1608f4033c8d20866c30f9510be66))
+* pull presentation reverse-template from r2 ([#29043](https://github.com/vm0-ai/vm0/issues/29043)) ([5da72eb](https://github.com/vm0-ai/vm0/commit/5da72eb706544d50731cab880c4d006979b63afe))
+* **rebranding:** emit branded static asset urls ([#28446](https://github.com/vm0-ai/vm0/issues/28446)) ([3eb6c67](https://github.com/vm0-ai/vm0/commit/3eb6c679aef093e43d24dd3c625cb526cc461c7f))
+* serve direct-html website templates behind the latest switch ([#29053](https://github.com/vm0-ai/vm0/issues/29053)) ([508d9ec](https://github.com/vm0-ai/vm0/commit/508d9eca8eeb05694499d28d6f8114f2f336b69a))
+* **social:** add managed socialkit pagination and usage billing ([#29180](https://github.com/vm0-ai/vm0/issues/29180)) ([72a60ca](https://github.com/vm0-ai/vm0/commit/72a60ca0aa52e611cc544eb4d7062581fc498106))
+
+
+### Bug Fixes
+
+* **cli:** name the actual default video model in help text ([#29139](https://github.com/vm0-ai/vm0/issues/29139)) ([f143071](https://github.com/vm0-ai/vm0/commit/f1430712cbf1e56db0d590b8d7796ad8896cd72e))
+* **rebranding:** neutralize agent-facing brand copy ([#29167](https://github.com/vm0-ai/vm0/issues/29167)) ([d1a4cc6](https://github.com/vm0-ai/vm0/commit/d1a4cc63dfc912c36e636315772d9353ee190334))
+
+
+### Refactoring
+
+* **api:** migrate the late branded contracts and guard the namespace ([#28577](https://github.com/vm0-ai/vm0/issues/28577)) ([d568056](https://github.com/vm0-ai/vm0/commit/d5680566144451411311656dd5a3c6c0bb312f02))
+* **api:** move agents, workflows, and workflow automations off the brand namespace ([#28497](https://github.com/vm0-ai/vm0/issues/28497)) ([ee1f56f](https://github.com/vm0-ai/vm0/commit/ee1f56f9a4994b5b6978e6e8515fdbe9df9e6970))
+* **api:** move browser, finance, seo, and mcp connector routes off /api/okou ([#28433](https://github.com/vm0-ai/vm0/issues/28433)) ([1e4bdf3](https://github.com/vm0-ai/vm0/commit/1e4bdf3432ab0e27ae70da59abacdf4d74c14b60))
+* **api:** move built-in-generations and image-io off the brand namespace ([#28432](https://github.com/vm0-ai/vm0/issues/28432)) ([d1c6c7c](https://github.com/vm0-ai/vm0/commit/d1c6c7c9d2b29af4c95949661fd9bcbd5359df54))
+* **api:** move chat threads, chat events, and shared threads off the brand namespace ([#28471](https://github.com/vm0-ai/vm0/issues/28471)) ([6c2036f](https://github.com/vm0-ai/vm0/commit/6c2036fa7e5f02e01cf163ab1a515364e8ec29d8))
+* **api:** move computer-use off the brand namespace ([#28487](https://github.com/vm0-ai/vm0/issues/28487)) ([5edd3c9](https://github.com/vm0-ai/vm0/commit/5edd3c9c01c0a781cb4bd8d05b4de3c55faa06a8))
+* **api:** move connectors and catalog off the brand namespace ([#28490](https://github.com/vm0-ai/vm0/issues/28490)) ([942449c](https://github.com/vm0-ai/vm0/commit/942449c2866e51c0d6e7148fc0b4220d1c8feb80))
+* **api:** move host and goal routes off the brand namespace ([#28431](https://github.com/vm0-ai/vm0/issues/28431)) ([f4adc23](https://github.com/vm0-ai/vm0/commit/f4adc23a09b8e8d3f813964a85f0fe5523c52c5c))
+* **api:** move integrations off the brand namespace ([#28488](https://github.com/vm0-ai/vm0/issues/28488)) ([cafdde6](https://github.com/vm0-ai/vm0/commit/cafdde60bbdcf29e58a45a0c72ec457103cf8588))
+* **api:** move org, model provider, and usage routes off the brand namespace ([#28492](https://github.com/vm0-ai/vm0/issues/28492)) ([a8b8a31](https://github.com/vm0-ai/vm0/commit/a8b8a311c4abaaa2892dca6ad7b4437cb2a617e0))
+* **api:** move the billing routes off the brand namespace ([#28486](https://github.com/vm0-ai/vm0/issues/28486)) ([464d080](https://github.com/vm0-ai/vm0/commit/464d080b5888e272579e09f338c0c72df3388a6c))
+* **api:** move the last four download-file contracts off the brand namespace ([#28984](https://github.com/vm0-ai/vm0/issues/28984)) ([ea6d065](https://github.com/vm0-ai/vm0/commit/ea6d0652ca55fe6b43ed4dba16d364ce058aa72a))
+* **api:** move web-search, scrape, recognize and translate off the brand namespace ([#28427](https://github.com/vm0-ai/vm0/issues/28427)) ([c8a9733](https://github.com/vm0-ai/vm0/commit/c8a9733a23590ae1513816b344e0e3e7da89d5c0))
+* **api:** move web, uploads, voice-io and more off the brand namespace ([#28496](https://github.com/vm0-ai/vm0/issues/28496)) ([911553c](https://github.com/vm0-ai/vm0/commit/911553c29ebada5da274bdcaf647272e1f3aa8dd))
+* **auth:** retire the zero token scope and rename the token vocabulary ([#28706](https://github.com/vm0-ai/vm0/issues/28706)) ([5ad6301](https://github.com/vm0-ai/vm0/commit/5ad630103e0c047b49046f21301dd2732a42753e)), closes [#28695](https://github.com/vm0-ai/vm0/issues/28695)
+* **cli:** rename the default agent-browser session to okou-browser ([#28782](https://github.com/vm0-ai/vm0/issues/28782)) ([0cb14a5](https://github.com/vm0-ai/vm0/commit/0cb14a5d591853d29d092a99dbe3f5999aa019ea)), closes [#28779](https://github.com/vm0-ai/vm0/issues/28779)
+* **cli:** send explicit single-account connector intent ([#28649](https://github.com/vm0-ai/vm0/issues/28649)) ([2e57b84](https://github.com/vm0-ai/vm0/commit/2e57b840cfaa6a362ff6ebcdaaf5b79c921e8f72))
+* **contracts:** neutralize custom connector and feature switch contract naming ([#28206](https://github.com/vm0-ai/vm0/issues/28206)) ([0610293](https://github.com/vm0-ai/vm0/commit/0610293ab1acdae01334925c81c79846c11a2009)), closes [#28190](https://github.com/vm0-ai/vm0/issues/28190)
+* **contracts:** neutralize permission grant and connector contract naming ([#28200](https://github.com/vm0-ai/vm0/issues/28200)) ([5e3518c](https://github.com/vm0-ai/vm0/commit/5e3518c53373cae28513d5565f91eca9d12c11b9))
+* **db:** drop the presentation template status and error columns ([#28515](https://github.com/vm0-ai/vm0/issues/28515)) ([53b6214](https://github.com/vm0-ai/vm0/commit/53b6214b0ee5426414f6f6fa5eb428b4c169b380))
+* **e2e:** remove the unreachable zero app url fallback ([#28767](https://github.com/vm0-ai/vm0/issues/28767)) ([a3e46ba](https://github.com/vm0-ai/vm0/commit/a3e46baa221564941ff1ae94ae329e7f66f2531e))
+* **maps:** move the maps routes off the brand namespace ([#28426](https://github.com/vm0-ai/vm0/issues/28426)) ([3fbbed5](https://github.com/vm0-ai/vm0/commit/3fbbed5759ab8feb027af247513a5507fa0fcb00))
+* migrate built-in model terminology ([#29079](https://github.com/vm0-ai/vm0/issues/29079)) ([4de6522](https://github.com/vm0-ai/vm0/commit/4de65229d749c81d2b27b5fdc15320e3da5d91ce))
+* **weather:** move the weather routes off the brand namespace ([#28413](https://github.com/vm0-ai/vm0/issues/28413)) ([0386bee](https://github.com/vm0-ai/vm0/commit/0386beebc6a31d1f25b6ba50d47d8aff84dd7dfb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.363.0
+    * @okouai/core bumped to 8.590.0
+
 ## [9.284.0](https://github.com/vm0-ai/vm0/compare/cli-v9.283.0...cli-v9.284.0) (2026-08-25)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.105](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.104...vsock-guest-v0.19.105) (2026-08-25)
+
+
+### Bug Fixes
+
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+* **runner:** wake placement workers during shutdown ([#29132](https://github.com/vm0-ai/vm0/issues/29132)) ([385c1aa](https://github.com/vm0-ai/vm0/commit/385c1aa78a479fd2938596cee1b9e769bb5e017a))
+
+
+### Refactoring
+
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+* **rust:** enforce exec-control payload limit parity ([#28825](https://github.com/vm0-ai/vm0/issues/28825)) ([6202aee](https://github.com/vm0-ai/vm0/commit/6202aeed5db6e25b6fb845267a20dc4503dfbb79))
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.19.104](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.103...vsock-guest-v0.19.104) (2026-08-25)
 
 
