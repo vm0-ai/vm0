@@ -11,6 +11,7 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { accept } from "../../lib/accept.ts";
@@ -88,6 +89,7 @@ interface SendNewThreadMessageRequest {
   routeSearchParams?: URLSearchParams;
   forward?: ChatForwardContext;
   onOptimisticSend?: () => void;
+  connectorSelections?: readonly ConnectorAccountSelection[];
 }
 
 interface SendNewThreadMessageResult {
@@ -390,6 +392,7 @@ async function createChatThread(
     readonly modelSelection: ModelProviderSelection;
     readonly imageModel?: ImageModel;
     readonly videoModel?: VideoModel;
+    readonly connectorSelections?: readonly ConnectorAccountSelection[];
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -406,6 +409,9 @@ async function createChatThread(
         ...(args.imageModel ? { imageModel: args.imageModel } : {}),
         ...(args.videoModel ? { videoModel: args.videoModel } : {}),
         ...(args.title ? { title: args.title } : {}),
+        ...(args.connectorSelections?.length
+          ? { connectorSelections: [...args.connectorSelections] }
+          : {}),
       },
       fetchOptions: { signal },
     }),
@@ -627,6 +633,7 @@ const sendNewThreadMessage$ = command(
         modelSelection: resolvedModelSelection,
         imageModel,
         videoModel,
+        connectorSelections: request.connectorSelections,
       },
       signal,
     );

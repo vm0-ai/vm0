@@ -27,11 +27,14 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   connectorAccountSummaryByTarget$,
   connectorAccountTargetKey,
+  CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
+  type ConnectorAccountList,
+} from "../../../../signals/okou-page/connector-accounts.ts";
+import {
   deleteConnectorAccount$,
   renameConnectorAccount$,
   setDefaultConnectorAccount$,
   settingsConnectorAccounts,
-  type ConnectorAccountList,
 } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import {
   clearConnectorAccountDeletion$,
@@ -54,8 +57,6 @@ interface ConnectorAccountManagerDialogProps {
   readonly onAdd: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }
-
-const MAX_ACCOUNTS_WITHOUT_SEARCH = 6;
 
 function accountIdentity(account: ConnectorAccountConnection): string | null {
   return (
@@ -488,6 +489,20 @@ function ConnectorAccountSearch({ value }: { readonly value: string }) {
   );
 }
 
+function connectorAccountSearchIsVisible(
+  search: string,
+  accounts: Loadable<ConnectorAccountList>,
+): boolean {
+  if (search.length > 0) {
+    return true;
+  }
+  return (
+    accounts.state === "hasData" &&
+    (accounts.data.connections.length > CONNECTOR_ACCOUNT_SEARCH_THRESHOLD ||
+      accounts.data.nextCursor !== null)
+  );
+}
+
 export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
@@ -517,11 +532,7 @@ export function ConnectorAccountManagerDialog({
       ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
           ?.defaultConnection ?? null)
       : null;
-  const showSearch =
-    search.length > 0 ||
-    (accountsLoadable.state === "hasData" &&
-      (accountsLoadable.data.connections.length > MAX_ACCOUNTS_WITHOUT_SEARCH ||
-        nextCursor !== null));
+  const showSearch = connectorAccountSearchIsVisible(search, accountsLoadable);
   const leave = (next: () => void) => {
     resetDrafts();
     next();

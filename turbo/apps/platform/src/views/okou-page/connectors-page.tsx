@@ -99,7 +99,7 @@ import {
   Input,
 } from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
-import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/settings/connector-accounts.ts";
+import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./components/settings/connector-account-manager-dialog.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {

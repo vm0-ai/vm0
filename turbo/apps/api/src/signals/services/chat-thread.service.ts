@@ -668,6 +668,7 @@ export const createChatThread$ = command(
           userId: args.userId,
           agentId: args.agentId,
           selections: args.connectorSelections ?? [],
+          missingAccountPolicy: "omit",
         });
       if (preparedConnectorSelections.kind === "invalid") {
         return {

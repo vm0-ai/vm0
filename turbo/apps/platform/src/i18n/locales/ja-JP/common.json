@@ -1932,11 +1932,17 @@
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
+      "back": "戻る",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
+      "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
+      "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",
+      "noUsableAccount": "使用可能なアカウントがありません",
       "remove": "{{connectorName}} を削除します",
-      "title": "コネクター"
+      "selectedAccountFor": "{{connector}} · 選択中のアカウント: {{account}}",
+      "title": "コネクター",
+      "useDefault": "デフォルトを使用"
     },
     "documentTitle": "チャット",
     "errors": {

@@ -23,6 +23,7 @@ import {
 } from "@okouai/api-contracts/contracts/run-routes";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
+import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
 import {
   mockChatEventRows,
@@ -377,6 +378,7 @@ export function mockChatLifecycle(
       serviceTier?: ChatThreadServiceTier | null;
       imageModel?: string;
       videoModel?: string;
+      connectorSelections?: readonly ConnectorAccountSelection[];
     }) => void;
     onModelSelectionUpdate?: (body: {
       model?: string | null;
@@ -778,6 +780,7 @@ export function mockChatLifecycle(
       serviceTier: body.serviceTier,
       imageModel: body.imageModel,
       videoModel: body.videoModel,
+      connectorSelections: body.connectorSelections,
     });
     return respond(201, {
       id: threadId,
