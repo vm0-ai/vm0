@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.173.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.0...runner-rs-v0.173.1) (2026-08-25)
+
+
+### Refactoring
+
+* **python:** centralize positive-wins model usage updates ([#29236](https://github.com/vm0-ai/vm0/issues/29236)) ([8c77617](https://github.com/vm0-ai/vm0/commit/8c77617894ee95a6977fb24914070392d76dc4e7))
+* **python:** reuse shared http server in x tld redirect test ([#29252](https://github.com/vm0-ai/vm0/issues/29252)) ([c26835d](https://github.com/vm0-ai/vm0/commit/c26835df8e932fb7616d82a97fe05f404e4f7c8b))
+* **runner:** reuse raw http fixture in storage tests ([#29245](https://github.com/vm0-ai/vm0/issues/29245)) ([9c6dcb0](https://github.com/vm0-ai/vm0/commit/9c6dcb02a99d3b7726d70e214e1eb9dd70eba91a))
+
 ## [0.173.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.172.0...runner-rs-v0.173.0) (2026-08-25)
 
 

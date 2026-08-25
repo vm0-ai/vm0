@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.794.0](https://github.com/vm0-ai/vm0/compare/app-v0.793.0...app-v0.794.0) (2026-08-25)
+
+
+### Features
+
+* **ads:** add adsmarch website conversions ([#29187](https://github.com/vm0-ai/vm0/issues/29187)) ([1fa2bf6](https://github.com/vm0-ai/vm0/commit/1fa2bf61489d3eda7238239210d93c60cbfd8898))
+
+
+### Bug Fixes
+
+* **auth:** associate sign-in field errors with alerts ([#29247](https://github.com/vm0-ai/vm0/issues/29247)) ([9797644](https://github.com/vm0-ai/vm0/commit/97976444543d8f4c865a2bae04441cc26ad1e62c)), closes [#28927](https://github.com/vm0-ai/vm0/issues/28927)
+* **auth:** derive pristine sign-up fields from Clerk config ([#29246](https://github.com/vm0-ai/vm0/issues/29246)) ([a1d21d1](https://github.com/vm0-ai/vm0/commit/a1d21d178bcffc198400b1d23b77bfbf77197dbe))
+* **auth:** localize remaining Auth v2 copy ([#29251](https://github.com/vm0-ai/vm0/issues/29251)) ([d07931c](https://github.com/vm0-ai/vm0/commit/d07931ce3c525631376b095a66a03e590ec63ab8)), closes [#28927](https://github.com/vm0-ai/vm0/issues/28927)
+* **connectors:** polish account manager hierarchy ([#29196](https://github.com/vm0-ai/vm0/issues/29196)) ([a01ab25](https://github.com/vm0-ai/vm0/commit/a01ab2510ff000ed6ed336e0f4aeb5b19ea58285))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.364.0
+    * @okouai/core bumped to 8.590.1
+
 ## [0.793.0](https://github.com/vm0-ai/vm0/compare/app-v0.792.0...app-v0.793.0) (2026-08-25)
 
 
