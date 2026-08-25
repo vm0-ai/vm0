@@ -184,16 +184,24 @@ function expectIntegrationImmediatelyBeforeRestrictedContent(
   appendSystemPrompt: string,
   expectedIntegration: string,
 ): void {
+  // Sections the API appends after the caller's own prompt. The integration
+  // block still has to be the last caller-supplied section, and the restricted
+  // content policy still has to come last overall.
+  const runLevelTrailingSections = ["# Default built-in image model"];
   const restrictedContentIndex = appendSystemPrompt.lastIndexOf(
     "# Restricted Explicit Content",
   );
   expect(restrictedContentIndex).toBeGreaterThan(-1);
-  expect(
-    appendSystemPrompt
-      .slice(0, restrictedContentIndex)
-      .trimEnd()
-      .endsWith(expectedIntegration),
-  ).toBeTruthy();
+  let callerPrompt = appendSystemPrompt
+    .slice(0, restrictedContentIndex)
+    .trimEnd();
+  for (const section of runLevelTrailingSections) {
+    const sectionIndex = callerPrompt.lastIndexOf(`\n\n${section}`);
+    if (sectionIndex !== -1) {
+      callerPrompt = callerPrompt.slice(0, sectionIndex).trimEnd();
+    }
+  }
+  expect(callerPrompt.endsWith(expectedIntegration)).toBeTruthy();
 }
 
 async function waitForTyping(
