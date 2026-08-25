@@ -479,14 +479,14 @@ function PinnedAgentCommandItem({
 function LeadAgentCommandSection({
   displayName,
   show,
-  zeroAvatarUrl,
+  avatarUrl,
   defaultAgentId,
   unreadAgentIds,
   onChat,
 }: {
   readonly displayName: string;
   readonly show: boolean;
-  readonly zeroAvatarUrl: string | null;
+  readonly avatarUrl: string | null;
   readonly defaultAgentId: string | null | undefined;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly onChat: () => void;
@@ -511,7 +511,7 @@ function LeadAgentCommandSection({
           agent={{ id: "lead", displayName }}
           avatar={
             <AvatarFromUrl
-              avatarUrl={zeroAvatarUrl}
+              avatarUrl={avatarUrl}
               alt={displayName}
               className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
             />
@@ -1306,7 +1306,7 @@ export function ThreeColumnSearchDialog({
 
 function UnifiedAgentCommandItem({
   item,
-  zeroAvatarUrl,
+  avatarUrl,
   defaultAgentId,
   unreadAgentIds,
   pinnedIdSet,
@@ -1315,7 +1315,7 @@ function UnifiedAgentCommandItem({
   onTogglePin,
 }: {
   readonly item: UnifiedAgentSearchItem;
-  readonly zeroAvatarUrl: string | null;
+  readonly avatarUrl: string | null;
   readonly defaultAgentId: string | null | undefined;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly pinnedIdSet: ReadonlySet<string>;
@@ -1339,7 +1339,7 @@ function UnifiedAgentCommandItem({
         avatar={
           item.isLead ? (
             <AvatarFromUrl
-              avatarUrl={zeroAvatarUrl}
+              avatarUrl={avatarUrl}
               alt={agentDialogLabel(item)}
               className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
             />
@@ -1380,7 +1380,7 @@ function AgentListDialogUnifiedSearch({
   query,
   displayName,
   subagents,
-  zeroAvatarUrl,
+  avatarUrl,
   defaultAgentId,
   pinnedIdSet,
   unreadAgentIds,
@@ -1392,7 +1392,7 @@ function AgentListDialogUnifiedSearch({
   readonly query: string;
   readonly displayName: string;
   readonly subagents: readonly SubagentInfo[];
-  readonly zeroAvatarUrl: string | null;
+  readonly avatarUrl: string | null;
   readonly defaultAgentId: string | null | undefined;
   readonly pinnedIdSet: ReadonlySet<string>;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
@@ -1478,7 +1478,7 @@ function AgentListDialogUnifiedSearch({
             <UnifiedAgentCommandItem
               key={`agent-${item.agentId ?? "lead"}`}
               item={item}
-              zeroAvatarUrl={zeroAvatarUrl}
+              avatarUrl={avatarUrl}
               defaultAgentId={defaultAgentId}
               unreadAgentIds={unreadAgentIds}
               pinnedIdSet={pinnedIdSet}
@@ -1561,7 +1561,7 @@ export function AgentListDialog({
   onSelectChatThread?: (threadId: string) => void;
 }) {
   const { t } = useTranslation("agents");
-  const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
+  const avatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
@@ -1644,7 +1644,7 @@ export function AgentListDialog({
             query={trimmedQuery}
             displayName={displayName}
             subagents={subagents}
-            zeroAvatarUrl={zeroAvatarUrl}
+            avatarUrl={avatarUrl}
             defaultAgentId={defaultAgentId}
             pinnedIdSet={pinnedIdSet}
             unreadAgentIds={unreadAgentIds}
@@ -1658,7 +1658,7 @@ export function AgentListDialog({
             <LeadAgentCommandSection
               displayName={displayName}
               show={showLead}
-              zeroAvatarUrl={zeroAvatarUrl}
+              avatarUrl={avatarUrl}
               defaultAgentId={defaultAgentId}
               unreadAgentIds={unreadAgentIds}
               onChat={() => {

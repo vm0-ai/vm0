@@ -229,7 +229,7 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
+export const handleNavSelect$ = command(({ set }, id: SidebarNavId) => {
   if (id === "queues") {
     set(openQueueDrawer$);
   } else {
@@ -249,10 +249,10 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
   }
 });
 
-export type ZeroAccountAction = "lab" | "signout";
+export type AccountAction = "lab" | "signout";
 
-export const handleZeroAccountAction$ = command(
-  ({ set }, action: ZeroAccountAction) => {
+export const handleAccountAction$ = command(
+  ({ set }, action: AccountAction) => {
     set(internalSidebarExpanded$, false);
     if (action === "lab") {
       set(detachedNavigateTo$, ROUTES.lab);

@@ -63,7 +63,7 @@ import {
   agentActiveTab$,
   setAgentActiveTab$,
 } from "../../signals/okou-page/job-detail/agent-name";
-import { zeroOnboardingStatus$ } from "../../signals/okou-page/onboarding.ts";
+import { onboardingStatus$ } from "../../signals/okou-page/onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
@@ -1114,7 +1114,7 @@ function useAgentFields() {
 }
 
 function useTabVisibility(agentId: string, ownerId: string) {
-  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
+  const statusLoadable = useLastLoadable(onboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
     statusLoadable.data.defaultAgentId === agentId;

@@ -11,7 +11,7 @@ export const reloadOnboardingStatus$ = command(({ set }) => {
   });
 });
 
-export const zeroOnboardingStatus$ = computed(async (get) => {
+export const onboardingStatus$ = computed(async (get) => {
   get(internalReload$);
 
   const client = get(apiClient$)(onboardingStatusContract);
@@ -24,7 +24,7 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
  * workspace setup — the backend derives this from admin status and the
  * persisted onboarding completion marker.
  */
-export const zeroNeedsOnboarding$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
+export const needsOnboarding$ = computed(async (get) => {
+  const status = await get(onboardingStatus$);
   return status.needsOnboarding;
 });

@@ -413,7 +413,7 @@ export function StrapiSettingsPage() {
           >
             <ArrowLeft size={16} />
             {t(($) => {
-              return $.connectors.providerSettings.strapi.whereZeroWorks;
+              return $.connectors.providerSettings.strapi.whereAssistantWorks;
             })}
           </Link>
           <h1 className="text-lg font-semibold tracking-tight">

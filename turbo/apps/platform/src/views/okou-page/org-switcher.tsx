@@ -275,7 +275,7 @@ function PendingInvitationsBadge() {
   );
 }
 
-export function ZeroOrgSwitcherCompact() {
+export function OrgSwitcherCompact() {
   const currentOrg = useLastResolved(currentOrgInfo$);
   const { t } = useTranslation();
   const orgName =
@@ -305,7 +305,7 @@ export function ZeroOrgSwitcherCompact() {
   );
 }
 
-export function ZeroOrgSwitcher() {
+export function OrgSwitcher() {
   const currentOrg = useLastResolved(currentOrgInfo$);
   const { t } = useTranslation();
   const orgName =
