@@ -616,6 +616,7 @@ def _apply_header_query_injection(
             if existing_field is None:
                 resolved_fields_by_name[normalized_name] = (encoded_name, encoded_value)
             else:
+                # Match Headers.set_all(): keep the first spelling and let the last value win.
                 resolved_fields_by_name[normalized_name] = (
                     existing_field[0],
                     encoded_value,
