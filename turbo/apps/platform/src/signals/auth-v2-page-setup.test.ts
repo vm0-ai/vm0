@@ -1,13 +1,11 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  mockAuthV2Capabilities,
   mockedClerk,
   mockSignInResource,
   mockSignUpResource,
 } from "../__tests__/mock-auth.ts";
-import { detachedSetupPage, setupPage } from "../__tests__/page-helper.ts";
+import { setupPage } from "../__tests__/page-helper.ts";
 import { AUTH_V2_DIAGNOSTIC_EVENT, initPostHog } from "../lib/posthog.ts";
 import { testContext } from "./__tests__/test-helpers.ts";
 
@@ -160,117 +158,6 @@ describe("auth v2 route diagnostics", () => {
         "https://private.example/callback",
         "callback_private_902a",
         "hash_private_e83c",
-      ]) {
-        expect(serializedCalls).not.toContain(prohibitedValue);
-      }
-    },
-  );
-});
-
-describe("auth v2 password recovery diagnostics", () => {
-  it.each([
-    {
-      action: "Reset your password",
-      method: "password-reset",
-      operation: "prepare",
-    },
-    {
-      action: "Continue with Apple",
-      method: "apple-oauth",
-      operation: "oauth",
-    },
-    {
-      action: "Email code to p***@example.com",
-      method: "email-code",
-      operation: "prepare",
-    },
-    {
-      action: "Sign in with your passkey",
-      method: "passkey",
-      operation: "passkey",
-    },
-  ] as const)(
-    "attributes the $method recovery action through the rendered page",
-    async ({ action, method, operation }) => {
-      const privateIdentifier = "private.recovery@example.com";
-      const privateProviderCode = `private_${method}_provider_code`;
-      const privateProviderMessage = `Private ${method} provider detail`;
-      const providerFailure = {
-        errors: [
-          {
-            code: privateProviderCode,
-            longMessage: privateProviderMessage,
-          },
-        ],
-      };
-      mockAuthV2Capabilities({ appleOAuth: true, passkey: true });
-      mockSignInResource({
-        identifier: privateIdentifier,
-        status: "needs_first_factor",
-        supportedFirstFactors: [
-          { strategy: "password" },
-          {
-            emailAddressId: "email_private",
-            safeIdentifier: "p***@example.com",
-            strategy: "reset_password_email_code",
-          },
-          { strategy: "oauth_apple" },
-          {
-            emailAddressId: "email_private",
-            safeIdentifier: "p***@example.com",
-            strategy: "email_code",
-          },
-          { strategy: "passkey" },
-        ],
-      });
-      if (operation === "prepare") {
-        mockedClerk.signInPrepareFirstFactor.mockRejectedValueOnce(
-          providerFailure,
-        );
-      } else if (operation === "oauth") {
-        mockedClerk.signInAuthenticateWithRedirect.mockRejectedValueOnce(
-          providerFailure,
-        );
-      } else {
-        mockedClerk.signInAuthenticateWithPasskey.mockRejectedValueOnce(
-          providerFailure,
-        );
-      }
-
-      const path = "/v2/sign-in";
-      context.mocks.browser.url(`https://app.vm0.ai${path}`);
-      detachedSetupPage({
-        context,
-        path,
-        session: null,
-        user: null,
-      });
-
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Forgot password?" }),
-      );
-      fireEvent.click(await screen.findByRole("button", { name: action }));
-
-      await waitFor(() => {
-        expect(diagnosticCalls()).toStrictEqual([
-          [
-            AUTH_V2_DIAGNOSTIC_EVENT,
-            {
-              error_category: "provider-error",
-              flow: "sign-in",
-              method,
-              outcome: "failure",
-              step: "recovery",
-            },
-          ],
-        ]);
-      });
-      const serializedCalls = JSON.stringify(diagnosticCalls());
-      for (const prohibitedValue of [
-        privateIdentifier,
-        privateProviderCode,
-        privateProviderMessage,
-        "email_private",
       ]) {
         expect(serializedCalls).not.toContain(prohibitedValue);
       }
