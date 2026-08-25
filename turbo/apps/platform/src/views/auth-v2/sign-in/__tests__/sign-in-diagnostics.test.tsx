@@ -1,7 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../../__tests__/page-helper.ts";
 import {
   mockAuthV2Capabilities,
   mockedClerk,
@@ -60,6 +63,37 @@ function diagnosticCalls(): unknown[][] {
   });
 }
 
+function containingForm(element: HTMLElement): HTMLFormElement {
+  const form = element.closest("form");
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error("Expected element to be inside a form");
+  }
+  return form;
+}
+
+function roleElement(role: "button", name: string) {
+  return queryAllByRoleFast(role).find((candidate) => {
+    return (
+      candidate.textContent?.trim() === name ||
+      candidate.getAttribute("aria-label") === name
+    );
+  });
+}
+
+async function waitForRoleElement(
+  role: "button",
+  name: string,
+): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(roleElement(role, name)).toBeDefined();
+  });
+  const element = roleElement(role, name);
+  if (!element) {
+    throw new Error(`Expected ${role} named ${name}`);
+  }
+  return element;
+}
+
 describe("auth v2 password recovery diagnostics", () => {
   it.each([
     {
@@ -96,26 +130,22 @@ describe("auth v2 password recovery diagnostics", () => {
           },
         ],
       };
+      const supportedFirstFactors = [
+        { strategy: "password" },
+        {
+          emailAddressId: "email_private",
+          safeIdentifier: "p***@example.com",
+          strategy: "reset_password_email_code",
+        },
+        { strategy: "oauth_apple" },
+        {
+          emailAddressId: "email_private",
+          safeIdentifier: "p***@example.com",
+          strategy: "email_code",
+        },
+        { strategy: "passkey" },
+      ] as const;
       mockAuthV2Capabilities({ appleOAuth: true, passkey: true });
-      mockSignInResource({
-        identifier: privateIdentifier,
-        status: "needs_first_factor",
-        supportedFirstFactors: [
-          { strategy: "password" },
-          {
-            emailAddressId: "email_private",
-            safeIdentifier: "p***@example.com",
-            strategy: "reset_password_email_code",
-          },
-          { strategy: "oauth_apple" },
-          {
-            emailAddressId: "email_private",
-            safeIdentifier: "p***@example.com",
-            strategy: "email_code",
-          },
-          { strategy: "passkey" },
-        ],
-      });
       if (operation === "prepare") {
         mockedClerk.signInPrepareFirstFactor.mockRejectedValueOnce(
           providerFailure,
@@ -132,6 +162,7 @@ describe("auth v2 password recovery diagnostics", () => {
 
       const path = "/v2/sign-in";
       context.mocks.browser.url(`https://app.vm0.ai${path}`);
+      mockSignInResource({ status: "needs_identifier" });
       detachedSetupPage({
         context,
         path,
@@ -139,13 +170,29 @@ describe("auth v2 password recovery diagnostics", () => {
         user: null,
       });
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Forgot password?" }),
+      const identifierInput = await screen.findByLabelText("Email address");
+      mockSignInResource({
+        status: "needs_first_factor",
+        supportedFirstFactors,
+      });
+      mockedClerk.clientSignInCreate.mockResolvedValue(
+        mockedClerk.client.signIn,
       );
+      fireEvent.change(identifierInput, {
+        target: { value: privateIdentifier },
+      });
+      fireEvent.submit(containingForm(identifierInput));
+      await waitFor(() => {
+        expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+          identifier: privateIdentifier,
+        });
+      });
+
+      fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
       await expect(
         screen.findByRole("heading", { name: "Forgot Password?" }),
       ).resolves.toBeVisible();
-      fireEvent.click(await screen.findByRole("button", { name: action }));
+      fireEvent.click(await waitForRoleElement("button", action));
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(
