@@ -2342,6 +2342,21 @@
       "copied": "Copiado",
       "deleted": "Chat eliminado"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": "Archivos modificados",
+        "read": "Archivos leídos",
+        "run": "Comandos ejecutados"
+      },
+      "collapse": "Contraer actividad de herramientas",
+      "expand": "Expandir actividad de herramientas",
+      "status": {
+        "cancelled": "Cancelado",
+        "error": "Fallido",
+        "pending": "En curso",
+        "success": "Completado"
+      }
+    },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
       "input": "Entrada de voz",

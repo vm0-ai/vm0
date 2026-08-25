@@ -2298,6 +2298,21 @@
       "copied": "Kopiert",
       "deleted": "Chat gelöscht"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": "Dateien geändert",
+        "read": "Dateien gelesen",
+        "run": "Befehle ausgeführt"
+      },
+      "collapse": "Tool-Aktivität einklappen",
+      "expand": "Tool-Aktivität ausklappen",
+      "status": {
+        "cancelled": "Abgebrochen",
+        "error": "Fehlgeschlagen",
+        "pending": "In Bearbeitung",
+        "success": "Abgeschlossen"
+      }
+    },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "input": "Spracheingabe",

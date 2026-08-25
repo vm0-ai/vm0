@@ -285,7 +285,7 @@ describe("chat event snapshot read", () => {
     ).resolves.toStrictEqual(assistantEventRow);
   });
 
-  it("caches output.tool rows without rendering them and advances physical cursors", async () => {
+  it("keeps output.tool cache and cursors physical while the semantic gate changes", async () => {
     mockSignedInUser();
     const threadId = crypto.randomUUID();
     const toolEventRow = toolRow(threadId, 1);
@@ -348,10 +348,15 @@ describe("chat event snapshot read", () => {
       }),
     ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
     expect(
-      semanticChatEventsFromChatEvents(events).map(({ event }) => {
+      semanticChatEventsFromChatEvents(events, false).map(({ event }) => {
         return event.id;
       }),
     ).toStrictEqual([assistantEventRow.id]);
+    expect(
+      semanticChatEventsFromChatEvents(events, true).map(({ event }) => {
+        return event.id;
+      }),
+    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
     expect(requests).toStrictEqual([
       { seqId: 0, projection: undefined },
       { seqId: 1, projection: "full" },
@@ -362,6 +367,23 @@ describe("chat event snapshot read", () => {
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
     ).resolves.toStrictEqual(assistantEventRow);
+
+    const replaySignals = createSignals(threadId);
+    await context.store.set(
+      replaySignals.initializeIndexedDbEvents$,
+      context.signal,
+    );
+    const replayEvents = context.store.get(replaySignals.chatEvents$);
+    expect(
+      replayEvents.map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
+    expect(
+      semanticChatEventsFromChatEvents(replayEvents, true).map(({ event }) => {
+        return event.id;
+      }),
+    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
   });
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {

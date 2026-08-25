@@ -2294,6 +2294,21 @@
       "copied": "복사됨",
       "deleted": "채팅 삭제됨"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": "파일 변경",
+        "read": "파일 읽음",
+        "run": "명령 실행"
+      },
+      "collapse": "도구 활동 접기",
+      "expand": "도구 활동 펼치기",
+      "status": {
+        "cancelled": "취소됨",
+        "error": "실패",
+        "pending": "진행 중",
+        "success": "완료"
+      }
+    },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
       "input": "음성 입력",

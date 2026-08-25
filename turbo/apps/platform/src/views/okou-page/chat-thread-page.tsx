@@ -26,6 +26,9 @@ import {
   AlertCircle,
   Coffee,
   Flag,
+  FilePen,
+  FilePlus,
+  FileText,
   Hand,
   Heart,
   Leaf,
@@ -54,6 +57,7 @@ import {
   Search,
   Sunrise,
   Target,
+  Terminal,
   X,
   Clock,
   Hourglass,
@@ -101,6 +105,7 @@ import {
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
   terminatedChatRunIds,
+  type OutputToolPayload,
 } from "@okouai/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
@@ -155,6 +160,10 @@ import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
+import {
+  toggleToolActivityExpanded$,
+  toolActivityExpandedKeys$,
+} from "../../signals/chat-page/tool-activity-folding.ts";
 import { isCancelledRunEvent } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
@@ -3628,10 +3637,261 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+    (event.eventType === "output.tool" ||
+      (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       Boolean(chatEventError(event)) ||
       hasChatEventBodyContent(event) ||
       Boolean(chatEventAttachments(event)?.length))
+  );
+}
+
+type ToolActivityEvent = Extract<
+  EnrichedChatEvent,
+  { readonly eventType: "output.tool" }
+>;
+
+type AssistantRenderPlanItem =
+  | {
+      readonly kind: "event";
+      readonly event: EnrichedChatEvent;
+    }
+  | {
+      readonly kind: "tool-activity";
+      readonly anchorEventId: string;
+      readonly events: readonly ToolActivityEvent[];
+    };
+
+function isToolActivityEvent(
+  event: EnrichedChatEvent,
+): event is ToolActivityEvent {
+  return event.eventType === "output.tool";
+}
+
+function buildAssistantRenderPlan(
+  events: readonly EnrichedChatEvent[],
+): AssistantRenderPlanItem[] {
+  const plan: AssistantRenderPlanItem[] = [];
+  let toolEvents: ToolActivityEvent[] = [];
+  for (const event of events) {
+    if (isToolActivityEvent(event)) {
+      toolEvents.push(event);
+      continue;
+    }
+    if (!isRenderableAssistantEvent(event)) {
+      continue;
+    }
+    const firstToolEvent = toolEvents[0];
+    if (firstToolEvent !== undefined) {
+      plan.push({
+        kind: "tool-activity",
+        anchorEventId: firstToolEvent.id,
+        events: toolEvents,
+      });
+      toolEvents = [];
+    }
+    plan.push({ kind: "event", event });
+  }
+  const firstToolEvent = toolEvents[0];
+  if (firstToolEvent !== undefined) {
+    plan.push({
+      kind: "tool-activity",
+      anchorEventId: firstToolEvent.id,
+      events: toolEvents,
+    });
+  }
+  return plan;
+}
+
+type ToolActivityCategory = "run" | "read" | "changes";
+
+function toolActivityCategory(
+  action: OutputToolPayload["action"],
+): ToolActivityCategory {
+  switch (action) {
+    case "run": {
+      return "run";
+    }
+    case "read": {
+      return "read";
+    }
+    case "write":
+    case "edit": {
+      return "changes";
+    }
+  }
+}
+
+function toolActivityCategoryLabel(
+  category: ToolActivityCategory,
+  t: TFunction<"common">,
+): string {
+  switch (category) {
+    case "run": {
+      return t(($) => {
+        return $.chat.toolActivity.categories.run;
+      });
+    }
+    case "read": {
+      return t(($) => {
+        return $.chat.toolActivity.categories.read;
+      });
+    }
+    case "changes": {
+      return t(($) => {
+        return $.chat.toolActivity.categories.changes;
+      });
+    }
+  }
+}
+
+function toolActivityGroupLabel(
+  events: readonly ToolActivityEvent[],
+  t: TFunction<"common">,
+): string {
+  const seen = new Set<ToolActivityCategory>();
+  const labels = events.flatMap((event) => {
+    const category = toolActivityCategory(event.action);
+    if (seen.has(category)) {
+      return [];
+    }
+    seen.add(category);
+    return [toolActivityCategoryLabel(category, t)];
+  });
+  return new Intl.ListFormat(i18n.resolvedLanguage, {
+    style: "short",
+    type: "conjunction",
+  }).format(labels);
+}
+
+const TOOL_ACTIVITY_ICON_BY_ACTION = {
+  run: Terminal,
+  read: FileText,
+  write: FilePlus,
+  edit: FilePen,
+} satisfies Record<OutputToolPayload["action"], LucideIcon>;
+
+function ToolActivityStatus({
+  status,
+}: {
+  status: OutputToolPayload["status"];
+}) {
+  const { t } = useTranslation();
+  const label =
+    status === "pending"
+      ? t(($) => {
+          return $.chat.toolActivity.status.pending;
+        })
+      : status === "error"
+        ? t(($) => {
+            return $.chat.toolActivity.status.error;
+          })
+        : status === "cancelled"
+          ? t(($) => {
+              return $.chat.toolActivity.status.cancelled;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.status.success;
+            });
+  if (status === "success") {
+    return <span className="sr-only">{label}</span>;
+  }
+  return (
+    <span
+      role="status"
+      className={cn(
+        "shrink-0 text-[11px] leading-5",
+        status === "error" ? "text-destructive/80" : "text-muted-foreground/60",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ToolActivityGroup({
+  anchorEventId,
+  events,
+  compactTop,
+}: {
+  anchorEventId: string;
+  events: readonly ToolActivityEvent[];
+  compactTop: boolean;
+}) {
+  const { t } = useTranslation();
+  const expanded = useGet(toolActivityExpandedKeys$).has(anchorEventId);
+  const toggleExpanded = useSet(toggleToolActivityExpanded$);
+  const label = toolActivityGroupLabel(events, t);
+  return (
+    <div
+      data-chat-tool-activity
+      className={cn(
+        "relative -mx-2 min-w-0",
+        compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+      )}
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={
+          expanded
+            ? t(($) => {
+                return $.chat.toolActivity.collapse;
+              })
+            : t(($) => {
+                return $.chat.toolActivity.expand;
+              })
+        }
+        onClick={() => {
+          toggleExpanded(anchorEventId);
+        }}
+        className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-muted-foreground/70 transition-colors hover:bg-state-hover hover:text-muted-foreground"
+      >
+        <span className="min-w-0 truncate text-[13px]">{label}</span>
+        <ChevronRight
+          aria-hidden
+          size={13}
+          className={cn(
+            "shrink-0 transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
+      </button>
+      {expanded ? (
+        <ul className="ml-2 flex flex-col py-0.5">
+          {events.map((event) => {
+            const Icon = TOOL_ACTIVITY_ICON_BY_ACTION[event.action];
+            return (
+              <li
+                key={event.id}
+                data-chat-scroll-anchor-event-id={event.id}
+                className="flex min-w-0 items-start gap-2 px-2 py-1 text-[13px] leading-5 text-muted-foreground/75"
+              >
+                <Icon
+                  aria-hidden
+                  size={13}
+                  className="mt-1 shrink-0 text-muted-foreground/55"
+                />
+                <span className="min-w-0 flex-1 break-words">
+                  {event.summary}
+                </span>
+                <ToolActivityStatus status={event.status} />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        events.map((event) => {
+          return (
+            <span
+              key={event.id}
+              aria-hidden
+              data-chat-scroll-anchor-event-id={event.id}
+              className="sr-only"
+            />
+          );
+        })
+      )}
+    </div>
   );
 }
 
@@ -7415,21 +7675,27 @@ function PagedAssistantGroup({
     })
     .filter(Boolean)
     .join("\n\n");
-  let renderedAssistantEventCount = 0;
-  const renderAssistantEventItem = (event: EnrichedChatEvent) => {
-    const isRenderable = isRenderableAssistantEvent(event);
-    const compactTop = isRenderable && renderedAssistantEventCount > 0;
-    if (isRenderable) {
-      renderedAssistantEventCount += 1;
-    }
-    return (
-      <PagedAssistantEventItem
-        key={event.id}
-        event={event}
-        compactTop={compactTop}
-        thread={thread}
-      />
-    );
+  let renderedAssistantItemCount = 0;
+  const renderAssistantTimeline = (events: readonly EnrichedChatEvent[]) => {
+    return buildAssistantRenderPlan(events).map((item) => {
+      const compactTop = renderedAssistantItemCount > 0;
+      renderedAssistantItemCount += 1;
+      return item.kind === "tool-activity" ? (
+        <ToolActivityGroup
+          key={`tool-activity:${item.anchorEventId}`}
+          anchorEventId={item.anchorEventId}
+          events={item.events}
+          compactTop={compactTop}
+        />
+      ) : (
+        <PagedAssistantEventItem
+          key={item.event.id}
+          event={item.event}
+          compactTop={compactTop}
+          thread={thread}
+        />
+      );
+    });
   };
 
   return (
@@ -7459,16 +7725,12 @@ function PagedAssistantGroup({
             ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
                 return (
                   <div key={hiddenGroup.beginEventId} className="contents">
-                    {hiddenGroup.events.map((event) => {
-                      return renderAssistantEventItem(event);
-                    })}
+                    {renderAssistantTimeline(hiddenGroup.events)}
                   </div>
                 );
               })
             : null}
-          {group.events.map((event) => {
-            return renderAssistantEventItem(event);
-          })}
+          {renderAssistantTimeline(group.events)}
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />
