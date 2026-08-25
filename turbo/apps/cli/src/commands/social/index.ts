@@ -1,10 +1,16 @@
 import { Command, InvalidArgumentError } from "commander";
 import {
   findManagedSocialKitOperation,
+  managedSocialKitRequiredQueryName,
+  MANAGED_SOCIALKIT_OPERATIONS,
   SOCIALKIT_MAX_QUERY_ENTRIES,
   socialKitRequestSchema,
   type ManagedSocialKitOperation,
+  type ManagedSocialKitPagination,
+  type ManagedSocialKitRequiredQueryName,
+  type ManagedSocialKitResultField,
   type SocialKitRequest,
+  type SocialKitRequestMethod,
   type SocialKitResponse,
 } from "@okouai/api-contracts/contracts/social";
 
@@ -18,6 +24,52 @@ interface SocialKitRequestOptions {
   readonly method: string;
   readonly query?: readonly string[];
   readonly json?: boolean;
+}
+
+interface SocialKitCatalogOptions {
+  readonly json?: boolean;
+}
+
+interface SocialKitCatalogQuery {
+  readonly required: readonly ManagedSocialKitRequiredQueryName[];
+  readonly optional: readonly string[];
+}
+
+interface SocialKitCatalogLimit {
+  readonly default: number | null;
+  readonly max: number | null;
+}
+
+type SocialKitCatalogRetrieval =
+  | { readonly kind: "cursor" }
+  | { readonly kind: "page"; readonly maxPage: number }
+  | { readonly kind: "provider_limited" };
+
+interface SocialKitCatalogCollection {
+  readonly resultField: ManagedSocialKitResultField;
+  readonly retrieval: SocialKitCatalogRetrieval;
+}
+
+type SocialKitCatalogBilling =
+  | { readonly kind: "request" }
+  | { readonly kind: "items"; readonly itemsPerUnit: number };
+
+interface SocialKitCatalogOperation {
+  readonly path: string;
+  readonly methods: readonly SocialKitRequestMethod[];
+  readonly query: SocialKitCatalogQuery;
+  readonly limit: SocialKitCatalogLimit | null;
+  readonly collection: SocialKitCatalogCollection | null;
+  readonly billing: SocialKitCatalogBilling;
+}
+
+interface SocialKitCatalogOutput {
+  readonly operations: readonly SocialKitCatalogOperation[];
+}
+
+interface SocialKitPathOperations {
+  readonly operation: ManagedSocialKitOperation;
+  readonly methods: SocialKitRequestMethod[];
 }
 
 type FullRetrievalCompletion =
@@ -36,6 +88,139 @@ interface FullRetrievalTotals {
 interface FullRetrievalSummary extends FullRetrievalTotals {
   readonly kind: "summary";
   readonly completion: FullRetrievalCompletion;
+}
+
+function catalogRetrieval(
+  pagination: ManagedSocialKitPagination,
+): SocialKitCatalogRetrieval {
+  switch (pagination.kind) {
+    case "cursor":
+    case "next_cursor": {
+      return { kind: "cursor" };
+    }
+    case "page": {
+      return { kind: "page", maxPage: pagination.maxPage };
+    }
+    case "none": {
+      return { kind: "provider_limited" };
+    }
+  }
+}
+
+function catalogOperation(
+  operation: ManagedSocialKitOperation,
+  methods: readonly SocialKitRequestMethod[],
+): SocialKitCatalogOperation {
+  const requiredQueryName = managedSocialKitRequiredQueryName(operation);
+  const defaultLimit = operation.collection?.defaultLimit;
+  const itemsPerBillingUnit = operation.collection?.itemsPerBillingUnit;
+  return {
+    path: operation.path,
+    methods,
+    query: {
+      required: [requiredQueryName],
+      optional: operation.queryNames.filter((name) => {
+        return name !== requiredQueryName;
+      }),
+    },
+    limit:
+      defaultLimit === undefined && operation.maxLimit === undefined
+        ? null
+        : {
+            default: defaultLimit ?? null,
+            max: operation.maxLimit ?? null,
+          },
+    collection: operation.collection
+      ? {
+          resultField: operation.collection.resultField,
+          retrieval: catalogRetrieval(operation.collection.pagination),
+        }
+      : null,
+    billing:
+      itemsPerBillingUnit === undefined
+        ? { kind: "request" }
+        : { kind: "items", itemsPerUnit: itemsPerBillingUnit },
+  };
+}
+
+function socialKitCatalog(): SocialKitCatalogOutput {
+  const operationsByPath = new Map<string, SocialKitPathOperations>();
+  for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
+    const existing = operationsByPath.get(operation.path);
+    if (existing) {
+      existing.methods.push(operation.method);
+      continue;
+    }
+    operationsByPath.set(operation.path, {
+      operation,
+      methods: [operation.method],
+    });
+  }
+  return {
+    operations: Array.from(
+      operationsByPath.values(),
+      ({ operation, methods }) => {
+        return catalogOperation(operation, methods);
+      },
+    ),
+  };
+}
+
+function catalogLimitLabel(limit: SocialKitCatalogLimit): string {
+  return [
+    ...(limit.default === null ? [] : [`default ${limit.default}`]),
+    ...(limit.max === null ? [] : [`max ${limit.max}`]),
+  ].join(", ");
+}
+
+function catalogRetrievalLabel(retrieval: SocialKitCatalogRetrieval): string {
+  switch (retrieval.kind) {
+    case "cursor": {
+      return "cursor";
+    }
+    case "page": {
+      return `page (up to ${retrieval.maxPage})`;
+    }
+    case "provider_limited": {
+      return "provider limited (no continuation)";
+    }
+  }
+}
+
+function catalogBillingLabel(billing: SocialKitCatalogBilling): string {
+  return billing.kind === "request"
+    ? "1 quantity per successful request"
+    : `1 quantity per ${billing.itemsPerUnit} returned items`;
+}
+
+function printCatalogOperation(operation: SocialKitCatalogOperation): void {
+  console.log(`${operation.path} [${operation.methods.join(", ")}]`);
+  console.log(
+    `  query: ${operation.query.required.join(", ")} (required); ${operation.query.optional.join(", ") || "none"} (optional)`,
+  );
+  const details = [
+    ...(operation.limit
+      ? [`limit: ${catalogLimitLabel(operation.limit)}`]
+      : []),
+    operation.collection
+      ? `collection: ${operation.collection.resultField}; retrieval: ${catalogRetrievalLabel(operation.collection.retrieval)}`
+      : "collection: none",
+    `billing: ${catalogBillingLabel(operation.billing)}`,
+  ];
+  console.log(`  ${details.join("; ")}`);
+}
+
+function printSocialKitCatalog(
+  catalog: SocialKitCatalogOutput,
+  compact: boolean,
+): void {
+  if (compact) {
+    console.log(JSON.stringify(catalog));
+    return;
+  }
+  for (const operation of catalog.operations) {
+    printCatalogOperation(operation);
+  }
 }
 
 function positiveInteger(value: string): number {
@@ -230,6 +415,14 @@ async function retrieveAll(
   }
 }
 
+const operationsCommand = new Command()
+  .name("operations")
+  .description("List reviewed managed SocialKit operations")
+  .option("--json", "Print the operation catalog as compact JSON")
+  .action((options: SocialKitCatalogOptions) => {
+    printSocialKitCatalog(socialKitCatalog(), options.json === true);
+  });
+
 const requestCommand = new Command()
   .name("request")
   .description("Call a reviewed managed SocialKit data or analysis operation")
@@ -294,11 +487,13 @@ const requestCommand = new Command()
 export const socialCommand = new Command()
   .name("social")
   .description("Use managed SocialKit public social data services")
+  .addCommand(operationsCommand)
   .addCommand(requestCommand)
   .addHelpText(
     "after",
     `
 Examples:
+  Operations:       okou social operations --json
   Transcript:       okou social request /youtube/transcript --query 'url=https://www.youtube.com/watch?v=<id>'
   Search:           okou social request /tiktok/search --query 'query=product launch' --query limit=10
   Profile:          okou social request /linkedin/profile --query 'url=https://www.linkedin.com/in/<name>'
