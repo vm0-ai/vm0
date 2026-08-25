@@ -30,6 +30,7 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
     }
 )
 _PUNYCODE_PREFIX = "xn--"
+_PUNYCODE_INPUT_MAX_CODEPOINTS = _DNS_LABEL_MAX_LENGTH - len(_PUNYCODE_PREFIX)
 _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _UNICODE_MARK_CATEGORY_PREFIX = "M"
 _BIDI_ARABIC_NUMBER = "AN"
@@ -349,6 +350,10 @@ def _canonical_punycode_label(label: str) -> str:
         raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
     normalized_label = _normalize_label_text(label)
     _validate_normalized_label_text(normalized_label)
+
+    # Punycode emits at least one payload byte for every input code point.
+    if len(normalized_label) > _PUNYCODE_INPUT_MAX_CODEPOINTS:
+        raise UnicodeError("IDNA label too long")
 
     try:
         payload = normalized_label.encode("punycode").decode("ascii").lower()
