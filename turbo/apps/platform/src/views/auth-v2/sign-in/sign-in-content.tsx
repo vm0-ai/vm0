@@ -516,13 +516,13 @@ function ChooseFactorStep({
               aria-busy={busy}
               aria-label={actionLabel}
               className={cn(
-                "h-auto w-full px-0 py-1.5 text-sm",
+                "w-full px-3 text-sm",
                 busy ? "justify-center" : "justify-between",
               )}
               disabled={selectLoadable.state === "loading"}
               key={factor.id}
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={() => {
                 handleSelectFactor(factor.id);
               }}
@@ -721,13 +721,13 @@ function PasswordRecoveryStep({
                   aria-busy={busy}
                   aria-label={actionLabel}
                   className={cn(
-                    "h-auto w-full px-0 py-1.5 text-sm",
+                    "w-full px-3 text-sm",
                     busy ? "justify-center" : "justify-between",
                   )}
                   disabled={selecting}
                   key={factor.id}
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => {
                     handleSelectFactor(factor.id);
                   }}
