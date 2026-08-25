@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
@@ -17,6 +17,11 @@ const pinnedAgentStory = [
     displayName: "Operations Agent",
   },
 ] as const;
+const unreadThreadStory = {
+  id: "b0000000-0000-4000-a000-000000000704",
+  title: "Unread conversation",
+  createdAt: "2026-08-25T10:00:00.000Z",
+} as const;
 type PinnedAgentStoryEntry = (typeof pinnedAgentStory)[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +105,68 @@ async function mockPinnedAgentGrid(
   };
 }
 
+async function mockUnreadThread(
+  page: Page,
+  defaultAgentId: string,
+): Promise<void> {
+  await page.route("**/api/chat-threads/snapshot", async (route) => {
+    await route.fulfill({
+      json: {
+        chatThreads: [
+          {
+            id: unreadThreadStory.id,
+            agentId: defaultAgentId,
+            title: unreadThreadStory.title,
+            sortAt: unreadThreadStory.createdAt,
+            createdAt: unreadThreadStory.createdAt,
+            updatedAt: unreadThreadStory.createdAt,
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+          },
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    });
+  });
+  await page.route(
+    (url) => url.pathname === "/api/chat-threads/events",
+    async (route) => {
+      await route.fulfill({ json: { events: [], hasMore: false } });
+    },
+  );
+  await page.route("**/api/indicators", async (route) => {
+    await route.fulfill({
+      json: {
+        agents: { [defaultAgentId]: "unread" },
+        threads: { [unreadThreadStory.id]: "unread" },
+      },
+    });
+  });
+}
+
+async function visibleIndicatorStyle(locator: Locator): Promise<{
+  readonly backgroundColor: string;
+  readonly borderRadius: string;
+  readonly boxShadow: string;
+  readonly height: string;
+  readonly width: string;
+}> {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      boxShadow: style.boxShadow,
+      height: style.height,
+      width: style.width,
+    };
+  });
+}
+
 test("navigate to agents page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/agents`);
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({
@@ -107,7 +174,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("three-column rail is darker and pinned agents keep five equal columns", async ({
+test("three-column rail and unread indicators preserve their visual hierarchy", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -124,12 +191,15 @@ test("three-column rail is darker and pinned agents keep five equal columns", as
   }
 
   const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
+  await mockUnreadThread(page, defaultAgentId);
   await Promise.all([
     ...[
       "/api/feature-switches",
       "/api/onboarding/status",
       "/api/team",
       "/api/user-preferences",
+      "/api/chat-threads/snapshot",
+      "/api/indicators",
     ].map((pathname) => {
       return page.waitForResponse((response) => {
         return (
@@ -187,6 +257,24 @@ test("three-column rail is darker and pinned agents keep five equal columns", as
   expect(railSurface.rail.luminance).toBeLessThan(
     railSurface.chatList.luminance,
   );
+
+  const defaultAgentCard = grid.locator(
+    `[data-testid="pinned-agent-card"][href="/agents/${defaultAgentId}/chat"]`,
+  );
+  const agentUnread = defaultAgentCard.getByLabel("Unread");
+  const threadRow = page
+    .locator(`[data-sidebar-chat-thread-id="${unreadThreadStory.id}"]`)
+    .locator("..");
+  const threadUnread = threadRow.getByLabel("Unread");
+  await expect(agentUnread).toBeVisible();
+  await expect(threadUnread).toBeVisible();
+
+  const [agentUnreadStyle, threadUnreadStyle] = await Promise.all([
+    visibleIndicatorStyle(agentUnread),
+    visibleIndicatorStyle(threadUnread),
+  ]);
+  expect(Number.parseFloat(threadUnreadStyle.width)).toBeGreaterThan(0);
+  expect(agentUnreadStyle).toStrictEqual(threadUnreadStyle);
 
   await expect
     .poll(async () => {
