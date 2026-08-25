@@ -318,7 +318,7 @@ function runForge(
   environment.TEST_EXPECTED_APP_PATH = appPath;
   environment.TEST_OUTPUT_PATH = outputPath;
   if (options.notarize !== false) {
-    environment.VM0_DESKTOP_NOTARIZE = "true";
+    environment.OKOU_DESKTOP_NOTARIZE = "true";
   }
   const credentialValues = applyCredentialCase(
     environment,

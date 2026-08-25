@@ -25,7 +25,7 @@ const codeSigningIdentity =
   (process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY);
 
 function desktopNotarizeOptions() {
-  if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
+  if (process.env.OKOU_DESKTOP_NOTARIZE !== "true") {
     return undefined;
   }
 
