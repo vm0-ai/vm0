@@ -313,7 +313,7 @@ class HttpResponseFailureObserver:
         """Record whole-response evidence for the response finalizer to reduce.
 
         This stores the current outcome without marking the flow terminal; the response or error
-        hook owns the subsequent call to ``finish()`` and ``settle()``.
+        hook owns the subsequent finalization and terminal settlement.
         """
 
         self._store_terminal(_outcome_from_evidence(self._flow_state.protocol, evidence))
