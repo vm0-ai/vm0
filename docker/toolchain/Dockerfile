@@ -34,11 +34,15 @@ FROM toolchain AS toolchain-rust
 #       and proc-macro crates (needed by `cargo install` below and by any
 #       downstream `cargo build`);
 #   xz-utils        — extract the Bootlin tarball;
-#   libatomic1      — runtime dependency of the mold linker binary.
+#   libatomic1      — runtime dependency of the mold linker binary;
+#   zstd            — multi-threaded GitHub Actions cache compression.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     xz-utils \
     libatomic1 \
+    zstd \
+    && zstd --version \
+    && unzstd --version \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust toolchain with runner Linux musl targets.
