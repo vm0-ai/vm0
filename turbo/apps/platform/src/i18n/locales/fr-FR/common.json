@@ -4715,7 +4715,6 @@
         "usage": {
           "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
-          "balanceUsageDescription": "Le solde de crédits et la consommation de votre équipe.",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"
         }

@@ -328,12 +328,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
     enabled: false,
   },
-  [FeatureSwitchKey.UsagePackPlans]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

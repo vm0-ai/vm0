@@ -4658,7 +4658,6 @@
         "usage": {
           "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
-          "balanceUsageDescription": "आपकी टीम का क्रेडिट बैलेंस और उपयोग।",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
         }

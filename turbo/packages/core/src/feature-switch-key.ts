@@ -49,8 +49,6 @@ export enum FeatureSwitchKey {
   CodexFastMode = "codexFastMode",
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
-  UsagePackPlans = "usagePackPlans",
-
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",

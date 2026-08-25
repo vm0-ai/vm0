@@ -2,7 +2,6 @@ import {
   teamContract,
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/team";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -39,7 +38,6 @@ describe("settings deep-link handoff", () => {
     detachedSetupPage({
       context,
       path: "/?settings=billing&billingView=plans",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await teamRequestStarted.promise;

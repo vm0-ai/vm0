@@ -2025,7 +2025,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: false },
     });
 
     await expectComposerModel("DeepSeek V4 Flash");
@@ -2045,7 +2044,7 @@ describe("chat composer models", () => {
       screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
     );
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 

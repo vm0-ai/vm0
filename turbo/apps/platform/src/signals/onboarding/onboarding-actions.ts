@@ -1,18 +1,15 @@
 import { command } from "ccstate";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
-  billingCheckoutContract,
   billingRedeemCodeContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { billingStatusAsync$ } from "../okou-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { reloadOnboardingStatus$ } from "../okou-page/onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
@@ -119,49 +116,27 @@ export const prepareOnboardingVideoRun$ = command(
     const adAttribution = set(readStoredAdAttributionMetadata$);
     const successUrl = checkoutReturnUrl(input, "pro", checkoutState);
     const cancelUrl = checkoutReturnUrl(input, "canceled", checkoutState);
-    let checkoutUrl: string;
-    if (get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
-      const { userId } = await get(authenticatedIdentity$);
-      signal.throwIfAborted();
-      const client = get(apiClient$)(billingUsagePackCheckoutContract);
-      const result = await accept(
-        client.create({
-          body: {
-            tier: "pro",
-            memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
-            successUrl,
-            cancelUrl,
-            ...(adAttribution === undefined ? {} : { adAttribution }),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      if (!("url" in result.body)) {
-        throw new Error("Onboarding checkout unexpectedly returned a preview");
-      }
-      checkoutUrl = result.body.url;
-    } else {
-      const client = get(apiClient$)(billingCheckoutContract);
-      const result = await accept(
-        client.create({
-          body: {
-            tier: "pro",
-            successUrl,
-            cancelUrl,
-            ...(adAttribution === undefined ? {} : { adAttribution }),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      if (!("url" in result.body)) {
-        throw new Error("Onboarding checkout unexpectedly returned a preview");
-      }
-      checkoutUrl = result.body.url;
+    const { userId } = await get(authenticatedIdentity$);
+    signal.throwIfAborted();
+    const client = get(apiClient$)(billingUsagePackCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+          successUrl,
+          cancelUrl,
+          ...(adAttribution === undefined ? {} : { adAttribution }),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      throw new Error("Onboarding checkout unexpectedly returned a preview");
     }
+    const checkoutUrl = result.body.url;
     set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");
     set(capturePaidOnboardingRedirectToStripe$, "onboarding_video");
     window.location.href = checkoutUrl;

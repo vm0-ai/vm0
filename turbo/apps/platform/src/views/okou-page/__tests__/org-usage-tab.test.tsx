@@ -5,7 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -175,14 +174,10 @@ function mockUsageStory(): void {
   });
 }
 
-const NEW_PRICING = { [FeatureSwitchKey.UsagePackPlans]: true } as const;
-const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
-
 async function openCreditBalance(): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=usage",
-    featureSwitches: NEW_PRICING,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -194,7 +189,6 @@ async function openCreditUsage(): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=usage-records",
-    featureSwitches: NEW_PRICING,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -345,51 +339,6 @@ describe("organization usage settings", () => {
     expect(screen.queryByText("Dec 31, 2999")).toBeNull();
   });
 
-  it("keeps the usage records inside credit balance without the new pricing", async () => {
-    mockUsageStory();
-    detachedSetupPage({
-      context,
-      path: "/?settings=usage",
-      featureSwitches: LEGACY_PRICING,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("3,750 / 5,000 credits")).toBeInTheDocument();
-    });
-    // The previous single-section layout: collapsed additions, the Mine/Team
-    // tabs, and no separate records section to navigate to.
-    expect(screen.getByTestId("credit-grants-toggle")).toBeInTheDocument();
-    expect(screen.queryByTestId("credit-balance-see-usage")).toBeNull();
-    expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
-    expect(
-      queryAllByRoleFast("tab").some((element) => {
-        return element.textContent === "Team usage";
-      }),
-    ).toBeTruthy();
-    expect(
-      queryAllByRoleFast("button").some((element) => {
-        return element.textContent === "Credit usage";
-      }),
-    ).toBeFalsy();
-  });
-
-  it("falls back from the usage records deep link without the new pricing", async () => {
-    mockUsageStory();
-    detachedSetupPage({
-      context,
-      path: "/?settings=usage-records",
-      featureSwitches: LEGACY_PRICING,
-    });
-
-    const heading = await screen.findByRole("heading", { name: "Preference" });
-    expect(heading).toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("button").some((element) => {
-        return element.textContent === "Credit usage";
-      }),
-    ).toBeFalsy();
-  });
-
   it("shows workspace member usage in the credit usage section", async () => {
     mockUsageStory();
     await openCreditUsage();
@@ -416,7 +365,6 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage",
-      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {
@@ -441,7 +389,6 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage-records",
-      featureSwitches: NEW_PRICING,
     });
 
     await waitFor(() => {
