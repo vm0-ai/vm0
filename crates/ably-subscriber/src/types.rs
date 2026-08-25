@@ -242,6 +242,10 @@ pub struct TimingConfig {
 
     // -- Token renewal -------------------------------------------------------
     /// How early before token expiry to start proactive renewal.
+    ///
+    /// When this exceeds half of a token's remaining lifetime, the effective
+    /// margin is capped at that half-life so the next renewal stays in the
+    /// future while retaining time to renew before expiry.
     pub token_renewal_margin: Duration,
     /// Delay before retrying a failed token renewal.
     pub token_renewal_retry_delay: Duration,

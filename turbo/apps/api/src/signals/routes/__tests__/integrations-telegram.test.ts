@@ -931,6 +931,7 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
+    mockEnv("APP_URL", "https://app.example.com");
     server.use(telegramOauthHead("2048", "https://app.example.com"));
     const client = setupApp({
       context,
@@ -961,6 +962,7 @@ describe("GET /api/integrations/telegram/link", () => {
 
   it("returns official bot link status with the login bot id", async () => {
     const { token } = await seedLinkContext();
+    mockEnv("APP_URL", "https://app.example.com");
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -1315,6 +1317,72 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
+  it("uses the request Host brand for a legacy-compatible official connect payload", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    await seedDefaultAgentForLink(orgId, userId);
+    const telegramUserId = "99015";
+    const sentMessages: { readonly chat_id: string; readonly text: string }[] =
+      [];
+    server.use(
+      http.post(
+        `https://api.telegram.org/bot${OFFICIAL_BOT_TOKEN}/sendMessage`,
+        async ({ request }) => {
+          sentMessages.push(
+            (await request.json()) as { chat_id: string; text: string },
+          );
+          return HttpResponse.json({
+            ok: true,
+            result: { message_id: 1, chat: { id: Number(telegramUserId) } },
+          });
+        },
+      ),
+    );
+    const timestamp = Math.floor(now() / 1000);
+    const app = createApp({
+      signal: context.signal,
+      routes: integrationsTelegramRoutes,
+    });
+
+    const response = await app.request(
+      "https://api.okou.ai/api/integrations/telegram/link",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          origin: "https://app.vm0.ai",
+        },
+        body: JSON.stringify({
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          connectSignature: {
+            telegramUserId,
+            timestamp,
+            signature: signConnectParams({
+              installationId: OFFICIAL_TELEGRAM_BOT_ID,
+              telegramUserId,
+              timestamp,
+              botToken: OFFICIAL_BOT_TOKEN,
+            }),
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      botUsername: OFFICIAL_BOT_USERNAME,
+      telegramUserId,
+    });
+    await flushWaitUntilForTest();
+    expect(sentMessages).toStrictEqual([
+      {
+        chat_id: telegramUserId,
+        parse_mode: "HTML",
+        text: "✅ Account linked.\nSend me a message to start chatting with Okou.",
+      },
+    ]);
+  });
+
   it("returns 409 when an official Telegram user is already linked in another org", async () => {
     const { token, orgId, userId } = await seedLinkContext();
     await seedDefaultAgentForLink(orgId, userId);
@@ -1355,8 +1423,7 @@ describe("POST /api/integrations/telegram/link", () => {
 
     expect(vm0Response.body.error).toStrictEqual({
       code: "CONFLICT",
-      message:
-        "This Telegram account is already connected to another VM0 organization through the official Zero bot. Disconnect it before connecting a different account.",
+      message: `This Telegram account is already connected to another VM0 organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
     });
 
     const okouResponse = await accept(
@@ -1369,8 +1436,7 @@ describe("POST /api/integrations/telegram/link", () => {
     );
     expect(okouResponse.body.error).toStrictEqual({
       code: "CONFLICT",
-      message:
-        "This Telegram account is already connected to another Okou organization through the official Zero bot. Disconnect it before connecting a different account.",
+      message: `This Telegram account is already connected to another Okou organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
     });
   });
 
@@ -2114,20 +2180,36 @@ describe("GET /api/integrations/telegram/auth-callback", () => {
     expect(html).toContain(
       'new URLSearchParams(window.location.hash.replace(/^#/, ""))',
     );
-    expect(html).toContain(
-      'new URLSearchParams(window.location.search).get("targetOrigin")',
-    );
+    expect(html).toContain('var targetOrigin = "http://localhost:3002";');
     expect(html).toContain(
       '["id","first_name","last_name","username","photo_url","auth_date","hash"]',
     );
     expect(html).toContain('{ type: "telegram-auth", data: data }');
     expect(html).toContain("window.close()");
   });
+
+  it("accepts only a trusted Telegram auth callback target origin", async () => {
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+
+    const trusted = await app.request(
+      "/api/integrations/telegram/auth-callback?targetOrigin=https%3A%2F%2Fapp.okou.ai",
+    );
+    expect(trusted.status).toBe(200);
+    await expect(trusted.text()).resolves.toContain(
+      'var targetOrigin = "https://app.okou.ai";',
+    );
+
+    const untrusted = await app.request(
+      "/api/integrations/telegram/auth-callback?targetOrigin=https%3A%2F%2Fevil.example",
+    );
+    expect(untrusted.status).toBe(400);
+    await expect(untrusted.text()).resolves.toBe("Invalid target origin");
+  });
 });
 
-describe("GET /api/okou/integrations/telegram/download-file", () => {
+describe("GET /api/integrations/telegram/download-file", () => {
   const fixtures: TelegramFixture[] = [];
-  const downloadPath = "/api/okou/integrations/telegram/download-file";
+  const downloadPath = "/api/integrations/telegram/download-file";
 
   beforeEach(() => {
     configureOfficialBotEnv();

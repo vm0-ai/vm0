@@ -489,6 +489,27 @@
       "zoomIn": "Vergrößern",
       "zoomOut": "Herauszoomen"
     },
+    "annotation": {
+      "attach": "Markierungen anhängen",
+      "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "open": "Markieren",
+      "redo": "Wiederholen",
+      "removeMark": "Markierung entfernen",
+      "subtitle_one": "{{count}} Markierung",
+      "subtitle_other": "{{count}} Markierungen",
+      "tools": {
+        "arrow": "Pfeil",
+        "box": "Rechteck",
+        "crop": "Zuschneiden",
+        "highlight": "Hervorheben",
+        "pen": "Zeichnen",
+        "redact": "Schwärzen",
+        "select": "Auswählen",
+        "text": "Text"
+      },
+      "undo": "Rückgängig"
+    },
     "attachments": {
       "cancelUpload": "Hochladen abbrechen {{filename}}",
       "download": "{{filename}} herunterladen",
@@ -1015,12 +1036,44 @@
       "signIn": "Anmelden",
       "signUp": "Registrieren"
     },
+    "homeLink": "Zur {{brandName}}-Startseite",
     "loading": "Authentifizierung wird geladen",
+    "theme": {
+      "darkEnabled": "Dunkles Design aktiviert",
+      "lightEnabled": "Helles Design aktiviert"
+    },
     "toggleTheme": "Design wechseln",
     "v2": {
-      "continueToSignIn": "Weiter zur Anmeldung",
-      "continueToSignUp": "Weiter zur Registrierung",
-      "unavailable": "Die neue Anmeldeoberfläche ist noch nicht verfügbar."
+      "continuation": {
+        "activationErrorDescription": "Die Anmeldung konnte nicht abgeschlossen werden. Starte erneut und versuche es noch einmal.",
+        "activationErrorTitle": "Anmeldung konnte nicht abgeschlossen werden",
+        "chooseOrganizationDescription": "Wähle eine Organisation aus, um mit {{brandName}} fortzufahren.",
+        "chooseOrganizationTitle": "Organisation auswählen",
+        "completeDescription": "Du wirst zu {{brandName}} weitergeleitet.",
+        "completeTitle": "Anmeldung abgeschlossen",
+        "loadingDescription": "Es wird geprüft, welcher Schritt für dein Konto als Nächstes erforderlich ist.",
+        "loadingTitle": "Anmeldung wird abgeschlossen",
+        "noOrganizationsDescription": "Für dieses Konto ist keine Organisation verfügbar. Bitte einen Organisationsadministrator um Zugriff und starte dann erneut.",
+        "noOrganizationsTitle": "Keine Organisation verfügbar",
+        "recoveryAction": "Neu starten",
+        "secondFactorDescription": "Diese Anmeldung erfordert einen zusätzlichen Bestätigungsschritt, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
+        "secondFactorTitle": "Zusätzliche Bestätigung erforderlich",
+        "selectOrganization": "Mit {{organizationName}} fortfahren",
+        "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
+        "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
+      },
+      "signIn": {
+        "action": "Aktuelle Anmeldung verwenden",
+        "title": "Bei {{brandName}} anmelden"
+      },
+      "signUp": {
+        "action": "Aktuelle Registrierung verwenden",
+        "captchaExpired": "Die Bot-Verifizierung ist abgelaufen. Versuche es erneut.",
+        "codeExpired": "Dieser Bestätigungscode ist abgelaufen. Fordere einen neuen Code an.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
+        "title": "Ihr {{brandName}}-Konto erstellen"
+      }
     }
   },
   "authorization": {
@@ -1666,6 +1719,37 @@
       "weeklyAt": "Jede Woche um {{time}}",
       "weeklyOnAt": "Jede Woche am {{days}} um {{time}}"
     },
+    "banking": {
+      "accountFallback": "Bankkonto",
+      "actionFailed": "Die Banking-Aktion ist fehlgeschlagen",
+      "active_one": "Zugriff für {{count}} Konto aktiv",
+      "active_other": "Zugriff für {{count}} Konten aktiv",
+      "automationOff": "Schreibgeschützter Zugriff ist für Automatisierungsläufe nicht verfügbar.",
+      "cancel": "Abbrechen",
+      "change": "Ändern",
+      "connect": "Bank verbinden",
+      "continue": "Fortfahren",
+      "duration": "Zugriffsdauer",
+      "expiresAt": "Läuft am {{time}} ab",
+      "grant": "Zugriff gewähren",
+      "institutionFallback": "Finanzinstitut",
+      "loadFailed": "Banking-Zugriff konnte nicht geladen werden",
+      "noAccounts": "Keine aktiven Konten verfügbar. Verbinden Sie das Institut erneut oder reparieren Sie die Verbindung.",
+      "oneDay": "24 Stunden",
+      "oneHour": "1 Stunde",
+      "popupBlocked": "Erlauben Sie Pop-ups für Zero und versuchen Sie es erneut.",
+      "readOnly": "Konten, Salden und Transaktionen · schreibgeschützt",
+      "repair": "Reparieren",
+      "repairRequired": "{{institution}} muss repariert werden",
+      "retry": "Erneut versuchen",
+      "revoke": "Widerrufen",
+      "revokeConfirm": "Banking-Zugriff dieses Agenten widerrufen?",
+      "selectAccounts": "Konten auswählen",
+      "sevenDays": "7 Tage",
+      "thirtyDays": "30 Tage",
+      "title": "Banking-Zugriffsanfrage",
+      "waiting": "Warten auf Mastercard Data Connect. Schließen Sie den Vorgang dort ab und kehren Sie dann zum Chat zurück."
+    },
     "billing": {
       "addCreditsToContinue": "Fügen Sie Credits hinzu, um weiterhin mit {{assistantName}} zu chatten.",
       "askAdminCredits": "Bitten Sie einen Arbeitsbereichsadministrator, Credits hinzuzufügen, damit Sie weiterhin mit {{assistantName}} chatten können.",
@@ -2137,6 +2221,44 @@
       "title": "Verwalten Sie den {{connector}}-Zugriff",
       "unnamedAgent": "Unbenannt"
     },
+    "accounts": {
+      "accountName": "Kontoname",
+      "accountsUnavailable": "Konten sind für diesen Connector nicht verfügbar.",
+      "actions": "Kontoaktionen",
+      "addAccount": "Konto hinzufügen",
+      "connected": "Verbunden",
+      "default": "Standard",
+      "deleteAccount": "Konto löschen",
+      "deleteDescription": "Threads, die dieses Konto verwenden, kehren zur Standardvererbung zurück.",
+      "deleteDescriptionWithCount": "{{value}} Threads kehren zur Standardvererbung zurück.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} löschen?",
+      "find": "Konten suchen",
+      "loading": "Konten werden geladen…",
+      "loadingMore": "Wird geladen…",
+      "loadMore": "Mehr laden",
+      "makeDefault": "Als Standard festlegen",
+      "managerTitle": "{{connector}}-Konten verwalten",
+      "namePromptDescription": "Sie können diesen Schritt überspringen und das Konto später benennen.",
+      "namePromptTitle": "{{connector}}-Konto benennen",
+      "noAccounts": "Keine Konten",
+      "noAccountsFound": "Keine Konten gefunden",
+      "reconnectRequired": "Erneute Verbindung erforderlich",
+      "rename": "Umbenennen",
+      "skipName": "Überspringen",
+      "summaryMany": "{{value}} Konten",
+      "summaryMany_one": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} Konto",
+      "summaryOne_one": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Arbeitskonto"
+    },
     "actions": {
       "apply": "Anwenden",
       "authorize": "Autorisieren",
@@ -2534,8 +2656,8 @@
         "connectTitle": "Stellen Sie eine Verbindung zu Slack her",
         "invalidDescription": "Diese Seite soll über einen Slack-Connect-Link geöffnet werden.",
         "open": "Öffnen Sie Slack",
-        "successDescription": "Erwähnen Sie @Zero in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
-        "successDescriptionWorkspace": "Sie sind mit {{workspace}} verbunden. Erwähnen Sie @Zero in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
+        "successDescription": "Erwähnen Sie den installierten Bot in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
+        "successDescriptionWorkspace": "Sie sind mit {{workspace}} verbunden. Erwähnen Sie den installierten Bot in einem beliebigen Kanal oder senden Sie eine DM, um mit dem Chatten zu beginnen.",
         "successTitle": "Mit Slack verbunden!"
       },
       "teams": {
@@ -2545,7 +2667,7 @@
         "invalidDescription": "Diese Seite soll über einen Microsoft Teams-Verbindungslink geöffnet werden.",
         "open": "Offene Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Sie sind mit {{team}} verbunden. Erwähnen Sie @Zero in Teams, um mit dem Chatten zu beginnen.",
+        "successDescription": "Sie sind mit {{team}} verbunden. Erwähnen Sie @{{botName}} in Teams, um mit dem Chatten zu beginnen.",
         "successTitle": "Verbunden mit Microsoft Teams"
       },
       "telegram": {
@@ -2689,12 +2811,12 @@
         "copied": "{{label}} kopiert",
         "copy": "Kopieren",
         "create": {
-          "descriptionAfter": ", erstellen Sie eine benutzerdefinierte Unternehmensanwendung mit dem Namen {{brandName}}, laden Sie das Symbol {{brandName}} hoch und fügen Sie dann die Bot-Funktion hinzu.",
+          "descriptionAfter": ", erstellen Sie eine benutzerdefinierte Unternehmensanwendung mit dem gewünschten Namen und Symbol und fügen Sie dann die Bot-Funktion hinzu.",
           "descriptionBefore": "Im ",
-          "downloadIcon": "Laden Sie das {{brandName}}-Symbol herunter",
-          "iconAlt": "{{brandName}} App-Symbol",
+          "downloadIcon": "Laden Sie optional das {{brandName}}-Symbol herunter",
+          "iconAlt": "Optionales {{brandName}}-App-Symbol",
           "iconHint": ", oder verwenden Sie ein beliebiges Symbol Ihrer Wahl.",
-          "iconTitle": "{{brandName}} App-Symbol",
+          "iconTitle": "Optionales {{brandName}}-App-Symbol",
           "imageAlt": "Feishu-App-Erstellungsformular mit hervorgehobenem App-Namen, Symbol und Schaltfläche „Erstellen“.",
           "title": "Erstellen Sie eine benutzerdefinierte Unternehmensanwendung"
         },
@@ -2873,7 +2995,7 @@
         "moreOptions": "Weitere Optionen für {{bot}}",
         "newBotToken": "Neuer Bot-Token",
         "notConnected": "Nicht verbunden",
-        "officialBot": "Offizieller {{assistantName}}-Bot",
+        "officialBot": "Offizieller Telegram-Bot",
         "officialDescription": "Offizieller Bot bereitgestellt von {{brandName}}.",
         "officialMissing": "Die offizielle Bot-Konfiguration fehlt.",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
@@ -4751,6 +4873,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Prüfen Sie integrierte Modellrouten, die vorübergehend von der Fallback-Auswahl ausgeschlossen sind.",
+          "disabled": "deaktiviert",
+          "disabledExplanation": "Der Fallback für integrierte Modelle ist für diesen Workspace deaktiviert. Daher werden diese globalen Cooldowns hier derzeit ignoriert.",
+          "empty": "Derzeit befinden sich keine integrierten Modellrouten im globalen Cooldown.",
+          "enabled": "aktiviert",
+          "globalActive": "aktive globale Cooldowns",
+          "globalExplanation": "Cooldowns sind ein globaler Betriebszustand. Sie können diesen Workspace nur beeinflussen, wenn der Fallback für integrierte Modelle hier aktiviert ist.",
+          "loading": "Cooldown-Diagnose für integrierte Modelle wird geladen...",
+          "providerType": "Anbietertyp",
+          "refresh": "Aktualisieren",
+          "selectedModel": "Ausgewähltes Modell",
+          "title": "Fallback für integrierte Modelle",
+          "unavailable": "Die Cooldown-Diagnose für integrierte Modelle ist nicht verfügbar.",
+          "unavailableUntil": "Nicht verfügbar bis",
+          "upstreamModel": "Upstream-Modell",
+          "workspaceFallback": "Workspace-Fallback"
+        },
         "capture": {
           "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
@@ -4775,24 +4915,6 @@
           "recovery": "Wiederherstellung",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar"
-        },
-        "managedModelCooldown": {
-          "description": "Prüfen Sie verwaltete Modellrouten, die vorübergehend von der Fallback-Auswahl ausgeschlossen sind.",
-          "disabled": "deaktiviert",
-          "disabledExplanation": "Der Fallback für verwaltete Modelle ist für diesen Workspace deaktiviert. Daher werden diese globalen Cooldowns hier derzeit ignoriert.",
-          "empty": "Derzeit befinden sich keine verwalteten Modellrouten im globalen Cooldown.",
-          "enabled": "aktiviert",
-          "globalActive": "aktive globale Cooldowns",
-          "globalExplanation": "Cooldowns sind ein globaler Betriebszustand. Sie können diesen Workspace nur beeinflussen, wenn der Fallback für verwaltete Modelle hier aktiviert ist.",
-          "loading": "Cooldown-Diagnose für verwaltete Modelle wird geladen...",
-          "providerType": "Anbietertyp",
-          "refresh": "Aktualisieren",
-          "selectedModel": "Ausgewähltes Modell",
-          "title": "Fallback für verwaltete Modelle",
-          "unavailable": "Die Cooldown-Diagnose für verwaltete Modelle ist nicht verfügbar.",
-          "unavailableUntil": "Nicht verfügbar bis",
-          "upstreamModel": "Upstream-Modell",
-          "workspaceFallback": "Workspace-Fallback"
         },
         "tab": "Debuggen"
       },

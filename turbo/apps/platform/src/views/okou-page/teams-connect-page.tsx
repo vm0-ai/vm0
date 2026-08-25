@@ -10,6 +10,7 @@ import {
   connectTeamsAccount$,
   effectiveTeamsError$,
   openTeamsClient,
+  teamsConnectBotName$,
   teamsConnectStatus$,
   type TeamsConnectPageStatus,
 } from "../../signals/okou-page/teams-connect-signals.ts";
@@ -157,6 +158,7 @@ function PageContent() {
 
   const effectiveError = useGet(effectiveTeamsError$);
   const statusLoadable = useLoadable(teamsConnectStatus$);
+  const botNameLoadable = useLoadable(teamsConnectBotName$);
   const status: PageStatus =
     effectiveError !== ""
       ? "error"
@@ -179,6 +181,10 @@ function PageContent() {
 
   if (status === "success") {
     const label = connectedLabel(params);
+    const botName =
+      botNameLoadable.state === "hasData" && botNameLoadable.data
+        ? botNameLoadable.data
+        : "Okou";
     return (
       <>
         <CircleCheck size={40} className="text-emerald-500" />
@@ -193,7 +199,7 @@ function PageContent() {
               ($) => {
                 return $.connectors.providerConnect.teams.successDescription;
               },
-              { team: label },
+              { team: label, botName },
             )}
           </p>
         </div>

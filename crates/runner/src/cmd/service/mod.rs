@@ -65,7 +65,9 @@ enum ServiceCommand {
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),
-    /// Wait until a runner service is active and job-admitting
+    /// Wait until a runner service is active and job-admitting. On success, emit the resolved
+    /// max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go
+    /// to stderr.
     WaitRunning(ServiceWaitRunningArgs),
     /// Show machine-readable systemd unit state for runner services
     UnitState(state::UnitStateArgs),

@@ -4,6 +4,7 @@ import type {
   CustomConnectorResponse,
   CustomConnectorValueInput,
 } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   Button,
   Dialog,
@@ -21,20 +22,27 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCustomConnectorDialog$,
   connectCustomConnectorOAuth2$,
+  connectCustomConnectorAccountOAuth2$,
   connectCustomConnectorOAuth2ForAgent$,
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
   setCustomConnectorValues$,
+  setCustomConnectorAccountValues$,
   setCustomConnectorValuesForAgent$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
 import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings/token-input.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+import {
+  connectorAccountMutationFor as accountMutationFor,
+  type ConnectorAccountConnectMode,
+} from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 interface CustomConnectorConnectionSubmission {
   readonly connected: boolean;
   readonly targetAuthorized: boolean;
+  readonly connectionId: string | null;
 }
 
 function formValue(
@@ -68,10 +76,12 @@ function declaredValuesFromForm(
 
 function CredentialFields({
   connector,
+  configuredFieldKeys,
   values,
   setField,
 }: {
   readonly connector: CustomConnectorResponse;
+  readonly configuredFieldKeys: readonly string[];
   readonly values: Readonly<Record<string, string>>;
   readonly setField: (args: {
     readonly key: string;
@@ -79,7 +89,7 @@ function CredentialFields({
   }) => void;
 }) {
   const { t } = useTranslation();
-  const configuredKeys = new Set(connector.configuredFieldKeys);
+  const configuredKeys = new Set(configuredFieldKeys);
   return connector.fields.map((field, index) => {
     const inputId = `cc-connect-field-${index}`;
     const statusId = `${inputId}-status`;
@@ -151,14 +161,27 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
   const [agentOAuthLoadable, submitAgentOAuth2] = useLoadableSet(
     connectCustomConnectorOAuth2ForAgent$,
   );
+  const [accountValuesLoadable, submitAccountValues] = useLoadableSet(
+    setCustomConnectorAccountValues$,
+  );
+  const [accountOAuthLoadable, submitAccountOAuth2] = useLoadableSet(
+    connectCustomConnectorAccountOAuth2$,
+  );
 
   const submitDeclaredValues = async (
     args: {
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
+      readonly account?: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
+    if (args.account) {
+      return await submitAccountValues(
+        { id: args.id, values: args.values, account: args.account },
+        signal,
+      );
+    }
     if (agentId) {
       return await submitAgentValues({ ...args, agentId }, signal);
     }
@@ -166,8 +189,12 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
   };
   const submitOAuth = async (
     connectorId: string,
+    account: ConnectorAccountMutationIntent | undefined,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
+    if (account) {
+      return await submitAccountOAuth2({ id: connectorId, account }, signal);
+    }
     if (agentId) {
       return await submitAgentOAuth2({ id: connectorId, agentId }, signal);
     }
@@ -179,7 +206,9 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
       valuesLoadable.state === "loading" ||
       agentValuesLoadable.state === "loading" ||
       oauthLoadable.state === "loading" ||
-      agentOAuthLoadable.state === "loading",
+      agentOAuthLoadable.state === "loading" ||
+      accountValuesLoadable.state === "loading" ||
+      accountOAuthLoadable.state === "loading",
     submitDeclaredValues,
     submitOAuth,
   };
@@ -235,7 +264,58 @@ interface CustomConnectorConnectDialogProps {
   readonly connector: CustomConnectorResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
-  readonly onSuccess?: () => void | Promise<void>;
+  readonly onSuccess?: (connectionId: string | null) => void | Promise<void>;
+  readonly accountMode?: ConnectorAccountConnectMode;
+}
+
+function CustomConnectorConnectForm({
+  connector,
+  accountMode,
+  values,
+  setField,
+  submitting,
+  canSubmit,
+  close,
+  onSubmit,
+}: {
+  readonly connector: CustomConnectorResponse;
+  readonly accountMode: ConnectorAccountConnectMode | undefined;
+  readonly values: Readonly<Record<string, string>>;
+  readonly setField: (args: {
+    readonly key: string;
+    readonly value: string;
+  }) => void;
+  readonly submitting: boolean;
+  readonly canSubmit: boolean;
+  readonly close: () => void;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const { t } = useTranslation();
+  const oauth = connector.authMode === "oauth";
+  return (
+    <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+      {oauth ? (
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.connectors.custom.connect.continueToProvider;
+          })}
+        </p>
+      ) : (
+        <CredentialFields
+          connector={connector}
+          configuredFieldKeys={accountMode ? [] : connector.configuredFieldKeys}
+          values={values}
+          setField={setField}
+        />
+      )}
+      <ConnectDialogFooter
+        oauth={oauth}
+        submitting={submitting}
+        canSubmit={canSubmit}
+        onClose={close}
+      />
+    </form>
+  );
 }
 
 export function CustomConnectorConnectDialog({
@@ -243,6 +323,7 @@ export function CustomConnectorConnectDialog({
   agentId,
   onClose,
   onSuccess,
+  accountMode,
 }: CustomConnectorConnectDialogProps) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
@@ -252,6 +333,7 @@ export function CustomConnectorConnectDialog({
   const { submitting, submitDeclaredValues, submitOAuth } =
     useCustomConnectorConnectionSubmitters(agentId);
   const signal = useGet(pageSignal$);
+  const accountMutation = accountMutationFor(accountMode);
   const oauth = connector.authMode === "oauth";
   const values = declaredValuesFromForm(connector, form.values);
   const submittedKeys = new Set(
@@ -259,13 +341,17 @@ export function CustomConnectorConnectDialog({
       return value.key;
     }),
   );
-  const hasMissingRequiredValues = connector.missingRequiredFields.every(
-    (key) => {
-      return submittedKeys.has(key);
-    },
-  );
+  const requiredFieldKeys =
+    accountMode?.kind === "add"
+      ? connector.fields.flatMap((field) => {
+          return field.required ? [field.key] : [];
+        })
+      : connector.missingRequiredFields;
+  const hasRequiredValues = requiredFieldKeys.every((key) => {
+    return submittedKeys.has(key);
+  });
   const canSubmit =
-    !submitting && (oauth || (values.length > 0 && hasMissingRequiredValues));
+    !submitting && (oauth || (values.length > 0 && hasRequiredValues));
   const showSecretDescription =
     !oauth &&
     connector.fields.length === 1 &&
@@ -288,13 +374,16 @@ export function CustomConnectorConnectDialog({
     detach(
       (async () => {
         const result = oauth
-          ? await submitOAuth(connector.id, signal)
-          : await submitDeclaredValues({ id: connector.id, values }, signal);
+          ? await submitOAuth(connector.id, accountMutation, signal)
+          : await submitDeclaredValues(
+              { id: connector.id, values, account: accountMutation },
+              signal,
+            );
         if (!result.connected) {
           return;
         }
-        if (result.targetAuthorized) {
-          await onSuccess?.();
+        if (result.targetAuthorized || accountMode) {
+          await onSuccess?.(result.connectionId);
         }
         close();
       })(),
@@ -340,27 +429,16 @@ export function CustomConnectorConnectDialog({
             })}
           </p>
         )}
-        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          {oauth ? (
-            <p className="text-sm text-muted-foreground">
-              {t(($) => {
-                return $.connectors.custom.connect.continueToProvider;
-              })}
-            </p>
-          ) : (
-            <CredentialFields
-              connector={connector}
-              values={form.values}
-              setField={setField}
-            />
-          )}
-          <ConnectDialogFooter
-            oauth={oauth}
-            submitting={submitting}
-            canSubmit={canSubmit}
-            onClose={close}
-          />
-        </form>
+        <CustomConnectorConnectForm
+          connector={connector}
+          accountMode={accountMode}
+          values={form.values}
+          setField={setField}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          close={close}
+          onSubmit={onSubmit}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -60,6 +60,8 @@ import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provid
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
 import { validateBuiltInModelCandidateCooldownExpansion } from "./test-built-in-model-candidate-cooldown-expansion";
+import { validateBuiltInModelTerminologyCutover } from "./test-built-in-model-terminology-cutover";
+import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -10833,6 +10835,8 @@ async function main(): Promise<void> {
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateBuiltInModelCandidateCooldownExpansion();
+    await validateBuiltInModelTerminologyCutover();
+    await validateSlackOfficialBrandMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

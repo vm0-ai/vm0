@@ -353,13 +353,6 @@ impl AppServerState {
             )?;
             return Ok(ServerAction::Stop);
         }
-        if self.scenario == Scenario::UnexpectedThreadTurnCompleted {
-            write_json_line(
-                output,
-                &turn_completed_notification("unexpected-thread-id", &turn_id),
-            )?;
-            return Ok(ServerAction::Stop);
-        }
         if self.scenario == Scenario::SecondaryThreadNotifications {
             write_secondary_thread_notifications(output, &thread_id, &turn_id, response_text)?;
             return Ok(ServerAction::Continue);

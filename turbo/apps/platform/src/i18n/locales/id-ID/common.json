@@ -489,6 +489,26 @@
       "zoomIn": "Perbesar",
       "zoomOut": "Perkecil"
     },
+    "annotation": {
+      "attach": "Lampirkan tanda",
+      "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "notePlaceholder": "Tulis apa yang harus diubah di sini",
+      "open": "Anotasi",
+      "redo": "Ulangi",
+      "removeMark": "Hapus tanda",
+      "subtitle_other": "{{count}} tanda",
+      "tools": {
+        "arrow": "Panah",
+        "box": "Kotak",
+        "crop": "Pangkas",
+        "highlight": "Sorot",
+        "pen": "Gambar",
+        "redact": "Sensor",
+        "select": "Pilih",
+        "text": "Teks"
+      },
+      "undo": "Urungkan"
+    },
     "attachments": {
       "cancelUpload": "Batalkan unggahan {{filename}}",
       "download": "Unduh {{filename}}",
@@ -1015,12 +1035,43 @@
       "signIn": "Masuk",
       "signUp": "Daftar"
     },
+    "homeLink": "Buka beranda {{brandName}}",
     "loading": "Memuat autentikasi",
+    "theme": {
+      "darkEnabled": "Tema gelap diaktifkan",
+      "lightEnabled": "Tema terang diaktifkan"
+    },
     "toggleTheme": "Beralih tema",
     "v2": {
-      "continueToSignIn": "Lanjutkan untuk masuk",
-      "continueToSignUp": "Lanjutkan untuk mendaftar",
-      "unavailable": "Pengalaman autentikasi baru belum tersedia."
+      "continuation": {
+        "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
+        "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
+        "chooseOrganizationTitle": "Pilih organisasi",
+        "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
+        "completeTitle": "Proses masuk selesai",
+        "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
+        "loadingTitle": "Menyelesaikan proses masuk",
+        "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
+        "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "recoveryAction": "Mulai lagi",
+        "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "unsupportedTitle": "Langkah masuk tidak tersedia"
+      },
+      "signIn": {
+        "action": "Gunakan proses masuk saat ini",
+        "title": "Masuk ke {{brandName}}"
+      },
+      "signUp": {
+        "action": "Gunakan pendaftaran saat ini",
+        "captchaExpired": "Verifikasi bot telah kedaluwarsa. Coba lagi.",
+        "codeExpired": "Kode verifikasi ini telah kedaluwarsa. Minta kode baru.",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} dtk)",
+        "title": "Buat akun {{brandName}} Anda"
+      }
     }
   },
   "authorization": {
@@ -1665,6 +1716,36 @@
       "weeklyAt": "Setiap minggu pukul {{time}}",
       "weeklyOnAt": "Setiap minggu pada {{days}} pukul {{time}}"
     },
+    "banking": {
+      "accountFallback": "Rekening bank",
+      "actionFailed": "Tindakan perbankan gagal",
+      "active_other": "Akses aktif untuk {{count}} rekening",
+      "automationOff": "Akses hanya-baca tidak tersedia untuk proses otomatisasi.",
+      "cancel": "Batal",
+      "change": "Ubah",
+      "connect": "Hubungkan bank",
+      "continue": "Lanjutkan",
+      "duration": "Durasi akses",
+      "expiresAt": "Berakhir {{time}}",
+      "grant": "Berikan akses",
+      "institutionFallback": "Institusi keuangan",
+      "loadFailed": "Tidak dapat memuat akses perbankan",
+      "noAccounts": "Tidak ada rekening aktif yang tersedia. Hubungkan kembali atau perbaiki institusi terlebih dahulu.",
+      "oneDay": "24 jam",
+      "oneHour": "1 jam",
+      "popupBlocked": "Izinkan pop-up untuk Zero, lalu coba lagi.",
+      "readOnly": "Rekening, saldo, dan transaksi · hanya baca",
+      "repair": "Perbaiki",
+      "repairRequired": "{{institution}} perlu diperbaiki",
+      "retry": "Coba lagi",
+      "revoke": "Cabut",
+      "revokeConfirm": "Cabut akses perbankan Agen ini?",
+      "selectAccounts": "Pilih rekening",
+      "sevenDays": "7 hari",
+      "thirtyDays": "30 hari",
+      "title": "Permintaan akses perbankan",
+      "waiting": "Menunggu Mastercard Data Connect. Selesaikan proses di sana, lalu kembali ke Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Tambahkan kredit untuk terus mengobrol dengan {{assistantName}}.",
       "askAdminCredits": "Minta admin ruang kerja untuk menambahkan kredit agar Anda bisa terus mengobrol dengan {{assistantName}}.",
@@ -2135,6 +2216,40 @@
       "title": "Kelola akses {{connector}}",
       "unnamedAgent": "Tanpa nama"
     },
+    "accounts": {
+      "accountName": "Nama akun",
+      "accountsUnavailable": "Akun tidak tersedia untuk konektor ini.",
+      "actions": "Tindakan akun",
+      "addAccount": "Tambah akun",
+      "connected": "Terhubung",
+      "default": "Default",
+      "deleteAccount": "Hapus akun",
+      "deleteDescription": "Thread yang menggunakan akun ini akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount": "{{value}} thread akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Hapus {{account}}?",
+      "find": "Cari akun",
+      "loading": "Memuat akun…",
+      "loadingMore": "Memuat…",
+      "loadMore": "Muat lebih banyak",
+      "makeDefault": "Jadikan default",
+      "managerTitle": "Kelola akun {{connector}}",
+      "namePromptDescription": "Anda dapat melewati langkah ini dan memberi nama akun nanti.",
+      "namePromptTitle": "Beri nama akun {{connector}} Anda",
+      "noAccounts": "Tidak ada akun",
+      "noAccountsFound": "Akun tidak ditemukan",
+      "reconnectRequired": "Perlu dihubungkan kembali",
+      "rename": "Ganti nama",
+      "skipName": "Lewati",
+      "summaryMany": "{{value}} akun",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} akun",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Akun kerja"
+    },
     "actions": {
       "apply": "Terapkan",
       "authorize": "Otorisasi",
@@ -2532,8 +2647,8 @@
         "connectTitle": "Hubungkan ke Slack",
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Slack.",
         "open": "Buka Slack",
-        "successDescription": "Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
-        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescription": "Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Slack!"
       },
       "teams": {
@@ -2543,7 +2658,7 @@
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Microsoft Teams.",
         "open": "Buka Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Anda tersambung ke {{team}}. Sebut @Zero di Teams untuk mulai mengobrol.",
+        "successDescription": "Anda tersambung ke {{team}}. Sebut @{{botName}} di Teams untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Microsoft Teams"
       },
       "telegram": {
@@ -2687,12 +2802,12 @@
         "copied": "{{label}} disalin",
         "copy": "Salin",
         "create": {
-          "descriptionAfter": ", buat aplikasi kustom enterprise bernama {{brandName}}, unggah ikon {{brandName}}, lalu tambahkan kemampuan Bot.",
+          "descriptionAfter": ", buat aplikasi kustom enterprise dengan nama dan ikon yang Anda pilih, lalu tambahkan kemampuan Bot.",
           "descriptionBefore": "Di ",
-          "downloadIcon": "Unduh ikon {{brandName}}",
-          "iconAlt": "Ikon aplikasi {{brandName}}",
+          "downloadIcon": "Unduh ikon {{brandName}} opsional",
+          "iconAlt": "Ikon aplikasi {{brandName}} opsional",
           "iconHint": ", atau gunakan ikon apa pun yang Anda suka.",
-          "iconTitle": "Ikon aplikasi {{brandName}}",
+          "iconTitle": "Ikon aplikasi {{brandName}} opsional",
           "imageAlt": "Formulir pembuatan aplikasi Feishu dengan nama aplikasi, ikon, dan tombol Create disorot",
           "title": "Buat aplikasi kustom enterprise"
         },
@@ -2871,7 +2986,7 @@
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "newBotToken": "Token bot baru",
         "notConnected": "Tidak terhubung",
-        "officialBot": "Bot resmi {{assistantName}}",
+        "officialBot": "Bot Telegram resmi",
         "officialDescription": "Bot resmi yang disediakan oleh {{brandName}}.",
         "officialMissing": "Konfigurasi bot resmi tidak ada.",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
@@ -4749,6 +4864,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Periksa rute model bawaan yang sementara dikecualikan dari pemilihan fallback.",
+          "disabled": "dinonaktifkan",
+          "disabledExplanation": "Fallback model bawaan dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
+          "empty": "Saat ini tidak ada rute model bawaan dalam cooldown global.",
+          "enabled": "diaktifkan",
+          "globalActive": "cooldown global aktif",
+          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model bawaan diaktifkan di sini.",
+          "loading": "Memuat diagnostik cooldown model bawaan...",
+          "providerType": "Jenis penyedia",
+          "refresh": "Segarkan",
+          "selectedModel": "Model terpilih",
+          "title": "Fallback model bawaan",
+          "unavailable": "Diagnostik cooldown model bawaan tidak tersedia.",
+          "unavailableUntil": "Tidak tersedia hingga",
+          "upstreamModel": "Model upstream",
+          "workspaceFallback": "fallback workspace"
+        },
         "capture": {
           "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
@@ -4773,24 +4906,6 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "managedModelCooldown": {
-          "description": "Periksa rute model terkelola yang sementara dikecualikan dari pemilihan fallback.",
-          "disabled": "dinonaktifkan",
-          "disabledExplanation": "Fallback model terkelola dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
-          "empty": "Saat ini tidak ada rute model terkelola dalam cooldown global.",
-          "enabled": "diaktifkan",
-          "globalActive": "cooldown global aktif",
-          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model terkelola diaktifkan di sini.",
-          "loading": "Memuat diagnostik cooldown model terkelola...",
-          "providerType": "Jenis penyedia",
-          "refresh": "Segarkan",
-          "selectedModel": "Model terpilih",
-          "title": "Fallback model terkelola",
-          "unavailable": "Diagnostik cooldown model terkelola tidak tersedia.",
-          "unavailableUntil": "Tidak tersedia hingga",
-          "upstreamModel": "Model upstream",
-          "workspaceFallback": "fallback workspace"
         },
         "tab": "Debug"
       },

@@ -32,10 +32,20 @@ reset_dirs() {
   mkdir -p "$textfile_dir"
 }
 
-run_collector() {
-  VM0_RUNNERS_DIR="$runners_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir" \
+run_with_aliases() {
+  env \
+    -u OKOU_RUNNERS_DIR \
+    -u VM0_RUNNERS_DIR \
+    -u OKOU_MONITORING_TEXTFILE_DIR \
+    -u VM0_MONITORING_TEXTFILE_DIR \
+    "$@" \
     python3 "$script" 2>"$stderr_file"
+}
+
+run_collector() {
+  run_with_aliases \
+    VM0_RUNNERS_DIR="$runners_dir" \
+    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
 
   [ -f "$output_file" ] || fail "metrics output file was not created"
 }
@@ -48,6 +58,40 @@ assert_line() {
 assert_playbook_contains() {
   local expected="$1"
   grep -qF "$expected" "$playbook" || fail "playbook is missing: $expected"
+}
+
+assert_source_state() {
+  local canonical_key="$1"
+  local legacy_key="$2"
+  local state="$3"
+  local expected
+  expected="monitoring path alias source canonical_key=$canonical_key legacy_key=$legacy_key state=$state"
+
+  grep -qxF "$expected" "$stderr_file" ||
+    fail "expected fixed-shape alias source evidence"
+}
+
+assert_conflict_state() {
+  local canonical_key="$1"
+  local legacy_key="$2"
+  local expected
+  expected="monitoring path alias conflict canonical_key=$canonical_key legacy_key=$legacy_key state=conflict"
+
+  grep -qxF "$expected" "$stderr_file" ||
+    fail "expected fixed-shape alias conflict diagnostic"
+}
+
+assert_stderr_excludes_values() {
+  local value
+  for value in "$@"; do
+    if grep -Fq -- "$value" "$stderr_file"; then
+      fail "alias diagnostic exposed a path value"
+    fi
+  done
+}
+
+assert_output_absent() {
+  [ ! -e "$output_file" ] || fail "collector published output before rejecting aliases"
 }
 
 assert_zero_snapshot() {
@@ -96,7 +140,7 @@ test_aggregates_current_legacy_and_future_statuses() {
     {"sandbox_id": "$uuid_e", "phase": "running"},
     {"sandbox_id": "$uuid_e", "phase": "preparing"}
   ],
-  "idle_vms": [
+  "idle_sandboxes": [
     {"sandbox_id": "$uuid_a", "reuse_key": "overlap"},
     {"sandbox_id": "$uuid_d", "reuse_key": "idle"}
   ]
@@ -151,12 +195,49 @@ EOF
   fi
 }
 
+test_idle_field_compatibility_precedence() {
+  reset_dirs
+  mkdir -p \
+    "$runners_dir/canonical" \
+    "$runners_dir/legacy" \
+    "$runners_dir/mirrored" \
+    "$runners_dir/canonical-empty" \
+    "$runners_dir/omitted"
+
+  printf '%s\n' \
+    "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_a\"}]}" \
+    >"$runners_dir/canonical/status.json"
+  printf '%s\n' \
+    "{\"mode\":\"running\",\"idle_vms\":[{\"sandbox_id\":\"$uuid_b\"}]}" \
+    >"$runners_dir/legacy/status.json"
+  printf '%s\n' \
+    "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_c\"}],\"idle_vms\":[{\"sandbox_id\":\"$uuid_d\"}]}" \
+    >"$runners_dir/mirrored/status.json"
+  printf '%s\n' \
+    "{\"mode\":\"running\",\"idle_sandboxes\":[],\"idle_vms\":[{\"sandbox_id\":\"$uuid_e\"}]}" \
+    >"$runners_dir/canonical-empty/status.json"
+  printf '%s\n' '{"mode":"running"}' \
+    >"$runners_dir/omitted/status.json"
+
+  run_collector
+
+  assert_line 'vm0_runner_sandboxes{state="active"} 0'
+  assert_line 'vm0_runner_sandboxes{state="idle"} 3'
+  assert_line 'vm0_runner_sandboxes{state="preparing"} 0'
+  assert_line 'vm0_runner_sandboxes{state="unknown"} 0'
+  assert_line 'vm0_runner_instances{mode="running"} 5'
+  assert_line 'vm0_runner_status_files{result="included"} 5'
+  assert_line 'vm0_runner_status_files{result="invalid"} 0'
+  assert_line 'vm0_runner_status_collection_success 1'
+}
+
 test_invalid_files_publish_partial_metrics() {
   reset_dirs
   mkdir -p \
     "$runners_dir/valid" \
     "$runners_dir/malformed-json" \
     "$runners_dir/malformed-shape" \
+    "$runners_dir/malformed-canonical" \
     "$runners_dir/invalid-id"
 
   cat >"$runners_dir/valid/status.json" <<EOF
@@ -166,6 +247,9 @@ EOF
   printf '%s\n' '{"mode":"running","active_runs":{}}' \
     >"$runners_dir/malformed-shape/status.json"
   printf '%s\n' \
+    "{\"mode\":\"running\",\"idle_sandboxes\":null,\"idle_vms\":[{\"sandbox_id\":\"$uuid_b\"}]}" \
+    >"$runners_dir/malformed-canonical/status.json"
+  printf '%s\n' \
     '{"mode":"running","idle_vms":[{"sandbox_id":"not-a-uuid"}]}' \
     >"$runners_dir/invalid-id/status.json"
 
@@ -174,12 +258,14 @@ EOF
   assert_line 'vm0_runner_sandboxes{state="preparing"} 1'
   assert_line 'vm0_runner_instances{mode="starting"} 1'
   assert_line 'vm0_runner_status_files{result="included"} 1'
-  assert_line 'vm0_runner_status_files{result="invalid"} 3'
+  assert_line 'vm0_runner_status_files{result="invalid"} 4'
   assert_line 'vm0_runner_status_collection_success 0'
   grep -q 'malformed-json/status.json' "$stderr_file" ||
     fail "malformed JSON diagnostic was not reported"
   grep -q 'malformed-shape/status.json' "$stderr_file" ||
     fail "malformed shape diagnostic was not reported"
+  grep -q 'malformed-canonical/status.json' "$stderr_file" ||
+    fail "malformed canonical diagnostic was not reported"
   grep -q 'invalid-id/status.json' "$stderr_file" ||
     fail "invalid UUID diagnostic was not reported"
 }
@@ -207,7 +293,7 @@ test_output_is_deterministic_and_replaced_atomically() {
   reset_dirs
   mkdir -p "$runners_dir/current"
   printf '%s\n' \
-    "{\"mode\":\"running\",\"idle_vms\":[{\"sandbox_id\":\"$uuid_a\"}]}" \
+    "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_a\"}]}" \
     >"$runners_dir/current/status.json"
   printf '%s\n' 'stale output' >"$output_file"
 
@@ -225,12 +311,142 @@ test_output_is_deterministic_and_replaced_atomically() {
   assert_line 'vm0_runner_sandboxes{state="idle"} 1'
 }
 
+test_runners_dir_alias_matrix() {
+  reset_dirs
+  mkdir -p "$runners_dir/alias-runner"
+  printf '%s\n' '{"mode":"running"}' \
+    >"$runners_dir/alias-runner/status.json"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    VM0_RUNNERS_DIR="" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_line 'vm0_runner_status_files{result="included"} 1'
+  assert_source_state OKOU_RUNNERS_DIR VM0_RUNNERS_DIR canonical-only
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="" \
+    VM0_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_line 'vm0_runner_status_files{result="included"} 1'
+  assert_source_state OKOU_RUNNERS_DIR VM0_RUNNERS_DIR legacy-only
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    VM0_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_line 'vm0_runner_status_files{result="included"} 1'
+  assert_source_state OKOU_RUNNERS_DIR VM0_RUNNERS_DIR dual
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  run_with_aliases OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_zero_snapshot
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="" \
+    VM0_RUNNERS_DIR="" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_zero_snapshot
+
+  rm -f "$output_file"
+  local canonical_conflict="$tmp_root/runners-canonical-conflict-value"
+  local legacy_conflict="$tmp_root/runners-legacy-conflict-value"
+  if run_with_aliases \
+    OKOU_RUNNERS_DIR="$canonical_conflict" \
+    VM0_RUNNERS_DIR="$legacy_conflict" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"; then
+    fail "expected conflicting runners aliases to fail"
+  fi
+  assert_conflict_state OKOU_RUNNERS_DIR VM0_RUNNERS_DIR
+  assert_stderr_excludes_values "$canonical_conflict" "$legacy_conflict"
+  assert_output_absent
+}
+
+test_monitoring_textfile_dir_alias_matrix() {
+  reset_dirs
+  mkdir -p "$runners_dir/alias-runner"
+  printf '%s\n' '{"mode":"running"}' \
+    >"$runners_dir/alias-runner/status.json"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
+    VM0_MONITORING_TEXTFILE_DIR=""
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_source_state \
+    OKOU_MONITORING_TEXTFILE_DIR \
+    VM0_MONITORING_TEXTFILE_DIR \
+    canonical-only
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="" \
+    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_source_state \
+    OKOU_MONITORING_TEXTFILE_DIR \
+    VM0_MONITORING_TEXTFILE_DIR \
+    legacy-only
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
+    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line 'vm0_runner_instances{mode="running"} 1'
+  assert_source_state \
+    OKOU_MONITORING_TEXTFILE_DIR \
+    VM0_MONITORING_TEXTFILE_DIR \
+    dual
+  assert_stderr_excludes_values "$runners_dir" "$textfile_dir"
+
+  rm -f "$output_file"
+  if run_with_aliases OKOU_RUNNERS_DIR="$runners_dir"; then
+    fail "expected the absent textfile alias pair to use the missing default"
+  fi
+  grep -qF \
+    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
+    "$stderr_file" || fail "absent textfile aliases did not use the fixed default"
+  assert_output_absent
+
+  if run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="" \
+    VM0_MONITORING_TEXTFILE_DIR=""; then
+    fail "expected empty textfile aliases to use the missing default"
+  fi
+  grep -qF \
+    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
+    "$stderr_file" || fail "empty textfile aliases did not use the fixed default"
+  assert_output_absent
+
+  local canonical_conflict="$tmp_root/textfile-canonical-conflict-value"
+  local legacy_conflict="$tmp_root/textfile-legacy-conflict-value"
+  if run_with_aliases \
+    OKOU_RUNNERS_DIR="$runners_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$canonical_conflict" \
+    VM0_MONITORING_TEXTFILE_DIR="$legacy_conflict"; then
+    fail "expected conflicting textfile aliases to fail"
+  fi
+  assert_conflict_state \
+    OKOU_MONITORING_TEXTFILE_DIR \
+    VM0_MONITORING_TEXTFILE_DIR
+  assert_stderr_excludes_values "$canonical_conflict" "$legacy_conflict"
+  assert_output_absent
+}
+
 test_missing_textfile_dir_fails() {
   rm -rf "$runners_dir" "$textfile_dir"
 
-  if VM0_RUNNERS_DIR="$runners_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir" \
-    python3 "$script" 2>"$stderr_file"; then
+  if run_with_aliases \
+    VM0_RUNNERS_DIR="$runners_dir" \
+    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"; then
     fail "expected missing textfile directory to fail"
   fi
 
@@ -250,9 +466,12 @@ test_playbook_provisions_independent_collector_cadence() {
 
 test_missing_and_empty_runner_roots_emit_zero_metrics
 test_aggregates_current_legacy_and_future_statuses
+test_idle_field_compatibility_precedence
 test_invalid_files_publish_partial_metrics
 test_rejects_runner_and_status_symlinks
 test_output_is_deterministic_and_replaced_atomically
+test_runners_dir_alias_matrix
+test_monitoring_textfile_dir_alias_matrix
 test_missing_textfile_dir_fails
 test_playbook_provisions_independent_collector_cadence
 

@@ -202,7 +202,7 @@ pub mod runners {
             }
         }
 
-        /// DTOs for reporting bounded managed model provider failures.
+        /// DTOs for reporting bounded built-in model provider failures.
         pub mod model_provider_failures {
             /// Bounded provider-independent failure eligible for route cooldown.
             #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -227,7 +227,7 @@ pub mod runners {
                 Connection,
             }
 
-            /// Request body for reporting a managed model provider failure.
+            /// Request body for reporting a built-in model provider failure.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct Request {

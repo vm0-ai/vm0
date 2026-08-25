@@ -6,24 +6,30 @@ import { accept } from "../../lib/accept.ts";
 
 export type TeamsConnectPageStatus = "idle" | "success";
 
+interface TeamsConnectPageState {
+  readonly status: TeamsConnectPageStatus;
+  readonly botName: string | null;
+}
+
 export const TEAMS_CLIENT_URL = "msteams://teams.microsoft.com/";
 
 export function openTeamsClient(): void {
   window.open(TEAMS_CLIENT_URL, "_self");
 }
 
-export const teamsConnectStatus$ = computed(
-  async (get): Promise<TeamsConnectPageStatus> => {
+const teamsConnectPageState$ = computed(
+  async (get): Promise<TeamsConnectPageState> => {
     const params = get(searchParams$);
     const initialStatus = params.get("status");
     const initialError = params.get("error");
+    const initialBotName = params.get("botName");
 
     if (initialStatus === "connected") {
-      return "success";
+      return { status: "success", botName: initialBotName };
     }
 
     if (initialError) {
-      return "idle";
+      return { status: "idle", botName: initialBotName };
     }
 
     const client = get(apiClient$)(teamsConnectContract);
@@ -31,11 +37,23 @@ export const teamsConnectStatus$ = computed(
       accept(client.getStatus(), [200]),
     ]);
 
-    return result.status === "fulfilled" && result.value.body.isConnected
-      ? "success"
-      : "idle";
+    if (result.status !== "fulfilled") {
+      return { status: "idle", botName: initialBotName };
+    }
+    return {
+      status: result.value.body.isConnected ? "success" : "idle",
+      botName: result.value.body.botName ?? initialBotName,
+    };
   },
 );
+
+export const teamsConnectStatus$ = computed(async (get) => {
+  return (await get(teamsConnectPageState$)).status;
+});
+
+export const teamsConnectBotName$ = computed(async (get) => {
+  return (await get(teamsConnectPageState$)).botName;
+});
 
 export const effectiveTeamsError$ = computed((get) => {
   const params = get(searchParams$);

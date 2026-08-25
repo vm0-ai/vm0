@@ -754,7 +754,7 @@ function requestDownloadFile(
     ? { authorization }
     : {};
   return Promise.resolve(
-    app.request(`/api/okou/integrations/slack/download-file${query}`, {
+    app.request(`/api/integrations/slack/download-file${query}`, {
       method: "GET",
       headers,
     }),
@@ -773,7 +773,7 @@ async function expectErrorResponse(
   expect(body.error?.code).toBe(code);
 }
 
-describe("GET /api/okou/integrations/slack/download-file", () => {
+describe("GET /api/integrations/slack/download-file", () => {
   const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
     (fixture) => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.5...process-control-ipc-v0.3.6) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+
 ## [0.3.5](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.4...process-control-ipc-v0.3.5) (2026-08-21)
 
 

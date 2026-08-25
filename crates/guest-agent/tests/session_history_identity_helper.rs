@@ -629,6 +629,103 @@ async fn export_session_history_sidecar_rejects_symlinked_metadata_without_openi
     Ok(())
 }
 
+#[tokio::test]
+async fn default_identity_path_dual_reads_runtime_aliases_without_protocol_output() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let history = br#"{"type":"system"}"#;
+    let session_id = "runtime-alias-default-path";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
+    std::fs::write(&history_path, history)?;
+    let identity = SessionHistoryIdentity::new(
+        SessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        SessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        history_source,
+    )?;
+
+    for (name, canonical, legacy) in [
+        ("canonical-only", true, false),
+        ("legacy-only", false, true),
+        ("equal-dual", true, true),
+    ] {
+        let runtime_dir = dir.path().join(name);
+        let metadata_path =
+            guest_contracts::runtime_paths::final_session_history_identity_file(&runtime_dir);
+        guest_contracts::runtime_paths::write_private(&metadata_path, identity.to_json_vec()?)?;
+        let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+        command
+            .env_clear()
+            .env(
+                guest_contracts::env::RUN_ID_ENV,
+                "not/validated/when/runtime-dir-is-set",
+            )
+            .arg("verify-session-history-identity");
+        if canonical {
+            command.env(
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                &runtime_dir,
+            );
+        }
+        if legacy {
+            command.env(
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                &runtime_dir,
+            );
+        }
+
+        let output = common::command_output_with_timeout(
+            &mut command,
+            SESSION_HISTORY_HELPER_TIMEOUT,
+            &format!("{name} default identity-path helper exceeded its completion budget"),
+        )
+        .await?;
+        assert!(
+            output.status.success(),
+            "{name}: stdout={}, stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stdout.is_empty(), "{name} changed stdout");
+        assert!(output.stderr.is_empty(), "{name} changed stderr");
+    }
+
+    let canonical_dir = dir.path().join("canonical-must-not-leak");
+    let legacy_dir = dir.path().join("legacy-must-not-leak");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
+        .env_clear()
+        .env(guest_contracts::env::RUN_ID_ENV, "run-id")
+        .env(
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+            &canonical_dir,
+        )
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &legacy_dir,
+        )
+        .arg("verify-session-history-identity");
+    let output = common::command_output_with_timeout(
+        &mut command,
+        SESSION_HISTORY_HELPER_TIMEOUT,
+        "conflicting default identity-path aliases exceeded their completion budget",
+    )
+    .await?;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(
+        "conflicting guest runtime directory environment aliases: \
+         canonical_key=OKOU_GUEST_RUNTIME_DIR legacy_key=VM0_GUEST_RUNTIME_DIR state=conflict"
+    ));
+    assert!(!stderr.contains("canonical-must-not-leak"));
+    assert!(!stderr.contains("legacy-must-not-leak"));
+    assert!(!stderr.contains("guest_runtime_dir_env_source"));
+
+    Ok(())
+}
+
 fn write_metadata(
     dir: &Path,
     name: &str,

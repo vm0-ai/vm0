@@ -9,11 +9,12 @@
 //! descriptors move with `SCM_RIGHTS` and are never inherited through the
 //! sandbox-user launch chain.
 //!
-//! The endpoint is bootstrapped through [`BOOTSTRAP_ENV`]. `vsock-guest`
-//! creates the endpoint name with [`endpoint_name`], binds it with
+//! The endpoint is bootstrapped through [`BOOTSTRAP_ENV`] or its reader-only
+//! canonical alias [`CANONICAL_BOOTSTRAP_ENV`]. `vsock-guest` creates the
+//! endpoint name with [`endpoint_name`], binds it with
 //! [`bind_abstract_listener`], accepts a single control sink connection, and
-//! then drives request/response exchange. `guest-agent` reads the endpoint name
-//! from the environment, connects with [`connect_abstract`], sends a hello
+//! then drives request/response exchange. `guest-agent` resolves the endpoint
+//! name from the environment, connects with [`connect_abstract`], sends a hello
 //! frame, then reads requests and writes responses.
 //!
 //! Two companion placement endpoints are derived from the same operation-local
@@ -88,6 +89,13 @@ pub use transport::{
 /// reads it during startup and connects to that abstract socket. Child agent
 /// CLI processes must not inherit this variable.
 pub const BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
+
+/// Canonical operation-control endpoint alias accepted by guest readers.
+///
+/// `vsock-guest` keeps writing [`BOOTSTRAP_ENV`] until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// are complete.
+pub const CANONICAL_BOOTSTRAP_ENV: &str = "OKOU_PROCESS_CONTROL_ENDPOINT";
 
 /// Maximum request payload size carried by a local control request frame.
 ///

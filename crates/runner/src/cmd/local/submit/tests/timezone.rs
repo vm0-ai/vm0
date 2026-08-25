@@ -6,8 +6,8 @@ use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
 };
 
-const TIMEZONE_CHILD_SCENARIO: &str = "VM0_RUNNER_TIMEZONE_TEST_SCENARIO";
-const TIMEZONE_CHILD_FILE: &str = "VM0_RUNNER_TIMEZONE_TEST_FILE";
+const TIMEZONE_CHILD_SCENARIO: &str = "OKOU_RUNNER_TIMEZONE_TEST_SCENARIO";
+const TIMEZONE_CHILD_FILE: &str = "OKOU_RUNNER_TIMEZONE_TEST_FILE";
 const TIMEZONE_CHILD_TEST: &str =
     "cmd::local::submit::tests::timezone::detect_system_timezone_child";
 const TIMEZONE_FROM_ENV_SCENARIO: &str = "from-env";

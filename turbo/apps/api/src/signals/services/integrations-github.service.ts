@@ -30,8 +30,13 @@ function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
   return { status, body: { error: { message, code } } };
 }
 
-function githubConnectStartUrl(origin: string): string {
-  return `${origin}/api/github/oauth/connect`;
+function githubConnectStartUrl(
+  origin: string,
+  publicBrand: PublicBrand,
+): string {
+  const url = new URL("/api/github/oauth/connect", origin);
+  url.searchParams.set("publicBrand", publicBrand);
+  return url.toString();
 }
 
 async function githubInstallUrl(
@@ -304,8 +309,8 @@ export const getGithubInstallation$ = command(
               readEnv: optionalEnv,
             },
             signal,
-          )) ?? githubConnectStartUrl(origin))
-        : githubConnectStartUrl(origin);
+          )) ?? githubConnectStartUrl(origin, publicBrand))
+        : githubConnectStartUrl(origin, publicBrand);
     signal.throwIfAborted();
 
     const body: GithubInstallationResponse = {

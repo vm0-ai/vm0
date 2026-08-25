@@ -315,7 +315,7 @@ describe("AUTH-02: desktop auth handoff", () => {
 });
 
 describe("AUTH-02: platform realtime token", () => {
-  it("issues user-scoped realtime tokens only for authenticated users", async () => {
+  it("issues user and active-org realtime tokens only for authenticated users", async () => {
     const unauthenticated = await authDevice.requestPlatformRealtimeToken(
       null,
       [401],
@@ -326,6 +326,7 @@ describe("AUTH-02: platform realtime token", () => {
     const actor = bdd.user();
     const capability = JSON.stringify({
       [`user:${actor.userId}`]: ["subscribe"],
+      [`org:${actor.orgId}`]: ["subscribe"],
     });
     context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
       keyName: "ably-key",
@@ -343,6 +344,35 @@ describe("AUTH-02: platform realtime token", () => {
     expect(token.body.capability).toBe(capability);
     expect(token.body.clientId).toBe(actor.userId);
     expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
+      capability: {
+        [`user:${actor.userId}`]: ["subscribe"],
+        [`org:${actor.orgId}`]: ["subscribe"],
+      },
+      ttl: 60 * 60 * 1000,
+      clientId: actor.userId,
+    });
+  });
+
+  it("keeps user realtime available without an active organization", async () => {
+    const actor = bdd.user({ orgId: null });
+    const capability = JSON.stringify({
+      [`user:${actor.userId}`]: ["subscribe"],
+    });
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: now(),
+      capability,
+      clientId: actor.userId,
+      nonce: "nonce",
+      mac: "mac",
+    });
+
+    const token = await authDevice.requestPlatformRealtimeToken(actor, [200]);
+    if (token.status !== 200) {
+      throw new Error("Expected platform realtime token request to succeed");
+    }
+    expect(token.body.capability).toBe(capability);
     expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
       capability: {
         [`user:${actor.userId}`]: ["subscribe"],

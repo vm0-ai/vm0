@@ -108,7 +108,7 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-const managedModelProviderFailureKindSchema = z.enum([
+const builtInModelProviderFailureKindSchema = z.enum([
   "authentication",
   "billing",
   "rate_limit",
@@ -117,7 +117,7 @@ const managedModelProviderFailureKindSchema = z.enum([
   "connection",
 ]);
 
-const MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+const BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
 
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
@@ -1141,12 +1141,12 @@ export const runnersModelProviderFailuresContract = c.router({
     }),
     body: z
       .object({
-        failureKind: managedModelProviderFailureKindSchema,
+        failureKind: builtInModelProviderFailureKindSchema,
         retryAfterSeconds: z
           .number()
           .int()
           .positive()
-          .max(MANAGED_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+          .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
           .optional(),
       })
       .strict(),
@@ -1161,7 +1161,7 @@ export const runnersModelProviderFailuresContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Report a managed model provider failure for a run",
+    summary: "Report a built-in model provider failure for a run",
   },
 });
 

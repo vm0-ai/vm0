@@ -1,4 +1,4 @@
-import type { ManagedModelCooldownDiagnostics } from "@okouai/api-contracts/contracts/model-provider-routes";
+import type { BuiltInModelCooldownDiagnostics } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { Button } from "@okouai/ui/components/ui/button";
 import { useLastResolved, useLoadableState, useSet } from "ccstate-react";
 import { ChevronDown, ChevronUp, Cpu, RefreshCw } from "lucide-react";
@@ -6,14 +6,14 @@ import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import {
-  managedModelCooldownDiagnostics$,
-  reloadManagedModelCooldownDiagnostics$,
-} from "../../../../signals/okou-page/settings/managed-model-cooldown-diagnostics.ts";
+  builtInModelCooldownDiagnostics$,
+  reloadBuiltInModelCooldownDiagnostics$,
+} from "../../../../signals/okou-page/settings/built-in-model-cooldown-diagnostics.ts";
 
 function CooldownDiagnosticsSummary({
   diagnostics,
 }: {
-  readonly diagnostics: ManagedModelCooldownDiagnostics;
+  readonly diagnostics: BuiltInModelCooldownDiagnostics;
 }) {
   const { t } = useTranslation();
 
@@ -24,39 +24,39 @@ function CooldownDiagnosticsSummary({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
         <span
-          id="managed-model-cooldown-diagnostics-title"
+          id="built-in-model-cooldown-diagnostics-title"
           className="text-sm font-medium text-foreground"
         >
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown.title;
+            return $.settings.preferences.debug.builtInModelCooldown.title;
           })}
         </span>
         <span className="text-sm text-muted-foreground">
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown
+            return $.settings.preferences.debug.builtInModelCooldown
               .description;
           })}
         </span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
           <span className="zero-badge rounded-md px-2 py-0.5">
             {t(($) => {
-              return $.settings.preferences.debug.managedModelCooldown
+              return $.settings.preferences.debug.builtInModelCooldown
                 .workspaceFallback;
             })}
             :{" "}
             {diagnostics.fallbackEnabled
               ? t(($) => {
-                  return $.settings.preferences.debug.managedModelCooldown
+                  return $.settings.preferences.debug.builtInModelCooldown
                     .enabled;
                 })
               : t(($) => {
-                  return $.settings.preferences.debug.managedModelCooldown
+                  return $.settings.preferences.debug.builtInModelCooldown
                     .disabled;
                 })}
           </span>
           <span className="zero-badge rounded-md px-2 py-0.5">
             {t(($) => {
-              return $.settings.preferences.debug.managedModelCooldown
+              return $.settings.preferences.debug.builtInModelCooldown
                 .globalActive;
             })}
             : {formatLocalizedNumber(diagnostics.activeCooldowns.length)}
@@ -73,18 +73,18 @@ function CooldownDiagnosticsContent({
   diagnostics,
   loading,
 }: {
-  readonly diagnostics: ManagedModelCooldownDiagnostics;
+  readonly diagnostics: BuiltInModelCooldownDiagnostics;
   readonly loading: boolean;
 }) {
   const { t } = useTranslation();
-  const reloadDiagnostics = useSet(reloadManagedModelCooldownDiagnostics$);
+  const reloadDiagnostics = useSet(reloadBuiltInModelCooldownDiagnostics$);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl text-xs leading-5 text-muted-foreground">
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown
+            return $.settings.preferences.debug.builtInModelCooldown
               .globalExplanation;
           })}
         </div>
@@ -100,7 +100,7 @@ function CooldownDiagnosticsContent({
         >
           <RefreshCw className="h-3.5 w-3.5" />
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown.refresh;
+            return $.settings.preferences.debug.builtInModelCooldown.refresh;
           })}
         </Button>
       </div>
@@ -108,7 +108,7 @@ function CooldownDiagnosticsContent({
       {!diagnostics.fallbackEnabled && (
         <div className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown
+            return $.settings.preferences.debug.builtInModelCooldown
               .disabledExplanation;
           })}
         </div>
@@ -117,7 +117,7 @@ function CooldownDiagnosticsContent({
       {diagnostics.activeCooldowns.length === 0 ? (
         <div className="rounded-md bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
           {t(($) => {
-            return $.settings.preferences.debug.managedModelCooldown.empty;
+            return $.settings.preferences.debug.builtInModelCooldown.empty;
           })}
         </div>
       ) : (
@@ -136,7 +136,7 @@ function CooldownDiagnosticsContent({
                 <div className="min-w-0">
                   <dt className="text-muted-foreground">
                     {t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .selectedModel;
                     })}
                   </dt>
@@ -147,7 +147,7 @@ function CooldownDiagnosticsContent({
                 <div className="min-w-0">
                   <dt className="text-muted-foreground">
                     {t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .providerType;
                     })}
                   </dt>
@@ -158,7 +158,7 @@ function CooldownDiagnosticsContent({
                 <div className="min-w-0">
                   <dt className="text-muted-foreground">
                     {t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .upstreamModel;
                     })}
                   </dt>
@@ -169,7 +169,7 @@ function CooldownDiagnosticsContent({
                 <div className="min-w-0">
                   <dt className="text-muted-foreground">
                     {t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .unavailableUntil;
                     })}
                   </dt>
@@ -188,16 +188,16 @@ function CooldownDiagnosticsContent({
   );
 }
 
-export function ManagedModelCooldownDiagnosticsBlock() {
+export function BuiltInModelCooldownDiagnosticsBlock() {
   const { t } = useTranslation();
-  const reloadDiagnostics = useSet(reloadManagedModelCooldownDiagnostics$);
-  const diagnostics = useLastResolved(managedModelCooldownDiagnostics$);
+  const reloadDiagnostics = useSet(reloadBuiltInModelCooldownDiagnostics$);
+  const diagnostics = useLastResolved(builtInModelCooldownDiagnostics$);
   const loading =
-    useLoadableState(managedModelCooldownDiagnostics$) === "loading";
+    useLoadableState(builtInModelCooldownDiagnostics$) === "loading";
 
   return (
     <section
-      aria-labelledby="managed-model-cooldown-diagnostics-title"
+      aria-labelledby="built-in-model-cooldown-diagnostics-title"
       className="overflow-hidden rounded-xl bg-card zero-border"
     >
       {diagnostics ? (
@@ -219,22 +219,22 @@ export function ManagedModelCooldownDiagnosticsBlock() {
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <div
-              id="managed-model-cooldown-diagnostics-title"
+              id="built-in-model-cooldown-diagnostics-title"
               className="text-sm font-medium text-foreground"
             >
               {t(($) => {
-                return $.settings.preferences.debug.managedModelCooldown.title;
+                return $.settings.preferences.debug.builtInModelCooldown.title;
               })}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm text-muted-foreground">
                 {loading
                   ? t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .loading;
                     })
                   : t(($) => {
-                      return $.settings.preferences.debug.managedModelCooldown
+                      return $.settings.preferences.debug.builtInModelCooldown
                         .unavailable;
                     })}
               </div>
@@ -250,7 +250,7 @@ export function ManagedModelCooldownDiagnosticsBlock() {
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   {t(($) => {
-                    return $.settings.preferences.debug.managedModelCooldown
+                    return $.settings.preferences.debug.builtInModelCooldown
                       .refresh;
                   })}
                 </Button>

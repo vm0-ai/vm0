@@ -420,7 +420,16 @@ async fn gc_workspace_orphans_dry_run_preserves() {
         .set_times(FileTimes::new().set_modified(old_time))
         .unwrap();
 
-    let summary = gc_workspace_orphans(&home, true).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        true,
+    )
+    .await
+    .unwrap();
 
     assert!(workspace.exists(), "dry-run should NOT delete");
     assert!(

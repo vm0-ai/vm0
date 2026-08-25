@@ -121,7 +121,7 @@ import {
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
   readThreadSessionConversation,
-  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
@@ -452,8 +452,8 @@ async function entitledChatActor(
   return { actor, agentId: agent.agentId, runnerGroup, providerId };
 }
 
-async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -5756,7 +5756,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     await flushWaitUntilForTest();
 
-    await seedVm0ManagedModelKey("gpt-5.6-terra");
+    await seedVm0BuiltInModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-terra",
@@ -6059,7 +6059,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
-    await seedVm0ManagedModelKey("gpt-5.6-sol");
+    await seedVm0BuiltInModelKey("gpt-5.6-sol");
 
     await api.updateOrgModelPolicies(actor, [
       {
@@ -6442,7 +6442,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
-    await seedVm0ManagedModelKey("deepseek-v4-flash");
+    await seedVm0BuiltInModelKey("deepseek-v4-flash");
     const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
@@ -6532,12 +6532,12 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("selects a vm0 managed key by vendor", async () => {
+  it("selects a vm0 built-in model key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
-    await seedVm0ManagedModelKey("claude-opus-4-8");
+    await seedVm0BuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
@@ -7022,7 +7022,7 @@ describe("CHAT-02: run-level model overrides", () => {
   it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const selectedModel = "claude-sonnet-5";
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     await api.updateOrgModelPolicies(actor, [
       {
         model: selectedModel,
@@ -7035,7 +7035,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     const first = await sendChatRun(actor, {
       agentId,
-      prompt: "establish a managed runtime route",
+      prompt: "establish a built-in model runtime route",
       model: selectedModel,
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -7046,7 +7046,7 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
     );
     if (!firstBinding.agent_session_id) {
-      throw new Error("Expected the managed route to bind a session");
+      throw new Error("Expected the built-in model route to bind a session");
     }
     await expect(
       readRunModelRuntimeRouteFixture(first.runId),
@@ -7062,7 +7062,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const reused = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "reuse the same managed route",
+      prompt: "reuse the same built-in model route",
     });
     const reusedBinding = await readThreadSessionBinding(
       context,
@@ -10219,9 +10219,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     const firstWaveStarted = createDeferredPromise<void>(context.signal);
     const releaseFirstWave = createDeferredPromise<void>(context.signal);
-    let startedLists = 0;
-    let activeLists = 0;
-    let peakActiveLists = 0;
+    let matchingListRequests = 0;
+    let startedHeads = 0;
+    let activeHeads = 0;
+    let peakActiveHeads = 0;
     context.mocks.s3.send.mockImplementation(
       async (command: unknown): Promise<unknown> => {
         if (command instanceof ListObjectsV2Command) {
@@ -10233,14 +10234,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           if (!object) {
             return { Contents: [] };
           }
-          startedLists += 1;
-          activeLists += 1;
-          peakActiveLists = Math.max(peakActiveLists, activeLists);
-          if (startedLists === 4) {
-            firstWaveStarted.resolve(undefined);
-          }
-          await releaseFirstWave.promise;
-          activeLists -= 1;
+          matchingListRequests += 1;
           return {
             Contents: [
               {
@@ -10258,6 +10252,14 @@ describe("CHAT-02: generation templates and attachments", () => {
           if (!object) {
             return {};
           }
+          startedHeads += 1;
+          activeHeads += 1;
+          peakActiveHeads = Math.max(peakActiveHeads, activeHeads);
+          if (startedHeads === 4) {
+            firstWaveStarted.resolve(undefined);
+          }
+          await releaseFirstWave.promise;
+          activeHeads -= 1;
           return {
             ContentLength: object.size,
             ContentType: object.contentType,
@@ -10307,9 +10309,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
 
     await firstWaveStarted.promise;
-    expect(startedLists).toBe(4);
-    expect(activeLists).toBe(4);
-    expect(peakActiveLists).toBe(4);
+    expect(startedHeads).toBe(4);
+    expect(activeHeads).toBe(4);
+    expect(peakActiveHeads).toBe(4);
     releaseFirstWave.resolve(undefined);
 
     const sent = await send;
@@ -10317,8 +10319,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (sent.status !== 201 || !sent.body.runId) {
       throw new Error("Expected the bounded attachment send to create a run");
     }
-    expect(startedLists).toBe(5);
-    expect(peakActiveLists).toBe(4);
+    expect(startedHeads).toBe(5);
+    expect(peakActiveHeads).toBe(4);
+    expect(matchingListRequests).toBe(0);
 
     const run = await api.readRun(actor, sent.body.runId);
     const promptPositions = files.map((file) => {
@@ -10366,9 +10369,186 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
   }, 60_000);
 
+  it("falls back to v2 listing when the attachment filename hint is stale", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const fileId = randomUUID();
+    const filenameSnapshot = "stale-extension.txt";
+    const storedFilename = "current-extension.png";
+    const exactKey = buildArtifactKeyV2(fileId, filenameSnapshot);
+    const storedKey = buildArtifactKeyV2(fileId, storedFilename);
+    const prefix = buildArtifactPrefixV2(fileId);
+    const operations: string[] = [];
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (command instanceof HeadObjectCommand) {
+          if (command.input.Key === exactKey) {
+            operations.push("head:exact");
+            const notFound = new Error("exact attachment key not found");
+            notFound.name = "NotFound";
+            return Promise.reject(notFound);
+          }
+          if (command.input.Key === storedKey) {
+            operations.push("head:listed");
+            return Promise.resolve({
+              ContentLength: 42,
+              ContentType: "image/png",
+              LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              Metadata: {
+                "artifact-id": fileId,
+                filename: encodeURIComponent(storedFilename),
+                "user-id": encodeURIComponent(actor.userId),
+              },
+            });
+          }
+          return Promise.resolve({});
+        }
+        if (
+          command instanceof ListObjectsV2Command &&
+          command.input.Prefix === prefix
+        ) {
+          operations.push("list:v2");
+          return Promise.resolve({
+            Contents: [
+              {
+                Key: storedKey,
+                Size: 42,
+                LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the stale filename attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot,
+            contentType: "image/png",
+          },
+          { type: "text", text: "read the stale filename attachment" },
+        ],
+      },
+    });
+
+    expect(operations).toStrictEqual(["head:exact", "list:v2", "head:listed"]);
+    const created = await api.readRun(actor, run.runId);
+    expect(created.prompt).toContain(`[Web file] ${filenameSnapshot}`);
+  }, 60_000);
+
+  it("falls back to v2 listing when the exact head lacks size", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const fileId = randomUUID();
+    const filename = "incomplete-head.txt";
+    const key = buildArtifactKeyV2(fileId, filename);
+    const prefix = buildArtifactPrefixV2(fileId);
+    const operations: string[] = [];
+    let headRequests = 0;
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (command instanceof HeadObjectCommand && command.input.Key === key) {
+          headRequests += 1;
+          operations.push(headRequests === 1 ? "head:exact" : "head:listed");
+          return Promise.resolve({
+            ContentType: "text/plain",
+            LastModified: new Date("2026-08-24T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": fileId,
+              filename: encodeURIComponent(filename),
+              "user-id": encodeURIComponent(actor.userId),
+            },
+          });
+        }
+        if (
+          command instanceof ListObjectsV2Command &&
+          command.input.Prefix === prefix
+        ) {
+          operations.push("list:v2");
+          return Promise.resolve({
+            Contents: [
+              {
+                Key: key,
+                Size: 73,
+                LastModified: new Date("2026-08-24T00:00:00.000Z"),
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "read the incomplete head attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: filename,
+            contentType: "text/plain",
+          },
+          { type: "text", text: "read the incomplete head attachment" },
+        ],
+      },
+    });
+
+    expect(operations).toStrictEqual(["head:exact", "list:v2", "head:listed"]);
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: run.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    const summary = catalog.artifacts.find((artifact) => {
+      return artifact.title === filename;
+    });
+    if (!summary) {
+      throw new Error("Expected incomplete-head attachment in the catalog");
+    }
+    const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+    expect(detail.kind).toBe("file");
+    if (detail.kind !== "file") {
+      throw new Error("Expected incomplete-head file catalog entry");
+    }
+    expect(detail.file.size).toBe(73);
+  }, 60_000);
+
   it("does not create a run when an attachment is missing", async () => {
     const { actor, agentId } = await entitledChatActor();
-    chat.mockEmptyObjectStorage();
+    const fileId = randomUUID();
+    const filename = "missing.txt";
+    const exactKey = buildArtifactKeyV2(fileId, filename);
+    let exactHeadRequests = 0;
+    context.mocks.s3.send.mockImplementation(
+      (command: unknown): Promise<unknown> => {
+        if (
+          command instanceof HeadObjectCommand &&
+          command.input.Key === exactKey
+        ) {
+          exactHeadRequests += 1;
+          return Promise.resolve({
+            ContentLength: 42,
+            ContentType: "text/plain",
+            LastModified: new Date("2026-08-24T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": fileId,
+              filename: encodeURIComponent(filename),
+              "user-id": encodeURIComponent(`${actor.userId}-other`),
+            },
+          });
+        }
+        return Promise.resolve({ Contents: [] });
+      },
+    );
     const model = await chat.getDefaultCreateThreadModel(actor);
     const prompt = "reject the missing attachment";
     const response = await requestSendEventRaw(actor, {
@@ -10380,8 +10560,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         parts: [
           {
             type: "file",
-            fileId: randomUUID(),
-            filenameSnapshot: "missing.txt",
+            fileId,
+            filenameSnapshot: filename,
             contentType: "text/plain",
           },
           { type: "text", text: prompt },
@@ -10394,6 +10574,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       status: 500,
       body: { error: "Internal server error" },
     });
+    expect(exactHeadRequests).toBe(1);
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
       limit: 100,

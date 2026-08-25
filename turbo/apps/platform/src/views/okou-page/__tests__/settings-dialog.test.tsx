@@ -102,18 +102,18 @@ function connectorCatalogDisclosure(region: HTMLElement): {
   return { details, summary };
 }
 
-function managedModelCooldownDisclosure(region: HTMLElement): {
+function builtInModelCooldownDisclosure(region: HTMLElement): {
   readonly details: HTMLDetailsElement;
   readonly summary: HTMLElement;
 } {
-  const title = within(region).getByText("Managed model fallback");
+  const title = within(region).getByText("Built-in model fallback");
   const summary = title.closest("summary");
   const details = summary?.closest("details");
   if (!(summary instanceof HTMLElement)) {
-    throw new Error("Managed model cooldown summary not found");
+    throw new Error("Built-in model cooldown summary not found");
   }
   if (!(details instanceof HTMLDetailsElement)) {
-    throw new Error("Managed model cooldown disclosure not found");
+    throw new Error("Built-in model cooldown disclosure not found");
   }
   return { details, summary };
 }
@@ -916,7 +916,7 @@ describe("settings dialog", () => {
     expect(screen.getByText("Theme")).toBeInTheDocument();
   });
 
-  it("shows complete managed model cooldown diagnostics in a collapsed disclosure", async () => {
+  it("shows complete built-in model cooldown diagnostics in a collapsed disclosure", async () => {
     const releaseRefresh = context.mocks.deferred<void>();
     let requestCount = 0;
     context.mocks.api(
@@ -947,9 +947,9 @@ describe("settings dialog", () => {
     await openDialog("admin", "debug");
 
     const diagnostics = await screen.findByRole("region", {
-      name: "Managed model fallback",
+      name: "Built-in model fallback",
     });
-    const { details, summary } = managedModelCooldownDisclosure(diagnostics);
+    const { details, summary } = builtInModelCooldownDisclosure(diagnostics);
     expect(details.open).toBeFalsy();
     expect(summary).toHaveTextContent("workspace fallback: disabled");
     expect(summary).toHaveTextContent("global active cooldowns: 1");
@@ -969,7 +969,7 @@ describe("settings dialog", () => {
     ).toHaveAttribute("datetime", "2026-08-23T04:05:00.000Z");
     expect(
       within(diagnostics).getByText(
-        "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
+        "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
       ),
     ).toBeInTheDocument();
 
@@ -979,7 +979,7 @@ describe("settings dialog", () => {
       },
     );
     if (!refreshButton) {
-      throw new Error("Managed model cooldown refresh button not found");
+      throw new Error("Built-in model cooldown refresh button not found");
     }
     click(refreshButton);
     await waitFor(() => {
@@ -1000,12 +1000,12 @@ describe("settings dialog", () => {
     expect(details.open).toBeTruthy();
     expect(
       within(diagnostics).getByText(
-        "No managed model routes are currently in global cooldown.",
+        "No built-in model routes are currently in global cooldown.",
       ),
     ).toBeInTheDocument();
   });
 
-  it("refreshes managed model cooldown diagnostics on every Debug entry", async () => {
+  it("refreshes built-in model cooldown diagnostics on every Debug entry", async () => {
     let requestCount = 0;
     context.mocks.api(
       modelProviderCooldownDiagnosticsContract.get,
@@ -1021,15 +1021,15 @@ describe("settings dialog", () => {
     await openDialog("admin", "debug");
 
     let diagnostics = await screen.findByRole("region", {
-      name: "Managed model fallback",
+      name: "Built-in model fallback",
     });
-    let disclosure = managedModelCooldownDisclosure(diagnostics);
+    let disclosure = builtInModelCooldownDisclosure(diagnostics);
     expect(disclosure.summary).toHaveTextContent("workspace fallback: enabled");
     expect(disclosure.summary).toHaveTextContent("global active cooldowns: 0");
     click(disclosure.summary);
     expect(
       within(diagnostics).getByText(
-        "No managed model routes are currently in global cooldown.",
+        "No built-in model routes are currently in global cooldown.",
       ),
     ).toBeInTheDocument();
     expect(requestCount).toBe(1);
@@ -1055,9 +1055,9 @@ describe("settings dialog", () => {
     click(dialogButton("Debug"));
     await waitFor(() => {
       diagnostics = screen.getByRole("region", {
-        name: "Managed model fallback",
+        name: "Built-in model fallback",
       });
-      disclosure = managedModelCooldownDisclosure(diagnostics);
+      disclosure = builtInModelCooldownDisclosure(diagnostics);
       expect(disclosure.details.open).toBeFalsy();
       expect(requestCount).toBe(2);
     });
@@ -1070,15 +1070,15 @@ describe("settings dialog", () => {
 
     await waitFor(() => {
       diagnostics = screen.getByRole("region", {
-        name: "Managed model fallback",
+        name: "Built-in model fallback",
       });
-      disclosure = managedModelCooldownDisclosure(diagnostics);
+      disclosure = builtInModelCooldownDisclosure(diagnostics);
       expect(disclosure.details.open).toBeFalsy();
       expect(requestCount).toBe(3);
     });
   });
 
-  it("keeps Debug settings usable while managed model diagnostics are unavailable", async () => {
+  it("keeps Debug settings usable while built-in model diagnostics are unavailable", async () => {
     const releaseDiagnostics = context.mocks.deferred<void>();
     let requestCount = 0;
     context.mocks.api(
@@ -1088,7 +1088,7 @@ describe("settings dialog", () => {
         await releaseDiagnostics.promise;
         return respond(404, {
           error: {
-            message: "Managed model cooldown diagnostics are unavailable",
+            message: "Built-in model cooldown diagnostics are unavailable",
             code: "NOT_FOUND",
           },
         });
@@ -1098,11 +1098,11 @@ describe("settings dialog", () => {
     await openDialog("admin", "debug");
 
     const diagnostics = await screen.findByRole("region", {
-      name: "Managed model fallback",
+      name: "Built-in model fallback",
     });
     expect(
       within(diagnostics).getByText(
-        "Loading managed model cooldown diagnostics...",
+        "Loading built-in model cooldown diagnostics...",
       ),
     ).toBeInTheDocument();
     expect(diagnostics.querySelector("summary")).toBeNull();
@@ -1112,7 +1112,7 @@ describe("settings dialog", () => {
     releaseDiagnostics.resolve();
     await expect(
       within(diagnostics).findByText(
-        "Managed model cooldown diagnostics are unavailable.",
+        "Built-in model cooldown diagnostics are unavailable.",
       ),
     ).resolves.toBeInTheDocument();
     expect(diagnostics.querySelector("summary")).toBeNull();
@@ -1123,7 +1123,7 @@ describe("settings dialog", () => {
       },
     );
     if (!refreshButton) {
-      throw new Error("Managed model cooldown refresh button not found");
+      throw new Error("Built-in model cooldown refresh button not found");
     }
     click(refreshButton);
     await waitFor(() => {

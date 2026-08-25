@@ -7,6 +7,10 @@ import { fileURLToPath } from "node:url";
 import { notarize } from "@electron/notarize";
 import { sign } from "@electron/osx-sign";
 
+import desktopNotarizeApiEnvironment from "./desktop-notarize-api-environment.js";
+
+const { resolveDesktopNotarizeApiEnvironment } = desktopNotarizeApiEnvironment;
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
 const packageMetadata = JSON.parse(
@@ -67,6 +71,13 @@ if (
   );
 }
 
+const notarizeOptions = resolveDesktopNotarizeApiEnvironment();
+if (!notarizeOptions) {
+  throw new Error(
+    "Desktop notarization API environment is required: state=absent",
+  );
+}
+
 await sign({
   app: options.appPath,
   batchCodesignCalls: true,
@@ -78,9 +89,5 @@ await sign({
 
 await notarize({
   appPath: options.appPath,
-  appleApiKey: requiredEnvironmentVariable("VM0_DESKTOP_NOTARIZE_API_KEY_PATH"),
-  appleApiKeyId: requiredEnvironmentVariable("VM0_DESKTOP_NOTARIZE_API_KEY_ID"),
-  appleApiIssuer: requiredEnvironmentVariable(
-    "VM0_DESKTOP_NOTARIZE_API_ISSUER",
-  ),
+  ...notarizeOptions,
 });

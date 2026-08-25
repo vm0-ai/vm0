@@ -503,6 +503,28 @@
       "zoomIn": "Acercar",
       "zoomOut": "Alejar"
     },
+    "annotation": {
+      "attach": "Adjuntar marcas",
+      "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
+      "notePlaceholder": "Di qué debería cambiar aquí",
+      "open": "Anotar",
+      "redo": "Rehacer",
+      "removeMark": "Eliminar marca",
+      "subtitle_one": "{{count}} marca",
+      "subtitle_many": "{{count}} marcas",
+      "subtitle_other": "{{count}} marcas",
+      "tools": {
+        "arrow": "Flecha",
+        "box": "Rectángulo",
+        "crop": "Recortar",
+        "highlight": "Resaltar",
+        "pen": "Dibujar",
+        "redact": "Ocultar",
+        "select": "Seleccionar",
+        "text": "Texto"
+      },
+      "undo": "Deshacer"
+    },
     "attachments": {
       "cancelUpload": "Cancelar la subida {{filename}}",
       "download": "Descargar {{filename}}",
@@ -1033,12 +1055,45 @@
       "signIn": "Iniciar sesión",
       "signUp": "Crear una cuenta"
     },
+    "homeLink": "Ir al inicio de {{brandName}}",
     "loading": "Cargando autenticación",
+    "theme": {
+      "darkEnabled": "Tema oscuro activado",
+      "lightEnabled": "Tema claro activado"
+    },
     "toggleTheme": "Cambiar tema",
     "v2": {
-      "continueToSignIn": "Continuar para iniciar sesión",
-      "continueToSignUp": "Continuar para crear una cuenta",
-      "unavailable": "La nueva experiencia de autenticación aún no está disponible."
+      "continuation": {
+        "activationErrorDescription": "No pudimos completar el inicio de sesión. Vuelve a empezar e inténtalo de nuevo.",
+        "activationErrorTitle": "No se pudo completar el inicio de sesión",
+        "chooseOrganizationDescription": "Elige una organización para continuar a {{brandName}}.",
+        "chooseOrganizationTitle": "Elige una organización",
+        "completeDescription": "Te estamos llevando a {{brandName}}.",
+        "completeTitle": "Inicio de sesión completado",
+        "loadingDescription": "Estamos comprobando qué necesita tu cuenta a continuación.",
+        "loadingTitle": "Finalizando el inicio de sesión",
+        "noOrganizationsDescription": "Esta cuenta no tiene ninguna organización disponible. Pide acceso a un administrador de la organización y vuelve a empezar.",
+        "noOrganizationsTitle": "No hay ninguna organización disponible",
+        "recoveryAction": "Volver a empezar",
+        "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
+        "secondFactorTitle": "Se requiere verificación adicional",
+        "selectOrganization": "Continuar con {{organizationName}}",
+        "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
+        "unsupportedTitle": "Paso de inicio de sesión no disponible"
+      },
+      "signIn": {
+        "action": "Usar el inicio de sesión actual",
+        "title": "Iniciar sesión en {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usar el registro actual",
+        "captchaExpired": "La verificación de bots ha caducado. Inténtalo de nuevo.",
+        "codeExpired": "Este código de verificación ha caducado. Solicita uno nuevo.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
+        "title": "Crea tu cuenta de {{brandName}}"
+      }
     }
   },
   "authorization": {
@@ -1694,6 +1749,38 @@
       "weeklyAt": "Cada semana a {{time}}",
       "weeklyOnAt": "Cada semana, el {{days}} a las {{time}}"
     },
+    "banking": {
+      "accountFallback": "Cuenta bancaria",
+      "actionFailed": "La acción bancaria falló",
+      "active_one": "Acceso activo para {{count}} cuenta",
+      "active_many": "Acceso activo para {{count}} cuentas",
+      "active_other": "Acceso activo para {{count}} cuentas",
+      "automationOff": "El acceso de solo lectura no está disponible para ejecuciones de automatización.",
+      "cancel": "Cancelar",
+      "change": "Cambiar",
+      "connect": "Conectar un banco",
+      "continue": "Continuar",
+      "duration": "Duración del acceso",
+      "expiresAt": "Vence el {{time}}",
+      "grant": "Conceder acceso",
+      "institutionFallback": "Institución financiera",
+      "loadFailed": "No se pudo cargar el acceso bancario",
+      "noAccounts": "No hay cuentas activas disponibles. Vuelve a conectar o repara la institución primero.",
+      "oneDay": "24 horas",
+      "oneHour": "1 hora",
+      "popupBlocked": "Permite las ventanas emergentes de Zero y vuelve a intentarlo.",
+      "readOnly": "Cuentas, saldos y transacciones · solo lectura",
+      "repair": "Reparar",
+      "repairRequired": "{{institution}} necesita reparación",
+      "retry": "Reintentar",
+      "revoke": "Revocar",
+      "revokeConfirm": "¿Revocar el acceso bancario de este Agente?",
+      "selectAccounts": "Seleccionar cuentas",
+      "sevenDays": "7 días",
+      "thirtyDays": "30 días",
+      "title": "Solicitud de acceso bancario",
+      "waiting": "Esperando a Mastercard Data Connect. Completa el proceso allí y luego vuelve al Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Añade créditos para seguir charlando con {{assistantName}}.",
       "askAdminCredits": "Pide a un administrador de espacio de trabajo que añada créditos para que puedas seguir hablando con {{assistantName}}.",
@@ -2179,6 +2266,48 @@
       "title": "Gestionar el acceso a {{connector}}",
       "unnamedAgent": "Sin nombre"
     },
+    "accounts": {
+      "accountName": "Nombre de la cuenta",
+      "accountsUnavailable": "Las cuentas no están disponibles para este conector.",
+      "actions": "Acciones de la cuenta",
+      "addAccount": "Añadir cuenta",
+      "connected": "Conectada",
+      "default": "Predeterminada",
+      "deleteAccount": "Eliminar cuenta",
+      "deleteDescription": "Los hilos que usan esta cuenta volverán a la herencia predeterminada.",
+      "deleteDescriptionWithCount": "{{value}} hilos volverán a la herencia predeterminada.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "¿Eliminar {{account}}?",
+      "find": "Buscar cuentas",
+      "loading": "Cargando cuentas…",
+      "loadingMore": "Cargando…",
+      "loadMore": "Cargar más",
+      "makeDefault": "Establecer como predeterminada",
+      "managerTitle": "Gestionar cuentas de {{connector}}",
+      "namePromptDescription": "Puedes omitir este paso y asignar un nombre a la cuenta más tarde.",
+      "namePromptTitle": "Asigna un nombre a tu cuenta de {{connector}}",
+      "noAccounts": "Sin cuentas",
+      "noAccountsFound": "No se encontraron cuentas",
+      "reconnectRequired": "Se requiere volver a conectar",
+      "rename": "Cambiar nombre",
+      "skipName": "Omitir",
+      "summaryMany": "{{value}} cuentas",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} cuenta",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} requieren atención",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Cuenta de trabajo"
+    },
     "actions": {
       "apply": "Aplicar",
       "authorize": "Autorizar",
@@ -2579,8 +2708,8 @@
         "connectTitle": "Conectar con Slack",
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Slack.",
         "open": "Abrir Slack",
-        "successDescription": "Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
-        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescription": "Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
+        "successDescriptionWorkspace": "Tienes conexión con {{workspace}}. Menciona al bot instalado en cualquier canal o envía un mensaje directo para empezar a chatear.",
         "successTitle": "¡Conectado a Slack!"
       },
       "teams": {
@@ -2590,7 +2719,7 @@
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Microsoft Teams.",
         "open": "Abrir Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Tienes conexión con {{team}}. Menciona a @Zero en Teams para empezar a chatear.",
+        "successDescription": "Tienes conexión con {{team}}. Menciona a @{{botName}} en Teams para empezar a chatear.",
         "successTitle": "Conectado a Microsoft Teams"
       },
       "telegram": {
@@ -2734,12 +2863,12 @@
         "copied": "{{label}} copiado",
         "copy": "Copiar",
         "create": {
-          "descriptionAfter": ", crea una aplicación personalizada empresarial llamada {{brandName}}, sube el icono de {{brandName}} y luego añade la capacidad de Bot.",
+          "descriptionAfter": ", crea una aplicación personalizada empresarial con el nombre y el icono que prefieras y luego añade la capacidad de Bot.",
           "descriptionBefore": "En el",
-          "downloadIcon": "Descarga el icono de {{brandName}}",
-          "iconAlt": "Icono de la aplicación {{brandName}}",
+          "downloadIcon": "Descarga el icono opcional de {{brandName}}",
+          "iconAlt": "Icono opcional de la aplicación {{brandName}}",
           "iconHint": ", o usa cualquier icono que prefieras.",
-          "iconTitle": "Icono de la aplicación {{brandName}}",
+          "iconTitle": "Icono opcional de la aplicación {{brandName}}",
           "imageAlt": "Formulario de creación de aplicaciones de Feishu con el nombre, el icono y el botón Crear resaltados",
           "title": "Crea una aplicación personalizada para empresas"
         },
@@ -2918,7 +3047,7 @@
         "moreOptions": "Más opciones para {{bot}}",
         "newBotToken": "Nuevo token de bot",
         "notConnected": "No conectado",
-        "officialBot": "{{assistantName}} bot oficial",
+        "officialBot": "Bot oficial de Telegram",
         "officialDescription": "Bot oficial proporcionado por {{brandName}}.",
         "officialMissing": "Falta la configuración oficial del bot.",
         "pageDescription": "Gestiona el enrutamiento de bots para este espacio de trabajo",
@@ -4803,6 +4932,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Inspecciona las rutas de modelos integrados excluidas temporalmente de la selección de respaldo.",
+          "disabled": "desactivado",
+          "disabledExplanation": "El respaldo de modelos integrados está desactivado en este espacio de trabajo, por lo que estos tiempos de espera globales se ignoran aquí actualmente.",
+          "empty": "Actualmente no hay rutas de modelos integrados en tiempo de espera global.",
+          "enabled": "activado",
+          "globalActive": "tiempos de espera globales activos",
+          "globalExplanation": "Los tiempos de espera son un estado operativo global. Solo pueden afectar a este espacio de trabajo mientras el respaldo de modelos integrados esté activado aquí.",
+          "loading": "Cargando diagnósticos de tiempo de espera de modelos integrados...",
+          "providerType": "Tipo de proveedor",
+          "refresh": "Actualizar",
+          "selectedModel": "Modelo seleccionado",
+          "title": "Respaldo de modelos integrados",
+          "unavailable": "Los diagnósticos de tiempo de espera de modelos integrados no están disponibles.",
+          "unavailableUntil": "No disponible hasta",
+          "upstreamModel": "Modelo de origen",
+          "workspaceFallback": "respaldo del espacio de trabajo"
+        },
         "capture": {
           "description": "Captura los nombres de cabeceras HTTP, los valores de cabecera seguros seleccionados y los cuerpos en los registros de red para la depuración.",
           "disabled": "Desactivado",
@@ -4828,24 +4975,6 @@
           "recovery": "recuperación",
           "title": "Diagnóstico de conexión en tiempo real",
           "unavailable": "no disponible"
-        },
-        "managedModelCooldown": {
-          "description": "Inspecciona las rutas de modelos administrados excluidas temporalmente de la selección de respaldo.",
-          "disabled": "desactivado",
-          "disabledExplanation": "El respaldo de modelos administrados está desactivado en este espacio de trabajo, por lo que estos tiempos de espera globales se ignoran aquí actualmente.",
-          "empty": "Actualmente no hay rutas de modelos administrados en tiempo de espera global.",
-          "enabled": "activado",
-          "globalActive": "tiempos de espera globales activos",
-          "globalExplanation": "Los tiempos de espera son un estado operativo global. Solo pueden afectar a este espacio de trabajo mientras el respaldo de modelos administrados esté activado aquí.",
-          "loading": "Cargando diagnósticos de tiempo de espera de modelos administrados...",
-          "providerType": "Tipo de proveedor",
-          "refresh": "Actualizar",
-          "selectedModel": "Modelo seleccionado",
-          "title": "Respaldo de modelos administrados",
-          "unavailable": "Los diagnósticos de tiempo de espera de modelos administrados no están disponibles.",
-          "unavailableUntil": "No disponible hasta",
-          "upstreamModel": "Modelo de origen",
-          "workspaceFallback": "respaldo del espacio de trabajo"
         },
         "tab": "Depuración"
       },

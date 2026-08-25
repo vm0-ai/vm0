@@ -215,6 +215,103 @@ async fn token_renewal() {
 }
 
 #[tokio::test]
+async fn repeated_short_lived_tokens_are_spaced_without_starving_messages() {
+    const SHORT_TOKEN_TTL_MS: i64 = 4_000;
+    const PRE_EXPIRY_RENEWAL_TIMEOUT: Duration = Duration::from_secs(3);
+
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+
+    let call_count = std::sync::Mutex::new(0u32);
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/testKey.testId/requestToken");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            let mut calls = call_count.lock().unwrap();
+            let call = *calls;
+            *calls += 1;
+
+            let now = now_ms();
+            let expires = if call == 0 {
+                now
+            } else {
+                now + SHORT_TOKEN_TTL_MS
+            };
+            let body = serde_json::to_vec(&serde_json::json!({
+                "token": format!("short-lived-token-{call}"),
+                "expires": expires,
+                "issued": now,
+            }))
+            .unwrap();
+
+            HttpMockResponse::builder()
+                .status(201)
+                .header("content-type", "application/json")
+                .body(body)
+                .build()
+        });
+    });
+
+    let ws_port = ws.port;
+    let (second_renewal_tx, second_renewal_rx) = tokio::sync::oneshot::channel::<()>();
+    let (test_complete_tx, test_complete_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+
+        let first_auth = expect_protocol_msg(&mut conn, "first short-token AUTH")
+            .await
+            .unwrap();
+        assert_eq!(first_auth.action, action::AUTH);
+
+        send_message(&mut conn, "ch", "between-renewals", serde_json::json!("ok"))
+            .await
+            .unwrap();
+
+        let second_auth = expect_protocol_msg(&mut conn, "second short-token AUTH")
+            .await
+            .unwrap();
+        assert_eq!(second_auth.action, action::AUTH);
+        second_renewal_tx.send(()).unwrap();
+        wait_for_test_observation(test_complete_rx, "short-token renewal assertions").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event_with_timeout(
+        &mut sub,
+        RECONNECT_EVENT_TIMEOUT,
+        "message between short-token renewals",
+    )
+    .await
+    .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("between-renewals"));
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    assert_value_stable_for(
+        Duration::from_millis(250),
+        || token_mock.calls(),
+        2,
+        "short-lived replacement token should schedule a future renewal",
+    )
+    .await;
+
+    tokio::time::timeout(PRE_EXPIRY_RENEWAL_TIMEOUT, second_renewal_rx)
+        .await
+        .expect("short-lived replacement token should renew before expiry")
+        .unwrap();
+    assert_eq!(token_mock.calls(), 3);
+
+    test_complete_tx.send(()).unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test]
 async fn close_during_pending_token_renewal_sends_close() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();

@@ -27,6 +27,7 @@ import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-si
 import { testContext } from "./test-helpers.ts";
 import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 import { now } from "../../lib/time.ts";
+import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentation-template-library.ts";
 
 const context = testContext();
 
@@ -127,6 +128,66 @@ describe("realtime signals", () => {
     await expect(loopPromise).resolves.toBeUndefined();
     expect(runs).toBe(1);
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  });
+
+  it("subscribes an org-scoped loop to the active organization channel", async () => {
+    mockSignedInUser();
+    const topic = "test:org-pending-resolve";
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return true;
+    });
+
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        scope: "org",
+        topic,
+        loopCommand$: loop$,
+      },
+      context.signal,
+    );
+    await context.store.set(setupRealtime$, context.signal);
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel("org:test-org-123", topic),
+      ).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel("user:test-user-123", topic),
+    ).toBeFalsy();
+    context.mocks.ably.triggerOnChannel("org:test-org-123", topic);
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(runs).toBe(1);
+  });
+
+  it("keeps workspace template realtime off while its feature switch is disabled", async () => {
+    mockSignedInUser();
+    const subscriber = testSubscriber();
+    const subscriptionPromise = context.store.set(
+      subscribePresentationTemplatesChanged$,
+      subscriber.signal,
+    );
+    context.track(subscriptionPromise);
+
+    await setupAuthAndRealtime();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel(
+          "user:test-user-123",
+          "presentationTemplatesChanged",
+        ),
+      ).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(
+        "org:test-org-123",
+        "presentationTemplatesChanged",
+      ),
+    ).toBeFalsy();
   });
 
   it("removes and rejects a pending loop when the subscriber aborts", async () => {

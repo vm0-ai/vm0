@@ -489,6 +489,26 @@
       "zoomIn": "Zoom 内",
       "zoomOut": "Zoom アウト"
     },
+    "annotation": {
+      "attach": "マークを添付",
+      "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "notePlaceholder": "ここをどう変えたいか書いてください",
+      "open": "注釈",
+      "redo": "やり直す",
+      "removeMark": "マークを削除",
+      "subtitle_other": "{{count}} 件のマーク",
+      "tools": {
+        "arrow": "矢印",
+        "box": "矩形",
+        "crop": "切り抜き",
+        "highlight": "ハイライト",
+        "pen": "手描き",
+        "redact": "塗りつぶし",
+        "select": "選択",
+        "text": "テキスト"
+      },
+      "undo": "元に戻す"
+    },
     "attachments": {
       "cancelUpload": "アップロードをキャンセル {{filename}}",
       "download": "{{filename}} をダウンロード",
@@ -1015,12 +1035,43 @@
       "signIn": "サインイン",
       "signUp": "サインアップ"
     },
+    "homeLink": "{{brandName}} のホームに移動",
     "loading": "認証を読み込み中",
+    "theme": {
+      "darkEnabled": "ダークテーマを有効にしました",
+      "lightEnabled": "ライトテーマを有効にしました"
+    },
     "toggleTheme": "テーマの切り替え",
     "v2": {
-      "continueToSignIn": "現在のサインインに進む",
-      "continueToSignUp": "現在のサインアップに進む",
-      "unavailable": "新しい認証画面はまだ利用できません。"
+      "continuation": {
+        "activationErrorDescription": "サインインを完了できませんでした。最初からやり直してください。",
+        "activationErrorTitle": "サインインを完了できませんでした",
+        "chooseOrganizationDescription": "{{brandName}} に進む組織を選択してください。",
+        "chooseOrganizationTitle": "組織を選択",
+        "completeDescription": "{{brandName}} に移動しています。",
+        "completeTitle": "サインイン完了",
+        "loadingDescription": "アカウントに必要な次の手順を確認しています。",
+        "loadingTitle": "サインインを完了しています",
+        "noOrganizationsDescription": "このアカウントで利用できる組織がありません。組織の管理者にアクセスを依頼してから、最初からやり直してください。",
+        "noOrganizationsTitle": "利用できる組織がありません",
+        "recoveryAction": "最初からやり直す",
+        "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
+        "secondFactorTitle": "追加の確認が必要です",
+        "selectOrganization": "{{organizationName}} で続行",
+        "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
+        "unsupportedTitle": "サインイン手順を利用できません"
+      },
+      "signIn": {
+        "action": "現在のサインインを使用",
+        "title": "{{brandName}} にサインイン"
+      },
+      "signUp": {
+        "action": "現在のサインアップを使用",
+        "captchaExpired": "ボット確認の有効期限が切れました。もう一度お試しください。",
+        "codeExpired": "この確認コードは期限切れです。新しいコードをリクエストしてください。",
+        "resendCodeCooldown_other": "{{resendCode}}（{{count}}秒）",
+        "title": "{{brandName}} アカウントを作成"
+      }
     }
   },
   "authorization": {
@@ -1665,6 +1716,36 @@
       "weeklyAt": "毎週 {{time}} で",
       "weeklyOnAt": "毎週 {{days}} の {{time}}"
     },
+    "banking": {
+      "accountFallback": "銀行口座",
+      "actionFailed": "銀行の操作に失敗しました",
+      "active_other": "{{count}}口座へのアクセスが有効です",
+      "automationOff": "自動化の実行では読み取り専用アクセスを利用できません。",
+      "cancel": "キャンセル",
+      "change": "変更",
+      "connect": "銀行を接続",
+      "continue": "続ける",
+      "duration": "アクセス期間",
+      "expiresAt": "{{time}}に期限切れ",
+      "grant": "アクセスを許可",
+      "institutionFallback": "金融機関",
+      "loadFailed": "銀行アクセスを読み込めませんでした",
+      "noAccounts": "利用可能な正常な口座がありません。まず金融機関を再接続または修復してください。",
+      "oneDay": "24時間",
+      "oneHour": "1時間",
+      "popupBlocked": "Zeroのポップアップを許可してから、もう一度お試しください。",
+      "readOnly": "口座、残高、取引 · 読み取り専用",
+      "repair": "修復",
+      "repairRequired": "{{institution}}は修復が必要です",
+      "retry": "再試行",
+      "revoke": "取り消す",
+      "revokeConfirm": "このエージェントの銀行アクセスを取り消しますか？",
+      "selectAccounts": "口座を選択",
+      "sevenDays": "7日間",
+      "thirtyDays": "30日間",
+      "title": "銀行アクセスのリクエスト",
+      "waiting": "Mastercard Data Connectでの操作を待っています。そこで完了してから、チャットに戻ってください。"
+    },
     "billing": {
       "addCreditsToContinue": "クレジットを追加すると、{{assistantName}} とのチャットを続けることができます。",
       "askAdminCredits": "{{assistantName}} とチャットを続けることができるように、ワークスペース管理者にクレジットを追加するように依頼してください。",
@@ -2135,6 +2216,40 @@
       "title": "{{connector}} アクセスを管理する",
       "unnamedAgent": "無名"
     },
+    "accounts": {
+      "accountName": "アカウント名",
+      "accountsUnavailable": "このコネクターのアカウントは利用できません。",
+      "actions": "アカウント操作",
+      "addAccount": "アカウントを追加",
+      "connected": "接続済み",
+      "default": "デフォルト",
+      "deleteAccount": "アカウントを削除",
+      "deleteDescription": "このアカウントを使用しているスレッドは、デフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount": "{{value}} 件のスレッドがデフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} を削除しますか？",
+      "find": "アカウントを検索",
+      "loading": "アカウントを読み込み中…",
+      "loadingMore": "読み込み中…",
+      "loadMore": "さらに読み込む",
+      "makeDefault": "デフォルトに設定",
+      "managerTitle": "{{connector}} のアカウントを管理",
+      "namePromptDescription": "この手順をスキップして、後でアカウントに名前を付けることもできます。",
+      "namePromptTitle": "{{connector}} アカウントに名前を付ける",
+      "noAccounts": "アカウントなし",
+      "noAccountsFound": "アカウントが見つかりません",
+      "reconnectRequired": "再接続が必要です",
+      "rename": "名前を変更",
+      "skipName": "スキップ",
+      "summaryMany": "{{value}} 件のアカウント",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} 件のアカウント",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "仕事用アカウント"
+    },
     "actions": {
       "apply": "申し込む",
       "authorize": "承認する",
@@ -2532,8 +2647,8 @@
         "connectTitle": "Slack に接続します",
         "invalidDescription": "このページは、Slack 接続リンクから開かれるように設計されています。",
         "open": "Slack を開く",
-        "successDescription": "チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
-        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
+        "successDescription": "チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
+        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
         "successTitle": "Slack に接続しました!"
       },
       "teams": {
@@ -2543,7 +2658,7 @@
         "invalidDescription": "このページは、Microsoft Teams 接続リンクから開かれるように設計されています。",
         "open": "オープンチーム",
         "providerName": "Microsoft Teams",
-        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @Zero にメンションします。",
+        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @{{botName}} にメンションします。",
         "successTitle": "Microsoft Teams に接続されました"
       },
       "telegram": {
@@ -2687,12 +2802,12 @@
         "copied": "{{label}} がコピーされました",
         "copy": "コピー",
         "create": {
-          "descriptionAfter": "、{{brandName}} という名前のエンタープライズ カスタム アプリを作成し、{{brandName}} アイコンをアップロードしてから、ボット機能を追加します。",
+          "descriptionAfter": "、任意の名前とアイコンでエンタープライズ カスタム アプリを作成してから、ボット機能を追加します。",
           "descriptionBefore": "で ",
-          "downloadIcon": "{{brandName}} アイコンをダウンロードします",
-          "iconAlt": "{{brandName}} アプリ アイコン",
+          "downloadIcon": "任意の {{brandName}} アイコンをダウンロードします",
+          "iconAlt": "任意の {{brandName}} アプリ アイコン",
           "iconHint": "、またはお好みのアイコンを使用してください。",
-          "iconTitle": "{{brandName}} アプリ アイコン",
+          "iconTitle": "任意の {{brandName}} アプリ アイコン",
           "imageAlt": "Feishu アプリ名、アイコン、および [作成] ボタンが強調表示されたアプリ作成フォーム",
           "title": "エンタープライズカスタムアプリを作成する"
         },
@@ -2871,7 +2986,7 @@
         "moreOptions": "{{bot}} のその他のオプション",
         "newBotToken": "新しいボットトークン",
         "notConnected": "接続されていません",
-        "officialBot": "{{assistantName}} 公式ボット",
+        "officialBot": "Telegram 公式ボット",
         "officialDescription": "{{brandName}} が提供する公式 bot。",
         "officialMissing": "公式ボット設定がありません。",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
@@ -4749,6 +4864,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "フォールバック選択から一時的に除外されている内蔵モデルルートを確認します。",
+          "disabled": "無効",
+          "disabledExplanation": "このワークスペースでは内蔵モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
+          "empty": "現在、グローバルクールダウン中の内蔵モデルルートはありません。",
+          "enabled": "有効",
+          "globalActive": "有効なグローバルクールダウン",
+          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで内蔵モデルのフォールバックが有効な場合にのみ影響します。",
+          "loading": "内蔵モデルのクールダウン診断を読み込んでいます...",
+          "providerType": "プロバイダータイプ",
+          "refresh": "更新",
+          "selectedModel": "選択されたモデル",
+          "title": "内蔵モデルのフォールバック",
+          "unavailable": "内蔵モデルのクールダウン診断は利用できません。",
+          "unavailableUntil": "利用不可期限",
+          "upstreamModel": "アップストリームモデル",
+          "workspaceFallback": "ワークスペースのフォールバック"
+        },
         "capture": {
           "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
@@ -4773,24 +4906,6 @@
           "recovery": "復旧",
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
-        },
-        "managedModelCooldown": {
-          "description": "フォールバック選択から一時的に除外されている管理対象モデルルートを確認します。",
-          "disabled": "無効",
-          "disabledExplanation": "このワークスペースでは管理対象モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
-          "empty": "現在、グローバルクールダウン中の管理対象モデルルートはありません。",
-          "enabled": "有効",
-          "globalActive": "有効なグローバルクールダウン",
-          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで管理対象モデルのフォールバックが有効な場合にのみ影響します。",
-          "loading": "管理対象モデルのクールダウン診断を読み込んでいます...",
-          "providerType": "プロバイダータイプ",
-          "refresh": "更新",
-          "selectedModel": "選択されたモデル",
-          "title": "管理対象モデルのフォールバック",
-          "unavailable": "管理対象モデルのクールダウン診断は利用できません。",
-          "unavailableUntil": "利用不可期限",
-          "upstreamModel": "アップストリームモデル",
-          "workspaceFallback": "ワークスペースのフォールバック"
         },
         "tab": "デバッグ"
       },

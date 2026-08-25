@@ -1921,6 +1921,7 @@ async function commitConnectorTokenConnection(
     readonly oauthScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
     readonly account?: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -2009,6 +2010,7 @@ async function commitConnectorTokenConnection(
         },
       },
       resolution: resolution.mutation,
+      insertConnectionId: args.insertConnectionId,
       writeCredentials: async ({ db, connectorId }, writeSignal) => {
         await upsertPreparedConnectorTokenState(
           {
@@ -2048,6 +2050,7 @@ export const upsertConnectorTokenConnection$ = command(
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
       readonly account?: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     },
     signal: AbortSignal,
   ): Promise<
@@ -2112,6 +2115,7 @@ export const upsertConnectorTokenConnection$ = command(
           oauthScopes: args.oauthScopes,
           tokenExpiresAt,
           account: args.account,
+          insertConnectionId: args.insertConnectionId,
         },
         signal,
       );

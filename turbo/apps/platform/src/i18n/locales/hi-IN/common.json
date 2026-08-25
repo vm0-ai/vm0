@@ -489,6 +489,27 @@
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट"
     },
+    "annotation": {
+      "attach": "चिह्न संलग्न करें",
+      "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
+      "open": "टिप्पणी करें",
+      "redo": "फिर से करें",
+      "removeMark": "चिह्न हटाएँ",
+      "subtitle_one": "{{count}} चिह्न",
+      "subtitle_other": "{{count}} चिह्न",
+      "tools": {
+        "arrow": "तीर",
+        "box": "बॉक्स",
+        "crop": "काटें",
+        "highlight": "हाइलाइट",
+        "pen": "बनाएँ",
+        "redact": "छिपाएँ",
+        "select": "चुनें",
+        "text": "टेक्स्ट"
+      },
+      "undo": "पूर्ववत करें"
+    },
     "attachments": {
       "cancelUpload": "अपलोड {{filename}} रद्द करें",
       "download": "{{filename}} डाउनलोड करें",
@@ -1015,12 +1036,44 @@
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
     },
+    "homeLink": "{{brandName}} होम पर जाएं",
     "loading": "प्रमाणीकरण लोड हो रहा है",
+    "theme": {
+      "darkEnabled": "डार्क थीम चालू है",
+      "lightEnabled": "लाइट थीम चालू है"
+    },
     "toggleTheme": "थीम टॉगल करें",
     "v2": {
-      "continueToSignIn": "साइन इन जारी रखें",
-      "continueToSignUp": "साइन अप जारी रखें",
-      "unavailable": "नया प्रमाणीकरण अनुभव अभी उपलब्ध नहीं है।"
+      "continuation": {
+        "activationErrorDescription": "हम आपका साइन-इन पूरा नहीं कर सके। फिर से शुरू करके दोबारा कोशिश करें।",
+        "activationErrorTitle": "साइन-इन पूरा नहीं हो सका",
+        "chooseOrganizationDescription": "{{brandName}} पर जारी रखने के लिए कोई संगठन चुनें।",
+        "chooseOrganizationTitle": "कोई संगठन चुनें",
+        "completeDescription": "आपको {{brandName}} पर ले जाया जा रहा है।",
+        "completeTitle": "साइन-इन पूरा हुआ",
+        "loadingDescription": "जाँचा जा रहा है कि आपके खाते के लिए आगे क्या आवश्यक है।",
+        "loadingTitle": "साइन-इन पूरा किया जा रहा है",
+        "noOrganizationsDescription": "इस खाते के लिए कोई संगठन उपलब्ध नहीं है। संगठन व्यवस्थापक से पहुँच माँगें, फिर दोबारा शुरू करें।",
+        "noOrganizationsTitle": "कोई संगठन उपलब्ध नहीं है",
+        "recoveryAction": "फिर से शुरू करें",
+        "secondFactorDescription": "इस साइन-इन के लिए एक अतिरिक्त सत्यापन चरण आवश्यक है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
+        "secondFactorTitle": "अतिरिक्त सत्यापन आवश्यक है",
+        "selectOrganization": "{{organizationName}} के साथ जारी रखें",
+        "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
+        "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
+      },
+      "signIn": {
+        "action": "मौजूदा साइन-इन का उपयोग करें",
+        "title": "{{brandName}} में साइन इन करें"
+      },
+      "signUp": {
+        "action": "मौजूदा साइन-अप का उपयोग करें",
+        "captchaExpired": "बॉट सत्यापन की समय-सीमा समाप्त हो गई है। फिर से कोशिश करें।",
+        "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} सेकंड)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} सेकंड)",
+        "title": "अपना {{brandName}} खाता बनाएं"
+      }
     }
   },
   "authorization": {
@@ -1666,6 +1719,37 @@
       "weeklyAt": "{{time}} पर हर सप्ताह",
       "weeklyOnAt": "हर सप्ताह {{days}} पर {{time}} पर"
     },
+    "banking": {
+      "accountFallback": "बैंक खाता",
+      "actionFailed": "बैंकिंग कार्रवाई विफल रही",
+      "active_one": "{{count}} खाते के लिए एक्सेस सक्रिय",
+      "active_other": "{{count}} खातों के लिए एक्सेस सक्रिय",
+      "automationOff": "केवल पढ़ने की एक्सेस ऑटोमेशन रन के लिए उपलब्ध नहीं है।",
+      "cancel": "रद्द करें",
+      "change": "बदलें",
+      "connect": "बैंक कनेक्ट करें",
+      "continue": "जारी रखें",
+      "duration": "एक्सेस अवधि",
+      "expiresAt": "{{time}} को समाप्त होगा",
+      "grant": "एक्सेस दें",
+      "institutionFallback": "वित्तीय संस्थान",
+      "loadFailed": "बैंकिंग एक्सेस लोड नहीं हो सकी",
+      "noAccounts": "कोई सक्रिय खाता उपलब्ध नहीं है। पहले संस्थान को फिर से कनेक्ट या सुधारें।",
+      "oneDay": "24 घंटे",
+      "oneHour": "1 घंटा",
+      "popupBlocked": "Zero के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें।",
+      "readOnly": "खाते, बैलेंस और लेन-देन · केवल पढ़ने के लिए",
+      "repair": "सुधारें",
+      "repairRequired": "{{institution}} को सुधारने की आवश्यकता है",
+      "retry": "दोबारा कोशिश करें",
+      "revoke": "एक्सेस वापस लें",
+      "revokeConfirm": "इस एजेंट की बैंकिंग एक्सेस वापस लें?",
+      "selectAccounts": "खाते चुनें",
+      "sevenDays": "7 दिन",
+      "thirtyDays": "30 दिन",
+      "title": "बैंकिंग एक्सेस अनुरोध",
+      "waiting": "Mastercard Data Connect की प्रतीक्षा हो रही है। वहाँ प्रक्रिया पूरी करें, फिर Chat पर लौटें।"
+    },
     "billing": {
       "addCreditsToContinue": "{{assistantName}} के साथ चैट जारी रखने के लिए क्रेडिट जोड़ें।",
       "askAdminCredits": "वर्कस्पेस व्यवस्थापक से क्रेडिट जोड़ने के लिए कहें ताकि आप {{assistantName}} के साथ चैट करना जारी रख सकें।",
@@ -2137,6 +2221,44 @@
       "title": "{{connector}} पहुंच प्रबंधित करें",
       "unnamedAgent": "अज्ञात"
     },
+    "accounts": {
+      "accountName": "खाते का नाम",
+      "accountsUnavailable": "इस कनेक्टर के लिए खाते उपलब्ध नहीं हैं।",
+      "actions": "खाते की कार्रवाइयाँ",
+      "addAccount": "खाता जोड़ें",
+      "connected": "कनेक्टेड",
+      "default": "डिफ़ॉल्ट",
+      "deleteAccount": "खाता हटाएँ",
+      "deleteDescription": "इस खाते का उपयोग करने वाले थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount": "{{value}} थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} को हटाएँ?",
+      "find": "खाते खोजें",
+      "loading": "खाते लोड हो रहे हैं…",
+      "loadingMore": "लोड हो रहा है…",
+      "loadMore": "और लोड करें",
+      "makeDefault": "डिफ़ॉल्ट बनाएँ",
+      "managerTitle": "{{connector}} खाते प्रबंधित करें",
+      "namePromptDescription": "आप इसे छोड़ सकते हैं और खाते को बाद में नाम दे सकते हैं।",
+      "namePromptTitle": "अपने {{connector}} खाते को नाम दें",
+      "noAccounts": "कोई खाता नहीं",
+      "noAccountsFound": "कोई खाता नहीं मिला",
+      "reconnectRequired": "दोबारा कनेक्ट करना आवश्यक है",
+      "rename": "नाम बदलें",
+      "skipName": "छोड़ें",
+      "summaryMany": "{{value}} खाते",
+      "summaryMany_one": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} खाता",
+      "summaryOne_one": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "कार्य खाता"
+    },
     "actions": {
       "apply": "आवेदन करना",
       "authorize": "अधिकृत",
@@ -2534,8 +2656,8 @@
         "connectTitle": "Slack से कनेक्ट करें",
         "invalidDescription": "यह पेज Slack कनेक्ट लिंक से खोला जाना है।",
         "open": "Slack खोलें",
-        "successDescription": "किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
-        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescription": "किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
         "successTitle": "Slack से जुड़ा!"
       },
       "teams": {
@@ -2545,7 +2667,7 @@
         "invalidDescription": "यह पेज Microsoft Teams कनेक्ट लिंक से खोला जाना है।",
         "open": "टीमें खोलें",
         "providerName": "Microsoft Teams",
-        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @Zero का उल्लेख करें।",
+        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @{{botName}} का उल्लेख करें।",
         "successTitle": "Microsoft Teams से जुड़ा"
       },
       "telegram": {
@@ -2689,12 +2811,12 @@
         "copied": "{{label}} कॉपी किया गया",
         "copy": "प्रतिलिपि",
         "create": {
-          "descriptionAfter": ", {{brandName}} नामक एक एंटरप्राइज़ कस्टम ऐप बनाएं, {{brandName}} आइकन अपलोड करें, फिर बॉट क्षमता जोड़ें।",
+          "descriptionAfter": ", अपनी पसंद के नाम और आइकन के साथ एक एंटरप्राइज़ कस्टम ऐप बनाएं, फिर बॉट क्षमता जोड़ें।",
           "descriptionBefore": "में",
-          "downloadIcon": "{{brandName}} आइकन डाउनलोड करें",
-          "iconAlt": "{{brandName}} ऐप आइकन",
+          "downloadIcon": "वैकल्पिक {{brandName}} आइकन डाउनलोड करें",
+          "iconAlt": "वैकल्पिक {{brandName}} ऐप आइकन",
           "iconHint": ", या अपनी पसंद के किसी भी आइकन का उपयोग करें।",
-          "iconTitle": "{{brandName}} ऐप आइकन",
+          "iconTitle": "वैकल्पिक {{brandName}} ऐप आइकन",
           "imageAlt": "Feishu ऐप निर्माण फॉर्म जिसमें ऐप का नाम, आइकन और क्रिएट बटन हाइलाइट किया गया है",
           "title": "एक एंटरप्राइज़ कस्टम ऐप बनाएं"
         },
@@ -2873,7 +2995,7 @@
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "newBotToken": "नया बॉट टोकन",
         "notConnected": "जुड़े नहीं हैं",
-        "officialBot": "{{assistantName}} आधिकारिक बॉट",
+        "officialBot": "आधिकारिक Telegram बॉट",
         "officialDescription": "{{brandName}} द्वारा प्रदान किया गया आधिकारिक बॉट।",
         "officialMissing": "आधिकारिक बॉट कॉन्फ़िगरेशन अनुपलब्ध है.",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",
@@ -4751,6 +4873,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "फ़ॉलबैक चयन से अस्थायी रूप से बाहर किए गए अंतर्निर्मित मॉडल रूट देखें।",
+          "disabled": "अक्षम",
+          "disabledExplanation": "इस वर्कस्पेस के लिए अंतर्निर्मित मॉडल फ़ॉलबैक अक्षम है, इसलिए ये ग्लोबल कूलडाउन अभी यहाँ अनदेखे किए जा रहे हैं।",
+          "empty": "अभी कोई अंतर्निर्मित मॉडल रूट ग्लोबल कूलडाउन में नहीं है।",
+          "enabled": "सक्षम",
+          "globalActive": "सक्रिय ग्लोबल कूलडाउन",
+          "globalExplanation": "कूलडाउन ग्लोबल परिचालन स्थिति है। यह इस वर्कस्पेस को केवल तभी प्रभावित कर सकती है जब यहाँ अंतर्निर्मित मॉडल फ़ॉलबैक सक्षम हो।",
+          "loading": "अंतर्निर्मित मॉडल कूलडाउन डायग्नोस्टिक्स लोड हो रहे हैं...",
+          "providerType": "प्रदाता प्रकार",
+          "refresh": "रीफ़्रेश करें",
+          "selectedModel": "चुना गया मॉडल",
+          "title": "अंतर्निर्मित मॉडल फ़ॉलबैक",
+          "unavailable": "अंतर्निर्मित मॉडल कूलडाउन डायग्नोस्टिक्स उपलब्ध नहीं हैं।",
+          "unavailableUntil": "इस समय तक अनुपलब्ध",
+          "upstreamModel": "अपस्ट्रीम मॉडल",
+          "workspaceFallback": "वर्कस्पेस फ़ॉलबैक"
+        },
         "capture": {
           "description": "डिबगिंग के लिए नेटवर्क लॉग में HTTP हेडर नाम, चयनित सुरक्षित हेडर मान और बॉडी कैप्चर करें।",
           "disabled": "अक्षम",
@@ -4775,24 +4915,6 @@
           "recovery": "पुनर्प्राप्ति",
           "title": "रीयल-टाइम कनेक्शन निदान",
           "unavailable": "अनुपलब्ध"
-        },
-        "managedModelCooldown": {
-          "description": "फ़ॉलबैक चयन से अस्थायी रूप से बाहर किए गए प्रबंधित मॉडल रूट देखें।",
-          "disabled": "अक्षम",
-          "disabledExplanation": "इस वर्कस्पेस के लिए प्रबंधित मॉडल फ़ॉलबैक अक्षम है, इसलिए ये ग्लोबल कूलडाउन अभी यहाँ अनदेखे किए जा रहे हैं।",
-          "empty": "अभी कोई प्रबंधित मॉडल रूट ग्लोबल कूलडाउन में नहीं है।",
-          "enabled": "सक्षम",
-          "globalActive": "सक्रिय ग्लोबल कूलडाउन",
-          "globalExplanation": "कूलडाउन ग्लोबल परिचालन स्थिति है। यह इस वर्कस्पेस को केवल तभी प्रभावित कर सकती है जब यहाँ प्रबंधित मॉडल फ़ॉलबैक सक्षम हो।",
-          "loading": "प्रबंधित मॉडल कूलडाउन डायग्नोस्टिक्स लोड हो रहे हैं...",
-          "providerType": "प्रदाता प्रकार",
-          "refresh": "रीफ़्रेश करें",
-          "selectedModel": "चुना गया मॉडल",
-          "title": "प्रबंधित मॉडल फ़ॉलबैक",
-          "unavailable": "प्रबंधित मॉडल कूलडाउन डायग्नोस्टिक्स उपलब्ध नहीं हैं।",
-          "unavailableUntil": "इस समय तक अनुपलब्ध",
-          "upstreamModel": "अपस्ट्रीम मॉडल",
-          "workspaceFallback": "वर्कस्पेस फ़ॉलबैक"
         },
         "tab": "डिबग"
       },

@@ -73,6 +73,7 @@ class TestModelProviderWebSocketPrewarmUsage:
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
+        client_frame = json.dumps({"type": "response.create", "generate": False}).encode()
         dense_terminal = (
             b'{"type":"'
             + terminal_event.encode()
@@ -83,10 +84,8 @@ class TestModelProviderWebSocketPrewarmUsage:
         )
 
         with self._usage_webhook_api() as webhook:
-            feed_websocket_client_message(
-                flow,
-                json.dumps({"type": "response.create", "generate": False}).encode(),
-            )
+            feed_websocket_client_message(flow, client_frame)
+            assert full_body_feeds.count(client_frame) == 1
             feed_websocket_server_message(
                 flow,
                 _openai_websocket_created_frame("dense-prewarm"),

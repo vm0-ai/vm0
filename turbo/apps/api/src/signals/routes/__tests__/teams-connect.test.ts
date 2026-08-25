@@ -159,7 +159,6 @@ describe("GET /api/integrations/teams/connect", () => {
     const client = setupApp({ context, routes: teamsConnectRoutes })(
       teamsConnectContract,
     );
-
     const response = await accept(client.getStatus({ headers: {} }), [401]);
 
     expect(response.body).toStrictEqual({
@@ -266,6 +265,7 @@ describe("GET /api/integrations/teams/connect", () => {
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
       teamName: fixture.teamsTeamName,
+      botName: "Zero",
       defaultAgentName: null,
       permissionMismatch: false,
       reinstallUrl: null,
@@ -351,6 +351,7 @@ describe("GET /api/integrations/teams/connect", () => {
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
       teamName: fixture.teamsTeamName,
+      botName: "Zero",
       defaultAgentName: null,
       environment: {
         requiredSecrets: [],
@@ -527,7 +528,7 @@ describe("POST /api/integrations/teams/connect", () => {
     expect(second.body.connectionId).toBe(first.body.connectionId);
   });
 
-  it("sends a one-time Teams welcome message after connect", async () => {
+  it("uses the connect Host for a one-time welcome without renaming the Teams bot", async () => {
     const fixture = await seedTeamsInstallation(track);
     const personalConversationId = `a:${teamsFixtureExternalId(
       fixture,
@@ -544,6 +545,10 @@ describe("POST /api/integrations/teams/connect", () => {
     const client = setupApp({ context, routes: teamsConnectRoutes })(
       teamsConnectContract,
     );
+    const okouHeaders = {
+      authorization: "Bearer clerk-session",
+      origin: "https://app.okou.ai",
+    };
     const body = {
       ...connectBody(fixture),
       conversationId: personalConversationId,
@@ -552,14 +557,14 @@ describe("POST /api/integrations/teams/connect", () => {
     };
     await accept(
       client.connect({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: okouHeaders,
         body,
       }),
       [200],
     );
     await accept(
       client.connect({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: okouHeaders,
         body,
       }),
       [200],
@@ -581,7 +586,7 @@ describe("POST /api/integrations/teams/connect", () => {
       kind: "activity",
       body: {
         type: "message",
-        summary: "You're connected to Zero!",
+        summary: "You're connected to Okou!",
         attachments: [
           {
             contentType: "application/vnd.microsoft.card.adaptive",
@@ -591,7 +596,7 @@ describe("POST /api/integrations/teams/connect", () => {
               body: [
                 {
                   type: "TextBlock",
-                  text: "You're connected to Zero! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+                  text: "You're connected to Okou! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
                   wrap: true,
                 },
               ],

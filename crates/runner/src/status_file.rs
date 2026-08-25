@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer};
 
 use crate::error::RunnerError;
 use crate::ids::RunId;
@@ -87,12 +87,31 @@ pub(crate) struct StatusForDoctor {
     #[serde(default)]
     pub(crate) active_runs: Vec<StatusActiveRun>,
     pub(crate) started_at: String,
-    #[serde(default)]
-    pub(crate) idle_vms: Vec<StatusIdleVm>,
+    #[serde(default, deserialize_with = "deserialize_present_idle_sandboxes")]
+    idle_sandboxes: Option<Vec<StatusIdleSandbox>>,
+    #[serde(default, rename = "idle_vms")]
+    legacy_idle_sandboxes: Vec<StatusIdleSandbox>,
     #[serde(default)]
     pub(crate) proxy_port: Option<u16>,
     #[serde(default)]
     pub(crate) dns_port: Option<u16>,
+}
+
+impl StatusForDoctor {
+    pub(crate) fn idle_sandboxes(&self) -> &[StatusIdleSandbox] {
+        self.idle_sandboxes
+            .as_deref()
+            .unwrap_or(&self.legacy_idle_sandboxes)
+    }
+}
+
+fn deserialize_present_idle_sandboxes<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<StatusIdleSandbox>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Vec::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,7 +137,7 @@ pub(crate) struct StatusActiveRun {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct StatusIdleVm {
+pub(crate) struct StatusIdleSandbox {
     pub(crate) reuse_key: String,
     pub(crate) sandbox_id: String,
 }
@@ -162,7 +181,7 @@ mod tests {
                     "phase_started_at":"2026-04-13T00:00:01.000Z"
                 }
             ],
-            "idle_vms": [
+            "idle_sandboxes": [
                 {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,
@@ -193,8 +212,78 @@ mod tests {
             status.active_runs[0].phase_started_at,
             "2026-04-13T00:00:01.000Z"
         );
-        assert_eq!(status.idle_vms.len(), 1);
-        assert_eq!(status.idle_vms[0].reuse_key, "sess-1");
+        assert_eq!(status.idle_sandboxes().len(), 1);
+        assert_eq!(status.idle_sandboxes()[0].reuse_key, "sess-1");
+    }
+
+    #[tokio::test]
+    async fn doctor_idle_sandbox_fields_follow_compatibility_precedence() {
+        let cases = [
+            (
+                "legacy only",
+                r#""idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
+                &["legacy"][..],
+            ),
+            (
+                "mirrored",
+                r#""idle_sandboxes":[{"reuse_key":"canonical","sandbox_id":"sandbox-canonical"}],"idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
+                &["canonical"][..],
+            ),
+            (
+                "canonical only",
+                r#""idle_sandboxes":[{"reuse_key":"canonical","sandbox_id":"sandbox-canonical"}]"#,
+                &["canonical"][..],
+            ),
+            (
+                "canonical empty",
+                r#""idle_sandboxes":[],"idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
+                &[][..],
+            ),
+            ("neither", "", &[][..]),
+        ];
+
+        for (name, idle_fields, expected_reuse_keys) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let separator = if idle_fields.is_empty() { "" } else { "," };
+            let content = format!(
+                r#"{{"mode":"running","started_at":"2026-04-13T00:00:00.000Z"{separator}{idle_fields}}}"#
+            );
+            tokio::fs::write(dir.path().join("status.json"), content)
+                .await
+                .unwrap();
+
+            let status = read_as::<StatusForDoctor>(dir.path())
+                .await
+                .unwrap()
+                .unwrap();
+            let reuse_keys: Vec<&str> = status
+                .idle_sandboxes()
+                .iter()
+                .map(|sandbox| sandbox.reuse_key.as_str())
+                .collect();
+
+            assert_eq!(reuse_keys, expected_reuse_keys, "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn doctor_rejects_malformed_present_canonical_idle_sandboxes() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-04-13T00:00:00.000Z",
+                "idle_sandboxes":null,
+                "idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]
+            }"#,
+        )
+        .await
+        .unwrap();
+
+        let error = read_as::<StatusForDoctor>(dir.path()).await.unwrap_err();
+
+        assert!(matches!(error, StatusFileReadError::ParseJson { .. }));
     }
 
     #[tokio::test]
@@ -224,7 +313,7 @@ mod tests {
                 "mode":"running",
                 "active_runs":[],
                 "started_at":"2026-04-13T00:00:00.000Z",
-                "idle_vms":null
+                "idle_sandboxes":null
             }"#,
         )
         .await
@@ -270,7 +359,7 @@ mod tests {
                     {"run_id":"run-a","sandbox_id":"sandbox-a"}
                 ],
                 "started_at": [],
-                "idle_vms": null
+                "idle_sandboxes": null
             }"#,
         )
         .await
