@@ -470,6 +470,22 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
             ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
           }),
         ).resolves.toStrictEqual({ outcome: "recorded" });
+        expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+          "Built-in model provider failure report recorded",
+          expect.objectContaining({
+            type: "built_in_model_provider_cooldown",
+            context: "Runners",
+            runId: claimed.runId,
+            selectedModel: claimed.selectedModel,
+            providerType: primary.provider_type,
+            upstreamModel: primary.upstream_model,
+            failureKind,
+            retryAfterSeconds: cooldownSeconds,
+            unavailableUntil: new Date(
+              startedAt + cooldownSeconds * 1000,
+            ).toISOString(),
+          }),
+        );
         await expect(
           runs.readRun(claimed.actor, claimed.runId),
         ).resolves.toMatchObject({ status: "running" });

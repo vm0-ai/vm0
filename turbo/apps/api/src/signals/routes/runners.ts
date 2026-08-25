@@ -2628,6 +2628,7 @@ const modelProviderFailureInner$ = command(
     });
     signal.throwIfAborted();
     L.debug("Built-in model provider failure report recorded", {
+      type: "built_in_model_provider_cooldown",
       runId,
       selectedModel: run.selectedModel,
       providerType: run.modelRuntimeProvider,
