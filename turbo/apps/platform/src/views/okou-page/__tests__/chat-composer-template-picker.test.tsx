@@ -3451,7 +3451,11 @@ describe("chat composer templates", () => {
       return found as HTMLElement;
     });
     expect(within(card).getByText("Brand system")).toBeInTheDocument();
-    expect(within(card).getByText("18 slides")).toBeInTheDocument();
+    // The tile caption carries the title alone: the slide count and the
+    // visibility marker both belong to the detail panel, which is one click
+    // away and has room to say them properly.
+    expect(within(card).queryByText("18 slides")).toBeNull();
+    expect(card.querySelector(".lucide-globe")).toBeNull();
     const coverImage = within(card).getByRole("img");
     expect(coverImage).toHaveAttribute(
       "src",
