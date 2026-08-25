@@ -3364,6 +3364,32 @@ describe("zero sidebar", () => {
     expect(grid).not.toHaveClass("pb-1");
   });
 
+  it("matches pinned agent unread indicators to chat thread indicators", async () => {
+    prepareDefaultAgent();
+    mockUnreadAgents(() => {
+      return [AGENT_ID];
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    const card = await waitFor(() => {
+      return within(grid).getByTestId("pinned-agent-card");
+    });
+    const unread = await waitFor(() => {
+      return within(card).getByLabelText("Unread");
+    });
+
+    expect(unread).toHaveClass("h-2", "w-2", "rounded-full", "bg-sky-600");
+    expect(unread).not.toHaveClass("h-2.5", "w-2.5", "ring-2");
+  });
+
   it("searches chats and messages in the three-column spotlight", async () => {
     prepareAgentTeam();
     mockSidebarThreadStory([

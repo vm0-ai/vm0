@@ -63,6 +63,7 @@ import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog, PinAgentDialog } from "./sidebar-dialogs.tsx";
 import {
+  AgentUnreadIndicator,
   AgentRowContextActions,
   AgentRowSideActions,
   type AgentRowMenuAction,
@@ -390,7 +391,9 @@ function PinnedAgentGridCard({
           className="h-9 w-9 rounded-full object-cover object-top"
         />
         {hasUnread && (
-          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
+          <span className="absolute -right-0.5 -top-0.5 flex">
+            <AgentUnreadIndicator />
+          </span>
         )}
       </span>
       <span
