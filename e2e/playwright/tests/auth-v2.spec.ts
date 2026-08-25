@@ -555,7 +555,7 @@ async function waitForActivatedSessionOrRedirect(
 
 function organizationButton(page: Page, organizationName: string): Locator {
   return authV2Root(page).getByRole("button", {
-    name: new RegExp(organizationName, "i"),
+    name: organizationName,
   });
 }
 

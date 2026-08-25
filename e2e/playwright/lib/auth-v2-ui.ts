@@ -96,7 +96,7 @@ export async function continueWithOrganization(
   organizationName: string,
 ): Promise<void> {
   const button = authV2Root(page).getByRole("button", {
-    name: new RegExp(escapeRegExp(organizationName), "i"),
+    name: organizationName,
   });
   await expect(button).toBeVisible();
   await expectNoOrganizationCreation(page);
@@ -110,8 +110,4 @@ export async function waitForPathname(
   await page.waitForURL((url) => url.pathname === pathname, {
     waitUntil: "domcontentloaded",
   });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
