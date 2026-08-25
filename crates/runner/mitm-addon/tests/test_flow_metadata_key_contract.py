@@ -227,7 +227,7 @@ def test_registered_flow_metadata_guard_flags_match_or_pattern_keys(tmp_path):
     )
 
 
-def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_reads(tmp_path):
+def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_calls(tmp_path):
     source_path = tmp_path / "unbound_calls.py"
     _write_python_source(source_path, "unbound_calls.base.py.txt")
 
