@@ -751,7 +751,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         Ok(workspace_image) => workspace_image,
         Err(failure) => {
             return (
-                ExecuteOutcome::reused_sandbox_failure(failure, sandbox, source_ip, None),
+                ExecuteOutcome::reused_sandbox_failure(*failure, sandbox, source_ip, None),
                 telemetry,
             );
         }
@@ -836,7 +836,7 @@ async fn resolve_reused_workspace_promotion(
     sandbox_id: SandboxId,
     params: &JobParams,
     reuse_key: &str,
-) -> Result<Option<WorkspaceImageLease>, ExecutionFailure> {
+) -> Result<Option<WorkspaceImageLease>, Box<ExecutionFailure>> {
     let Some(promotion) = promotion else {
         return Ok(None);
     };
@@ -872,7 +872,7 @@ async fn resolve_reused_workspace_promotion(
                 "reuse_workspace_promotion_mismatch",
             )
             .await;
-            Err(failure)
+            Err(failure.into())
         }
     }
 }
