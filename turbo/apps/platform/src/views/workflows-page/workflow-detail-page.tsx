@@ -231,7 +231,7 @@ import {
 } from "../components/detail-page-layout.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { TiptapInstructionsEditor } from "../okou-page/tiptap-instructions-editor.tsx";
-import { ZeroUnsavedBar } from "../okou-page/unsaved-bar.tsx";
+import { UnsavedBar } from "../okou-page/unsaved-bar.tsx";
 import { InlineSettingsRow } from "../okou-page/components/inline-settings-row.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
@@ -2065,7 +2065,7 @@ function WorkflowMetadataForm({
         />
       </form>
       {detail.canManage && dirty ? (
-        <ZeroUnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
+        <UnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
       ) : null}
     </>
   );
@@ -3037,7 +3037,7 @@ function WorkflowSelectedFileEditor({
         />
       )}
       {detail.canManage && dirty ? (
-        <ZeroUnsavedBar
+        <UnsavedBar
           saving={saving}
           onDiscard={() => {
             setDraftState(null);

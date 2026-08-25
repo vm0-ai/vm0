@@ -22,7 +22,7 @@ import {
   type IdeationCatalogCopy,
 } from "./ideation-localization.ts";
 
-export function ZeroIdeationPage() {
+export function IdeationPage() {
   const { t } = useTranslation("agents");
   const brandName = useGet(brandName$);
   const features = useLastResolved(featureSwitch$);

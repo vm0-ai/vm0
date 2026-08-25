@@ -1,6 +1,6 @@
 import type { AgentInstructions } from "../../signals/okou-page/agent-types.ts";
 import { useTranslation } from "react-i18next";
-import { ZeroUnsavedBar } from "./unsaved-bar.tsx";
+import { UnsavedBar } from "./unsaved-bar.tsx";
 import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 
 interface ZeroInstructionsTabProps {
@@ -104,7 +104,7 @@ export function ZeroInstructionsTab({
       )}
 
       {(isDirty || isBuilding) && (
-        <ZeroUnsavedBar
+        <UnsavedBar
           onDiscard={onDiscard}
           onSave={onBuild}
           saving={isBuilding}

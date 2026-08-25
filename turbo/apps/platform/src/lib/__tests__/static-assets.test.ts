@@ -160,9 +160,9 @@ describe("static asset object keys", () => {
         return match[1]!;
       });
     });
-    const zeroPageKeys = objectKeys.filter((key) => {
+    const pageKeys = objectKeys.filter((key) => {
       return key.startsWith("views/zero-page/");
     });
-    expect(zeroPageKeys).toHaveLength(31);
+    expect(pageKeys).toHaveLength(31);
   });
 });

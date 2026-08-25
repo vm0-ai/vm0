@@ -1,40 +1,40 @@
 import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 
-function zeroPageAssetUrl(path: string): string {
+function pageAssetUrl(path: string): string {
   return platformStaticAssetUrl(`views/zero-page/${path.replace(/^\/+/u, "")}`);
 }
 
 export function avatarSvgAssetUrl(filename: string): string {
-  return zeroPageAssetUrl(`assets/avatar-svg/${filename}`);
+  return pageAssetUrl(`assets/avatar-svg/${filename}`);
 }
 
-export const emptyArtifactImg = zeroPageAssetUrl("assets/empty-artifact.webp");
-export const emptyChatImg = zeroPageAssetUrl("assets/empty-chat.webp");
-export const emptyAutomationsImg = zeroPageAssetUrl(
+export const emptyArtifactImg = pageAssetUrl("assets/empty-artifact.webp");
+export const emptyChatImg = pageAssetUrl("assets/empty-chat.webp");
+export const emptyAutomationsImg = pageAssetUrl(
   "assets/empty-automations-fe7f603eaa3c.webp",
 );
-export const emptyWorkflowImg = zeroPageAssetUrl(
+export const emptyWorkflowImg = pageAssetUrl(
   "assets/empty-workflow-96e709d12911.webp",
 );
-export const emptyUsageImg = zeroPageAssetUrl(
+export const emptyUsageImg = pageAssetUrl(
   "assets/empty-usage-a1f6d48793ba.webp",
 );
-export const emptySearchImg = zeroPageAssetUrl(
+export const emptySearchImg = pageAssetUrl(
   "assets/empty-search-b4e60a8e07b8.webp",
 );
-export const computerUseIllustrationImg = zeroPageAssetUrl(
+export const computerUseIllustrationImg = pageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",
 );
-export const noConnectorImg = zeroPageAssetUrl("assets/no-connector.webp");
-export const noPermissionIllustration = zeroPageAssetUrl(
+export const noConnectorImg = pageAssetUrl("assets/no-connector.webp");
+export const noPermissionIllustration = pageAssetUrl(
   "assets/no-permission-illustration.webp",
 );
-export const planFreeImg = zeroPageAssetUrl(
+export const planFreeImg = pageAssetUrl(
   "components/org-manage/assets/plan-free.webp",
 );
-export const planProImg = zeroPageAssetUrl(
+export const planProImg = pageAssetUrl(
   "components/org-manage/assets/plan-pro.webp",
 );
-export const planTeamImg = zeroPageAssetUrl(
+export const planTeamImg = pageAssetUrl(
   "components/org-manage/assets/plan-team.webp",
 );

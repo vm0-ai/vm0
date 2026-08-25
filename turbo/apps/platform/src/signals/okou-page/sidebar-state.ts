@@ -126,7 +126,7 @@ export const setSessionListCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Manage section collapse state (ZeroSidebar) — persisted in localStorage
+// Manage section collapse state (Sidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
   get$: manageSectionCollapsedRaw$,
