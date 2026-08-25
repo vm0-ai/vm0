@@ -59,6 +59,11 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
     path: "/linkedin/company-posts",
     queryNames: ["url", "limit", "cache", "cache_ttl"],
     maxLimit: 50,
+    collection: {
+      resultField: "posts",
+      defaultLimit: 10,
+      pagination: { kind: "none" },
+    },
   },
   { path: "/linkedin/post", queryNames: ["url", "cache", "cache_ttl"] },
   {
@@ -70,6 +75,11 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
     path: "/twitter/tweets",
     queryNames: ["url", "limit", "cursor", "cache", "cache_ttl"],
     maxLimit: 100,
+    collection: {
+      resultField: "tweets",
+      defaultLimit: 20,
+      pagination: { kind: "next_cursor" },
+    },
   },
   { path: "/twitter/tweet", queryNames: ["url", "cache", "cache_ttl"] },
   { path: "/twitter/thread", queryNames: ["url", "cache", "cache_ttl"] },
@@ -89,7 +99,13 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   {
     path: "/facebook/comments",
     queryNames: ["url", "limit", "cursor"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/facebook/summarize",
@@ -113,19 +129,44 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   {
     path: "/instagram/comments",
     queryNames: ["url", "limit", "cursor", "sortBy"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/instagram/channel-posts",
     queryNames: ["url", "limit", "cursor"],
-    maxLimit: 20,
+    maxLimit: 100,
+    collection: {
+      resultField: "items",
+      defaultLimit: 12,
+      itemsPerBillingUnit: 20,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/instagram/channel-reels",
     queryNames: ["url", "limit", "cursor"],
-    maxLimit: 20,
+    maxLimit: 100,
+    collection: {
+      resultField: "items",
+      defaultLimit: 12,
+      itemsPerBillingUnit: 20,
+      pagination: { kind: "cursor" },
+    },
   },
-  { path: "/instagram/reels-search", queryNames: ["query", "page"] },
+  {
+    path: "/instagram/reels-search",
+    queryNames: ["query", "page"],
+    collection: {
+      resultField: "items",
+      pagination: { kind: "page", maxPage: 2 },
+    },
+  },
   {
     path: "/instagram/summarize",
     queryNames: [
@@ -140,7 +181,13 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   {
     path: "/tiktok/comments",
     queryNames: ["url", "limit", "cursor"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/transcript",
@@ -153,7 +200,12 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   {
     path: "/tiktok/channel-videos",
     queryNames: ["url", "limit", "cursor", "cache", "cache_ttl"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 30,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/search",
@@ -166,12 +218,24 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
       "cache",
       "cache_ttl",
     ],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/hashtag-search",
     queryNames: ["hashtag", "limit", "cursor", "cache", "cache_ttl"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "cursor" },
+    },
   },
   {
     path: "/tiktok/summarize",
@@ -191,7 +255,13 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   {
     path: "/youtube/comments",
     queryNames: ["url", "limit", "sortBy"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "comments",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/channel-stats",
@@ -208,12 +278,24 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
       "cache",
       "cache_ttl",
     ],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/videos",
     queryNames: ["url", "limit", "full_details", "cache", "cache_ttl"],
-    maxLimit: 50,
+    maxLimit: 100,
+    collection: {
+      resultField: "results",
+      defaultLimit: 10,
+      itemsPerBillingUnit: 50,
+      pagination: { kind: "none" },
+    },
   },
   {
     path: "/youtube/summarize",
@@ -374,6 +456,29 @@ function providerResponse(data: unknown = { value: "provider result" }) {
   return { success: true, data };
 }
 
+function providerItems(count: number): { readonly id: number }[] {
+  return Array.from({ length: count }, (_, id) => {
+    return { id };
+  });
+}
+
+function validProviderData(path: string): Record<string, unknown> {
+  const operation = MANAGED_SOCIALKIT_OPERATIONS.find((candidate) => {
+    return candidate.method === "GET" && candidate.path === path;
+  });
+  const collection = operation?.collection;
+  if (!collection) {
+    return { path };
+  }
+  const result: Record<string, unknown> = {
+    [collection.resultField]: [],
+  };
+  return collection.pagination.kind === "cursor" ||
+    collection.pagination.kind === "page"
+    ? { ...result, hasMore: false }
+    : result;
+}
+
 function providerHandler(
   method: "GET" | "POST",
   path: string,
@@ -386,7 +491,7 @@ function providerHandler(
 }
 
 describe("managed SocialKit route", () => {
-  it("pins the reviewed 76-operation fixed-cost inventory", () => {
+  it("pins the reviewed 76-operation inventory and collection policies", () => {
     const expectedOperations = EXPECTED_PAIRED_SOCIALKIT_PATHS.flatMap(
       (operation) => {
         return [
@@ -593,7 +698,7 @@ describe("managed SocialKit route", () => {
     for (const [path] of cases) {
       server.use(
         providerHandler("GET", path, () => {
-          return HttpResponse.json(providerResponse({ path }));
+          return HttpResponse.json(providerResponse(validProviderData(path)));
         }),
       );
     }
@@ -607,7 +712,9 @@ describe("managed SocialKit route", () => {
           queryValue: query[0]?.[1] ?? "",
           accessKey: request.headers.get("x-access-key"),
         });
-        return HttpResponse.json(providerResponse({ path: url.pathname }));
+        return HttpResponse.json(
+          providerResponse(validProviderData(url.pathname)),
+        );
       }),
     );
     const beforeCredits = await credits(actor);
@@ -635,7 +742,7 @@ describe("managed SocialKit route", () => {
         billingCategory: DEFAULT_CATEGORY,
         billingQuantity: 1,
         creditsCharged: SOCIALKIT_REQUEST_CREDITS,
-        result: { path },
+        result: validProviderData(path),
       });
     }
 
@@ -673,7 +780,9 @@ describe("managed SocialKit route", () => {
           observedUrl = request.url;
           observedAccessKey = request.headers.get("x-access-key");
           observedBody = await request.text();
-          return HttpResponse.json(providerResponse({ page: 2 }));
+          return HttpResponse.json(
+            providerResponse({ items: [], hasMore: false, page: 2 }),
+          );
         },
       ),
     );
@@ -699,7 +808,8 @@ describe("managed SocialKit route", () => {
       billingCategory: DEFAULT_CATEGORY,
       billingQuantity: 1,
       creditsCharged: SOCIALKIT_REQUEST_CREDITS,
-      result: { page: 2 },
+      collection: { state: "complete", itemsReturned: 0 },
+      result: { items: [], hasMore: false, page: 2 },
     });
     expect(beforeCredits - (await credits(actor))).toBe(
       SOCIALKIT_REQUEST_CREDITS,
@@ -762,7 +872,9 @@ describe("managed SocialKit route", () => {
           path: url.pathname,
           query: Object.fromEntries(url.searchParams),
         });
-        return HttpResponse.json(providerResponse());
+        return HttpResponse.json(
+          providerResponse(validProviderData(url.pathname)),
+        );
       }),
     );
 
@@ -777,6 +889,282 @@ describe("managed SocialKit route", () => {
     }
 
     expect(observed).toStrictEqual(cases);
+  });
+
+  it("settles result-metered pages from validated returned item counts", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    await fundActor(actor);
+    const pricing = await setupConfiguredPricing();
+    const beforeCredits = await credits(actor);
+    const cases = [
+      {
+        path: "/youtube/search",
+        query: { query: "launch", limit: "100" },
+        data: { results: providerItems(20) },
+        expectedQuantity: 1,
+        expectedState: "provider_limited",
+      },
+      {
+        path: "/youtube/search",
+        query: { query: "launch", limit: "100" },
+        data: { results: providerItems(100) },
+        expectedQuantity: 2,
+        expectedState: "provider_limited",
+      },
+      {
+        path: "/instagram/channel-posts",
+        query: { url: "https://instagram.com/example", limit: "100" },
+        data: {
+          items: providerItems(20),
+          hasMore: false,
+        },
+        expectedQuantity: 1,
+        expectedState: "complete",
+      },
+      {
+        path: "/instagram/channel-posts",
+        query: { url: "https://instagram.com/example", limit: "100" },
+        data: {
+          items: providerItems(21),
+          hasMore: false,
+        },
+        expectedQuantity: 2,
+        expectedState: "complete",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      server.use(
+        providerHandler("GET", testCase.path, () => {
+          return HttpResponse.json(providerResponse(testCase.data));
+        }),
+      );
+      const response = await accept(
+        client(pricing.resolution)(socialContract).request({
+          headers: authenticate(actor),
+          body: {
+            method: "GET",
+            path: testCase.path,
+            query: testCase.query,
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body.billingQuantity).toBe(testCase.expectedQuantity);
+      expect(response.body.creditsCharged).toBe(
+        testCase.expectedQuantity * SOCIALKIT_REQUEST_CREDITS,
+      );
+      expect(response.body.collection).toMatchObject({
+        state: testCase.expectedState,
+        itemsReturned:
+          testCase.path === "/youtube/search"
+            ? testCase.data.results.length
+            : testCase.data.items.length,
+      });
+    }
+
+    expect(beforeCredits - (await credits(actor))).toBe(
+      6 * SOCIALKIT_REQUEST_CREDITS,
+    );
+  });
+
+  it("sends the reviewed default limit used for credit preflight", async () => {
+    const actor = createBddApi(context).user();
+    let observedLimit: string | null = null;
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
+    await enableSocialKit(actor);
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/youtube/search`, ({ request }) => {
+        observedLimit = new URL(request.url).searchParams.get("limit");
+        return HttpResponse.json(
+          providerResponse({
+            results: providerItems(10),
+          }),
+        );
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          method: "GET",
+          path: "/youtube/search",
+          query: { query: "launch" },
+        },
+      }),
+      [200],
+    );
+
+    expect(observedLimit).toBe("10");
+    expect(response.body.billingQuantity).toBe(1);
+    expect(response.body.collection).toStrictEqual({
+      state: "provider_limited",
+      itemsReturned: 10,
+    });
+    await expect(credits(actor)).resolves.toBe(0);
+  });
+
+  it("normalizes every reviewed pagination shape", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    await fundActor(actor);
+    const pricing = await setupConfiguredPricing();
+    const cases = [
+      {
+        path: "/tiktok/search",
+        query: { query: "launch", limit: "10" },
+        data: { results: [{ id: 1 }], hasMore: true, cursor: 30 },
+        expected: {
+          state: "more",
+          itemsReturned: 1,
+          nextQuery: { cursor: "30" },
+        },
+      },
+      {
+        path: "/twitter/tweets",
+        query: { url: "https://x.com/example", limit: "20" },
+        data: { tweets: [{ id: 1 }], nextCursor: "next-tweet" },
+        expected: {
+          state: "more",
+          itemsReturned: 1,
+          nextQuery: { cursor: "next-tweet" },
+        },
+      },
+      {
+        path: "/instagram/reels-search",
+        query: { query: "cats", page: "1" },
+        data: { items: [{ id: 1 }], hasMore: true },
+        expected: {
+          state: "more",
+          itemsReturned: 1,
+          nextQuery: { page: "2" },
+        },
+      },
+      {
+        path: "/instagram/reels-search",
+        query: { query: "cats", page: "2" },
+        data: { items: [{ id: 2 }], hasMore: true },
+        expected: { state: "provider_limited", itemsReturned: 1 },
+      },
+      {
+        path: "/linkedin/company-posts",
+        query: { url: "https://linkedin.com/company/example", limit: "50" },
+        data: { posts: [{ id: 1 }] },
+        expected: { state: "provider_limited", itemsReturned: 1 },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      server.use(
+        providerHandler("GET", testCase.path, () => {
+          return HttpResponse.json(providerResponse(testCase.data));
+        }),
+      );
+      const response = await accept(
+        client(pricing.resolution)(socialContract).request({
+          headers: authenticate(actor),
+          body: {
+            method: "GET",
+            path: testCase.path,
+            query: testCase.query,
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body.collection).toStrictEqual(testCase.expected);
+    }
+  });
+
+  it("preflights the maximum result-metered quantity before provider work", async () => {
+    const actor = createBddApi(context).user();
+    let providerRequests = 0;
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
+    await enableSocialKit(actor);
+    server.use(
+      providerHandler("GET", "/youtube/search", () => {
+        providerRequests += 1;
+        return HttpResponse.json(providerResponse({ results: [] }));
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          method: "GET",
+          path: "/youtube/search",
+          query: { query: "launch", limit: "100" },
+        },
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(providerRequests).toBe(0);
+  });
+
+  it("rejects invalid collection successes without billing", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const cases = [
+      {
+        path: "/youtube/search",
+        query: { query: "launch", limit: "10" },
+        data: { value: "missing results" },
+      },
+      {
+        path: "/youtube/search",
+        query: { query: "launch", limit: "10" },
+        data: { results: providerItems(11) },
+      },
+      {
+        path: "/instagram/comments",
+        query: { url: "https://instagram.com/p/example", limit: "10" },
+        data: { comments: [], hasMore: true },
+      },
+      {
+        path: "/instagram/reels-search",
+        query: { query: "cats", page: "1" },
+        data: { items: [] },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      server.use(
+        providerHandler("GET", testCase.path, () => {
+          return HttpResponse.json(providerResponse(testCase.data));
+        }),
+      );
+      const response = await accept(
+        client(pricing.resolution)(socialContract).request({
+          headers: authenticate(actor),
+          body: {
+            method: "GET",
+            path: testCase.path,
+            query: testCase.query,
+          },
+        }),
+        [502],
+      );
+
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("SOCIALKIT_INVALID_RESPONSE");
+    }
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
   it.each([
@@ -926,27 +1314,27 @@ describe("managed SocialKit route", () => {
       },
     },
     {
-      caseName: "a result limit above one provider credit",
+      caseName: "a result limit above the provider maximum",
       body: {
         method: "GET",
         path: "/youtube/comments",
-        query: { url: "https://youtu.be/id", limit: "51" },
+        query: { url: "https://youtu.be/id", limit: "101" },
       },
     },
     {
-      caseName: "a video-list limit above one provider credit",
+      caseName: "a video-list limit above the provider maximum",
       body: {
         method: "GET",
         path: "/tiktok/channel-videos",
-        query: { url: "https://tiktok.com/@example", limit: "51" },
+        query: { url: "https://tiktok.com/@example", limit: "101" },
       },
     },
     {
-      caseName: "a result limit above the smaller provider credit unit",
+      caseName: "an Instagram result limit above the provider maximum",
       body: {
         method: "GET",
         path: "/instagram/channel-posts",
-        query: { url: "https://instagram.com/example", limit: "21" },
+        query: { url: "https://instagram.com/example", limit: "101" },
       },
     },
     {
@@ -1308,7 +1696,7 @@ describe("managed SocialKit route", () => {
     );
   });
 
-  it("records concurrent successful requests exactly once each", async () => {
+  it("records concurrent multi-unit requests exactly once each", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
@@ -1316,35 +1704,46 @@ describe("managed SocialKit route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
-      providerHandler("GET", "/youtube/transcript", () => {
+      providerHandler("GET", "/youtube/search", () => {
         providerRequests += 1;
-        return HttpResponse.json(providerResponse());
+        return HttpResponse.json(
+          providerResponse({
+            results: providerItems(100),
+          }),
+        );
       }),
     );
     const socialClient = client(pricing.resolution)(socialContract);
+    const request = {
+      method: "GET",
+      path: "/youtube/search",
+      query: { query: "launch", limit: "100" },
+    } as const;
 
     const [first, second] = await Promise.all([
       accept(
         socialClient.request({
           headers: authenticate(actor),
-          body: DEFAULT_SOCIAL_REQUEST,
+          body: request,
         }),
         [200],
       ),
       accept(
         socialClient.request({
           headers: authenticate(actor),
-          body: DEFAULT_SOCIAL_REQUEST,
+          body: request,
         }),
         [200],
       ),
     ]);
 
-    expect(first.body.creditsCharged).toBe(SOCIALKIT_REQUEST_CREDITS);
-    expect(second.body.creditsCharged).toBe(SOCIALKIT_REQUEST_CREDITS);
+    expect(first.body.billingQuantity).toBe(2);
+    expect(second.body.billingQuantity).toBe(2);
+    expect(first.body.creditsCharged).toBe(2 * SOCIALKIT_REQUEST_CREDITS);
+    expect(second.body.creditsCharged).toBe(2 * SOCIALKIT_REQUEST_CREDITS);
     expect(providerRequests).toBe(2);
     expect(beforeCredits - (await credits(actor))).toBe(
-      2 * SOCIALKIT_REQUEST_CREDITS,
+      4 * SOCIALKIT_REQUEST_CREDITS,
     );
   });
 });

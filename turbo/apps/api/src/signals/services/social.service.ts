@@ -1,7 +1,9 @@
 import {
   findManagedSocialKitOperation,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
+  SOCIALKIT_MAX_QUERY_VALUE_CHARS,
   type ManagedSocialKitOperation,
+  type ManagedSocialKitPagination,
   type SocialKitRequest,
   type SocialKitResponse,
 } from "@okouai/api-contracts/contracts/social";
@@ -71,7 +73,7 @@ interface CompleteSocialKitArgs {
   readonly accessKey: string;
   readonly request: SocialKitRequest;
   readonly operation: ManagedSocialKitOperation;
-  readonly recordUsage: () => Promise<number>;
+  readonly recordUsage: (quantity: number) => Promise<number>;
 }
 
 type SocialKitCommandResponse =
@@ -272,8 +274,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function providerResult(
   body: unknown,
   accessKey: string,
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
 ):
-  | { readonly ok: true; readonly result: unknown }
+  | {
+      readonly ok: true;
+      readonly result: unknown;
+      readonly collection: SocialKitResponse["collection"];
+      readonly billingQuantity: number;
+    }
   | { readonly ok: false; readonly credentialLeak: boolean } {
   if (
     !isRecord(body) ||
@@ -290,7 +299,185 @@ function providerResult(
   if (serialized.includes(accessKey)) {
     return { ok: false, credentialLeak: true };
   }
-  return { ok: true, result: body.data };
+  const collection = validatedCollection(body.data, request, operation);
+  if (collection === undefined) {
+    return { ok: false, credentialLeak: false };
+  }
+  const billingQuantity = operation.collection?.itemsPerBillingUnit
+    ? Math.max(
+        1,
+        Math.ceil(
+          collection === null
+            ? 0
+            : collection.itemsReturned /
+                operation.collection.itemsPerBillingUnit,
+        ),
+      )
+    : 1;
+  return {
+    ok: true,
+    result: body.data,
+    collection,
+    billingQuantity,
+  };
+}
+
+function effectiveResultLimit(
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
+): number | undefined {
+  const defaultLimit = operation.collection?.defaultLimit;
+  if (defaultLimit === undefined) {
+    return undefined;
+  }
+  const requestedLimit = request.query?.limit;
+  return requestedLimit === undefined ? defaultLimit : Number(requestedLimit);
+}
+
+function requestWithDefaultLimit(
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
+): SocialKitRequest {
+  const defaultLimit = operation.collection?.defaultLimit;
+  return defaultLimit === undefined || request.query?.limit !== undefined
+    ? request
+    : {
+        ...request,
+        query: { ...request.query, limit: String(defaultLimit) },
+      };
+}
+
+function paginationQueryValue(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return String(value);
+  }
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= SOCIALKIT_MAX_QUERY_VALUE_CHARS
+    ? value
+    : undefined;
+}
+
+type ValidatedCollection = NonNullable<SocialKitResponse["collection"]>;
+
+function validatedCursorPagination(
+  result: Record<string, unknown>,
+  itemsReturned: number,
+): ValidatedCollection | undefined {
+  if (typeof result.hasMore !== "boolean") {
+    return undefined;
+  }
+  if (!result.hasMore) {
+    return { state: "complete", itemsReturned };
+  }
+  const cursor = paginationQueryValue(result.cursor);
+  return cursor === undefined
+    ? undefined
+    : { state: "more", itemsReturned, nextQuery: { cursor } };
+}
+
+function validatedNextCursorPagination(
+  result: Record<string, unknown>,
+  itemsReturned: number,
+): ValidatedCollection | undefined {
+  if (
+    result.nextCursor === undefined ||
+    result.nextCursor === null ||
+    result.nextCursor === ""
+  ) {
+    return { state: "complete", itemsReturned };
+  }
+  const cursor = paginationQueryValue(result.nextCursor);
+  return cursor === undefined
+    ? undefined
+    : { state: "more", itemsReturned, nextQuery: { cursor } };
+}
+
+function validatedPagePagination(
+  result: Record<string, unknown>,
+  itemsReturned: number,
+  currentPage: number,
+  maxPage: number,
+): ValidatedCollection | undefined {
+  if (typeof result.hasMore !== "boolean") {
+    return undefined;
+  }
+  if (!result.hasMore) {
+    return { state: "complete", itemsReturned };
+  }
+  return currentPage >= maxPage
+    ? { state: "provider_limited", itemsReturned }
+    : {
+        state: "more",
+        itemsReturned,
+        nextQuery: { page: String(currentPage + 1) },
+      };
+}
+
+function validatedPagination(
+  result: Record<string, unknown>,
+  itemsReturned: number,
+  request: SocialKitRequest,
+  pagination: ManagedSocialKitPagination,
+): ValidatedCollection | undefined {
+  switch (pagination.kind) {
+    case "cursor": {
+      return validatedCursorPagination(result, itemsReturned);
+    }
+    case "next_cursor": {
+      return validatedNextCursorPagination(result, itemsReturned);
+    }
+    case "page": {
+      return validatedPagePagination(
+        result,
+        itemsReturned,
+        Number(request.query?.page ?? "1"),
+        pagination.maxPage,
+      );
+    }
+    case "none": {
+      return { state: "provider_limited", itemsReturned };
+    }
+  }
+}
+
+function validatedCollection(
+  result: unknown,
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
+): SocialKitResponse["collection"] | undefined {
+  const collection = operation.collection;
+  if (!collection) {
+    return null;
+  }
+  if (!isRecord(result)) {
+    return undefined;
+  }
+  const items = result[collection.resultField];
+  if (!Array.isArray(items)) {
+    return undefined;
+  }
+  const effectiveLimit = effectiveResultLimit(request, operation);
+  if (effectiveLimit !== undefined && items.length > effectiveLimit) {
+    return undefined;
+  }
+  return validatedPagination(
+    result,
+    items.length,
+    request,
+    collection.pagination,
+  );
+}
+
+function preflightBillingQuantity(
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
+): number {
+  const itemsPerBillingUnit = operation.collection?.itemsPerBillingUnit;
+  const resultLimit = effectiveResultLimit(request, operation);
+  return itemsPerBillingUnit === undefined || resultLimit === undefined
+    ? 1
+    : Math.max(1, Math.ceil(resultLimit / itemsPerBillingUnit));
 }
 
 function runIdForUsage(auth: AuthContext): string | undefined {
@@ -312,7 +499,12 @@ async function completeSocialKitRequest(
   if (providerResponse.kind === "error") {
     return providerResponse.error;
   }
-  const parsed = providerResult(providerResponse.body, args.accessKey);
+  const parsed = providerResult(
+    providerResponse.body,
+    args.accessKey,
+    args.request,
+    args.operation,
+  );
   if (!parsed.ok) {
     const failureKind = parsed.credentialLeak
       ? "credential_leak"
@@ -320,7 +512,7 @@ async function completeSocialKitRequest(
     logProviderFailure(args.operation, failureKind);
     return invalidResponse();
   }
-  const creditsCharged = await args.recordUsage();
+  const creditsCharged = await args.recordUsage(parsed.billingQuantity);
   return {
     status: 200,
     body: {
@@ -330,8 +522,9 @@ async function completeSocialKitRequest(
         path: args.operation.path,
       },
       billingCategory: MANAGED_SOCIALKIT_BILLING_CATEGORY,
-      billingQuantity: 1,
+      billingQuantity: parsed.billingQuantity,
       creditsCharged,
+      collection: parsed.collection,
       result: parsed.result,
     },
   };
@@ -359,20 +552,21 @@ export const socialKitRequest$ = command(
     if (!operation) {
       throw new Error("Validated SocialKit request has no reviewed operation");
     }
+    const providerRequest = requestWithDefaultLimit(args.body, operation);
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
-    const resource = {
+    const preflightResource = {
       kind: USAGE_KIND,
       provider: PROVIDER,
       category: MANAGED_SOCIALKIT_BILLING_CATEGORY,
-      quantity: 1,
+      quantity: preflightBillingQuantity(providerRequest, operation),
     };
     const creditError = await set(
       checkManagedCredits$,
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
-        resource,
+        resource: preflightResource,
         label: "Okou SocialKit",
       },
       requestSignal,
@@ -387,9 +581,9 @@ export const socialKitRequest$ = command(
     return completeSocialKitRequest(
       {
         accessKey,
-        request: args.body,
+        request: providerRequest,
         operation,
-        recordUsage: () => {
+        recordUsage: (quantity) => {
           return set(
             recordManagedUsage$,
             {
@@ -398,7 +592,12 @@ export const socialKitRequest$ = command(
                 userId: args.auth.userId,
                 ...(runId ? { runId } : {}),
               },
-              resource,
+              resource: {
+                kind: USAGE_KIND,
+                provider: PROVIDER,
+                category: MANAGED_SOCIALKIT_BILLING_CATEGORY,
+                quantity,
+              },
               label: "SocialKit request",
             },
             signal,
