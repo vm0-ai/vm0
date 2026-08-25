@@ -767,10 +767,9 @@ mod tests {
                     "workspace_device='/dev/vdb'",
                     sandbox_exec_error(self.primary_error().unwrap()),
                 ),
-                Self::GuestRestoreFailure => overrides.add_exec_error_matcher(
-                    "guest-reseed",
+                Self::GuestRestoreFailure => overrides.push_guest_state_restore_result(Err(
                     sandbox_exec_error(self.primary_error().unwrap()),
-                ),
+                )),
                 Self::ExecFailure => overrides.add_exec_error_matcher(
                     BENCHMARK_LIFECYCLE_COMMAND,
                     sandbox_exec_error(self.primary_error().unwrap()),

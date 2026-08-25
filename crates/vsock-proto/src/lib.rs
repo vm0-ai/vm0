@@ -29,7 +29,7 @@
 //!
 //! | Type | Direction | Name              | Payload |
 //! |------|-----------|-------------------|---------|
-//! | 0x00 | G→H       | ready             | (empty) |
+//! | 0x00 | G→H       | ready             | empty for legacy guests, otherwise `[8B capability_bits]` |
 //! | 0x01 | H→G       | ping              | (empty) |
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | shutdown          | (empty) |
@@ -214,6 +214,14 @@ pub use payloads::guest_dns_readiness::{
     encode_guest_dns_readiness_request, encode_guest_dns_readiness_request_frame_into,
     encode_guest_dns_readiness_result,
 };
+pub use payloads::guest_state_restore::{
+    DecodedGuestStateRestoreRequest, GUEST_STATE_RESTORE_ENTROPY_BYTES,
+    GUEST_STATE_RESTORE_MAX_TIMEZONE_BYTES, GUEST_STATE_RESTORE_OUTPUT_LIMIT_BYTES,
+    GuestStateRestoreTimezone, decode_guest_state_restore_request,
+    decode_guest_state_restore_result, encode_guest_state_restore_request,
+    encode_guest_state_restore_request_frame_into, encode_guest_state_restore_result,
+    encode_guest_state_restore_result_frame_into,
+};
 pub use payloads::guest_storage_manifest::{
     DecodedGuestStorageManifestRequest, GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES,
     GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
@@ -235,10 +243,11 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STORAGE_MANIFEST,
-    MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
-    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STATE_RESTORE,
+    MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST, MSG_GUEST_STORAGE_MANIFEST_RESULT,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

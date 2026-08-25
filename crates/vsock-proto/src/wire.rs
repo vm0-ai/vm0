@@ -95,6 +95,12 @@ pub const MSG_GUEST_STORAGE_MANIFEST: u8 = 0x18;
 /// Guest-to-host result of applying a bounded storage manifest.
 pub const MSG_GUEST_STORAGE_MANIFEST_RESULT: u8 = 0x19;
 
+/// Host-to-guest request to restore bounded snapshot-sensitive guest state.
+pub const MSG_GUEST_STATE_RESTORE: u8 = 0x1A;
+
+/// Guest-to-host result of restoring snapshot-sensitive guest state.
+pub const MSG_GUEST_STATE_RESTORE_RESULT: u8 = 0x1B;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -169,6 +175,12 @@ mod tests {
                 "MSG_GUEST_STORAGE_MANIFEST_RESULT",
                 MSG_GUEST_STORAGE_MANIFEST_RESULT,
                 0x19,
+            ),
+            ("MSG_GUEST_STATE_RESTORE", MSG_GUEST_STATE_RESTORE, 0x1A),
+            (
+                "MSG_GUEST_STATE_RESTORE_RESULT",
+                MSG_GUEST_STATE_RESTORE_RESULT,
+                0x1B,
             ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];

@@ -10,8 +10,9 @@ use ::sandbox::*;
 use async_trait::async_trait;
 
 use crate::call_records::{
-    CopyFileCall, ExecCall, ProcessCancelCall, ProcessControlCall, ReadFileCall, StartProcessCall,
-    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    CopyFileCall, ExecCall, GuestStateRestoreCall, GuestStateRestoreTimezoneCall,
+    ProcessCancelCall, ProcessControlCall, ReadFileCall, StartProcessCall, StorageManifestCall,
+    WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::{ExecMatcherOutcome, MockSandboxOverrides};
@@ -36,6 +37,7 @@ pub struct MockSandbox {
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
     copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
@@ -78,6 +80,7 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             storage_manifest_calls: Mutex::new(Vec::new()),
+            guest_state_restore_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             read_file_calls: Mutex::new(Vec::new()),
             copy_file_results: Mutex::new(VecDeque::new()),
@@ -229,6 +232,13 @@ impl MockSandbox {
     /// Return this sandbox's recorded fixed storage-manifest calls.
     pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
         self.storage_manifest_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return this sandbox's recorded fixed guest-state restore calls.
+    pub fn guest_state_restore_calls(&self) -> Vec<GuestStateRestoreCall> {
+        self.guest_state_restore_calls
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Queue a small file read result. Results are consumed in FIFO order.
@@ -610,6 +620,57 @@ impl Sandbox for MockSandbox {
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))?;
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
+    }
+
+    async fn restore_guest_state(
+        &self,
+        request: &GuestStateRestoreRequest<'_>,
+    ) -> Result<ExecResult> {
+        let timezone = match request.timezone {
+            GuestStateRestoreTimezone::None => GuestStateRestoreTimezoneCall::None,
+            GuestStateRestoreTimezone::BestEffort(timezone) => {
+                GuestStateRestoreTimezoneCall::BestEffort(timezone.to_owned())
+            }
+            GuestStateRestoreTimezone::Required(timezone) => {
+                GuestStateRestoreTimezoneCall::Required(timezone.to_owned())
+            }
+        };
+        let call = GuestStateRestoreCall {
+            unix_seconds: request.unix_seconds,
+            unix_nanoseconds: request.unix_nanoseconds,
+            entropy_len: request.entropy.len(),
+            timezone,
+            timeout: request.timeout,
+        };
+        self.guest_state_restore_calls
+            .lock_ignoring_poison()
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .exec
+                .guest_state_restore_calls
+                .lock_ignoring_poison()
+                .push(call);
+            overrides
+                .exec
+                .guest_state_restore_call_notify
+                .notify_waiters();
+        }
+        let result = self
+            .exec_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .exec
+                        .guest_state_restore_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            })
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_64_KIB))
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
