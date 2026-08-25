@@ -415,6 +415,12 @@ def observe_websocket_client_event(
     flow_state.pending_intent = "prewarm" if is_prewarm else "normal"
 
 
+def should_observe_websocket_client_event(flow: http.HTTPFlow) -> bool:
+    """Return whether an admitted failure state still needs client evidence."""
+    flow_state = _websocket_flow_state(flow)
+    return flow_state is not None and not flow_state.websocket_ambiguous
+
+
 def should_observe_websocket_server_event(flow: http.HTTPFlow) -> bool:
     """Return whether an admitted failure state still needs server evidence."""
     flow_state = _websocket_flow_state(flow)

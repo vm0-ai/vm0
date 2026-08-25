@@ -114,6 +114,14 @@ def _retain_ignored_response_id(
     return True
 
 
+def should_observe_client_event(flow: http.HTTPFlow) -> bool:
+    """Return whether prewarm correlation still needs client evidence."""
+    state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
+    return (
+        is_enabled(flow) and isinstance(state, _OpenAIResponsesPrewarmState) and not state.ambiguous
+    )
+
+
 def observe_client_event(
     flow: http.HTTPFlow,
     event: usage.OpenAIResponsesClientEvent,
