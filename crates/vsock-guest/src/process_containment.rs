@@ -1533,6 +1533,26 @@ mod tests {
     }
 
     #[test]
+    fn placement_accept_returns_connection_while_active() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-placement-accept-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = AtomicBool::new(false);
+
+        let accepted =
+            accept_placement_or_cancelled(&listener, &cancel, cancel_reader.as_raw_fd()).unwrap();
+
+        assert!(accepted.is_some());
+        drop(cancel_writer);
+        drop(client);
+    }
+
+    #[test]
     fn placement_bootstrap_drop_wakes_all_idle_accept_workers() {
         let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
         let endpoint_base = format!(
