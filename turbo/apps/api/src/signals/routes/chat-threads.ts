@@ -80,7 +80,7 @@ function chatEventSnapshotProjection(
   schemaVersion: number,
 ): ChatEventSnapshotProjection {
   // V5 app and pinned CLI contexts cannot parse output.tool. Keep their API
-  // and R2 delivery redacted until the bounded bridge tracked by #29244 is
+  // and R2 delivery redacted until the bounded bridge tracked by #29362 is
   // removed after the V6 app floor and queued contexts have drained.
   if (schemaVersion < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
     return "tool-redacted";
@@ -260,6 +260,13 @@ const listChatEventRowsInner$ = command(
         threadId: params.threadId,
         userId: auth.userId,
         projection,
+        // The deployed V5 client advances from the last visible row and only
+        // continues after 50 visible rows. Remove this compatibility mode with
+        // #29362 after the V6 app floor and pinned CLI drain gates pass.
+        pagination:
+          version.version < CURRENT_CHAT_EVENT_SCHEMA_VERSION
+            ? "visible"
+            : "physical",
         ...query,
       }),
     );

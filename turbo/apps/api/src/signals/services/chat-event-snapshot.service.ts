@@ -5,7 +5,7 @@ import {
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt, ne } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -51,6 +51,7 @@ interface ChatEventRowsBaseArgs {
   readonly userId: string;
   readonly limit: number;
   readonly projection: ChatEventSnapshotProjection;
+  readonly pagination: "physical" | "visible";
 }
 
 type ChatEventRowsArgs = ChatEventRowsBaseArgs &
@@ -267,13 +268,18 @@ export function chatThreadEventRows(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
           gt(chatEvents.seqId, args.sinceSeqId),
+          args.pagination === "visible"
+            ? ne(chatEvents.eventType, "output.tool")
+            : undefined,
         ),
       )
       .orderBy(asc(chatEvents.seqId))
       .limit(args.limit);
 
     const rows = physicalRows.map(chatEventRowFromDbRow);
-    const physicalLast = rows.at(-1);
+    const projectedRows = projectChatEventSnapshotRows(rows, args.projection);
+    const cursorLast =
+      args.pagination === "visible" ? projectedRows.at(-1) : rows.at(-1);
     const priorCursor: ChatEventCursor =
       args.sinceSeqId === THREAD_START_SEQ_ID
         ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
@@ -287,17 +293,17 @@ export function chatThreadEventRows(
               throw new Error("Positive Chat Event cursor is missing its ID");
             })();
     const cursor: ChatEventCursor =
-      physicalLast === undefined
+      cursorLast === undefined
         ? priorCursor
         : {
-            lastEventId: physicalLast.id,
-            lastSeqId: physicalLast.seqId,
+            lastEventId: cursorLast.id,
+            lastSeqId: cursorLast.seqId,
             projection: args.projection,
           };
 
     return {
       kind: "ok",
-      rows: projectChatEventSnapshotRows(rows, args.projection),
+      rows: projectedRows,
       cursor,
       hasMore: physicalRows.length === args.limit,
       projection: args.projection,

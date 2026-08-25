@@ -40,7 +40,11 @@ import {
 } from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { seedRetentionToolEvent$ } from "../../../test-fixtures/chat-event-retention";
+import {
+  seedRetentionOutputEvent$,
+  seedRetentionOutputEvents$,
+  seedRetentionToolEvent$,
+} from "../../../test-fixtures/chat-event-retention";
 
 const context = testContext();
 const store = createStore();
@@ -697,6 +701,120 @@ describe("chat event snapshot read endpoints", () => {
     );
     expect(v5Download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
     expect(v5Download.body.projection).toBe("tool-redacted");
+  }, 60_000);
+
+  it("pages V5 by visible rows across a redacted tool range", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    if (!owner.orgId) {
+      throw new Error("Expected the V5 pagination owner to have an org");
+    }
+    const agent = await bdd.createAgent(owner, {
+      displayName: "V5 visible pagination agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `v5-visible-pagination-${randomUUID()}`,
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...owner, orgId: owner.orgId },
+      { [FeatureSwitchKey.ChatToolActivity]: true },
+    );
+
+    const baseline = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    const baselineCursor = baseline.body.rows.at(-1);
+    if (baselineCursor === undefined) {
+      throw new Error("Expected a baseline chat event row");
+    }
+
+    const firstVisibleIds = await store.set(
+      seedRetentionOutputEvents$,
+      { chatThreadId: threadId, count: 25 },
+      context.signal,
+    );
+    const toolEventId = await store.set(
+      seedRetentionToolEvent$,
+      {
+        chatThreadId: threadId,
+        toolUseId: "v5-pagination-hidden-tool",
+        summary: "Read the V5 pagination fixture",
+      },
+      context.signal,
+    );
+    const secondVisibleIds = await store.set(
+      seedRetentionOutputEvents$,
+      { chatThreadId: threadId, count: 25 },
+      context.signal,
+    );
+    const laterVisibleId = await store.set(
+      seedRetentionOutputEvent$,
+      {
+        chatThreadId: threadId,
+        content: "Visible after the mixed physical range",
+      },
+      context.signal,
+    );
+    const v5Headers = {
+      ...authenticate(owner),
+      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+    };
+
+    const firstPage = await accept(
+      eventsClient().rows({
+        headers: v5Headers,
+        params: { threadId },
+        query: {
+          sinceSeqId: baselineCursor.seqId,
+          sinceEventId: baselineCursor.id,
+          limit: 50,
+        },
+      }),
+      [200],
+    );
+    expect(firstPage.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(firstPage.body.projection).toBe("tool-redacted");
+    expect(
+      firstPage.body.rows.map((row) => {
+        return row.id;
+      }),
+    ).toStrictEqual([...firstVisibleIds, ...secondVisibleIds]);
+    expect(firstPage.body.rows).toHaveLength(50);
+    expect(
+      firstPage.body.rows.map((row) => {
+        return row.id;
+      }),
+    ).not.toContain(toolEventId);
+
+    const lastVisibleRow = firstPage.body.rows.at(-1);
+    if (lastVisibleRow === undefined) {
+      throw new Error("Expected a full V5 visible page");
+    }
+    const secondPage = await accept(
+      eventsClient().rows({
+        headers: v5Headers,
+        params: { threadId },
+        query: {
+          sinceSeqId: lastVisibleRow.seqId,
+          sinceEventId: lastVisibleRow.id,
+          limit: 50,
+        },
+      }),
+      [200],
+    );
+    expect(
+      secondPage.body.rows.map((row) => {
+        return row.id;
+      }),
+    ).toStrictEqual([laterVisibleId]);
+    expect(secondPage.body.rows[0]?.eventType).toBe("output.message");
+    expect(secondPage.body.rows).toHaveLength(1);
   }, 60_000);
 
   it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {

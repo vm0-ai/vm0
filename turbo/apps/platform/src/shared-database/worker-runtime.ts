@@ -97,7 +97,7 @@ function nextChatEventCursor(
     return cursor;
   }
   // Old browser cache/new app and new app/old API fallback. Remove with
-  // #29244 after legacy caches rebuild, the V6 app floor is live, and the old
+  // #29362 after legacy caches rebuild, the V6 app floor is live, and the old
   // API leaves rollback.
   const projection =
     serverProjection ??
@@ -911,7 +911,7 @@ export class SharedDatabaseWorkerRuntime {
       );
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
-      // New app worker -> old API fallback. Remove with #29244 after the old
+      // New app worker -> old API fallback. Remove with #29362 after the old
       // API leaves rollback and the V6 app client-version floor is live.
       loadNextPage =
         confirmColdStartTail ||
@@ -986,7 +986,7 @@ export class SharedDatabaseWorkerRuntime {
               const parsed: unknown = JSON.parse(line);
               return chatEventRowSchema.parse(parsed);
             });
-    // New app worker -> old API fallback. Remove with #29244 after the old API
+    // New app worker -> old API fallback. Remove with #29362 after the old API
     // leaves rollback and the V6 app client-version floor is live.
     return {
       rows,

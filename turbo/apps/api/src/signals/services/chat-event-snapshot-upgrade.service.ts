@@ -15,7 +15,7 @@ function adjacentSnapshotUpgrade(
   switch (sourceVersion) {
     case 5: {
       // Persisted V5 DB/R2 -> V6 API fallback: V6 only adds output.tool, so
-      // every V5 row remains valid. Remove with #29244 after both projection
+      // every V5 row remains valid. Remove with #29362 after both projection
       // heads converge to V6 and reference-aware GC removes retired V5 state.
       return (rows) => {
         return rows;

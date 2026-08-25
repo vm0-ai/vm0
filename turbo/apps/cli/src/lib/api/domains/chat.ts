@@ -242,7 +242,7 @@ export async function getChatEventSnapshot(options: {
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    // New pinned CLI -> old API fallback. Remove with #29244 after the old API
+    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
     // leaves rollback and contexts pinned to this CLI have drained.
     return {
       url: result.body.url,
@@ -289,7 +289,7 @@ export async function listChatEventRows(
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    // New pinned CLI -> old API fallback. Remove with #29244 after the old API
+    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
     // leaves rollback and contexts pinned to this CLI have drained.
     const projection =
       result.body.projection ??

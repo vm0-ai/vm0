@@ -1780,7 +1780,7 @@ export const chatThreadEventsContract = c.router({
         lastEventId: z.string().uuid(),
         lastSeqId: z.number().int().positive(),
         /**
-         * New app/CLI -> old API fallback. Remove with #29244 after the old API
+         * New app/CLI -> old API fallback. Remove with #29362 after the old API
          * leaves rollback and contexts pinned to this client have drained.
          */
         projection: chatEventSnapshotProjectionSchema.optional(),
@@ -1815,7 +1815,7 @@ export const chatThreadEventsContract = c.router({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
         /**
-         * Old app/CLI -> new API fallback. Remove with #29244 after the V6 app
+         * Old app/CLI -> new API fallback. Remove with #29362 after the V6 app
          * floor is live and pre-V6 queued/claimed contexts have drained.
          */
         sinceProjection: chatEventSnapshotProjectionSchema.optional(),
@@ -1826,7 +1826,7 @@ export const chatThreadEventsContract = c.router({
       200: z.object({
         rows: z.array(chatEventRowSchema),
         /**
-         * New app/CLI -> old API fallback. Remove with #29244 after the old API
+         * New app/CLI -> old API fallback. Remove with #29362 after the old API
          * leaves rollback and contexts pinned to this client have drained.
          */
         cursor: chatEventCursorSchema.optional(),

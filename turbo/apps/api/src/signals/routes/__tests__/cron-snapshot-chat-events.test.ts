@@ -670,11 +670,16 @@ describe("cron snapshot chat events", () => {
     }
     expect(secondRetryPut.key).toBe(firstRetryPut.key);
     expect(secondRetryPut.body).toStrictEqual(firstRetryPut.body);
-    expect(
-      firstRetryPuts.every((put) => {
-        return put.key === firstRetryPut.key;
-      }),
-    ).toBeTruthy();
+    const [fullRetryHead, redactedRetryHead] = await Promise.all([
+      readChatEventSnapshotHead(context, firstThreadId, "full"),
+      readChatEventSnapshotHead(context, firstThreadId, "tool-redacted"),
+    ]);
+    expect(redactedRetryHead).toMatchObject({
+      archive_schema_version: fullRetryHead.archive_schema_version,
+      last_event_id: fullRetryHead.last_event_id,
+      last_seq_id: fullRetryHead.last_seq_id,
+      object_key: fullRetryHead.object_key,
+    });
 
     const firstLines = expectArchiveInvariants(firstRetryPut, firstThreadId);
     const firstBySeqId = new Map(

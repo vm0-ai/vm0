@@ -45,7 +45,7 @@ export function resolveChatEventSchemaVersion(
   }
   // Old app bundles can live for about two days, and pinned runner/CLI
   // contexts can live through the queue window plus two hours. Remove the V5
-  // bridge under #29244 after the V6 app floor ships and those contexts drain.
+  // bridge under #29362 after the V6 app floor ships and those contexts drain.
   if (version < CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR) {
     return {
       kind: "error",
