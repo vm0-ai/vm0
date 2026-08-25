@@ -129,6 +129,25 @@ async function waitForRoleElement(
   return element;
 }
 
+function expectFieldErrorAssociation(
+  input: HTMLElement,
+  alert: HTMLElement,
+): void {
+  const description = alert.textContent;
+  if (!description) {
+    throw new Error("Expected the field error alert to have text");
+  }
+  expect(alert.id).not.toBe("");
+  expect(input).toHaveAttribute("aria-invalid", "true");
+  expect(input).toHaveAttribute("aria-describedby", alert.id);
+  expect(input).toHaveAccessibleDescription(description);
+}
+
+function expectNoFieldErrorAssociation(input: HTMLElement): void {
+  expect(input).not.toHaveAttribute("aria-invalid");
+  expect(input).not.toHaveAttribute("aria-describedby");
+}
+
 function createStalledGoogleOneTapScript(): HTMLScriptElement {
   const script = document.createElement("script");
   script.dataset.authV2GoogleOneTap = "true";
@@ -247,6 +266,65 @@ describe("auth v2 sign-in flow", () => {
       navigate: expect.any(Function),
       session: "session_password",
     });
+  });
+
+  it("associates only typed password errors and clears them on change", async () => {
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [passwordFactor()]);
+    fireEvent.click(
+      await waitForRoleElement("button", "Sign in with your password"),
+    );
+
+    const passwordInput = await screen.findByLabelText("Password");
+    mockedClerk.signInAttemptFirstFactor
+      .mockRejectedValueOnce({
+        errors: [
+          {
+            code: "form_identifier_invalid",
+            longMessage: "Private identifier provider detail.",
+            meta: { paramName: "identifier" },
+          },
+        ],
+      })
+      .mockRejectedValueOnce({
+        errors: [
+          {
+            code: "form_password_incorrect",
+            longMessage: "Private password provider detail.",
+            meta: { paramName: "password" },
+          },
+        ],
+      });
+
+    fireEvent.change(passwordInput, { target: { value: "first-attempt" } });
+    fireEvent.submit(containingForm(passwordInput));
+
+    const unrelatedAlert = await screen.findByRole("alert");
+    expect(document.activeElement).toBe(unrelatedAlert);
+    expectNoFieldErrorAssociation(passwordInput);
+    expect(
+      screen.queryByText("Private identifier provider detail."),
+    ).toBeNull();
+
+    fireEvent.change(passwordInput, { target: { value: "second-attempt" } });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(passwordInput).toHaveValue("second-attempt");
+    expectNoFieldErrorAssociation(passwordInput);
+
+    fireEvent.submit(containingForm(passwordInput));
+    const passwordAlert = await screen.findByRole("alert");
+    expect(document.activeElement).toBe(passwordAlert);
+    expectFieldErrorAssociation(passwordInput, passwordAlert);
+    expect(screen.queryByText("Private password provider detail.")).toBeNull();
+
+    fireEvent.change(passwordInput, { target: { value: "retry-password" } });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(passwordInput).toHaveValue("retry-password");
+    expectNoFieldErrorAssociation(passwordInput);
   });
 
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
@@ -751,9 +829,22 @@ describe("auth v2 sign-in flow", () => {
       "This verification code has expired. Request a new code.",
     );
     expect(document.activeElement).toBe(alert);
+    expectFieldErrorAssociation(codeInput, alert);
     expect(
       screen.queryByText("Sensitive provider detail must not be rendered."),
     ).toBeNull();
+
+    fireEvent.change(codeInput, { target: { value: "654321" } });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(codeInput).toHaveValue("654321");
+    expectNoFieldErrorAssociation(codeInput);
+
+    fireEvent.submit(containingForm(codeInput));
+    const retryAlert = await screen.findByRole("alert");
+    expect(document.activeElement).toBe(retryAlert);
+    expectFieldErrorAssociation(codeInput, retryAlert);
 
     const resend = await waitForRoleElement(
       "button",
@@ -766,6 +857,11 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expectNoFieldErrorAssociation(codeInput);
+    });
+    expect(codeInput).toHaveValue("");
   });
 
   it("recovers a prepared email-code step without another initial dispatch", async () => {
@@ -919,14 +1015,23 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(newPasswordInput));
 
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      "Passwords don't match.",
-    );
+    const mismatchAlert = await screen.findByRole("alert");
+    expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
+    expect(document.activeElement).toBe(mismatchAlert);
+    expectFieldErrorAssociation(newPasswordInput, mismatchAlert);
+    expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();
 
     fireEvent.change(confirmPasswordInput, {
       target: { value: "new-password" },
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(newPasswordInput).toHaveValue("new-password");
+    expect(confirmPasswordInput).toHaveValue("new-password");
+    expectNoFieldErrorAssociation(newPasswordInput);
+    expectNoFieldErrorAssociation(confirmPasswordInput);
     mockedClerk.signInResetPassword.mockResolvedValue(
       moveSignInTo({
         createdSessionId: "session_reset",
@@ -944,7 +1049,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("keeps an incomplete step usable after a Clerk API error", async () => {
-    mockedClerk.clientSignInCreate.mockRejectedValue({
+    mockedClerk.clientSignInCreate.mockRejectedValueOnce({
       errors: [
         {
           longMessage: "We couldn't find an account with that identifier.",
@@ -963,13 +1068,41 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(identifierInput));
 
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
       "This action couldn't be completed. Please try again later or contact support if this persists.",
     );
+    expect(document.activeElement).toBe(alert);
+    expectFieldErrorAssociation(identifierInput, alert);
+    expect(
+      Array.from(document.querySelectorAll("[id]")).filter((element) => {
+        return element.id === alert.id;
+      }),
+    ).toHaveLength(1);
     expect(
       screen.queryByText("We couldn't find an account with that identifier."),
     ).toBeNull();
     expect(identifierInput).toBeVisible();
+    expect(identifierInput).toHaveValue("missing@example.com");
+
+    fireEvent.change(identifierInput, {
+      target: { value: "retry@example.com" },
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(identifierInput).toHaveValue("retry@example.com");
+    expectNoFieldErrorAssociation(identifierInput);
+
+    const nextResource = moveSignInTo({
+      status: "needs_first_factor",
+      supportedFirstFactors: [passwordFactor()],
+    });
+    mockedClerk.clientSignInCreate.mockResolvedValueOnce(nextResource);
+    fireEvent.submit(containingForm(identifierInput));
+    await expect(
+      waitForRoleElement("button", "Sign in with your password"),
+    ).resolves.toBeVisible();
   });
 
   it("substitutes the Okou brand and support address in safe errors", async () => {

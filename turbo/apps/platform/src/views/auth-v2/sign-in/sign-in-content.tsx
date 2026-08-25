@@ -30,9 +30,12 @@ interface SignInStepProps {
   readonly signals: AuthV2SignInSignals;
 }
 
+const AUTH_V2_SIGN_IN_ERROR_ID = "auth-v2-sign-in-error";
+
 function TextField({
   autoComplete,
   inputMode,
+  invalid,
   label,
   name,
   onChange,
@@ -41,6 +44,7 @@ function TextField({
 }: {
   readonly autoComplete: string;
   readonly inputMode?: "email" | "numeric";
+  readonly invalid: boolean;
   readonly label: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
@@ -54,6 +58,8 @@ function TextField({
         {label}
       </label>
       <Input
+        aria-describedby={invalid ? AUTH_V2_SIGN_IN_ERROR_ID : undefined}
+        aria-invalid={invalid ? true : undefined}
         id={id}
         name={name}
         autoComplete={autoComplete}
@@ -77,6 +83,7 @@ function FlowErrorAlert({ copy, signals }: SignInStepProps) {
   return (
     <AuthV2ErrorAlert
       focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
+      id={AUTH_V2_SIGN_IN_ERROR_ID}
       message={signInErrorMessage(error, copy)}
     />
   );
@@ -106,7 +113,8 @@ function PasswordField({
         {label}
       </label>
       <AuthV2PasswordInput
-        ariaInvalid={invalid}
+        ariaDescribedBy={invalid ? AUTH_V2_SIGN_IN_ERROR_ID : undefined}
+        ariaInvalid={invalid ? true : undefined}
         autoComplete={autoComplete}
         hidePasswordLabel={copy.hidePassword}
         id={id}
@@ -143,6 +151,7 @@ function IdentifierStep({
   state,
 }: SignInStepProps & { readonly state: IncompleteSignInState }) {
   const identifier = useGet(signals.identifier$);
+  const error = useGet(signals.error$);
   const pageSignal = useGet(pageSignal$);
   const setIdentifier = useSet(signals.setIdentifier$);
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
@@ -189,6 +198,7 @@ function IdentifierStep({
       <TextField
         autoComplete="username"
         inputMode="email"
+        invalid={error?.field === "identifier"}
         label={copy.identifierLabel}
         name="identifier"
         onChange={setIdentifier}
@@ -439,6 +449,7 @@ function CodeStep({
       <TextField
         autoComplete="one-time-code"
         inputMode="numeric"
+        invalid={error?.field === "code"}
         label={copy.codeLabel}
         name="code"
         onChange={setCode}
