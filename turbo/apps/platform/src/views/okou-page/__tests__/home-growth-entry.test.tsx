@@ -39,18 +39,13 @@ function mockSlackStatus(overrides: Partial<SlackOrgStatus>): void {
 interface GrowthEntrySetupOptions {
   readonly growthEntryEnabled?: boolean;
   readonly role?: "admin" | "member";
-  readonly usagePackPlansEnabled?: boolean;
 }
 
 function setupGrowthEntry(
   slack: Partial<SlackOrgStatus>,
   options: GrowthEntrySetupOptions = {},
 ): void {
-  const {
-    growthEntryEnabled = true,
-    role = "admin",
-    usagePackPlansEnabled = false,
-  } = options;
+  const { growthEntryEnabled = true, role = "admin" } = options;
   mockAgent();
   context.mocks.data.org({
     id: "org_1",
@@ -63,7 +58,6 @@ function setupGrowthEntry(
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
       [FeatureSwitchKey.HomeGrowthEntry]: growthEntryEnabled,
-      [FeatureSwitchKey.UsagePackPlans]: usagePackPlansEnabled,
     },
   });
 }
@@ -173,6 +167,14 @@ describe("home growth entry", () => {
 
   it("opens usage from the credit balance", async () => {
     const user = userEvent.setup();
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 0,
+        purchasedCredits: 0,
+        bonusCredits: 0,
+        creditGrants: [],
+      });
+    });
     setupGrowthEntry({ isConnected: true, isInstalled: true });
 
     await screen.findByTestId("growth-entry");
@@ -199,10 +201,7 @@ describe("home growth entry", () => {
         creditGrants: [],
       });
     });
-    setupGrowthEntry(
-      { isConnected: true, isInstalled: true },
-      { usagePackPlansEnabled: true },
-    );
+    setupGrowthEntry({ isConnected: true, isInstalled: true });
 
     await screen.findByTestId("growth-entry");
     expect(usagePackCreditRequests).toBe(0);

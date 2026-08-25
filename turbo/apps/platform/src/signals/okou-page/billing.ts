@@ -27,7 +27,6 @@ import {
   type UsagePackMigrationStateResponse,
   type GoogleAdsPaidConversion,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { apiClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
@@ -51,7 +50,6 @@ import {
   fireGoogleAdsPaidConversion$,
 } from "../bootstrap/google-ads-paid-conversion.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { refreshOrgMembers$ } from "../external/org-members.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 import {
@@ -486,9 +484,6 @@ export const usagePackManagementAsync$ = computed(async (get) => {
 export const usagePackMigrationAsync$ = computed(
   async (get): Promise<UsagePackMigrationStateResponse | null> => {
     get(usagePackMigrationReload$);
-    if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
-      return null;
-    }
     const createClient = get(apiClient$);
     const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(client.get(), [200, 403, 404, 409]);
@@ -525,18 +520,10 @@ interface AccountMenuCreditResources {
 }
 
 const readAccountMenuCreditResources$ = command(
-  (
-    { get },
-    options: {
-      readonly isAdmin: boolean;
-      readonly usagePackPlansEnabled: boolean;
-    },
-  ): AccountMenuCreditResources => {
+  ({ get }, isAdmin: boolean): AccountMenuCreditResources => {
     return {
-      billing: options.isAdmin ? get(billingStatusResource$) : null,
-      usagePack: options.usagePackPlansEnabled
-        ? get(usagePackCreditsResource$)
-        : null,
+      billing: isAdmin ? get(billingStatusResource$) : null,
+      usagePack: get(usagePackCreditsResource$),
     };
   },
 );
@@ -591,15 +578,9 @@ export const reloadAccountMenuCreditBalances$ = command(
     const foregroundReady = get(foregroundReady$);
     const isAdmin = await get(isOrgAdmin$);
     signal.throwIfAborted();
-    const usagePackPlansEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans] ?? false;
-    if (!isAdmin && !usagePackPlansEnabled) {
-      return;
-    }
-    const options = { isAdmin, usagePackPlansEnabled };
 
     if (!foregroundReady.pending) {
-      const resources = set(readAccountMenuCreditResources$, options);
+      const resources = set(readAccountMenuCreditResources$, isAdmin);
       const pendingResources = set(
         reloadSettledAccountMenuCreditResources$,
         resources,
@@ -616,11 +597,9 @@ export const reloadAccountMenuCreditBalances$ = command(
       if (isAdmin) {
         set(reloadAccountMenuBillingStatusResource$);
       }
-      if (usagePackPlansEnabled) {
-        set(reloadAccountMenuUsagePackCreditsResource$);
-      }
+      set(reloadAccountMenuUsagePackCreditsResource$);
     }
-    const resources = set(readAccountMenuCreditResources$, options);
+    const resources = set(readAccountMenuCreditResources$, isAdmin);
     await set(joinAccountMenuCreditResources$, resources, signal);
     signal.throwIfAborted();
   },

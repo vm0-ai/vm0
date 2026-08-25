@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -28,8 +27,6 @@ import {
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
 import { billingStatus } from "./chat-composer-test-helpers.ts";
-
-const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -1450,7 +1447,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: LEGACY_PRICING,
     });
 
     await waitFor(() => {
@@ -1470,10 +1466,7 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Upgrade or downgrade anytime."),
+        screen.getByRole("heading", { name: "Choose a plan" }),
       ).toBeInTheDocument();
     });
     await waitFor(() => {
@@ -1504,7 +1497,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: LEGACY_PRICING,
     });
 
     const voiceInput = await screen.findByLabelText("Voice input");
@@ -1518,7 +1510,7 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
+        screen.getByRole("heading", { name: "Choose a plan" }),
       ).toBeInTheDocument();
     });
     expect(screen.queryByLabelText("Stop recording")).toBeNull();
@@ -1569,7 +1561,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: LEGACY_PRICING,
     });
 
     await user.click(await screen.findByLabelText("Voice input"));
@@ -1581,7 +1572,7 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
+        screen.getByRole("heading", { name: "Choose a plan" }),
       ).toBeInTheDocument();
     });
   });
@@ -1671,7 +1662,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: LEGACY_PRICING,
     });
 
     await waitFor(() => {
@@ -1691,7 +1681,7 @@ describe("chat lifecycle", () => {
       );
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
+        screen.getByRole("heading", { name: "Choose a plan" }),
       ).toBeInTheDocument();
     });
   });

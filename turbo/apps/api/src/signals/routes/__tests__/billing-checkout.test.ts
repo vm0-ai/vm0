@@ -24,7 +24,6 @@ import {
 } from "@okouai/api-contracts/contracts/org-member-routes";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isStaffOrg } from "@okouai/core/staff-org";
 import {
   webhookClerkContract,
@@ -57,10 +56,6 @@ import {
 } from "./helpers/stripe-billing-webhook";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/feature-switches";
 import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";
@@ -345,14 +340,6 @@ function authenticateOrg(
   mocks.clerk.session(fixture.userId, fixture.orgId, role);
 }
 
-async function disableUsagePackPlans(
-  fixture: BillingOrgFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.UsagePackPlans]: false,
-  });
-}
-
 function mockClerkOrganization(fixture: BillingOrgFixture): void {
   context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
     id: fixture.orgId,
@@ -431,9 +418,6 @@ async function prepareUsagePackCheckoutOrg(
   customerId: string,
 ): Promise<void> {
   await createStripeCustomerOrgForFixture(fixture, customerId);
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.UsagePackPlans]: true,
-  });
   context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
     {
       data: [
@@ -2276,35 +2260,9 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     mockUsagePackCatalog();
   });
 
-  it("keeps the usage pack catalog behind the same feature switch", async () => {
-    const fixture = createOrgFixture();
-    authenticateOrg(fixture);
-    await disableUsagePackPlans(fixture);
-
-    const response = await accept(
-      setupApp({ context, routes: billingCheckoutRoutes })(
-        billingUsagePackCatalogContract,
-      ).get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Usage pack checkout is not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-    expect(context.mocks.stripe.prices.retrieve).not.toHaveBeenCalled();
-  });
-
   it("returns the server-validated Stripe usage pack catalog", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
 
     const response = await accept(
       setupApp({ context, routes: billingCheckoutRoutes })(
@@ -2349,51 +2307,13 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     });
   });
 
-  it("keeps usage pack checkout behind its feature switch", async () => {
-    const fixture = createOrgFixture();
-    authenticateOrg(fixture);
-    await disableUsagePackPlans(fixture);
-    const before = await readUsagePackState(fixture.orgId);
-
-    const response = await accept(
-      setupApp({ context, routes: billingCheckoutRoutes })(
-        billingUsagePackCheckoutContract,
-      ).create({
-        body: {
-          tier: "pro",
-          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Usage pack checkout is not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-    expect(
-      context.mocks.stripe.checkout.sessions.create,
-    ).not.toHaveBeenCalled();
-    expect(context.mocks.stripe.prices.retrieve).not.toHaveBeenCalled();
-    const after = await readUsagePackState(fixture.orgId);
-    expect(after.subscriptionCount).toBe(before.subscriptionCount);
-  });
-
-  it("checks out the new plan for an enabled organization", async () => {
+  it("checks out the new plan", async () => {
     const fixture = createOrgFixture();
     const memberIds = Array.from({ length: 101 }, (_, index) => {
       return index === 0 ? fixture.userId : `user_${randomUUID()}`;
     });
     const invitationId = `inv_${randomUUID()}`;
     const customerId = `cus_${randomUUID()}`;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
       (args) => {
         const offset =
@@ -2575,9 +2495,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     authenticateOrg(fixture);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -2775,9 +2692,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
   it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
     const fixture = createOrgFixture();
     const checkoutSessionId = `cs_${randomUUID()}`;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList
       .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
@@ -2842,9 +2756,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("returns a non-cacheable 503 when Clerk rate limits persist", async () => {
     const fixture = createOrgFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new ClerkApiResponseTestError(7),
@@ -2883,9 +2794,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("preserves non-rate-limit Clerk checkout failures", async () => {
     const fixture = createOrgFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new Error("Clerk membership read failed"),
     );
@@ -2924,9 +2832,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
         readonly createdAt: number;
       }[];
     }>(context.signal);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new ClerkApiResponseTestError(1),
@@ -2978,9 +2883,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const controller = new AbortController();
     const retryStarted = createDeferredPromise<void>(context.signal);
     let retrySignal: AbortSignal | undefined;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
       const signal = options?.signal;
       if (!signal) {
@@ -3025,9 +2927,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     "configures the current %s plan after an Atom grant",
     async (tier) => {
       const fixture = await createUsagePackAtomGrantOrg(tier);
-      await updateFeatureSwitchesForUser(context, fixture, {
-        [FeatureSwitchKey.UsagePackPlans]: true,
-      });
       context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
         {
           data: [
@@ -3231,9 +3130,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     await createStripeCustomerOrgForFixture(fixture, customerId);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -3442,9 +3338,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
     authenticateOrg(fixture);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -3778,9 +3671,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const checkoutSessionId = `cs_${randomUUID()}`;
     const checkoutUrl = "https://checkout.stripe.test/aborted-usage-pack";
     authenticateOrg(fixture);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -3884,9 +3774,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -3975,9 +3862,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const hostedInvoiceUrl =
       "https://invoice.stripe.com/usage-pack-authentication";
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -4088,9 +3972,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -4239,9 +4120,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     const paymentMethodId = `pm_${randomUUID()}`;
     const checkoutSessionId = `cs_${randomUUID()}`;
     const checkoutUrl = "https://checkout.stripe.com/session/usage-pack-retry";
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -4380,9 +4258,6 @@ describe("POST /api/billing/usage-pack-checkout", () => {
 
   it("rejects stale member selections before creating checkout", async () => {
     const fixture = createOrgFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
         data: [
@@ -5065,12 +4940,6 @@ describe("legacy subscription usage pack migration", () => {
     );
   }
 
-  async function enableMigration(fixture: BillingOrgFixture): Promise<void> {
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
-  }
-
   async function postMigrationInvoice(invoice: object): Promise<void> {
     const event = {
       id: `evt_migration_${randomUUID()}`,
@@ -5189,33 +5058,8 @@ describe("legacy subscription usage pack migration", () => {
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   });
 
-  it("hides legacy migration while UsagePackPlans is disabled", async () => {
-    const fixture = await seedLegacyMigrationFixture({
-      tier: "pro",
-      orgId: `org_non_staff_${randomUUID()}`,
-    });
-    expect(isStaffOrg(fixture.orgId)).toBeFalsy();
-    await disableUsagePackPlans(fixture);
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
-      legacyMigrationSubscription(fixture),
-    );
-
-    const response = await accept(
-      migrationClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Usage pack management is not enabled",
-    );
-    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
-  });
-
   it("rejects a Stripe subscription scheduled for cancellation", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       ...legacyMigrationSubscription(fixture),
       cancel_at_period_end: true,
@@ -5235,7 +5079,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("prevents an active legacy subscription from bypassing migration", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
 
     const response = await accept(
       setupApp({ context, routes: billingCheckoutRoutes })(
@@ -5262,7 +5105,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("keeps legacy state when the legacy item changes after preview", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
     mockMigrationStripe({
       fixture,
       packageQuantity: 1,
@@ -5312,7 +5154,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("schedules a legacy Pro-to-Team conversion at the billing boundary", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       targetTier: "team",
@@ -5440,7 +5281,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("revises a discounted scheduled migration and exposes its configuration", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       targetTier: "team",
@@ -5615,7 +5455,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("rejects tampered and stale migration revision previews", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
-    await enableMigration(fixture);
     mockMigrationStripe({
       fixture,
       packageQuantity: 1,
@@ -5725,7 +5564,6 @@ describe("legacy subscription usage pack migration", () => {
       tier: "team",
       orgId: `org_migration_preserved_${randomUUID()}`,
     });
-    await enableMigration(preservedFixture);
     mockMigrationStripe({
       fixture: preservedFixture,
       packageQuantity: 1,
@@ -5745,7 +5583,6 @@ describe("legacy subscription usage pack migration", () => {
     const preservedBefore = await readUsagePackState(preservedFixture.orgId);
 
     const fixture = await seedLegacyMigrationFixture({ tier: "team" });
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       packageQuantity: 1,
@@ -5805,7 +5642,6 @@ describe("legacy subscription usage pack migration", () => {
 
   it("syncs legacy cancellation when a subscription update invalidates migration", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "team" });
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       packageQuantity: 1,
@@ -5850,7 +5686,6 @@ describe("legacy subscription usage pack migration", () => {
     if (!fixture.invitation) {
       throw new Error("Expected a pending invitation fixture");
     }
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       packageQuantity: 2,
@@ -5931,7 +5766,6 @@ describe("legacy subscription usage pack migration", () => {
     if (!fixture.invitation) {
       throw new Error("Expected a pending invitation fixture");
     }
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       packageQuantity: 2,
@@ -6010,7 +5844,7 @@ describe("legacy subscription usage pack migration", () => {
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
-  it("finishes a zero-amount Team conversion and invitation lifecycle after switch-off", async () => {
+  it("finishes a zero-amount Team conversion and invitation lifecycle", async () => {
     const fixture = await seedLegacyMigrationFixture({
       tier: "team",
       invitation: true,
@@ -6018,7 +5852,6 @@ describe("legacy subscription usage pack migration", () => {
     if (!fixture.invitation) {
       throw new Error("Expected a pending invitation fixture");
     }
-    await enableMigration(fixture);
     const stripe = mockMigrationStripe({
       fixture,
       packageQuantity: 2,
@@ -6037,9 +5870,6 @@ describe("legacy subscription usage pack migration", () => {
     );
     expect(confirmation.body.status).toBe("scheduled");
 
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
     stripe.startScheduledPhase();
     await postMigrationInvoice(stripe.invoice());
 
@@ -6406,9 +6236,6 @@ describe("usage pack allocation management", () => {
       });
     });
     authenticateOrg(fixture);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     const quantities = new Map<string, number>();
     for (const allocation of allocations) {
       const priceId = priceIdForManagedUsagePack(allocation.usagePackUsd);
@@ -10693,7 +10520,7 @@ describe("usage pack allocation management", () => {
     expect(state.changes[0]?.status).toBe("previewed");
   });
 
-  it("applies a paid upgrade once with the preview proration date while the switch is off", async () => {
+  it("applies a paid upgrade once with the preview proration date", async () => {
     mockNow(new Date("2035-01-16T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
@@ -10787,9 +10614,6 @@ describe("usage pack allocation management", () => {
     expect(beforePayment.allocations[0]?.usagePackUsd).toBe(20);
     expect(beforePayment.grants).toHaveLength(2);
 
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
     const paidInvoice = managedUsagePackUpgradeInvoice(fixture, {
       invoiceId: pendingInvoiceId,
       sourcePriceId: TEST_PRICE_USAGE_PACK_20,
@@ -10841,17 +10665,6 @@ describe("usage pack allocation management", () => {
         stripeInvoiceId: pendingInvoiceId,
       }),
     ]);
-
-    const disabled = await accept(
-      client.previewChange({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { memberId: sourceUserId, targetUsagePackUsd: 100 },
-      }),
-      [403],
-    );
-    expect(disabled.body.error.message).toBe(
-      "Usage pack management is not enabled",
-    );
   });
 
   it("completes an immediately paid upgrade during confirmation", async () => {
@@ -11651,11 +11464,6 @@ describe("usage pack allocation management", () => {
         return allocation.userId !== targetUserId;
       })?.userId ?? "";
     mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: fixture.orgId, userId: adminUserId },
-      { [FeatureSwitchKey.UsagePackPlans]: false },
-    );
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [{ id: targetUserId }],
     });
@@ -11895,11 +11703,6 @@ describe("usage pack allocation management", () => {
       }),
     );
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: fixture.orgId, userId: adminUserId },
-      { [FeatureSwitchKey.UsagePackPlans]: true },
-    );
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       managedUsagePackSubscription(
         fixture,
@@ -11955,9 +11758,6 @@ describe("usage pack allocation management", () => {
       action: "delete-refund-source",
       orgId: fixture.orgId,
       userId: targetUserId,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
     });
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [{ id: targetUserId }],
@@ -12111,9 +11911,6 @@ describe("usage pack allocation management", () => {
       action: "delete-refund-source",
       orgId: fixture.orgId,
       userId: targetUserId,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
     });
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [{ id: targetUserId }],
@@ -12507,9 +12304,6 @@ describe("usage pack allocation management", () => {
       const billing = await readBillingStatus(fixture);
       expect(billing.memberInviteUsagePackRequired).toBeFalsy();
 
-      await updateFeatureSwitchesForUser(context, fixture, {
-        [FeatureSwitchKey.UsagePackPlans]: true,
-      });
       context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
         { id: `inv_${randomUUID()}` },
       );
@@ -12526,45 +12320,7 @@ describe("usage pack allocation management", () => {
     },
   );
 
-  it("keeps package-free invites available when usage pack enrollment is disabled", async () => {
-    const fixture = await seedManagedUsagePack([
-      { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
-    ]);
-    const client = setupApp({ context, routes: orgInviteRoutes })(
-      orgInviteContract,
-    );
-    const blocked = await accept(
-      client.invite({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "paid@example.test", role: "member" },
-      }),
-      [409],
-    );
-    expect(blocked.body.error.code).toBe("CONFLICT");
-    expect(
-      context.mocks.clerk.organizations.createOrganizationInvitation,
-    ).not.toHaveBeenCalled();
-    expect(
-      (await readBillingStatus(fixture)).memberInviteUsagePackRequired,
-    ).toBeTruthy();
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
-    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
-      { id: `inv_${randomUUID()}` },
-    );
-    const legacy = await accept(
-      client.invite({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "legacy@example.test", role: "member" },
-      }),
-      [200],
-    );
-    expect(legacy.body.message).toContain("legacy@example.test");
-  });
-
-  it("blocks free plans only while usage pack plans are enabled", async () => {
+  it("blocks free plans from inviting members", async () => {
     const fixture = await seedManagedUsagePack([
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
@@ -12589,31 +12345,13 @@ describe("usage pack allocation management", () => {
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).not.toHaveBeenCalled();
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
-    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
-      { id: `inv_${randomUUID()}` },
-    );
-    const legacy = await accept(
-      client.invite({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "suspended@example.test", role: "member" },
-      }),
-      [200],
-    );
-    expect(legacy.body.message).toContain("suspended@example.test");
   });
 
-  it("honors the invitation feature switch for a non-staff org", async () => {
+  it("supports invitation purchase for a non-staff org", async () => {
     const fixture = createOrgFixture();
     expect(isStaffOrg(fixture.orgId)).toBeFalsy();
     authenticateOrg(fixture);
     await seedOrgMetadata({ orgId: fixture.orgId, tier: "pro", credits: 0 });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
 
     const response = await accept(
       setupApp({ context, routes: orgInviteRoutes })(
@@ -14371,12 +14109,6 @@ describe("usage pack allocation management", () => {
       orgId: purchase.fixture.orgId,
       userId: acceptedUserId,
     };
-    await updateFeatureSwitchesForUser(context, acceptedActor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
-    onTestFinished(async () => {
-      await deleteFeatureSwitchesForUser(context, acceptedActor);
-    });
     authenticateOrg(acceptedActor, "org:member");
     const credits = await accept(
       setupApp({ context, routes: billingUsagePackCreditsRoutes })(
@@ -14840,9 +14572,6 @@ describe("usage pack allocation management", () => {
     const purchase = await beginInvitationPurchase();
     const invitationId = `inv_expired_${randomUUID()}`;
     await payInvitationPurchase(purchase, invitationId);
-    await updateFeatureSwitchesForUser(context, purchase.fixture, {
-      [FeatureSwitchKey.UsagePackPlans]: false,
-    });
     context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
       { data: [{ id: invitationId }] },
     );
