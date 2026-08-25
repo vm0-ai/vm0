@@ -6139,6 +6139,7 @@ interface LaunchRunRowsArgs {
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
   readonly launchSnapshot: AgentRunLaunchSnapshot;
+  readonly chatToolActivityEnabled: boolean;
   readonly error: string | undefined;
 }
 
@@ -6185,6 +6186,7 @@ function launchRunValues(
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
     launchSnapshot: args.launchSnapshot,
+    chatToolActivityEnabled: args.chatToolActivityEnabled,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
@@ -7123,6 +7125,7 @@ function preparedLaunchRowsArgs(args: {
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
     launchSnapshot: args.commit.context.launchSnapshot,
+    chatToolActivityEnabled: args.commit.context.chatToolActivityEnabled,
     error: undefined,
   };
 }
@@ -7567,6 +7570,7 @@ async function commitFailedLaunch(args: {
         apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         launchSnapshot: args.context.launchSnapshot,
+        chatToolActivityEnabled: args.context.chatToolActivityEnabled,
         error: message,
       });
       if (queueFirstClaim) {
@@ -8124,6 +8128,8 @@ interface PreparedRunContext {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  /** Captured once and persisted; later event writers must not re-resolve it. */
+  readonly chatToolActivityEnabled: boolean;
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
   readonly selectedVideoModel: string;
@@ -9243,6 +9249,10 @@ function prepareRunContext(
         resolved: bodyContext.resolved,
         modelProvider: runtimeContext.modelProvider,
       });
+      const chatToolActivityEnabled = isFeatureEnabled(
+        FeatureSwitchKey.ChatToolActivity,
+        bodyContext.featureSwitchContext,
+      );
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         featureSwitchContext: bodyContext.featureSwitchContext,
@@ -9327,6 +9337,7 @@ function prepareRunContext(
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        chatToolActivityEnabled,
         selectedVideoModel,
         selectedImageModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({

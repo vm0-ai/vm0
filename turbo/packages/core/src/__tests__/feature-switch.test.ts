@@ -126,6 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -159,6 +160,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
   });
 
   it("should enable the composer flat feedback note for the staff org only", () => {

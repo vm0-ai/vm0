@@ -7,7 +7,10 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type {
+  ChatEventCursor,
+  ChatEventSnapshotProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
@@ -73,8 +76,38 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
+        ...(cursor.projection === undefined
+          ? {}
+          : { sinceProjection: cursor.projection }),
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };
+}
+
+function nextChatEventCursor(
+  cursor: ChatEventCursor,
+  pageRows: readonly ChatEventRow[],
+  serverCursor: ChatEventCursor | undefined,
+  serverProjection: ChatEventSnapshotProjection | undefined,
+): ChatEventCursor {
+  if (serverCursor !== undefined) {
+    return serverCursor;
+  }
+  const lastRow = pageRows.at(-1);
+  if (lastRow === undefined) {
+    return cursor;
+  }
+  // Old browser cache/new app and new app/old API fallback. Remove with
+  // #29362 after legacy caches rebuild, the V6 app floor is live, and the old
+  // API leaves rollback.
+  const projection =
+    serverProjection ??
+    ("projection" in cursor ? cursor.projection : undefined) ??
+    "full";
+  return {
+    lastEventId: lastRow.id,
+    lastSeqId: lastRow.seqId,
+    projection,
+  };
 }
 
 type WorkerClientEvent = Extract<
@@ -870,14 +903,19 @@ export class SharedDatabaseWorkerRuntime {
       }
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
-      const lastRow = pageRows.at(-1);
-      if (lastRow) {
-        cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
-      }
+      cursor = nextChatEventCursor(
+        cursor,
+        pageRows,
+        page.body.cursor,
+        page.body.projection,
+      );
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
+      // New app worker -> old API fallback. Remove with #29362 after the old
+      // API leaves rollback and the V6 app client-version floor is live.
       loadNextPage =
-        confirmColdStartTail || pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+        confirmColdStartTail ||
+        (page.body.hasMore ?? pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT);
     }
 
     await persistChatEventRows(
@@ -935,21 +973,27 @@ export class SharedDatabaseWorkerRuntime {
     }
     const text = await response.text();
     signal.throwIfAborted();
-    if (text.length === 0 || !text.endsWith("\n")) {
+    if (text.length > 0 && !text.endsWith("\n")) {
       throw new Error("ChatEvent snapshot must be newline-delimited JSON");
     }
-    const rows = text
-      .slice(0, -1)
-      .split("\n")
-      .map((line) => {
-        const parsed: unknown = JSON.parse(line);
-        return chatEventRowSchema.parse(parsed);
-      });
+    const rows =
+      text.length === 0
+        ? []
+        : text
+            .slice(0, -1)
+            .split("\n")
+            .map((line) => {
+              const parsed: unknown = JSON.parse(line);
+              return chatEventRowSchema.parse(parsed);
+            });
+    // New app worker -> old API fallback. Remove with #29362 after the old API
+    // leaves rollback and the V6 app client-version floor is live.
     return {
       rows,
       cursor: {
         lastEventId: snapshot.body.lastEventId,
         lastSeqId: snapshot.body.lastSeqId,
+        projection: snapshot.body.projection ?? "full",
       },
     };
   }

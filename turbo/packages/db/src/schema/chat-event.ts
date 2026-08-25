@@ -54,8 +54,9 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * Terminal-state assistant rows use the `run.completed | run.failed |
  * run.cancelled` event types.
  *
- * Summaries (tool-use activity) are NOT stored here — the client fetches
- * them in real-time from the telemetry/logs endpoint for active runs.
+ * Tool-use activity is stored only as the strict, redacted `output.tool`
+ * payload. Raw calls, results, file contents, diffs, and provider data never
+ * belong in this stream.
  */
 export const chatEvents = pgTable(
   "chat_events",
@@ -165,6 +166,7 @@ export const chatEvents = pgTable(
           'output.error',
           'output.thinking',
           'output.followups',
+          'output.tool',
           'run.queued',
           'run.dequeued',
           'run.completed',
@@ -178,6 +180,40 @@ export const chatEvents = pgTable(
           'goal.close',
           'usage.recorded'
         )`,
+      ),
+      check(
+        "chat_events_output_tool_payload_check",
+        sql`${table.eventType} <> 'output.tool'
+          OR (
+            ${table.payload} IS NOT NULL
+            AND jsonb_typeof(${table.payload}) = 'object'
+            AND ${table.payload} ?& ARRAY[
+              'toolUseId',
+              'action',
+              'status',
+              'summary'
+            ]
+            AND (
+              ${table.payload} -
+              'toolUseId' -
+              'action' -
+              'status' -
+              'summary'
+            ) = '{}'::jsonb
+            AND jsonb_typeof(${table.payload} -> 'toolUseId') = 'string'
+            AND jsonb_typeof(${table.payload} -> 'action') = 'string'
+            AND ${table.payload} ->> 'action' = ANY (
+              ARRAY['run', 'read', 'write', 'edit']
+            )
+            AND jsonb_typeof(${table.payload} -> 'status') = 'string'
+            AND ${table.payload} ->> 'status' = ANY (
+              ARRAY['pending', 'success', 'error', 'cancelled']
+            )
+            AND jsonb_typeof(${table.payload} -> 'summary') = 'string'
+            AND position(E'\n' IN ${table.payload} ->> 'summary') = 0
+            AND position(E'\r' IN ${table.payload} ->> 'summary') = 0
+            AND char_length(${table.payload} ->> 'summary') <= 240
+          )`,
       ),
       check(
         "chat_events_input_user_message_payload_check",

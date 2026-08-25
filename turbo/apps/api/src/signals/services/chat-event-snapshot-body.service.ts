@@ -2,6 +2,7 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
+import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import { safeJsonParse } from "../utils";
 
@@ -9,7 +10,10 @@ export function decodeChatEventSnapshotBody(
   body: Buffer,
 ): readonly ChatEventRow[] {
   const text = body.toString("utf8");
-  if (text.length === 0 || !text.endsWith("\n")) {
+  if (text.length === 0) {
+    return [];
+  }
+  if (!text.endsWith("\n")) {
     throw new Error("Chat Event snapshot must be newline-delimited JSON");
   }
   return text
@@ -30,6 +34,9 @@ export function decodeChatEventSnapshotBody(
 export function encodeChatEventSnapshotBody(
   rows: readonly ChatEventRow[],
 ): Buffer {
+  if (rows.length === 0) {
+    return Buffer.alloc(0);
+  }
   return Buffer.from(
     rows
       .map((row) => {
@@ -37,4 +44,15 @@ export function encodeChatEventSnapshotBody(
       })
       .join("\n") + "\n",
   );
+}
+
+export function projectChatEventSnapshotRows(
+  rows: readonly ChatEventRow[],
+  projection: ChatEventSnapshotProjection,
+): readonly ChatEventRow[] {
+  return projection === "full"
+    ? rows
+    : rows.filter((row) => {
+        return row.eventType !== "output.tool";
+      });
 }
