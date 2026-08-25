@@ -166,6 +166,14 @@ unless playwright_run&.fetch("shell") == "bash" &&
       "${{ matrix.project }}"
   raise "each Playwright lane must select its matrix project"
 end
+unless playwright_run.fetch("run").include?(
+    'if [[ "$PLAYWRIGHT_PROJECT" == "auth-v2" ]]',
+  ) && playwright_run.fetch("run").include?("__clerk_db_jwt") &&
+    playwright_run.fetch("run").include?("masked-clerk-test-email") &&
+    playwright_run.fetch("run").include?("masked-clerk-resource-id") &&
+    playwright_run.fetch("run").include?("set -o pipefail")
+  raise "the Auth v2 lane must redact Clerk secrets and identifiers"
+end
 playwright_blob_upload = playwright.fetch("steps").find do |step|
   step["name"] == "Upload Playwright blob report"
 end

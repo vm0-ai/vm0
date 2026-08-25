@@ -1942,9 +1942,21 @@ jobs:
         shell: bash
         run: |
           cd e2e
-          pnpm exec playwright test \
-            --config playwright/playwright.config.ts \
+          playwright_command=(
+            pnpm exec playwright test
+            --config playwright/playwright.config.ts
             --project="$PLAYWRIGHT_PROJECT"
+          )
+          if [[ "$PLAYWRIGHT_PROJECT" == "auth-v2" ]]; then
+            set -o pipefail
+            "${playwright_command[@]}" 2>&1 |
+              sed -E \
+                -e 's/([?&])__clerk_db_jwt=[^&[:space:])]+/\1[masked-clerk-testing-token]/g' \
+                -e 's/[[:alnum:]._%+-]+\+clerk_test[^@[:space:]]*@[[:alnum:].-]+/[masked-clerk-test-email]/g' \
+                -e 's/(^|[^[:alnum:]_])(sess|user|org)_[[:alnum:]_-]+/\1[masked-clerk-resource-id]/g'
+          else
+            "${playwright_command[@]}"
+          fi
         env:
           PLAYWRIGHT_PROJECT: ${{ matrix.project }}
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}

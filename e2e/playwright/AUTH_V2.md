@@ -17,9 +17,12 @@ projects and from `lib/auth.ts`.
   the existing generation finalizer if a worker or job is interrupted
 
 The resource fixture masks every generated email and password in GitHub Actions
-before browser interaction. The project does not persist captured stdout to a
-Playwright report artifact. Helpers and assertions do not log Clerk response
-bodies, user IDs, organization IDs, credentials, or testing-token URLs.
+before browser interaction. The Auth v2 lane also streams list output through a
+scoped redactor for Clerk testing-token query parameters, generated test email
+addresses, and Clerk resource identifiers while preserving the Playwright exit
+status. The project does not persist captured stdout to a Playwright report
+artifact. Helpers and assertions do not log Clerk response bodies, user IDs,
+organization IDs, credentials, or testing-token URLs.
 
 ## Deterministic browser coverage
 

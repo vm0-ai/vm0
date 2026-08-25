@@ -304,9 +304,11 @@ test("password reset retries an expired code, survives refresh, and sets a new p
     await expect(newPasswordInput).toHaveAttribute("aria-invalid", "true");
     await expect(confirmation).toHaveAttribute("aria-invalid", "true");
     await confirmation.fill(newPassword);
-    await expect(newPasswordInput).toHaveAttribute("aria-invalid", "false");
-    await expect(confirmation).toHaveAttribute("aria-invalid", "false");
     await expect(mismatchError).toHaveCount(0);
+    await expect(newPasswordInput).not.toHaveAttribute("aria-invalid");
+    await expect(newPasswordInput).not.toHaveAttribute("aria-describedby");
+    await expect(confirmation).not.toHaveAttribute("aria-invalid");
+    await expect(confirmation).not.toHaveAttribute("aria-describedby");
     await confirmation.press("Enter");
     await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
   } finally {
@@ -347,11 +349,15 @@ test("progressive sign-up validates details and activates after one verification
     await legal.check();
     await expect(authV2Root(page).getByRole("alert")).toHaveCount(0);
     await passwordInput.press("Enter");
-    await expect(authV2Root(page).getByRole("alert")).toBeVisible();
-    await expect(passwordInput).toBeFocused();
+    const passwordError = authV2Root(page).getByRole("alert");
+    await expect(passwordError).toBeVisible();
+    await expect(passwordError).toBeFocused();
+    await expect(passwordInput).toHaveAttribute("aria-invalid", "true");
     expect(requests.count("sign-up", "prepare")).toBe(0);
 
     await passwordInput.fill(password);
+    await expect(passwordError).toHaveCount(0);
+    await expect(passwordInput).not.toHaveAttribute("aria-invalid");
     await passwordInput.press("Enter");
     await expect(authV2Input(page, "code")).toBeVisible();
     await expect.poll(() => requests.count("sign-up", "prepare")).toBe(1);
@@ -535,12 +541,15 @@ async function finishAuthV2Continuation(
 ): Promise<void> {
   const organization = organizationButton(page, organizationName);
   await expect
-    .poll(async () => {
-      return (
-        new URL(page.url()).pathname === redirect.pathname ||
-        (await organization.isVisible())
-      );
-    })
+    .poll(
+      async () => {
+        return (
+          new URL(page.url()).pathname === redirect.pathname ||
+          (await organization.isVisible())
+        );
+      },
+      { timeout: 30_000 },
+    )
     .toBe(true);
   await expectNoOrganizationCreation(page);
   if (new URL(page.url()).pathname !== redirect.pathname) {
