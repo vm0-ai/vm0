@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use vsock_proto::{ExecCapturedOutput, ExecTermination, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES};
 
-use crate::drain::{BoundedDrainResult, drain_bounded_cancellable};
+use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
@@ -287,6 +287,16 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         drain_deadline,
     } = input;
     let started = Instant::now();
+    let drain_cancel = match DrainCancellation::new() {
+        Ok(cancel) => Arc::new(cancel),
+        Err(error) => {
+            return failed_output(
+                ExecTermination::StartFailed,
+                started,
+                format!("Failed to initialize storage output drain cancellation: {error}"),
+            );
+        }
+    };
     let process_containment =
         match ExecProcessContainment::create(seq, process_containment_mode, false) {
             Ok(process_containment) => process_containment,
@@ -370,7 +380,6 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         );
     };
 
-    let drain_cancel = Arc::new(AtomicBool::new(false));
     let (drain_done_tx, drain_done_rx) = mpsc::channel();
     let stdout_drain = match spawn_drain(
         stdout,
@@ -402,7 +411,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
     ) {
         Ok(drain) => drain,
         Err(error) => {
-            drain_cancel.store(true, Ordering::Release);
+            drain_cancel.cancel();
             drop(stdin);
             kill_and_reap_child(child);
             let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
@@ -421,7 +430,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
     let stdin_writer = match spawn_stdin(stdin, manifest_json) {
         Ok(writer) => writer,
         Err(error) => {
-            drain_cancel.store(true, Ordering::Release);
+            drain_cancel.cancel();
             kill_and_reap_child(child);
             let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
             drop(drain_done_tx);
@@ -455,7 +464,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         || cancellation_observed
         || containment_result.is_err()
     {
-        drain_cancel.store(true, Ordering::Release);
+        drain_cancel.cancel();
     }
     let completed = await_drain_deadline(&drain_done_rx, 2, &drain_cancel, drain_deadline);
     let stdout_result = stdout_drain.join();
@@ -567,7 +576,7 @@ impl DrainHandle {
 
 fn spawn_drain(
     pipe: impl Into<std::os::fd::OwnedFd> + Send + 'static,
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<DrainCancellation>,
     done_tx: mpsc::Sender<()>,
     thread_name: &'static str,
 ) -> io::Result<DrainHandle> {

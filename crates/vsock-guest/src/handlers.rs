@@ -12,7 +12,7 @@ use vsock_proto::{
     MSG_WRITE_FILES_RESULT,
 };
 
-use crate::drain::drain_into_vec_cancellable;
+use crate::drain::{DrainCancellation, drain_into_vec_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
@@ -119,6 +119,16 @@ fn wait_write_file_child_with_timeout<S>(
 where
     S: ThreadSpawner,
 {
+    let cancel = match DrainCancellation::new() {
+        Ok(cancel) => Arc::new(cancel),
+        Err(error) => {
+            kill_and_reap_child(child);
+            return (
+                false,
+                format!("Failed to initialize stderr drain cancellation: {error}"),
+            );
+        }
+    };
     let stdin_pipe = match child.stdin.take() {
         Some(p) => p,
         None => {
@@ -142,7 +152,6 @@ where
             return (false, "missing stderr pipe".to_string());
         }
     };
-    let cancel = Arc::new(AtomicBool::new(false));
     let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let stderr_handle = {
         let drain_cancel = cancel.clone();
@@ -156,7 +165,7 @@ where
         ) {
             Ok(handle) => handle,
             Err(e) => {
-                cancel.store(true, std::sync::atomic::Ordering::Release);
+                cancel.cancel();
                 drop(stdin_pipe);
                 kill_and_reap_child(child);
                 return (false, format!("Failed to spawn stderr drain thread: {e}"));
@@ -174,7 +183,7 @@ where
         }) {
             Ok(handle) => handle,
             Err(e) => {
-                cancel.store(true, std::sync::atomic::Ordering::Release);
+                cancel.cancel();
                 kill_and_reap_child(child);
                 let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
                 let _ = stderr_handle.join();

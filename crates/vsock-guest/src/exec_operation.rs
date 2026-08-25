@@ -64,7 +64,9 @@ use vsock_proto::{
 #[cfg(test)]
 use vsock_proto::MSG_EXEC_RESULT;
 
-use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
+use crate::drain::{
+    BoundedDrainResult, BoundedStreamConfig, DrainCancellation, drain_bounded_cancellable,
+};
 use crate::error::to_io_error;
 use crate::exec_control::ExecControlGuard;
 use crate::log::log;
@@ -318,7 +320,7 @@ struct DrainWorker {
     stream: ExecOutputStream,
     policy: OutputSettings,
     stream_writer: Option<SharedExecStreamWriter>,
-    drain_cancel: Arc<AtomicBool>,
+    drain_cancel: Arc<DrainCancellation>,
     exec_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
 }
@@ -466,7 +468,7 @@ struct ExecSetup {
     process_containment: ExecProcessContainment,
     placement_bootstrap: Option<WorkloadPlacementBootstrap>,
     stdin_writer: Option<StdinWriter>,
-    drain_cancel: Arc<AtomicBool>,
+    drain_cancel: Arc<DrainCancellation>,
     drain_done_tx: mpsc::Sender<()>,
     drain_done_rx: mpsc::Receiver<()>,
 }
@@ -476,8 +478,8 @@ impl ExecSetup {
         child: Child,
         process_containment: ExecProcessContainment,
         placement_bootstrap: Option<WorkloadPlacementBootstrap>,
+        drain_cancel: Arc<DrainCancellation>,
     ) -> Self {
-        let drain_cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
         Self {
             child,
@@ -506,7 +508,7 @@ impl ExecSetup {
         self.stdin_writer = Some(writer);
     }
 
-    fn drain_cancel(&self) -> Arc<AtomicBool> {
+    fn drain_cancel(&self) -> Arc<DrainCancellation> {
         self.drain_cancel.clone()
     }
 
@@ -542,7 +544,7 @@ impl ExecSetup {
             drain_done_rx: _,
         } = self;
         exec_cancel.store(true, Ordering::Release);
-        drain_cancel.store(true, Ordering::Release);
+        drain_cancel.cancel();
         kill_and_reap_child(child);
         drop(placement_bootstrap);
         let containment_result =
@@ -586,7 +588,7 @@ struct ExecSetupWithStdout {
 }
 
 impl ExecSetupWithStdout {
-    fn drain_cancel(&self) -> Arc<AtomicBool> {
+    fn drain_cancel(&self) -> Arc<DrainCancellation> {
         self.setup.drain_cancel()
     }
 
@@ -615,7 +617,7 @@ impl ExecSetupWithStdout {
             drain_done_rx: _,
         } = setup;
         exec_cancel.store(true, Ordering::Release);
-        drain_cancel.store(true, Ordering::Release);
+        drain_cancel.cancel();
         kill_and_reap_child(child);
         drop(placement_bootstrap);
         let containment_result =
@@ -680,7 +682,7 @@ struct RunningExec {
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
     stderr_handle: JoinHandle<()>,
     stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
-    drain_cancel: Arc<AtomicBool>,
+    drain_cancel: Arc<DrainCancellation>,
     drain_done_rx: mpsc::Receiver<()>,
 }
 
@@ -740,7 +742,7 @@ impl RunningExec {
             || containment_result.is_err()
         {
             exec_cancel.store(true, Ordering::Release);
-            drain_cancel.store(true, Ordering::Release);
+            drain_cancel.cancel();
         }
 
         let completed =
@@ -966,6 +968,15 @@ fn run_exec_operation_worker<S>(
         completion.start_failed(&diagnostic);
         return;
     }
+    let drain_cancel = match DrainCancellation::new() {
+        Ok(cancel) => Arc::new(cancel),
+        Err(error) => {
+            completion.start_failed(&format!(
+                "Failed to initialize output drain cancellation: {error}"
+            ));
+            return;
+        }
+    };
     let stdin_bytes = request.stdin_bytes.take();
     let pipe_stdin = stdin_bytes.is_some();
 
@@ -1046,7 +1057,7 @@ fn run_exec_operation_worker<S>(
         process_containment,
     } = spawned;
     let _env_script = env_script;
-    let mut setup = ExecSetup::new(child, process_containment, workload_bootstrap);
+    let mut setup = ExecSetup::new(child, process_containment, workload_bootstrap, drain_cancel);
 
     if request.lifecycle == ExecOperationLifecycle::Supervised
         && let Err(e) = send_exec_started(request.seq, setup.child.id(), &writer)
@@ -1284,7 +1295,7 @@ where
                     let Some(stream_writer) = &stream_writer else {
                         return true;
                     };
-                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
+                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.is_cancelled() {
                         return false;
                     }
                     let mut writer = match stream_writer.lock() {
@@ -1292,11 +1303,11 @@ where
                         Err(_) => {
                             log("ERROR", "exec operation: stream writer mutex poisoned");
                             exec_cancel.store(true, Ordering::Release);
-                            drain_cancel.store(true, Ordering::Release);
+                            drain_cancel.cancel();
                             return false;
                         }
                     };
-                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
+                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.is_cancelled() {
                         return false;
                     }
                     match writer.write_output(stream, chunk, truncated) {
@@ -1310,7 +1321,7 @@ where
                                 ),
                             );
                             exec_cancel.store(true, Ordering::Release);
-                            drain_cancel.store(true, Ordering::Release);
+                            drain_cancel.cancel();
                             false
                         }
                         Err(ExecStreamWriteError::Write(e)) => {
@@ -1322,7 +1333,7 @@ where
                                 ),
                             );
                             exec_cancel.store(true, Ordering::Release);
-                            drain_cancel.store(true, Ordering::Release);
+                            drain_cancel.cancel();
                             false
                         }
                     }

@@ -5,6 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::drain::DrainCancellation;
 use crate::process::{kill_and_reap_child, kill_owned_child_process_group, process_signal_pid};
 use crate::threading::spawn_scoped_named;
 
@@ -38,7 +39,7 @@ enum WaitDecision {
 pub(crate) fn await_drain_deadline(
     done_rx: &mpsc::Receiver<()>,
     expected: usize,
-    cancel: &AtomicBool,
+    cancel: &DrainCancellation,
     drain_deadline: Duration,
 ) -> usize {
     let deadline = Instant::now() + drain_deadline;
@@ -53,7 +54,7 @@ pub(crate) fn await_drain_deadline(
             Err(_) => break,
         }
     }
-    cancel.store(true, Ordering::Release);
+    cancel.cancel();
     completed
 }
 
