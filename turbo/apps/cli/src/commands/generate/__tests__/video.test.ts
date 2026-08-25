@@ -474,4 +474,27 @@ describe("okou generate video command", () => {
     expect(stderr).toContain("okou upgrade pro");
     expect(generationRequests).toBe(0);
   });
+
+  it("names the catalog default as the model an omitted --model falls back to", () => {
+    // The help used to spell the default out by hand, and kept naming
+    // seedance 2.0 fast for a while after the catalog moved off it.
+    let help = "";
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        help += text;
+      },
+    });
+    videoCommand.outputHelp();
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        process.stdout.write(text);
+      },
+    });
+
+    const collapsed = help.replace(/\s+/g, " ");
+    expect(collapsed).toContain(
+      "Omitting --model uses the caller's selected video model, falling back to dreamina-seedance-2.0 ",
+    );
+    expect(collapsed).not.toContain("dreamina-seedance-2.0-fast (default)");
+  });
 });
