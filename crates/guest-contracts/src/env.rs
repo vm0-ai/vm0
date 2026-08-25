@@ -21,15 +21,16 @@
 /// processes by the guest-agent's curated child environment.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
-/// Canonical backend API URL alias accepted by guest readers during migration.
+/// Canonical backend API URL spelling shared by migration readers.
 ///
-/// This fallback is confined to the Runner-to-Guest-Agent bootstrap surface.
+/// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
+/// spelling but have independent rollout floors. On the Runner-to-Guest surface,
 /// Runner writers keep using [`API_URL_ENV`], and the guest-agent keeps exposing
-/// that legacy spelling to managed CLI children. Remove the legacy reader only
+/// that legacy spelling to managed CLI children. Remove that legacy reader only
 /// after the exact production Runner plus embedded-Guest reader floor, complete
 /// pre-reader service and reusable-sandbox drain, supported rollback window,
-/// and value-free legacy-source-zero gates in #28914. The managed CLI-child
-/// spelling has its own later reader/support floor.
+/// and value-free legacy-source-zero gates in #28914. Runner operator input and
+/// managed CLI-child exposure each have their own later support floors.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
