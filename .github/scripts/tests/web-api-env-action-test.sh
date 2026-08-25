@@ -6,12 +6,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ACTION="${REPO_ROOT}/.github/actions/web-api-env/action.yml"
 EXPECTED_BUILD_COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --verify HEAD)"
 TEMP_DIRS=()
-# ZERO_ keys whose readers are still live: apps/api reads both in lib/env.ts,
-# host.service.ts resolves the VM0-brand host from them, and turbo.json still
-# lists them. The deployment must not emit either name, because a rendered value
-# would feed the last remaining OKOU_ENV_FALLBACKS entry (OKOU_HOST_SCHEME) and
-# make its drain evidence false. They retire with the VM0-brand host under
-# #26701, together with these assertions.
+# These are not retired names. Their readers are live: lib/env.ts defines both,
+# host.service.ts resolves the VM0-brand hosted-site host from them,
+# artifact-preview.service.ts accepts the domain, and turbo.json still lists
+# them. The action no longer sources either name and must not start again: an
+# emitted value would restore the retired repo-variable source for live brand
+# configuration, and for ZERO_HOST_SCHEME it would additionally feed the last
+# remaining OKOU_ENV_FALLBACKS entry (OKOU_HOST_SCHEME) and falsify its drain
+# evidence. Both retire with the VM0-brand host under #26701, and these
+# assertions retire with them.
 ZERO_KEYS_WITH_LIVE_READERS=(
   ZERO_HOST_DOMAIN
   ZERO_HOST_SCHEME
