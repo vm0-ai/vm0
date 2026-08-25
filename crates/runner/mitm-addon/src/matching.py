@@ -429,11 +429,12 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
             return False
         if not raw_aws_sigv4["secretAccessKey"]:
             return False
-        optional_value = raw_aws_sigv4.get("sessionToken")
-        if optional_value is not None and not isinstance(optional_value, str):
-            return False
-        if optional_value == "":
-            return False
+        if "sessionToken" in raw_aws_sigv4:
+            optional_value = raw_aws_sigv4["sessionToken"]
+            if not isinstance(optional_value, str):
+                return False
+            if not optional_value:
+                return False
         if raw_auth.get("headers"):
             return False
         if raw_auth.get("query"):
