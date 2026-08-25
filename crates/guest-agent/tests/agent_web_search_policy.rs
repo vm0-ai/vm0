@@ -1,4 +1,4 @@
-//! Zero runs must use managed web search instead of framework-native search.
+//! Agent runs must use managed web search instead of framework-native search.
 
 mod common;
 
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::test]
-async fn zero_marker_disables_builtin_web_search_for_claude_and_codex() -> TestResult {
+async fn okou_agent_id_disables_builtin_web_search_for_claude_and_codex() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
     let root = tempfile::tempdir()?;
     let claude_mock = common::build_and_locate_mock()?;
@@ -60,7 +60,7 @@ fn build_runtime(
     real_mock: &Path,
     args_path: &Path,
 ) -> TestResult<GuestRuntime> {
-    let run_id = format!("zero-web-search-{framework}");
+    let run_id = format!("agent-web-search-{framework}");
     let home = root.join("home");
     let runtime_dir = root.join("runtime");
     std::fs::create_dir_all(&home)?;
