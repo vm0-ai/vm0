@@ -56,7 +56,40 @@ _FAILURE_CODE_PATHS = (
 
 @dataclass(frozen=True)
 class ModelHttpFailureEvidence:
-    """Immutable failure-classification evidence from one JSON document or SSE event."""
+    """Immutable failure-classification evidence from one JSON document or SSE event.
+
+    The fields are a bounded projection of the selected JSON values and SSE framing state. An
+    evidence instance is invalid by default. For evidence created by
+    :func:`failure_evidence_from_result`, ``is_valid`` is true only when extraction completed and
+    no failure-sensitive string exceeded the 128-byte bound. Incomplete or overflowed extraction
+    preserves the event identity and ``is_done`` marker, but must not be interpreted as a
+    successful or failed payload.
+
+    Fields:
+        event_name: The optional SSE framing event name. It is independent from ``payload_type``;
+            a named SSE event and the JSON ``type`` value must be compared when both are present.
+            It is ``None`` for eventless frames and complete JSON documents.
+        payload_type: The optional top-level JSON ``type`` string. It describes the payload and is
+            not an SSE event name or an HTTP status.
+        status: The optional top-level JSON ``status`` string.
+        response_status: The optional ``response.status`` JSON string. Neither status field is the
+            HTTP response status.
+        response_id: The optional ``response.id`` JSON string used to identify a response.
+        failure_codes: An ordered tuple of every non-null recognized failure-code string. Values
+            are collected in the order declared by ``_FAILURE_CODE_PATHS``: nested error metadata,
+            choices error metadata, error-type fields, response error-type fields, and response
+            or error code/type fields. When ``payload_type`` is ``"error"``, the top-level JSON
+            ``code`` is appended after those values.
+        has_error: Whether a configured error value is present at ``error``, ``response.error``,
+            or the first choice's ``error`` path. This records presence, not truthiness.
+        has_choices: Whether the top-level ``choices`` value is present. This records presence,
+            including an empty or otherwise non-error value.
+        is_done: Whether the caller identified the Chat Completions ``[DONE]`` sentinel. This is
+            a caller-provided completion marker and does not assert that a JSON payload parsed.
+        is_valid: Whether the evidence is complete and within the failure extraction bounds, or is
+            an explicitly valid ``[DONE]`` sentinel. Consumers must treat ``False`` as ambiguous
+            evidence rather than infer a provider success or failure.
+    """
 
     event_name: str | None = None
     payload_type: str | None = None
@@ -74,15 +107,45 @@ class ModelHttpFailureObserver(Protocol):
     """Parser-free consumer of shared model HTTP failure evidence."""
 
     def needs_sse_event(self, event_name: str | None) -> bool:
+        """Return whether an SSE event must be captured and selectively parsed.
+
+        SSE framing calls this before allocating a full JSON extractor. Returning ``False`` permits
+        the caller to discard the event body and skip both selective JSON parsing and an
+        ``observe()`` call for that event. Returning ``True`` requires the caller to retain enough
+        of the event to produce evidence, including invalid evidence when parsing cannot complete.
+        ``event_name`` may be ``None`` for an eventless frame.
+        """
         raise NotImplementedError
 
     def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Consume evidence for one captured SSE event.
+
+        Callers use this path once per captured event after its selective extraction attempt. The
+        evidence may be valid JSON-derived data, event-name-only data from a discarded or empty
+        path, or invalid data when parsing is incomplete or exceeds a failure-sensitive bound. A
+        concrete observer decides how to interpret ``event_name`` and ``payload_type`` when both
+        identities are present.
+        """
         raise NotImplementedError
 
     def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Consume evidence projected from one complete non-SSE JSON document.
+
+        This is the complete-document path and is distinct from ``observe()``, which represents
+        one SSE event. Callers invoke it after the bounded JSON extractor finishes; the evidence
+        therefore has no SSE framing identity unless a concrete caller supplies one separately.
+        """
         raise NotImplementedError
 
     def finish(self) -> object:
+        """Return the observer's reduced result for response finalization.
+
+        The returned object is implementation-defined. The method may be called again by another
+        finalization hook after parser input has been finished; for unchanged observer state,
+        repeated calls must be safe and return the same current reduction without reprocessing
+        input or performing one-shot finalization. Flow settlement is a separate responsibility of
+        the concrete observer or its caller and is not implied by this parser-free protocol.
+        """
         raise NotImplementedError
 
 
