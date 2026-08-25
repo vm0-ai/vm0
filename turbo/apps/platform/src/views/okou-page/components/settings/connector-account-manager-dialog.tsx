@@ -459,15 +459,15 @@ export function ConnectorAccountManagerDialog({
         className="max-w-xl gap-0 overflow-hidden p-0"
         aria-describedby={undefined}
       >
-        <DialogHeader className="border-b border-border px-6 py-5">
-          <div className="flex items-center justify-between gap-4 pr-6">
+        <DialogHeader className="border-b border-border py-4 pl-6 pr-16">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {icon}
               <DialogTitle className="truncate">{connectorLabel}</DialogTitle>
             </div>
             <Button
               type="button"
-              size="sm"
+              className="shrink-0"
               disabled={
                 !connectionActionsEnabled ||
                 accountsLoadable.state === "hasError" ||
