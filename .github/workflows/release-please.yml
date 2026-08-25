@@ -90,7 +90,7 @@ jobs:
     if: ${{ needs.detect-release-commit.outputs.release == 'true' }}
     outputs:
       releases_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.releases_created || steps.release.outputs.releases_created }}
-      release_target: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.release_target || steps.release-target.outputs.sha }}
+      release_target: ${{ steps.release-target.outputs.sha }}
       api_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_release_created || steps.release.outputs['turbo/apps/api--release_created'] }}
       core_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.core_release_created || steps.release.outputs['turbo/packages/core--release_created'] }}
       api_contracts_release_created: ${{ inputs.recovery_release_sha != '' && steps.recovery_release.outputs.api_contracts_release_created || steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
@@ -218,45 +218,45 @@ jobs:
 
       - name: Resolve release target
         id: release-target
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        if: ${{ inputs.recovery_release_sha != '' || steps.release.outputs.releases_created == 'true' }}
         env:
           RELEASE_SHAS: >-
             [
-              ${{ toJSON(steps.release.outputs['crates/ably-subscriber--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/api-contracts--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-agent--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-common--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-contracts--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-download--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-init--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-reseed--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-write-file--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/nbd-cow--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/process-control-ipc--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/runner--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-mock--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/shell-quote--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/tracing-test-support--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/db--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--sha']) }}
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/ably-subscriber--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/api-contracts--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-agent--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-common--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-contracts--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-download--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-init--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-mock-claude--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-mock-codex--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-reseed--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-session-prune--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-tool-exec--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/guest-write-file--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/nbd-cow--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/process-control-ipc--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/runner--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/sandbox--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/sandbox-fc--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/sandbox-mock--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/shell-quote--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/tracing-test-support--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/vsock-guest--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/vsock-host--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/vsock-proto--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['crates/vsock-test--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/apps/api--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/apps/cli--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/apps/desktop--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/apps/host-worker--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/apps/platform--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/packages/api-contracts--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/packages/connectors--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/packages/core--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/packages/db--sha']) }},
+              ${{ toJSON(inputs.recovery_release_sha || steps.release.outputs['turbo/packages/pi-agent-runtime--sha']) }}
             ]
         run: |
           set -euo pipefail
