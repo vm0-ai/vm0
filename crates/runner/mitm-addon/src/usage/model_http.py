@@ -76,10 +76,12 @@ class ModelHttpFailureEvidence:
             HTTP response status.
         response_id: The optional ``response.id`` JSON string used to identify a response.
         failure_codes: An ordered tuple of every non-null recognized failure-code string. Values
-            are collected in the order declared by ``_FAILURE_CODE_PATHS``: nested error metadata,
-            choices error metadata, error-type fields, response error-type fields, and response
-            or error code/type fields. When ``payload_type`` is ``"error"``, the top-level JSON
-            ``code`` is appended after those values.
+            are collected in this order: ``error.metadata.error_type``, the first choice's
+            ``error.metadata.error_type``, ``error.error_type``, ``response.error_type``,
+            ``response.error.error_type``, top-level ``error_type``, ``response.error.code``,
+            ``error.code``, ``response.error.type``, and ``error.type``. When ``payload_type`` is
+            ``"error"``, the top-level JSON ``code`` is appended after those values. Values are
+            not deduplicated.
         has_error: Whether a configured error value is present at ``error``, ``response.error``,
             or the first choice's ``error`` path. This records presence, not truthiness.
         has_choices: Whether the top-level ``choices`` value is present. This records presence,
