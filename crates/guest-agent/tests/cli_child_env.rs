@@ -44,6 +44,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("VM0_APPEND_SYSTEM_PROMPT", "runner append prompt");
         std::env::set_var("VM0_FEATURE_FLAGS", r#"{"flag":true}"#);
         std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "60");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "60",
+        );
     }
 
     let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
@@ -82,6 +86,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     let runtime = GuestRuntime::from_process_env()?;
     assert!(!user_env_path.exists());
     assert!(!user_env_dir.exists());
+    assert_eq!(
+        runtime.config.agent_execution_timeout,
+        Some(std::time::Duration::from_secs(60))
+    );
     assert_eq!(runtime.config.home_dir, user_home_str);
     assert_eq!(
         runtime.config.claude_config_dir,
@@ -207,7 +215,15 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_SANDBOX_ID"));
     assert!(!cli_env.contains_key("VM0_SANDBOX_REUSE_RESULT"));
     assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
-    assert!(!cli_env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
+    for key in [
+        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
     for key in [
         process_control_ipc::BOOTSTRAP_ENV,

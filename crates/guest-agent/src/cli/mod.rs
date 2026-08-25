@@ -411,7 +411,7 @@ impl<'a> CliRuntimeConfig<'a> {
                     .ok_or_else(|| {
                         AgentError::Execution(format!(
                             "{} is too large",
-                            guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV
+                            env::AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC
                         ))
                     })
             })
