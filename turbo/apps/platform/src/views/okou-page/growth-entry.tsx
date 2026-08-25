@@ -180,42 +180,53 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+      <div
+        // 12px, not the Button default 8px: the split control and the menu it
+        // opens read as one object when their outer radii agree.
+        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--zero-card-shadow)]"
+      >
         <Button
           type="button"
-          variant="outline"
+          variant="quiet"
           size="sm"
-          // 12px, not the Button default 8px: this trigger is one half of a
-          // pair with the 12px menu it opens, so they read as one object.
-          className="h-8 gap-0 rounded-[12px] bg-card px-[11px] shadow-[var(--zero-card-shadow)]"
+          className="h-full gap-[9px] rounded-l-[11px] rounded-r-none px-[11px] pr-[9px] text-foreground"
+          onClick={leadIsSlack ? openWorks : openInvite}
           data-testid="growth-entry"
         >
-          <span className="flex items-center gap-[9px]">
-            {leadIsSlack ? (
-              <SlackMark size={16} />
-            ) : (
-              <PlusCircle className="text-primary" />
-            )}
-            <span className="text-[13px] font-medium">
-              {leadIsSlack
-                ? t(
-                    ($) => {
-                      return $.chat.agentPage.growth.addInSlack;
-                    },
-                    { assistantName },
-                  )
-                : t(($) => {
-                    return $.chat.agentPage.growth.inviteMember;
-                  })}
-            </span>
+          {leadIsSlack ? (
+            <SlackMark size={16} />
+          ) : (
+            <PlusCircle className="text-primary" />
+          )}
+          <span className="text-[13px] font-medium">
+            {leadIsSlack
+              ? t(
+                  ($) => {
+                    return $.chat.agentPage.growth.addInSlack;
+                  },
+                  { assistantName },
+                )
+              : t(($) => {
+                  return $.chat.agentPage.growth.inviteMember;
+                })}
           </span>
-          <span
-            aria-hidden="true"
-            className="mx-[9px] h-4 w-[0.7px] shrink-0 bg-[hsl(var(--gray-300))]"
-          />
-          <ChevronDown className="text-muted-foreground" />
         </Button>
-      </DropdownMenuTrigger>
+
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            aria-label={t(($) => {
+              return $.chat.actions.more;
+            })}
+            className="h-full w-9 rounded-l-none rounded-r-[11px] border-l-[0.7px] border-[hsl(var(--gray-300))] data-popup-open:bg-state-hover data-popup-open:text-foreground"
+            data-testid="growth-entry-menu"
+          >
+            <ChevronDown />
+          </Button>
+        </DropdownMenuTrigger>
+      </div>
 
       <DropdownMenuContent align="end" className="w-[268px]">
         <DropdownMenuItem
