@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.20](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.19...guest-contracts-v0.11.20) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read tuning environment aliases ([#29329](https://github.com/vm0-ai/vm0/issues/29329)) ([d5dbae8](https://github.com/vm0-ai/vm0/commit/d5dbae8abbb4141eb10bb22ab3a8d588628b1e7c))
+
 ## [0.11.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.18...guest-contracts-v0.11.19) (2026-08-25)
 
 

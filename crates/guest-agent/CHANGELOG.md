@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.78.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.2...guest-agent-v0.78.0) (2026-08-25)
+
+
+### Features
+
+* **guest-agent:** normalize provider events before sequencing ([#29353](https://github.com/vm0-ai/vm0/issues/29353)) ([3462eda](https://github.com/vm0-ai/vm0/commit/3462eda85bc1b4a384a5562a0e9de84d93341ee9))
+
+
+### Refactoring
+
+* **api-contracts:** centralize checkpoint webhook types ([#29332](https://github.com/vm0-ai/vm0/issues/29332)) ([d33aadd](https://github.com/vm0-ai/vm0/commit/d33aadde98ab495df30b32e81e51f9467b921b21))
+* **guest-agent:** dual-read tuning environment aliases ([#29329](https://github.com/vm0-ai/vm0/issues/29329)) ([d5dbae8](https://github.com/vm0-ai/vm0/commit/d5dbae8abbb4141eb10bb22ab3a8d588628b1e7c))
+
 ## [0.77.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.1...guest-agent-v0.77.2) (2026-08-25)
 
 ## [0.77.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.0...guest-agent-v0.77.1) (2026-08-25)
