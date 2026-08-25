@@ -1,4 +1,44 @@
-"""Trusted, bounded model-provider failure reduction and reporting."""
+"""Trusted, bounded model-provider failure reduction and reporting.
+
+This module owns the per-flow model-provider failure contract from ``admit`` through
+``observe``, ``settle``, and ``release``. ``mitm_addon`` admits an eligible,
+authenticated billable model-provider flow and retains this module's bounded state in
+``flow.metadata``. ``response_streaming`` supplies incremental JSON/SSE evidence and
+registers a response finalizer; ``mitm_addon`` then invokes the response, connection-error,
+WebSocket, and cleanup hooks.
+
+HTTP lifecycle:
+
+* ``configure_response_observer()`` classifies immediate HTTP status failures or creates an
+  observer for buffered JSON and incremental JSON/SSE evidence.
+* The streaming callback feeds the observer while the response is in flight. A terminal event
+  or end-of-stream may call ``settle()`` before mitmproxy's response hook. The registered
+  response finalizer belongs to the streaming parser layer: it finishes decoding and returns
+  the observer's reduced outcome, while ``_settle_http_flow()`` owns the terminal transition.
+* ``finish_http_response()`` consumes status evidence or the registered finalizer (falling back
+  to bounded buffered JSON parsing) and settles the flow. ``finish_connection_error()`` uses
+  status, partial-body, and upstream-connection evidence when a response is interrupted.
+* ``terminal_observed`` is the one-shot settlement gate. Once set, later response, error, or
+  settlement calls cannot change the terminal outcome or emit another failure report. A parser
+  finalizer may still finish its own decoder state because parser finalization and reducer
+  settlement are separate layers.
+
+WebSocket lifecycle:
+
+* A client ``response.create`` records one pending ``normal`` or ``prewarm`` intent. A valid
+  server ``response.created`` moves that intent to active state and records its response ID.
+* A terminal event must match the active response ID. Matching terminal and server-error events
+  clear the correlation before applying their outcome; prewarm outcomes are not reported.
+  Unfinished normal requests settle as unknown at WebSocket end and are also not reported.
+* Unknown client events, overlapping creates, invalid server events, and missing or mismatched
+  response IDs while an intent is outstanding make the lifecycle ambiguous. Ambiguity clears
+  correlation, emits one sanitized suppression entry, and remains sticky so later events cannot
+  revive or report the flow. Terminal/error events with no pending or active intent are ignored,
+  allowing a later request on the same WebSocket to be correlated normally.
+
+``websocket_end()`` settles any unfinished WebSocket state before terminal cleanup. The cleanup
+path calls ``release_flow()`` to remove the reducer state and the registered response finalizer.
+"""
 
 import json
 import threading
@@ -114,6 +154,14 @@ class _Outcome:
 
 @dataclass
 class _FlowState:
+    """Bounded state retained for one admitted flow until terminal cleanup.
+
+    ``terminal_observed`` gates one-shot HTTP and terminal settlement. For OpenAI Responses
+    WebSockets, ``pending_intent`` and ``active_intent`` represent at most one request, and
+    ``active_response_id`` is the correlation key for terminal events. ``websocket_ambiguous``
+    is sticky after contradictory lifecycle evidence and suppresses subsequent reporting.
+    """
+
     run_id: str
     protocol: _Protocol
     terminal_observed: bool = False
@@ -203,6 +251,13 @@ class HttpResponseFailureObserver:
         self._parse_ambiguous = False
 
     def needs_sse_event(self, event_name: str | None) -> bool:
+        """Return whether an SSE event needs model-provider failure inspection.
+
+        ``None`` and all events for protocols without an ignore list require inspection. Known
+        non-terminal events for OpenAI Responses and Anthropic Messages can be skipped by the
+        caller without changing the reducer state.
+        """
+
         if event_name is None:
             return True
         if self._flow_state.protocol == "openai_responses":
@@ -212,6 +267,13 @@ class HttpResponseFailureObserver:
         return True
 
     def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Consume one incremental evidence item and settle on terminal evidence.
+
+        Invalid or contradictory evidence produces an unknown outcome and settles the flow.
+        Valid non-terminal evidence remains buffered in the observer until a terminal event or
+        the registered response finalizer calls ``settle()``.
+        """
+
         if not evidence.is_valid:
             self._mark_parse_ambiguous()
             return
@@ -248,9 +310,17 @@ class HttpResponseFailureObserver:
             self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
 
     def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Record whole-response evidence for the response finalizer to reduce.
+
+        This stores the current outcome without marking the flow terminal; the response or error
+        hook owns the subsequent call to ``finish()`` and ``settle()``.
+        """
+
         self._store_terminal(_outcome_from_evidence(self._flow_state.protocol, evidence))
 
     def finish(self) -> _Outcome:
+        """Return the reduced outcome without changing flow terminal state."""
+
         if self._terminal is not None and self._terminal.kind == "failure":
             outcome = self._terminal
         elif self._parse_ambiguous:
@@ -314,12 +384,25 @@ def configure_response_observer(flow: http.HTTPFlow) -> HttpResponseFailureObser
 
 
 def register_response_finish(flow: http.HTTPFlow, finish: Callable[[], object]) -> None:
-    """Register the shared response finalizer consumed by failure hook ordering."""
+    """Register the parser finalizer shared by streaming and response hooks.
+
+    ``response_streaming`` owns decoder completion and may settle from the stream callback. The
+    response hook later consumes this callback before the reducer's one-shot settlement gate
+    handles the final outcome.
+    """
 
     flow.metadata[_RESPONSE_FINISH] = finish
 
 
 def finish_http_response(flow: http.HTTPFlow) -> None:
+    """Settle an admitted HTTP response after status or body evidence is available.
+
+    The response hook consumes the registered streaming finalizer or a bounded buffered-body
+    fallback. If terminal evidence was already settled while streaming, this call cannot change
+    the outcome or emit another report, although the parser finalizer may still complete its own
+    idempotent decoder state.
+    """
+
     flow_state = _flow_state(flow)
     response = flow.response
     if (
@@ -352,6 +435,13 @@ def finish_http_response(flow: http.HTTPFlow) -> None:
 
 
 def finish_connection_error(flow: http.HTTPFlow) -> None:
+    """Settle evidence available when an admitted HTTP or WebSocket flow is interrupted.
+
+    HTTP flows use status, partial-body, and upstream-connection evidence. WebSocket flows use
+    pending or active normal intent and only report an upstream connection failure. A previously
+    terminal HTTP flow is a no-op; client-side disconnects and unknown outcomes are not reported.
+    """
+
     flow_state = _flow_state(flow)
     if flow_state is None:
         return
@@ -403,6 +493,12 @@ def observe_websocket_client_event(
     request_kind: str,
     is_prewarm: bool,
 ) -> None:
+    """Record a WebSocket client request or make contradictory state ambiguous.
+
+    A ``create`` event records one pending normal or prewarm intent. Unknown events and a second
+    create while an intent is pending or active enter sticky ambiguity; later evidence is ignored.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None or flow_state.websocket_ambiguous:
         return
@@ -431,6 +527,13 @@ def observe_websocket_server_event(
     flow: http.HTTPFlow,
     evidence: "OpenAIResponsesServerFailureEvidence",
 ) -> None:
+    """Correlate one parsed WebSocket server event and apply its terminal outcome.
+
+    ``response.created`` binds a pending intent to a response ID. Matching terminal or error
+    events clear that correlation before applying an outcome. Invalid events and contradictory
+    IDs make an outstanding lifecycle ambiguous; events with no outstanding intent are ignored.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None or flow_state.websocket_ambiguous:
         return
@@ -465,6 +568,13 @@ def observe_websocket_server_event(
 
 
 def finish_websocket(flow: http.HTTPFlow) -> None:
+    """Settle unfinished normal WebSocket intent before terminal cleanup.
+
+    An unfinished normal request receives an unknown outcome and is not reported. Prewarm and
+    already-cleared intent are also non-reporting; the terminal flag prevents later HTTP-style
+    finalization from changing the closed WebSocket lifecycle.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None:
         return
@@ -474,6 +584,8 @@ def finish_websocket(flow: http.HTTPFlow) -> None:
 
 
 def release_flow(flow: http.HTTPFlow) -> None:
+    """Remove reducer state and the registered response finalizer during flow cleanup."""
+
     flow.metadata.pop(_FLOW_STATE, None)
     flow.metadata.pop(_RESPONSE_FINISH, None)
 
