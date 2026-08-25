@@ -317,67 +317,83 @@ describe("auth v2 sign-up flow", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("coalesces Google handoff and preserves safe campaign attribution", async () => {
-    const redirect = createDeferredPromise<void>(context.signal);
-    mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
-      return redirect.promise;
-    });
-    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
-    const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
-    const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
-    setupSignUpPage(
-      { status: null },
-      {
-        path,
-        url: `https://app.vm0.ai${path}`,
-      },
-    );
-
-    const google = await waitForRoleElement("button", "Continue with Google");
-    const apple = await waitForRoleElement("button", "Continue with Apple");
-    fireEvent.click(google);
-    fireEvent.click(google);
-
-    await waitFor(() => {
-      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
-        1,
-      );
-      expect(google).toHaveAttribute("aria-busy", "true");
-    });
-    expect(google).toHaveAccessibleName("Continue with Google");
-    expect(google.textContent?.trim()).toBe("");
-    expect(apple).toBeDisabled();
-    expect(apple).toHaveAttribute("aria-busy", "false");
-    expect(apple.textContent?.trim()).toBe("Apple");
-    const handoff =
-      mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
-    expect(handoff).toMatchObject({
-      continueSignIn: false,
-      continueSignUp: false,
+  it.each([
+    { competingProvider: "Google", provider: "Apple", strategy: "oauth_apple" },
+    {
+      competingProvider: "Apple",
+      provider: "Google",
       strategy: "oauth_google",
-    });
-    const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
-    const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
-    expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
-    expect(callbackUrl.searchParams.get("redirect_url")).toBe(
-      completionUrl.toString(),
-    );
-    expect(callbackUrl.hash).toBe("#/start?step=oauth");
-    expect(completionUrl.origin).toBe("https://app.vm0.ai");
-    expect(completionUrl.pathname).toBe("/onboarding");
-    expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
-    expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
-    expect(completionUrl.toString()).not.toContain("evil.example");
+    },
+  ] as const)(
+    "coalesces $provider handoff and preserves safe campaign attribution",
+    async ({ competingProvider, provider, strategy }) => {
+      const redirect = createDeferredPromise<void>(context.signal);
+      mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
+        return redirect.promise;
+      });
+      mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+      const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
+      const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
+      setupSignUpPage(
+        { status: null },
+        {
+          path,
+          url: `https://app.vm0.ai${path}`,
+        },
+      );
 
-    await act(async () => {
-      redirect.resolve(undefined);
-      await redirect.promise;
-    });
-    await waitFor(() => {
-      expect(google).toHaveAttribute("aria-busy", "false");
-      expect(google).toHaveTextContent("Google");
-    });
-  });
+      const selected = await waitForRoleElement(
+        "button",
+        `Continue with ${provider}`,
+      );
+      const competing = await waitForRoleElement(
+        "button",
+        `Continue with ${competingProvider}`,
+      );
+      fireEvent.click(selected);
+      fireEvent.click(selected);
+
+      await waitFor(() => {
+        expect(
+          mockedClerk.signUpAuthenticateWithRedirect,
+        ).toHaveBeenCalledTimes(1);
+        expect(selected).toHaveAttribute("aria-busy", "true");
+      });
+      expect(selected).toHaveAccessibleName(`Continue with ${provider}`);
+      expect(selected.textContent?.trim()).toBe("");
+      expect(competing).toBeDisabled();
+      expect(competing).toHaveAttribute("aria-busy", "false");
+      expect(competing.textContent?.trim()).toBe(competingProvider);
+      const handoff =
+        mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
+      expect(handoff).toMatchObject({
+        continueSignIn: false,
+        continueSignUp: false,
+        strategy,
+      });
+      const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
+      const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
+      expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
+      expect(callbackUrl.searchParams.get("redirect_url")).toBe(
+        completionUrl.toString(),
+      );
+      expect(callbackUrl.hash).toBe("#/start?step=oauth");
+      expect(completionUrl.origin).toBe("https://app.vm0.ai");
+      expect(completionUrl.pathname).toBe("/onboarding");
+      expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
+      expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
+      expect(completionUrl.toString()).not.toContain("evil.example");
+
+      await act(async () => {
+        redirect.resolve(undefined);
+        await redirect.promise;
+      });
+      await waitFor(() => {
+        expect(selected).toHaveAttribute("aria-busy", "false");
+        expect(selected).toHaveTextContent(provider);
+      });
+    },
+  );
 
   it("requires legal consent before Google handoff and forwards acceptance", async () => {
     const user = userEvent.setup();

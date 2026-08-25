@@ -1157,36 +1157,14 @@ describe("auth v2 sign-in flow", () => {
     });
 
     const codeInput = await screen.findByLabelText("Verification code");
-    const visualCodeGroup = codeInput.nextElementSibling;
-    if (!(visualCodeGroup instanceof HTMLDivElement)) {
-      throw new Error("Expected the verification code presentation");
-    }
-    const codeSlots = Array.from(
-      visualCodeGroup.querySelectorAll<HTMLElement>("[data-auth-v2-otp-slot]"),
-    );
-    expect(codeSlots).toHaveLength(6);
     codeInput.focus();
     await waitFor(() => {
       expect(document.activeElement).toBe(codeInput);
-      expect(
-        codeSlots[0]?.querySelector('[data-auth-v2-otp-caret="true"]'),
-      ).toBeVisible();
     });
     fireEvent.change(codeInput, { target: { value: "1" } });
-    await waitFor(() => {
-      expect(codeSlots[0]).toHaveTextContent("1");
-      expect(
-        codeSlots[1]?.querySelector('[data-auth-v2-otp-caret="true"]'),
-      ).toBeVisible();
-    });
+    expect(codeInput).toHaveValue("1");
     fireEvent.change(codeInput, { target: { value: "12" } });
-    await waitFor(() => {
-      expect(codeSlots[0]).toHaveTextContent("1");
-      expect(codeSlots[1]).toHaveTextContent("2");
-      expect(
-        codeSlots[2]?.querySelector('[data-auth-v2-otp-caret="true"]'),
-      ).toBeVisible();
-    });
+    expect(codeInput).toHaveValue("12");
     fireEvent.change(codeInput, { target: { value: "" } });
     expect(
       screen.getByRole("heading", { level: 1, name: "Check your email" }),

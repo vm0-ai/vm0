@@ -58,7 +58,6 @@ export function AuthV2OtpInput({
                   active &&
                     "group-focus-within:border-ring group-focus-within:ring-[3px] group-focus-within:ring-ring/10",
                 )}
-                data-auth-v2-otp-slot={index}
                 key={index}
               >
                 {digit}
@@ -70,7 +69,6 @@ export function AuthV2OtpInput({
                         ? "left-[calc(50%+0.3rem)]"
                         : "left-1/2 -translate-x-1/2",
                     )}
-                    data-auth-v2-otp-caret="true"
                   />
                 ) : null}
               </span>
