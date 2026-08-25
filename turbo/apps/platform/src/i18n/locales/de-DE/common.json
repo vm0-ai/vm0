@@ -492,12 +492,14 @@
     "annotation": {
       "attach": "Markierungen anhängen",
       "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
+      "inkLabel": "Farbe {{color}}",
       "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
       "open": "Markieren",
       "redo": "Wiederholen",
       "removeMark": "Markierung entfernen",
       "subtitle_one": "{{count}} Markierung",
       "subtitle_other": "{{count}} Markierungen",
+      "textPlaceholder": "Beschriftung eingeben",
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",

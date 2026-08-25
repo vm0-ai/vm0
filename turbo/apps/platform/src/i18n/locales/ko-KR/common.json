@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "표시 첨부",
       "draftOnly": "표시는 임시 보관함에 남아 있으며 보내기 전까지 수정할 수 있습니다",
+      "inkLabel": "색상 {{color}}",
       "notePlaceholder": "여기를 어떻게 바꿀지 적어 주세요",
       "open": "주석",
       "redo": "다시 실행",
       "removeMark": "표시 삭제",
       "subtitle_other": "표시 {{count}}개",
+      "textPlaceholder": "라벨 입력",
       "tools": {
         "arrow": "화살표",
         "box": "사각형",

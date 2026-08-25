@@ -102,6 +102,11 @@ export type ZoomableImageControls = {
 
 type ZoomableArtifactImageCanvasProps = {
   alt: string;
+  /**
+   * Drawn over the image *inside* the zoom transform, so an overlay stays
+   * registered with the pixels it describes at every zoom level.
+   */
+  overlay?: ReactNode;
   canvasTestId?: string;
   children?: (controls: ZoomableImageControls) => ReactNode;
   className?: string;
@@ -277,10 +282,72 @@ function ZoomableArtifactImageElement({
   );
 }
 
+function ZoomableArtifactImageFrame({
+  element,
+  overlay,
+}: {
+  element: ZoomableArtifactImageElementProps;
+  overlay?: ReactNode;
+}) {
+  return (
+    <div className="relative shrink-0">
+      <ZoomableArtifactImageElement {...element} />
+      {overlay}
+    </div>
+  );
+}
+
+function ZoomableArtifactImageViewport({
+  canvasTestId,
+  contentClassName,
+  element,
+  instance,
+  overlay,
+}: {
+  canvasTestId: string;
+  contentClassName?: string;
+  element: ZoomableArtifactImageElementProps;
+  instance: ReactZoomPanPinchContext;
+  overlay?: ReactNode;
+}) {
+  return (
+    <div
+      className="h-full min-h-0 w-full cursor-grab overscroll-contain active:cursor-grabbing"
+      data-testid={canvasTestId}
+      data-zoomable-image-canvas="true"
+      style={{ touchAction: "none" }}
+    >
+      <TransformComponent
+        contentStyle={{ height: "100%", width: "100%" }}
+        wrapperClass="h-full min-h-0 w-full"
+        wrapperProps={{
+          onWheelCapture: proportionalImageWheelHandler(instance),
+        }}
+        wrapperStyle={{
+          height: "100%",
+          touchAction: "none",
+          width: "100%",
+        }}
+      >
+        <div
+          className={cn(
+            "flex h-full w-full items-center justify-center",
+            contentClassName,
+          )}
+          data-testid={`${canvasTestId}-content`}
+        >
+          <ZoomableArtifactImageFrame element={element} overlay={overlay} />
+        </div>
+      </TransformComponent>
+    </div>
+  );
+}
+
 export function ZoomableArtifactImageCanvas({
   alt,
   canvasTestId = "zoomable-image-canvas",
   children,
+  overlay,
   className,
   contentClassName,
   imageClassName,
@@ -362,44 +429,22 @@ export function ZoomableArtifactImageCanvas({
             )}
           >
             {children?.(controls)}
-            <div
-              className="h-full min-h-0 w-full cursor-grab overscroll-contain active:cursor-grabbing"
-              data-testid={canvasTestId}
-              data-zoomable-image-canvas="true"
-              style={{ touchAction: "none" }}
-            >
-              <TransformComponent
-                contentStyle={{ height: "100%", width: "100%" }}
-                wrapperClass="h-full min-h-0 w-full"
-                wrapperProps={{
-                  onWheelCapture: proportionalImageWheelHandler(instance),
-                }}
-                wrapperStyle={{
-                  height: "100%",
-                  touchAction: "none",
-                  width: "100%",
-                }}
-              >
-                <div
-                  className={cn(
-                    "flex h-full w-full items-center justify-center",
-                    contentClassName,
-                  )}
-                  data-testid={`${canvasTestId}-content`}
-                >
-                  <ZoomableArtifactImageElement
-                    alt={alt}
-                    imageClassName={imageClassName}
-                    imageRef={imageRef}
-                    imageTestId={imageTestId}
-                    imageWidth={imageWidth}
-                    onError={onError}
-                    onLoad={handleImageLoad}
-                    src={src}
-                  />
-                </div>
-              </TransformComponent>
-            </div>
+            <ZoomableArtifactImageViewport
+              canvasTestId={canvasTestId}
+              contentClassName={contentClassName}
+              element={{
+                alt,
+                imageClassName,
+                imageRef,
+                imageTestId,
+                imageWidth,
+                onError,
+                onLoad: handleImageLoad,
+                src,
+              }}
+              instance={instance}
+              overlay={overlay}
+            />
           </div>
         );
       }}

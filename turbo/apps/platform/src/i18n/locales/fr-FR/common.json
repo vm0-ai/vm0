@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Joindre les annotations",
       "draftOnly": "Les annotations restent dans le brouillon — modifiables jusqu'à l'envoi",
+      "inkLabel": "Couleur {{color}}",
       "notePlaceholder": "Dites ce qui doit changer ici",
       "open": "Annoter",
       "redo": "Rétablir",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} annotation",
       "subtitle_many": "{{count}} annotations",
       "subtitle_other": "{{count}} annotations",
+      "textPlaceholder": "Saisissez le libellé",
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",

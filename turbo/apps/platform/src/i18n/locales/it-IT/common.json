@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Allega segni",
       "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "inkLabel": "Colore {{color}}",
       "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
       "open": "Annota",
       "redo": "Ripeti",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} segno",
       "subtitle_many": "{{count}} segni",
       "subtitle_other": "{{count}} segni",
+      "textPlaceholder": "Scrivi l'etichetta",
       "tools": {
         "arrow": "Freccia",
         "box": "Rettangolo",

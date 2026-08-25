@@ -492,12 +492,14 @@
     "annotation": {
       "attach": "Attach marks",
       "draftOnly": "Marks stay in the draft — you can change them until you send",
+      "inkLabel": "Ink {{color}}",
       "notePlaceholder": "Say what should change here",
       "open": "Annotate",
       "redo": "Redo",
       "removeMark": "Remove mark",
       "subtitle_one": "{{count}} mark",
       "subtitle_other": "{{count}} marks",
+      "textPlaceholder": "Type the label",
       "tools": {
         "arrow": "Arrow",
         "box": "Box",
