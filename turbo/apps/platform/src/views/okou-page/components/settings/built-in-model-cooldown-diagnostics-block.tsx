@@ -1,14 +1,36 @@
 import type { BuiltInModelCooldownDiagnostics } from "@okouai/api-contracts/contracts/model-provider-routes";
-import { Button } from "@okouai/ui/components/ui/button";
-import { useLastResolved, useLoadableState, useSet } from "ccstate-react";
-import { ChevronDown, ChevronUp, Cpu, RefreshCw } from "lucide-react";
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@okouai/ui";
+import {
+  useGet,
+  useLastResolved,
+  useLoadableState,
+  useSet,
+} from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { ChevronDown, ChevronUp, CircleX, Cpu, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import {
   builtInModelCooldownDiagnostics$,
+  cancelBuiltInModelCooldown$,
   reloadBuiltInModelCooldownDiagnostics$,
 } from "../../../../signals/okou-page/settings/built-in-model-cooldown-diagnostics.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+
+type BuiltInModelCooldown =
+  BuiltInModelCooldownDiagnostics["activeCooldowns"][number];
 
 function CooldownDiagnosticsSummary({
   diagnostics,
@@ -69,6 +91,232 @@ function CooldownDiagnosticsSummary({
   );
 }
 
+function CooldownDetails({
+  cooldown,
+  showUnavailableUntil,
+}: {
+  readonly cooldown: BuiltInModelCooldown;
+  readonly showUnavailableUntil: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <dl className="grid gap-2 font-mono text-[11px] sm:grid-cols-2">
+      <div className="min-w-0">
+        <dt className="text-muted-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .selectedModel;
+          })}
+        </dt>
+        <dd className="break-all text-foreground">{cooldown.selectedModel}</dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-muted-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .providerType;
+          })}
+        </dt>
+        <dd className="break-all text-foreground">{cooldown.providerType}</dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-muted-foreground">
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .upstreamModel;
+          })}
+        </dt>
+        <dd className="break-all text-foreground">{cooldown.upstreamModel}</dd>
+      </div>
+      {showUnavailableUntil && (
+        <div className="min-w-0">
+          <dt className="text-muted-foreground">
+            {t(($) => {
+              return $.settings.preferences.debug.builtInModelCooldown
+                .unavailableUntil;
+            })}
+          </dt>
+          <dd className="break-all text-foreground">
+            <time dateTime={cooldown.unavailableUntil}>
+              {cooldown.unavailableUntil}
+            </time>
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+function CooldownCancellationDialogBody({
+  cooldown,
+  cancelling,
+  onConfirm,
+}: {
+  readonly cooldown: BuiltInModelCooldown;
+  readonly cancelling: boolean;
+  readonly onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <DialogContent className="max-w-md" showCloseButton={!cancelling}>
+      <DialogHeader>
+        <DialogTitle>
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .cancelTitle;
+          })}
+        </DialogTitle>
+        <DialogDescription>
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .cancelDescription;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="rounded-md bg-muted/30 px-3 py-3">
+        <CooldownDetails cooldown={cooldown} showUnavailableUntil={false} />
+      </div>
+      <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
+        {t(($) => {
+          return $.settings.preferences.debug.builtInModelCooldown
+            .cancelWarning;
+        })}
+      </p>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="outline" disabled={cancelling}>
+            {t(($) => {
+              return $.settings.preferences.debug.builtInModelCooldown
+                .keepCooldown;
+            })}
+          </Button>
+        </DialogClose>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={cancelling}
+          onClick={onConfirm}
+        >
+          {cancelling
+            ? t(($) => {
+                return $.settings.preferences.debug.builtInModelCooldown
+                  .cancelling;
+              })
+            : t(($) => {
+                return $.settings.preferences.debug.builtInModelCooldown
+                  .cancelAction;
+              })}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function CooldownCancellationControl({
+  cooldown,
+  loading,
+}: {
+  readonly cooldown: BuiltInModelCooldown;
+  readonly loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const [cancelLoadable, cancelCooldown] = useLoadableSet(
+    cancelBuiltInModelCooldown$,
+  );
+  const cancelling = cancelLoadable.state === "loading";
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={loading}
+        >
+          <CircleX className="h-3.5 w-3.5" />
+          {t(($) => {
+            return $.settings.preferences.debug.builtInModelCooldown
+              .cancelAction;
+          })}
+        </Button>
+      </DialogTrigger>
+      <CooldownCancellationDialogBody
+        cooldown={cooldown}
+        cancelling={cancelling}
+        onConfirm={() => {
+          detach(cancelCooldown(cooldown, pageSignal), Reason.DomCallback);
+        }}
+      />
+    </Dialog>
+  );
+}
+
+function CooldownRow({
+  cooldown,
+  canCancel,
+  loading,
+}: {
+  readonly cooldown: BuiltInModelCooldown;
+  readonly canCancel: boolean;
+  readonly loading: boolean;
+}) {
+  return (
+    <div className="rounded-md bg-muted/30 px-3 py-3">
+      <CooldownDetails cooldown={cooldown} showUnavailableUntil />
+      {canCancel && (
+        <div className="mt-3 flex justify-end border-t border-border/60 pt-3">
+          <CooldownCancellationControl cooldown={cooldown} loading={loading} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CooldownList({
+  diagnostics,
+  loading,
+}: {
+  readonly diagnostics: BuiltInModelCooldownDiagnostics;
+  readonly loading: boolean;
+}) {
+  const { t } = useTranslation();
+
+  if (diagnostics.activeCooldowns.length === 0) {
+    return (
+      <div className="rounded-md bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
+        {t(($) => {
+          return $.settings.preferences.debug.builtInModelCooldown.empty;
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {diagnostics.activeCooldowns.map((cooldown) => {
+        const key = JSON.stringify([
+          cooldown.selectedModel,
+          cooldown.providerType,
+          cooldown.upstreamModel,
+        ]);
+        return (
+          <CooldownRow
+            key={key}
+            cooldown={cooldown}
+            canCancel={diagnostics.canCancelCooldowns === true}
+            loading={loading}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function CooldownDiagnosticsContent({
   diagnostics,
   loading,
@@ -104,7 +352,6 @@ function CooldownDiagnosticsContent({
           })}
         </Button>
       </div>
-
       {!diagnostics.fallbackEnabled && (
         <div className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
           {t(($) => {
@@ -113,77 +360,7 @@ function CooldownDiagnosticsContent({
           })}
         </div>
       )}
-
-      {diagnostics.activeCooldowns.length === 0 ? (
-        <div className="rounded-md bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
-          {t(($) => {
-            return $.settings.preferences.debug.builtInModelCooldown.empty;
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {diagnostics.activeCooldowns.map((cooldown) => {
-            const key = JSON.stringify([
-              cooldown.selectedModel,
-              cooldown.providerType,
-              cooldown.upstreamModel,
-            ]);
-            return (
-              <dl
-                key={key}
-                className="grid gap-2 rounded-md bg-muted/30 px-3 py-3 font-mono text-[11px] sm:grid-cols-2"
-              >
-                <div className="min-w-0">
-                  <dt className="text-muted-foreground">
-                    {t(($) => {
-                      return $.settings.preferences.debug.builtInModelCooldown
-                        .selectedModel;
-                    })}
-                  </dt>
-                  <dd className="break-all text-foreground">
-                    {cooldown.selectedModel}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-muted-foreground">
-                    {t(($) => {
-                      return $.settings.preferences.debug.builtInModelCooldown
-                        .providerType;
-                    })}
-                  </dt>
-                  <dd className="break-all text-foreground">
-                    {cooldown.providerType}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-muted-foreground">
-                    {t(($) => {
-                      return $.settings.preferences.debug.builtInModelCooldown
-                        .upstreamModel;
-                    })}
-                  </dt>
-                  <dd className="break-all text-foreground">
-                    {cooldown.upstreamModel}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-muted-foreground">
-                    {t(($) => {
-                      return $.settings.preferences.debug.builtInModelCooldown
-                        .unavailableUntil;
-                    })}
-                  </dt>
-                  <dd className="break-all text-foreground">
-                    <time dateTime={cooldown.unavailableUntil}>
-                      {cooldown.unavailableUntil}
-                    </time>
-                  </dd>
-                </div>
-              </dl>
-            );
-          })}
-        </div>
-      )}
+      <CooldownList diagnostics={diagnostics} loading={loading} />
     </div>
   );
 }
