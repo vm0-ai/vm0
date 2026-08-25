@@ -15,9 +15,21 @@ if ! BASE_COMMIT=$(git -C "$REPO_ROOT" rev-parse --verify "${BASE_REF}^{commit}"
   exit 2
 fi
 
-mapfile -d '' -t changed_files < <(
-  git -C "$REPO_ROOT" diff --no-renames --name-only -z "$BASE_COMMIT" HEAD --
-)
+if ! changed_files_file=$(mktemp); then
+  echo "Failed to create changed-files buffer" >&2
+  exit 2
+fi
+trap 'rm -f "$changed_files_file"' EXIT
+
+if ! git -C "$REPO_ROOT" diff --no-renames --name-only -z "$BASE_COMMIT" HEAD -- \
+  > "$changed_files_file"; then
+  echo "Failed to inspect changed files" >&2
+  exit 2
+fi
+if ! mapfile -d '' -t changed_files < "$changed_files_file"; then
+  echo "Failed to read changed files" >&2
+  exit 2
+fi
 
 if [ "${#changed_files[@]}" -eq 0 ]; then
   echo "No changed files" >&2

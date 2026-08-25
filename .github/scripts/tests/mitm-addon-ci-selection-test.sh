@@ -134,6 +134,13 @@ assert_status 1 "$rename_base" "cross-boundary rename"
 
 assert_status 2 does-not-exist "invalid base ref"
 
+diff_error_base=$(git -C "$repo" rev-parse HEAD^)
+diff_error_tree=$(git -C "$repo" rev-parse "${diff_error_base}^{tree}")
+diff_error_object="${repo}/.git/objects/${diff_error_tree:0:2}/${diff_error_tree:2}"
+[ -f "$diff_error_object" ] || fail "diff failure fixture must use a loose tree object"
+rm -f -- "$diff_error_object"
+assert_status 2 "$diff_error_base" "Git diff failure"
+
 crates_json=$(yq -o=json '.' "$CRATES_WORKFLOW")
 security_json=$(yq -o=json '.' "$SECURITY_WORKFLOW")
 
