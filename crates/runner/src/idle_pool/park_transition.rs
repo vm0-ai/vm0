@@ -106,11 +106,11 @@ pub(crate) struct IdleParkFailure {
 
 enum IdleParkFailureOwnership {
     Active {
-        resources: IdleSandboxResources,
+        resources: Box<IdleSandboxResources>,
         budget_lease: BudgetLease,
     },
     Parked {
-        rejected: RejectedParkedIdleCandidate,
+        rejected: Box<RejectedParkedIdleCandidate>,
     },
 }
 
@@ -276,11 +276,11 @@ async fn park_idle_transition(
             .await;
         return Err(IdleParkFailure {
             ownership: IdleParkFailureOwnership::Active {
-                resources: IdleSandboxResources {
+                resources: Box::new(IdleSandboxResources {
                     sandbox,
                     factory,
                     workspace_promotion: None,
-                },
+                }),
                 budget_lease,
             },
             reason: "promotion_identity_mismatch",
@@ -299,11 +299,11 @@ async fn park_idle_transition(
         Err(error) => {
             return Err(IdleParkFailure {
                 ownership: IdleParkFailureOwnership::Active {
-                    resources: IdleSandboxResources {
+                    resources: Box::new(IdleSandboxResources {
                         sandbox,
                         factory,
                         workspace_promotion,
-                    },
+                    }),
                     budget_lease,
                 },
                 reason: "reuse_preparation_failed",
@@ -364,7 +364,7 @@ async fn park_idle_transition(
                     let expected_capacity_rejection = error.is_expected_capacity_rejection();
                     return Err(IdleParkFailure {
                         ownership: IdleParkFailureOwnership::Parked {
-                            rejected: candidate.into_rejected(),
+                            rejected: Box::new(candidate.into_rejected()),
                         },
                         reason: "reuse_preparation_failed",
                         error: error.to_string(),
@@ -388,11 +388,11 @@ async fn park_idle_transition(
         }
         Ok(Err(error)) => Err(IdleParkFailure {
             ownership: IdleParkFailureOwnership::Active {
-                resources: IdleSandboxResources {
+                resources: Box::new(IdleSandboxResources {
                     sandbox,
                     factory,
                     workspace_promotion,
-                },
+                }),
                 budget_lease,
             },
             reason: "park_failed",
@@ -405,11 +405,11 @@ async fn park_idle_transition(
             abandon_unpublished_workspace_promotion(workspace_promotion, "park_panicked").await;
             Err(IdleParkFailure {
                 ownership: IdleParkFailureOwnership::Active {
-                    resources: IdleSandboxResources {
+                    resources: Box::new(IdleSandboxResources {
                         sandbox,
                         factory,
                         workspace_promotion: None,
-                    },
+                    }),
                     budget_lease,
                 },
                 reason: "park_panicked",
@@ -558,11 +558,13 @@ impl IdleParkFailure {
                 resources,
                 budget_lease,
             } => (
-                resources
+                (*resources)
                     .into_destroy_payload(WorkspacePromotionPolicy::AbandonUnpublished(reason)),
                 budget_lease,
             ),
-            IdleParkFailureOwnership::Parked { rejected } => rejected.into_active_destroy_parts(),
+            IdleParkFailureOwnership::Parked { rejected } => {
+                (*rejected).into_active_destroy_parts()
+            }
         };
         (
             IdleDestroyJob {
@@ -593,7 +595,7 @@ impl IdleParkFailure {
                     sandbox,
                     factory,
                     workspace_promotion,
-                } = resources;
+                } = *resources;
                 IdleParkFailureParts::Active {
                     active: IdleParkActiveParts {
                         sandbox,
@@ -606,7 +608,7 @@ impl IdleParkFailure {
                 }
             }
             IdleParkFailureOwnership::Parked { rejected } => IdleParkFailureParts::Parked {
-                rejected,
+                rejected: *rejected,
                 reason,
                 error,
                 expected_capacity_rejection,

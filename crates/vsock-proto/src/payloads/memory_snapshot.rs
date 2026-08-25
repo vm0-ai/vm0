@@ -74,8 +74,13 @@ impl MemorySnapshot {
             self.swap_free_bytes,
         ];
         let mut payload = [0; MEMORY_SNAPSHOT_PAYLOAD_SIZE];
-        for (chunk, counter) in payload.chunks_exact_mut(COUNTER_SIZE).zip(counters) {
-            chunk.copy_from_slice(&counter.to_be_bytes());
+        for (chunk, counter) in payload
+            .as_chunks_mut::<COUNTER_SIZE>()
+            .0
+            .iter_mut()
+            .zip(counters)
+        {
+            *chunk = counter.to_be_bytes();
         }
         payload
     }
@@ -89,11 +94,11 @@ pub fn decode_memory_snapshot(payload: &[u8]) -> Result<MemorySnapshot, Protocol
         ));
     }
     let mut counters = [0_u64; COUNTER_COUNT];
-    for (counter, chunk) in counters.iter_mut().zip(payload.chunks_exact(COUNTER_SIZE)) {
-        let bytes: [u8; COUNTER_SIZE] = chunk.try_into().map_err(|_| {
-            ProtocolError::InvalidPayload("memory snapshot counter has invalid width")
-        })?;
-        *counter = u64::from_be_bytes(bytes);
+    for (counter, chunk) in counters
+        .iter_mut()
+        .zip(payload.as_chunks::<COUNTER_SIZE>().0)
+    {
+        *counter = u64::from_be_bytes(*chunk);
     }
     Ok(MemorySnapshot {
         mem_total_bytes: counters[0],

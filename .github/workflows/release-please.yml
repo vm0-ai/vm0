@@ -1034,7 +1034,7 @@ jobs:
       group: deploy-host-worker-production
       cancel-in-progress: false
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     permissions:
       contents: read
     environment: production
@@ -1179,7 +1179,7 @@ jobs:
       needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -1606,7 +1606,7 @@ jobs:
       needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     defaults:
       run:
         shell: bash
@@ -1941,7 +1941,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest-8-cores
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     defaults:
       run:
         shell: bash
@@ -2196,7 +2196,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     permissions:
       contents: read
     environment: production
@@ -2446,7 +2446,7 @@ jobs:
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     permissions:
       contents: read
     environment: production
@@ -2614,7 +2614,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     permissions:
       contents: read
     steps:

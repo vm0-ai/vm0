@@ -230,14 +230,16 @@ pub(super) async fn check_active_jobs_gate(
 
     match decide_gate(&status) {
         GateDecision::Bypass => Ok(()),
-        GateDecision::Refuse { draining } => Err(RunnerError::ActiveJobs(ActiveJobsError {
-            unit: unit.unit_name().to_string(),
-            suffix: unit.suffix().to_string(),
-            run_ids: status.run_ids,
-            runner_uptime: status.uptime,
-            command_name,
-            draining,
-        })),
+        GateDecision::Refuse { draining } => {
+            Err(RunnerError::ActiveJobs(Box::new(ActiveJobsError {
+                unit: unit.unit_name().to_string(),
+                suffix: unit.suffix().to_string(),
+                run_ids: status.run_ids,
+                runner_uptime: status.uptime,
+                command_name,
+                draining,
+            })))
+        }
     }
 }
 
