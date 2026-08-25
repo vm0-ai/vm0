@@ -42,6 +42,7 @@ import {
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
+  Lock,
   Mic,
   Monitor,
   Paperclip,
@@ -57,6 +58,7 @@ import {
   SwatchBook,
   Target,
   User,
+  Users,
   Video,
   X,
   type LucideIcon,
@@ -5505,6 +5507,18 @@ function ImportedPresentationTemplateRenameControl({
   );
 }
 
+const IMPORTED_TEMPLATE_VISIBILITY_OPTIONS = [
+  { value: "private", Icon: Lock },
+  { value: "public", Icon: Users },
+] as const;
+
+/**
+ * Visibility for an imported deck, stated as its consequence rather than as a
+ * setting: a template is only ever "mine" or "everyone's here", so the two
+ * words that name those states carry less than the one sentence that says what
+ * they do. The sentence stays on screen and the picker moves behind `Change`,
+ * because reading the current state is the common act and switching it is not.
+ */
 function ImportedPresentationTemplateVisibilityControl({
   visibility,
   updating,
@@ -5515,43 +5529,106 @@ function ImportedPresentationTemplateVisibilityControl({
   onChange: (visibility: PresentationTemplateSummary["visibility"]) => void;
 }) {
   const { t } = useTranslation();
+  const optionLabel = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.workflows.common.private;
+        })
+      : t(($) => {
+          return $.settings.dialog.groups.workspace;
+        });
+  };
+  const optionState = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.artifacts.templates.visibility.privateState;
+        })
+      : t(($) => {
+          return $.artifacts.templates.visibility.workspaceState;
+        });
+  };
+  const CurrentIcon = visibility === "private" ? Lock : Users;
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.workflows.detail.metadata.visibility;
-        })}
+    <Popover>
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+        <CurrentIcon size={14} className="shrink-0" aria-hidden="true" />
+        <span>{optionState(visibility)}</span>
+        <span aria-hidden="true">·</span>
+        <PopoverTrigger
+          disabled={updating}
+          className="font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:decoration-foreground disabled:opacity-50"
+          aria-label={t(($) => {
+            return $.artifacts.templates.visibility.changeLabel;
+          })}
+        >
+          {t(($) => {
+            return $.artifacts.templates.visibility.change;
+          })}
+        </PopoverTrigger>
       </p>
-      <Select
-        value={visibility}
-        disabled={updating}
-        onValueChange={(nextVisibility) => {
-          if (nextVisibility === "private" || nextVisibility === "public") {
-            onChange(nextVisibility);
-          }
-        }}
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="w-[19rem] p-1.5"
       >
-        <SelectTrigger
+        <div
+          role="radiogroup"
           aria-label={t(($) => {
             return $.workflows.detail.metadata.visibility;
           })}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="private">
-            {t(($) => {
-              return $.workflows.common.private;
-            })}
-          </SelectItem>
-          <SelectItem value="public">
-            {t(($) => {
-              return $.settings.dialog.groups.workspace;
-            })}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+          {IMPORTED_TEMPLATE_VISIBILITY_OPTIONS.map(({ value, Icon }) => {
+            const selected = value === visibility;
+            return (
+              <PopoverClose asChild key={value}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-state-hover",
+                    selected && "bg-state-selected",
+                  )}
+                  onClick={() => {
+                    if (!selected) {
+                      onChange(value);
+                    }
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    className="mt-0.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground">
+                      {optionLabel(value)}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {optionState(value)}
+                    </span>
+                  </span>
+                  {/* The check column is reserved on both rows: letting it
+                      appear only on the selected one narrows that row's text
+                      box, so the description reflows every time the selection
+                      moves. */}
+                  <span className="mt-0.5 w-4 shrink-0">
+                    {selected ? (
+                      <Check
+                        size={16}
+                        className="text-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </span>
+                </button>
+              </PopoverClose>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

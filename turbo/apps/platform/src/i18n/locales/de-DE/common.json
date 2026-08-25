@@ -700,6 +700,12 @@
       "tryDifferentSearch": "Versuchen Sie es mit einer anderen Suche.",
       "use": "Verwenden",
       "useThisTemplate": "Verwenden Sie diese Vorlage",
+      "visibility": {
+        "change": "Ändern",
+        "changeLabel": "Sichtbarkeit der Vorlage ändern",
+        "privateState": "Nur du kannst sie sehen und verwenden",
+        "workspaceState": "Alle in diesem Arbeitsbereich können sie verwenden"
+      },
       "website": "Webseite",
       "websitePreview": "{{title}} Vorschau der Website-Vorlage",
       "workflow": "Workflow",

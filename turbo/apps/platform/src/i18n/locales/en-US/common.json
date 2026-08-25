@@ -700,6 +700,12 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "visibility": {
+        "change": "Change",
+        "changeLabel": "Change template visibility",
+        "privateState": "Only you can see and use it",
+        "workspaceState": "Anyone in this workspace can use it"
+      },
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
       "workflow": "Workflow",

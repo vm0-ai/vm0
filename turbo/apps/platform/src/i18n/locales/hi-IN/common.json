@@ -700,6 +700,12 @@
       "tryDifferentSearch": "भिन्न खोज का प्रयास करें.",
       "use": "उपयोग",
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
+      "visibility": {
+        "change": "बदलें",
+        "changeLabel": "टेम्पलेट की दृश्यता बदलें",
+        "privateState": "केवल आप इसे देख और उपयोग कर सकते हैं",
+        "workspaceState": "इस वर्कस्पेस में कोई भी इसका उपयोग कर सकता है"
+      },
       "website": "वेबसाइट",
       "websitePreview": "{{title}} वेबसाइट टेम्पलेट पूर्वावलोकन",
       "workflow": "वर्कफ़्लो",
