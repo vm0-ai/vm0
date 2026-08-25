@@ -402,7 +402,7 @@ jobs:
     timeout-minutes: 20
     env:
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
-      RUSTFLAGS: -C link-arg=-fuse-ld=mold
+      RUSTFLAGS: -C prefer-dynamic
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
@@ -413,8 +413,8 @@ jobs:
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           workspaces: crates -> target
-          shared-key: coverage-line-tables-only-mold
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: coverage-line-tables-only-prefer-dynamic
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'perf/issue-29242-rust-coverage-mold' }}
 
       - name: Report coverage disk usage after cache restore
         run: |
