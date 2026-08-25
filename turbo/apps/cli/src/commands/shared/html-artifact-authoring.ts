@@ -19,7 +19,7 @@ export type HtmlArtifactKind = Extract<
 const HTML_RESOURCE_INDEX_BASE_URL =
   "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d";
 const LATEST_WEBSITE_RESOURCE_INDEX_URL =
-  "https://static.vm0.io/html-resources/website/v1/480d0e4a000be6df09698005009fa5a0bf3c02a904b8fd70adfc83655b411a12/website.json";
+  "https://static.vm0.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json";
 
 const HTML_RESOURCE_INDEX_URLS: Record<HtmlArtifactKind, string> = {
   website: `${HTML_RESOURCE_INDEX_BASE_URL}/website.json`,
