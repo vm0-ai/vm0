@@ -143,7 +143,13 @@ fn sync_timezone(timezone: &str) -> io::Result<bool> {
 }
 
 fn sync_timezone_at(root: &Path, timezone: &str) -> io::Result<bool> {
-    let zoneinfo = root.join("usr/share/zoneinfo").join(timezone);
+    // The previous shell command appended the validated name to the zoneinfo
+    // directory textually. Strip leading separators before `Path::join` so an
+    // accepted name such as `/UTC` keeps that behavior instead of replacing
+    // the trusted root prefix.
+    let zoneinfo = root
+        .join("usr/share/zoneinfo")
+        .join(timezone.trim_start_matches('/'));
     if !zoneinfo.is_file() {
         return Ok(false);
     }
@@ -702,5 +708,6 @@ mod tests {
             b"PATH=/usr/bin\nLANG=C\nTZ=Asia/Shanghai\n"
         );
         assert!(!sync_timezone_at(root.path(), "Mars/Olympus").unwrap());
+        assert!(!sync_timezone_at(root.path(), "/etc/passwd").unwrap());
     }
 }
