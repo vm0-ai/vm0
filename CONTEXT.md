@@ -102,3 +102,24 @@ _Avoid_: Bank consent, Mastercard connection
 **Banking access request**:
 An agent's user-visible request for a banking agent grant, including the purpose for access. The request may first require the user to create or repair a banking connection.
 _Avoid_: Banking connection, automatic grant
+
+# Acquisition Attribution Context
+
+This context separates browser conversion delivery from its server-confirmed
+source and server-side fallback.
+
+## Language
+
+**Browser conversion**:
+A Google Ads website conversion emitted by gtag from an authenticated browser.
+_Avoid_: Data Manager upload, server conversion
+
+**Conversion milestone baseline**:
+The first server-confirmed milestone snapshot recorded in a browser without
+emitting historical conversions.
+_Avoid_: Backfill, initial conversion batch
+
+**Data Manager fallback**:
+A server-side upload to the same conversion action using the same transaction
+ID when browser delivery may be missed.
+_Avoid_: Separate conversion, duplicate conversion

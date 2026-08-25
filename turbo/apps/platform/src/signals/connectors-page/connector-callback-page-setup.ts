@@ -23,8 +23,9 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { jsonParseOr } from "../utils.ts";
+import { jsonParseOr, settle } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
+import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
@@ -278,6 +279,9 @@ export const setupConnectorCallbackPage$ = command(
             query,
             signal,
           );
+    if (result.status === "success") {
+      await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
+    }
     set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();

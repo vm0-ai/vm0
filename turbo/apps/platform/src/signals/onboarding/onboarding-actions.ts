@@ -7,11 +7,9 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
-import { IN_VITEST } from "../../env.ts";
 import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
-import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../okou-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -27,6 +25,7 @@ import {
   capturePaidOnboardingRedirectToStripe$,
   capturePaidOnboardingRoleConfirmed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
+import { completeGoogleAdsPaidCheckout$ } from "../bootstrap/google-ads-paid-conversion.ts";
 
 export const completeOnboarding$ = command(
   async (
@@ -170,35 +169,12 @@ export const prepareOnboardingVideoRun$ = command(
   },
 );
 
-const CHECKOUT_POLL_LIMIT = IN_VITEST ? 2 : 90;
-const CHECKOUT_POLL_INTERVAL_MS = 1000;
-
 export const completeOnboardingCheckoutReturn$ = command(
-  async ({ get }, sessionId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(apiClient$)(billingCheckoutContract);
-    let attempts = 0;
-    await setLoop(
-      async (loopSignal) => {
-        attempts += 1;
-        const result = await accept(
-          client.complete({
-            body: { sessionId },
-            fetchOptions: { signal: loopSignal },
-          }),
-          [200],
-        );
-        loopSignal.throwIfAborted();
-        if (result.body.completed) {
-          return true;
-        }
-        if (attempts >= CHECKOUT_POLL_LIMIT) {
-          throw new Error("Checkout completion timed out");
-        }
-        return false;
-      },
-      CHECKOUT_POLL_INTERVAL_MS,
+  async ({ set }, sessionId: string, signal: AbortSignal): Promise<void> => {
+    await set(
+      completeGoogleAdsPaidCheckout$,
+      { sessionId, kind: "paid_in_onboarding" },
       signal,
-      { retryTransientErrors: false },
     );
   },
 );

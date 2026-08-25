@@ -22,6 +22,7 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
+const ADSMARCH_SIGNUP_SEND_TO = "AW-18407336975/8mCZCLORrOccEI_YpslE";
 const storedAdAttributionStorage = sessionStorageSignals(
   STORED_AD_ATTRIBUTION_KEY,
 );
@@ -53,7 +54,7 @@ function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
 function installGtagMock() {
   const windowWithGtag = window as WindowWithGtag;
   const originalGtag = windowWithGtag.gtag;
-  const gtag = vi.fn();
+  const gtag = vi.fn<(...args: unknown[]) => void>();
 
   Object.defineProperty(windowWithGtag, "gtag", {
     configurable: true,
@@ -129,10 +130,20 @@ describe("signup attribution Google Ads conversion", () => {
         currency: "USD",
       }),
     );
+    expect(gtag).toHaveBeenCalledWith(
+      "event",
+      "conversion",
+      expect.objectContaining({
+        send_to: ADSMARCH_SIGNUP_SEND_TO,
+        value: 1,
+        currency: "USD",
+        transaction_id: "test-user-123",
+      }),
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
-    expect(gtag).toHaveBeenCalledTimes(1);
+    expect(gtag).toHaveBeenCalledTimes(2);
   });
 
   it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {

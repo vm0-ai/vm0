@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { billingCheckoutContract } from "@okouai/api-contracts/contracts/billing";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
@@ -12,7 +13,7 @@ type WindowWithGtag = Window & {
 };
 
 describe("billing redirect toast", () => {
-  it("does not fire Google Ads conversion on Pro checkout success redirects", async () => {
+  it("fires Paid After Onboarding after the checkout invoice is confirmed", async () => {
     const windowWithGtag = window as WindowWithGtag;
     const originalGtag = windowWithGtag.gtag;
     const gtag = vi.fn<(...args: unknown[]) => void>();
@@ -33,6 +34,15 @@ describe("billing redirect toast", () => {
       }
       Reflect.deleteProperty(windowWithGtag, "gtag");
     });
+    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
+      return respond(200, {
+        completed: true,
+        googleAdsConversion: {
+          transactionId: "in_after_onboarding",
+          valueUsd: 99,
+        },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -45,7 +55,12 @@ describe("billing redirect toast", () => {
         new URLSearchParams(search()).has("billing_session_id"),
       ).toBeFalsy();
     });
-    expect(gtag).not.toHaveBeenCalled();
+    expect(gtag).toHaveBeenCalledWith("event", "conversion", {
+      send_to: "AW-18407336975/ePWuCPuRrOccEI_YpslE",
+      value: 40,
+      currency: "USD",
+      transaction_id: "in_after_onboarding",
+    });
   });
 
   it("shows concurrency purchase success after returning from Stripe", async () => {

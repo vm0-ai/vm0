@@ -163,3 +163,25 @@ describe("POST /api/attribution/signup", () => {
     expect(context.mocks.clerk.users.updateUserMetadata).not.toHaveBeenCalled();
   });
 });
+
+describe("GET /api/attribution/google-ads-milestones", () => {
+  it("requires a Clerk session", async () => {
+    const response = await client().googleAdsMilestones();
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns no milestones for a user without acquisition activity", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, null);
+
+    const response = await accept(
+      client().googleAdsMilestones({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ milestones: [] });
+  });
+});

@@ -36,7 +36,7 @@ import {
   type ClerkClient,
 } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import { getStripeClient, type StripeInvoice } from "../external/stripe-client";
 import {
   activePriceId,
   activeUsagePackPlanPriceId,
@@ -477,6 +477,26 @@ function usagePackCheckoutTierConflicts(
   );
 }
 
+function googleAdsPaidConversion(invoice: StripeInvoice | null):
+  | {
+      readonly transactionId: string;
+      readonly valueUsd: number;
+    }
+  | undefined {
+  const amountPaidCents = invoice?.amount_paid ?? 0;
+  if (
+    invoice?.status !== "paid" ||
+    invoice.currency.toLowerCase() !== "usd" ||
+    amountPaidCents <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    transactionId: invoice.id,
+    valueUsd: amountPaidCents / 100,
+  };
+}
+
 const confirmPlanPurchaseForOrg$ = command(
   async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
     const result = await set(confirmPlanPurchase$, orgId, previewToken, signal);
@@ -497,7 +517,14 @@ const confirmPlanPurchaseForOrg$ = command(
         );
       }
     }
-    return { status: 200 as const, body: result.response };
+    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    return {
+      status: 200 as const,
+      body:
+        result.response.status === "completed" && conversion
+          ? { ...result.response, googleAdsConversion: conversion }
+          : result.response,
+    };
   },
 );
 
@@ -1826,9 +1853,16 @@ const checkoutCompleteAuthed$ = command(
       );
     }
 
+    const conversion =
+      result.status === "completed"
+        ? googleAdsPaidConversion(result.paidInvoice)
+        : undefined;
     return {
       status: 200 as const,
-      body: { completed: result.status === "completed" },
+      body: {
+        completed: result.status === "completed",
+        ...(conversion ? { googleAdsConversion: conversion } : {}),
+      },
     };
   },
 );

@@ -14943,7 +14943,7 @@ describe("POST /api/billing/checkout/complete", () => {
     expect(status.currentPeriodEnd).toBeNull();
   });
 
-  it("allows completion when the same subscription is already stored", async () => {
+  it("returns the paid invoice conversion when the subscription is already stored", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const fixture = await trackedSeed({
@@ -14965,6 +14965,12 @@ describe("POST /api/billing/checkout/complete", () => {
       id: subscriptionId,
       status: "active",
       cancel_at_period_end: false,
+      latest_invoice: {
+        id: "in_checkout_paid",
+        status: "paid",
+        currency: "usd",
+        amount_paid: 20_000,
+      },
       items: {
         data: [
           {
@@ -14987,7 +14993,13 @@ describe("POST /api/billing/checkout/complete", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ completed: true });
+    expect(response.body).toStrictEqual({
+      completed: true,
+      googleAdsConversion: {
+        transactionId: "in_checkout_paid",
+        valueUsd: 200,
+      },
+    });
   });
 
   it("returns 400 when completed checkout would downgrade the current tier", async () => {

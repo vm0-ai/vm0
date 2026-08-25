@@ -87,7 +87,10 @@ interface CompleteCheckoutSessionArgs {
 }
 
 type CheckoutCompletionResult =
-  | { readonly status: "completed" }
+  | {
+      readonly status: "completed";
+      readonly paidInvoice: StripeInvoice | null;
+    }
   | { readonly status: "pending" }
   | { readonly status: "customer_mismatch" }
   | {
@@ -1360,7 +1363,9 @@ export const completeCheckoutSession$ = command(
       return { status: "pending" };
     }
 
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["latest_invoice"],
+    });
     signal.throwIfAborted();
 
     const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
@@ -1401,7 +1406,12 @@ export const completeCheckoutSession$ = command(
       );
     signal.throwIfAborted();
 
-    return { status: alreadyPaidSubscription ? "completed" : "pending" };
+    return alreadyPaidSubscription
+      ? {
+          status: "completed",
+          paidInvoice: expandedLatestInvoice(subscription),
+        }
+      : { status: "pending" };
   },
 );
 

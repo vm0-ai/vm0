@@ -134,10 +134,16 @@ const usagePackPurchasePreviewResponseSchema =
     purchaseType: z.literal("usage_pack"),
   });
 
+const googleAdsPaidConversionSchema = z.object({
+  transactionId: z.string().min(1),
+  valueUsd: z.number().positive(),
+});
+
 const billingPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("completed"),
     hostedInvoiceUrl: z.null(),
+    googleAdsConversion: googleAdsPaidConversionSchema.optional(),
   }),
   z.object({
     status: z.literal("pending_payment"),
@@ -151,6 +157,7 @@ const billingPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
 
 const checkoutCompleteResponseSchema = z.object({
   completed: z.boolean(),
+  googleAdsConversion: googleAdsPaidConversionSchema.optional(),
 });
 
 const redeemCodeResponseSchema = z.object({
@@ -1403,6 +1410,9 @@ export type UsagePackPurchasePreviewResponse = z.infer<
 >;
 export type BillingPurchaseConfirmResponse = z.infer<
   typeof billingPurchaseConfirmResponseSchema
+>;
+export type GoogleAdsPaidConversion = z.infer<
+  typeof googleAdsPaidConversionSchema
 >;
 export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type ConcurrencyCheckoutRequest = z.infer<
