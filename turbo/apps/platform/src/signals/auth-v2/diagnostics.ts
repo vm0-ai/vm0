@@ -30,6 +30,7 @@ import type {
   AuthV2SignUpSignals,
   AuthV2SignUpState,
 } from "./sign-up-flow.ts";
+import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
 
 type AuthV2DiagnosticsFlow = Exclude<AuthV2DiagnosticFlow, "unknown">;
 type CaptureAuthV2Diagnostic = (properties: AuthV2DiagnosticProperties) => void;
@@ -303,15 +304,15 @@ function createAsyncDiagnosticCommand<Attempt extends DiagnosticAttempt>(
   });
 }
 
-function createStringDiagnosticCommand(
-  source$: Command<Promise<void>, [string, AbortSignal]>,
-  describe$: Command<DiagnosticAttempt | null, [string]>,
+function createValueDiagnosticCommand<Value>(
+  source$: Command<Promise<void>, [Value, AbortSignal]>,
+  describe$: Command<DiagnosticAttempt | null, [Value]>,
   finish$: Command<AuthV2DiagnosticProperties | null, [DiagnosticAttempt]>,
   capture: CaptureAuthV2Diagnostic,
   runtime: DiagnosticCommandRuntime,
-): Command<Promise<void>, [string, AbortSignal]> {
+): Command<Promise<void>, [Value, AbortSignal]> {
   const run$ = command(
-    async ({ set }, value: string, signal: AbortSignal): Promise<void> => {
+    async ({ set }, value: Value, signal: AbortSignal): Promise<void> => {
       const attempt = set(describe$, value);
       if (attempt && runtime.attemptVersion$) {
         set(runtime.attemptVersion$, (version) => {
@@ -330,7 +331,7 @@ function createStringDiagnosticCommand(
     },
   );
   return command(
-    async ({ get, set }, value: string, signal: AbortSignal): Promise<void> => {
+    async ({ get, set }, value: Value, signal: AbortSignal): Promise<void> => {
       const current = get(runtime.inFlight$);
       if (current) {
         await current;
@@ -375,7 +376,7 @@ function signInFactorMethod(
       return "email-code";
     }
     case "oauth": {
-      return "google-oauth";
+      return factor.strategy === "oauth_apple" ? "apple-oauth" : "google-oauth";
     }
     case "passkey": {
       return "passkey";
@@ -461,7 +462,7 @@ function createSignInAttemptSignals(
 } {
   const initializeAttempt$ = computed((get): SignInInitializeAttempt => {
     return {
-      method: options.isOAuthCallbackRoute ? "google-oauth" : "unknown",
+      method: "unknown",
       resourceAttemptVersion: get(resourceAttemptVersion$),
       step: options.isOAuthCallbackRoute ? "oauth-callback" : "initialize",
     };
@@ -503,7 +504,9 @@ function createSignInAttemptSignals(
           : null;
       }
       case "choose-factor":
-      case "choose-session": {
+      case "choose-session":
+      case "help":
+      case "password-recovery": {
         return null;
       }
     }
@@ -513,7 +516,9 @@ function createSignInAttemptSignals(
       const flowState = get(signals.state$);
       if (
         flowState.status !== "incomplete" ||
-        flowState.step !== "choose-factor"
+        (flowState.step !== "choose-factor" &&
+          flowState.step !== "identifier" &&
+          flowState.step !== "password-recovery")
       ) {
         return null;
       }
@@ -522,7 +527,12 @@ function createSignInAttemptSignals(
       });
       return {
         method: factor ? signInFactorMethod(factor) : "unknown",
-        step: "choose-factor",
+        step:
+          flowState.step === "identifier"
+            ? "identifier"
+            : flowState.step === "password-recovery"
+              ? "recovery"
+              : "choose-factor",
       };
     },
   );
@@ -610,14 +620,14 @@ function createSignInInstrumentation(
       finish$,
       capture,
     ),
-    selectFactor$: createStringDiagnosticCommand(
+    selectFactor$: createValueDiagnosticCommand(
       signals.selectFactor$,
       describeFactor$,
       finish$,
       capture,
       resourceRuntime,
     ),
-    selectSession$: createStringDiagnosticCommand(
+    selectSession$: createValueDiagnosticCommand(
       signals.selectSession$,
       describeSession$,
       finish$,
@@ -658,7 +668,7 @@ function createSignUpInstrumentation(
   );
   const initializeAttempt$ = computed((): DiagnosticAttempt => {
     return {
-      method: options.isOAuthCallbackRoute ? "google-oauth" : "unknown",
+      method: "unknown",
       step: options.isOAuthCallbackRoute ? "oauth-callback" : "initialize",
     };
   });
@@ -689,18 +699,25 @@ function createSignUpInstrumentation(
       ? { method: "email-code", step: "email-code" }
       : null;
   });
-  const googleOAuthAttempt$ = computed((get): DiagnosticAttempt | null => {
-    const flowState = get(signals.state$);
-    return flowState.status === "incomplete" && flowState.step === "details"
-      ? { method: "google-oauth", step: "details" }
-      : null;
-  });
+  const describeOAuth$ = command(
+    ({ get }, strategy: AuthV2OAuthStrategy): DiagnosticAttempt | null => {
+      const flowState = get(signals.state$);
+      if (flowState.status !== "incomplete" || flowState.step !== "details") {
+        return null;
+      }
+      return {
+        method: strategy === "oauth_apple" ? "apple-oauth" : "google-oauth",
+        step: "details",
+      };
+    },
+  );
   const resendAttempt$ = computed((get): DiagnosticAttempt | null => {
     const flowState = get(signals.state$);
     if (
       flowState.status !== "incomplete" ||
       flowState.step !== "email-code" ||
-      (get(signals.resendCoolingDown$) && flowState.verification !== "expired")
+      (get(signals.resendState$).status === "cooling-down" &&
+        flowState.verification !== "expired")
     ) {
       return null;
     }
@@ -729,9 +746,9 @@ function createSignUpInstrumentation(
       capture,
       runtime,
     ),
-    startGoogleOAuth$: createAsyncDiagnosticCommand(
-      signals.startGoogleOAuth$,
-      googleOAuthAttempt$,
+    startOAuth$: createValueDiagnosticCommand(
+      signals.startOAuth$,
+      describeOAuth$,
       finish$,
       capture,
       runtime,
@@ -791,7 +808,7 @@ function createContinuationInstrumentation(
       capture,
       runtime,
     ),
-    selectOrganization$: createStringDiagnosticCommand(
+    selectOrganization$: createValueDiagnosticCommand(
       signals.selectOrganization$,
       describeOrganization$,
       finish$,

@@ -1,18 +1,16 @@
-import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
-
-export function AuthV2ErrorAlert({
+export function AuthV2FieldError({
   focusKey,
   id,
   message,
 }: {
   readonly focusKey: string;
-  readonly id?: string;
+  readonly id: string;
   readonly message: string;
 }) {
   return (
-    <Alert
+    <p
       aria-atomic="true"
-      className="px-3 py-2 text-xs text-red-700 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 dark:text-red-300"
+      className="rounded-sm text-xs leading-4 text-red-600 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 dark:text-red-400"
       id={id}
       ref={(element) => {
         if (!element || element.dataset.authV2ErrorFocusKey === focusKey) {
@@ -28,12 +26,10 @@ export function AuthV2ErrorAlert({
           }
         });
       }}
+      role="alert"
       tabIndex={-1}
-      variant="destructive"
     >
-      <AlertDescription className="text-xs leading-4">
-        {message}
-      </AlertDescription>
-    </Alert>
+      {message}
+    </p>
   );
 }

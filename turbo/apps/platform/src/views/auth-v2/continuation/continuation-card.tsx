@@ -90,9 +90,14 @@ function OrganizationContent({
       {state.organizations.map((organization) => {
         const selected =
           state.selectingOrganizationId === organization.id && selectionPending;
+        const actionLabel = copy.selectOrganization(organization.name);
         return (
           <Button
-            className="w-full justify-start"
+            aria-busy={selected}
+            aria-label={actionLabel}
+            className={
+              selected ? "w-full justify-center" : "w-full justify-start"
+            }
             disabled={selectionPending}
             key={organization.id}
             onClick={() => {
@@ -107,8 +112,9 @@ function OrganizationContent({
           >
             {selected ? (
               <Loader2 className="animate-spin" aria-hidden="true" />
-            ) : null}
-            {copy.selectOrganization(organization.name)}
+            ) : (
+              actionLabel
+            )}
           </Button>
         );
       })}
@@ -128,6 +134,8 @@ function RecoveryContent({
   const restarting = restartLoadable.state === "loading";
   return (
     <Button
+      aria-busy={restarting}
+      aria-label={copy.recoveryAction}
       className="w-full"
       disabled={restarting}
       onClick={() => {
@@ -141,8 +149,9 @@ function RecoveryContent({
     >
       {restarting ? (
         <Loader2 className="animate-spin" aria-hidden="true" />
-      ) : null}
-      {copy.recoveryAction}
+      ) : (
+        copy.recoveryAction
+      )}
     </Button>
   );
 }

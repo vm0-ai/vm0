@@ -1,21 +1,16 @@
 import type { Clerk } from "@clerk/clerk-js";
-import type { SignUpResource } from "@clerk/react/types";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   clearMockedAuthOnAbort,
-  mockAuthV2Capabilities,
   mockedClerk,
   mockSignInResource,
   mockSignUpResource,
 } from "../../__tests__/mock-auth.ts";
 import { testContext } from "../__tests__/test-helpers.ts";
-import { resolveAuthV2PlatformContext } from "./platform-context.ts";
 import {
-  discoverAuthV2SignUpExternalCapabilities,
-  recoverAuthV2GoogleSignUp,
+  recoverAuthV2OAuthSignUp,
   resolveAuthV2SignUpTransferState,
-  startAuthV2GoogleSignUp,
 } from "./sign-up-external-strategies.ts";
 
 const context = testContext();
@@ -24,61 +19,8 @@ function clerk(): Clerk {
   return mockedClerk as unknown as Clerk;
 }
 
-function signUpResource(): SignUpResource {
-  return mockedClerk.client.signUp as unknown as SignUpResource;
-}
-
 beforeEach(() => {
   clearMockedAuthOnAbort(context.signal);
-});
-
-describe("Auth v2 sign-up external strategy handoff", () => {
-  it("discovers Google from the current Clerk environment and resource", () => {
-    mockAuthV2Capabilities({ googleOAuth: false });
-    expect(
-      discoverAuthV2SignUpExternalCapabilities(clerk(), signUpResource()),
-    ).toStrictEqual({ googleOAuth: false });
-
-    mockAuthV2Capabilities({ googleOAuth: true });
-    expect(
-      discoverAuthV2SignUpExternalCapabilities(clerk(), signUpResource()),
-    ).toStrictEqual({ googleOAuth: true });
-    expect(
-      discoverAuthV2SignUpExternalCapabilities(
-        clerk(),
-        {} as unknown as SignUpResource,
-      ),
-    ).toStrictEqual({ googleOAuth: false });
-  });
-
-  it("hands Google sign-up to Clerk with the dedicated callback and attributed completion", async () => {
-    context.mocks.browser.url(
-      "https://app.vm0.ai/v2/sign-up?gclid=click-123&utm_campaign=summer#/start?step=oauth",
-    );
-    const { navigation } = resolveAuthV2PlatformContext("sign-up");
-
-    await startAuthV2GoogleSignUp(signUpResource(), navigation, false);
-
-    expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(1);
-    const params =
-      mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
-    expect(params).toMatchObject({
-      continueSignIn: false,
-      continueSignUp: false,
-      redirectUrlComplete: navigation.completionRedirectUrl,
-      strategy: "oauth_google",
-    });
-    expect(params).not.toHaveProperty("legalAccepted");
-    const callbackUrl = new URL(params?.redirectUrl ?? "", location.origin);
-    expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
-    expect(callbackUrl.searchParams.get("gclid")).toBe("click-123");
-    expect(callbackUrl.searchParams.get("utm_campaign")).toBe("summer");
-    expect(callbackUrl.hash).toBe("#/start?step=oauth");
-    const completionUrl = new URL(params?.redirectUrlComplete ?? "");
-    expect(completionUrl.pathname).toBe("/onboarding");
-    expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
-    expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
-  });
 });
 
 describe("Auth v2 sign-up external strategy transfer", () => {
@@ -119,7 +61,7 @@ describe("Auth v2 sign-up external strategy transfer", () => {
       status: "complete",
     });
 
-    const recovery = await recoverAuthV2GoogleSignUp(clerk());
+    const recovery = await recoverAuthV2OAuthSignUp(clerk());
 
     expect(recovery.status).toBe("sign-up");
     expect(mockedClerk.signUpReload).toHaveBeenCalledTimes(1);
@@ -148,11 +90,11 @@ describe("Auth v2 sign-up external strategy transfer", () => {
       return Promise.resolve(mockedClerk.client.signIn);
     });
 
-    await expect(recoverAuthV2GoogleSignUp(clerk())).resolves.toMatchObject({
+    await expect(recoverAuthV2OAuthSignUp(clerk())).resolves.toMatchObject({
       sessionId: "session_existing_identity",
       status: "complete",
     });
-    await expect(recoverAuthV2GoogleSignUp(clerk())).resolves.toMatchObject({
+    await expect(recoverAuthV2OAuthSignUp(clerk())).resolves.toMatchObject({
       sessionId: "session_existing_identity",
       status: "complete",
     });
@@ -187,7 +129,7 @@ describe("Auth v2 sign-up external strategy recovery", () => {
       return Promise.resolve(mockedClerk.client.signIn);
     });
 
-    await expect(recoverAuthV2GoogleSignUp(clerk())).resolves.toMatchObject({
+    await expect(recoverAuthV2OAuthSignUp(clerk())).resolves.toMatchObject({
       status: "sign-in",
       stepPath: "/factor-one",
     });
@@ -202,7 +144,7 @@ describe("Auth v2 sign-up external strategy recovery", () => {
       externalAccountStatus: "failed",
       status: null,
     });
-    await expect(recoverAuthV2GoogleSignUp(clerk())).resolves.toMatchObject({
+    await expect(recoverAuthV2OAuthSignUp(clerk())).resolves.toMatchObject({
       error: { code: "oauth_callback_error" },
       status: "error",
     });

@@ -11,6 +11,7 @@ const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
 export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
 
 export type AuthV2DiagnosticMethod =
+  | "apple-oauth"
   | "email-code"
   | "google-oauth"
   | "google-one-tap"
@@ -78,6 +79,7 @@ function authV2DiagnosticFlow(value: unknown): AuthV2DiagnosticFlow {
 
 function authV2DiagnosticMethod(value: unknown): AuthV2DiagnosticMethod {
   switch (value) {
+    case "apple-oauth":
     case "email-code":
     case "google-oauth":
     case "google-one-tap":

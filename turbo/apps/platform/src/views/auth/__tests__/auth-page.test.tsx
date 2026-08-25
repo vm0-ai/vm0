@@ -422,14 +422,14 @@ describe("app auth pages", () => {
     {
       action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
-      heading: "Create your VM0 account",
+      heading: "Create your account",
       legacyPath: "/sign-up",
       path: "/v2/sign-up",
     },
     {
       action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
-      heading: "Create your VM0 account",
+      heading: "Create your account",
       legacyPath: "/sign-up",
       path: "/v2/sign-up/verify-email-address",
     },

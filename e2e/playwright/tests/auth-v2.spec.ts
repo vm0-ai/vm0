@@ -19,16 +19,16 @@ import {
 const ORGANIZATION_ALPHA = "Auth v2 Browser Alpha";
 const ORGANIZATION_BETA = "Auth v2 Browser Beta";
 const SUPPORTED_AUTH_V2_LOCALES = [
-  "en-US",
-  "pt-BR",
-  "ja-JP",
-  "ko-KR",
-  "id-ID",
-  "de-DE",
-  "es-ES",
-  "it-IT",
-  "fr-FR",
-  "hi-IN",
+  { locale: "en-US", title: "Create your account" },
+  { locale: "pt-BR", title: "Criar sua conta" },
+  { locale: "ja-JP", title: "アカウントを作成" },
+  { locale: "ko-KR", title: "계정 만들기" },
+  { locale: "id-ID", title: "Buat akun Anda" },
+  { locale: "de-DE", title: "Ihr Konto erstellen" },
+  { locale: "es-ES", title: "Crea tu cuenta" },
+  { locale: "it-IT", title: "Crea il tuo account" },
+  { locale: "fr-FR", title: "Créer votre compte" },
+  { locale: "hi-IN", title: "अपना खाता बनाएं" },
 ] as const;
 
 test("base, nested, refreshed, and legacy auth routes coexist on desktop", async ({
@@ -101,7 +101,7 @@ test.describe("localized mobile presentation", () => {
   });
 });
 
-for (const locale of SUPPORTED_AUTH_V2_LOCALES) {
+for (const { locale, title } of SUPPORTED_AUTH_V2_LOCALES) {
   test.describe(`Auth v2 locale ${locale}`, () => {
     test.use({ locale });
 
@@ -109,12 +109,7 @@ for (const locale of SUPPORTED_AUTH_V2_LOCALES) {
       await openAuthV2(page, "/v2/sign-up/verify-email-address");
       await expect(page.locator("html")).toHaveAttribute("lang", locale);
       const heading = authV2Root(page).locator("h1");
-      await expect(heading).toContainText(/Okou|VM0/);
-      if (locale !== "en-US") {
-        await expect(heading).not.toHaveText(
-          /^Create your (Okou|VM0) account$/,
-        );
-      }
+      await expect(heading).toHaveText(title);
     });
   });
 }
@@ -131,7 +126,6 @@ test("password sign-in completes Device Trust and honors an allowed redirect", a
   const redirect = sameOriginRedirect(baseURL, "password");
   await openAuthV2(page, authUrl("/v2/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
-  await chooseSignInMethod(page, "password");
 
   const password = authV2Input(page, "password");
   await expect(password).toBeVisible();
@@ -156,6 +150,9 @@ test("email-code sign-in completes with the development verification code", asyn
   const redirect = sameOriginRedirect(baseURL, "email-code");
   await openAuthV2(page, authUrl("/v2/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
+  await authV2Root(page)
+    .getByRole("button", { name: /use another method/i })
+    .click();
   await chooseSignInMethod(page, "email-code");
   const code = authV2Input(page, "code");
   await expect(code).toBeVisible();
@@ -176,10 +173,10 @@ test("password reset completes through email verification", async ({
   const redirect = sameOriginRedirect(baseURL, "password-reset");
   await openAuthV2(page, authUrl("/v2/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
-  await chooseSignInMethod(page, "password");
   await authV2Root(page)
     .getByRole("button", { name: /forgot password/i })
     .click();
+  await chooseSignInMethod(page, "password-reset");
   const code = authV2Input(page, "code");
   await expect(code).toBeVisible();
   await code.fill(AUTH_V2_TEST_OTP);
@@ -194,7 +191,7 @@ test("password reset completes through email verification", async ({
   await finishAuthV2Continuation(page, redirect, ORGANIZATION_ALPHA);
 });
 
-test("progressive sign-up activates after email verification", async ({
+test("progressive sign-up activates without optional profile fields", async ({
   authV2Resources,
   baseURL,
   page,
@@ -205,13 +202,11 @@ test("progressive sign-up activates after email verification", async ({
   await openAuthV2(page, authUrl("/v2/sign-up", redirect));
   const email = authV2Input(page, "email-address");
   const passwordInput = authV2Input(page, "password");
-  const firstName = authV2Input(page, "first-name");
-  const lastName = authV2Input(page, "last-name");
   await expect(email).toBeVisible();
+  await expect(authV2Input(page, "first-name")).toHaveCount(0);
+  await expect(authV2Input(page, "last-name")).toHaveCount(0);
   await email.fill(emailAddress);
   await passwordInput.fill(password);
-  await firstName.fill("Auth");
-  await lastName.fill("Browser");
   const legal = authV2Root(page).getByRole("checkbox");
   if (await legal.isVisible()) {
     await legal.check();
