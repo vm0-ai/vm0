@@ -267,10 +267,9 @@ describe("onboarding flow", () => {
 
     const slackOption = firstItem(screen.getAllByRole("radio"));
     expect(slackOption).toHaveTextContent("Use Slack");
-    expect(slackOption.querySelector("img")).toHaveAttribute(
-      "src",
-      expect.stringContaining("slack-198390069136.svg"),
-    );
+    expect(
+      screen.getByTestId("onboarding-slack-illustration"),
+    ).toBeInTheDocument();
 
     click(slackOption);
 

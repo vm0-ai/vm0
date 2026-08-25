@@ -14,7 +14,7 @@ interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
   readonly title: string;
   readonly description: string;
-  readonly imageUrl: string;
+  readonly imageUrl: string | null;
 }
 
 const ONBOARDING_MAKE_OPTION_IDS = [
@@ -27,10 +27,9 @@ const ONBOARDING_MAKE_OPTION_IDS = [
 ] as const satisfies readonly OnboardingChoice[];
 
 const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
-  Record<OnboardingChoice, string>
+  Record<OnboardingChoice, string | null>
 > = {
-  slack:
-    "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+  slack: null,
   workflow:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
   presentation:
@@ -47,6 +46,7 @@ export function onboardingMakeOptions(
   t: TFunction<"common">,
 ): readonly OnboardingMakeOption[] {
   return ONBOARDING_MAKE_OPTION_IDS.map((id) => {
+    const imageUrl = ONBOARDING_MAKE_OPTION_IMAGES[id];
     return {
       id,
       title: t(($) => {
@@ -55,7 +55,7 @@ export function onboardingMakeOptions(
       description: t(($) => {
         return $.onboarding.make.options[id].description;
       }),
-      imageUrl: platformPublicStaticUrl(ONBOARDING_MAKE_OPTION_IMAGES[id]),
+      imageUrl: imageUrl ? platformPublicStaticUrl(imageUrl) : null,
     };
   });
 }

@@ -124,6 +124,41 @@ function PromptOnboarding() {
   );
 }
 
+function SlackChoiceIllustration() {
+  return (
+    <svg
+      data-testid="onboarding-slack-illustration"
+      aria-hidden="true"
+      viewBox="0 0 40 40"
+      className="h-10 w-10 shrink-0"
+    >
+      <path
+        fill="#3EB7B8"
+        d="M5.3 10.7C6.7 5.4 12.1 3.4 18 4.2c5.8.8 13.7 1.8 16.2 6.8 2.7 5.4.5 14.7-3 19.5-3.7 5-12.6 5.6-18.3 2.8-5.6-2.8-10.1-7.9-9.3-13.5.4-3.3.9-6.2 1.7-9.1Z"
+      />
+      <path
+        fill="white"
+        stroke="#263238"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.2"
+        d="M10.4 9.3c4.4-3.4 12.4-3.1 17 .1 5 3.4 6.2 10.5 3.2 15.3-3 4.8-9.8 7.2-15.2 5.5l-6.8 3.9 1.6-6.1c-5.1-4-4.9-14.8.2-18.7Z"
+      />
+      <path
+        fill="none"
+        stroke="#263238"
+        strokeLinecap="round"
+        strokeWidth="3.2"
+        d="M19.6 13.3c-.1 1.5 0 2.7.1 4.1m-2.6 2-4.1.2m7.2 3.1.2 4.2m2.4-6 4.2-.2"
+      />
+      <path
+        fill="#263238"
+        d="M15.1 14.2a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 0 1 3.2 0Zm13.3 1a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 0 1 3.2 0ZM15.7 25.8a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 0 1 3.2 0Zm13.2-.4a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 0 1 3.2 0Z"
+      />
+    </svg>
+  );
+}
+
 export function OnboardingMakePage() {
   const { t } = useTranslation();
   const draft = useGet(onboardingDraft$);
@@ -190,20 +225,19 @@ export function OnboardingMakePage() {
                 "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--zero-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
                 "hover:border-primary/55",
                 selected ? "border-primary" : "border-border",
-                (option.id === "slack" || option.id === "workflow") &&
-                  "sm:col-span-2",
               )}
             >
-              <img
-                src={option.imageUrl}
-                alt=""
-                width={48}
-                height={48}
-                className={cn(
-                  "h-10 w-10 shrink-0 object-contain",
-                  option.id === "slack" && "scale-[2.2]",
-                )}
-              />
+              {option.imageUrl ? (
+                <img
+                  src={option.imageUrl}
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
+              ) : (
+                <SlackChoiceIllustration />
+              )}
               <span className="min-w-0">
                 <span className="block text-sm font-medium">
                   {option.title}
