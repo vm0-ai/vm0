@@ -1,4 +1,9 @@
-import type { ClerkAPIError, PasswordValidation } from "@clerk/react/types";
+import type {
+  Attribute,
+  AttributeData,
+  ClerkAPIError,
+  PasswordValidation,
+} from "@clerk/react/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -102,9 +107,17 @@ export interface MockedSignUpResourceState {
 }
 
 interface MockedSignUpConfiguration {
+  readonly attributes?: Partial<
+    Record<
+      Attribute,
+      Pick<AttributeData, "enabled" | "required" | "used_for_first_factor">
+    >
+  >;
   readonly captchaEnabled?: boolean;
   readonly captchaWidgetType?: "invisible" | "smart" | null;
+  readonly legalConsentEnabled?: boolean;
   readonly privacyPolicyUrl?: string;
+  readonly progressive?: boolean;
   readonly termsUrl?: string;
 }
 
@@ -168,16 +181,50 @@ let internalMockedSignUpResourceState: Required<MockedSignUpResourceState> = {
   isTransferable: false,
   lastName: null,
   legalAcceptedAt: null,
-  missingFields: ["email_address", "password"],
-  optionalFields: ["first_name", "last_name"],
-  requiredFields: ["email_address", "password"],
+  missingFields: [],
+  optionalFields: [],
+  requiredFields: [],
   status: null,
   unverifiedFields: [],
 };
 let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
+  attributes: {
+    email_address: {
+      enabled: true,
+      required: true,
+      used_for_first_factor: true,
+    },
+    first_name: {
+      enabled: true,
+      required: false,
+      used_for_first_factor: false,
+    },
+    last_name: {
+      enabled: true,
+      required: false,
+      used_for_first_factor: false,
+    },
+    password: {
+      enabled: true,
+      required: true,
+      used_for_first_factor: true,
+    },
+    phone_number: {
+      enabled: false,
+      required: false,
+      used_for_first_factor: false,
+    },
+    username: {
+      enabled: false,
+      required: false,
+      used_for_first_factor: false,
+    },
+  },
   captchaEnabled: false,
   captchaWidgetType: null,
+  legalConsentEnabled: false,
   privacyPolicyUrl: "https://vm0.ai/privacy",
+  progressive: true,
   termsUrl: "https://vm0.ai/terms",
 };
 let internalMockedPasswordValidation: PasswordValidation = {
@@ -209,11 +256,13 @@ export function mockSignUpResource(state: MockedSignUpResourceState): void {
     isTransferable: state.isTransferable ?? false,
     lastName: state.lastName ?? null,
     legalAcceptedAt: state.legalAcceptedAt ?? null,
-    missingFields:
-      state.missingFields ??
-      (state.status === null ? ["email_address", "password"] : []),
-    optionalFields: state.optionalFields ?? ["first_name", "last_name"],
-    requiredFields: state.requiredFields ?? ["email_address", "password"],
+    missingFields: state.missingFields ?? [],
+    optionalFields:
+      state.optionalFields ??
+      (state.status === null ? [] : ["first_name", "last_name"]),
+    requiredFields:
+      state.requiredFields ??
+      (state.status === null ? [] : ["email_address", "password"]),
     status: state.status,
     unverifiedFields: state.unverifiedFields ?? [],
   };
@@ -222,13 +271,55 @@ export function mockSignUpResource(state: MockedSignUpResourceState): void {
 export function mockSignUpConfiguration(
   configuration: MockedSignUpConfiguration,
 ): void {
+  const attributes = configuration.attributes;
   internalMockedSignUpConfiguration = {
+    attributes: {
+      ...attributes,
+      email_address: {
+        enabled: true,
+        required: true,
+        used_for_first_factor: true,
+        ...attributes?.email_address,
+      },
+      first_name: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+        ...attributes?.first_name,
+      },
+      last_name: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+        ...attributes?.last_name,
+      },
+      password: {
+        enabled: true,
+        required: true,
+        used_for_first_factor: true,
+        ...attributes?.password,
+      },
+      phone_number: {
+        enabled: false,
+        required: false,
+        used_for_first_factor: false,
+        ...attributes?.phone_number,
+      },
+      username: {
+        enabled: false,
+        required: false,
+        used_for_first_factor: false,
+        ...attributes?.username,
+      },
+    },
     captchaEnabled: configuration.captchaEnabled ?? false,
     captchaWidgetType:
       configuration.captchaWidgetType ??
       (configuration.captchaEnabled ? "smart" : null),
+    legalConsentEnabled: configuration.legalConsentEnabled ?? false,
     privacyPolicyUrl:
       configuration.privacyPolicyUrl ?? "https://vm0.ai/privacy",
+    progressive: configuration.progressive ?? true,
     termsUrl: configuration.termsUrl ?? "https://vm0.ai/terms",
   };
 }
@@ -1018,8 +1109,10 @@ export const mockedClerk = {
       },
       userSettings: {
         attributes: {
+          ...internalMockedSignUpConfiguration.attributes,
           passkey: {
             enabled: internalMockedAuthV2Capabilities.passkey,
+            required: false,
             used_for_first_factor: internalMockedAuthV2Capabilities.passkey,
           },
         },
@@ -1027,6 +1120,11 @@ export const mockedClerk = {
           internalMockedAuthV2Capabilities.googleOAuth ? ["oauth_google"] : [],
         passkeySettings: {
           show_sign_in_button: internalMockedAuthV2Capabilities.passkey,
+        },
+        signUp: {
+          legal_consent_enabled:
+            internalMockedSignUpConfiguration.legalConsentEnabled,
+          progressive: internalMockedSignUpConfiguration.progressive,
         },
       },
     };

@@ -140,6 +140,144 @@ describe("auth v2 sign-up flow", () => {
     ).resolves.toBeVisible();
   });
 
+  it("renders pristine Clerk environment requirements without mutating the sign-up resource", async () => {
+    mockSignUpConfiguration({
+      attributes: {
+        email_address: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: true,
+        },
+        first_name: {
+          enabled: true,
+          required: false,
+          used_for_first_factor: false,
+        },
+        last_name: {
+          enabled: true,
+          required: false,
+          used_for_first_factor: false,
+        },
+        password: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: true,
+        },
+      },
+      captchaEnabled: true,
+      legalConsentEnabled: true,
+      privacyPolicyUrl: "https://vm0.ai/legal/privacy",
+      progressive: true,
+      termsUrl: "https://vm0.ai/legal/terms",
+    });
+    setupSignUpPage({
+      missingFields: [],
+      optionalFields: [],
+      requiredFields: [],
+      status: null,
+    });
+
+    const emailInput = await screen.findByLabelText("Email address");
+    const passwordInput = screen.getByLabelText("Password");
+    const firstNameInput = screen.getByLabelText(/First name/);
+    const lastNameInput = screen.getByLabelText(/Last name/);
+    expect(emailInput).toBeRequired();
+    expect(passwordInput).toBeRequired();
+    expect(firstNameInput).not.toBeRequired();
+    expect(lastNameInput).not.toBeRequired();
+    expect(screen.getByRole("checkbox")).toBeVisible();
+    expect(roleElement("link", "Terms of Service")).toHaveAttribute(
+      "href",
+      "https://vm0.ai/legal/terms",
+    );
+    expect(roleElement("link", "Privacy Policy")).toHaveAttribute(
+      "href",
+      "https://vm0.ai/legal/privacy",
+    );
+    expect(document.querySelector("#clerk-captcha")).toBeInTheDocument();
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+    expect(mockedClerk.signUpUpdate).not.toHaveBeenCalled();
+    expect(
+      mockedClerk.signUpPrepareEmailAddressVerification,
+    ).not.toHaveBeenCalled();
+    expect(
+      mockedClerk.signUpAttemptEmailAddressVerification,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("keeps restored resource requirements ahead of current environment settings", async () => {
+    mockSignUpConfiguration({
+      attributes: {
+        first_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+        last_name: {
+          enabled: false,
+          required: false,
+          used_for_first_factor: false,
+        },
+        phone_number: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: true,
+        },
+      },
+      legalConsentEnabled: true,
+    });
+    setupSignUpPage(
+      readyEmailVerificationState({
+        optionalFields: ["first_name", "last_name"],
+        requiredFields: ["email_address", "password"],
+      }),
+    );
+
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+    expect(screen.queryByText("Access restricted")).not.toBeInTheDocument();
+    expect(
+      mockedClerk.signUpPrepareEmailAddressVerification,
+    ).not.toHaveBeenCalled();
+
+    fireEvent.click(await waitForRoleElement("button", "Edit email address"));
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeRequired();
+    expect(screen.getByLabelText(/First name/)).not.toBeRequired();
+    expect(screen.getByLabelText(/Last name/)).not.toBeRequired();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("fails closed for a required unsupported pristine attribute", async () => {
+    mockSignUpConfiguration({
+      attributes: {
+        phone_number: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: true,
+        },
+      },
+    });
+    setupSignUpPage({
+      missingFields: [],
+      optionalFields: [],
+      requiredFields: [],
+      status: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Access restricted" }),
+    ).resolves.toBeVisible();
+    expect(screen.queryByLabelText("Email address")).not.toBeInTheDocument();
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+    expect(mockedClerk.signUpUpdate).not.toHaveBeenCalled();
+    expect(
+      mockedClerk.signUpPrepareEmailAddressVerification,
+    ).not.toHaveBeenCalled();
+  });
+
   it("hides Google when the current Clerk environment does not support it", async () => {
     setupSignUpPage({ status: null });
 
