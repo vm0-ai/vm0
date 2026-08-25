@@ -57,6 +57,8 @@ const SUMMARY_QUERY_NAMES = [
   ...CACHE_QUERY_NAMES,
 ] as const;
 const REQUIRED_QUERY_NAMES = ["url", "query", "hashtag"] as const;
+export type ManagedSocialKitRequiredQueryName =
+  (typeof REQUIRED_QUERY_NAMES)[number];
 const BOOLEAN_QUERY_NAMES = ["cache", "full_details"] as const;
 const CACHE_TTL_MIN_SECONDS = 3_600;
 const CACHE_TTL_MAX_SECONDS = 2_592_000;
@@ -403,9 +405,9 @@ function isBoundedInteger(
   );
 }
 
-function requiredQueryName(
+export function managedSocialKitRequiredQueryName(
   operation: ManagedSocialKitOperation,
-): (typeof REQUIRED_QUERY_NAMES)[number] {
+): ManagedSocialKitRequiredQueryName {
   const name = REQUIRED_QUERY_NAMES.find((candidate) => {
     return operation.queryNames.includes(candidate);
   });
@@ -438,7 +440,7 @@ function missingRequiredQueryIssue(
   query: Readonly<Record<string, string>> | undefined,
   operation: ManagedSocialKitOperation,
 ): SocialKitQueryIssue | undefined {
-  const name = requiredQueryName(operation);
+  const name = managedSocialKitRequiredQueryName(operation);
   return query?.[name]?.trim()
     ? undefined
     : { name, message: `${name} is required for this operation` };
