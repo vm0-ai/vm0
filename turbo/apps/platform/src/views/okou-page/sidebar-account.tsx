@@ -41,7 +41,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   setSidebarExpanded$,
-  type ZeroAccountAction,
+  type AccountAction,
 } from "../../signals/okou-page/nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -239,7 +239,7 @@ function renderAccountTrigger(
       </Button>
     );
   }
-  // Geometry mirrors ZeroOrgSwitcher's trigger so the workspace row at the top
+  // Geometry mirrors OrgSwitcher's trigger so the workspace row at the top
   // of the sidebar and the account row at the bottom read as one pair.
   return (
     <button
@@ -689,7 +689,7 @@ function UnifiedSettingsGroup({
   onOpenSettings,
 }: {
   labEnabled: boolean;
-  onAccountAction: (action: ZeroAccountAction) => void;
+  onAccountAction: (action: AccountAction) => void;
   onOpenSettings: () => void;
 }) {
   const { t } = useTranslation();
@@ -821,7 +821,7 @@ function ExtraAccountActions() {
 function SignOutItem({
   onAccountAction,
 }: {
-  onAccountAction: (action: ZeroAccountAction) => void;
+  onAccountAction: (action: AccountAction) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -847,7 +847,7 @@ export function AccountDropdown({
   collapsed = false,
   hidePreferences = false,
 }: {
-  onAccountAction?: (action: ZeroAccountAction) => void;
+  onAccountAction?: (action: AccountAction) => void;
   settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
@@ -908,7 +908,7 @@ export function AccountDropdown({
   });
   const actionPending = actionLoadable.state === "loading";
 
-  const handleAccountAction = (action: ZeroAccountAction) => {
+  const handleAccountAction = (action: AccountAction) => {
     if (action === "signout") {
       const sessionId = clerk?.session?.id;
       const signInUrl = clerk?.buildSignInUrl({ redirectUrl: location.href });

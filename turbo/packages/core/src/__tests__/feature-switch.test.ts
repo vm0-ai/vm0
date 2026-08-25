@@ -99,6 +99,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
@@ -128,6 +131,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -150,6 +156,21 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+  });
+
+  it("should enable the Bingjie-only composer switch only for Bingjie", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+    });
+    expect(bingjieStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

@@ -3046,7 +3046,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Notion Illustration",
     description:
-      "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
+      "Hand-drawn product spot illustration style with simple ink contours and soft backgrounds.",
     desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
     source: vm0ImageStyleSource("notion-illustration"),
   },
@@ -3181,8 +3181,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Flat Poster",
     description:
-      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, wordmark pinned bottom-right.",
-    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; a short wordmark (default VM0) pinned bottom-right; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
+      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, and an optional user-supplied wordmark pinned bottom-right.",
+    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; an optional short wordmark supplied by the user pinned bottom-right and omitted when none is supplied; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
     source: vm0ImageStyleSource("flat-poster"),
   },
   {

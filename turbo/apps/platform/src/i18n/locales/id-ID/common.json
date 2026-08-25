@@ -2947,7 +2947,7 @@
           "testReceived": "Webhook tes Strapi diterima"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Tempat {{assistantName}} bekerja"
+        "whereAssistantWorks": "Tempat {{assistantName}} bekerja"
       },
       "telegram": {
         "addBot": "Tambahkan bot",
@@ -3387,7 +3387,7 @@
       "whatItDoes": "Yang dilakukan"
     },
     "workflowRun": {
-      "continueWithZero": "Lanjutkan dengan {{assistantName}}",
+      "continueWithAssistant": "Lanjutkan dengan {{assistantName}}",
       "createWorkflow": "Buat alur kerja",
       "customNoteLabel": "Jelaskan alur kerja Anda",
       "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan {{assistantName}}",
@@ -4566,7 +4566,7 @@
         "start": "Ekspor data saya",
         "starting": "Memulai ekspor"
       },
-      "backToZero": "Kembali ke {{assistantName}}",
+      "backToAssistant": "Kembali ke {{assistantName}}",
       "description": "Unduh file dan catatan teks yang Anda buat di {{assistantName}}.",
       "documentTitle": "Ekspor data",
       "duration": {

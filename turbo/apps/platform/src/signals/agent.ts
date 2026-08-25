@@ -13,7 +13,7 @@ import {
 import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { zeroOnboardingStatus$ } from "./okou-page/onboarding.ts";
+import { onboardingStatus$ } from "./okou-page/onboarding.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
@@ -27,7 +27,7 @@ const { get$: lastUsedAgentIdRaw$, set$: setLastUsedAgentIdRaw$ } =
   localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 export const defaultAgentId$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
+  const status = await get(onboardingStatus$);
   return status.defaultAgentId;
 });
 

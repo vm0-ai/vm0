@@ -27,6 +27,7 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { composerFlatFeedbackNoteEnabled$ } from "../external/feature-switch.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -526,14 +527,13 @@ function createComposerIcon(
   return icon;
 }
 
-function createFeedbackItemNodeView(
-  node: ProseMirrorNode,
-  removeFeedback: (id: number) => void,
-  localizedUi: Set<() => void>,
-): NodeView {
-  const dom = document.createElement("div");
-  dom.dataset.feedbackItem = "";
+interface FeedbackQuoteChip {
+  readonly quoteDom: HTMLDivElement;
+  readonly quoteText: HTMLSpanElement;
+  readonly removeButton: HTMLButtonElement;
+}
 
+function createFeedbackQuoteChip(): FeedbackQuoteChip {
   const quoteDom = document.createElement("div");
   quoteDom.className = "flex";
   quoteDom.contentEditable = "false";
@@ -565,6 +565,18 @@ function createFeedbackItemNodeView(
   );
   quoteChip.append(quoteIconContainer, quoteText, removeButton);
   quoteDom.append(quoteChip);
+  return { quoteDom, quoteText, removeButton };
+}
+
+function createFeedbackItemNodeView(
+  node: ProseMirrorNode,
+  removeFeedback: (id: number) => void,
+  localizedUi: Set<() => void>,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.feedbackItem = "";
+
+  const { quoteDom, quoteText, removeButton } = createFeedbackQuoteChip();
 
   const noteDom = document.createElement("div");
   const placeholderDom = document.createElement("span");
@@ -642,6 +654,155 @@ function createFeedbackItemNodeView(
       localizedUi.delete(localize);
     },
   };
+}
+
+/**
+ * The flat quote block: the node view's dom IS the content element, so every
+ * mutation anywhere in the block is visible to ProseMirror and its default
+ * dirty-node redraw self-heals any damage the browser causes (#27787). The
+ * quote chip and the placeholder are not part of this view at all — they are
+ * a widget decoration, which ProseMirror renders non-editable, preserves
+ * across redraws, and skips when re-parsing the DOM.
+ */
+function createFlatFeedbackItemNodeView(
+  node: ProseMirrorNode,
+  localizedUi: Set<() => void>,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.feedbackItem = "";
+  dom.dataset.feedbackNote = "";
+  dom.setAttribute("role", "textbox");
+  dom.setAttribute("aria-multiline", "true");
+
+  let currentNode = node;
+  function localize(): void {
+    dom.setAttribute(
+      "aria-label",
+      i18n.t(($) => {
+        return $.chat.feedback.placeholder;
+      }),
+    );
+  }
+  function render(nextNode: ProseMirrorNode): void {
+    const { showDivider, fill } = feedbackItemNodeAttributes(nextNode);
+    // The chrome widget occupies the first 38px (chip row plus gap), so the
+    // note area of a filled item keeps its 96px: 38 + 96 = 134.
+    const className =
+      "flex flex-col gap-1.5 pb-1.5 text-[0.9375rem] leading-snug " +
+      "text-foreground outline-none [&_p]:m-0 [&_p]:px-1 " +
+      "[&_p:nth-of-type(1)]:pt-1 [&_p:last-of-type]:pb-1" +
+      `${fill ? " min-h-[134px]" : ""}${
+        showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+      }`;
+    if (dom.className !== className) {
+      dom.className = className;
+    }
+  }
+  localizedUi.add(localize);
+  localize();
+  render(currentNode);
+
+  return {
+    dom,
+    contentDOM: dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    destroy() {
+      localizedUi.delete(localize);
+    },
+  };
+}
+
+function buildFeedbackItemChrome(
+  quote: string,
+  showPlaceholder: boolean,
+  onRemove: () => void,
+): HTMLElement {
+  const { quoteDom, quoteText, removeButton } = createFeedbackQuoteChip();
+  quoteText.textContent = quote;
+  const removeLabel = i18n.t(($) => {
+    return $.chat.feedback.remove;
+  });
+  removeButton.setAttribute("aria-label", removeLabel);
+  removeButton.title = removeLabel;
+  removeButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  removeButton.addEventListener("click", onRemove);
+  if (showPlaceholder) {
+    quoteDom.classList.add("relative");
+    const placeholder = document.createElement("span");
+    // The chip row is 32px plus the item's 6px gap; the first paragraph adds
+    // 4px of top padding, so the placeholder sits at 42px over its text.
+    placeholder.className =
+      "pointer-events-none absolute left-1 top-[42px] w-max " +
+      "text-[0.9375rem] leading-snug text-muted-foreground/40";
+    placeholder.setAttribute("aria-hidden", "true");
+    placeholder.textContent = i18n.t(($) => {
+      return $.chat.feedback.placeholder;
+    });
+    quoteDom.append(placeholder);
+  }
+  return quoteDom;
+}
+
+function buildFeedbackChromeDecorations(
+  doc: ProseMirrorNode,
+  runtime: WorkflowComposerRuntime,
+): DecorationSet {
+  const decorations: Decoration[] = [];
+  let position = 0;
+  for (let index = 0; index < doc.childCount; index++) {
+    const child = doc.child(index);
+    const childPosition = position;
+    position += child.nodeSize;
+    if (child.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+      continue;
+    }
+    const { feedbackId, quote } = feedbackItemNodeAttributes(child);
+    const showPlaceholder = nodeText(child).length === 0;
+    decorations.push(
+      Decoration.widget(
+        childPosition + 1,
+        () => {
+          return buildFeedbackItemChrome(quote, showPlaceholder, () => {
+            runtime.removeFeedback(feedbackId);
+          });
+        },
+        {
+          // The key carries everything the DOM is built from, so the widget
+          // is only recreated when its content actually changes.
+          key: `feedback-chrome-${feedbackId}-${showPlaceholder ? "empty" : "filled"}-${i18n.language}`,
+          side: -2,
+          ignoreSelection: true,
+          stopEvent: () => {
+            return true;
+          },
+        },
+      ),
+    );
+  }
+  return DecorationSet.create(doc, decorations);
+}
+
+function createFeedbackChromePlugin(runtime: WorkflowComposerRuntime): Plugin {
+  return new Plugin({
+    key: new PluginKey("feedbackItemChrome"),
+    props: {
+      decorations(state) {
+        if (!runtime.flatFeedbackNote) {
+          return DecorationSet.empty;
+        }
+        return buildFeedbackChromeDecorations(state.doc, runtime);
+      },
+    },
+  });
 }
 
 function templateAttachmentNodeAttributes(
@@ -1493,6 +1654,8 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
+  /** Resolved ComposerFlatFeedbackNote switch, set while mounted. */
+  flatFeedbackNote: boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1658,6 +1821,9 @@ function createFeedbackItemNode(
     },
     addNodeView() {
       return ({ node }) => {
+        if (runtime.flatFeedbackNote) {
+          return createFlatFeedbackItemNodeView(node, runtime.localizedUi);
+        }
         return createFeedbackItemNodeView(
           node,
           (id) => {
@@ -1666,6 +1832,9 @@ function createFeedbackItemNode(
           runtime.localizedUi,
         );
       };
+    },
+    addProseMirrorPlugins() {
+      return [createFeedbackChromePlugin(runtime)];
     },
   });
 }
@@ -1818,6 +1987,11 @@ function refreshWorkflowComposerLocalization(
   for (const localize of runtime.localizedUi) {
     localize();
   }
+  // The feedback chrome widgets carry their language in the decoration key;
+  // an empty transaction makes the view re-read decorations in the new one.
+  if (editor.isInitialized) {
+    editor.view.dispatch(editor.state.tr);
+  }
 }
 
 function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
@@ -1827,6 +2001,7 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.blur = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
+  runtime.flatFeedbackNote = false;
 }
 
 function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
@@ -2043,6 +2218,7 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
+      runtime.flatFeedbackNote = get(composerFlatFeedbackNoteEnabled$);
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2453,6 +2629,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
+    flatFeedbackNote: false,
   };
 }
 

@@ -200,7 +200,7 @@ export const bankingContract = c.router({
     headers: authHeadersSchema,
     body: z.object({}),
     responses: bankingAccountsResponses,
-    summary: "List accounts through the managed Zero Banking gateway",
+    summary: "List accounts through the managed banking gateway",
   },
   balances: {
     method: "POST",
@@ -208,7 +208,7 @@ export const bankingContract = c.router({
     headers: authHeadersSchema,
     body: bankingBalancesRequestSchema,
     responses: bankingBalancesResponses,
-    summary: "Read an account balance through the managed Zero Banking gateway",
+    summary: "Read an account balance through the managed banking gateway",
   },
   transactions: {
     method: "POST",
@@ -216,8 +216,7 @@ export const bankingContract = c.router({
     headers: authHeadersSchema,
     body: bankingTransactionsRequestSchema,
     responses: bankingTransactionsResponses,
-    summary:
-      "Read account transactions through the managed Zero Banking gateway",
+    summary: "Read account transactions through the managed banking gateway",
   },
 });
 

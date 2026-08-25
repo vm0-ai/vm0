@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { handleZeroAccountAction$ } from "../../signals/okou-page/nav.ts";
+import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
 import {
   closeSettingsModal$,
   settingsDialogOpen$,
@@ -13,7 +13,7 @@ import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
-  const onAccountAction = useSet(handleZeroAccountAction$);
+  const onAccountAction = useSet(handleAccountAction$);
   const dialogOpen = useGet(settingsDialogOpen$);
   const closeSettingsModal = useSet(closeSettingsModal$);
 

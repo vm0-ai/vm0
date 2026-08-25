@@ -98,7 +98,7 @@ export const agentsMainContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Create zero agent",
+    summary: "Create agent",
   },
   list: {
     method: "GET",
@@ -109,7 +109,7 @@ export const agentsMainContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List zero agents",
+    summary: "List agents",
   },
 });
 
@@ -129,7 +129,7 @@ export const agentsByIdContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get zero agent by id",
+    summary: "Get agent by id",
   },
   update: {
     method: "PUT",
@@ -146,7 +146,7 @@ export const agentsByIdContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Update zero agent",
+    summary: "Update agent",
   },
   updateMetadata: {
     method: "PATCH",
@@ -162,7 +162,7 @@ export const agentsByIdContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Update zero agent metadata",
+    summary: "Update agent metadata",
   },
   delete: {
     method: "DELETE",
@@ -178,7 +178,7 @@ export const agentsByIdContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Delete zero agent by id",
+    summary: "Delete agent by id",
   },
 });
 
@@ -198,7 +198,7 @@ export const agentInstructionsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get zero agent instructions",
+    summary: "Get agent instructions",
   },
   update: {
     method: "PUT",
@@ -214,7 +214,7 @@ export const agentInstructionsContract = c.router({
       404: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Update zero agent instructions",
+    summary: "Update agent instructions",
   },
 });
 

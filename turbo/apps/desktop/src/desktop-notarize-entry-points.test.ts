@@ -37,6 +37,10 @@ const allAliases = [
   ...Object.values(canonicalAliases),
   ...Object.values(legacyAliases),
 ];
+const canonicalSigningIdentityAlias = "OKOU_DESKTOP_SIGNING_IDENTITY";
+const legacySigningIdentityAlias = "VM0_DESKTOP_SIGNING_IDENTITY";
+const developerIdApplicationIdentity =
+  "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 
 const moduleLoaderSource = `
 import { registerHooks } from "node:module";
@@ -63,25 +67,19 @@ import { appendFileSync } from "node:fs";
 
 export async function sign(options) {
   appendFileSync(process.env.TEST_TRACE_PATH, "sign\\n");
-  const forgeOptionsAreUnchanged =
-    process.env.TEST_SIGN_KIND === "forge" &&
+  const signingOptionsAreUnchanged =
     options.app === process.env.TEST_EXPECTED_APP_PATH &&
     options.batchCodesignCalls === true &&
-    options.identity === "-" &&
-    options.identityValidation === false &&
+    options.identity === process.env.TEST_EXPECTED_SIGNING_IDENTITY &&
+    options.identityValidation ===
+      (process.env.TEST_EXPECTED_IDENTITY_VALIDATION === "true") &&
     options.platform === "darwin" &&
-    options.timestamp === "none" &&
+    options.timestamp ===
+      (process.env.TEST_EXPECTED_SIGNING_TIMESTAMP === "none"
+        ? "none"
+        : undefined) &&
     options.version === process.env.TEST_EXPECTED_ELECTRON_VERSION;
-  const helperOptionsAreUnchanged =
-    process.env.TEST_SIGN_KIND === "helper" &&
-    options.app === process.env.TEST_EXPECTED_APP_PATH &&
-    options.batchCodesignCalls === true &&
-    options.identity === process.env.VM0_DESKTOP_SIGNING_IDENTITY &&
-    options.identityValidation === true &&
-    options.platform === "darwin" &&
-    options.timestamp === undefined &&
-    options.version === process.env.TEST_EXPECTED_ELECTRON_VERSION;
-  if (!forgeOptionsAreUnchanged && !helperOptionsAreUnchanged) {
+  if (!signingOptionsAreUnchanged) {
     throw new Error("Desktop signing options changed");
   }
 }
@@ -152,6 +150,11 @@ type CredentialCase =
   | "incomplete";
 type SuccessfulSource = "canonical-only" | "legacy-only" | "dual";
 
+interface SigningIdentityInput {
+  readonly canonical?: string;
+  readonly legacy?: string;
+}
+
 interface CredentialValues {
   readonly keyPath: string;
   readonly keyId: string;
@@ -169,7 +172,7 @@ interface TestHarness {
 interface EntryPointResult {
   readonly process: SpawnSyncReturns<string>;
   readonly trace: string;
-  readonly credentialValues: readonly string[];
+  readonly sensitiveValues: readonly string[];
 }
 
 function createTestHarness(): TestHarness {
@@ -255,6 +258,21 @@ function applyCredentialCase(
   });
 }
 
+function applySigningIdentityInput(
+  environment: NodeJS.ProcessEnv,
+  input: SigningIdentityInput,
+): readonly string[] {
+  if (input.canonical !== undefined) {
+    environment[canonicalSigningIdentityAlias] = input.canonical;
+  }
+  if (input.legacy !== undefined) {
+    environment[legacySigningIdentityAlias] = input.legacy;
+  }
+  return [input.canonical, input.legacy].filter((value): value is string =>
+    Boolean(value),
+  );
+}
+
 function baseEnvironment(harness: TestHarness): NodeJS.ProcessEnv {
   return {
     CI: "true",
@@ -285,6 +303,8 @@ function runForge(
     readonly notarize?: boolean;
     readonly source?: SuccessfulSource;
     readonly keychainMode?: "default-keychain" | "custom-keychain";
+    readonly signingIdentity?: SigningIdentityInput;
+    readonly ci?: boolean;
   } = {},
 ): EntryPointResult {
   const harness = createTestHarness();
@@ -292,17 +312,34 @@ function runForge(
   const appPath = join(outputPath, "Zero Computer Use.app");
   mkdirSync(appPath, { recursive: true });
   const environment = baseEnvironment(harness);
+  if (options.ci === false) {
+    delete environment.CI;
+  }
   environment.TEST_EXPECTED_APP_PATH = appPath;
   environment.TEST_OUTPUT_PATH = outputPath;
-  environment.TEST_SIGN_KIND = "forge";
   if (options.notarize !== false) {
     environment.VM0_DESKTOP_NOTARIZE = "true";
   }
-  const values = applyCredentialCase(
+  const credentialValues = applyCredentialCase(
     environment,
     harness.directory,
     credentialCase,
   );
+  const signingIdentity = options.signingIdentity ?? {};
+  const signingIdentityValues = applySigningIdentityInput(
+    environment,
+    signingIdentity,
+  );
+  const configuredSigningIdentity =
+    signingIdentity.canonical ?? signingIdentity.legacy;
+  const expectedSigningIdentity =
+    configuredSigningIdentity ??
+    (environment.CI === "true" ? "-" : developerIdApplicationIdentity);
+  environment.TEST_EXPECTED_SIGNING_IDENTITY = expectedSigningIdentity;
+  environment.TEST_EXPECTED_IDENTITY_VALIDATION =
+    expectedSigningIdentity === "-" ? "false" : "true";
+  environment.TEST_EXPECTED_SIGNING_TIMESTAMP =
+    expectedSigningIdentity === "-" ? "none" : "absent";
   if (options.source) {
     environment.TEST_NOTARIZE_MODE = "api";
     environment.TEST_EXPECTED_API_SOURCE = options.source;
@@ -332,13 +369,17 @@ function runForge(
   return {
     process: processResult,
     trace: trace(harness),
-    credentialValues: values,
+    sensitiveValues: [...credentialValues, ...signingIdentityValues],
   };
 }
 
 function runPackagedAppHelper(
   credentialCase: CredentialCase,
-  options: { readonly appName?: string; readonly product?: string } = {},
+  options: {
+    readonly appName?: string;
+    readonly product?: string;
+    readonly signingIdentity?: SigningIdentityInput;
+  } = {},
 ): EntryPointResult {
   const harness = createTestHarness();
   const appPath = join(
@@ -348,14 +389,26 @@ function runPackagedAppHelper(
   mkdirSync(appPath, { recursive: true });
   const environment = baseEnvironment(harness);
   environment.TEST_EXPECTED_APP_PATH = appPath;
-  environment.TEST_SIGN_KIND = "helper";
   environment.TEST_NOTARIZE_MODE = "api";
-  environment.VM0_DESKTOP_SIGNING_IDENTITY = randomUUID();
-  const values = applyCredentialCase(
+  const credentialValues = applyCredentialCase(
     environment,
     harness.directory,
     credentialCase,
   );
+  const signingIdentity = options.signingIdentity ?? {
+    legacy: ` ${randomUUID()} `,
+  };
+  const signingIdentityValues = applySigningIdentityInput(
+    environment,
+    signingIdentity,
+  );
+  const expectedSigningIdentity =
+    signingIdentity.canonical ?? signingIdentity.legacy;
+  if (expectedSigningIdentity !== undefined) {
+    environment.TEST_EXPECTED_SIGNING_IDENTITY = expectedSigningIdentity;
+  }
+  environment.TEST_EXPECTED_IDENTITY_VALIDATION = "true";
+  environment.TEST_EXPECTED_SIGNING_TIMESTAMP = "absent";
   if (
     credentialCase === "canonical-only" ||
     credentialCase === "legacy-only" ||
@@ -384,7 +437,7 @@ function runPackagedAppHelper(
   return {
     process: processResult,
     trace: trace(harness),
-    credentialValues: values,
+    sensitiveValues: [...credentialValues, ...signingIdentityValues],
   };
 }
 
@@ -394,11 +447,33 @@ function sourceEvents(result: EntryPointResult): readonly string[] {
     .filter((line) => line.startsWith("desktop_notarize_api_env_source "));
 }
 
-function expectNoCredentialDisclosure(result: EntryPointResult): void {
+function signingIdentitySourceEvents(
+  result: EntryPointResult,
+): readonly string[] {
+  return result.process.stdout
+    .split("\n")
+    .filter((line) => line.startsWith("desktop_signing_identity_env_source "));
+}
+
+function expectSigningIdentitySource(
+  result: EntryPointResult,
+  source: SuccessfulSource | undefined,
+): void {
+  expect(signingIdentitySourceEvents(result)).toStrictEqual(
+    source
+      ? [
+          `desktop_signing_identity_env_source key=${canonicalSigningIdentityAlias} source=${source}`,
+        ]
+      : [],
+  );
+}
+
+function expectNoSensitiveValueDisclosure(result: EntryPointResult): void {
   const output = result.process.stdout + result.process.stderr;
-  for (const value of result.credentialValues) {
+  for (const value of result.sensitiveValues) {
     expect(output.includes(value)).toBe(false);
   }
+  expect(output.includes("length=")).toBe(false);
 }
 
 function expectSuccessfulApiEntryPoint(
@@ -410,7 +485,7 @@ function expectSuccessfulApiEntryPoint(
   expect(sourceEvents(result)).toStrictEqual([
     `desktop_notarize_api_env_source source=${source}`,
   ]);
-  expectNoCredentialDisclosure(result);
+  expectNoSensitiveValueDisclosure(result);
 }
 
 function expectFailedBeforeExternalSideEffects(
@@ -421,7 +496,7 @@ function expectFailedBeforeExternalSideEffects(
   expect(result.trace).toBe("");
   expect(sourceEvents(result)).toStrictEqual([]);
   expect(result.process.stderr.includes(`state=${state}`)).toBe(true);
-  expectNoCredentialDisclosure(result);
+  expectNoSensitiveValueDisclosure(result);
 }
 
 afterEach(() => {
@@ -475,7 +550,7 @@ describe("Desktop Forge notarization entry point", () => {
     expect(result.process.status === 0).toBe(true);
     expect(result.trace).toBe("sign\nnotarize\n");
     expect(sourceEvents(result)).toStrictEqual([]);
-    expectNoCredentialDisclosure(result);
+    expectNoSensitiveValueDisclosure(result);
   });
 
   it("keeps notarization disabled unless the existing toggle is true", () => {
@@ -483,7 +558,87 @@ describe("Desktop Forge notarization entry point", () => {
     expect(result.process.status === 0).toBe(true);
     expect(result.trace).toBe("sign\n");
     expect(sourceEvents(result)).toStrictEqual([]);
-    expectNoCredentialDisclosure(result);
+    expectNoSensitiveValueDisclosure(result);
+  });
+});
+
+describe("Desktop Forge signing identity entry point", () => {
+  const sharedIdentity = ` ${randomUUID()} `;
+
+  it.each([
+    ["canonical-only", { canonical: sharedIdentity }, "canonical-only"],
+    ["legacy-only", { legacy: sharedIdentity }, "legacy-only"],
+    [
+      "byte-equal dual",
+      { canonical: sharedIdentity, legacy: sharedIdentity },
+      "dual",
+    ],
+  ] as const)(
+    "passes the %s identity through unchanged",
+    (_, input, source) => {
+      const result = runForge("absent", {
+        notarize: false,
+        signingIdentity: input,
+      });
+
+      expect(result.process.status, result.process.stderr).toBe(0);
+      expect(result.trace).toBe("sign\n");
+      expectSigningIdentitySource(result, source);
+      expectNoSensitiveValueDisclosure(result);
+    },
+  );
+
+  it.each([
+    ["CI", true],
+    ["local", false],
+  ] as const)(
+    "keeps the existing %s fallback when both aliases are absent",
+    (_, ci) => {
+      const result = runForge("absent", {
+        ci,
+        notarize: false,
+        signingIdentity: {},
+      });
+
+      expect(result.process.status, result.process.stderr).toBe(0);
+      expect(result.trace).toBe("sign\n");
+      expectSigningIdentitySource(result, undefined);
+      expectNoSensitiveValueDisclosure(result);
+    },
+  );
+
+  it.each([
+    ["canonical-only", { canonical: "" }, "canonical-only"],
+    ["legacy-only", { legacy: "" }, "legacy-only"],
+    ["byte-equal dual", { canonical: "", legacy: "" }, "dual"],
+  ] as const)(
+    "does not replace an explicit-empty %s identity",
+    (_, input, source) => {
+      const result = runForge("absent", {
+        notarize: false,
+        signingIdentity: input,
+      });
+
+      expect(result.process.status, result.process.stderr).toBe(0);
+      expect(result.trace).toBe("sign\n");
+      expectSigningIdentitySource(result, source);
+      expectNoSensitiveValueDisclosure(result);
+    },
+  );
+
+  it("rejects conflicting aliases before signing", () => {
+    const result = runForge("absent", {
+      notarize: false,
+      signingIdentity: { canonical: "", legacy: ` ${randomUUID()} ` },
+    });
+
+    expect(result.process.status).toBe(1);
+    expect(result.trace).toBe("");
+    expectSigningIdentitySource(result, undefined);
+    expect(result.process.stderr).toContain(
+      `Desktop signing identity environment aliases conflict: canonical_key=${canonicalSigningIdentityAlias} legacy_key=${legacySigningIdentityAlias} state=conflict`,
+    );
+    expectNoSensitiveValueDisclosure(result);
   });
 });
 
@@ -530,7 +685,7 @@ describe("packaged Desktop signing and notarization entry point", () => {
         "Expected a Zero Computer Use.app directory",
       ),
     ).toBe(true);
-    expectNoCredentialDisclosure(result);
+    expectNoSensitiveValueDisclosure(result);
   });
 
   it("preserves product validation before external side effects", () => {
@@ -545,6 +700,82 @@ describe("packaged Desktop signing and notarization entry point", () => {
         "Usage: sign-and-notarize-packaged-app.mjs",
       ),
     ).toBe(true);
-    expectNoCredentialDisclosure(result);
+    expectNoSensitiveValueDisclosure(result);
+  });
+});
+
+describe("packaged Desktop signing identity entry point", () => {
+  const sharedIdentity = ` ${randomUUID()} `;
+
+  it.each([
+    ["canonical-only", { canonical: sharedIdentity }, "canonical-only"],
+    ["legacy-only", { legacy: sharedIdentity }, "legacy-only"],
+    [
+      "byte-equal dual",
+      { canonical: sharedIdentity, legacy: sharedIdentity },
+      "dual",
+    ],
+  ] as const)(
+    "passes the %s identity through unchanged",
+    (_, input, source) => {
+      const result = runPackagedAppHelper("canonical-only", {
+        signingIdentity: input,
+      });
+
+      expectSuccessfulApiEntryPoint(result, "canonical-only");
+      expectSigningIdentitySource(result, source);
+    },
+  );
+
+  it("keeps the existing required-variable failure when both aliases are absent", () => {
+    const result = runPackagedAppHelper("canonical-only", {
+      signingIdentity: {},
+    });
+
+    expect(result.process.status).toBe(1);
+    expect(result.trace).toBe("");
+    expect(sourceEvents(result)).toStrictEqual([
+      "desktop_notarize_api_env_source source=canonical-only",
+    ]);
+    expectSigningIdentitySource(result, undefined);
+    expect(result.process.stderr).toContain(
+      "VM0_DESKTOP_SIGNING_IDENTITY is required",
+    );
+    expectNoSensitiveValueDisclosure(result);
+  });
+
+  it.each([
+    ["canonical-only", { canonical: "" }, "canonical-only"],
+    ["legacy-only", { legacy: "" }, "legacy-only"],
+    ["byte-equal dual", { canonical: "", legacy: "" }, "dual"],
+  ] as const)(
+    "keeps the existing required-variable failure for an explicit-empty %s identity",
+    (_, input, source) => {
+      const result = runPackagedAppHelper("canonical-only", {
+        signingIdentity: input,
+      });
+
+      expect(result.process.status).toBe(1);
+      expect(result.trace).toBe("");
+      expectSigningIdentitySource(result, source);
+      expect(result.process.stderr).toContain(
+        "VM0_DESKTOP_SIGNING_IDENTITY is required",
+      );
+      expectNoSensitiveValueDisclosure(result);
+    },
+  );
+
+  it("rejects conflicting aliases before signing or notarization", () => {
+    const result = runPackagedAppHelper("canonical-only", {
+      signingIdentity: { canonical: "", legacy: ` ${randomUUID()} ` },
+    });
+
+    expect(result.process.status).toBe(1);
+    expect(result.trace).toBe("");
+    expectSigningIdentitySource(result, undefined);
+    expect(result.process.stderr).toContain(
+      `Desktop signing identity environment aliases conflict: canonical_key=${canonicalSigningIdentityAlias} legacy_key=${legacySigningIdentityAlias} state=conflict`,
+    );
+    expectNoSensitiveValueDisclosure(result);
   });
 });

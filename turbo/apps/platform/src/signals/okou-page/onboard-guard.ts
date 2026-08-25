@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { clerk$, resolveAppAuthUrl } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { zeroOnboardingStatus$, zeroNeedsOnboarding$ } from "./onboarding.ts";
+import { onboardingStatus$, needsOnboarding$ } from "./onboarding.ts";
 
 export const redirectToConfiguredOnboarding$ = command(
   (
@@ -32,14 +32,14 @@ export const redirectToConfiguredOnboarding$ = command(
  */
 export const onboardGuard$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-    const needsOnboarding = await get(zeroNeedsOnboarding$);
+    const needsOnboarding = await get(needsOnboarding$);
     signal.throwIfAborted();
 
     if (!needsOnboarding) {
       return false;
     }
 
-    const status = await get(zeroOnboardingStatus$);
+    const status = await get(onboardingStatus$);
     signal.throwIfAborted();
     if (!status.hasOrg) {
       const clerk = await get(clerk$);

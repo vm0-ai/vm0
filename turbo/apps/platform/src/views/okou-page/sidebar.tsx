@@ -28,8 +28,8 @@ import {
   toggleSidebarOff$,
   sidebarExpanded$,
   setSidebarExpanded$,
-  handleZeroNavSelect$,
-  handleZeroAccountAction$,
+  handleNavSelect$,
+  handleAccountAction$,
   type SidebarNavId,
 } from "../../signals/okou-page/nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -43,7 +43,7 @@ import {
   setThreeColumnSearchOpen$,
   threeColumnSearchOpen$,
 } from "../../signals/okou-page/sidebar-state.ts";
-import { ZeroOrgSwitcher, ZeroOrgSwitcherCompact } from "./org-switcher.tsx";
+import { OrgSwitcher, OrgSwitcherCompact } from "./org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/okou-page/slack.ts";
@@ -183,7 +183,7 @@ function useResolvedNavItems() {
 }
 
 function useNavSelect() {
-  const rawOnSelect = useSet(handleZeroNavSelect$);
+  const rawOnSelect = useSet(handleNavSelect$);
   const setExpanded = useSet(setSidebarExpanded$);
   return (id: SidebarNavId) => {
     rawOnSelect(id);
@@ -207,7 +207,7 @@ function AccountDropdownContainer({
 }: {
   collapsed?: boolean;
 }) {
-  const onAccountAction = useSet(handleZeroAccountAction$);
+  const onAccountAction = useSet(handleAccountAction$);
   const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
   return (
     <AccountDropdown
@@ -392,7 +392,7 @@ function ExpandedHeader() {
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
         <div className="min-w-0 flex-1">
-          <ZeroOrgSwitcher />
+          <OrgSwitcher />
         </div>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
@@ -713,7 +713,7 @@ function LabeledNavRail() {
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
-        <ZeroOrgSwitcherCompact />
+        <OrgSwitcherCompact />
       </div>
       <nav
         aria-label={t(($) => {

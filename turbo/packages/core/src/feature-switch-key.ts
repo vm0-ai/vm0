@@ -82,4 +82,5 @@ export enum FeatureSwitchKey {
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
   ComposerImageAnnotation = "composerImageAnnotation",
+  ComposerFlatFeedbackNote = "composerFlatFeedbackNote",
 }
