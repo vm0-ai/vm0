@@ -2949,6 +2949,21 @@ function withoutLegacyZeroEntries<T>(
   return compactRecord(canonical);
 }
 
+function withoutOkouNamespaceEntries<T>(
+  values: Readonly<Record<string, T>> | null,
+): Record<string, T> | null {
+  if (!values) {
+    return null;
+  }
+  const untrusted: Record<string, T> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!key.startsWith("OKOU_")) {
+      untrusted[key] = value;
+    }
+  }
+  return compactRecord(untrusted) ?? null;
+}
+
 function filterSecretConnectorMap(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly overriddenSecrets: readonly (
@@ -6346,15 +6361,19 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const expandedEnvironment = expandEnvironment({
-    content: args.resolved.content,
-    vars: args.body.vars,
-    secrets: executionSecrets.secrets,
-    additionalEnvironment: args.modelProvider?.environment,
-    environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
-    storedConnectorEnvironment: args.connectorContext.storedEnvironment,
-    connectorVars: args.connectorContext.vars,
-  });
+  // Newly constructed API context: remove the reserved namespace from the
+  // fully expanded untrusted/content environment before the trusted overlay.
+  const expandedEnvironment = withoutOkouNamespaceEntries(
+    expandEnvironment({
+      content: args.resolved.content,
+      vars: args.body.vars,
+      secrets: executionSecrets.secrets,
+      additionalEnvironment: args.modelProvider?.environment,
+      environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+      connectorVars: args.connectorContext.vars,
+    }),
+  );
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: args.platformEnvironment,
     okouTokenPublicBrand: args.okouTokenPublicBrand,

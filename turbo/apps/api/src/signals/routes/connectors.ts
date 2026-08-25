@@ -10,7 +10,6 @@ import {
   connectorsSearchContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
-import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -60,6 +59,7 @@ import {
 import { connectorAccountSiblingWritesEnabled } from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -252,15 +252,6 @@ const connectManualGrantConnectorInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (
-      bodyResult.data.account?.intent === "add" &&
-      bodyResult.data.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a manual connector account",
-      );
-    }
-
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
       {
@@ -343,15 +334,6 @@ const connectNoAuthConnectorInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (
-      bodyResult.data.account?.intent === "add" &&
-      bodyResult.data.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a no-auth connector account",
-      );
-    }
-
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
       {
@@ -507,7 +489,7 @@ const startConnectorOauthInner$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const mutationResolution = await writeDb.transaction(async (tx) => {
+    const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -517,9 +499,9 @@ const startConnectorOauthInner$ = command(
           connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
         connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
@@ -534,17 +516,24 @@ const startConnectorOauthInner$ = command(
         accountMutation: bodyResult.data.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId:
+          bodyResult.data.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    if (mutationStart.resolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(
+        mutationStart.resolution.kind,
+      );
     }
 
     return {
       status: 200 as const,
       body: {
         authorizationUrl: authResult.url,
+        connectionId: mutationStart.connectionId ?? undefined,
       },
     };
   },
@@ -630,7 +619,7 @@ const startConnectorOpenIdInner$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const mutationResolution = await writeDb.transaction(async (tx) => {
+    const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -640,9 +629,9 @@ const startConnectorOpenIdInner$ = command(
           connectorAccountSiblingWritesEnabled(featureSwitchContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
         connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
@@ -656,17 +645,24 @@ const startConnectorOpenIdInner$ = command(
         accountMutation: bodyResult.data.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId:
+          bodyResult.data.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    if (mutationStart.resolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(
+        mutationStart.resolution.kind,
+      );
     }
 
     return {
       status: 200 as const,
       body: {
         authorizationUrl: authResult.url,
+        connectionId: mutationStart.connectionId ?? undefined,
       },
     };
   },

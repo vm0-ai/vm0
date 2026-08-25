@@ -135,8 +135,8 @@ import {
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
-  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
+  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
@@ -617,13 +617,13 @@ function findFirewallEntry(
   });
 }
 
-async function seedVm0ManagedDefaultModelKey(): Promise<string> {
-  const fixture = await seedVm0ManagedDefaultModelKeyState(context);
+async function seedVm0BuiltInDefaultModelKey(): Promise<string> {
+  const fixture = await seedVm0BuiltInDefaultModelKeyState(context);
   return fixture.selectedModel;
 }
 
-async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -1617,7 +1617,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     // The guide is not a mounted skill, so the prompt is the only thing that
-    // tells a run where to find it. Off, it must stay out of every run.
+    // tells a run where to pull it. Off, it must stay out of every run.
     const gatedOff = await api.createRun(actor, {
       agentId,
       prompt: "turn this deck into a template",
@@ -1627,7 +1627,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
     expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
     expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      "vm0-ai/Template-artifact",
+      "skill:presentation-reverse-template",
     );
 
     await connectors.updateFeatureSwitches(actor, {
@@ -1642,9 +1642,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
     const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain("vm0-ai/Template-artifact");
-    expect(appendSystemPrompt).toContain("reverse-template");
-    expect(appendSystemPrompt).toContain("feat/reverse-template-skill");
+    expect(appendSystemPrompt).toContain(
+      "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
+    );
+    expect(appendSystemPrompt).toContain(
+      "./generated/resources/reverse-template/SKILL.md",
+    );
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
@@ -5017,7 +5020,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   it("isolates direct VM0 continuation by its persisted runtime route", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const selectedModel = await seedVm0BuiltInDefaultModelKey();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -5063,7 +5066,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "reuse the same managed runtime route",
+      prompt: "reuse the same built-in model runtime route",
       modelProvider: "vm0",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
@@ -5117,7 +5120,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const rotated = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a checkpoint from another managed provider route",
+      prompt: "discard a checkpoint from another built-in model provider route",
       modelProvider: "vm0",
     });
     expect(rotated.sessionId).toBe(first.sessionId);
@@ -6604,7 +6607,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    // The suspension applies to vm0-managed runs as well.
+    // The suspension applies to vm0-built-in runs as well.
     const vm0Rejected = await api.requestCreateRun(
       actor,
       {
@@ -7271,7 +7274,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     // The credit expiry is the subscription period end plus one month, so a
     // period that ended two months ago grants credits that are already
     // expired and never settled — vm0 admission fails whether or not a
-    // managed key happens to resolve.
+    // built-in model key happens to resolve.
     const actor = bdd.user();
     await api.grantProEntitlement(actor, {
       periodEndUnix: Math.floor(now() / 1000) - 60 * 86_400,
@@ -7433,7 +7436,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       "gpt-5.6-luna",
     ] as const) {
-      await seedVm0ManagedModelKey(model);
+      await seedVm0BuiltInModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
         {
@@ -7477,7 +7480,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
-    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const selectedModel = await seedVm0BuiltInDefaultModelKey();
     const concreteProvider = getVm0ConcreteProviderType(selectedModel);
     const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
     if (!expectedFirewall) {
@@ -7527,7 +7530,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await api.updateOrgModelPolicies(actor, [
@@ -7621,7 +7624,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       { orgId: slackOrgId, userId: slackUserId },
       context.signal,
     );
-    await seedVm0ManagedModelKey(selectedModel);
+    await seedVm0BuiltInModelKey(selectedModel);
     await releaseSlackFixture();
 
     const { actor, agentId } = await entitledRunActor();
@@ -7657,7 +7660,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
-      await seedVm0ManagedModelKey(selectedModel);
+      await seedVm0BuiltInModelKey(selectedModel);
       const { actor, agentId, runnerGroup } = await entitledRunActor();
 
       await api.updateOrgModelPolicies(actor, [
@@ -14229,6 +14232,58 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
   });
 
+  it("advertises banking tools only while the feature is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.Banking]: false,
+    });
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "review my recent banking activity",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "okou banking access-request",
+    );
+    await api.requestCancelRun(actor, gatedOff.runId, [200]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.Banking]: true,
+    });
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "review my recent banking activity",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("okou banking access-request");
+    expect(appendSystemPrompt).toContain("account-scoped, expiring grant");
+    expect(appendSystemPrompt).toContain(
+      "bank or card balances, transactions, spending, income, or cash flow",
+    );
+    expect(appendSystemPrompt).toContain(
+      "you MUST use `okou banking`, not `okou finance`",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Do not give generic banking-app directions",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Make the callback prompt preserve the original task",
+    );
+    expect(appendSystemPrompt).toContain(
+      "run `okou banking accounts`, then use `okou banking balances`",
+    );
+
+    await api.requestCancelRun(actor, gatedOn.runId, [200]);
+  });
+
   it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -16428,7 +16483,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await seedVm0ManagedDefaultModelKey();
+    await seedVm0BuiltInDefaultModelKey();
     const modelProvider = `bdd-model-pricing-${randomUUID()}`;
     onTestFinished(async () => {
       await deleteUsagePricingRows({

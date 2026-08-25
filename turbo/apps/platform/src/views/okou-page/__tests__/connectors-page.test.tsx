@@ -7,9 +7,13 @@ import {
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
+  type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -110,6 +114,12 @@ function buttonByAriaLabel(
     throw new Error(`${label} button not found`);
   }
   return button;
+}
+
+async function waitForButtonByAriaLabel(label: string): Promise<HTMLElement> {
+  return await waitFor(() => {
+    return buttonByAriaLabel(label);
+  });
 }
 
 function queryMenuItemByText(text: string): HTMLElement | null {
@@ -1339,6 +1349,755 @@ describe("connectors page", () => {
     ]);
   });
 
+  it("distinguishes unavailable account summaries from no accounts", async () => {
+    mockConnectors([]);
+    const connector = customConnector({});
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    let summariesRequestStarted = false;
+    let resolveSummaries = (): void => {
+      throw new Error("Account summaries request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.summaries,
+      async ({ deferred, respond }) => {
+        const summariesDeferred = deferred<void>();
+        resolveSummaries = () => {
+          summariesDeferred.resolve();
+        };
+        summariesRequestStarted = true;
+        await summariesDeferred.promise;
+        return respond(404, {
+          error: {
+            message: "Account summaries unavailable",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(summariesRequestStarted).toBeTruthy();
+      const card = connectorCardByLabel("Ahrefs");
+      expect(within(card).getByText("Loading accounts…")).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+
+    resolveSummaries();
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Ahrefs");
+      expect(
+        within(card).getByText("Accounts are unavailable for this connector."),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+
+    click(tabByText("Custom"));
+
+    await waitFor(() => {
+      const card = connectorCardByLabel(connector.displayName);
+      expect(
+        within(card).getByText("Accounts are unavailable for this connector."),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("No accounts")).toBeNull();
+    });
+  });
+
+  it("names the exact account after a feature-on manual account addition", async () => {
+    mockConnectors([]);
+    const connectionId = crypto.randomUUID();
+    let submittedAccount: unknown;
+    let submittedAuthorizeAgent: true | undefined;
+    let renamedConnectionId: string | undefined;
+    let renamedDisplayName: string | null | undefined;
+    context.mocks.api(
+      connectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        submittedAccount = body.account;
+        submittedAuthorizeAgent = body.authorizeAgent;
+        const connector = {
+          id: connectionId,
+          slug: params.connectorSlug,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected" as const,
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        };
+        context.mocks.data.connectors([connector]);
+        return respond(200, connector);
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.rename,
+      ({ body, params, respond }) => {
+        renamedConnectionId = params.connectionId;
+        renamedDisplayName = body.displayName;
+        return respond(200, {
+          id: connectionId,
+          target: { kind: "builtin", connectorSlug: "ahrefs" },
+          authMethod: "api-token",
+          displayName: body.displayName,
+          isDefault: true,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: [],
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:02.000Z",
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await screen.findByLabelText("Connect Ahrefs"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Ahrefs" });
+    await fill(
+      within(dialog).getByPlaceholderText("your-ahrefs-api-token"),
+      "secret-token",
+    );
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Ahrefs account",
+    });
+    expect(within(nameDialog).getByLabelText("Account name")).toHaveValue("");
+    await fill(within(nameDialog).getByLabelText("Account name"), "Work");
+    click(buttonByText("Save", nameDialog));
+    await waitFor(() => {
+      expect(renamedConnectionId).toBe(connectionId);
+      expect(renamedDisplayName).toBe("Work");
+    });
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
+    expect(submittedAuthorizeAgent).toBeUndefined();
+  });
+
+  it("paginates and searches a feature-on account manager", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const accounts = Array.from({ length: 101 }, (_, index) => {
+      return {
+        id: crypto.randomUUID(),
+        target: { kind: "builtin" as const, connectorSlug: "github" },
+        authMethod: "oauth",
+        displayName: `Work ${index}`,
+        isDefault: index === 0,
+        externalId: null,
+        externalUsername: `octocat-${index}`,
+        externalEmail: null,
+        oauthScopes: [],
+        connectionStatus: "connected" as const,
+        reconnectReason: null,
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      } satisfies ConnectorAccountConnection;
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      const [defaultAccount] = accounts;
+      if (!defaultAccount) {
+        throw new Error("Expected a default account fixture");
+      }
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "builtin", connectorSlug: "github" },
+            accountCount: accounts.length,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        const search = query.search;
+        const filtered = search
+          ? accounts.filter((account) => {
+              return account.displayName
+                ?.toLowerCase()
+                .includes(search.toLowerCase());
+            })
+          : accounts;
+        const start = query.cursor ? Number(query.cursor) : 0;
+        const page = filtered.slice(start, start + query.limit);
+        const next = start + page.length;
+        return respond(200, {
+          connections: page,
+          nextCursor: next < filtered.length ? String(next) : null,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const candidate = connectorCardByLabel("GitHub");
+      expect(candidate).toHaveTextContent("101 accounts");
+    });
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    expect(within(dialog).getByText("Work 0")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Work 50")).toBeNull();
+    click(buttonByText("Load more", dialog));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Work 50")).toBeInTheDocument();
+    });
+    await fill(
+      within(dialog).getByPlaceholderText("Find accounts"),
+      "Work 100",
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText("Work 100")).toBeInTheDocument();
+      expect(within(dialog).queryByText("Work 0")).toBeNull();
+    });
+  });
+
+  it("sets an exact non-default account as the target default", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const baseAccount = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    const personalAccount: ConnectorAccountConnection = {
+      ...baseAccount,
+      id: crypto.randomUUID(),
+      displayName: "Personal",
+      isDefault: false,
+      externalUsername: "personal",
+    };
+    let defaultConnectionId = baseAccount.id;
+    const accounts = () => {
+      return [baseAccount, personalAccount].map((account) => {
+        return { ...account, isDefault: account.id === defaultConnectionId };
+      });
+    };
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      const defaultConnection = accounts().find((account) => {
+        return account.isDefault;
+      });
+      if (!defaultConnection) {
+        throw new Error("Expected one default account");
+      }
+      return respond(200, {
+        summaries: [
+          {
+            target: baseAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: accounts(), nextCursor: null });
+    });
+    context.mocks.api(
+      connectorAccountsContract.setDefault,
+      ({ params, respond }) => {
+        defaultConnectionId = params.connectionId;
+        const updated = accounts().find((account) => {
+          return account.id === params.connectionId;
+        });
+        if (!updated) {
+          return respond(404, {
+            error: { message: "Account not found", code: "NOT_FOUND" },
+          });
+        }
+        return respond(200, updated);
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    const actions = within(manager).getAllByLabelText("Account actions");
+    const personalActions = actions.at(1);
+    if (!personalActions) {
+      throw new Error("Expected Personal account actions");
+    }
+    click(personalActions);
+    click(menuItemByText("Make default"));
+
+    await waitFor(() => {
+      expect(defaultConnectionId).toBe(personalAccount.id);
+      expect(connectorCardByLabel("GitHub")).toHaveTextContent("2 accounts");
+    });
+  });
+
+  it("disables account additions when the active target becomes unavailable", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Target unavailable", code: "NOT_FOUND" },
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    await expect(
+      within(manager).findByText(
+        "Accounts are unavailable for this connector.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(buttonByText("Add account", manager)).toBeDisabled();
+  });
+
+  it("does not restore a pending deletion draft after the manager closes", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: [account], nextCursor: null });
+    });
+    let impactStarted = false;
+    let resolveImpact = (): void => {
+      throw new Error("Deletion impact request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.deletionImpact,
+      async ({ deferred, params, respond }) => {
+        const pending = deferred<void>();
+        resolveImpact = () => {
+          pending.resolve();
+        };
+        impactStarted = true;
+        await pending.promise;
+        return respond(200, {
+          connectionId: params.connectionId,
+          explicitSelectionCount: 1,
+          hasSibling: false,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const firstManager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    click(within(firstManager).getByLabelText("Account actions"));
+    click(menuItemByText("Delete"));
+    await waitFor(() => {
+      expect(impactStarted).toBeTruthy();
+    });
+    click(within(firstManager).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Manage GitHub accounts" }),
+      ).toBeNull();
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    resolveImpact();
+    await waitFor(() => {
+      expect(screen.queryByText("Delete Work?")).toBeNull();
+    });
+  });
+
+  it("renames and deletes an exact account after bounded impact", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    let account: ConnectorAccountConnection | null = {
+      id: connector.id,
+      target: { kind: "builtin", connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    };
+    const renamedDisplayNames: (string | null)[] = [];
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: account
+          ? [
+              {
+                target: account.target,
+                accountCount: 1,
+                attentionCount: 0,
+                defaultConnection: account,
+              },
+            ]
+          : [],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, {
+        connections: account ? [account] : [],
+        nextCursor: null,
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.rename,
+      ({ params, body, respond }) => {
+        if (!account || params.connectionId !== account.id) {
+          return respond(404, {
+            error: { message: "Account not found", code: "NOT_FOUND" },
+          });
+        }
+        renamedDisplayNames.push(body.displayName);
+        account = { ...account, displayName: body.displayName };
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.deletionImpact,
+      ({ params, respond }) => {
+        return respond(200, {
+          connectionId: params.connectionId,
+          explicitSelectionCount: 2,
+          hasSibling: false,
+        });
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.delete,
+      ({ params, respond }) => {
+        account = null;
+        context.mocks.data.connectors([]);
+        return respond(200, {
+          deletedConnectionId: params.connectionId,
+          resolvedSelectionCount: 2,
+          promotedDefaultConnectionId: null,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    click(within(dialog).getByLabelText("Account actions"));
+    click(menuItemByText("Rename"));
+    await fill(within(dialog).getByLabelText("Account name"), "Personal");
+    click(buttonByText("Save", dialog));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Personal")).toBeInTheDocument();
+    });
+    click(within(dialog).getByLabelText("Account actions"));
+    click(menuItemByText("Rename"));
+    await fill(within(dialog).getByLabelText("Account name"), " ");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+    await waitFor(() => {
+      expect(renamedDisplayNames).toStrictEqual(["Personal", null]);
+      expect(within(dialog).getAllByText("octocat")).toHaveLength(2);
+    });
+    click(within(dialog).getByLabelText("Account actions"));
+    click(menuItemByText("Delete"));
+    const deleteDialog = await screen.findByRole("dialog", {
+      name: "Delete octocat?",
+    });
+    expect(
+      within(deleteDialog).getByText(
+        "2 threads will return to default inheritance.",
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Delete account", deleteDialog));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
+    });
+  });
+
+  it("confirms a non-default OAuth reconnect independently of the default projection", async () => {
+    const [defaultConnector] = mockConnectors([
+      {
+        connectorSlug: "stripe",
+        authMethod: "api-token",
+        externalUsername: "work",
+      },
+    ]);
+    if (!defaultConnector) {
+      throw new Error("Expected Stripe fixture connector");
+    }
+    const defaultAccount = {
+      id: defaultConnector.id,
+      target: { kind: "builtin" as const, connectorSlug: "stripe" },
+      authMethod: "api-token",
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    let personalAccount: ConnectorAccountConnection = {
+      ...defaultAccount,
+      id: crypto.randomUUID(),
+      authMethod: "oauth",
+      displayName: "Personal",
+      isDefault: false,
+      externalUsername: "personal",
+      connectionStatus: "reconnect-required" as const,
+      reconnectReason: "authorization_expired_or_revoked" as const,
+    };
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 2,
+            attentionCount:
+              personalAccount.connectionStatus === "reconnect-required" ? 1 : 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    let exactReadCount = 0;
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        exactReadCount += 1;
+        if (params.connectionId !== personalAccount.id) {
+          return respond(404, {
+            error: { message: "Account not found", code: "NOT_FOUND" },
+          });
+        }
+        return respond(200, personalAccount);
+      },
+    );
+    let accountListRequestCount = 0;
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        accountListRequestCount += 1;
+        expect(query).toMatchObject({
+          kind: "builtin",
+          connectorSlug: "stripe",
+        });
+        return respond(200, {
+          connections: [defaultAccount, personalAccount],
+          nextCursor: null,
+        });
+      },
+    );
+    let submittedAccount: unknown;
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/stripe/authorize",
+        });
+      },
+    );
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage Stripe accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage Stripe accounts",
+    });
+    const actions = await waitFor(() => {
+      expect(accountListRequestCount).toBeGreaterThan(0);
+      return within(manager).getAllByLabelText("Account actions");
+    });
+    const personalActions = actions.at(1);
+    if (!personalActions) {
+      throw new Error("Expected Personal account actions");
+    }
+    click(personalActions);
+    click(menuItemByText("Reconnect"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Stripe",
+    });
+    click(buttonByText("Reconnect", connectDialog));
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+    personalAccount = {
+      ...personalAccount,
+      connectionStatus: "connected",
+      reconnectReason: null,
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+    context.mocks.ably.trigger("connector:changed", {
+      connectorSlug: "stripe",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Stripe" })).toBeNull();
+    });
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Name your Stripe account",
+      }),
+    ).toBeNull();
+    expect(submittedAccount).toStrictEqual({
+      intent: "reconnect",
+      connectionId: personalAccount.id,
+    });
+    expect(exactReadCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps a connector connected when compact disconnect is ambiguous", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     let disconnectCount = 0;
@@ -2126,7 +2885,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("routes a server-authored connector from its catalog grant metadata", async () => {
+  it("routes a feature-on OpenID account addition from catalog metadata", async () => {
     const connectorSlug = "server-authored-steam";
     const authMethod = "partner-openid";
     mockConnectors([]);
@@ -2157,8 +2916,9 @@ describe("connectors page", () => {
       connectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe(connectorSlug);
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authMethod).toBe(authMethod);
+        expect(body.authorizeAgent).toBeUndefined();
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
         });
@@ -2168,7 +2928,11 @@ describe("connectors page", () => {
       return never();
     });
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
 
     await fill(
       await screen.findByPlaceholderText("Find connectors"),
@@ -2185,9 +2949,6 @@ describe("connectors page", () => {
         "https://openid.test/partner-steam/authorize",
       );
     });
-    expect(
-      screen.queryByRole("dialog", { name: "Partner Steam" }),
-    ).not.toBeInTheDocument();
   });
 
   it("ignores duplicate direct OAuth starts while a connector is polling", async () => {
@@ -2580,6 +3341,64 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("prompts for an optional label after a feature-on no-auth account addition", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "stripe",
+        label: "Public Stripe",
+        authMethods: [
+          {
+            id: "api",
+            label: "Public catalog",
+            description: "Enable public catalog data.",
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let submittedAccount: unknown;
+    let submittedAuthorizeAgent: true | undefined;
+    const connectionId = crypto.randomUUID();
+    context.mocks.api(
+      connectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        submittedAccount = body.account;
+        submittedAuthorizeAgent = body.authorizeAgent;
+        return respond(200, {
+          id: connectionId,
+          slug: params.connectorSlug,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await screen.findByLabelText("Connect Public Stripe"));
+
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Public Stripe account",
+    });
+    click(buttonByText("Skip", nameDialog));
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
+    expect(submittedAuthorizeAgent).toBeUndefined();
+  });
+
   it("shows a no-auth method in the multi-method connect dialog", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -2713,7 +3532,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("submits public device-auth start option ids", async () => {
+  it("submits feature-on device-auth add intent and start option ids", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -2750,7 +3569,8 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         startCount += 1;
         expect(params.connectorSlug).toBe("stripe");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
+        expect(body.authorizeAgent).toBeUndefined();
         capturedOptions = body.options ?? null;
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
@@ -2767,7 +3587,11 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
     click(await screen.findByLabelText("Connect Stripe"));
@@ -3401,14 +4225,15 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("connects AWS without a post-connect permission dialog", async () => {
+  it("connects a feature-on AWS account without changing permissions", async () => {
     mockConnectors([]);
     context.mocks.browser.open(createMockAuthWindow());
     context.mocks.api(
       connectorExternalCodeSessionContract.create,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("aws");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
+        expect(body.authorizeAgent).toBeUndefined();
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000002",
           sessionToken: "mock-aws-external-code-session-token",
@@ -3423,6 +4248,7 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -3461,21 +4287,22 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("AWS connected")).toBeInTheDocument();
     });
+    click(
+      buttonByText(
+        "Skip",
+        await screen.findByRole("dialog", {
+          name: "Name your AWS account",
+        }),
+      ),
+    );
     expect(
       screen.queryByText("You've successfully connected with AWS!"),
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("AWS")).getByText(
-          /@arn:aws:iam::000000000000:user\/mock-aws/u,
-        ),
+        within(connectorCardByLabel("AWS")).getByText("Connected"),
       ).toBeInTheDocument();
     });
-    expect(
-      within(connectorCardByLabel("AWS")).getByTitle(
-        "@arn:aws:iam::000000000000:user/mock-aws",
-      ),
-    ).toHaveTextContent("@arn:aws:iam::000000000000:user/mock-aws");
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
@@ -3707,9 +4534,7 @@ describe("connectors page", () => {
       expect(
         within(card).queryByTestId("connector-card-agent-access"),
       ).not.toBeInTheDocument();
-      expect(
-        within(card).getByLabelText("Connect Acme Search"),
-      ).toBeInTheDocument();
+      expect(card).toHaveAccessibleName("Connect Acme Search");
     });
 
     click(screen.getByLabelText("More options"));
@@ -5342,6 +6167,467 @@ describe("connectors page", () => {
       },
     ]);
     expect(oauthStartCount).toBe(1);
+  });
+
+  it.each([
+    { label: "HTTP", connector: customConnector({}) },
+    { label: "MCP", connector: mcpCustomConnector({ connected: false }) },
+  ])(
+    "adds a custom $label account and offers optional post-connect naming",
+    async ({ connector: initialConnector }) => {
+      let connector: CustomConnectorResponse = initialConnector;
+      let account: ConnectorAccountConnection | null = null;
+      let submittedAccount: unknown;
+      let grantMutationCount = 0;
+      context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+        return respond(200, { connectors: [connector] });
+      });
+      context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+        return respond(200, {
+          summaries: account
+            ? [
+                {
+                  target: account.target,
+                  accountCount: 1,
+                  attentionCount: 0,
+                  defaultConnection: account,
+                },
+              ]
+            : [],
+        });
+      });
+      context.mocks.api(
+        customConnectorValuesContract.set,
+        ({ body, respond }) => {
+          submittedAccount = body.account;
+          connector = {
+            ...connector,
+            connected: true,
+            missingRequiredFields: [],
+            configuredFieldKeys: ["secret"],
+          };
+          account = {
+            id: crypto.randomUUID(),
+            target: {
+              kind: "custom",
+              customConnectorId: connector.id,
+            },
+            authMethod: "manual",
+            displayName:
+              body.account.intent === "add"
+                ? (body.account.displayName ?? null)
+                : null,
+            isDefault: true,
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+            connectionStatus: "connected",
+            reconnectReason: null,
+            tokenExpiresAt: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          };
+          return respond(200, {
+            ...connector,
+            connectedAccountId: account.id,
+          });
+        },
+      );
+      context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+        grantMutationCount += 1;
+        return respond(200, { grants: [] });
+      });
+      detachedSetupPage({
+        context,
+        path: "/connectors?tab=custom",
+        featureSwitches: {
+          [FeatureSwitchKey.ConnectorAccounts]: true,
+          [FeatureSwitchKey.CustomConnectorMcp]: true,
+        },
+      });
+
+      click(await screen.findByLabelText(`Connect ${connector.displayName}`));
+      const dialog = await screen.findByRole("dialog", {
+        name: `Connect ${connector.displayName}`,
+      });
+      await fill(within(dialog).getByLabelText("Secret"), "custom-secret");
+      expect(buttonByText("Save", dialog)).toBeEnabled();
+      click(buttonByText("Save", dialog));
+
+      const nameDialog = await screen.findByRole("dialog", {
+        name: `Name your ${connector.displayName} account`,
+      });
+      click(buttonByText("Skip", nameDialog));
+      await waitFor(() => {
+        expect(
+          within(connectorCardByLabel(connector.displayName)).getByText(
+            "Connected",
+          ),
+        ).toBeInTheDocument();
+      });
+      expect(submittedAccount).toStrictEqual({ intent: "add" });
+      expect(grantMutationCount).toBe(0);
+    },
+  );
+
+  it("requires every field for a new custom account independently of the default account", async () => {
+    const connector = customConnector({
+      connected: true,
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      configuredFieldKeys: ["secret", "subdomain"],
+      missingRequiredFields: [],
+    });
+    const existingAccount = {
+      id: crypto.randomUUID(),
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "manual",
+      displayName: "Existing",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: existingAccount.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: existingAccount,
+          },
+        ],
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(
+      await waitForButtonByAriaLabel(
+        `Manage ${connector.displayName} accounts`,
+      ),
+    );
+    const manager = await screen.findByRole("dialog", {
+      name: `Manage ${connector.displayName} accounts`,
+    });
+    click(buttonByText("Add account", manager));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    expect(dialog).not.toHaveTextContent("Configured");
+    await fill(within(dialog).getByLabelText("Secret"), "account-secret");
+    expect(buttonByText("Save", dialog)).toBeDisabled();
+    await fill(within(dialog).getByLabelText("Subdomain"), "work");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+  });
+
+  it("allows partial values when reconnecting a custom account", async () => {
+    const connector = customConnector({
+      connected: true,
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      configuredFieldKeys: ["secret", "subdomain"],
+      missingRequiredFields: [],
+    });
+    const existingAccount = {
+      id: crypto.randomUUID(),
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "manual",
+      displayName: "Existing",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: existingAccount.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: existingAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, {
+        connections: [existingAccount],
+        nextCursor: null,
+      });
+    });
+    let submittedAccount: unknown;
+    context.mocks.api(
+      customConnectorValuesContract.set,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        return respond(200, {
+          ...connector,
+          connectedAccountId: existingAccount.id,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(
+      await waitForButtonByAriaLabel(
+        `Manage ${connector.displayName} accounts`,
+      ),
+    );
+    const manager = await screen.findByRole("dialog", {
+      name: `Manage ${connector.displayName} accounts`,
+    });
+    click(await within(manager).findByLabelText("Account actions"));
+    click(menuItemByText("Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    expect(dialog).not.toHaveTextContent("Configured");
+    await fill(within(dialog).getByLabelText("Secret"), "new-secret");
+    expect(buttonByText("Save", dialog)).toBeEnabled();
+    click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: `Connect ${connector.displayName}`,
+        }),
+      ).toBeNull();
+    });
+    expect(
+      screen.queryByRole("dialog", {
+        name: `Name your ${connector.displayName} account`,
+      }),
+    ).toBeNull();
+    expect(submittedAccount).toStrictEqual({
+      intent: "reconnect",
+      connectionId: existingAccount.id,
+    });
+  });
+
+  it("keeps MCP account connection actions disabled with the MCP feature off", async () => {
+    const connector = mcpCustomConnector({ connected: true });
+    const account = {
+      id: crypto.randomUUID(),
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "manual",
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 0,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: [account], nextCursor: null });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.CustomConnectorMcp]: false,
+      },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage Acme MCP accounts"));
+
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage Acme MCP accounts",
+    });
+    expect(buttonByText("Add account", manager)).toBeDisabled();
+    click(within(manager).getByLabelText("Account actions"));
+    expect(queryMenuItemByText("Reconnect")).toBeNull();
+    expect(menuItemByText("Rename")).toBeInTheDocument();
+  });
+
+  it("confirms an exact custom OAuth addition and offers optional naming", async () => {
+    let connector: CustomConnectorHttpResponse = customConnector({
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "acme-client",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["search.read"],
+        authorizationParams: {},
+      },
+      missingRequiredFields: ["oauth"],
+    });
+    let account: ConnectorAccountConnection | null = null;
+    const connectionId = crypto.randomUUID();
+    let submittedAccount: unknown;
+    let grantMutationCount = 0;
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: account
+          ? [
+              {
+                target: account.target,
+                accountCount: 1,
+                attentionCount: 0,
+                defaultConnection: account,
+              },
+            ]
+          : [],
+      });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        connector = {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+        };
+        account = {
+          id: connectionId,
+          target: { kind: "custom", customConnectorId: connector.id },
+          authMethod: "oauth",
+          displayName:
+            body.account.intent === "add"
+              ? (body.account.displayName ?? null)
+              : null,
+          isDefault: true,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: ["search.read"],
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl: "https://oauth.acme.test/authorize?state=test",
+          connectionId,
+        });
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        return params.connectionId === account?.id && account
+          ? respond(200, account)
+          : respond(404, {
+              error: { message: "Account not found", code: "NOT_FOUND" },
+            });
+      },
+    );
+    context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
+      grantMutationCount += 1;
+      return respond(200, { grants: [] });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await screen.findByLabelText(`Connect ${connector.displayName}`));
+
+    const nameDialog = await screen.findByRole("dialog", {
+      name: `Name your ${connector.displayName} account`,
+    });
+    click(buttonByText("Skip", nameDialog));
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel(connector.displayName)).getByText(
+          "Connected",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
+    expect(grantMutationCount).toBe(0);
   });
 
   it("manages a custom connector from creation through deletion", async () => {

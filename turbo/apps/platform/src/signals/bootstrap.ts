@@ -8,6 +8,7 @@ import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
+  setupPageWrapper,
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
@@ -62,6 +63,7 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callback-page-setup.ts";
+import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
@@ -169,19 +171,19 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signInV2,
-    setup: setupSignInV2Page$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signInV2CatchAll,
-    setup: setupSignInV2Page$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signUpV2,
-    setup: setupSignUpV2Page$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
     path: ROUTES.signUpV2CatchAll,
-    setup: setupSignUpV2Page$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
 
   // --- New routes ---
@@ -208,6 +210,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.browserAuthorize,
     setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+  },
+  {
+    path: ROUTES.bankingConnectReturnResult,
+    setup: setupBankingConnectReturnPage$,
+  },
+  {
+    path: ROUTES.bankingConnectReturn,
+    setup: setupBankingConnectReturnPage$,
   },
   {
     path: ROUTES.connectorCallbackResult,

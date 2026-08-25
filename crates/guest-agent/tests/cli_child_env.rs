@@ -30,6 +30,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             process_control_ipc::BOOTSTRAP_ENV,
             "runner-control-endpoint",
         );
+        std::env::set_var(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            "runner-control-endpoint",
+        );
         std::env::set_var("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");
         std::env::set_var("NODE_EXTRA_CA_CERTS", "/rootfs/vm0-proxy-ca.crt");
         std::env::set_var("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt");
@@ -43,6 +47,18 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
 
     let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV)?;
+    let configured_runtime_dir =
+        guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), &run_id)?;
+    unsafe {
+        std::env::set_var(
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+            &configured_runtime_dir,
+        );
+        std::env::set_var(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &configured_runtime_dir,
+        );
+    }
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
     std::fs::create_dir_all(&user_env_dir)?;
@@ -84,6 +100,14 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
         std::env::set_var("HOME", tmp.path().join("stale-home"));
+        for key in [
+            guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        ] {
+            std::env::set_var(key, "/stale/private-file-pointer");
+        }
     }
 
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
@@ -152,7 +176,19 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(cli_env.contains_key("PATH"));
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
-    assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
+    for key in [
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!cli_env.contains_key("VM0_RUN_ID"));
     for key in [
@@ -173,12 +209,27 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
     assert!(!cli_env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
-    assert!(!cli_env.contains_key(process_control_ipc::BOOTSTRAP_ENV));
+    for key in [
+        process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
     assert!(!cli_env.contains_key("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
-    assert!(
-        !cli_env
-            .contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-    );
+    for key in [
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains {key}"
+        );
+    }
 
     let session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     let canonical_history = Path::new(&runtime.config.claude_config_dir)

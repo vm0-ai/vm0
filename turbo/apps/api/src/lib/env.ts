@@ -45,6 +45,7 @@ const SCHEMA = {
   FINICITY_APP_KEY: z.string().min(1).optional(),
   FINICITY_APP_SECRET: z.string().min(1).optional(),
   FINICITY_PARTNER_ID: z.string().min(1).optional(),
+  FINICITY_WEBHOOK_BASE_URL: z.url().optional(),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),
   ENV: z.enum(["production", "preview", "development"]),

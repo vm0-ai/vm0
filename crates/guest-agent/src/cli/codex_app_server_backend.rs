@@ -1220,7 +1220,7 @@ fn resume_thread_id_from_runtime(
     }
     canonical_codex_thread_id(
         resume_id,
-        "VM0_RESUME_SESSION_ID is not a valid Codex thread id",
+        "resume session id is not a valid Codex thread id",
     )
     .map(Some)
 }

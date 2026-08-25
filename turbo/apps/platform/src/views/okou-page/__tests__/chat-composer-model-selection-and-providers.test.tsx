@@ -16,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
@@ -1817,6 +1818,55 @@ describe("chat composer models", () => {
     expect(
       screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the agent chat model picker open while feature switches hydrate", async () => {
+    const user = userEvent.setup({ delay: null });
+    const featureSwitchRequestStarted = context.mocks.deferred<void>();
+    const releaseFeatureSwitchResponse = context.mocks.deferred<void>();
+
+    context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
+      featureSwitchRequestStarted.resolve();
+      await releaseFeatureSwitchResponse.promise;
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ImageModelSelection]: true },
+        effectiveSwitches: {
+          [FeatureSwitchKey.ImageModelSelection]: true,
+        },
+      });
+    });
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: false,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await featureSwitchRequestStarted.promise;
+    await waitFor(() => {
+      expect(document.title).toContain("Scout");
+    });
+    await user.click(
+      await screen.findByRole("combobox", { name: "Claude Fable 5" }),
+    );
+    await expect(
+      screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).resolves.toBeInTheDocument();
+    expect(categoryTab("Image")).toBeUndefined();
+
+    releaseFeatureSwitchResponse.resolve();
+
+    await waitFor(() => {
+      expect(categoryTab("Image")).toBeInTheDocument();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
@@ -4618,9 +4668,9 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Seedance 2.0")).toBeInTheDocument();
     expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
     expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
-    // The system default is still Seedance 2.0 fast, which the picker no longer
-    // offers, so no row claims the untouched thread.
-    expect(selectedVideoModelLabel()).toBeUndefined();
+    // An untouched thread follows the system default, and the row for the model
+    // its runs would use is the one marked as selected.
+    expect(selectedVideoModelLabel()).toBe("Seedance 2.0");
     // Every row states what one clip costs relative to the others.
     expect(videoPanelPriceTier("Seedance 1.5 pro")).toBe("$");
     expect(videoPanelPriceTier("MiniMax H3")).toBe("$$");
@@ -4797,8 +4847,8 @@ describe("chat composer video model", () => {
 
     await openVideoModels(user);
 
-    // Seedance 2.0 fast is the system default, and the chip states what that
-    // model would use before anything is touched.
+    // Seedance 2.0 is the system default, and the chip states what that model
+    // would use before anything is touched.
     const chip = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
     );

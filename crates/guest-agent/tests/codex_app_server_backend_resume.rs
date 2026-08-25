@@ -28,6 +28,11 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
                 resume_session_id: Some(resume_thread_id),
             },
         )?;
+        std::env::remove_var(guest_contracts::env::RESUME_SESSION_ID_ENV);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            resume_thread_id,
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);

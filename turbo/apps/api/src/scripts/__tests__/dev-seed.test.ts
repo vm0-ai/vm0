@@ -67,7 +67,7 @@ describe("buildVm0ApiKeys", () => {
     ]);
   });
 
-  it("builds the secondary OpenRouter managed key row", () => {
+  it("builds the secondary OpenRouter built-in model key row", () => {
     const openRouterKeys = buildVendorKeys("openrouter", {
       DEV_MODEL_OPENROUTER_KEY: "dev-openrouter-key",
     });

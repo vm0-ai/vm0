@@ -1,5 +1,106 @@
 # Changelog
 
+## [1.484.2](https://github.com/vm0-ai/vm0/compare/api-v1.484.1...api-v1.484.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **connectors:** simplify multi-account settings interactions ([#29094](https://github.com/vm0-ai/vm0/issues/29094)) ([023b916](https://github.com/vm0-ai/vm0/commit/023b916626ff1488f54ed6c5d10658fbf0f34e7c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.360.1
+    * @okouai/core bumped to 8.587.3
+    * @okouai/db bumped to 1.221.2
+
+## [1.484.1](https://github.com/vm0-ai/vm0/compare/api-v1.484.0...api-v1.484.1) (2026-08-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.221.1
+
+## [1.484.0](https://github.com/vm0-ai/vm0/compare/api-v1.483.0...api-v1.484.0) (2026-08-24)
+
+
+### Features
+
+* **agentphone:** decouple provider identity from public brand ([#28953](https://github.com/vm0-ai/vm0/issues/28953)) ([e7fcd06](https://github.com/vm0-ai/vm0/commit/e7fcd06ba2647f55d8a83e7e94be2ed066b74a97))
+* **feishu:** preserve host-derived public branding ([#28935](https://github.com/vm0-ai/vm0/issues/28935)) ([bbb60c7](https://github.com/vm0-ai/vm0/commit/bbb60c70fb46dcc1ca6a15694de0770edba98c95))
+* **telegram:** support dual-brand ingress ([#28945](https://github.com/vm0-ai/vm0/issues/28945)) ([c5f6b87](https://github.com/vm0-ai/vm0/commit/c5f6b87adc0ba25a73bddd595d5740360fd32d0d))
+
+
+### Bug Fixes
+
+* sync workspace presentation templates without picker flicker ([#29054](https://github.com/vm0-ai/vm0/issues/29054)) ([0309fcb](https://github.com/vm0-ai/vm0/commit/0309fcb9dd1c15a3c7138df003cc28d10286e1de))
+
+
+### Refactoring
+
+* migrate built-in model terminology ([#29079](https://github.com/vm0-ai/vm0/issues/29079)) ([4de6522](https://github.com/vm0-ai/vm0/commit/4de65229d749c81d2b27b5fdc15320e3da5d91ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.360.0
+    * @okouai/core bumped to 8.587.2
+    * @okouai/db bumped to 1.221.0
+
+## [1.483.0](https://github.com/vm0-ai/vm0/compare/api-v1.482.0...api-v1.483.0) (2026-08-24)
+
+
+### Features
+
+* **slack:** migrate official app to okou ([#28795](https://github.com/vm0-ai/vm0/issues/28795)) ([57d1a9f](https://github.com/vm0-ai/vm0/commit/57d1a9f500272b2b8214462fcbc640528103dd8f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.359.0
+    * @okouai/core bumped to 8.587.1
+    * @okouai/db bumped to 1.220.0
+
+## [1.482.0](https://github.com/vm0-ai/vm0/compare/api-v1.481.2...api-v1.482.0) (2026-08-24)
+
+
+### Features
+
+* **banking:** add chat-based mastercard connect flow ([#28832](https://github.com/vm0-ai/vm0/issues/28832)) ([faf1021](https://github.com/vm0-ai/vm0/commit/faf10210ffc1a956a1c3f077e3410bcc27ae4cb8))
+* **platform:** add multi-account connector settings ([#28904](https://github.com/vm0-ai/vm0/issues/28904)) ([e8d0c2a](https://github.com/vm0-ai/vm0/commit/e8d0c2acb679ccd23b218a694aaf1a6893f97791))
+* pull presentation reverse-template from r2 ([#29043](https://github.com/vm0-ai/vm0/issues/29043)) ([5da72eb](https://github.com/vm0-ai/vm0/commit/5da72eb706544d50731cab880c4d006979b63afe))
+* **teams:** separate provider identity from public brand ([#28938](https://github.com/vm0-ai/vm0/issues/28938)) ([6e717c5](https://github.com/vm0-ai/vm0/commit/6e717c58fad35281b0e30e296ea135ed9487d363))
+
+
+### Bug Fixes
+
+* **video:** default to a video model the picker offers ([#29045](https://github.com/vm0-ai/vm0/issues/29045)) ([33a6dba](https://github.com/vm0-ai/vm0/commit/33a6dba91522f57fc231773833d1cac9ad88a2e4))
+
+
+### Refactoring
+
+* **api:** dual-read machine secret environment aliases ([#29021](https://github.com/vm0-ai/vm0/issues/29021)) ([b7fe9d4](https://github.com/vm0-ai/vm0/commit/b7fe9d4bb6efed9d7b6a60517962eb67651c4abb))
+* **api:** dual-read preview job reference aliases ([#29048](https://github.com/vm0-ai/vm0/issues/29048)) ([7700bfb](https://github.com/vm0-ai/vm0/commit/7700bfb122d984153432b7d309f7334336028566))
+* **api:** move the last four download-file contracts off the brand namespace ([#28984](https://github.com/vm0-ai/vm0/issues/28984)) ([ea6d065](https://github.com/vm0-ai/vm0/commit/ea6d0652ca55fe6b43ed4dba16d364ce058aa72a))
+* **runtime:** reserve okou namespace in cloud execution ([#29040](https://github.com/vm0-ai/vm0/issues/29040)) ([233bc7e](https://github.com/vm0-ai/vm0/commit/233bc7eb29e9c03b4391e91f1fe15ce48d576de6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.358.0
+    * @okouai/core bumped to 8.587.0
+    * @okouai/db bumped to 1.219.0
+
 ## [1.481.2](https://github.com/vm0-ai/vm0/compare/api-v1.481.1...api-v1.481.2) (2026-08-24)
 
 

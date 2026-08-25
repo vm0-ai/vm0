@@ -857,8 +857,8 @@ fn run_helper_with_current_group_and_codex_home(
 ) -> Result<Output, Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
         .env_clear()
-        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
-        .env("VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
         .env("VM0_TEST_CODEX_HOME_DIR", codex_home)
         .arg("prepare-for-reuse")
         .stdin(Stdio::piped())
@@ -882,9 +882,9 @@ fn run_helper_with_bind_mount(
     let home = tempfile::tempdir()?;
     let mut child = Command::new("/usr/bin/unshare")
         .env_clear()
-        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env(
-            "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
+            "OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
             "/vm0-exec/exec-current/workload",
         )
         .env("VM0_TEST_CODEX_HOME_DIR", home.path().join(".codex"))

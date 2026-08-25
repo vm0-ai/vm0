@@ -1055,12 +1055,45 @@
       "signIn": "Se connecter",
       "signUp": "S'inscrire"
     },
+    "homeLink": "Accéder à l'accueil de {{brandName}}",
     "loading": "Chargement de l'authentification",
+    "theme": {
+      "darkEnabled": "Thème sombre activé",
+      "lightEnabled": "Thème clair activé"
+    },
     "toggleTheme": "Changer de thème",
     "v2": {
-      "continueToSignIn": "Continuer vers la connexion",
-      "continueToSignUp": "Continuer vers l'inscription",
-      "unavailable": "La nouvelle expérience d'authentification n'est pas encore disponible."
+      "continuation": {
+        "activationErrorDescription": "Nous n'avons pas pu terminer la connexion. Recommencez et réessayez.",
+        "activationErrorTitle": "La connexion n'a pas pu être terminée",
+        "chooseOrganizationDescription": "Choisissez une organisation pour continuer vers {{brandName}}.",
+        "chooseOrganizationTitle": "Choisir une organisation",
+        "completeDescription": "Redirection vers {{brandName}}.",
+        "completeTitle": "Connexion terminée",
+        "loadingDescription": "Vérification de la prochaine étape requise pour votre compte.",
+        "loadingTitle": "Finalisation de la connexion",
+        "noOrganizationsDescription": "Aucune organisation n'est disponible pour ce compte. Demandez l'accès à un administrateur de l'organisation, puis recommencez.",
+        "noOrganizationsTitle": "Aucune organisation disponible",
+        "recoveryAction": "Recommencer",
+        "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
+        "secondFactorTitle": "Vérification supplémentaire requise",
+        "selectOrganization": "Continuer avec {{organizationName}}",
+        "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
+        "unsupportedTitle": "Étape de connexion indisponible"
+      },
+      "signIn": {
+        "action": "Utiliser la connexion actuelle",
+        "title": "Se connecter à {{brandName}}"
+      },
+      "signUp": {
+        "action": "Utiliser l'inscription actuelle",
+        "captchaExpired": "La vérification anti-robot a expiré. Réessayez.",
+        "codeExpired": "Ce code de vérification a expiré. Demandez-en un nouveau.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
+        "title": "Créer votre compte {{brandName}}"
+      }
     }
   },
   "authorization": {
@@ -1716,6 +1749,38 @@
       "weeklyAt": "Chaque semaine à {{time}}",
       "weeklyOnAt": "Chaque semaine le {{days}} à {{time}}"
     },
+    "banking": {
+      "accountFallback": "Compte bancaire",
+      "actionFailed": "L'action bancaire a échoué",
+      "active_one": "Accès actif pour {{count}} compte",
+      "active_many": "Accès actif pour {{count}} comptes",
+      "active_other": "Accès actif pour {{count}} comptes",
+      "automationOff": "L'accès en lecture seule n'est pas disponible pour les exécutions automatisées.",
+      "cancel": "Annuler",
+      "change": "Modifier",
+      "connect": "Connecter une banque",
+      "continue": "Continuer",
+      "duration": "Durée d'accès",
+      "expiresAt": "Expire le {{time}}",
+      "grant": "Accorder l'accès",
+      "institutionFallback": "Établissement financier",
+      "loadFailed": "Impossible de charger l'accès bancaire",
+      "noAccounts": "Aucun compte actif n'est disponible. Reconnectez ou réparez d'abord l'établissement.",
+      "oneDay": "24 heures",
+      "oneHour": "1 heure",
+      "popupBlocked": "Autorisez les fenêtres contextuelles pour Zero, puis réessayez.",
+      "readOnly": "Comptes, soldes et transactions · lecture seule",
+      "repair": "Réparer",
+      "repairRequired": "{{institution}} doit être réparé",
+      "retry": "Réessayer",
+      "revoke": "Révoquer",
+      "revokeConfirm": "Révoquer l'accès bancaire de cet Agent ?",
+      "selectAccounts": "Sélectionner les comptes",
+      "sevenDays": "7 jours",
+      "thirtyDays": "30 jours",
+      "title": "Demande d'accès bancaire",
+      "waiting": "En attente de Mastercard Data Connect. Terminez l'opération là-bas, puis revenez au Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Ajoutez des crédits pour continuer à discuter avec {{assistantName}}.",
       "askAdminCredits": "Demandez à un administrateur de l'espace de travail d'ajouter des crédits afin que vous puissiez continuer à discuter avec {{assistantName}}.",
@@ -2201,6 +2266,48 @@
       "title": "Gérer l'accès à {{connector}}",
       "unnamedAgent": "Sans nom"
     },
+    "accounts": {
+      "accountName": "Nom du compte",
+      "accountsUnavailable": "Les comptes ne sont pas disponibles pour ce connecteur.",
+      "actions": "Actions du compte",
+      "addAccount": "Ajouter un compte",
+      "connected": "Connecté",
+      "default": "Par défaut",
+      "deleteAccount": "Supprimer le compte",
+      "deleteDescription": "Les fils utilisant ce compte reviendront à l’héritage par défaut.",
+      "deleteDescriptionWithCount": "{{value}} fils reviendront à l’héritage par défaut.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Supprimer {{account}} ?",
+      "find": "Rechercher des comptes",
+      "loading": "Chargement des comptes…",
+      "loadingMore": "Chargement…",
+      "loadMore": "Charger plus",
+      "makeDefault": "Définir par défaut",
+      "managerTitle": "Gérer les comptes {{connector}}",
+      "namePromptDescription": "Vous pouvez ignorer cette étape et nommer le compte plus tard.",
+      "namePromptTitle": "Nommer votre compte {{connector}}",
+      "noAccounts": "Aucun compte",
+      "noAccountsFound": "Aucun compte trouvé",
+      "reconnectRequired": "Reconnexion requise",
+      "rename": "Renommer",
+      "skipName": "Ignorer",
+      "summaryMany": "{{value}} comptes",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} compte",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} nécessitent votre attention",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Compte professionnel"
+    },
     "actions": {
       "apply": "Appliquer",
       "authorize": "Autoriser",
@@ -2601,8 +2708,8 @@
         "connectTitle": "Connectez-vous à Slack",
         "invalidDescription": "Cette page est destinée à être ouverte à partir d'un lien de connexion Slack.",
         "open": "Ouvrir Slack",
-        "successDescription": "Mentionnez @Zero dans n'importe quel canal ou envoyez un message privé pour commencer à discuter.",
-        "successDescriptionWorkspace": "Vous êtes connecté à {{workspace}}. Mentionnez @Zero dans n'importe quel canal ou envoyez un message privé pour commencer à discuter.",
+        "successDescription": "Mentionnez le bot installé dans n'importe quel canal ou envoyez un message privé pour commencer à discuter.",
+        "successDescriptionWorkspace": "Vous êtes connecté à {{workspace}}. Mentionnez le bot installé dans n'importe quel canal ou envoyez un message privé pour commencer à discuter.",
         "successTitle": "Connecté à Slack !"
       },
       "teams": {
@@ -2612,7 +2719,7 @@
         "invalidDescription": "Cette page est destinée à être ouverte à partir d'un lien de connexion Microsoft Teams.",
         "open": "Ouvrir Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Vous êtes connecté à {{team}}. Mentionnez @Zero dans Teams pour commencer à discuter.",
+        "successDescription": "Vous êtes connecté à {{team}}. Mentionnez @{{botName}} dans Teams pour commencer à discuter.",
         "successTitle": "Connecté à Microsoft Teams"
       },
       "telegram": {
@@ -2756,12 +2863,12 @@
         "copied": "{{label}} copié",
         "copy": "Copier",
         "create": {
-          "descriptionAfter": ", créez une application personnalisée d'entreprise nommée {{brandName}}, téléchargez l'icône {{brandName}}, puis ajoutez la capacité Bot.",
+          "descriptionAfter": ", créez une application personnalisée d'entreprise avec le nom et l'icône de votre choix, puis ajoutez la capacité Bot.",
           "descriptionBefore": "Dans le",
-          "downloadIcon": "Téléchargez l'icône {{brandName}}",
-          "iconAlt": "Icône de l'application {{brandName}}",
+          "downloadIcon": "Téléchargez l'icône {{brandName}} facultative",
+          "iconAlt": "Icône facultative de l'application {{brandName}}",
           "iconHint": ", ou utilisez toute icône de votre choix.",
-          "iconTitle": "Icône de l'application {{brandName}}",
+          "iconTitle": "Icône facultative de l'application {{brandName}}",
           "imageAlt": "Formulaire de création de l'application Feishu avec le nom de l'application, l'icône et le bouton Créer mis en évidence",
           "title": "Créer une application personnalisée d'entreprise"
         },
@@ -2940,7 +3047,7 @@
         "moreOptions": "Plus d'options pour {{bot}}",
         "newBotToken": "Nouveau token de bot",
         "notConnected": "Non connecté",
-        "officialBot": "Bot officiel de {{assistantName}}",
+        "officialBot": "Bot Telegram officiel",
         "officialDescription": "Bot officiel fourni par {{brandName}}.",
         "officialMissing": "La configuration du bot officiel est manquante.",
         "pageDescription": "Gérer le routage du bot pour cet espace de travail",
@@ -4825,6 +4932,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Inspectez les routes de modèles intégrés temporairement exclues de la sélection de secours.",
+          "disabled": "désactivé",
+          "disabledExplanation": "Le secours des modèles intégrés est désactivé pour cet espace de travail. Ces délais d'attente globaux y sont donc actuellement ignorés.",
+          "empty": "Aucune route de modèle intégré n'est actuellement soumise à un délai d'attente global.",
+          "enabled": "activé",
+          "globalActive": "délais d'attente globaux actifs",
+          "globalExplanation": "Les délais d'attente constituent un état opérationnel global. Ils ne peuvent affecter cet espace de travail que lorsque le secours des modèles intégrés y est activé.",
+          "loading": "Chargement du diagnostic des délais d'attente des modèles intégrés...",
+          "providerType": "Type de fournisseur",
+          "refresh": "Actualiser",
+          "selectedModel": "Modèle sélectionné",
+          "title": "Secours des modèles intégrés",
+          "unavailable": "Le diagnostic des délais d'attente des modèles intégrés n'est pas disponible.",
+          "unavailableUntil": "Indisponible jusqu'au",
+          "upstreamModel": "Modèle en amont",
+          "workspaceFallback": "secours de l'espace de travail"
+        },
         "capture": {
           "description": "Capturer les noms d'en-têtes HTTP, les valeurs d'en-têtes sûres sélectionnées et les corps dans les journaux réseau pour le débogage.",
           "disabled": "Désactivé",
@@ -4850,24 +4975,6 @@
           "recovery": "récupération",
           "title": "Diagnostic de connexion en temps réel",
           "unavailable": "indisponible"
-        },
-        "managedModelCooldown": {
-          "description": "Inspectez les routes de modèles gérés temporairement exclues de la sélection de secours.",
-          "disabled": "désactivé",
-          "disabledExplanation": "Le secours des modèles gérés est désactivé pour cet espace de travail. Ces délais d'attente globaux y sont donc actuellement ignorés.",
-          "empty": "Aucune route de modèle géré n'est actuellement soumise à un délai d'attente global.",
-          "enabled": "activé",
-          "globalActive": "délais d'attente globaux actifs",
-          "globalExplanation": "Les délais d'attente constituent un état opérationnel global. Ils ne peuvent affecter cet espace de travail que lorsque le secours des modèles gérés y est activé.",
-          "loading": "Chargement du diagnostic des délais d'attente des modèles gérés...",
-          "providerType": "Type de fournisseur",
-          "refresh": "Actualiser",
-          "selectedModel": "Modèle sélectionné",
-          "title": "Secours des modèles gérés",
-          "unavailable": "Le diagnostic des délais d'attente des modèles gérés n'est pas disponible.",
-          "unavailableUntil": "Indisponible jusqu'au",
-          "upstreamModel": "Modèle en amont",
-          "workspaceFallback": "secours de l'espace de travail"
         },
         "tab": "Débogage"
       },

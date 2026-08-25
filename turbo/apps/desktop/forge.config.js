@@ -3,6 +3,9 @@ const path = require("node:path");
 
 const packageMetadata = require("./package.json");
 const { resolveDesktopBuildConfig } = require("./scripts/desktop-build-config");
+const {
+  resolveDesktopNotarizeApiEnvironment,
+} = require("./scripts/desktop-notarize-api-environment");
 
 const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
@@ -18,14 +21,6 @@ const codeSigningIdentity =
   process.env.VM0_DESKTOP_SIGNING_IDENTITY ??
   (process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY);
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
-
 function desktopNotarizeOptions() {
   if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
     return undefined;
@@ -40,18 +35,17 @@ function desktopNotarizeOptions() {
     };
   }
 
-  if (!process.env.VM0_DESKTOP_NOTARIZE_API_KEY_PATH) {
+  if (
+    !process.env.OKOU_DESKTOP_NOTARIZE_API_KEY_PATH &&
+    !process.env.VM0_DESKTOP_NOTARIZE_API_KEY_PATH
+  ) {
     return {
       keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
       keychain: DEFAULT_NOTARIZE_KEYCHAIN,
     };
   }
 
-  return {
-    appleApiKey: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_PATH"),
-    appleApiKeyId: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_ID"),
-    appleApiIssuer: requiredEnv("VM0_DESKTOP_NOTARIZE_API_ISSUER"),
-  };
+  return resolveDesktopNotarizeApiEnvironment();
 }
 
 const { identity: desktopIdentity } = resolveDesktopBuildConfig();
@@ -61,7 +55,7 @@ const osxNotarize = desktopNotarizeOptions();
 async function signPackagedDarwinApps(_forgeConfig, packageResult) {
   if (
     packageResult.platform !== "darwin" ||
-    process.env.VM0_DESKTOP_SKIP_SIGNING === "true"
+    process.env.OKOU_DESKTOP_SKIP_SIGNING === "true"
   ) {
     return;
   }

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.21.82](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.81...guest-mock-claude-v0.21.82) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+
+## [0.21.81](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.80...guest-mock-claude-v0.21.81) (2026-08-24)
+
+## [0.21.80](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.79...guest-mock-claude-v0.21.80) (2026-08-24)
+
 ## [0.21.79](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.78...guest-mock-claude-v0.21.79) (2026-08-24)
 
 ## [0.21.78](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.77...guest-mock-claude-v0.21.78) (2026-08-24)

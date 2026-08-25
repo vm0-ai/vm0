@@ -268,10 +268,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let shutdown = CancellationToken::new();
     let cli_cancellation = CancellationToken::new();
     let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
-    let has_process_control_endpoint = matches!(
-        std::env::var(process_control_ipc::BOOTSTRAP_ENV),
-        Ok(endpoint) if !endpoint.is_empty()
-    );
+    let has_process_control_endpoint = runtime.process_control_endpoint.is_some();
     let active_input_enabled = framework_supports_active_input && has_process_control_endpoint;
     let active_input = if active_input_enabled {
         let receipt_journal_path =
@@ -302,6 +299,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
         )
     };
     let control_handle = control::ControlHandle::spawn(
+        runtime.process_control_endpoint.as_deref(),
         shutdown.clone(),
         active_input.controller(),
         cli_cancellation.clone(),
@@ -1072,6 +1070,7 @@ mod tests {
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
             workload_containment: None,
+            process_control_endpoint: None,
         }
     }
 
@@ -1163,6 +1162,7 @@ mod tests {
             guest_contracts::env::API_URL_ENV,
             guest_contracts::env::RUN_ID_ENV,
             guest_contracts::env::API_TOKEN_ENV,
+            guest_contracts::env::CANONICAL_API_TOKEN_ENV,
             guest_contracts::env::SANDBOX_ID_ENV,
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
@@ -1173,6 +1173,7 @@ mod tests {
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
             guest_contracts::env::RESUME_SESSION_ID_ENV,
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             guest_contracts::env::API_START_TIME_ENV,
             guest_contracts::env::CANONICAL_API_START_TIME_ENV,
             guest_contracts::env::SECRET_VALUES_ENV,
@@ -1181,7 +1182,9 @@ mod tests {
             guest_contracts::env::SETTINGS_ENV,
             guest_contracts::env::CLI_AGENT_TYPE_ENV,
             guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             guest_contracts::env::ARTIFACTS_ENV,
             guest_contracts::env::FEATURE_FLAGS_ENV,
             guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -1192,9 +1195,14 @@ mod tests {
             guest_contracts::env::USE_MOCK_CODEX_ENV,
             guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {

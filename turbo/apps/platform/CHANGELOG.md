@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.790.1](https://github.com/vm0-ai/vm0/compare/app-v0.790.0...app-v0.790.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **connectors:** simplify multi-account settings interactions ([#29094](https://github.com/vm0-ai/vm0/issues/29094)) ([023b916](https://github.com/vm0-ai/vm0/commit/023b916626ff1488f54ed6c5d10658fbf0f34e7c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.360.1
+    * @okouai/core bumped to 8.587.3
+
+## [0.790.0](https://github.com/vm0-ai/vm0/compare/app-v0.789.0...app-v0.790.0) (2026-08-24)
+
+
+### Features
+
+* add auth v2 organization continuation ([#29110](https://github.com/vm0-ai/vm0/issues/29110)) ([9c62e8c](https://github.com/vm0-ai/vm0/commit/9c62e8c601dddf1e17a28a20447310f746b72a6b))
+* **auth:** add v2 google sign-up ([#29109](https://github.com/vm0-ai/vm0/issues/29109)) ([e3682a7](https://github.com/vm0-ai/vm0/commit/e3682a7a1832c7dd82b265b7aaeb782d43375dc0))
+
+## [0.789.0](https://github.com/vm0-ai/vm0/compare/app-v0.788.0...app-v0.789.0) (2026-08-24)
+
+
+### Features
+
+* **agentphone:** decouple provider identity from public brand ([#28953](https://github.com/vm0-ai/vm0/issues/28953)) ([e7fcd06](https://github.com/vm0-ai/vm0/commit/e7fcd06ba2647f55d8a83e7e94be2ed066b74a97))
+* **auth:** add advanced v2 sign-in strategies ([#29090](https://github.com/vm0-ai/vm0/issues/29090)) ([c59a376](https://github.com/vm0-ai/vm0/commit/c59a3768f3d1267ca03549f380705781e589f128))
+* **auth:** add v2 sign-in flow ([#29035](https://github.com/vm0-ai/vm0/issues/29035)) ([5cdeba4](https://github.com/vm0-ai/vm0/commit/5cdeba4b32757db052f7a63aa1582b2b38726ffa))
+* **auth:** add v2 sign-up flow ([#29096](https://github.com/vm0-ai/vm0/issues/29096)) ([627bf97](https://github.com/vm0-ai/vm0/commit/627bf970c44ae77a221f50ceaa3dae208583b1a8))
+* **feishu:** preserve host-derived public branding ([#28935](https://github.com/vm0-ai/vm0/issues/28935)) ([bbb60c7](https://github.com/vm0-ai/vm0/commit/bbb60c70fb46dcc1ca6a15694de0770edba98c95))
+* **telegram:** support dual-brand ingress ([#28945](https://github.com/vm0-ai/vm0/issues/28945)) ([c5f6b87](https://github.com/vm0-ai/vm0/commit/c5f6b87adc0ba25a73bddd595d5740360fd32d0d))
+
+
+### Bug Fixes
+
+* sync workspace presentation templates without picker flicker ([#29054](https://github.com/vm0-ai/vm0/issues/29054)) ([0309fcb](https://github.com/vm0-ai/vm0/commit/0309fcb9dd1c15a3c7138df003cc28d10286e1de))
+
+
+### Refactoring
+
+* migrate built-in model terminology ([#29079](https://github.com/vm0-ai/vm0/issues/29079)) ([4de6522](https://github.com/vm0-ai/vm0/commit/4de65229d749c81d2b27b5fdc15320e3da5d91ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.360.0
+    * @okouai/core bumped to 8.587.2
+
+## [0.788.0](https://github.com/vm0-ai/vm0/compare/app-v0.787.0...app-v0.788.0) (2026-08-24)
+
+
+### Features
+
+* **slack:** migrate official app to okou ([#28795](https://github.com/vm0-ai/vm0/issues/28795)) ([57d1a9f](https://github.com/vm0-ai/vm0/commit/57d1a9f500272b2b8214462fcbc640528103dd8f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.359.0
+    * @okouai/core bumped to 8.587.1
+
+## [0.787.0](https://github.com/vm0-ai/vm0/compare/app-v0.786.0...app-v0.787.0) (2026-08-24)
+
+
+### Features
+
+* annotate an attached image in the composer ([#28976](https://github.com/vm0-ai/vm0/issues/28976)) ([19096b6](https://github.com/vm0-ai/vm0/commit/19096b6c2ef65e8d885cbadbf0f6f7cc81ef4508))
+* **auth:** add auth v2 navigation context ([#28999](https://github.com/vm0-ai/vm0/issues/28999)) ([8cfed8c](https://github.com/vm0-ai/vm0/commit/8cfed8cd93cde210d039b37c3b293fd11029f5be))
+* **auth:** refine v2 presentation shell ([#28993](https://github.com/vm0-ai/vm0/issues/28993)) ([c9b2e6f](https://github.com/vm0-ai/vm0/commit/c9b2e6ff28254cc5e952c5e22345f3dd75015048))
+* **banking:** add chat-based mastercard connect flow ([#28832](https://github.com/vm0-ai/vm0/issues/28832)) ([faf1021](https://github.com/vm0-ai/vm0/commit/faf10210ffc1a956a1c3f077e3410bcc27ae4cb8))
+* **platform:** add multi-account connector settings ([#28904](https://github.com/vm0-ai/vm0/issues/28904)) ([e8d0c2a](https://github.com/vm0-ai/vm0/commit/e8d0c2acb679ccd23b218a694aaf1a6893f97791))
+* pull presentation reverse-template from r2 ([#29043](https://github.com/vm0-ai/vm0/issues/29043)) ([5da72eb](https://github.com/vm0-ai/vm0/commit/5da72eb706544d50731cab880c4d006979b63afe))
+* **teams:** separate provider identity from public brand ([#28938](https://github.com/vm0-ai/vm0/issues/28938)) ([6e717c5](https://github.com/vm0-ai/vm0/commit/6e717c58fad35281b0e30e296ea135ed9487d363))
+
+
+### Bug Fixes
+
+* **composer:** keep the feedback note chrome outside the editable flow ([#29037](https://github.com/vm0-ai/vm0/issues/29037)) ([05d6dcc](https://github.com/vm0-ai/vm0/commit/05d6dcca4a00acbac33b98d031790da594a0e7a1))
+* **platform:** keep the model picker measurement row hidden on category switch ([#29046](https://github.com/vm0-ai/vm0/issues/29046)) ([4771a6f](https://github.com/vm0-ai/vm0/commit/4771a6fe681d674fb16d80120a19541597a63866))
+* **platform:** preserve composer state during feature hydration ([#29026](https://github.com/vm0-ai/vm0/issues/29026)) ([65b1577](https://github.com/vm0-ai/vm0/commit/65b1577d45cfd95f7df3355d8f5507ec9df9ce92))
+* **video:** default to a video model the picker offers ([#29045](https://github.com/vm0-ai/vm0/issues/29045)) ([33a6dba](https://github.com/vm0-ai/vm0/commit/33a6dba91522f57fc231773833d1cac9ad88a2e4))
+
+
+### Refactoring
+
+* remove home start cards feature switch ([#29044](https://github.com/vm0-ai/vm0/issues/29044)) ([6f777ef](https://github.com/vm0-ai/vm0/commit/6f777ef3e3560c76b4924fb05801ec8937b6800a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.358.0
+    * @okouai/core bumped to 8.587.0
+
 ## [0.786.0](https://github.com/vm0-ai/vm0/compare/app-v0.785.1...app-v0.786.0) (2026-08-24)
 
 

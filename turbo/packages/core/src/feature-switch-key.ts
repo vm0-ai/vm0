@@ -55,10 +55,9 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
-  ManagedModelProviderFallback = "managedModelProviderFallback",
+  BuiltInModelProviderFallback = "builtInModelProviderFallback",
   ChatForward = "chatForward",
   ResponsiveFollowupCards = "responsiveFollowupCards",
-  HomeStartCards = "homeStartCards",
   HomeGrowthEntry = "homeGrowthEntry",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
@@ -85,4 +84,5 @@ export enum FeatureSwitchKey {
   ComposerSubmitDomReconcile = "composerSubmitDomReconcile",
   ComposerImageAnnotation = "composerImageAnnotation",
   ComposerRestoredAttachmentValidation = "composerRestoredAttachmentValidation",
+  ComposerNoteEditableIsolation = "composerNoteEditableIsolation",
 }

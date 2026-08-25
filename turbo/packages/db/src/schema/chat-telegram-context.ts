@@ -1,3 +1,4 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
@@ -25,6 +26,8 @@ export const chatTelegramContext = pgTable("chat_telegram_context", {
   threadContext: text("thread_context"),
   rootMessageId: text("root_message_id"),
   thinkingMessageId: text("thinking_message_id"),
+  /** Product brand derived from the Telegram webhook hostname at ingress. */
+  publicBrand: text("public_brand").$type<PublicBrand>(),
   userLinkId: uuid("user_link_id"),
   userLinkKind: text("user_link_kind").$type<"custom" | "official">(),
   chatType: text("chat_type").notNull(),

@@ -62,7 +62,7 @@ fn validate_timezone_arg(timezone: &str) -> RunnerResult<()> {
 
 #[derive(Args)]
 pub struct BenchmarkArgs {
-    /// The bash command to execute in the VM
+    /// The bash command to execute in the sandbox
     command: String,
     /// Path to runner.yaml config file
     #[arg(long, short)]
@@ -73,7 +73,7 @@ pub struct BenchmarkArgs {
     /// Environment variables to pass (KEY=VALUE), can be repeated
     #[arg(long, short)]
     env: Vec<String>,
-    /// Guest zoneinfo name to configure; benchmark fails if unavailable in the VM
+    /// Guest zoneinfo name to configure; benchmark fails if unavailable in the sandbox
     #[arg(long, default_value = DEFAULT_BENCHMARK_TIMEZONE)]
     timezone: String,
     /// Run the command as root (sudo)
@@ -514,7 +514,7 @@ mod tests {
         let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
 
         assert!(normalized_help.contains(
-            "Guest zoneinfo name to configure; benchmark fails if unavailable in the VM"
+            "Guest zoneinfo name to configure; benchmark fails if unavailable in the sandbox"
         ));
     }
 

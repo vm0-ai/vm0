@@ -1055,12 +1055,45 @@
       "signIn": "Entrar",
       "signUp": "Criar conta"
     },
+    "homeLink": "Ir para a página inicial do {{brandName}}",
     "loading": "Carregando autenticação",
+    "theme": {
+      "darkEnabled": "Tema escuro ativado",
+      "lightEnabled": "Tema claro ativado"
+    },
     "toggleTheme": "Alternar tema",
     "v2": {
-      "continueToSignIn": "Continuar para entrar",
-      "continueToSignUp": "Continuar para criar uma conta",
-      "unavailable": "A nova experiência de autenticação ainda não está disponível."
+      "continuation": {
+        "activationErrorDescription": "Não foi possível concluir seu login. Comece novamente e tente outra vez.",
+        "activationErrorTitle": "Não foi possível concluir o login",
+        "chooseOrganizationDescription": "Escolha uma organização para continuar no {{brandName}}.",
+        "chooseOrganizationTitle": "Escolha uma organização",
+        "completeDescription": "Levando você ao {{brandName}}.",
+        "completeTitle": "Login concluído",
+        "loadingDescription": "Verificando o que sua conta precisa fazer a seguir.",
+        "loadingTitle": "Finalizando o login",
+        "noOrganizationsDescription": "Esta conta não tem uma organização disponível. Peça acesso a um administrador da organização e comece novamente.",
+        "noOrganizationsTitle": "Nenhuma organização disponível",
+        "recoveryAction": "Começar novamente",
+        "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
+        "secondFactorTitle": "Verificação adicional necessária",
+        "selectOrganization": "Continuar com {{organizationName}}",
+        "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
+        "unsupportedTitle": "Etapa de login indisponível"
+      },
+      "signIn": {
+        "action": "Usar o login atual",
+        "title": "Entrar no {{brandName}}"
+      },
+      "signUp": {
+        "action": "Usar o cadastro atual",
+        "captchaExpired": "A verificação contra bots expirou. Tente novamente.",
+        "codeExpired": "Este código de verificação expirou. Solicite um novo código.",
+        "resendCodeCooldown_one": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_many": "{{resendCode}} ({{count}} s)",
+        "resendCodeCooldown_other": "{{resendCode}} ({{count}} s)",
+        "title": "Criar sua conta do {{brandName}}"
+      }
     }
   },
   "authorization": {
@@ -1716,6 +1749,38 @@
       "weeklyAt": "Toda semana às {{time}}",
       "weeklyOnAt": "Toda semana, em {{days}}, às {{time}}"
     },
+    "banking": {
+      "accountFallback": "Conta bancária",
+      "actionFailed": "A ação bancária falhou",
+      "active_one": "Acesso ativo para {{count}} conta",
+      "active_many": "Acesso ativo para {{count}} contas",
+      "active_other": "Acesso ativo para {{count}} contas",
+      "automationOff": "O acesso somente leitura não está disponível para execuções de automação.",
+      "cancel": "Cancelar",
+      "change": "Alterar",
+      "connect": "Conectar um banco",
+      "continue": "Continuar",
+      "duration": "Duração do acesso",
+      "expiresAt": "Expira em {{time}}",
+      "grant": "Conceder acesso",
+      "institutionFallback": "Instituição financeira",
+      "loadFailed": "Não foi possível carregar o acesso bancário",
+      "noAccounts": "Nenhuma conta ativa está disponível. Reconecte ou repare a instituição primeiro.",
+      "oneDay": "24 horas",
+      "oneHour": "1 hora",
+      "popupBlocked": "Permita pop-ups para o Zero e tente novamente.",
+      "readOnly": "Contas, saldos e transações · somente leitura",
+      "repair": "Reparar",
+      "repairRequired": "{{institution}} precisa de reparo",
+      "retry": "Tentar novamente",
+      "revoke": "Revogar",
+      "revokeConfirm": "Revogar o acesso bancário deste Agente?",
+      "selectAccounts": "Selecionar contas",
+      "sevenDays": "7 dias",
+      "thirtyDays": "30 dias",
+      "title": "Solicitação de acesso bancário",
+      "waiting": "Aguardando o Mastercard Data Connect. Conclua o processo lá e depois volte ao Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Adicione créditos para continuar conversando com o {{assistantName}}.",
       "askAdminCredits": "Peça a um administrador do workspace para adicionar créditos e continuar conversando com o {{assistantName}}.",
@@ -2201,6 +2266,48 @@
       "title": "Gerenciar acesso ao {{connector}}",
       "unnamedAgent": "Sem nome"
     },
+    "accounts": {
+      "accountName": "Nome da conta",
+      "accountsUnavailable": "As contas não estão disponíveis para este conector.",
+      "actions": "Ações da conta",
+      "addAccount": "Adicionar conta",
+      "connected": "Conectada",
+      "default": "Padrão",
+      "deleteAccount": "Excluir conta",
+      "deleteDescription": "As conversas que usam esta conta voltarão à herança padrão.",
+      "deleteDescriptionWithCount": "{{value}} conversas voltarão à herança padrão.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Excluir {{account}}?",
+      "find": "Buscar contas",
+      "loading": "Carregando contas…",
+      "loadingMore": "Carregando…",
+      "loadMore": "Carregar mais",
+      "makeDefault": "Definir como padrão",
+      "managerTitle": "Gerenciar contas do {{connector}}",
+      "namePromptDescription": "Você pode pular esta etapa e nomear a conta mais tarde.",
+      "namePromptTitle": "Nomeie sua conta do {{connector}}",
+      "noAccounts": "Nenhuma conta",
+      "noAccountsFound": "Nenhuma conta encontrada",
+      "reconnectRequired": "É necessário reconectar",
+      "rename": "Renomear",
+      "skipName": "Pular",
+      "summaryMany": "{{value}} contas",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} conta",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{summary}} · {{value}} precisam de atenção",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": "",
+      "summaryWithDefault": "{{summary}} · {{account}}",
+      "workPlaceholder": "Conta de trabalho"
+    },
     "actions": {
       "apply": "Aplicar",
       "authorize": "Autorizar",
@@ -2601,8 +2708,8 @@
         "connectTitle": "Conectar ao Slack",
         "invalidDescription": "Esta página deve ser aberta por um link de conexão do Slack.",
         "open": "Abrir Slack",
-        "successDescription": "Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
-        "successDescriptionWorkspace": "Você está conectado a {{workspace}}. Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
+        "successDescription": "Mencione o bot instalado em qualquer canal ou envie uma DM para começar a conversar.",
+        "successDescriptionWorkspace": "Você está conectado a {{workspace}}. Mencione o bot instalado em qualquer canal ou envie uma DM para começar a conversar.",
         "successTitle": "Conectado ao Slack!"
       },
       "teams": {
@@ -2612,7 +2719,7 @@
         "invalidDescription": "Esta página deve ser aberta por um link de conexão do Microsoft Teams.",
         "open": "Abrir Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Você está conectado a {{team}}. Mencione @Zero no Teams para começar a conversar.",
+        "successDescription": "Você está conectado a {{team}}. Mencione @{{botName}} no Teams para começar a conversar.",
         "successTitle": "Conectado ao Microsoft Teams"
       },
       "telegram": {
@@ -2756,12 +2863,12 @@
         "copied": "Copiado: {{label}}",
         "copy": "Copiar",
         "create": {
-          "descriptionAfter": ", crie um app personalizado empresarial chamado {{brandName}}, envie o ícone do {{brandName}} e adicione o recurso Bot.",
+          "descriptionAfter": ", crie um app personalizado empresarial com o nome e o ícone que preferir e adicione o recurso Bot.",
           "descriptionBefore": "No ",
-          "downloadIcon": "Baixar o ícone do {{brandName}}",
-          "iconAlt": "Ícone do app {{brandName}}",
+          "downloadIcon": "Baixar o ícone opcional do {{brandName}}",
+          "iconAlt": "Ícone opcional do app {{brandName}}",
           "iconHint": " ou use qualquer ícone de sua preferência.",
-          "iconTitle": "Ícone do app {{brandName}}",
+          "iconTitle": "Ícone opcional do app {{brandName}}",
           "imageAlt": "Formulário de criação de app do Feishu com o nome, o ícone e o botão Criar destacados",
           "title": "Criar um app personalizado empresarial"
         },
@@ -2940,7 +3047,7 @@
         "moreOptions": "Mais opções para {{bot}}",
         "newBotToken": "Novo token do bot",
         "notConnected": "Não conectado",
-        "officialBot": "Bot oficial do {{assistantName}}",
+        "officialBot": "Bot oficial do Telegram",
         "officialDescription": "Bot oficial fornecido pelo {{brandName}}.",
         "officialMissing": "A configuração do bot oficial está ausente.",
         "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
@@ -4825,6 +4932,24 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "description": "Inspecione as rotas de modelos integrados temporariamente excluídas da seleção de fallback.",
+          "disabled": "desativado",
+          "disabledExplanation": "O fallback de modelos integrados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
+          "empty": "Nenhuma rota de modelo integrado está em cooldown global no momento.",
+          "enabled": "ativado",
+          "globalActive": "cooldowns globais ativos",
+          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos integrados estiver ativado aqui.",
+          "loading": "Carregando diagnósticos de cooldown de modelos integrados...",
+          "providerType": "Tipo de provedor",
+          "refresh": "Atualizar",
+          "selectedModel": "Modelo selecionado",
+          "title": "Fallback de modelos integrados",
+          "unavailable": "Os diagnósticos de cooldown de modelos integrados estão indisponíveis.",
+          "unavailableUntil": "Indisponível até",
+          "upstreamModel": "Modelo upstream",
+          "workspaceFallback": "fallback do workspace"
+        },
         "capture": {
           "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
           "disabled": "Desativado",
@@ -4850,24 +4975,6 @@
           "recovery": "recuperação",
           "title": "Diagnóstico de conexão em tempo real",
           "unavailable": "indisponível"
-        },
-        "managedModelCooldown": {
-          "description": "Inspecione as rotas de modelos gerenciados temporariamente excluídas da seleção de fallback.",
-          "disabled": "desativado",
-          "disabledExplanation": "O fallback de modelos gerenciados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
-          "empty": "Nenhuma rota de modelo gerenciado está em cooldown global no momento.",
-          "enabled": "ativado",
-          "globalActive": "cooldowns globais ativos",
-          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos gerenciados estiver ativado aqui.",
-          "loading": "Carregando diagnósticos de cooldown de modelos gerenciados...",
-          "providerType": "Tipo de provedor",
-          "refresh": "Atualizar",
-          "selectedModel": "Modelo selecionado",
-          "title": "Fallback de modelos gerenciados",
-          "unavailable": "Os diagnósticos de cooldown de modelos gerenciados estão indisponíveis.",
-          "unavailableUntil": "Indisponível até",
-          "upstreamModel": "Modelo upstream",
-          "workspaceFallback": "fallback do workspace"
         },
         "tab": "Depuração"
       },

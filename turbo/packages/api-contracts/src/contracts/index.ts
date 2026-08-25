@@ -539,21 +539,21 @@ export {
   type SupportedRunModel,
   type ModelProviderCredentialScope,
   type DefaultOrgModelPolicySeed,
-  type Vm0ManagedRouteCandidate,
-  type Vm0ManagedRouteProviderType,
-  type Vm0ManagedRouteTarget,
+  type Vm0BuiltInModelRouteCandidate,
+  type Vm0BuiltInModelRouteProviderType,
+  type Vm0BuiltInModelRouteTarget,
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 managed provider
+  // VM0 built-in provider
   VM0_MODEL_TO_PROVIDER,
-  VM0_MANAGED_ROUTE_PROVIDERS,
+  VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS,
   VM0_MODEL_ALIAS_TO_MODEL,
-  getVm0ManagedRouteCandidates,
-  getVm0ManagedRouteVendors,
+  getVm0BuiltInModelRouteCandidates,
+  getVm0BuiltInModelRouteVendors,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
@@ -1118,11 +1118,11 @@ export {
   type RunRunnerResponse,
 } from "./run-routes";
 export {
-  managedModelCooldownDiagnosticsSchema,
+  builtInModelCooldownDiagnosticsSchema,
   modelProviderCooldownDiagnosticsContract,
   modelProvidersMainContract,
   modelProvidersByTypeContract,
-  type ManagedModelCooldownDiagnostics,
+  type BuiltInModelCooldownDiagnostics,
   type ModelProviderCooldownDiagnosticsContract,
   type ModelProvidersMainContract,
   type ModelProvidersByTypeContract,

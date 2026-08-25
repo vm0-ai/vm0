@@ -27,13 +27,13 @@ pub enum ActiveRunPhase {
 ///
 /// `run_id` is the user/control-plane visible run identity. `sandbox_id` is
 /// the sandbox identity used by runner maintenance commands to correlate
-/// Firecracker state. After sandbox reuse these can differ: the VM keeps its
+/// Firecracker state. After sandbox reuse these can differ: the sandbox keeps its
 /// original `sandbox_id`, while each successive job has a fresh `run_id`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActiveRun {
     /// User/control-plane visible run id.
     pub run_id: RunId,
-    /// Sandbox/VM id assigned to this run.
+    /// Sandbox id assigned to this run.
     ///
     /// Runner doctor, kill, and exec use this as the join key when correlating
     /// status entries with Firecracker processes.
@@ -57,7 +57,7 @@ struct ActiveRunState {
 
 /// One parked sandbox's reuse identity and Firecracker sandbox identity.
 #[derive(Debug, Clone, Serialize)]
-pub struct IdleVm {
+pub struct IdleSandbox {
     pub reuse_key: String,
     pub sandbox_id: SandboxId,
 }
@@ -68,7 +68,7 @@ struct RunnerStatus {
     max_concurrent: usize,
     active_runs: Vec<ActiveRun>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    idle_vms: Vec<IdleVm>,
+    idle_sandboxes: Vec<IdleSandbox>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,13 +126,13 @@ struct MutableState {
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
     active_runs: BTreeMap<RunId, ActiveRunState>,
-    /// Monotonic idle pool mutation revision last reflected in `idle_vms`.
+    /// Monotonic idle pool mutation revision last reflected in `idle_sandboxes`.
     ///
     /// Idle pool callers snapshot under the pool lock, drop it, then write
     /// status asynchronously. The revision prevents an older delayed snapshot
     /// from overwriting a newer drain/evict state.
     idle_revision: u64,
-    idle_vms: Vec<IdleVm>,
+    idle_sandboxes: Vec<IdleSandbox>,
 }
 
 impl StatusTracker {
@@ -161,7 +161,7 @@ impl StatusTracker {
                 mode: RunnerMode::Starting,
                 active_runs: BTreeMap::new(),
                 idle_revision: 0,
-                idle_vms: Vec::new(),
+                idle_sandboxes: Vec::new(),
             }),
             persistence: Mutex::new(PersistenceState {
                 published_generation: 0,
@@ -237,47 +237,47 @@ impl StatusTracker {
         self.persist_snapshot(snapshot).await;
     }
 
-    /// Register an active run and replace the idle VM list in the same status
+    /// Register an active run and replace the idle sandbox list in the same status
     /// write if the idle snapshot is current. On duplicate `run_id`, the
     /// previous `sandbox_id` is overwritten.
     ///
     /// This avoids a transient status.json gap during idle reuse where a sandbox
-    /// has been removed from `idle_vms` but has not yet appeared in
+    /// has been removed from `idle_sandboxes` but has not yet appeared in
     /// `active_runs`.
-    /// Register a running active run and replace the idle VM list in the same
+    /// Register a running active run and replace the idle sandbox list in the same
     /// status write if the idle snapshot is current.
     pub async fn add_running_run_with_idle_info_at_revision(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
         revision: u64,
-        idle_vms: Vec<IdleVm>,
+        idle_sandboxes: Vec<IdleSandbox>,
     ) -> bool {
         self.add_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
             ActiveRunPhase::Running,
             revision,
-            idle_vms,
+            idle_sandboxes,
         )
         .await
     }
 
-    /// Register a preparing active run and replace the idle VM list in the
+    /// Register a preparing active run and replace the idle sandbox list in the
     /// same status write if the idle snapshot is current.
     pub async fn add_preparing_run_with_idle_info_at_revision(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
         revision: u64,
-        idle_vms: Vec<IdleVm>,
+        idle_sandboxes: Vec<IdleSandbox>,
     ) -> bool {
         self.add_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
             ActiveRunPhase::Preparing,
             revision,
-            idle_vms,
+            idle_sandboxes,
         )
         .await
     }
@@ -288,7 +288,7 @@ impl StatusTracker {
         sandbox_id: SandboxId,
         phase: ActiveRunPhase,
         revision: u64,
-        idle_vms: Vec<IdleVm>,
+        idle_sandboxes: Vec<IdleSandbox>,
     ) -> bool {
         let (applied, snapshot) = {
             let mut state = self.state.lock().await;
@@ -300,7 +300,7 @@ impl StatusTracker {
                     phase_started_at: Utc::now(),
                 },
             );
-            let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
+            let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);
             let snapshot = self.capture_changed_snapshot(&mut state);
             (applied, snapshot)
         };
@@ -345,15 +345,19 @@ impl StatusTracker {
         true
     }
 
-    /// Replace the idle VM list only if the snapshot is at least as new as the
+    /// Replace the idle sandbox list only if the snapshot is at least as new as the
     /// last applied idle-pool mutation revision.
     ///
     /// Returns `false` when a stale async writer lost the race to a newer
     /// snapshot and was intentionally ignored.
-    pub async fn set_idle_info_at_revision(&self, revision: u64, idle_vms: Vec<IdleVm>) -> bool {
+    pub async fn set_idle_info_at_revision(
+        &self,
+        revision: u64,
+        idle_sandboxes: Vec<IdleSandbox>,
+    ) -> bool {
         let snapshot = {
             let mut state = self.state.lock().await;
-            let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
+            let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);
             if !applied {
                 return false;
             }
@@ -389,7 +393,7 @@ impl StatusTracker {
             mode: state.mode,
             max_concurrent: self.max_concurrent,
             active_runs,
-            idle_vms: state.idle_vms.clone(),
+            idle_sandboxes: state.idle_sandboxes.clone(),
             proxy_port: self.proxy_port,
             dns_port: self.dns_port,
             started_at: self.started_at,
@@ -457,13 +461,13 @@ pub async fn remove_stale_status_file(path: &Path) -> RunnerResult<()> {
 fn apply_idle_info_at_revision(
     state: &mut MutableState,
     revision: u64,
-    idle_vms: Vec<IdleVm>,
+    idle_sandboxes: Vec<IdleSandbox>,
 ) -> bool {
     if revision < state.idle_revision {
         return false;
     }
     state.idle_revision = revision;
-    state.idle_vms = idle_vms;
+    state.idle_sandboxes = idle_sandboxes;
     true
 }
 
@@ -833,7 +837,8 @@ mod tests {
         tracker.write_initial().await;
 
         let status = read_status(&path);
-        assert!(status.get("idle_vms").is_none()); // empty vec omitted
+        assert!(status.get("idle_sandboxes").is_none());
+        assert!(status.get("idle_vms").is_none());
 
         let sb1 = SandboxId::new_v4();
         let sb2 = SandboxId::new_v4();
@@ -842,11 +847,11 @@ mod tests {
                 .set_idle_info_at_revision(
                     1,
                     vec![
-                        IdleVm {
+                        IdleSandbox {
                             reuse_key: "sess-1".into(),
                             sandbox_id: sb1,
                         },
-                        IdleVm {
+                        IdleSandbox {
                             reuse_key: "sess-2".into(),
                             sandbox_id: sb2,
                         },
@@ -856,12 +861,13 @@ mod tests {
         );
 
         let status = read_status(&path);
-        let vms = status["idle_vms"].as_array().unwrap();
-        assert_eq!(vms.len(), 2);
-        assert_eq!(vms[0]["reuse_key"], "sess-1");
-        assert_eq!(vms[0]["sandbox_id"], sb1.to_string());
-        assert_eq!(vms[1]["reuse_key"], "sess-2");
-        assert_eq!(vms[1]["sandbox_id"], sb2.to_string());
+        assert!(status.get("idle_vms").is_none());
+        let sandboxes = status["idle_sandboxes"].as_array().unwrap();
+        assert_eq!(sandboxes.len(), 2);
+        assert_eq!(sandboxes[0]["reuse_key"], "sess-1");
+        assert_eq!(sandboxes[0]["sandbox_id"], sb1.to_string());
+        assert_eq!(sandboxes[1]["reuse_key"], "sess-2");
+        assert_eq!(sandboxes[1]["sandbox_id"], sb2.to_string());
     }
 
     #[tokio::test]
@@ -877,7 +883,7 @@ mod tests {
             tracker
                 .set_idle_info_at_revision(
                     2,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "fresh".into(),
                         sandbox_id: fresh_id,
                     }],
@@ -888,7 +894,7 @@ mod tests {
             !tracker
                 .set_idle_info_at_revision(
                     1,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
@@ -897,10 +903,10 @@ mod tests {
         );
 
         let status = read_status(&path);
-        let vms = status["idle_vms"].as_array().unwrap();
-        assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["reuse_key"], "fresh");
-        assert_eq!(vms[0]["sandbox_id"], fresh_id.to_string());
+        let sandboxes = status["idle_sandboxes"].as_array().unwrap();
+        assert_eq!(sandboxes.len(), 1);
+        assert_eq!(sandboxes[0]["reuse_key"], "fresh");
+        assert_eq!(sandboxes[0]["sandbox_id"], fresh_id.to_string());
     }
 
     #[tokio::test]
@@ -916,7 +922,7 @@ mod tests {
             tracker
                 .set_idle_info_at_revision(
                     1,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "sess-replaced".into(),
                         sandbox_id: original_id,
                     }],
@@ -925,7 +931,7 @@ mod tests {
         );
 
         // A cleanup/pressure eviction path captured this empty snapshot after
-        // removing the original VM, then got delayed before publishing it.
+        // removing the original sandbox, then got delayed before publishing it.
         let delayed_cleanup_revision = 2;
         let delayed_cleanup_snapshot = Vec::new();
 
@@ -934,7 +940,7 @@ mod tests {
             tracker
                 .set_idle_info_at_revision(
                     3,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "sess-replaced".into(),
                         sandbox_id: replacement_id,
                     }],
@@ -949,10 +955,10 @@ mod tests {
         );
 
         let status = read_status(&path);
-        let vms = status["idle_vms"].as_array().unwrap();
-        assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["reuse_key"], "sess-replaced");
-        assert_eq!(vms[0]["sandbox_id"], replacement_id.to_string());
+        let sandboxes = status["idle_sandboxes"].as_array().unwrap();
+        assert_eq!(sandboxes.len(), 1);
+        assert_eq!(sandboxes[0]["reuse_key"], "sess-replaced");
+        assert_eq!(sandboxes[0]["sandbox_id"], replacement_id.to_string());
     }
 
     #[tokio::test]
@@ -970,7 +976,7 @@ mod tests {
             tracker
                 .set_idle_info_at_revision(
                     2,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "fresh".into(),
                         sandbox_id: idle_id,
                     }],
@@ -983,7 +989,7 @@ mod tests {
                     run_id,
                     active_id,
                     1,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
@@ -997,10 +1003,10 @@ mod tests {
         assert_eq!(runs[0]["run_id"], run_id.to_string());
         assert_eq!(runs[0]["sandbox_id"], active_id.to_string());
         assert_eq!(runs[0]["phase"], "running");
-        let vms = status["idle_vms"].as_array().unwrap();
-        assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["reuse_key"], "fresh");
-        assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
+        let sandboxes = status["idle_sandboxes"].as_array().unwrap();
+        assert_eq!(sandboxes.len(), 1);
+        assert_eq!(sandboxes[0]["reuse_key"], "fresh");
+        assert_eq!(sandboxes[0]["sandbox_id"], idle_id.to_string());
     }
 
     #[tokio::test]
@@ -1019,7 +1025,7 @@ mod tests {
                     run_id,
                     active_id,
                     1,
-                    vec![IdleVm {
+                    vec![IdleSandbox {
                         reuse_key: "fresh-create-after-reuse-miss".into(),
                         sandbox_id: idle_id,
                     }],
@@ -1033,10 +1039,10 @@ mod tests {
         assert_eq!(runs[0]["run_id"], run_id.to_string());
         assert_eq!(runs[0]["sandbox_id"], active_id.to_string());
         assert_eq!(runs[0]["phase"], "preparing");
-        let vms = status["idle_vms"].as_array().unwrap();
-        assert_eq!(vms.len(), 1);
-        assert_eq!(vms[0]["reuse_key"], "fresh-create-after-reuse-miss");
-        assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
+        let sandboxes = status["idle_sandboxes"].as_array().unwrap();
+        assert_eq!(sandboxes.len(), 1);
+        assert_eq!(sandboxes[0]["reuse_key"], "fresh-create-after-reuse-miss");
+        assert_eq!(sandboxes[0]["sandbox_id"], idle_id.to_string());
     }
 
     #[tokio::test]
@@ -1049,8 +1055,8 @@ mod tests {
 
         let status = read_status(&path);
         assert!(
-            status.get("idle_vms").is_none(),
-            "empty idle_vms should be omitted from JSON"
+            status.get("idle_sandboxes").is_none(),
+            "empty idle_sandboxes should be omitted from JSON"
         );
     }
 }

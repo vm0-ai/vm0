@@ -1,5 +1,61 @@
 # Changelog
 
+## [9.282.3](https://github.com/vm0-ai/vm0/compare/cli-v9.282.2...cli-v9.282.3) (2026-08-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.360.1
+    * @okouai/core bumped to 8.587.3
+
+## [9.282.2](https://github.com/vm0-ai/vm0/compare/cli-v9.282.1...cli-v9.282.2) (2026-08-24)
+
+
+### Refactoring
+
+* migrate built-in model terminology ([#29079](https://github.com/vm0-ai/vm0/issues/29079)) ([4de6522](https://github.com/vm0-ai/vm0/commit/4de65229d749c81d2b27b5fdc15320e3da5d91ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.360.0
+    * @okouai/core bumped to 8.587.2
+
+## [9.282.1](https://github.com/vm0-ai/vm0/compare/cli-v9.282.0...cli-v9.282.1) (2026-08-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.359.0
+    * @okouai/core bumped to 8.587.1
+
+## [9.282.0](https://github.com/vm0-ai/vm0/compare/cli-v9.281.6...cli-v9.282.0) (2026-08-24)
+
+
+### Features
+
+* **banking:** add chat-based mastercard connect flow ([#28832](https://github.com/vm0-ai/vm0/issues/28832)) ([faf1021](https://github.com/vm0-ai/vm0/commit/faf10210ffc1a956a1c3f077e3410bcc27ae4cb8))
+* pull presentation reverse-template from r2 ([#29043](https://github.com/vm0-ai/vm0/issues/29043)) ([5da72eb](https://github.com/vm0-ai/vm0/commit/5da72eb706544d50731cab880c4d006979b63afe))
+
+
+### Refactoring
+
+* **api:** move the last four download-file contracts off the brand namespace ([#28984](https://github.com/vm0-ai/vm0/issues/28984)) ([ea6d065](https://github.com/vm0-ai/vm0/commit/ea6d0652ca55fe6b43ed4dba16d364ce058aa72a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.358.0
+    * @okouai/core bumped to 8.587.0
+
 ## [9.281.6](https://github.com/vm0-ai/vm0/compare/cli-v9.281.5...cli-v9.281.6) (2026-08-24)
 
 

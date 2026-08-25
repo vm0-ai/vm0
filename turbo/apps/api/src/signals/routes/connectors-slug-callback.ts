@@ -79,6 +79,7 @@ type CompleteOAuthCallbackInput = {
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
   readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type CompleteOpenIdCallbackInput = {
@@ -92,6 +93,7 @@ type CompleteOpenIdCallbackInput = {
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
   readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type ResolveCallbackStateInput = {
@@ -119,6 +121,7 @@ type ResolvedCallbackState =
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
       readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -135,6 +138,7 @@ type ResolvedOpenIdCallbackState =
       readonly expectedRealm: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
       readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -571,6 +575,7 @@ const completeOAuthCallback$ = command(
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -655,6 +660,7 @@ const completeOpenIdCallback$ = command(
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -727,6 +733,10 @@ async function resolveCallbackState(
     oauthContext: args.storedState.oauthContext ?? undefined,
     redirectUri: args.storedState.redirectUri,
     account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -779,6 +789,10 @@ async function resolveOpenIdCallbackState(
       args.storedState.redirectUri,
     ),
     account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -872,6 +886,7 @@ const handleOpenIdConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
@@ -1088,6 +1103,7 @@ const handleAuthCodeConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },

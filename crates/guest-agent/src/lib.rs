@@ -25,12 +25,15 @@
 //!
 //! ## Shared runtime-path rules
 //!
-//! When a command resolves its default runtime path, the non-empty absolute
-//! [`GUEST_RUNTIME_DIR_ENV`](guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV) override
-//! (`VM0_GUEST_RUNTIME_DIR`) wins. Without that override, the path is derived
-//! from [`RUN_ID_ENV`](guest_contracts::env::RUN_ID_ENV) (`OKOU_RUN_ID`) and `HOME` as
-//! [`run_dir_from_env`](guest_contracts::runtime_paths::run_dir_from_env) describes:
-//! `$HOME/.vm0/guest-agent/runs/<run-id>`. A relative override is invalid.
+//! Commands resolve the canonical `OKOU_GUEST_RUNTIME_DIR` and legacy
+//! [`GUEST_RUNTIME_DIR_ENV`](guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+//! (`VM0_GUEST_RUNTIME_DIR`) aliases through one shared contract. Empty values
+//! are absent, one non-empty absolute value is selected, equal dual values are
+//! accepted, and conflicting non-empty values fail closed. Without an
+//! override, [`run_dir_from_env`](guest_contracts::runtime_paths::run_dir_from_env)
+//! derives `$HOME/.vm0/guest-agent/runs/<run-id>` from
+//! [`RUN_ID_ENV`](guest_contracts::env::RUN_ID_ENV) (`OKOU_RUN_ID`) and `HOME`.
+//! A relative override is invalid.
 //!
 //! ## `verify-session-history-identity`
 //!

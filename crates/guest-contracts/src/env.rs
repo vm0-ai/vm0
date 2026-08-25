@@ -5,11 +5,11 @@
 //! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
-//! The `VM0_` namespace is runner-owned, including keys defined in sibling
-//! modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`]. User env
-//! filtering should treat current, future, and retired `VM0_` keys as
-//! protected. Canonical bootstrap keys outside that retired namespace are
-//! listed explicitly below; the whole `OKOU_` namespace is not protected.
+//! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
+//! in sibling modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`].
+//! User env filtering should treat current and future `OKOU_` keys plus current,
+//! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
+//! namespaces are listed explicitly below.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -30,6 +30,12 @@ pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 /// This value is runner-owned and must not be exposed through user-provided
 /// environment or CLI child env.
 pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
+
+/// Canonical API token alias accepted by guest readers during migration.
+///
+/// Runner writers keep using [`API_TOKEN_ENV`] until the deployed reader floor,
+/// sandbox drain, rollback window, and legacy-read-zero gates are complete.
+pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
 /// Sandbox identifier assigned by the runner.
 pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
@@ -77,6 +83,12 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 ///
 /// The runner normalizes Codex thread ids before emitting this key.
 pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
+
+/// Canonical resume-session alias accepted by guest readers during migration.
+///
+/// Runner writers keep using [`RESUME_SESSION_ID_ENV`] until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates are complete.
+pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
@@ -137,6 +149,13 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
+/// Canonical user-environment file pointer accepted by guest readers.
+///
+/// Runners keep writing [`USER_ENV_FILE_ENV`] until the deployed reader floor,
+/// sandbox drain, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
+
 /// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
 pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
@@ -149,6 +168,13 @@ pub const USER_ENV_FILENAME: &str = "env.json";
 /// bootstrap environment values so guest-agent startup does not hit Linux
 /// argv/env limits. Production guest-agent startup requires this key.
 pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
+
+/// Canonical run-payload file pointer accepted by guest readers.
+///
+/// Runners keep writing [`RUN_PAYLOAD_FILE_ENV`] until the deployed reader
+/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// are complete.
+pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 
 /// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
@@ -454,11 +480,20 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `VM0_` key, including future and retired names, plus the
-/// explicit bootstrap keys required by established runner, guest-agent, or
-/// integration contracts. Runner and local-submit code use this predicate to
+/// This covers every `OKOU_` and `VM0_` key, including future and retired names,
+/// plus the explicit bootstrap keys required by established runner, guest-agent,
+/// or integration contracts. Runner and local-submit code use this predicate to
 /// scrub or reject user-provided env keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("OKOU_") || is_pre_platform_environment_runner_owned_env_key(key)
+}
+
+/// Returns whether `key` was runner-owned before `platformEnvironment` claims.
+///
+/// New runners use this only for old API claims or legitimately stored pre-field
+/// contexts. Remove it after previous API rollback targets, supported pre-field
+/// contexts, and old runners/sandboxes pass the #28914 drain gates.
+pub fn is_pre_platform_environment_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("VM0_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
@@ -490,6 +525,8 @@ mod tests {
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
+        assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
+        assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
         assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
         assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
@@ -502,6 +539,8 @@ mod tests {
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             "OKOU_WORKSPACE_REUSE_RESULT"
         );
+        assert_eq!(RESUME_SESSION_ID_ENV, "VM0_RESUME_SESSION_ID");
+        assert_eq!(CANONICAL_RESUME_SESSION_ID_ENV, "OKOU_RESUME_SESSION_ID");
         assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
         assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
@@ -516,9 +555,11 @@ mod tests {
             "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
         );
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+        assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
     }
@@ -698,9 +739,13 @@ mod tests {
         for key in [
             API_URL_ENV,
             RUN_ID_ENV,
+            API_TOKEN_ENV,
+            CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            RESUME_SESSION_ID_ENV,
+            CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
@@ -708,7 +753,9 @@ mod tests {
             PI_MODEL_CONFIG_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
+            CANONICAL_USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
+            CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,
@@ -716,9 +763,26 @@ mod tests {
         ] {
             assert!(is_runner_owned_env_key(key), "{key} should be runner-owned");
         }
-        assert!(!is_runner_owned_env_key("OKOU_TOKEN"));
-        assert!(!is_runner_owned_env_key("OKOU_UNRELATED"));
+        assert!(is_runner_owned_env_key("OKOU_TOKEN"));
+        assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
+    }
+
+    #[test]
+    fn pre_platform_environment_detection_preserves_previous_ownership() {
+        assert!(is_pre_platform_environment_runner_owned_env_key(RUN_ID_ENV));
+        assert!(is_pre_platform_environment_runner_owned_env_key(
+            "VM0_FUTURE_RUNNER_KEY"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "OKOU_TOKEN"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "OKOU_UNRELATED"
+        ));
+        assert!(!is_pre_platform_environment_runner_owned_env_key(
+            "CUSTOM_ENV"
+        ));
     }
 
     #[test]
@@ -811,7 +875,7 @@ mod tests {
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep the VM0_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep an OKOU_/VM0_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }

@@ -75,9 +75,10 @@ fn guest_download_env_contains_run_identity_values() {
     let context = minimal_context();
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id).unwrap();
+    let env = guest_download_env(&run_id, &runtime_dir);
 
     assert_eq!(
-        guest_download_env(&run_id, &runtime_dir),
+        env,
         [
             (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
             (
@@ -86,6 +87,9 @@ fn guest_download_env_contains_run_identity_values() {
             ),
         ]
     );
+    assert!(!env.iter().any(|(key, _)| {
+        *key == guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
+    }));
 }
 
 #[tokio::test]

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.171.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.10...runner-rs-v0.171.11) (2026-08-24)
+
+
+### Refactoring
+
+* **runner:** remove legacy idle status mirror ([#29072](https://github.com/vm0-ai/vm0/issues/29072)) ([3677fcf](https://github.com/vm0-ai/vm0/commit/3677fcf6f9a4fb92105e5c97d15b92775e6236e0))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+
+## [0.171.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.9...runner-rs-v0.171.10) (2026-08-24)
+
+## [0.171.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.8...runner-rs-v0.171.9) (2026-08-24)
+
+
+### Documentation
+
+* **runner:** document wait-running stdout contract ([#29003](https://github.com/vm0-ai/vm0/issues/29003)) ([1c98e0a](https://github.com/vm0-ai/vm0/commit/1c98e0a5dfe057e981593970cb04716f38cb7401))
+* **runner:** remove retired compose contract reference ([#29013](https://github.com/vm0-ai/vm0/issues/29013)) ([8e85227](https://github.com/vm0-ai/vm0/commit/8e852273c1d008c8a8a4d7fe08b92c2cc73ee200))
+* **rust:** document session-history CPU pool invariants ([#29025](https://github.com/vm0-ai/vm0/issues/29025)) ([21a07e5](https://github.com/vm0-ai/vm0/commit/21a07e53497f3b1d89ffd0fdbb330f8c8652529a))
+
+
+### Refactoring
+
+* **runner:** dual-read and dual-write mitmdump runtime markers ([#29030](https://github.com/vm0-ai/vm0/issues/29030)) ([29b82dd](https://github.com/vm0-ai/vm0/commit/29b82dd28d8693471db0a7a00800be0830650ae3))
+* **runner:** migrate status to sandbox terminology ([#29010](https://github.com/vm0-ai/vm0/issues/29010)) ([6bead98](https://github.com/vm0-ai/vm0/commit/6bead98eb35336befe162e76e862da608d1fb1b6))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+* **runtime:** reserve okou namespace in cloud execution ([#29040](https://github.com/vm0-ai/vm0/issues/29040)) ([233bc7e](https://github.com/vm0-ai/vm0/commit/233bc7eb29e9c03b4391e91f1fe15ce48d576de6))
+
 ## [0.171.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.171.7...runner-rs-v0.171.8) (2026-08-24)
 
 

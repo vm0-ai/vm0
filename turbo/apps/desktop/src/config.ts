@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import type { DesktopUpdateLine } from "@okouai/api-contracts/contracts/desktop-updates";
+import { resolveDesktopEnvironmentAlias } from "../scripts/desktop-environment-alias.js";
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 
@@ -123,7 +124,7 @@ function configuredProduct(
 ): DesktopProduct {
   return desktopProduct(
     rawProduct?.trim() ||
-      process.env.VM0_DESKTOP_PRODUCT?.trim() ||
+      resolveDesktopEnvironmentAlias("OKOU_DESKTOP_PRODUCT") ||
       fileConfig?.product ||
       "zero",
   );
@@ -136,10 +137,10 @@ function configuredPlatformUrl(
   if (rawPlatformUrl !== undefined) {
     return rawPlatformUrl;
   }
-  if (process.env.VM0_DESKTOP_PLATFORM_URL?.trim()) {
-    return process.env.VM0_DESKTOP_PLATFORM_URL;
-  }
-  return fileConfig?.platformUrl;
+  return (
+    resolveDesktopEnvironmentAlias("OKOU_DESKTOP_PLATFORM_URL") ||
+    fileConfig?.platformUrl
+  );
 }
 
 function parsePlatformUrl(

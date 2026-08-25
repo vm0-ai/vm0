@@ -21,7 +21,7 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/feature-switches";
-import { setVm0ManagedCandidateCooldownFixture } from "./helpers/runtime-state";
+import { setVm0BuiltInCandidateCooldownFixture } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 import { modelProvidersRoutes } from "../model-providers";
@@ -526,7 +526,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: "Managed model cooldown diagnostics are not enabled",
+      message: "Built-in model cooldown diagnostics are not enabled",
       code: "FORBIDDEN",
     });
   });
@@ -553,27 +553,25 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       upstream_model: `${selectedModelPrefix}-expired`,
       model_key_id: randomUUID(),
     };
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
       earlierDeadline,
-      "legacy",
     );
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
       laterDeadline,
-      "built-in",
     );
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-a`,
       secondRoute,
       earlierDeadline,
     );
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-expired`,
       expiredRoute,
@@ -581,7 +579,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     );
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.OkouDebug]: true,
-      [FeatureSwitchKey.ManagedModelProviderFallback]: false,
+      [FeatureSwitchKey.BuiltInModelProviderFallback]: false,
     });
     onTestFinished(async () => {
       await deleteFeatureSwitchesForUser(context, fixture);
@@ -623,7 +621,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
 
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.OkouDebug]: true,
-      [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+      [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 

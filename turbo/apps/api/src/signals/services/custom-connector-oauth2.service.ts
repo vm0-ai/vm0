@@ -19,7 +19,6 @@ import {
   OAuthProviderHttpError,
 } from "@okouai/connectors/auth-providers/oauth/error";
 import { connectors } from "@okouai/db/schema/connector";
-import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
@@ -57,7 +56,10 @@ import {
   type CustomConnectorRow,
 } from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
-import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
+import {
+  insertConnectorOAuthState,
+  type StoredCustomConnectorOAuthState,
+} from "./connector-oauth-state.service";
 import {
   customConnectorMcpDisabledResponse,
   isCustomConnectorMcpEnabled,
@@ -522,14 +524,6 @@ export const startCustomConnectorOAuth2$ = command(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
-    if (
-      args.account?.intent === "add" &&
-      args.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a custom connector account",
-      );
-    }
     if (isIntegrationManagedCustomConnector(connector) && !args.feishuContext) {
       return integrationManagedCustomConnectorMutationForbidden();
     }
@@ -569,7 +563,7 @@ export const startCustomConnectorOAuth2$ = command(
           }
         : {}),
     };
-    const mutationResolution = await set(writeDb$).transaction(async (tx) => {
+    const mutationStart = await set(writeDb$).transaction(async (tx) => {
       await lockCustomConnectorOAuth2CredentialContract({
         db: tx,
         orgId: args.orgId,
@@ -586,9 +580,9 @@ export const startCustomConnectorOAuth2$ = command(
           connectorAccountSiblingWritesEnabled(featureContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state,
         customConnectorId: connector.id,
         storageVersion: connector.storageVersion,
@@ -604,19 +598,25 @@ export const startCustomConnectorOAuth2$ = command(
         accountMutation: args.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId: args.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return mutationResolution.kind === "missing"
+    if (mutationStart.resolution.kind !== "ready") {
+      return mutationStart.resolution.kind === "missing"
         ? notFound("Connector account not found")
         : conflict(
-            mutationResolution.kind === "ambiguous"
+            mutationStart.resolution.kind === "ambiguous"
               ? "Multiple connector accounts require an exact choice"
               : "Additional connector accounts are not enabled yet",
           );
     }
-    return { authorizationUrl };
+    return {
+      authorizationUrl,
+      connectionId: mutationStart.connectionId ?? undefined,
+    };
   },
 );
 
@@ -834,6 +834,7 @@ export async function storeCustomConnectorOAuth2Connection(
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
     readonly account: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -877,6 +878,7 @@ export async function storeCustomConnectorOAuth2Connection(
           customConnectorId: args.connectorId,
         },
         resolution: resolution.mutation,
+        insertConnectionId: args.insertConnectionId,
         writeCredentials: async ({ db, connectorId }) => {
           await db.insert(secrets).values(
             connectionTokenRows({

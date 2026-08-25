@@ -2068,29 +2068,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         admin,
         definition,
       );
-      const unlabeled = await connectorsApi.requestSetCustomConnectorValues(
-        admin,
-        connector.id,
-        [{ key: "secret", kind: "secret", value: "unlabeled-secret" }],
-        [400],
-        { intent: "add" },
-      );
-      expectApiError(unlabeled.body);
-      expect(unlabeled.body.error.message).toBe(
-        "Account display name is required when adding a custom connector account",
-      );
-      await expect(
-        connectorsApi.readCustomConnector(admin, connector.id),
-      ).resolves.toMatchObject({ connected: false });
-
       const connected = await connectorsApi.requestSetCustomConnectorValues(
         admin,
         connector.id,
-        [{ key: "secret", kind: "secret", value: "first-secret" }],
+        [{ key: "secret", kind: "secret", value: "unlabeled-secret" }],
         [200],
-        { intent: "single-account" },
+        { intent: "add" },
       );
-      expect(connected.body).toMatchObject({ connected: true });
+      expect(connected.body).toMatchObject({
+        connected: true,
+        connectedAccountId: expect.any(String),
+      });
 
       const replaced = await connectorsApi.requestSetCustomConnectorValues(
         admin,
@@ -2212,24 +2200,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const unlabeledAdd = await connectorsApi.requestStartCustomConnectorOAuth2(
       member,
       created.id,
-      [400],
+      [200],
       agent.agentId,
       { intent: "add" },
     );
-    expectApiError(unlabeledAdd.body);
-    expect(unlabeledAdd.body.error.message).toBe(
-      "Account display name is required when adding a custom connector account",
-    );
-    await expect(
-      connectorsApi.readCustomConnector(member, created.id),
-    ).resolves.toMatchObject({ connected: false });
-
-    const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
-      member,
-      created.id,
-      agent.agentId,
-      { intent: "single-account" },
-    );
+    if ("error" in unlabeledAdd.body) {
+      throw new Error("Expected an unlabeled custom OAuth addition to start");
+    }
+    const connectionId = unlabeledAdd.body.connectionId;
+    expect(connectionId).toStrictEqual(expect.any(String));
+    const authorizationUrl = unlabeledAdd.body.authorizationUrl;
     const authorization = new URL(authorizationUrl);
     expect(authorization.origin + authorization.pathname).toBe(
       provider.authorizationUrl,
@@ -2314,6 +2294,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     if (!initialStorage.connector) {
       throw new Error("Expected custom OAuth connector storage");
     }
+    expect(initialStorage.connector.id).toBe(connectionId);
 
     const oauthConnected = await connectorsApi.listCustomConnectors(member);
     expect(

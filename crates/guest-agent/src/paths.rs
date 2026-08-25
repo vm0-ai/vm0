@@ -90,11 +90,7 @@ impl GuestPaths {
     pub fn from_process_env(
         run_id: &str,
     ) -> Result<Self, guest_contracts::runtime_paths::RuntimePathError> {
-        let runtime_dir = std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let home = std::env::var_os("HOME").map(PathBuf::from);
-        Self::from_captured_env(run_id, runtime_dir.as_deref(), home.as_deref())
+        guest_contracts::runtime_paths::run_dir_from_env(run_id).map(Self::from_runtime_dir)
     }
 
     /// Build paths from values captured during bootstrap without rereading env.
@@ -103,7 +99,7 @@ impl GuestPaths {
         runtime_dir: Option<&Path>,
         process_home: Option<&Path>,
     ) -> Result<Self, guest_contracts::runtime_paths::RuntimePathError> {
-        resolve_run_dir_from_captured_env(run_id, runtime_dir, process_home)
+        guest_contracts::runtime_paths::run_dir_from_captured_env(run_id, runtime_dir, process_home)
             .map(Self::from_runtime_dir)
     }
 
@@ -171,24 +167,6 @@ impl GuestPaths {
     pub fn telemetry_sandbox_ops_pos_file(&self) -> &str {
         &self.telemetry_sandbox_ops_pos_file
     }
-}
-
-fn resolve_run_dir_from_captured_env(
-    run_id: &str,
-    runtime_dir: Option<&Path>,
-    process_home: Option<&Path>,
-) -> Result<PathBuf, guest_contracts::runtime_paths::RuntimePathError> {
-    if let Some(runtime_dir) = runtime_dir {
-        if !runtime_dir.is_absolute() {
-            return Err(guest_contracts::runtime_paths::RuntimePathError::InvalidRuntimeDir);
-        }
-        return Ok(runtime_dir.to_path_buf());
-    }
-
-    let home = process_home
-        .filter(|value| !value.as_os_str().is_empty())
-        .ok_or(guest_contracts::runtime_paths::RuntimePathError::MissingHome)?;
-    guest_contracts::runtime_paths::run_dir_for_home(home, run_id)
 }
 
 fn path_to_string(path: PathBuf) -> String {

@@ -533,7 +533,7 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
   return run;
 }
 
-/** Simulate historical or alternate managed-route metadata not constructible through current policy. */
+/** Simulate historical or alternate built-in model route metadata not constructible through current policy. */
 export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;

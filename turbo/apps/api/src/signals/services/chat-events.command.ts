@@ -441,7 +441,7 @@ interface NormalSendFeatureSwitches {
    * reloading the switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -814,7 +814,11 @@ const resolveIncomingAttachFileMetadata$ = command(
             wave.map(async (file) => {
               const object = await set(
                 resolveArtifactObject$,
-                { userId: args.userId, id: file.fileId },
+                {
+                  userId: args.userId,
+                  id: file.fileId,
+                  filenameHint: file.filenameSnapshot,
+                },
                 signal,
               );
               return { file, object };
@@ -955,7 +959,7 @@ async function withBuiltInModelRuntimeRoute(
     ? { ...configuration, builtInModelRuntimeRoute }
     : fallbackEnabled
       ? modelProviderUnavailable(
-          "Every managed route for this model is temporarily unavailable",
+          "Every built-in model route for this model is temporarily unavailable",
         )
       : providerUnavailable(
           "No model provider configured: no built-in model key is configured",
@@ -968,7 +972,7 @@ async function resolveExplicitRunConfiguration(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
   const modelSelection = params.body.modelSelection;
@@ -1034,7 +1038,7 @@ async function resolveExplicitRunConfiguration(params: {
         codexFastModeEnabled: params.codexFastModeEnabled,
       }),
     },
-    params.managedModelProviderFallbackEnabled,
+    params.builtInModelProviderFallbackEnabled,
   );
 }
 
@@ -1066,8 +1070,8 @@ async function resolveNormalSendFeatureSwitches(
       context,
     ),
     featureSwitchContext: context,
-    managedModelProviderFallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ManagedModelProviderFallback,
+    builtInModelProviderFallbackEnabled: isFeatureEnabled(
+      FeatureSwitchKey.BuiltInModelProviderFallback,
       context,
     ),
   };
@@ -1584,7 +1588,7 @@ async function resolveThread(params: {
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1663,7 +1667,7 @@ async function resolveThread(params: {
         providerAdmission: persisted.providerAdmission,
         codexServiceTier: persisted.runCodexServiceTier,
       },
-      params.managedModelProviderFallbackEnabled,
+      params.builtInModelProviderFallbackEnabled,
     );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
@@ -2324,8 +2328,8 @@ function resolveTimedExplicitRunConfiguration(
         userId: args.userId,
         body: args.body,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
     },
@@ -2392,8 +2396,8 @@ function resolveTimedThread(
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
         featureSwitchContext: featureSwitches.featureSwitchContext,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {

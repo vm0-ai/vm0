@@ -10,7 +10,7 @@
 //! opens that file as a separate trust boundary and independently validates its
 //! ownership, permissions, schema, and firewall payload.
 //!
-//! Cache publication contains unresolved builtin definitions. For each VM, the
+//! Cache publication contains unresolved builtin definitions. For each sandbox, the
 //! Python registry path substitutes base URL variables, validates the resolved
 //! credentialed destination and host policy, assigns run-scoped API IDs, and
 //! compiles matchers before request enforcement.
@@ -21,7 +21,7 @@
 //! retries prevents provider startup readiness. A rejected periodic refresh
 //! never replaces the published file, so any previously published valid cache
 //! remains available. If the Python consumer rejects a new file identity, it
-//! exposes no catalog for that identity and marks builtin-dependent VM entries
+//! exposes no catalog for that identity and marks builtin-dependent sandbox entries
 //! invalid until a usable cache is loaded.
 //!
 //! # Cross-language compatibility

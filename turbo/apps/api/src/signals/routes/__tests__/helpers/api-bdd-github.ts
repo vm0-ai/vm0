@@ -141,6 +141,8 @@ function mockGithubInstallationsList(
         installations.map((installation) => {
           return {
             id: Number(installation.id),
+            app_id: Number(GITHUB_APP_ID),
+            app_slug: GITHUB_APP_SLUG,
             account: {
               id: Number(installation.targetId),
               login: installation.login ?? "bdd-org",
@@ -166,6 +168,8 @@ function mockGithubInstallationApi(args: {
       () => {
         return HttpResponse.json({
           id: Number(args.installationId),
+          app_id: Number(GITHUB_APP_ID),
+          app_slug: GITHUB_APP_SLUG,
           account: {
             id: Number(args.targetId),
             login: args.login ?? "bdd-org",

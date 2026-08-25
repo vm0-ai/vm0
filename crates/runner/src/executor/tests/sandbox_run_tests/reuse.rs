@@ -4,7 +4,7 @@ use super::*;
 use tokio_util::sync::CancellationToken;
 
 // -----------------------------------------------------------------------
-// Keep-alive VM reuse integration tests
+// Keep-alive sandbox reuse integration tests
 // -----------------------------------------------------------------------
 
 #[tokio::test]

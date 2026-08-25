@@ -1012,11 +1012,13 @@ fn run_exec_operation_worker<S>(
     let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
         env_with_control = Vec::with_capacity(env_refs.len() + 3);
         env_with_control.extend_from_slice(&env_refs);
-        env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
-        if let Some(bootstrap) = workload_bootstrap.as_ref() {
-            env_with_control.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, bootstrap.endpoint()));
-            env_with_control.push((TOOL_CGROUP_PROCS_ENDPOINT_ENV, bootstrap.tool_endpoint()));
-        }
+        append_exec_control_environment(
+            &mut env_with_control,
+            endpoint,
+            workload_bootstrap
+                .as_ref()
+                .map(|bootstrap| (bootstrap.endpoint(), bootstrap.tool_endpoint())),
+        );
         env_with_control.as_slice()
     } else {
         env_refs.as_slice()
@@ -1648,6 +1650,18 @@ fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
         .collect()
 }
 
+fn append_exec_control_environment<'a>(
+    env: &mut Vec<(&'a str, &'a str)>,
+    process_control_endpoint: &'a str,
+    workload_endpoints: Option<(&'a str, &'a str)>,
+) {
+    env.push((process_control_ipc::BOOTSTRAP_ENV, process_control_endpoint));
+    if let Some((workload_endpoint, tool_endpoint)) = workload_endpoints {
+        env.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, workload_endpoint));
+        env.push((TOOL_CGROUP_PROCS_ENDPOINT_ENV, tool_endpoint));
+    }
+}
+
 fn duration_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
@@ -1788,6 +1802,36 @@ mod tests {
             registration.is_ok(),
             "exec operation registry entry for seq={seq} was not released"
         );
+    }
+
+    #[test]
+    fn control_bootstrap_environment_writers_remain_legacy_only() {
+        let mut env = vec![("USER_KEY", "user-value")];
+
+        append_exec_control_environment(
+            &mut env,
+            "process-control-endpoint",
+            Some(("workload-endpoint", "tool-endpoint")),
+        );
+
+        assert_eq!(
+            env,
+            [
+                ("USER_KEY", "user-value"),
+                (
+                    process_control_ipc::BOOTSTRAP_ENV,
+                    "process-control-endpoint"
+                ),
+                (WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, "workload-endpoint"),
+                (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "tool-endpoint"),
+            ]
+        );
+        for canonical_key in [
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        ] {
+            assert!(env.iter().all(|(key, _)| *key != canonical_key));
+        }
     }
 
     #[test]

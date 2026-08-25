@@ -202,7 +202,7 @@ describe("OPS-01: feature switch routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ChatErrorRecovery]: true,
-            [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+            [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -213,7 +213,7 @@ describe("OPS-01: feature switch routes", () => {
       ownerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      ownerUpdate.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -225,7 +225,7 @@ describe("OPS-01: feature switch routes", () => {
       peerRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(
-      peerRead.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      peerRead.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
     ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -237,7 +237,7 @@ describe("OPS-01: feature switch routes", () => {
       outsiderRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeUndefined();
     expect(
-      outsiderRead.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      outsiderRead.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
     ).toBeUndefined();
     const peerUpdate = await accept(
       featureSwitchesClient().update({
@@ -245,7 +245,7 @@ describe("OPS-01: feature switch routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ChatErrorRecovery]: false,
-            [FeatureSwitchKey.ManagedModelProviderFallback]: false,
+            [FeatureSwitchKey.BuiltInModelProviderFallback]: false,
           },
         },
       }),
@@ -255,7 +255,7 @@ describe("OPS-01: feature switch routes", () => {
       peerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeFalsy();
     expect(
-      peerUpdate.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      peerUpdate.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
     ).toBeFalsy();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -270,7 +270,7 @@ describe("OPS-01: feature switch routes", () => {
     ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.ManagedModelProviderFallback
+        FeatureSwitchKey.BuiltInModelProviderFallback
       ],
     ).toBeFalsy();
     expect(
@@ -292,7 +292,7 @@ describe("OPS-01: feature switch routes", () => {
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[
-        FeatureSwitchKey.ManagedModelProviderFallback
+        FeatureSwitchKey.BuiltInModelProviderFallback
       ],
     ).toBeUndefined();
     expect(

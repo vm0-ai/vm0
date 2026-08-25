@@ -335,6 +335,9 @@ describe("presentation template publish", () => {
       "presentationTemplatesChanged",
       null,
     );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `user:${actor.userId}`,
+    );
 
     // The row is usable immediately: nothing is pending on a later transition.
     const listed = await accept(
@@ -388,6 +391,8 @@ describe("presentation template publish", () => {
       canManage: true,
     });
 
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockClear();
     const shared = await accept(
       templateClient().update({
         headers: webHeaders(),
@@ -400,6 +405,30 @@ describe("presentation template publish", () => {
       visibility: "public",
       canManage: true,
     });
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "presentationTemplatesChanged",
+      null,
+    );
+
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("workspace template invalidation failed"),
+    );
+    const renamed = await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { title: "Workspace brand refreshed" },
+      }),
+      [200],
+    );
+    expect(renamed.body.title).toBe("Workspace brand refreshed");
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
 
     mocks.clerk.session(member.userId, member.orgId);
     const listedForMember = await accept(
@@ -409,6 +438,7 @@ describe("presentation template publish", () => {
     expect(listedForMember.body).toStrictEqual([
       expect.objectContaining({
         id: published.body.id,
+        title: "Workspace brand refreshed",
         visibility: "public",
         canManage: false,
       }),
@@ -440,6 +470,7 @@ describe("presentation template publish", () => {
     );
 
     mocks.clerk.session(owner.userId, owner.orgId);
+    context.mocks.ably.channelGet.mockClear();
     await accept(
       templateClient().update({
         headers: webHeaders(),
@@ -447,6 +478,9 @@ describe("presentation template publish", () => {
         body: { visibility: "private" },
       }),
       [200],
+    );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
     );
 
     mocks.clerk.session(member.userId, member.orgId);
@@ -479,6 +513,16 @@ describe("presentation template publish", () => {
       [200],
     );
 
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+    context.mocks.ably.channelGet.mockClear();
+
     const params = { templateId: published.body.id };
     const [first, second] = await Promise.all([
       accept(
@@ -494,6 +538,10 @@ describe("presentation template publish", () => {
       return left - right;
     });
     expect(statuses).toStrictEqual([204, 404]);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${actor.orgId}`,
+    );
 
     const listed = await accept(
       templateClient().list({ headers: webHeaders() }),

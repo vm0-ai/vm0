@@ -1045,7 +1045,7 @@ describe("works page", () => {
     expect(createGuideImage).toHaveAttribute("height", "998");
     expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
     expect(
-      screen.getByText("Download the VM0 icon").closest("a"),
+      screen.getByText("Download the optional VM0 icon").closest("a"),
     ).toHaveAttribute("download", "vm0-feishu-app-icon.png");
 
     click(screen.getByText("Next"));

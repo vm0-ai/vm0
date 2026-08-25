@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -14,6 +15,7 @@ export const githubOauthInstallQuerySchema = z.object({
 });
 
 export const githubOauthConnectQuerySchema = z.object({
+  publicBrand: publicBrandSchema.optional(),
   installation: z.string().optional(),
   ghUser: z.string().optional(),
   ghLogin: z.string().optional(),

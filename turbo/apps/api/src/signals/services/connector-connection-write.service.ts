@@ -58,6 +58,7 @@ export interface ConnectorConnectionMetadataArgs {
   readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly target: ConnectorConnectionTarget;
+  readonly insertConnectionId?: string;
 }
 
 interface ReplaceConnectorConnectionArgs extends ConnectorConnectionMetadataArgs {
@@ -301,6 +302,7 @@ export async function writeConnectorConnectionMetadata(
       ? await db
           .insert(connectors)
           .values({
+            ...(args.insertConnectionId ? { id: args.insertConnectionId } : {}),
             orgId: args.orgId,
             userId: args.userId,
             displayName: args.resolution.displayName,
