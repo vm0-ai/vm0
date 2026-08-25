@@ -281,6 +281,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   );
   const agentUnread = defaultAgentCard.getByLabel("Unread");
   const threadRow = page
+    .getByTestId("chat-list-column")
     .locator(`[data-sidebar-chat-thread-id="${unreadThreadStory.id}"]`)
     .locator("..");
   const threadUnread = threadRow.getByLabel("Unread");
