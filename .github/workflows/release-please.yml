@@ -104,21 +104,57 @@ jobs:
         id: release-target
         if: ${{ steps.release.outputs.releases_created == 'true' }}
         env:
-          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+          RELEASE_SHAS: >-
+            [
+              ${{ toJSON(steps.release.outputs['crates/ably-subscriber--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/api-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-agent--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-common--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-download--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-init--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-reseed--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-write-file--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/nbd-cow--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/process-control-ipc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/shell-quote--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/tracing-test-support--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/db--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--sha']) }}
+            ]
         run: |
           set -euo pipefail
 
           release_target=$(
             jq -er '
-              [
-                to_entries[]
-                | select(.key == "sha" or (.key | endswith("--sha")))
-                | .value
-                | select(
-                    type == "string" and
-                    test("^[0-9a-f]{40}$")
-                  )
-              ]
+              map(select(. != ""))
+              | map(
+                  if test("^[0-9a-f]{40}$") then
+                    .
+                  else
+                    error("release-please returned invalid release SHA: " + .)
+                  end
+                )
               | unique
               | if length == 1 then
                   .[0]
@@ -130,7 +166,7 @@ jobs:
                     join(", ")
                   )
                 end
-            ' <<<"$RELEASE_OUTPUTS"
+            ' <<<"$RELEASE_SHAS"
           )
 
           echo "sha=$release_target" >> "$GITHUB_OUTPUT"
