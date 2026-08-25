@@ -456,6 +456,12 @@ function providerResponse(data: unknown = { value: "provider result" }) {
   return { success: true, data };
 }
 
+function providerItems(count: number): { readonly id: number }[] {
+  return Array.from({ length: count }, (_, id) => {
+    return { id };
+  });
+}
+
 function validProviderData(path: string): Record<string, unknown> {
   const operation = MANAGED_SOCIALKIT_OPERATIONS.find((candidate) => {
     return candidate.method === "GET" && candidate.path === path;
@@ -895,14 +901,14 @@ describe("managed SocialKit route", () => {
       {
         path: "/youtube/search",
         query: { query: "launch", limit: "100" },
-        data: { results: Array.from({ length: 20 }, (_, id) => ({ id })) },
+        data: { results: providerItems(20) },
         expectedQuantity: 1,
         expectedState: "provider_limited",
       },
       {
         path: "/youtube/search",
         query: { query: "launch", limit: "100" },
-        data: { results: Array.from({ length: 100 }, (_, id) => ({ id })) },
+        data: { results: providerItems(100) },
         expectedQuantity: 2,
         expectedState: "provider_limited",
       },
@@ -910,7 +916,7 @@ describe("managed SocialKit route", () => {
         path: "/instagram/channel-posts",
         query: { url: "https://instagram.com/example", limit: "100" },
         data: {
-          items: Array.from({ length: 20 }, (_, id) => ({ id })),
+          items: providerItems(20),
           hasMore: false,
         },
         expectedQuantity: 1,
@@ -920,7 +926,7 @@ describe("managed SocialKit route", () => {
         path: "/instagram/channel-posts",
         query: { url: "https://instagram.com/example", limit: "100" },
         data: {
-          items: Array.from({ length: 21 }, (_, id) => ({ id })),
+          items: providerItems(21),
           hasMore: false,
         },
         expectedQuantity: 2,
@@ -962,6 +968,46 @@ describe("managed SocialKit route", () => {
     expect(beforeCredits - (await credits(actor))).toBe(
       6 * SOCIALKIT_REQUEST_CREDITS,
     );
+  });
+
+  it("sends the reviewed default limit used for credit preflight", async () => {
+    const actor = createBddApi(context).user();
+    let observedLimit: string | null = null;
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
+    await enableSocialKit(actor);
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/youtube/search`, ({ request }) => {
+        observedLimit = new URL(request.url).searchParams.get("limit");
+        return HttpResponse.json(
+          providerResponse({
+            results: providerItems(10),
+          }),
+        );
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          method: "GET",
+          path: "/youtube/search",
+          query: { query: "launch" },
+        },
+      }),
+      [200],
+    );
+
+    expect(observedLimit).toBe("10");
+    expect(response.body.billingQuantity).toBe(1);
+    expect(response.body.collection).toStrictEqual({
+      state: "provider_limited",
+      itemsReturned: 10,
+    });
+    await expect(credits(actor)).resolves.toBe(0);
   });
 
   it("normalizes every reviewed pagination shape", async () => {
@@ -1083,7 +1129,7 @@ describe("managed SocialKit route", () => {
       {
         path: "/youtube/search",
         query: { query: "launch", limit: "10" },
-        data: { results: Array.from({ length: 11 }, (_, id) => ({ id })) },
+        data: { results: providerItems(11) },
       },
       {
         path: "/instagram/comments",
@@ -1662,7 +1708,7 @@ describe("managed SocialKit route", () => {
         providerRequests += 1;
         return HttpResponse.json(
           providerResponse({
-            results: Array.from({ length: 100 }, (_, id) => ({ id })),
+            results: providerItems(100),
           }),
         );
       }),

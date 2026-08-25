@@ -334,6 +334,19 @@ function effectiveResultLimit(
   return requestedLimit === undefined ? defaultLimit : Number(requestedLimit);
 }
 
+function requestWithDefaultLimit(
+  request: SocialKitRequest,
+  operation: ManagedSocialKitOperation,
+): SocialKitRequest {
+  const defaultLimit = operation.collection?.defaultLimit;
+  return defaultLimit === undefined || request.query?.limit !== undefined
+    ? request
+    : {
+        ...request,
+        query: { ...request.query, limit: String(defaultLimit) },
+      };
+}
+
 function paginationQueryValue(value: unknown): string | undefined {
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return String(value);
@@ -539,13 +552,14 @@ export const socialKitRequest$ = command(
     if (!operation) {
       throw new Error("Validated SocialKit request has no reviewed operation");
     }
+    const providerRequest = requestWithDefaultLimit(args.body, operation);
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
     const preflightResource = {
       kind: USAGE_KIND,
       provider: PROVIDER,
       category: MANAGED_SOCIALKIT_BILLING_CATEGORY,
-      quantity: preflightBillingQuantity(args.body, operation),
+      quantity: preflightBillingQuantity(providerRequest, operation),
     };
     const creditError = await set(
       checkManagedCredits$,
@@ -567,7 +581,7 @@ export const socialKitRequest$ = command(
     return completeSocialKitRequest(
       {
         accessKey,
-        request: args.body,
+        request: providerRequest,
         operation,
         recordUsage: (quantity) => {
           return set(
