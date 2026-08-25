@@ -131,16 +131,18 @@ describe("Stripe preview metadata job reference aliases", () => {
       expect(isCurrentStripePreviewMetadata(expectedMetadata)).toBeTruthy();
       expect(isCurrentStripePreviewMetadata(null)).toBe(jobRef === null);
 
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledTimes(3);
-      for (const call of context.mocks.axiomLogging.debug.mock.calls) {
+      const aliasResolutionCalls =
+        context.mocks.axiomLogging.debug.mock.calls.filter(([message]) => {
+          return message === PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT;
+        });
+      expect(aliasResolutionCalls).toHaveLength(3);
+      for (const call of aliasResolutionCalls) {
         expect(call).toStrictEqual([
           PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
           aliasEvidence(state),
         ]);
       }
-      const evidence = JSON.stringify(
-        context.mocks.axiomLogging.debug.mock.calls,
-      );
+      const evidence = JSON.stringify(aliasResolutionCalls);
       const configuredValues = [canonical, legacy].filter(
         (value): value is string => {
           return Boolean(value);

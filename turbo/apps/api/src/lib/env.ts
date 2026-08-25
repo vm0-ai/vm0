@@ -50,6 +50,7 @@ const SCHEMA = {
   GIT_COMMIT_SHA: z.string(),
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
+  OKOU_DEBUG: z.string().default(""),
   VM0_DEBUG: z.string().default(""),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
