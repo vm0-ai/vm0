@@ -49,12 +49,7 @@ export const FEISHU_OAUTH_SCOPES = [
 
 const feishuInstallationStatusSchema = z.object({
   id: z.string().uuid(),
-  /**
-   * #27750 rollout fallback for new app clients reading the previous API.
-   * Make required after that API is no longer serving or retained for
-   * rollback.
-   */
-  publicBrand: publicBrandSchema.optional(),
+  publicBrand: publicBrandSchema,
   isConnected: z.boolean(),
   connectedUserName: z.string().nullable().optional(),
   appId: z.string(),
@@ -74,12 +69,8 @@ const feishuInstallationStatusSchema = z.object({
 });
 
 const feishuConnectStatusSchema = z.object({
-  /**
-   * Product brand of the Host that initiated this status flow. Optional only
-   * for the #27750 new-app-to-previous-API rollout; make required after that
-   * API is no longer serving or retained for rollback.
-   */
-  publicBrand: publicBrandSchema.optional(),
+  /** Product brand of the Host that initiated this status flow. */
+  publicBrand: publicBrandSchema,
   isInstalled: z.boolean(),
   isConnected: z.boolean(),
   connectedUserName: z.string().nullable().optional(),

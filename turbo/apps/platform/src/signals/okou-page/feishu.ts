@@ -45,10 +45,9 @@ export const feishuOrgData$ = computed(
 
 export interface FeishuBotInstallation extends Omit<
   FeishuInstallationStatus,
-  "connectUrl" | "id" | "oauthRedirectUrl" | "publicBrand" | "setupCompleted"
+  "connectUrl" | "id" | "oauthRedirectUrl" | "setupCompleted"
 > {
   readonly id: string | null;
-  readonly publicBrand: NonNullable<FeishuInstallationStatus["publicBrand"]>;
   readonly connectUrl: string | null;
   readonly oauthRedirectUrl: string | null;
   readonly setupCompleted: boolean;
@@ -59,15 +58,10 @@ const internalInstallations$ = state<FeishuBotInstallation[] | null>(null);
 export const feishuInstallations$ = computed(
   async (get): Promise<FeishuBotInstallation[]> => {
     const data = await get(feishuOrgData$);
-    // #27750 rollout fallback: a newly loaded app can briefly target the
-    // previous API, whose status response omits both publicBrand fields. Remove
-    // these defaults and require the contract fields after that API is no
-    // longer serving or retained for rollback.
     if (data.installations) {
       return data.installations.map((installation) => {
         return {
           ...installation,
-          publicBrand: installation.publicBrand ?? data.publicBrand ?? "vm0",
           connectUrl: installation.connectUrl ?? null,
           oauthRedirectUrl: installation.oauthRedirectUrl ?? null,
           setupCompleted:
@@ -86,7 +80,7 @@ export const feishuInstallations$ = computed(
     return [
       {
         id: data.installationId ?? null,
-        publicBrand: data.publicBrand ?? "vm0",
+        publicBrand: data.publicBrand,
         isConnected: data.isConnected,
         connectedUserName: data.connectedUserName ?? null,
         appId: data.appId,
