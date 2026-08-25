@@ -492,12 +492,14 @@
     "annotation": {
       "attach": "चिह्न संलग्न करें",
       "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "inkLabel": "रंग {{color}}",
       "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
       "open": "टिप्पणी करें",
       "redo": "फिर से करें",
       "removeMark": "चिह्न हटाएँ",
       "subtitle_one": "{{count}} चिह्न",
       "subtitle_other": "{{count}} चिह्न",
+      "textPlaceholder": "लेबल लिखें",
       "tools": {
         "arrow": "तीर",
         "box": "बॉक्स",

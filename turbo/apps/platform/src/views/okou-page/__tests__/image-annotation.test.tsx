@@ -219,6 +219,55 @@ describe("composer image annotation", () => {
     ).toHaveLength(1);
   });
 
+  it("draws stored marks in the read-only viewer, not just in the editor", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    const chip = await screen.findByLabelText(
+      "Open image preview for billing-page.png",
+    );
+    await user.click(chip);
+
+    // The viewer shows the image as stored, so the marks have to be drawn over
+    // it — otherwise reopening an annotated image looks like the marks vanished.
+    await screen.findByTestId("attachment-lightbox");
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-layer")).toBeInTheDocument();
+    });
+  });
+
+  it("deletes the selected mark", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    const chip = await screen.findByLabelText(
+      "Open image preview for billing-page.png",
+    );
+    await user.click(chip);
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    await waitFor(() => {
+      expect(screen.getByText("1 mark")).toBeInTheDocument();
+    });
+
+    // Selecting a mark opens its note beside it; the note owns the delete.
+    await user.click(screen.getByTestId("annotation-mark-1"));
+    await user.click(await screen.findByLabelText("Remove mark"));
+
+    await waitFor(() => {
+      expect(screen.getByText("0 marks")).toBeInTheDocument();
+    });
+  });
+
   it("keeps an opened-but-untouched image unannotated", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);

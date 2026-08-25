@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "Lampirkan tanda",
       "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "inkLabel": "Warna {{color}}",
       "notePlaceholder": "Tulis apa yang harus diubah di sini",
       "open": "Anotasi",
       "redo": "Ulangi",
       "removeMark": "Hapus tanda",
       "subtitle_other": "{{count}} tanda",
+      "textPlaceholder": "Ketik labelnya",
       "tools": {
         "arrow": "Panah",
         "box": "Kotak",

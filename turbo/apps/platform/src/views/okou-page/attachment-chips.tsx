@@ -43,6 +43,7 @@ import { MarkdownEventBody } from "../components/markdown.tsx";
 import {
   attachmentSidebarRef,
   lightboxUrl$,
+  closeLightboxImmediately$,
   closeLightboxWithDialogExit$,
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
@@ -61,6 +62,7 @@ import {
   artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
 } from "./attachment-url.ts";
+import { AnnotationMarkLayer } from "./image-annotation-marks.tsx";
 import {
   annotationMarkCount,
   DEFAULT_ANNOTATION_INK,
@@ -752,6 +754,9 @@ function ArtifactDialogImageStage({
   resourceUrl: string | null;
 }) {
   const fullscreen = useGet(lightboxDialogFullscreen$);
+  // Marks live on the draft rather than in the file, so the viewer has to draw
+  // them too — otherwise reopening an annotated image shows a clean picture.
+  const annotation = preview.annotationTarget?.annotation ?? null;
 
   return (
     <ArtifactDialogStage flush scrollable={false}>
@@ -770,6 +775,11 @@ function ArtifactDialogImageStage({
               contentClassName="p-6"
               imageClassName="rounded-lg shadow-sm"
               canvasTestId="artifact-dialog-image-stage"
+              overlay={
+                annotation ? (
+                  <AnnotationMarkLayer annotation={annotation} />
+                ) : undefined
+              }
             >
               {(controls) => {
                 return <ArtifactDialogImageZoomControls controls={controls} />;
@@ -1249,6 +1259,7 @@ function ArtifactPreviewDialogActions({
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const openAnnotationEditor = useSet(openAnnotationEditor$);
+  const closeLightboxImmediately = useSet(closeLightboxImmediately$);
   const annotationTarget =
     preview.kind === "image" ? preview.annotationTarget : undefined;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
@@ -1285,9 +1296,10 @@ function ArtifactPreviewDialogActions({
           })}
           onClick={() => {
             // The editor owns the whole surface while it is open, so the
-            // read-only viewer steps aside rather than stacking behind it.
+            // read-only viewer steps aside — instantly, or the two dialogs
+            // cross-fade and the modal appears to jump.
             openAnnotationEditor(annotationTarget);
-            closeLightboxWithDialogExit(rootSignal);
+            closeLightboxImmediately();
           }}
         >
           <Pencil size={18} />

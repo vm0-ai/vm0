@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Adjuntar marcas",
       "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
+      "inkLabel": "Color {{color}}",
       "notePlaceholder": "Di qué debería cambiar aquí",
       "open": "Anotar",
       "redo": "Rehacer",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} marca",
       "subtitle_many": "{{count}} marcas",
       "subtitle_other": "{{count}} marcas",
+      "textPlaceholder": "Escribe la etiqueta",
       "tools": {
         "arrow": "Flecha",
         "box": "Rectángulo",

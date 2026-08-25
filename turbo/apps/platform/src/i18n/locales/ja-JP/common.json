@@ -492,11 +492,13 @@
     "annotation": {
       "attach": "マークを添付",
       "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "inkLabel": "色 {{color}}",
       "notePlaceholder": "ここをどう変えたいか書いてください",
       "open": "注釈",
       "redo": "やり直す",
       "removeMark": "マークを削除",
       "subtitle_other": "{{count}} 件のマーク",
+      "textPlaceholder": "ラベルを入力",
       "tools": {
         "arrow": "矢印",
         "box": "矩形",

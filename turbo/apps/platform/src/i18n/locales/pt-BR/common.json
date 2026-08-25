@@ -506,6 +506,7 @@
     "annotation": {
       "attach": "Anexar marcações",
       "draftOnly": "As marcações ficam no rascunho — você pode alterá-las até enviar",
+      "inkLabel": "Cor {{color}}",
       "notePlaceholder": "Diga o que deve mudar aqui",
       "open": "Anotar",
       "redo": "Refazer",
@@ -513,6 +514,7 @@
       "subtitle_one": "{{count}} marcação",
       "subtitle_many": "{{count}} marcações",
       "subtitle_other": "{{count}} marcações",
+      "textPlaceholder": "Digite o rótulo",
       "tools": {
         "arrow": "Seta",
         "box": "Retângulo",
