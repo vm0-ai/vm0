@@ -385,7 +385,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Rebuild the composer quote block on ProseMirror's native machinery: the note content element is the block itself and the quote chip is a widget decoration, removing the editable wrapper elements and the custom mutation filtering that let WebKit damage go unnoticed.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
