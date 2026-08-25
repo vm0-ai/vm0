@@ -57,7 +57,7 @@ export const testBankingStateContract = c.router({
       400: testBankingStateErrorSchema,
       404: z.string(),
     },
-    summary: "Mutate and read Zero Banking API test support state",
+    summary: "Mutate and read banking API test support state",
   },
 });
 

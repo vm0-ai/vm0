@@ -54,7 +54,7 @@ export const connectorsBySlugContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get connector by slug (zero proxy)",
+    summary: "Get connector by slug",
   },
 });
 

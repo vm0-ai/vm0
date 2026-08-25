@@ -198,7 +198,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Enable the managed Zero Banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+      "Enable the managed banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -363,7 +363,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
-    description: "Select healthy fallback routes for VM0 built-in models.",
+    description: "Select healthy fallback routes for built-in platform models.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -455,7 +455,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+      "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

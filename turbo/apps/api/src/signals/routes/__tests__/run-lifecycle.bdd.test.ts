@@ -14190,6 +14190,10 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("model-extracted");
     expect(claim.appendSystemPrompt ?? "").toContain("provider-backed sources");
+    expect(claim.appendSystemPrompt ?? "").toContain(
+      "execute through the built-in platform provider",
+    );
+    expect(claim.appendSystemPrompt ?? "").not.toContain("execute via vm0");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -14499,7 +14503,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("mounts workflows for claude-code zero agents", async () => {
+  it("mounts workflows for Claude Code agents", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const misc = createMiscRoutesApi(context);
