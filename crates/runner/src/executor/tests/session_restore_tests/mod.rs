@@ -12,11 +12,14 @@ use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_history_cpu::codex_timestamp_for_test;
-use super::super::session_restore::MaterializedResumeSession;
+use super::super::session_restore::{
+    MaterializedResumeSession, SessionRestoreDiagnostics,
+    restore_session as restore_session_with_reuse_result,
+};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context};
 use crate::types::{
     ExecutionContext, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding,
-    ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+    ResumeSessionHistoryRef, ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
@@ -139,6 +142,22 @@ fn codex_minimal_session_meta_history(session_id: &str) -> String {
             },
         }),
     )
+}
+
+async fn restore_session(
+    sandbox: &MockSandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> super::super::RunnerResult<SessionRestoreDiagnostics> {
+    restore_session_with_reuse_result(sandbox, context, session, SandboxReuseResult::Reused).await
+}
+
+async fn restore_session_in_fresh_sandbox(
+    sandbox: &MockSandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> super::super::RunnerResult<SessionRestoreDiagnostics> {
+    restore_session_with_reuse_result(sandbox, context, session, SandboxReuseResult::PoolMiss).await
 }
 
 fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
