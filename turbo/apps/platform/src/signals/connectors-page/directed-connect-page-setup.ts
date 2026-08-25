@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroDirectedConnectPage } from "../../views/okou-page/directed-connect-page.tsx";
+import { DirectedConnectPage } from "../../views/okou-page/directed-connect-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
@@ -18,7 +18,7 @@ export const setupDirectedConnectPage$ = command(
     const connectorSlug =
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
-    set(updatePage$, createElement(ZeroDirectedConnectPage), "minimal");
+    set(updatePage$, createElement(DirectedConnectPage), "minimal");
     set(
       updateDocumentTitle$,
       i18n.t(

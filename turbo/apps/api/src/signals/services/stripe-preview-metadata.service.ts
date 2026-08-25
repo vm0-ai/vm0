@@ -16,10 +16,12 @@ type PreviewJobRefAliasState =
   | "legacy-only"
   | "dual";
 
-// The preview deployment action intentionally remains legacy-only during this
-// reader-expansion stage. Remove the legacy alias only after #28914 completes
-// writer cutover, retires pre-reader rollback targets, and observes zero
-// legacy-only resolutions through the supported rollback window.
+// The preview deployment action intentionally emits equal-dual aliases so old
+// API rollback targets keep the legacy input while current APIs exercise the
+// canonical reader. Cut the writer to canonical-only only after every eligible
+// API can read the canonical key; remove the legacy reader separately after
+// bounded evidence shows zero legacy-only or dual resolutions through the
+// supported rollback window.
 function resolveStripePreviewJobRef(): string | null {
   if (env("ENV") !== "preview") {
     return null;

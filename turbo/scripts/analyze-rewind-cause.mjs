@@ -16,7 +16,7 @@
  * finding it stale — this is the actual cause.
  *
  * Usage:
- *   node scripts/analyze-rewind-cause.mjs <file.cpuprofile> [--component ZeroSidebar]
+ *   node scripts/analyze-rewind-cause.mjs <file.cpuprofile> [--component Sidebar]
  */
 
 import { readFileSync } from "fs";

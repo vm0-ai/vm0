@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { ZeroConnectorsPage } from "../../views/okou-page/connectors-page.tsx";
+import { ConnectorsPage } from "../../views/okou-page/connectors-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
@@ -11,7 +11,7 @@ import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-a
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(resetConnectorAccountDialogs$);
-    set(updatePage$, createElement(ZeroConnectorsPage), "sidebar");
+    set(updatePage$, createElement(ConnectorsPage), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

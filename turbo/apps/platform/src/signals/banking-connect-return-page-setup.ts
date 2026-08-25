@@ -3,7 +3,7 @@ import { Landmark } from "lucide-react";
 import { createElement } from "react";
 
 import { i18n } from "../i18n/index.ts";
-import { ZeroConnectorCallbackPage } from "../views/okou-page/connector-callback-page.tsx";
+import { ConnectorCallbackPage } from "../views/okou-page/connector-callback-page.tsx";
 import { hideAppSkeleton$ } from "./app-skeleton.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
@@ -29,7 +29,7 @@ export const setupBankingConnectReturnPage$ = command(
 
     set(
       updatePage$,
-      createElement(ZeroConnectorCallbackPage, {
+      createElement(ConnectorCallbackPage, {
         connectorIcon: undefined,
         iconContent: createElement(Landmark, {
           size: 20,

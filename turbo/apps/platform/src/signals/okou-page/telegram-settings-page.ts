@@ -6,7 +6,7 @@ import {
   resetTelegramSettingsUi$,
   startTelegramSettingsRealtime$,
 } from "./telegram.ts";
-import { ZeroTelegramSettingsPage } from "../../views/okou-page/telegram-settings-page.tsx";
+import { TelegramSettingsPage } from "../../views/okou-page/telegram-settings-page.tsx";
 
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -17,7 +17,7 @@ export const setupTelegramSettingsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(resetTelegramSettingsUi$);
     set(reloadTelegramBots$);
-    set(updatePage$, createElement(ZeroTelegramSettingsPage), "sidebar");
+    set(updatePage$, createElement(TelegramSettingsPage), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

@@ -872,7 +872,7 @@ function ThreeColumnNav() {
   );
 }
 
-export function ZeroSidebar() {
+export function Sidebar() {
   const features = useLastResolved(featureSwitch$);
   const threeColumnNav = features?.[FeatureSwitchKey.ThreeColumnNav] ?? false;
   if (threeColumnNav) {

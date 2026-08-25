@@ -4865,6 +4865,11 @@
       },
       "debug": {
         "builtInModelCooldown": {
+          "cancelAction": "Batalkan cooldown",
+          "cancelDescription": "Membatalkan cooldown global ini membuat rute langsung tersedia untuk setiap workspace yang mengaktifkan fallback model bawaan.",
+          "cancelling": "Membatalkan...",
+          "cancelTitle": "Batalkan cooldown global?",
+          "cancelWarning": "Kegagalan berikutnya yang memenuhi syarat dapat menempatkan rute ini kembali dalam cooldown.",
           "description": "Periksa rute model bawaan yang sementara dikecualikan dari pemilihan fallback.",
           "disabled": "dinonaktifkan",
           "disabledExplanation": "Fallback model bawaan dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
@@ -4872,6 +4877,7 @@
           "enabled": "diaktifkan",
           "globalActive": "cooldown global aktif",
           "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model bawaan diaktifkan di sini.",
+          "keepCooldown": "Pertahankan cooldown",
           "loading": "Memuat diagnostik cooldown model bawaan...",
           "providerType": "Jenis penyedia",
           "refresh": "Segarkan",

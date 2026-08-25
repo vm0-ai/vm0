@@ -3,7 +3,7 @@ import { settle } from "../utils.ts";
 import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   uploadFileToStorage$,
-  type ZeroChatAttachment,
+  type ChatAttachment,
 } from "../okou-page/chat-draft.ts";
 import {
   describeAnnotation,
@@ -13,7 +13,7 @@ import { flattenAnnotatedImage } from "../okou-page/flatten-annotated-image.ts";
 import { composerImageAnnotationEnabled$ } from "../external/feature-switch.ts";
 
 interface AttachmentToFlatten {
-  readonly attachment: ZeroChatAttachment;
+  readonly attachment: ChatAttachment;
   readonly info: { id: string; url: string; contentType: string };
 }
 

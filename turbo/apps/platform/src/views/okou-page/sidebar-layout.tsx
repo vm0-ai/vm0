@@ -10,7 +10,7 @@ import { Menu, Package, Share2, UserPlus } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { Button, cn } from "@okouai/ui";
-import { ZeroSidebar } from "./sidebar.tsx";
+import { Sidebar } from "./sidebar.tsx";
 import { AutomationMenuButton } from "./chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
@@ -342,7 +342,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
       <QueueDrawer />
-      <ZeroSidebar />
+      <Sidebar />
       <div
         data-sidebar-expanded={expanded || undefined}
         className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"

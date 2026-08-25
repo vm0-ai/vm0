@@ -529,6 +529,6 @@ function DirectedAuthorizeCard() {
   );
 }
 
-export function ZeroDirectedAuthorizePage() {
+export function DirectedAuthorizePage() {
   return <DirectedAuthorizeCard />;
 }

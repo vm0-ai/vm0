@@ -483,7 +483,7 @@ function TelegramConnectionLoadingState() {
   );
 }
 
-export function ZeroTelegramConnectPage(): JSX.Element {
+export function TelegramConnectPage(): JSX.Element {
   const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);

@@ -18,7 +18,7 @@ import {
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
-import type { DraftSignals, ZeroChatAttachment } from "./chat-draft.ts";
+import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
@@ -133,11 +133,11 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
 interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
-  readonly attachments$: Computed<ZeroChatAttachment[]>;
+  readonly attachments$: Computed<ChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   readonly restoreAttachments$: DraftSignals["restoreAttachments$"];
-  readonly removeAttachment$: Command<void, [ZeroChatAttachment]>;
+  readonly removeAttachment$: Command<void, [ChatAttachment]>;
   readonly dragOver$: Computed<boolean>;
   readonly setDragOver$: Command<void, [boolean]>;
   readonly composerFileInput$: Computed<HTMLElement | null>;
@@ -371,7 +371,7 @@ function composerTemplateSignals(
 
 function hasVisibleAttachment(
   selection: ModelProviderSelection | null,
-  attachments: readonly ZeroChatAttachment[],
+  attachments: readonly ChatAttachment[],
   imageRecognitionEnabled: boolean,
 ): boolean {
   if (

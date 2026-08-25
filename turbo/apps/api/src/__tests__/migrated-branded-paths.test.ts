@@ -10,10 +10,8 @@ import { orgReadRoutes } from "../signals/routes/org-read";
 import { slackChannelsRoutes } from "../signals/routes/slack-channels";
 import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
-import { teamsConnectRoutes } from "../signals/routes/teams-connect";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
-import { webFileUrlRoutes } from "../signals/routes/web-file-url";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -149,22 +147,10 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
   // #28422
-  "/api/artifacts/catalog": [
-    "/api/okou/artifacts/catalog",
-    "/api/zero/artifacts/catalog",
-  ],
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
-  "/api/push-subscriptions": [
-    "/api/okou/push-subscriptions",
-    "/api/zero/push-subscriptions",
-  ],
   "/api/realtime/token": [
     "/api/okou/realtime/token",
     "/api/zero/realtime/token",
-  ],
-  "/api/runs/:id/telemetry/agent": [
-    "/api/okou/runs/:id/telemetry/agent",
-    "/api/zero/runs/:id/telemetry/agent",
   ],
   // #28459: chat threads, chat events and search, shared threads,
   // per-thread browser sessions and goals, thread workflow automations,
@@ -182,10 +168,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/chat-threads/:id/mark-read",
     "/api/zero/chat-threads/:id/mark-read",
   ],
-  "/api/chat-threads/:id/model-selection": [
-    "/api/okou/chat-threads/:id/model-selection",
-    "/api/zero/chat-threads/:id/model-selection",
-  ],
   "/api/chat-threads/:id/pin": [
     "/api/okou/chat-threads/:id/pin",
     "/api/zero/chat-threads/:id/pin",
@@ -197,18 +179,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/chat-threads/:threadId/browser": [
     "/api/okou/chat-threads/:threadId/browser",
     "/api/zero/chat-threads/:threadId/browser",
-  ],
-  "/api/chat-threads/:threadId/browser/close": [
-    "/api/okou/chat-threads/:threadId/browser/close",
-    "/api/zero/chat-threads/:threadId/browser/close",
-  ],
-  "/api/chat-threads/:threadId/browser/lease": [
-    "/api/okou/chat-threads/:threadId/browser/lease",
-    "/api/zero/chat-threads/:threadId/browser/lease",
-  ],
-  "/api/chat-threads/:threadId/browser/open": [
-    "/api/okou/chat-threads/:threadId/browser/open",
-    "/api/zero/chat-threads/:threadId/browser/open",
   ],
   "/api/chat-threads/:threadId/event-rows": [
     "/api/okou/chat-threads/:threadId/event-rows",
@@ -232,33 +202,9 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
   // #28457: the billing surface.
-  "/api/billing/checkout": [
-    "/api/okou/billing/checkout",
-    "/api/zero/billing/checkout",
-  ],
-  "/api/billing/invoices": [
-    "/api/okou/billing/invoices",
-    "/api/zero/billing/invoices",
-  ],
   "/api/billing/status": [
     "/api/okou/billing/status",
     "/api/zero/billing/status",
-  ],
-  "/api/billing/usage-pack-catalog": [
-    "/api/okou/billing/usage-pack-catalog",
-    "/api/zero/billing/usage-pack-catalog",
-  ],
-  "/api/billing/usage-pack-credits": [
-    "/api/okou/billing/usage-pack-credits",
-    "/api/zero/billing/usage-pack-credits",
-  ],
-  "/api/billing/usage-pack-migration": [
-    "/api/okou/billing/usage-pack-migration",
-    "/api/zero/billing/usage-pack-migration",
-  ],
-  "/api/billing/usage-pack-subscription": [
-    "/api/okou/billing/usage-pack-subscription",
-    "/api/zero/billing/usage-pack-subscription",
   ],
   // #28466
   "/api/computer-use/audit-events": [
@@ -314,35 +260,19 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/integrations/slack/upload-file/materialize",
     "/api/zero/integrations/slack/upload-file/materialize",
   ],
-  "/api/integrations/teams/connect": [
-    "/api/okou/integrations/teams/connect",
-    "/api/zero/integrations/teams/connect",
-  ],
   // #28460: the connector catalog, the connector connections, the custom
   // connectors, the model provider connections, and the user permission grants.
   "/api/connector-catalog/:connectorSlug": [
     "/api/okou/connector-catalog/:connectorSlug",
     "/api/zero/connector-catalog/:connectorSlug",
   ],
-  "/api/connector-catalog/discovery": [
-    "/api/okou/connector-catalog/discovery",
-    "/api/zero/connector-catalog/discovery",
-  ],
   "/api/connector-catalog/status": [
     "/api/okou/connector-catalog/status",
     "/api/zero/connector-catalog/status",
   ],
-  "/api/connectors/:connectorSlug/oauth/start": [
-    "/api/okou/connectors/:connectorSlug/oauth/start",
-    "/api/zero/connectors/:connectorSlug/oauth/start",
-  ],
   "/api/custom-connectors": [
     "/api/okou/custom-connectors",
     "/api/zero/custom-connectors",
-  ],
-  "/api/user-permission-grants": [
-    "/api/okou/user-permission-grants",
-    "/api/zero/user-permission-grants",
   ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
   // paths a provider console holds are not in this slice and stay branded;
@@ -380,16 +310,8 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/model-policies",
     "/api/zero/model-policies",
   ],
-  "/api/model-providers": [
-    "/api/okou/model-providers",
-    "/api/zero/model-providers",
-  ],
   "/api/org": ["/api/okou/org", "/api/zero/org"],
-  "/api/org/logo": ["/api/okou/org/logo", "/api/zero/org/logo"],
-  "/api/org/members": ["/api/okou/org/members", "/api/zero/org/members"],
-  "/api/usage/record": ["/api/okou/usage/record", "/api/zero/usage/record"],
   // #28461
-  "/api/agents": ["/api/okou/agents", "/api/zero/agents"],
   "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
   "/api/agents/:id/custom-connectors": [
     "/api/okou/agents/:id/custom-connectors",
@@ -402,10 +324,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/agents/:id/user-connectors": [
     "/api/okou/agents/:id/user-connectors",
     "/api/zero/agents/:id/user-connectors",
-  ],
-  "/api/workflow-automations/:id": [
-    "/api/okou/workflow-automations/:id",
-    "/api/zero/workflow-automations/:id",
   ],
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
   // #28545: the Teams OAuth callback, moved off `FINAL_PROVIDER_CONSOLE_PATHS`
@@ -423,14 +341,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // email, the GitHub user-connect start, mail drafts, people search,
   // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
   // the web file reads.
-  "/api/mail/drafts/:mailDraftId": [
-    "/api/okou/mail/drafts/:mailDraftId",
-    "/api/zero/mail/drafts/:mailDraftId",
-  ],
-  "/api/uploads/multipart/complete": [
-    "/api/okou/uploads/multipart/complete",
-    "/api/zero/uploads/multipart/complete",
-  ],
   "/api/voice-io/quota": [
     "/api/okou/voice-io/quota",
     "/api/zero/voice-io/quota",
@@ -439,7 +349,6 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/voice-io/speech",
     "/api/zero/voice-io/speech",
   ],
-  "/api/web/file-url": ["/api/okou/web/file-url", "/api/zero/web/file-url"],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
   // Both branded forms used to be the declared paths, so these rows are the
   // only thing registering them now — the events one is what keeps the two
@@ -640,11 +549,11 @@ describe("branded paths for migrated neutral routes", () => {
 
     // One GET per contract file this slice moved that still has a row, written
     // out rather than read back from `MIGRATED_BRANDED_PATHS`. #28917 removed
-    // the Feishu and Strapi connect rows on zero-traffic evidence, so those two
-    // are no longer driven here.
+    // the Feishu and Strapi connect rows on zero-traffic evidence and #28916
+    // removed the Teams connect row on cutover evidence, so those three are no
+    // longer driven here.
     const families = [
       { routes: slackConnectRoutes, suffix: "integrations/slack/connect" },
-      { routes: teamsConnectRoutes, suffix: "integrations/teams/connect" },
     ];
 
     for (const { routes, suffix } of families) {
@@ -674,8 +583,9 @@ describe("branded paths for migrated neutral routes", () => {
   // a table row, and the request goes through the app factory production wires,
   // so a row that never reaches the registration chain fails here rather than
   // 404ing a released CLI or platform build. The POST arm this loop used to
-  // carry went with `uploads/prepare` in #28974; both endpoints left are GETs,
-  // so the request builder no longer branches on a method.
+  // carry went with `uploads/prepare` in #28974 and `web/file-url` went with
+  // #28916, so the loop is down to the one voice-io GET and the request builder
+  // no longer branches on a method.
   it("serves the migrated product paths through the production app factory", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -683,7 +593,6 @@ describe("branded paths for migrated neutral routes", () => {
 
     const endpoints = [
       { routes: voiceIoQuotaRoutes, suffix: "voice-io/quota" },
-      { routes: webFileUrlRoutes, suffix: "web/file-url" },
     ] as const;
 
     for (const { routes, suffix } of endpoints) {
@@ -734,8 +643,9 @@ describe("branded paths for migrated neutral routes", () => {
   //
   // That is the guard #28709 left behind when it took the table from 314 rows
   // to 184, #28711 kept when it took the 42 drained rows that left 142, #28917
-  // kept when it took 53 more and left 89, and #28974 kept when it took
-  // `uploads/prepare` and left 88. None of them left a case asserting the
+  // kept when it took 53 more and left 89, #28974 kept when it took
+  // `uploads/prepare` and left 88, and #28916 kept when it took the 26
+  // cut-over rows that left 62. None of them left a case asserting the
   // removed rows now 404: `docs/fallback.md` section 1 rules that class out,
   // and the route table already proves the registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
@@ -749,7 +659,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 88;
+    const MIGRATED_BRANDED_ROW_COUNT = 62;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,

@@ -25,7 +25,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroChatAttachment } from "../../signals/okou-page/chat-draft";
+import type { ChatAttachment } from "../../signals/okou-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -1771,7 +1771,7 @@ function AttachmentChip({
   attachment,
   onRemove,
 }: {
-  attachment: ZeroChatAttachment;
+  attachment: ChatAttachment;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -1867,8 +1867,8 @@ export function AttachmentChips({
   attachments,
   onRemove,
 }: {
-  attachments: ZeroChatAttachment[];
-  onRemove: (attachment: ZeroChatAttachment) => void;
+  attachments: ChatAttachment[];
+  onRemove: (attachment: ChatAttachment) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">

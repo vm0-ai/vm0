@@ -670,6 +670,31 @@ describe("installed Desktop configuration entry point", () => {
     expectSuccessfulEntryPoint(result, []);
   });
 
+  it("names the canonical platform URL in protocol validation diagnostics", () => {
+    const result = runInstalledConfig({
+      aliases: {
+        canonicalPlatformUrl: `ftp://${randomUUID()}.example`,
+      },
+      productArgument: "okou",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
+      expectedEnvironment: "production",
+    });
+
+    expect(result.process.status).toBe(1);
+    expect(result.process.stderr).toContain(
+      "OKOU_DESKTOP_PLATFORM_URL must use http or https, received ftp:",
+    );
+    expect(result.process.stderr).not.toContain(
+      "VM0_DESKTOP_PLATFORM_URL must use http or https",
+    );
+    expectBoundedSourceEvents(result, [
+      "desktop_environment_alias_source key=OKOU_DESKTOP_PLATFORM_URL source=canonical-only",
+    ]);
+    expectNoAliasValueDisclosure(result);
+  });
+
   it.each([
     {
       key: "OKOU_DESKTOP_PRODUCT" as const,

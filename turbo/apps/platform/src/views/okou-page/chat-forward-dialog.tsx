@@ -35,7 +35,7 @@ import {
   setChatListQuery$,
 } from "../../signals/okou-page/sidebar-state.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { ZeroChatComposer } from "./chat-composer.tsx";
+import { ChatComposer } from "./chat-composer.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 
@@ -195,7 +195,7 @@ function ForwardComposerSurface({
 }) {
   return (
     <div className="w-full min-w-0 p-5" data-chat-composer>
-      <ZeroChatComposer signals={composer} showPendingItems={false} />
+      <ChatComposer signals={composer} showPendingItems={false} />
     </div>
   );
 }

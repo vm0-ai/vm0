@@ -8,6 +8,7 @@ import {
   findVideoTemplate,
   listVideoTemplates,
 } from "@okouai/core/resource-registry";
+import { DEFAULT_VIDEO_MODEL_ALIAS } from "@okouai/core/video-model-catalog";
 import { formatRegistryListing } from "./resource-listing";
 import { createVideoTemplateAuthoringPacket } from "./video-template-authoring";
 import {
@@ -454,13 +455,14 @@ Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
   - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
+  - Omitting --model generates with ${DEFAULT_VIDEO_MODEL_ALIAS}
 
 Models:
   - Dreamina Seedance 2.5: dreamina-seedance-2.5. Supports 4s-30s,
     480p/720p/1080p, optional audio, up to 30 image references, and up to
     10 video and 10 audio references, plus first/last frames.
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
-    dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0-mini.
+    dreamina-seedance-2.0-fast, dreamina-seedance-2.0-mini.
     Supports 4s-15s,
     480p/720p, seed, optional audio, image references, and first/last
     frames. The full model also supports 1080p; the full and Mini models

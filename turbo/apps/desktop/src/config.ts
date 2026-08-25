@@ -152,7 +152,7 @@ function parsePlatformUrl(
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error(
-      `VM0_DESKTOP_PLATFORM_URL must use http or https, received ${url.protocol}`,
+      `OKOU_DESKTOP_PLATFORM_URL must use http or https, received ${url.protocol}`,
     );
   }
 

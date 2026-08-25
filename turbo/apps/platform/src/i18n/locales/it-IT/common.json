@@ -4933,6 +4933,11 @@
       },
       "debug": {
         "builtInModelCooldown": {
+          "cancelAction": "Annulla cooldown",
+          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace in cui è attivo il fallback dei modelli integrati.",
+          "cancelling": "Annullamento...",
+          "cancelTitle": "Annullare il cooldown globale?",
+          "cancelWarning": "Un errore successivo idoneo può riportare questa route in cooldown.",
           "description": "Esamina le route dei modelli integrati temporaneamente escluse dalla selezione di fallback.",
           "disabled": "disattivato",
           "disabledExplanation": "Il fallback dei modelli integrati è disattivato per questo workspace, quindi questi cooldown globali vengono attualmente ignorati qui.",
@@ -4940,6 +4945,7 @@
           "enabled": "attivato",
           "globalActive": "cooldown globali attivi",
           "globalExplanation": "I cooldown sono uno stato operativo globale. Possono influire su questo workspace solo quando il fallback dei modelli integrati è attivato qui.",
+          "keepCooldown": "Mantieni cooldown",
           "loading": "Caricamento della diagnostica dei cooldown dei modelli integrati...",
           "providerType": "Tipo di provider",
           "refresh": "Aggiorna",

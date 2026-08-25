@@ -983,7 +983,7 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
   );
 }
 
-export function ZeroConnectorsPage() {
+export function ConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
   const filteredCatalogItemsLoadable = useLastLoadable(

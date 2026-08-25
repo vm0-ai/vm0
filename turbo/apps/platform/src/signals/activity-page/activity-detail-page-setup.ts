@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroActivityDetailPage } from "../../views/okou-page/activity-detail-page.tsx";
+import { ActivityDetailPage } from "../../views/okou-page/activity-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
@@ -13,7 +13,7 @@ export const setupActivityDetailPage$ = command(
     const runId = get(currentRunId$);
     set(
       updatePage$,
-      createElement(ZeroActivityDetailPage, { key: runId }),
+      createElement(ActivityDetailPage, { key: runId }),
       "sidebar",
     );
     set(

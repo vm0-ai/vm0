@@ -177,7 +177,7 @@ commit. The following approaches all overcount in current React builds:
 
 In one chat sample, the `WeakMap` technique reported 76 sidebar executions.
 The React Performance track for the same trace showed no execution spans for
-`SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`; the only visible
+`SidebarLayout`, `Sidebar`, or `ChatThreadsContent`; the only visible
 sidebar update initiator was one `ChatThreadItem`. Use the root hook for exact
 commit boundaries and React Performance tracks or a deliberately placed React
 `Profiler` for component attribution.
@@ -513,7 +513,7 @@ The component track gives a more accurate region picture than Fiber traversal:
 
 | Region            | Observed component work                                                                                               |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Visible sidebar   | One direct `ChatThreadItem` update; no spans for `SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`              |
+| Visible sidebar   | One direct `ChatThreadItem` update; no spans for `SidebarLayout`, `Sidebar`, or `ChatThreadsContent`                  |
 | Hidden sidebar UI | Five direct `AgentListDialog` updates while the dialog was closed                                                     |
 | Message list      | Four direct `ChatThreadContent` updates; `ChatThreadMessagesMain` and `ChatThreadMessageGroups` each executed 8 times |
 | Composer          | Four direct `ChatThreadComposer` updates; its main leaf slots executed 11 times                                       |
@@ -559,7 +559,7 @@ the composer model hook of the time immediately wrapped it in new
 `modelSelection` and `modelPicker` objects. That responsibility now sits on the
 composer signals themselves: `ComposerModelPickerSlotBase` reads
 `signals.model.modelSelection$` directly. The composer entry point — a single
-hook at the time, now the `ZeroChatComposer` component in
+hook at the time, now the `ChatComposer` component in
 `turbo/apps/platform/src/views/okou-page/chat-composer.tsx` — also recreates its
 event handlers and passes them through every composer leaf. This makes otherwise
 unrelated run and message transitions re-execute the closed picker and editor
@@ -864,7 +864,7 @@ component span time. The larger issue is that `ChatThreadComposer` pulled the
 whole composer into the same Fiber, so send, queue, model, connector,
 attachment, dialog, and editor subscriptions all shared one render boundary.
 That fan-in has since been split: `ChatThreadComposer` renders
-`ZeroChatComposer`, which renders `ComposerSurface`, and each concern now
+`ChatComposer`, which renders `ComposerSurface`, and each concern now
 subscribes inside its own slot component — `ComposerInputSlot`,
 `ComposerModelPickerSlot`, `ComposerConnectorsSlot`, `ComposerAttachments`,
 and `ComposerSendControl`.
