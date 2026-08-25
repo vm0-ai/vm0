@@ -40,12 +40,13 @@ export interface ComposerConnectorAccountSignals {
     Promise<ReadonlyMap<string, ConnectorAccountSummary>>
   >;
   readonly panelTarget$: Computed<ConnectorAccountTarget | null>;
+  readonly panelOpen$: Computed<boolean>;
   readonly search$: Computed<string>;
   readonly accounts$: ReturnType<
     typeof createConnectorAccountListSignals
   >["accounts$"];
   readonly openTarget$: Command<void, [ConnectorAccountTarget]>;
-  readonly closeTarget$: Command<void, []>;
+  readonly closePanel$: Command<void, []>;
   readonly setSearch$: ReturnType<
     typeof createConnectorAccountListSignals
   >["setSearch$"];
@@ -181,6 +182,7 @@ export function createComposerConnectorAccountSignals(
 ): ComposerConnectorAccountSignals {
   const list = createConnectorAccountListSignals();
   const panelTarget$ = state<ConnectorAccountTarget | null>(null);
+  const panelOpen$ = state(false);
   const reloadVersion$ = state(0);
   const pendingState$ = state<ComposerConnectorAccountPreferenceState>(
     emptyPreferenceState(),
@@ -216,17 +218,30 @@ export function createComposerConnectorAccountSignals(
     set(list.reload$);
   });
   const openPopover$ = command(({ set }) => {
-    set(reload$);
+    set(reloadVersion$, (version) => {
+      return version + 1;
+    });
+    set(reloadConnectorAccountSummaries$);
   });
   const openTarget$ = command(
-    ({ set }, target: ConnectorAccountTarget): void => {
+    ({ get, set }, target: ConnectorAccountTarget): void => {
+      const currentTarget = get(panelTarget$);
       set(panelTarget$, target);
-      set(list.setTarget$, target);
+      if (
+        currentTarget &&
+        connectorAccountTargetKey(currentTarget) ===
+          connectorAccountTargetKey(target)
+      ) {
+        set(list.reload$);
+      } else {
+        set(list.setTarget$, target);
+      }
+      set(panelOpen$, true);
     },
   );
-  const closeTarget$ = command(({ set }): void => {
-    set(panelTarget$, null);
-    set(list.setTarget$, null);
+  const closePanel$ = command(({ set }): void => {
+    set(panelOpen$, false);
+    set(list.setSearch$, "");
   });
 
   const { selectAccount$, useDefault$ } = createConnectorAccountMutationSignals(
@@ -251,10 +266,13 @@ export function createComposerConnectorAccountSignals(
     panelTarget$: computed((get) => {
       return get(panelTarget$);
     }),
+    panelOpen$: computed((get) => {
+      return get(panelOpen$);
+    }),
     search$: list.search$,
     accounts$: list.accounts$,
     openTarget$,
-    closeTarget$,
+    closePanel$,
     setSearch$: list.setSearch$,
     loadMore$: list.loadMore$,
     selectAccount$,

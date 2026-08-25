@@ -8157,7 +8157,7 @@ function ComposerConnectorAccountPanel({
   const accountsLoadable = useLoadable(signals.connector.accounts.accounts$);
   const search = useGet(signals.connector.accounts.search$);
   const savingTargetKey = useGet(signals.connector.accounts.savingTargetKey$);
-  const closeTarget = useSet(signals.connector.accounts.closeTarget$);
+  const closePanel = useSet(signals.connector.accounts.closePanel$);
   const setSearch = useSet(signals.connector.accounts.setSearch$);
   const selectAccount = useSet(signals.connector.accounts.selectAccount$);
   const clearAccountSelection = useSet(signals.connector.accounts.useDefault$);
@@ -8213,7 +8213,7 @@ function ComposerConnectorAccountPanel({
             return $.chat.connectors.back;
           })}
           onClick={() => {
-            closeTarget();
+            closePanel();
           }}
         >
           <ArrowLeft size={15} />
@@ -8338,6 +8338,48 @@ function deriveComposerConnectorPopoverState(args: {
   return { visibleConnectors, permissionConnector, accountPanelItem };
 }
 
+function composerConnectorPopoverPanelClass(visible: boolean): string {
+  return cn(
+    "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+    visible
+      ? "grid-rows-[1fr]"
+      : "invisible grid-rows-[0fr] pointer-events-none",
+  );
+}
+
+function composerConnectorPopoverContentClass(
+  hasAccountPicker: boolean,
+): string {
+  return cn(
+    "w-72 p-0",
+    hasAccountPicker
+      ? "pointer-events-none relative h-[min(25rem,var(--available-height))] overflow-visible border-0 bg-transparent"
+      : "max-h-[var(--available-height)] overflow-hidden rounded-lg",
+  );
+}
+
+function composerConnectorPopoverSurfaceClass(
+  hasAccountPicker: boolean,
+): string {
+  return hasAccountPicker
+    ? "pointer-events-auto absolute inset-x-0 bottom-0 max-h-full overflow-hidden rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-lg"
+    : "contents";
+}
+
+function composerConnectorPopoverContentStyle(
+  hasAccountPicker: boolean,
+): CSSProperties | undefined {
+  return hasAccountPicker ? { boxShadow: "none" } : undefined;
+}
+
+function composerConnectorAccountPanelVisible(
+  open: boolean,
+  target: ConnectorAccountTarget | null,
+  item: ComposerPopoverConnectorItem | undefined,
+): boolean {
+  return Boolean(open && target && item);
+}
+
 function ConnectorsPopoverButton({
   signals,
   agentId,
@@ -8382,8 +8424,9 @@ function ConnectorsPopoverButton({
     signals.connector.accounts.summaryByTarget$,
   );
   const accountPanelTarget = useGet(signals.connector.accounts.panelTarget$);
+  const accountPanelOpen = useGet(signals.connector.accounts.panelOpen$);
   const openAccountTarget = useSet(signals.connector.accounts.openTarget$);
-  const closeAccountTarget = useSet(signals.connector.accounts.closeTarget$);
+  const closeAccountPanel = useSet(signals.connector.accounts.closePanel$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
   const search = connectorUi.popoverSearch;
   const sortOrder = connectorUi.popoverSortOrder;
@@ -8431,22 +8474,30 @@ function ConnectorsPopoverButton({
       agentConnectors,
       accountPanelTarget,
     });
-  const accountModeButton = (item: ComposerPopoverConnectorItem) => {
-    const target = composerPopoverConnectorTarget(item);
-    const targetKey = connectorAccountTargetKey(target);
-    const connector = item.connector;
+  const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
     if (
       !connectorAccountsEnabled ||
-      !connector.authorized ||
+      !item.connector.authorized ||
       (item.kind === "custom" &&
         isIntegrationManagedCustomConnector(item.connector))
     ) {
-      return null;
+      return undefined;
     }
-    const summary = accountSummaries.get(targetKey);
+    const summary = accountSummaries.get(
+      connectorAccountTargetKey(composerPopoverConnectorTarget(item)),
+    );
     if (!summary || summary.accountCount <= 1) {
+      return undefined;
+    }
+    return summary;
+  };
+  const accountModeButton = (item: ComposerPopoverConnectorItem) => {
+    const summary = accountSummaryForItem(item);
+    if (!summary) {
       return null;
     }
+    const target = composerPopoverConnectorTarget(item);
+    const targetKey = connectorAccountTargetKey(target);
     const selection = selectionByTarget.get(targetKey);
     return (
       <ComposerConnectorAccountModeButton
@@ -8468,7 +8519,14 @@ function ConnectorsPopoverButton({
       />
     );
   };
-
+  const hasAccountPicker = connectorItems.some((item) => {
+    return accountSummaryForItem(item) !== undefined;
+  });
+  const accountPanelVisible = composerConnectorAccountPanelVisible(
+    accountPanelOpen,
+    accountPanelTarget,
+    accountPanelItem,
+  );
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
@@ -8477,7 +8535,7 @@ function ConnectorsPopoverButton({
       openAccountsPopover();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
-      closeAccountTarget();
+      closeAccountPanel();
     }
   };
 
@@ -8516,221 +8574,253 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+        className={composerConnectorPopoverContentClass(hasAccountPicker)}
+        style={composerConnectorPopoverContentStyle(hasAccountPicker)}
       >
-        {accountPanelTarget && accountPanelItem ? (
-          <ComposerConnectorAccountPanel
-            signals={signals}
-            target={accountPanelTarget}
-            connectorLabel={
-              accountPanelItem.kind === "builtin"
-                ? accountPanelItem.connector.label
-                : accountPanelItem.connector.displayName
-            }
-            icon={
-              accountPanelItem.kind === "builtin" ? (
-                <ConnectorIcon
-                  icon={accountPanelItem.connector.icon}
-                  size={16}
-                />
-              ) : (
-                <CustomConnectorIcon
-                  id={accountPanelItem.connector.id}
-                  displayName={accountPanelItem.connector.displayName}
-                  size={16}
-                />
-              )
-            }
-          />
-        ) : (
-          <>
-            {(connectorItems.length > 0 || connectorsLoading) && (
-              <div className="flex min-h-0 flex-col py-1">
-                {showSearch && (
-                  <div className="px-3 py-1 border-b border-border/50">
-                    <input
-                      type="text"
-                      placeholder={t(($) => {
-                        return $.chat.connectors.find;
-                      })}
-                      value={search}
-                      onChange={(e) => {
-                        return updateConnectorUi({
-                          popoverSearch: e.target.value,
-                        });
-                      }}
-                      className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-                    />
+        <div className={composerConnectorPopoverSurfaceClass(hasAccountPicker)}>
+          <div
+            className={composerConnectorPopoverPanelClass(!accountPanelVisible)}
+            aria-hidden={accountPanelVisible}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="flex min-h-0 flex-col">
+                {(connectorItems.length > 0 || connectorsLoading) && (
+                  <div className="flex min-h-0 flex-col py-1">
+                    {showSearch && (
+                      <div className="px-3 py-1 border-b border-border/50">
+                        <input
+                          type="text"
+                          placeholder={t(($) => {
+                            return $.chat.connectors.find;
+                          })}
+                          value={search}
+                          onChange={(e) => {
+                            return updateConnectorUi({
+                              popoverSearch: e.target.value,
+                            });
+                          }}
+                          className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                        />
+                      </div>
+                    )}
+                    {connectorsLoading ? (
+                      <div className="flex flex-col animate-pulse">
+                        {Array.from({ length: 3 }, (_, i) => {
+                          return (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 px-3 py-2"
+                            >
+                              <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                              <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                              <span className="h-3 w-6 rounded-full bg-muted/50" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
+                        {visibleConnectors.map((item) => {
+                          if (item.kind === "custom") {
+                            const connector = item.connector;
+                            return (
+                              <label
+                                key={connector.id}
+                                className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
+                              >
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                  <CustomConnectorIcon
+                                    id={connector.id}
+                                    displayName={connector.displayName}
+                                    size={16}
+                                  />
+                                </span>
+                                <span className="text-sm flex-1 truncate text-foreground">
+                                  {connector.displayName}
+                                </span>
+                                {accountModeButton(item)}
+                                <LoadingSwitch
+                                  checked={connector.authorized}
+                                  onCheckedChange={onDomEventFn(
+                                    async (checked) => {
+                                      await onToggleCustom(
+                                        connector.id,
+                                        checked,
+                                      );
+                                    },
+                                  )}
+                                  loading={
+                                    savingCustomConnectorId === connector.id
+                                  }
+                                  ariaLabel={
+                                    connector.authorized
+                                      ? t(
+                                          ($) => {
+                                            return $.chat.connectors.remove;
+                                          },
+                                          {
+                                            connectorName:
+                                              connector.displayName,
+                                          },
+                                        )
+                                      : t(
+                                          ($) => {
+                                            return $.chat.connectors.add;
+                                          },
+                                          {
+                                            connectorName:
+                                              connector.displayName,
+                                          },
+                                        )
+                                  }
+                                  size="sm"
+                                />
+                              </label>
+                            );
+                          }
+                          const connector = item.connector;
+                          return (
+                            <label
+                              key={connector.slug}
+                              className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
+                            >
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                <ConnectorIcon
+                                  icon={connector.icon}
+                                  size={16}
+                                />
+                              </span>
+                              <span className="text-sm flex-1 truncate text-foreground">
+                                {connector.label}
+                              </span>
+                              {agentId &&
+                                connector.authorized &&
+                                connector.permissionSummary.hasPermissions && (
+                                  <Button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      updateConnectorUi({
+                                        permissionConnectorSlug: connector.slug,
+                                      });
+                                    }}
+                                    aria-label={t(
+                                      ($) => {
+                                        return $.chat.connectors
+                                          .configurePermissions;
+                                      },
+                                      { connectorName: connector.label },
+                                    )}
+                                    variant="quiet"
+                                    size="icon-2xs"
+                                    className="shrink-0"
+                                  >
+                                    <SlidersHorizontal size={15} />
+                                  </Button>
+                                )}
+                              {accountModeButton(item)}
+                              <LoadingSwitch
+                                checked={connector.authorized}
+                                onCheckedChange={onDomEventFn(
+                                  async (checked) => {
+                                    await onToggle(connector.slug, checked);
+                                  },
+                                )}
+                                loading={savingConnectorSlug === connector.slug}
+                                ariaLabel={
+                                  connector.authorized
+                                    ? t(
+                                        ($) => {
+                                          return $.chat.connectors.remove;
+                                        },
+                                        {
+                                          connectorName: connector.label,
+                                        },
+                                      )
+                                    : t(
+                                        ($) => {
+                                          return $.chat.connectors.add;
+                                        },
+                                        {
+                                          connectorName: connector.label,
+                                        },
+                                      )
+                                }
+                                size="sm"
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
-                {connectorsLoading ? (
-                  <div className="flex flex-col animate-pulse">
-                    {Array.from({ length: 3 }, (_, i) => {
-                      return (
-                        <div
-                          key={i}
-                          className="flex items-center gap-2 px-3 py-2"
-                        >
-                          <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                          <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
-                          <span className="h-3 w-6 rounded-full bg-muted/50" />
-                        </div>
-                      );
+                <div className="flex shrink-0 flex-col p-1">
+                  {(connectorItems.length > 0 || connectorsLoading) && (
+                    <div className="mx-2 mb-1 border-t border-border/50" />
+                  )}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+                    onClick={() => {
+                      return onOpenAddDialog();
+                    }}
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                      <Plus size={13} />
+                    </span>
+                    {t(($) => {
+                      return $.chat.connectors.addConnectors;
                     })}
-                  </div>
-                ) : (
-                  <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
-                    {visibleConnectors.map((item) => {
-                      if (item.kind === "custom") {
-                        const connector = item.connector;
-                        return (
-                          <label
-                            key={connector.id}
-                            className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
-                          >
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                              <CustomConnectorIcon
-                                id={connector.id}
-                                displayName={connector.displayName}
-                                size={16}
-                              />
-                            </span>
-                            <span className="text-sm flex-1 truncate text-foreground">
-                              {connector.displayName}
-                            </span>
-                            {accountModeButton(item)}
-                            <LoadingSwitch
-                              checked={connector.authorized}
-                              onCheckedChange={onDomEventFn(async (checked) => {
-                                await onToggleCustom(connector.id, checked);
-                              })}
-                              loading={savingCustomConnectorId === connector.id}
-                              ariaLabel={
-                                connector.authorized
-                                  ? t(
-                                      ($) => {
-                                        return $.chat.connectors.remove;
-                                      },
-                                      {
-                                        connectorName: connector.displayName,
-                                      },
-                                    )
-                                  : t(
-                                      ($) => {
-                                        return $.chat.connectors.add;
-                                      },
-                                      {
-                                        connectorName: connector.displayName,
-                                      },
-                                    )
-                              }
-                              size="sm"
-                            />
-                          </label>
-                        );
-                      }
-                      const connector = item.connector;
-                      return (
-                        <label
-                          key={connector.slug}
-                          className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
-                        >
-                          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                            <ConnectorIcon icon={connector.icon} size={16} />
-                          </span>
-                          <span className="text-sm flex-1 truncate text-foreground">
-                            {connector.label}
-                          </span>
-                          {agentId &&
-                            connector.authorized &&
-                            connector.permissionSummary.hasPermissions && (
-                              <Button
-                                type="button"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  updateConnectorUi({
-                                    permissionConnectorSlug: connector.slug,
-                                  });
-                                }}
-                                aria-label={t(
-                                  ($) => {
-                                    return $.chat.connectors
-                                      .configurePermissions;
-                                  },
-                                  { connectorName: connector.label },
-                                )}
-                                variant="quiet"
-                                size="icon-2xs"
-                                className="shrink-0"
-                              >
-                                <SlidersHorizontal size={15} />
-                              </Button>
-                            )}
-                          {accountModeButton(item)}
-                          <LoadingSwitch
-                            checked={connector.authorized}
-                            onCheckedChange={onDomEventFn(async (checked) => {
-                              await onToggle(connector.slug, checked);
-                            })}
-                            loading={savingConnectorSlug === connector.slug}
-                            ariaLabel={
-                              connector.authorized
-                                ? t(
-                                    ($) => {
-                                      return $.chat.connectors.remove;
-                                    },
-                                    {
-                                      connectorName: connector.label,
-                                    },
-                                  )
-                                : t(
-                                    ($) => {
-                                      return $.chat.connectors.add;
-                                    },
-                                    {
-                                      connectorName: connector.label,
-                                    },
-                                  )
-                            }
-                            size="sm"
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
+                  </button>
+                </div>
+                {computerUse && (
+                  <ComputerUseConnectorMenuSection
+                    computerUse={computerUse}
+                    onOpenDownloadDialog={() => {
+                      setDownloadDialogOpen(true);
+                    }}
+                  />
                 )}
               </div>
-            )}
-            <div className="flex shrink-0 flex-col p-1">
-              {(connectorItems.length > 0 || connectorsLoading) && (
-                <div className="mx-2 mb-1 border-t border-border/50" />
-              )}
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-                onClick={() => {
-                  return onOpenAddDialog();
-                }}
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                  <Plus size={13} />
-                </span>
-                {t(($) => {
-                  return $.chat.connectors.addConnectors;
-                })}
-              </button>
             </div>
-            {computerUse && (
-              <ComputerUseConnectorMenuSection
-                computerUse={computerUse}
-                onOpenDownloadDialog={() => {
-                  setDownloadDialogOpen(true);
-                }}
-              />
-            )}
-          </>
-        )}
+          </div>
+          <div
+            className={composerConnectorPopoverPanelClass(accountPanelVisible)}
+            aria-hidden={!accountPanelVisible}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="min-h-[min(15rem,var(--available-height))]">
+                {accountPanelTarget && accountPanelItem ? (
+                  <ComposerConnectorAccountPanel
+                    signals={signals}
+                    target={accountPanelTarget}
+                    connectorLabel={
+                      accountPanelItem.kind === "builtin"
+                        ? accountPanelItem.connector.label
+                        : accountPanelItem.connector.displayName
+                    }
+                    icon={
+                      accountPanelItem.kind === "builtin" ? (
+                        <ConnectorIcon
+                          icon={accountPanelItem.connector.icon}
+                          size={16}
+                        />
+                      ) : (
+                        <CustomConnectorIcon
+                          id={accountPanelItem.connector.id}
+                          displayName={accountPanelItem.connector.displayName}
+                          size={16}
+                        />
+                      )
+                    }
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
       </PopoverContent>
       {computerUse && (
         <ComputerUseDownloadDialog
