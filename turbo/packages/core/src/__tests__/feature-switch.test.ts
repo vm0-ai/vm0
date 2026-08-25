@@ -125,6 +125,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -156,19 +159,23 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+      false,
+    );
   });
 
-  it("should enable the Bingjie-only composer switch only for Bingjie", () => {
-    const bingjieStates = getAllFeatureStates({
-      email: "bingjie@vm0.ai",
-    });
-    expect(bingjieStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
-
-    const otherStaffStates = getAllFeatureStates({
+  it("should enable the composer flat feedback note for the staff org only", () => {
+    const staffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(otherStaffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
+    expect(staffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
+
+    const otherOrgStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+      orgId: "org_nonexistent",
+    });
+    expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       false,
     );
   });
