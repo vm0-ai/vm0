@@ -921,13 +921,9 @@ export const startUsagePackCheckout$ = command(
   },
 );
 
-const fireConfirmedPlanGoogleAdsConversion$ = command(
-  (
-    { set },
-    purchaseType: "plan" | "usage_pack",
-    conversion: GoogleAdsPaidConversion | undefined,
-  ): void => {
-    if (purchaseType !== "plan" || !conversion) {
+const fireConfirmedGoogleAdsConversion$ = command(
+  ({ set }, conversion: GoogleAdsPaidConversion | undefined): void => {
+    if (!conversion) {
       return;
     }
     set(fireGoogleAdsPaidConversion$, "paid_after_onboarding", conversion);
@@ -1041,11 +1037,7 @@ export const confirmSubscriptionPurchase$ = command(
       }
       return;
     }
-    set(
-      fireConfirmedPlanGoogleAdsConversion$,
-      state.purchaseType,
-      response.body.googleAdsConversion,
-    );
+    set(fireConfirmedGoogleAdsConversion$, response.body.googleAdsConversion);
     set(internalSubscriptionPurchasePreview$, null);
     set(reloadBillingStatus$);
     toast.success(

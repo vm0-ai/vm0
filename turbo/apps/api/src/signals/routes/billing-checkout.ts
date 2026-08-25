@@ -721,7 +721,14 @@ const confirmUsagePackPurchaseForOrg$ = command(
         );
       }
     }
-    return { status: 200 as const, body: result.response };
+    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    return {
+      status: 200 as const,
+      body:
+        result.response.status === "completed" && conversion
+          ? { ...result.response, googleAdsConversion: conversion }
+          : result.response,
+    };
   },
 );
 
