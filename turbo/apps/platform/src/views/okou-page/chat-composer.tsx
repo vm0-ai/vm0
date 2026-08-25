@@ -5739,6 +5739,10 @@ function ImportedPresentationTemplateThumbnails({
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
+  const pageResourceKey = (pageUrl: string) => {
+    const queryStart = pageUrl.indexOf("?");
+    return queryStart === -1 ? pageUrl : pageUrl.slice(0, queryStart);
+  };
   return (
     <div
       className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
@@ -5749,7 +5753,7 @@ function ImportedPresentationTemplateThumbnails({
         const active = index === activeSlideIndex;
         return (
           <button
-            key={pageUrl}
+            key={pageResourceKey(pageUrl)}
             type="button"
             aria-label={t(
               ($) => {
@@ -5800,16 +5804,25 @@ function ImportedPresentationTemplatePreviewPage({
   const detailLoadable = useLoadable(
     signals.template.importedPresentationTemplateDetail$,
   );
+  const lastResolvedDetail = useLastResolved(
+    signals.template.importedPresentationTemplateDetail$,
+  );
   const activeSlideIndexRaw = useGet(
     signals.template.importedPresentationTemplatePreviewSlideIndex$,
   );
   const selectSlide = useSet(
     signals.template.selectImportedPresentationTemplatePreviewSlide$,
   );
+  const currentDetail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const loadedDetail =
+    currentDetail?.id === summary.id
+      ? currentDetail
+      : lastResolvedDetail?.id === summary.id
+        ? lastResolvedDetail
+        : null;
   const detail =
-    detailLoadable.state === "hasData" && detailLoadable.data?.id === summary.id
-      ? detailLoadable.data
-      : null;
+    loadedDetail?.id === summary.id ? { ...loadedDetail, ...summary } : null;
   const activeTemplate = detail === null ? summary : detail;
   const title = activeTemplate.title;
   const pageUrls =
