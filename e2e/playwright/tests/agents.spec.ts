@@ -179,7 +179,9 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
-    localStorage.setItem("theme", "dark");
+    // The dark palette inverts surface luminance, so use light mode to verify
+    // the requested darker rail hierarchy without assuming dark-mode ordering.
+    localStorage.setItem("theme", "light");
   });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
