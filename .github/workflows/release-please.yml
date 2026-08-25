@@ -9,10 +9,13 @@ name: release-please
 on:
   push:
     branches: ["main"]
+  # One-time incident recovery for #29326 / run 32830788357. Remove this
+  # dispatch and the recovery branch after the exact release has terminal
+  # production evidence; cleanup tracking: https://github.com/vm0-ai/vm0/issues/29326
   workflow_dispatch:
     inputs:
       recovery_release_sha:
-        description: "Existing release commit to deploy without creating releases"
+        description: "Incident release SHA (only 2db202a... until #29326 is closed)"
         required: true
         type: string
 
@@ -51,8 +54,9 @@ jobs:
 
           release=false
           if [ -n "$RECOVERY_RELEASE_SHA" ]; then
-            if [[ ! "$RECOVERY_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error::Recovery release SHA must be a full lowercase SHA-1: $RECOVERY_RELEASE_SHA"
+            incident_recovery_sha=2db202a9412368457b40f8bb5374d7302982ef52
+            if [ "$RECOVERY_RELEASE_SHA" != "$incident_recovery_sha" ]; then
+              echo "::error::Recovery dispatch only supports incident release SHA $incident_recovery_sha"
               exit 1
             fi
             release=true
@@ -126,6 +130,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # One-time recovery for the null-output incident; remove with the
+          # workflow_dispatch input after #29326's exact release is verified.
+          incident_recovery_sha=2db202a9412368457b40f8bb5374d7302982ef52
+          if [ "$RECOVERY_RELEASE_SHA" != "$incident_recovery_sha" ]; then
+            echo "::error::Recovery dispatch only supports incident release SHA $incident_recovery_sha"
+            exit 1
+          fi
 
           main_sha=$(gh api "repos/$REPO/commits/main" --jq .sha)
           gh api "repos/$REPO/commits/$RECOVERY_RELEASE_SHA" --jq .sha >/dev/null
