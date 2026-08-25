@@ -199,6 +199,7 @@ suites before committing the upgrade.
 | `test_firewall_rewrite_success.py`                      | Firewall auth URL rewrite success behavior                                                                           |
 | `test_firewall_rewrite_forwarding.py`                   | Firewall auth URL rewrite forwarding behavior                                                                        |
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
+| `test_auth_header_injection.py`                         | Firewall auth bulk header injection, filtering, ordering, and mutation bounds                                        |
 | `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
 | `test_host_normalization.py`                            | Shared hostname identity, ASCII fast-path, IDNA, and label-boundary contracts                                        |
 | `test_url_syntax.py`                                    | Shared raw URL code-point, whitespace, backslash, and safe-input fast-path contracts                                 |
