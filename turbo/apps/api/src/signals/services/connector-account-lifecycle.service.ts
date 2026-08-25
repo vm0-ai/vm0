@@ -1,9 +1,10 @@
 import { Buffer } from "node:buffer";
 
-import type {
-  ConnectorAccountConnection,
-  ConnectorAccountSummary,
-  ConnectorAccountTarget,
+import {
+  connectorAccountTargetKey,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSummary,
+  type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import {
@@ -486,12 +487,6 @@ function projectConnection(
     return snapshot ? builtinConnection(row, snapshot, now) : null;
   }
   return customConnection(row, now);
-}
-
-function connectorAccountTargetKey(target: ConnectorAccountTarget): string {
-  return target.kind === "builtin"
-    ? `builtin:${target.connectorSlug}`
-    : `custom:${target.customConnectorId}`;
 }
 
 type ConnectorAccountSummaryGroup = Awaited<

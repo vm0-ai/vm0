@@ -1,6 +1,7 @@
 import { command, computed, state, type Command, type State } from "ccstate";
 import { delay } from "signal-timers";
 import {
+  connectorAccountTargetKey,
   connectorAccountsContract,
   type ConnectorAccountConnection,
   type ConnectorAccountSummary,
@@ -18,13 +19,7 @@ const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 const CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS = 250;
 export const CONNECTOR_ACCOUNT_SEARCH_THRESHOLD = 6;
 
-export function connectorAccountTargetKey(
-  target: ConnectorAccountTarget,
-): string {
-  return target.kind === "builtin"
-    ? `builtin:${target.connectorSlug}`
-    : `custom:${target.customConnectorId}`;
-}
+export { connectorAccountTargetKey };
 
 const internalSummariesReload$ = state(0);
 
