@@ -27,7 +27,6 @@ import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
-import { composerRestoredAttachmentValidationEnabled$ } from "../external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -434,9 +433,8 @@ export interface DraftSignals {
   attachmentUploadsReady$: Computed<boolean>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   /**
-   * Adds persisted attachments to the draft. When restored-attachment
-   * validation is enabled, drops the ones whose artifact no longer resolves
-   * for this account.
+   * Adds persisted attachments to the draft and drops the ones whose artifact
+   * no longer resolves for this account.
    */
   restoreAttachments$: Command<
     Promise<boolean>,
@@ -449,8 +447,8 @@ export interface DraftSignals {
   clear$: Command<void, []>;
   /**
    * Seed draft from persisted server data. Only called when local cache was
-   * empty. The draft is visible immediately; when validation is enabled, the
-   * returned promise settles once unresolvable attachments have been dropped.
+   * empty. The draft is visible immediately; the returned promise settles once
+   * unresolvable attachments have been dropped.
    */
   seed$: Command<Promise<boolean>, [DraftSeed, AbortSignal]>;
 }
@@ -472,10 +470,9 @@ export interface DraftInputSyncTarget {
  *
  * The persisted id is an externally managed reference: the artifact is stored
  * per user, so a saved draft, a forwarded message, or a pasted chat payload can
- * carry an id the current account cannot read. With restored-attachment
- * validation enabled, `fileInfo$` resolves it once against the current account
- * and reports `null` when it no longer resolves, instead of asserting the file
- * is still reachable. The disabled path preserves the persisted file info.
+ * carry an id the current account cannot read. `fileInfo$` resolves it once
+ * against the current account and reports `null` when it no longer resolves,
+ * instead of asserting the file is still reachable.
  *
  */
 export function createRestoredAttachment(
@@ -498,9 +495,6 @@ export function createRestoredAttachment(
     contentType: persisted.contentType,
   };
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
-    if (!get(composerRestoredAttachmentValidationEnabled$)) {
-      return persistedInfo;
-    }
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
     const resolved = await accept(

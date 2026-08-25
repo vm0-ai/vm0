@@ -103,9 +103,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
-    expect(
-      staffOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -137,9 +134,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
       false,
     );
-    expect(
-      otherOrgStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
@@ -164,22 +158,16 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
   });
 
-  it("should enable Bingjie-only composer switches only for Bingjie", () => {
+  it("should enable the Bingjie-only composer switch only for Bingjie", () => {
     const bingjieStates = getAllFeatureStates({
       email: "bingjie@vm0.ai",
     });
-    expect(
-      bingjieStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(true);
     expect(bingjieStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
 
     const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(
-      otherStaffStates[FeatureSwitchKey.ComposerRestoredAttachmentValidation],
-    ).toBe(false);
     expect(otherStaffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       false,
     );

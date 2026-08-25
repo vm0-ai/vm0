@@ -63,16 +63,6 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
-export const composerRestoredAttachmentValidationEnabled$ = computed(
-  (get): boolean => {
-    return (
-      get(featureSwitch$)[
-        FeatureSwitchKey.ComposerRestoredAttachmentValidation
-      ] ?? false
-    );
-  },
-);
-
 export const composerFlatFeedbackNoteEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerFlatFeedbackNote] ?? false

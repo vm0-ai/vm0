@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -572,7 +571,7 @@ describe("chat drafts", () => {
     );
   });
 
-  it("keeps restored attachments untouched when validation is disabled", async () => {
+  it("restores a saved server draft with an available attachment", async () => {
     let validationRequests = 0;
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
@@ -613,8 +612,8 @@ describe("chat drafts", () => {
     });
     context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
       validationRequests += 1;
-      return respond(404, {
-        error: { message: "File not found", code: "NOT_FOUND" },
+      return respond(200, {
+        url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
       });
     });
 
@@ -624,7 +623,7 @@ describe("chat drafts", () => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
-    expect(validationRequests).toBe(0);
+    expect(validationRequests).toBe(1);
     expect(
       screen.queryByText(
         "brief.md is no longer available. Upload it again to send.",
@@ -684,13 +683,7 @@ describe("chat drafts", () => {
       return respond(204);
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ONE_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
-      },
-    });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
@@ -761,13 +754,7 @@ describe("chat drafts", () => {
       });
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ONE_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
-      },
-    });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await expect(
       screen.findByText("Attachment validation is unavailable"),
@@ -1926,13 +1913,7 @@ describe("chat drafts", () => {
       return respond(204);
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerRestoredAttachmentValidation]: true,
-      },
-    });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     const input = await waitFor(() => {
       return textarea();
