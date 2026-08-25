@@ -18,6 +18,10 @@ import {
   persistAgentDraft,
 } from "../agent-draft-write.service";
 
+// Production API callers cannot select whether the mapped relation is a table
+// or a compatibility view. This focused rollout exception crosses the endpoint
+// boundary only to prove the exact writer against both PostgreSQL targets;
+// route behavior remains covered through the real Agent Draft endpoints.
 type RelationTarget = "physical" | "view";
 
 interface RelationHarness {
