@@ -5,7 +5,9 @@ pub(crate) const LEGACY_ENV: &str = guest_contracts::env::API_URL_ENV;
 ///
 /// The spellings are shared with the Runner-to-Guest contract, but this reader
 /// has an independent rollout floor. External operator configuration keeps the
-/// legacy alias until #28914 separately proves it can be removed.
+/// legacy alias through the deployed Runner reader floor and supported rollback
+/// window. Remove it after the checked-in and supported external input inventory
+/// proves there is no legacy-only use; #28914 tracks that gate.
 pub(crate) fn clap_environment_name() -> &'static str {
     if std::env::var_os(CANONICAL_ENV).is_none() && std::env::var_os(LEGACY_ENV).is_some() {
         LEGACY_ENV
