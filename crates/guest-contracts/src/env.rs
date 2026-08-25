@@ -376,6 +376,12 @@ impl RunPayload {
 /// unset or unparseable values use the compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
+/// Canonical stuck-tool timeout alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`STUCK_TOOL_TIMEOUT_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
+
 /// Guest-agent grace period in seconds before sending SIGTERM after the CLI
 /// reports a final result.
 ///
@@ -383,6 +389,13 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 /// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
+
+/// Canonical post-result SIGTERM grace alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
+    "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
 /// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
 /// reports a final result, regardless of later post-result stdout events.
@@ -392,6 +405,12 @@ pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GR
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
+/// Canonical post-result total-cap alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_TOTAL_CAP_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
+
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
@@ -399,6 +418,13 @@ pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS
 /// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
+
+/// Canonical post-result SIGKILL grace alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
+    "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -573,6 +599,22 @@ mod tests {
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
+        assert_eq!(
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            "OKOU_STUCK_TOOL_TIMEOUT_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "OKOU_POST_RESULT_SIGTERM_GRACE_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "OKOU_POST_RESULT_TOTAL_CAP_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "OKOU_POST_RESULT_SIGKILL_GRACE_SECS"
+        );
     }
 
     #[test]
@@ -798,16 +840,26 @@ mod tests {
 
     #[test]
     fn guest_agent_tuning_keys_are_explicit() {
-        assert!(is_guest_agent_tuning_env_key(STUCK_TOOL_TIMEOUT_SECS_ENV));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_SIGTERM_GRACE_SECS_ENV
-        ));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_TOTAL_CAP_SECS_ENV
-        ));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_SIGKILL_GRACE_SECS_ENV
-        ));
+        assert_eq!(
+            GUEST_AGENT_TUNING_ENV_KEYS,
+            [
+                STUCK_TOOL_TIMEOUT_SECS_ENV,
+                POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                POST_RESULT_TOTAL_CAP_SECS_ENV,
+                POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            ]
+        );
+        for key in [
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        ] {
+            assert!(
+                !is_guest_agent_tuning_env_key(key),
+                "canonical reader alias {key} must not become a local tuning input"
+            );
+        }
         assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
     }
 
@@ -834,13 +886,16 @@ mod tests {
     /// Only declarations starting a line are matched, so prose mentioning the
     /// pattern inside a comment is not treated as a declaration.
     ///
-    /// Every current declaration occupies a single line. A `_ENV` declaration
-    /// this cannot parse yields an empty value, which fails the protection
-    /// check rather than being skipped, so an unparsed declaration fails closed.
+    /// Rustfmt may keep the string literal on the declaration line or move it
+    /// to the immediately following line. A `_ENV` declaration this cannot
+    /// parse yields an empty value, which fails the protection check rather
+    /// than being skipped, so an unparsed declaration fails closed.
     fn declared_env_key_constants(source: &str) -> Vec<(&str, &str)> {
-        source
-            .lines()
-            .filter_map(|line| {
+        let lines = source.lines().collect::<Vec<_>>();
+        lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| {
                 let declaration = line.trim_start().strip_prefix("pub const ")?;
                 let (name, rest) = declaration.split_once(':')?;
                 let name = name.trim();
@@ -848,7 +903,12 @@ mod tests {
                     return None;
                 }
                 let (_, rest) = rest.split_once('=')?;
-                let value = rest
+                let literal_source = if rest.trim_start().starts_with('"') {
+                    rest
+                } else {
+                    lines.get(index + 1).copied().unwrap_or("")
+                };
+                let value = literal_source
                     .trim_start()
                     .strip_prefix('"')
                     .and_then(|literal| literal.split_once('"'))

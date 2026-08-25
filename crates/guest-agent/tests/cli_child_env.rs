@@ -25,6 +25,27 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
+        std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "300");
+        for (canonical, legacy) in [
+            (
+                guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            ),
+            (
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            ),
+            (
+                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+            ),
+            (
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            ),
+        ] {
+            std::env::set_var(canonical, std::env::var(legacy)?);
+        }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
         std::env::set_var(
             process_control_ipc::BOOTSTRAP_ENV,
@@ -89,6 +110,19 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert_eq!(
         runtime.config.agent_execution_timeout,
         Some(std::time::Duration::from_secs(60))
+    );
+    assert_eq!(runtime.config.stuck_tool_timeout_secs, 300);
+    assert_eq!(
+        runtime.config.post_result_sigterm_grace,
+        std::time::Duration::from_secs(3)
+    );
+    assert_eq!(
+        runtime.config.post_result_total_cap,
+        std::time::Duration::from_secs(60)
+    );
+    assert_eq!(
+        runtime.config.post_result_sigkill_grace,
+        std::time::Duration::from_secs(1)
     );
     assert_eq!(runtime.config.home_dir, user_home_str);
     assert_eq!(
@@ -218,6 +252,14 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     for key in [
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
     ] {
         assert!(
             !cli_env.contains_key(key),
