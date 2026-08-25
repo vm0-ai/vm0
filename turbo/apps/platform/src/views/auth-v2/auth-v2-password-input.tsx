@@ -9,6 +9,7 @@ import {
 } from "../../signals/auth-v2-presentation.ts";
 
 interface AuthV2PasswordInputProps {
+  readonly ariaDescribedBy?: string;
   readonly ariaInvalid?: boolean;
   readonly autoComplete: string;
   readonly hidePasswordLabel: string;
@@ -21,6 +22,7 @@ interface AuthV2PasswordInputProps {
 }
 
 export function AuthV2PasswordInput({
+  ariaDescribedBy,
   ariaInvalid,
   autoComplete,
   hidePasswordLabel,
@@ -39,6 +41,7 @@ export function AuthV2PasswordInput({
   return (
     <div className="relative">
       <Input
+        aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         autoComplete={autoComplete}
         className="pr-10"

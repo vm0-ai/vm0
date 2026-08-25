@@ -2,15 +2,18 @@ import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 
 export function AuthV2ErrorAlert({
   focusKey,
+  id,
   message,
 }: {
   readonly focusKey: string;
+  readonly id?: string;
   readonly message: string;
 }) {
   return (
     <Alert
       aria-atomic="true"
       className="outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      id={id}
       ref={(element) => {
         if (!element || element.dataset.authV2ErrorFocusKey === focusKey) {
           return;
