@@ -32,6 +32,17 @@ const v1ProviderSources = import.meta.glob("../../clerk/clerk-provider.tsx", {
   query: "?raw",
 }) as Record<string, string>;
 
+const criticalLocalizedAuthV2Keys: readonly string[] = [
+  "signIn.editIdentifier",
+  "signIn.unknownError",
+  "signUp.unknownError",
+  "signUp.captchaLoading",
+  "signUp.captchaSubtitle",
+  "signUp.captchaTitle",
+  "signUp.editEmailAddress",
+  "signUp.retry",
+];
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null;
 }
@@ -79,6 +90,29 @@ describe("auth v2 platform localization ownership", () => {
       expect(copy).not.toContain("{{provider");
       expect(copy).not.toContain("termsOfServiceLink");
       expect(copy).not.toContain("privacyPolicyLink");
+    }
+  });
+
+  it("localizes critical Auth v2 recovery and CAPTCHA copy outside English", () => {
+    expect(criticalLocalizedAuthV2Keys).not.toHaveLength(0);
+    const englishEntries = new Map(
+      leafEntries(resources["en-US"].common.auth.v2),
+    );
+
+    for (const locale of SUPPORTED_LOCALES) {
+      if (locale === "en-US") {
+        continue;
+      }
+      const localizedEntries = new Map(
+        leafEntries(resources[locale].common.auth.v2),
+      );
+      for (const key of criticalLocalizedAuthV2Keys) {
+        expect([locale, key, localizedEntries.get(key)]).not.toStrictEqual([
+          locale,
+          key,
+          englishEntries.get(key),
+        ]);
+      }
     }
   });
 
