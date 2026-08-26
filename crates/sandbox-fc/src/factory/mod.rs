@@ -672,10 +672,13 @@ mod tests {
     fn test_leak_cleaner() -> LeakCleaner {
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(async move {
+            let _completed_cleanup_count_tx = completed_cleanup_count_tx;
             let _ = shutdown_rx.await;
         });
-        LeakCleaner::from_parts_for_test(tx, shutdown_tx, handle)
+        LeakCleaner::from_parts_for_test(tx, shutdown_tx, completed_cleanup_count_rx, handle)
     }
 
     fn assert_factory_invalid_state(err: SandboxError, expected_state: &str) {
@@ -847,14 +850,17 @@ mod tests {
         let leak_events = Arc::clone(&events);
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(async move {
+            let _completed_cleanup_count_tx = completed_cleanup_count_tx;
             let _ = shutdown_rx.await;
             leak_events.lock().unwrap().push("leak_cleaner");
         });
         let mut factory = test_factory_with_resources(
             NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test()),
             NetnsPoolOwnership::Owned,
-            LeakCleaner::from_parts_for_test(tx, shutdown_tx, handle),
+            LeakCleaner::from_parts_for_test(tx, shutdown_tx, completed_cleanup_count_rx, handle),
         );
 
         let waiter =
