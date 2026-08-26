@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import { mockNow, now } from "../../../../lib/time.ts";
@@ -888,7 +889,26 @@ describe("auth v2 sign-up flow", () => {
     expect(legalError).toHaveTextContent(
       "Please read and accept the terms to continue",
     );
-    expect(legalError).toHaveClass("border-red-200", "bg-red-50");
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = tailwindCompiler.build([
+      ...legalError.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+    const legalErrorStyle = getComputedStyle(legalError);
+    expect([
+      legalErrorStyle.borderTopWidth,
+      legalErrorStyle.borderRightWidth,
+      legalErrorStyle.borderBottomWidth,
+      legalErrorStyle.borderLeftWidth,
+    ]).toStrictEqual(["1px", "1px", "1px", "1px"]);
     expect(document.activeElement).toBe(legalError);
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 
