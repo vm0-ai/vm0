@@ -3981,7 +3981,7 @@ describe("zero sidebar", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("pins an agent from the grid pin entry", async () => {
+  it("keeps the pin dialog open and confirms a row pin", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
 
@@ -4006,13 +4006,28 @@ describe("zero sidebar", () => {
 
     click(commandItemByText(dialogList, "Support Agent"));
 
+    await expect(
+      screen.findByText("Support Agent pinned"),
+    ).resolves.toBeInTheDocument();
     await waitFor(() => {
-      expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Support Agent",
+      ]);
     });
-    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+    expect(dialogList).toBeInTheDocument();
+    expect(
+      buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")),
+    ).toBeInTheDocument();
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+    });
+    expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
   });
 
-  it("unpins an agent from the grid pin entry", async () => {
+  it("keeps the pin dialog open and confirms an unpin", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -4040,10 +4055,16 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
     });
-    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+    expect(dialogList).toBeInTheDocument();
+    expect(
+      buttonByText("Pin", commandItemByText(dialogList, "Support Agent")),
+    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("Support Agent unpinned"),
+    ).resolves.toBeInTheDocument();
   });
 
-  it("pins an agent from the pin dialog row action", async () => {
+  it("keeps the pin dialog open after its row action pins an agent", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({ pinnedAgentIds: [] });
 
@@ -4069,7 +4090,13 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
     });
-    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+    expect(dialogList).toBeInTheDocument();
+    expect(
+      buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")),
+    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("Support Agent pinned"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("reorders pinned agents with drag and drop", async () => {

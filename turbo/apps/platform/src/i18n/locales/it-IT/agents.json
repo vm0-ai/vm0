@@ -614,6 +614,7 @@
     "pinAgentDescription": "Scegli un agente da fissare nella barra laterale.",
     "pinned": "In evidenza",
     "pinnedAgents": "Agenti in evidenza",
+    "pinSuccess": "{{agentName}} fissato",
     "resultCount_one": "{{count}} risultato",
     "resultCount_many": "{{count}} risultati",
     "resultCount_other": "{{count}} risultati",
@@ -628,7 +629,8 @@
       "others": "Altri"
     },
     "talkTo": "Parla con",
-    "unpin": "Rimuovi dalla barra laterale"
+    "unpin": "Rimuovi dalla barra laterale",
+    "unpinSuccess": "{{agentName}} rimosso dalla barra laterale"
   },
   "status": {
     "unread": "Non letto"
