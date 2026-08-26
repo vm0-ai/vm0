@@ -22,6 +22,10 @@ export interface ImportedPresentationTemplateResource {
   readonly detail$: Computed<Promise<PresentationTemplateDetail | null>>;
 }
 
+type ImportedPresentationTemplateDetailResolver = (
+  templateId: string,
+) => Computed<Promise<PresentationTemplateDetail | null>>;
+
 const presentationTemplatesVersion$ = state(0);
 const deletedPresentationTemplateIds$ = state<ReadonlySet<string>>(new Set());
 const importedPresentationTemplateDeletedIds$ = computed((get) => {
@@ -142,21 +146,78 @@ export const subscribePresentationTemplatesChanged$ = command(
 function createImportedPresentationTemplates$(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
   deletedTemplateIds$: State<ReadonlySet<string>>,
+  updatedTemplates$: State<readonly PresentationTemplateSummary[]>,
 ) {
   return computed(
     async (get): Promise<readonly PresentationTemplateSummary[]> => {
       const deletedTemplateIds = get(deletedTemplateIds$);
-      return (await get(catalog$)).templates.filter((template) => {
-        return !deletedTemplateIds.has(template.id);
-      });
+      const updatedTemplates = get(updatedTemplates$);
+      return (await get(catalog$)).templates
+        .filter((template) => {
+          return !deletedTemplateIds.has(template.id);
+        })
+        .map((template) => {
+          const updatedTemplate = updatedTemplates.find((candidate) => {
+            return candidate.id === template.id;
+          });
+          if (
+            updatedTemplate === undefined ||
+            updatedTemplate.updatedAt <= template.updatedAt
+          ) {
+            return template;
+          }
+          return {
+            ...template,
+            title: updatedTemplate.title,
+            visibility: updatedTemplate.visibility,
+            updatedAt: updatedTemplate.updatedAt,
+          };
+        });
     },
   );
+}
+
+/**
+ * Resolve one detail resource per uploaded template for this composer. The
+ * resolver belongs to the composer signal group, so closing that composer
+ * releases the whole keyed join instead of retaining template identities at
+ * module scope.
+ */
+function createImportedPresentationTemplateDetailResolver(
+  detailUrlsVersion$: State<number>,
+): ImportedPresentationTemplateDetailResolver {
+  const detailByTemplateId = new Map<
+    string,
+    Computed<Promise<PresentationTemplateDetail | null>>
+  >();
+  return (templateId) => {
+    const existing = detailByTemplateId.get(templateId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const detail$ = computed(
+      async (get): Promise<PresentationTemplateDetail | null> => {
+        // Catalog changes carry mutable metadata. Page URLs rotate only on the
+        // TTL lifecycle so rename and visibility updates cannot reload slides.
+        get(detailUrlsVersion$);
+        const client = get(apiClient$)(presentationTemplatesContract);
+        const result = await accept(
+          client.get({ params: { templateId } }),
+          [200, 404],
+        );
+        return result.status === 404 ? null : result.body;
+      },
+    );
+    detailByTemplateId.set(templateId, detail$);
+    return detail$;
+  };
 }
 
 function createImportedPresentationTemplateResources$(
   importedPresentationTemplates$: Computed<
     Promise<readonly PresentationTemplateSummary[]>
   >,
+  resolveDetail$: ImportedPresentationTemplateDetailResolver,
 ) {
   return computed(
     async (get): Promise<readonly ImportedPresentationTemplateResource[]> => {
@@ -164,16 +225,7 @@ function createImportedPresentationTemplateResources$(
       return templates.map((summary) => {
         return {
           summary,
-          detail$: computed(
-            async (get): Promise<PresentationTemplateDetail | null> => {
-              const client = get(apiClient$)(presentationTemplatesContract);
-              const result = await accept(
-                client.get({ params: { templateId: summary.id } }),
-                [200, 404],
-              );
-              return result.status === 404 ? null : result.body;
-            },
-          ),
+          detail$: resolveDetail$(summary.id),
         };
       });
     },
@@ -311,7 +363,7 @@ function createImportedPresentationTemplateUrlRefreshSignals(
 }
 
 function createImportedPresentationTemplateDetailSignals(
-  detailUrlsVersion$: State<number>,
+  resolveDetail$: ImportedPresentationTemplateDetailResolver,
 ) {
   const internalRequestedTemplateId$ = state<string | null>(null);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -323,15 +375,7 @@ function createImportedPresentationTemplateDetailSignals(
       if (templateId === null) {
         return null;
       }
-      // Catalog changes carry mutable metadata. Page URLs rotate only on the
-      // TTL lifecycle so rename and visibility updates cannot reload slides.
-      get(detailUrlsVersion$);
-      const client = get(apiClient$)(presentationTemplatesContract);
-      const result = await accept(
-        client.get({ params: { templateId } }),
-        [200, 404],
-      );
-      return result.status === 404 ? null : result.body;
+      return await get(resolveDetail$(templateId));
     },
   );
   const requestImportedPresentationTemplateDetail$ = command(
@@ -347,14 +391,53 @@ function createImportedPresentationTemplateDetailSignals(
   };
 }
 
+function createUpdateImportedPresentationTemplate$(
+  updatedTemplates$: State<readonly PresentationTemplateSummary[]>,
+) {
+  return command(
+    async (
+      { get, set },
+      templateId: string,
+      body: UpdatePresentationTemplateBody,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const client = get(apiClient$)(presentationTemplatesContract);
+      const result = await accept(
+        client.update({
+          params: { templateId },
+          body,
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      set(updatedTemplates$, (updatedTemplates) => {
+        return [
+          ...updatedTemplates.filter((template) => {
+            return template.id !== templateId;
+          }),
+          result.body,
+        ];
+      });
+    },
+  );
+}
+
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
 export function createImportedPresentationTemplateSignals() {
   const catalog$ = importedPresentationTemplateCatalog$;
+  const internalUpdatedTemplates$ = state<
+    readonly PresentationTemplateSummary[]
+  >([]);
   const importedPresentationTemplates$ = createImportedPresentationTemplates$(
     catalog$,
     deletedPresentationTemplateIds$,
+    internalUpdatedTemplates$,
   );
   const internalDetailUrlsVersion$ = state(0);
+  const resolveDetail$ = createImportedPresentationTemplateDetailResolver(
+    internalDetailUrlsVersion$,
+  );
   const urlRefresh = createImportedPresentationTemplateUrlRefreshSignals(
     catalog$,
     internalDetailUrlsVersion$,
@@ -362,9 +445,10 @@ export function createImportedPresentationTemplateSignals() {
   const importedPresentationTemplateResources$ =
     createImportedPresentationTemplateResources$(
       importedPresentationTemplates$,
+      resolveDetail$,
     );
   const { internalRequestedTemplateId$, ...detailSignals } =
-    createImportedPresentationTemplateDetailSignals(internalDetailUrlsVersion$);
+    createImportedPresentationTemplateDetailSignals(resolveDetail$);
 
   const internalPreviewTemplateId$ = state<string | null>(null);
   const importedPresentationTemplatePreviewId$ = computed((get) => {
@@ -397,26 +481,8 @@ export function createImportedPresentationTemplateSignals() {
     setImportedPresentationTemplateCardHover$,
   } = createImportedPresentationTemplateHoverSignals();
 
-  const updateImportedPresentationTemplate$ = command(
-    async (
-      { get, set },
-      templateId: string,
-      body: UpdatePresentationTemplateBody,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const client = get(apiClient$)(presentationTemplatesContract);
-      await accept(
-        client.update({
-          params: { templateId },
-          body,
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      set(refreshPresentationTemplates$);
-    },
-  );
+  const updateImportedPresentationTemplate$ =
+    createUpdateImportedPresentationTemplate$(internalUpdatedTemplates$);
 
   const deleteImportedPresentationTemplate$ = command(
     async (

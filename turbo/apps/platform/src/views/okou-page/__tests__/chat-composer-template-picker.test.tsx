@@ -4330,9 +4330,11 @@ describe("chat composer templates", () => {
       createdAt: "2026-08-21T02:41:59.522Z",
       updatedAt: "2026-08-21T02:41:59.522Z",
     };
+    let listRequestCount = 0;
     let detailRequestCount = 0;
     let updateRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      listRequestCount += 1;
       return respond(200, [presentationTemplateSummary(template)]);
     });
     context.mocks.api(
@@ -4399,7 +4401,8 @@ describe("chat composer templates", () => {
       await loadImportedTemplateImage(button, pageUrl);
     }
     const detailRequestCountBeforeUpdate = detailRequestCount;
-    expect(detailRequestCountBeforeUpdate).toBeGreaterThan(0);
+    const listRequestCountBeforeUpdate = listRequestCount;
+    expect(detailRequestCountBeforeUpdate).toBe(1);
 
     const changeVisibilityButton = queryAllByRoleFast("button").find(
       (candidate) => {
@@ -4419,6 +4422,8 @@ describe("chat composer templates", () => {
         screen.getByText("Anyone in this workspace can use it"),
       ).toBeInTheDocument();
     });
+    expect(listRequestCount).toBe(listRequestCountBeforeUpdate);
+    expect(detailRequestCount).toBe(detailRequestCountBeforeUpdate);
     expect(
       screen.getByTestId("Stable preview deck imported detail image preview"),
     ).toBe(detailPreview);
