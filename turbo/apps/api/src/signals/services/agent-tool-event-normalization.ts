@@ -96,11 +96,12 @@ export function terminalToolSummary(
 ): string {
   const verbs = TOOL_SUMMARY_VERB_BY_ACTION[action];
   const pendingPrefix = `${verbs.pending} `;
-  return summary.startsWith(pendingPrefix)
-    ? truncateToolSummary(
-        `${verbs.terminal} ${summary.slice(pendingPrefix.length)}`,
-      )
-    : summary;
+  if (!summary.startsWith(pendingPrefix)) {
+    throw new Error(`Pending ${action} tool summary is not progressive`);
+  }
+  return truncateToolSummary(
+    `${verbs.terminal} ${summary.slice(pendingPrefix.length)}`,
+  );
 }
 
 /** Decode the exact single-quote dialect emitted by shell_quote::quote_shell_arg. */
