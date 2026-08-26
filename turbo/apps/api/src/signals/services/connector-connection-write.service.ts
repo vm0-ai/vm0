@@ -44,6 +44,7 @@ type ConnectorConnectionTarget =
   | {
       readonly kind: "custom";
       readonly customConnectorId: string;
+      readonly oauthScopes: readonly string[] | null;
     };
 
 interface ConnectorCredentialWriteContext {
@@ -266,19 +267,29 @@ export async function writeConnectorConnectionMetadata(
   },
 ): Promise<StoredConnectorConnectionRow> {
   const identityValues =
-    args.target.kind === "builtin" && args.target.identity.kind === "external"
+    args.target.kind === "custom"
       ? {
-          externalId: args.target.identity.externalId,
-          externalUsername: args.target.identity.externalUsername,
-          externalEmail: args.target.identity.externalEmail,
-          oauthScopes: JSON.stringify(args.target.identity.oauthScopes),
-        }
-      : {
           externalId: null,
           externalUsername: null,
           externalEmail: null,
-          oauthScopes: null,
-        };
+          oauthScopes:
+            args.target.oauthScopes === null
+              ? null
+              : JSON.stringify(args.target.oauthScopes),
+        }
+      : args.target.identity.kind === "external"
+        ? {
+            externalId: args.target.identity.externalId,
+            externalUsername: args.target.identity.externalUsername,
+            externalEmail: args.target.identity.externalEmail,
+            oauthScopes: JSON.stringify(args.target.identity.oauthScopes),
+          }
+        : {
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+          };
   const targetValues =
     args.target.kind === "builtin"
       ? {

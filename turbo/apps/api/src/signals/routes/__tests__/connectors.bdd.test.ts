@@ -2445,6 +2445,83 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(member, agent.agentId);
   });
 
+  it.each([
+    {
+      name: "reported subset",
+      tokenScope: "read",
+      expectedScopes: ["read"],
+    },
+    {
+      name: "reported supplemental grant",
+      tokenScope: "read write admin",
+      expectedScopes: ["read", "write", "admin"],
+    },
+    {
+      name: "omitted token scope",
+      tokenScope: undefined,
+      expectedScopes: ["read", "write"],
+    },
+  ] as const)(
+    "persists the $name for a standard custom OAuth connection",
+    async ({ tokenScope, expectedScopes }) => {
+      mockEnv("APP_URL", "https://app.vm0.test");
+      const provider =
+        tokenScope === undefined
+          ? mockCustomConnectorOAuth2Provider(context)
+          : mockCustomConnectorOAuth2Provider(context, {
+              initialScope: tokenScope,
+            });
+      const admin = createBddApi(context).user({ orgRole: "org:admin" });
+      await connectorsApi.updateFeatureSwitches(admin, {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      });
+      const connector = await connectorsApi.createCustomConnector(admin, {
+        displayName: `BDD OAuth Scope ${randomUUID()}`,
+        prefixTemplates: [
+          `https://${randomUUID()}.oauth-scope.example.test/v1/`,
+        ],
+        fields: [],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{oauth.access_token}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "oauth",
+        oauthConfig: {
+          providerAdapter: "standard",
+          clientId: "oauth-scope-client-id",
+          clientSecret: "oauth-scope-client-secret",
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          tokenEndpointAuthMethod: "client_secret_post",
+          pkceMethod: "none",
+          scopes: ["read", "write"],
+          authorizationParams: {},
+        },
+      });
+
+      const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+        admin,
+        connector.id,
+      );
+      await connectorsApi.completeCustomConnectorOAuth2Callback({
+        code: "oauth-scope-authorization-code",
+        state: stateFromAuthorizationUrl(authorizationUrl),
+      });
+
+      const accounts = await connectorsApi.listCustomConnectorAccounts(
+        admin,
+        connector.id,
+      );
+      expect(accounts).toHaveLength(1);
+      expect(accounts[0]?.oauthScopes).toStrictEqual(expectedScopes);
+
+      await connectorsApi.deleteCustomConnector(admin, connector.id);
+    },
+  );
+
   it("removes OAuth tokens when manual credentials replace the connection", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     const provider = mockCustomConnectorOAuth2Provider(context, {

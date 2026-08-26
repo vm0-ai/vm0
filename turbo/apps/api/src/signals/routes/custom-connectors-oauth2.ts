@@ -18,6 +18,7 @@ import {
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
 import {
+  customConnectorOAuth2EffectiveInitialToken as effectiveInitialToken,
   customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
@@ -374,7 +375,7 @@ const completeOAuth2Callback$ = command(
             userId: claimed.state.userId,
             connectorId: connector.id,
             storageVersion: connector.storageVersion,
-            token,
+            token: effectiveInitialToken(token, claimed.state.authorizationUrl),
             featureContext,
             account: claimed.state.accountMutation,
             insertConnectionId:
