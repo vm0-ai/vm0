@@ -15,7 +15,11 @@ export function resolveImmutableDedupeInsert<T>(
     | { readonly ok: false; readonly error: unknown },
 ): T | null {
   if (insert.ok) {
-    return insert.value[0] ?? null;
+    const row = insert.value[0];
+    if (row === undefined) {
+      throw new Error("Immutable dedupe INSERT ... RETURNING returned no row");
+    }
+    return row;
   }
   if (isUniqueViolation(insert.error)) {
     return null;
