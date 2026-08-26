@@ -432,6 +432,7 @@
       "chat": "チャット",
       "collapse": "サイドバーを折りたたむ",
       "expand": "サイドバーを展開する",
+      "hideChatList": "チャットリストを非表示",
       "manage": "管理",
       "mobile": {
         "invite": "招待する",
@@ -455,6 +456,7 @@
         "works": "連携先"
       },
       "searchConversations": "会話を検索する",
+      "showChatList": "チャットリストを表示",
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",
         "creating": "作成中…",

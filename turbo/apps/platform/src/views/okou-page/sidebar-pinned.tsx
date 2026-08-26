@@ -313,6 +313,7 @@ function PinnedAgentGridCard({
   const setDropTarget = useSet(setPinnedAgentDropTarget$);
   const endDrag = useSet(endPinnedAgentDrag$);
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
+  const displayName = agent.displayName ?? agent.id;
 
   const isDragging = draggingAgentId === agent.id;
   const isDragInFlight = draggingAgentId !== null;
@@ -324,6 +325,7 @@ function PinnedAgentGridCard({
       pathname="/agents/:agentId/chat"
       options={{ pathParams: { agentId: agent.id } }}
       data-testid="pinned-agent-card"
+      title={displayName}
       draggable={isReorderable}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
@@ -387,7 +389,7 @@ function PinnedAgentGridCard({
       <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
         <AgentAvatarImg
           name={agent.id}
-          alt={agent.displayName ?? agent.id}
+          alt=""
           className="h-9 w-9 rounded-full object-cover object-top"
         />
         {hasUnread && (
@@ -401,7 +403,7 @@ function PinnedAgentGridCard({
           isPrimarySelected ? "font-medium" : ""
         } ${isDragging ? "opacity-0" : ""}`}
       >
-        {agent.displayName ?? agent.id}
+        {displayName}
       </span>
     </Link>
   );
@@ -555,7 +557,7 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+        <span className="flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
           {t(($) => {
             return $.sidebar.pinnedAgents;
           })}
@@ -602,7 +604,7 @@ export function PinnedAgentListSection({
           return setCollapsed(!collapsed);
         }}
       >
-        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.sidebar.pinned;
           })}

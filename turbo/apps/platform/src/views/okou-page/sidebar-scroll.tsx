@@ -50,6 +50,7 @@ export function OverlayScrollArea({
         onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
         tabIndex={tabIndex}
+        role={ariaLabel ? "region" : undefined}
         aria-label={ariaLabel}
         data-testid={dataTestId}
       >

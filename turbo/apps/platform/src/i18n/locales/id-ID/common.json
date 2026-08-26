@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Ciutkan sidebar",
       "expand": "Perluas sidebar",
+      "hideChatList": "Sembunyikan daftar chat",
       "manage": "Kelola",
       "mobile": {
         "invite": "Undang",
@@ -455,6 +456,7 @@
         "works": "Bekerja"
       },
       "searchConversations": "Cari percakapan",
+      "showChatList": "Tampilkan daftar chat",
       "workspaceSwitcher": {
         "create": "Buat ruang kerja",
         "creating": "Membuat…",

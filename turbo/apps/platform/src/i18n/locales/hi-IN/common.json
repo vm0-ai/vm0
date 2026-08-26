@@ -432,6 +432,7 @@
       "chat": "चैट",
       "collapse": "साइडबार को संक्षिप्त करें",
       "expand": "साइडबार का विस्तार करें",
+      "hideChatList": "चैट सूची छिपाएं",
       "manage": "प्रबंधित करें",
       "mobile": {
         "invite": "आमंत्रित करें",
@@ -455,6 +456,7 @@
         "works": "काम करता है"
       },
       "searchConversations": "वार्तालाप खोजें",
+      "showChatList": "चैट सूची दिखाएं",
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
         "creating": "बनाया जा रहा है...",
