@@ -4109,7 +4109,11 @@ describe("chat composer templates", () => {
     });
 
     await analysisCatalogLoaded.promise;
-    await appendAndSend(user, "Analyze my uploaded deck");
+    await appendAndSend(
+      user,
+      "Analyze my uploaded deck",
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });

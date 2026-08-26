@@ -817,8 +817,10 @@ describe("POST /api/zero/chat-threads", () => {
       }),
       [201],
     );
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
+      id: expect.any(String),
       title: "Deep dive on P2",
+      createdAt: expect.any(String),
       selectedModel: OTHER_WORKSPACE_MODEL,
       serviceTier: null,
     });
@@ -834,8 +836,13 @@ describe("POST /api/zero/chat-threads", () => {
       id: response.body.id,
       agentId: fixture.agentId,
       title: "Deep dive on P2",
+      pinnedAt: null,
       selectedModel: OTHER_WORKSPACE_MODEL,
       serviceTier: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: EXPLICIT_VIDEO_MODEL,
+      selectedImageModel: EXPLICIT_IMAGE_MODEL,
     });
     await expect(
       readCreatedThreadEvent(response.body.id, token),

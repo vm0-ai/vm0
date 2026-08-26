@@ -13,6 +13,10 @@ import type {
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
 import { accept } from "../../lib/accept.ts";
+import {
+  captureChatThreadMetadataShortcut$,
+  type ChatThreadMetadataShortcutOutcome,
+} from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -113,6 +117,14 @@ type ThreadMetaResolution =
 type RemoteThreadMetaAttempt =
   | Extract<ThreadMetaResolution, { readonly source: "metadata" }>
   | { readonly source: "metadata-unavailable" };
+
+interface RemoteThreadMetaResponse {
+  readonly meta: ThreadMeta | null;
+  readonly outcome: Exclude<
+    ChatThreadMetadataShortcutOutcome,
+    "transport-failure"
+  >;
+}
 
 const optimisticChatThreadEventsState$ = state<
   readonly OptimisticChatThreadEvent[]
@@ -762,7 +774,7 @@ const fetchRemoteThreadMeta$ = command(
     { get },
     threadId: string,
     signal: AbortSignal,
-  ): Promise<ThreadMeta | null> => {
+  ): Promise<RemoteThreadMetaResponse> => {
     const client = get(apiClient$)(chatThreadMetadataContract);
     const result = await accept(
       client.get({
@@ -774,10 +786,12 @@ const fetchRemoteThreadMeta$ = command(
       { showErrorToast: false },
     );
     if (result.status === 404) {
-      return null;
+      return { meta: null, outcome: "not-found" };
     }
     const meta = remoteThreadMeta(result.body);
-    return meta?.id === threadId ? meta : null;
+    return meta?.id === threadId
+      ? { meta, outcome: "hit" }
+      : { meta: null, outcome: "older-payload" };
   },
 );
 
@@ -818,10 +832,15 @@ const attemptRemoteThreadMeta$ = command(
       set(fetchRemoteThreadMeta$, threadId, signal),
       signal,
     );
-    if (!result.ok || result.value === null) {
+    if (!result.ok) {
+      set(captureChatThreadMetadataShortcut$, "transport-failure");
       return { source: "metadata-unavailable" };
     }
-    return { source: "metadata", meta: result.value };
+    set(captureChatThreadMetadataShortcut$, result.value.outcome);
+    if (result.value.meta === null) {
+      return { source: "metadata-unavailable" };
+    }
+    return { source: "metadata", meta: result.value.meta };
   },
 );
 
