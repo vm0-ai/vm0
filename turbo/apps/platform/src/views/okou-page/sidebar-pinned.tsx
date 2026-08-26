@@ -452,7 +452,7 @@ function PinAgentDialogContainer() {
   const onOpenChange = useSet(setPinAgentDialogOpen$);
   const subagents = useLastResolved(subagents$) ?? [];
   const pageSignal = useGet(pageSignal$);
-  const [, saveAgentPinned] = useLoadableSet(setAgentPinned$);
+  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
 
   if (!open) {
     return null;
@@ -463,11 +463,9 @@ function PinAgentDialogContainer() {
       open
       onOpenChange={onOpenChange}
       subagents={subagents}
+      saving={pinLoadable.state === "loading"}
       onSetAgentPinned={(agentId, pinned) => {
-        detach(
-          saveAgentPinned({ agentId, pinned }, pageSignal),
-          Reason.DomCallback,
-        );
+        return saveAgentPinned({ agentId, pinned }, pageSignal);
       }}
     />
   );
