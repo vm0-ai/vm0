@@ -1,16 +1,21 @@
-import { createInstance } from "i18next";
+import { createInstance, type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
 import {
   resolveAssistantNameForHostname,
   resolveBrandNameForHostname,
 } from "../signals/branding.ts";
+import { logger } from "../signals/log.ts";
+import { tapError } from "../signals/utils.ts";
 import {
   DEFAULT_LOCALE,
   DEFAULT_NAMESPACE,
-  resources,
+  loadLocaleResources,
   SUPPORTED_LOCALES,
+  type LocaleResources,
   type SupportedLocale,
 } from "./resources.ts";
+
+const L = logger("I18n");
 
 export const i18n = createInstance().use(initReactI18next);
 
@@ -19,10 +24,56 @@ export function currentLocale(): string {
   return i18n.resolvedLanguage ?? i18n.language;
 }
 
+interface InitialLocaleResources {
+  readonly locale: SupportedLocale;
+  readonly resources: Resource;
+}
+
+async function loadInitialLocaleResources(
+  locale: SupportedLocale,
+  signal?: AbortSignal,
+): Promise<InitialLocaleResources> {
+  const fallbackResources = await loadLocaleResources(DEFAULT_LOCALE, signal);
+  if (locale === DEFAULT_LOCALE) {
+    return {
+      locale,
+      resources: { [DEFAULT_LOCALE]: fallbackResources },
+    };
+  }
+
+  // App presentation fallback for the locale-asset rollout. Remove after
+  // vm0-ai/vm0#29610 reaches its 30-day zero-error Sentry gate.
+  const localizedResources = await tapError(
+    loadLocaleResources(locale, signal),
+    (error) => {
+      L.error(
+        `Failed to load ${locale} locale resources; falling back to ${DEFAULT_LOCALE}`,
+        error,
+      );
+    },
+  );
+  if (localizedResources === undefined) {
+    return {
+      locale: DEFAULT_LOCALE,
+      resources: { [DEFAULT_LOCALE]: fallbackResources },
+    };
+  }
+  return {
+    locale,
+    resources: {
+      [DEFAULT_LOCALE]: fallbackResources,
+      [locale]: localizedResources,
+    },
+  };
+}
+
 export async function initializeI18n(
   locale: SupportedLocale = DEFAULT_LOCALE,
-): Promise<void> {
+  signal?: AbortSignal,
+): Promise<SupportedLocale> {
   const hostname = location.hostname;
+  const initial = await loadInitialLocaleResources(locale, signal);
+  signal?.throwIfAborted();
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
     enableSelector: true,
@@ -34,9 +85,36 @@ export async function initializeI18n(
       },
       escapeValue: false,
     },
-    lng: locale,
-    resources,
+    lng: initial.locale,
+    resources: initial.resources,
     returnNull: false,
     supportedLngs: SUPPORTED_LOCALES,
   });
+  return initial.locale;
+}
+
+function addLocaleResources(
+  locale: SupportedLocale,
+  resources: LocaleResources,
+): void {
+  i18n.addResourceBundle(locale, "agents", resources.agents, true, true);
+  i18n.addResourceBundle(locale, "common", resources.common, true, true);
+}
+
+export async function changeI18nLanguage(
+  locale: SupportedLocale,
+  signal?: AbortSignal,
+): Promise<void> {
+  let resources: LocaleResources | undefined;
+  if (
+    !i18n.hasResourceBundle(locale, "agents") ||
+    !i18n.hasResourceBundle(locale, "common")
+  ) {
+    resources = await loadLocaleResources(locale, signal);
+  }
+  signal?.throwIfAborted();
+  if (resources) {
+    addLocaleResources(locale, resources);
+  }
+  await i18n.changeLanguage(locale);
 }

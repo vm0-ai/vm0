@@ -95,8 +95,10 @@ import {
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
 import { apiBuildInfoHandlers } from "./api-build-info.ts";
 import { apiWebFilesHandlers } from "./api-web-files.ts";
+import { localeResourceHandlers } from "./locale-resources.ts";
 
 export const handlers = [
+  ...localeResourceHandlers,
   ...apiBuildInfoHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
