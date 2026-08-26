@@ -203,8 +203,10 @@ class TestFirewallHeaderCache:
         ):
             await auth_cache.get_firewall_headers(cache_key, auth_request)
 
-        gc.collect()
         assert exc_info.value is task_factory_error
+        task_factory_error.__traceback__ = None
+        del exc_info
+        gc.collect()
         assert not any(
             warning.category is RuntimeWarning and "was never awaited" in str(warning.message)
             for warning in recwarn
