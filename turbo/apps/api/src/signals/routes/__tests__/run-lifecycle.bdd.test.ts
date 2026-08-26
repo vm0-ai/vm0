@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
+import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
@@ -575,6 +576,12 @@ const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
   "sandboxToken",
   "presigned_url",
   "response_body",
+] as const;
+const RUNNER_ATTRIBUTION_DIMENSION_KEYS = [
+  "runner_id",
+  "runner_heartbeat_generation",
+  "runner_hostname",
+  "runner_version",
 ] as const;
 
 function modelProviderPlaceholder(
@@ -4448,19 +4455,35 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
-    const identities = [
-      { runnerId: randomUUID(), heartbeatGeneration: 11 },
-      { runnerId: randomUUID(), heartbeatGeneration: 12 },
+    const candidates = [
+      {
+        runnerIdentity: { runnerId: randomUUID(), heartbeatGeneration: 11 },
+        runnerHostname: "prod-1.aws.vm3.ai",
+        runnerVersion: "1.494.11",
+      },
+      {
+        runnerIdentity: { runnerId: randomUUID(), heartbeatGeneration: 12 },
+        runnerHostname: "prod-2.aws.vm3.ai",
+        runnerVersion: "1.494.12",
+      },
     ];
     const claims = await Promise.all(
-      identities.map(async (runnerIdentity) => {
+      candidates.map(async (candidate) => {
         return {
-          runnerIdentity,
+          candidate,
           response: await api.requestClaimRunnerJob(
             true,
             run.runId,
             [200, 404],
-            { runnerIdentity },
+            {
+              runnerIdentity: candidate.runnerIdentity,
+              runnerHostname: candidate.runnerHostname,
+              telemetry: {
+                directCandidateNotificationToEnqueueMs: 2,
+                pollHttpRequestMs: 3,
+              },
+            },
+            { [CLIENT_VERSION_HEADER]: candidate.runnerVersion },
           ),
         };
       }),
@@ -4481,12 +4504,79 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected one winning runner claim");
     }
     await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
-      runner_id: winningClaim.runnerIdentity.runnerId,
-      heartbeat_generation: winningClaim.runnerIdentity.heartbeatGeneration,
+      runner_id: winningClaim.candidate.runnerIdentity.runnerId,
+      heartbeat_generation:
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
+    });
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: winningClaim.candidate.runnerHostname,
+      runnerVersion: winningClaim.candidate.runnerVersion,
+      runnerId: winningClaim.candidate.runnerIdentity.runnerId,
+      runnerHeartbeatGeneration:
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
     });
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
+    await flushWaitUntilForTest();
+    const attributionDimensions = {
+      runner_id: winningClaim.candidate.runnerIdentity.runnerId,
+      runner_heartbeat_generation: String(
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
+      ),
+      runner_hostname: winningClaim.candidate.runnerHostname,
+      runner_version: winningClaim.candidate.runnerVersion,
+    };
+    expect(
+      singleSandboxOperationEvent(
+        sandboxOperationEventsForRun(run.runId),
+        "claim_request_to_running",
+      ),
+    ).toStrictEqual(expect.objectContaining(attributionDimensions));
+    const preClaimTimingEvents = [
+      "direct_candidate_notification_to_enqueue",
+      "runner_poll_http_request",
+    ].map((actionType) => {
+      return singleSandboxOperationEvent(
+        sandboxOperationEventsForRun(run.runId),
+        actionType,
+      );
+    });
+    expect(
+      preClaimTimingEvents.some((event) => {
+        return RUNNER_ATTRIBUTION_DIMENSION_KEYS.some((key) => {
+          return Object.hasOwn(event, key);
+        });
+      }),
+    ).toBeFalsy();
+    const claimRouteTimingEvents = claimRouteTimingEventsForRun(run.runId);
+    const nestedClaimRouteTimingEvents = claimRouteTimingEvents.filter(
+      (event) => {
+        return event.span_kind === "nested";
+      },
+    );
+    expect(nestedClaimRouteTimingEvents.length).toBeGreaterThan(0);
+    expect(
+      nestedClaimRouteTimingEvents.every((event) => {
+        return Object.entries(attributionDimensions).every(([key, value]) => {
+          return event[key] === value;
+        });
+      }),
+    ).toBeTruthy();
+    expect(
+      claimRouteTimingEvents
+        .filter((event) => {
+          return event.span_kind !== "nested";
+        })
+        .some((event) => {
+          return RUNNER_ATTRIBUTION_DIMENSION_KEYS.some((key) => {
+            return Object.hasOwn(event, key);
+          });
+        }),
+    ).toBeFalsy();
     for (const actionType of CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES) {
       expect(
         singleSandboxOperationEvent(
@@ -4527,7 +4617,64 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     await api.claimRunnerJob(run.runId);
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: expect.any(String),
+      runnerHeartbeatGeneration: 1,
+    });
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects malformed runner attribution before the claim transition", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const hostnameRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject an oversized runner hostname",
+      modelProvider: "anthropic-api-key",
+    });
+    const invalidHostname = await api.requestRawClaimRunnerJob(
+      true,
+      hostnameRun.runId,
+      [400],
+      {
+        runnerIdentity: {
+          runnerId: randomUUID(),
+          heartbeatGeneration: 1,
+        },
+        runnerHostname: "x".repeat(256),
+      },
+    );
+    expectApiError(invalidHostname.body);
+    await expect(api.readRun(actor, hostnameRun.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    const versionRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject an oversized runner version",
+      modelProvider: "anthropic-api-key",
+    });
+    const invalidVersion = await api.requestClaimRunnerJob(
+      true,
+      versionRun.runId,
+      [400],
+      {},
+      { [CLIENT_VERSION_HEADER]: "x".repeat(129) },
+    );
+    expectApiError(invalidVersion.body);
+    await expect(api.readRun(actor, versionRun.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    await api.claimRunnerJob(hostnameRun.runId);
+    await api.claimRunnerJob(versionRun.runId);
+    await api.requestCancelRun(actor, hostnameRun.runId, [200]);
+    await api.requestCancelRun(actor, versionRun.runId, [200]);
   });
 
   it("does not trust claim identity from a PAT-authenticated runner", async () => {
@@ -4549,13 +4696,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runnerId: randomUUID(),
           heartbeatGeneration: 13,
         },
+        runnerHostname: "untrusted.aws.vm3.ai",
       },
+      { [CLIENT_VERSION_HEADER]: "9.9.9" },
     );
 
     expect(claim.status).toBe(200);
     await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
       runner_id: null,
       heartbeat_generation: null,
+    });
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -17277,6 +17435,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "lockBusy",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: expect.any(String),
+      runnerHeartbeatGeneration: 1,
     });
 
     const telemetry = await webhooks.requestAgentTelemetry(
@@ -17398,6 +17560,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "cacheMiss",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
   });
 
@@ -17434,6 +17600,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "diskPressure",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
 
     await webhooks.requestAgentComplete(
