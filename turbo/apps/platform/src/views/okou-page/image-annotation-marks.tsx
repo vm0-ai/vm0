@@ -1,3 +1,4 @@
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
   ImageAnnotation,
   ImageAnnotationMark,
@@ -22,11 +23,20 @@ export function markInk(mark: ImageAnnotationMark): string {
   return mark.ink;
 }
 
+/** Head length as a fraction of the shorter edge. */
+const ARROW_HEAD_UNITS = 0.045;
+
 function percent(value: number): string {
   return `${value * 100}%`;
 }
 
-function StrokeMark({ mark }: { mark: ImageAnnotationMark }) {
+function StrokeMark({
+  mark,
+  aspect,
+}: {
+  mark: ImageAnnotationMark;
+  aspect: number;
+}) {
   if (mark.shape === "pen") {
     const points = mark.points
       .map((point) => {
@@ -63,36 +73,50 @@ function StrokeMark({ mark }: { mark: ImageAnnotationMark }) {
     return null;
   }
 
+  // The SVG is stretched to a non-square box, so anything that is not a
+  // straight line comes out skewed — which is why the tip used to render as a
+  // squashed ellipse instead of a head. The head is therefore built from the
+  // angle as it appears *on screen* and converted back into the stretched
+  // space, using the box's aspect ratio.
+  const dx = (mark.to.x - mark.from.x) * aspect;
+  const dy = mark.to.y - mark.from.y;
+  const angle = Math.atan2(dy, dx);
+  const spread = Math.PI / 7;
+  const head = ARROW_HEAD_UNITS;
+  const wing = (offset: number) => {
+    return {
+      x: (mark.to.x - (head * Math.cos(angle + offset)) / aspect) * 100,
+      y: (mark.to.y - head * Math.sin(angle + offset)) * 100,
+    };
+  };
+  const left = wing(-spread);
+  const right = wing(spread);
+  const shaft = `M ${mark.from.x * 100} ${mark.from.y * 100} L ${mark.to.x * 100} ${mark.to.y * 100}`;
+  const arrowHead = `M ${left.x} ${left.y} L ${mark.to.x * 100} ${mark.to.y * 100} L ${right.x} ${right.y}`;
+
   return (
     <svg
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
       className="pointer-events-none absolute inset-0 h-full w-full"
     >
-      <line
-        x1={mark.from.x * 100}
-        y1={mark.from.y * 100}
-        x2={mark.to.x * 100}
-        y2={mark.to.y * 100}
+      <path
+        d={`${shaft} ${arrowHead}`}
+        fill="none"
         stroke={STROKE_HALO_OUTER}
+        strokeLinecap="round"
+        strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
         style={{ strokeWidth: 5 }}
       />
-      <line
-        x1={mark.from.x * 100}
-        y1={mark.from.y * 100}
-        x2={mark.to.x * 100}
-        y2={mark.to.y * 100}
+      <path
+        d={`${shaft} ${arrowHead}`}
+        fill="none"
         stroke={mark.ink}
         strokeLinecap="round"
+        strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
         style={{ strokeWidth: 3 }}
-      />
-      <circle
-        cx={mark.to.x * 100}
-        cy={mark.to.y * 100}
-        r={1.4}
-        fill={mark.ink}
       />
     </svg>
   );
@@ -118,12 +142,16 @@ export function MarkShape({
   mark,
   ordinal,
   selected = false,
+  aspect = 1,
   onSelect,
+  onGrab,
 }: {
   mark: ImageAnnotationMark;
   ordinal: number;
   selected?: boolean;
+  aspect?: number;
   onSelect?: () => void;
+  onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
   const ring = selected
     ? { outline: `2px solid ${markInk(mark)}`, outlineOffset: "3px" }
@@ -133,13 +161,14 @@ export function MarkShape({
   const interaction = onSelect
     ? {
         onClick: onSelect,
-        className: "absolute cursor-pointer",
+        ...(onGrab ? { onPointerDown: onGrab } : {}),
+        className: "absolute cursor-move",
         "data-testid": `annotation-mark-${ordinal}`,
       }
     : { className: "pointer-events-none absolute" };
 
   if (mark.shape === "pen" || mark.shape === "arrow") {
-    return <StrokeMark mark={mark} />;
+    return <StrokeMark mark={mark} aspect={aspect} />;
   }
 
   if (mark.shape === "text") {
@@ -190,8 +219,10 @@ export function MarkShape({
  */
 export function AnnotationMarkLayer({
   annotation,
+  aspect = 1,
 }: {
   annotation: ImageAnnotation;
+  aspect?: number;
 }) {
   return (
     <span
@@ -199,7 +230,14 @@ export function AnnotationMarkLayer({
       data-testid="annotation-mark-layer"
     >
       {annotation.marks.map((mark, index) => {
-        return <MarkShape key={mark.id} mark={mark} ordinal={index + 1} />;
+        return (
+          <MarkShape
+            key={mark.id}
+            mark={mark}
+            ordinal={index + 1}
+            aspect={aspect}
+          />
+        );
       })}
     </span>
   );

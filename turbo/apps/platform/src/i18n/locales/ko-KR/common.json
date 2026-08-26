@@ -502,11 +502,8 @@
       "tools": {
         "arrow": "화살표",
         "box": "사각형",
-        "crop": "자르기",
-        "highlight": "강조",
         "pen": "그리기",
         "redact": "가리기",
-        "select": "선택",
         "text": "텍스트"
       },
       "undo": "실행 취소"

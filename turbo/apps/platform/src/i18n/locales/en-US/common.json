@@ -503,11 +503,8 @@
       "tools": {
         "arrow": "Arrow",
         "box": "Box",
-        "crop": "Crop",
-        "highlight": "Highlight",
         "pen": "Draw",
         "redact": "Redact",
-        "select": "Select",
         "text": "Text"
       },
       "undo": "Undo"

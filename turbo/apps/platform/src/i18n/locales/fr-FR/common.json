@@ -518,11 +518,8 @@
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",
-        "crop": "Rogner",
-        "highlight": "Surligner",
         "pen": "Dessiner",
         "redact": "Masquer",
-        "select": "Sélectionner",
         "text": "Texte"
       },
       "undo": "Annuler"

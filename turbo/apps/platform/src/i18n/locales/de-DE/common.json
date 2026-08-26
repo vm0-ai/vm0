@@ -503,11 +503,8 @@
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
-        "crop": "Zuschneiden",
-        "highlight": "Hervorheben",
         "pen": "Zeichnen",
         "redact": "Schwärzen",
-        "select": "Auswählen",
         "text": "Text"
       },
       "undo": "Rückgängig"

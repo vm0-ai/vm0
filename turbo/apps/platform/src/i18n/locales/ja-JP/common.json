@@ -502,11 +502,8 @@
       "tools": {
         "arrow": "矢印",
         "box": "矩形",
-        "crop": "切り抜き",
-        "highlight": "ハイライト",
         "pen": "手描き",
         "redact": "塗りつぶし",
-        "select": "選択",
         "text": "テキスト"
       },
       "undo": "元に戻す"
