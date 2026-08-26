@@ -3383,7 +3383,7 @@
         },
         "slack": {
           "description": "워크스페이스에서 AI 팀원과 채팅하세요",
-          "title": "Slack 사용"
+          "title": "Slack 연결"
         },
         "video": {
           "description": "아이디어를 비디오로 전환",

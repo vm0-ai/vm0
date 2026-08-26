@@ -267,7 +267,7 @@ describe("onboarding flow", () => {
     await openMakePage();
 
     const slackOption = firstItem(screen.getAllByRole("radio"));
-    expect(slackOption).toHaveTextContent("Use Slack");
+    expect(slackOption).toHaveTextContent("Connect Slack");
     expect(
       screen.getByTestId("onboarding-slack-illustration"),
     ).toBeInTheDocument();
@@ -284,17 +284,17 @@ describe("onboarding flow", () => {
   });
 
   it.each([
-    ["Generate a presentation", "Presentation"],
-    ["Generate images", "Illustration"],
-    ["Video production", "Video"],
-    ["Build a website", "Website"],
+    ["Generate a presentation", "Generate slides and speaker", "Presentation"],
+    ["Generate images", "Create high-quality visuals", "Illustration"],
+    ["Video production", "Turn your ideas into video", "Video"],
+    ["Build a website", "Create and publish a shareable page", "Website"],
   ])(
     "opens the %s product templates from the make page",
-    async (option, tab) => {
+    async (option, description, tab) => {
       await openMakePage();
 
       const makeOption = screen.getByRole("radio", {
-        name: new RegExp(option, "u"),
+        name: `${option} ${description}`,
       });
       click(makeOption);
 

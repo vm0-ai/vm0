@@ -3442,7 +3442,7 @@
         },
         "slack": {
           "description": "Converse com seu colega de IA no seu workspace",
-          "title": "Usar o Slack"
+          "title": "Conectar o Slack"
         },
         "video": {
           "description": "Transforme suas ideias em vídeo",
