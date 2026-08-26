@@ -347,6 +347,8 @@ export async function writeConnectorConnectionMetadata(
   ) {
     return row;
   }
+  // The rollout trigger clears explicit grants whenever oauthScopes changes.
+  // Restore the grant separately until #29468 removes that compatibility bridge.
   const [connectionWithGrant] = await db
     .update(connectors)
     .set({
