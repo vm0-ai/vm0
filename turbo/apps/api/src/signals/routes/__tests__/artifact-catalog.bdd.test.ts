@@ -971,6 +971,37 @@ describe("GET /api/artifacts/catalog", () => {
     ).toStrictEqual([site]);
   }, 180_000);
 
+  it("searches artifact titles before applying the page limit", async () => {
+    const owner = await catalogActor("Artifact catalog search owner");
+    await uploadFile({
+      owner,
+      prompt: "upload launch brief",
+      filename: "Launch-Brief.txt",
+      contentType: "text/plain",
+    });
+    await uploadFile({
+      owner,
+      prompt: "upload budget",
+      filename: "budget.txt",
+      contentType: "text/plain",
+    });
+
+    const result = await chat.listArtifactCatalog(owner.actor, {
+      keyword: "launch",
+      limit: 1,
+    });
+
+    expect(result).toStrictEqual({
+      artifacts: [
+        expect.objectContaining({
+          kind: "file",
+          title: "Launch-Brief.txt",
+        }),
+      ],
+      nextCursor: null,
+    });
+  }, 180_000);
+
   it("walks the whole catalog through the cursor without repeats or gaps", async () => {
     const owner = await catalogActor("Artifact catalog paging owner");
     const created: string[] = [];

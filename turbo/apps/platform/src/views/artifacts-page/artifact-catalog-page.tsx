@@ -29,8 +29,6 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
-import { AttachmentLightbox } from "../okou-page/attachment-chips.tsx";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
@@ -483,7 +481,6 @@ export function ArtifactCatalogPage() {
   const openArtifact = useSet(openArtifact$);
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
-  const lightboxUrl = useGet(lightboxUrl$);
   const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
@@ -508,7 +505,6 @@ export function ArtifactCatalogPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {lightboxUrl && <AttachmentLightbox />}
       {/* The header sits outside the scroll container so the kind filter stays
           pinned to the top while the catalog scrolls under it. */}
       <header className="shrink-0 bg-transparent px-4 pb-3 pt-3 sm:px-6 md:pt-10">

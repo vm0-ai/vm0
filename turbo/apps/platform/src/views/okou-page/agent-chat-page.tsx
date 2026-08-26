@@ -25,11 +25,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
-import { AttachmentLightbox } from "./attachment-chips.tsx";
 import { chatPageTaglineIndex$ } from "../../signals/okou-page/chat-page.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
-import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -353,8 +351,6 @@ export function AgentChatPage() {
     taglineIndex,
   );
 
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
-
   const handleInputChange = (value: string) => {
     setInput(value);
     detach(saveDraft(pageSignal), Reason.DomCallback);
@@ -387,7 +383,6 @@ export function AgentChatPage() {
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />
-      {lightboxUrl && <AttachmentLightbox />}
     </div>
   );
 }

@@ -455,7 +455,7 @@
         "workflows": "워크플로",
         "works": "작업"
       },
-      "searchConversations": "대화 검색",
+      "searchWorkspace": "워크스페이스 검색",
       "showChatList": "채팅 목록 표시",
       "workspaceSwitcher": {
         "create": "워크스페이스 만들기",

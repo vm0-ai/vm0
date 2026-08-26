@@ -469,7 +469,7 @@
         "workflows": "Workflows",
         "works": "Travail"
       },
-      "searchConversations": "Rechercher des conversations",
+      "searchWorkspace": "Rechercher dans l’espace de travail",
       "showChatList": "Afficher la liste des chats",
       "workspaceSwitcher": {
         "create": "Créer un espace de travail",

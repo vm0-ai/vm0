@@ -165,7 +165,12 @@ export const openAgentListDialog$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 // Three-column search dialog state
 // ---------------------------------------------------------------------------
-export type ThreeColumnSearchFilter = "all" | "chats" | "messages";
+export type ThreeColumnSearchFilter =
+  | "all"
+  | "chats"
+  | "messages"
+  | "workflows"
+  | "artifacts";
 
 const internalThreeColumnSearchOpen$ = state(false);
 export const threeColumnSearchOpen$ = computed((get) => {

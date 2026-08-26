@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  ilike,
   inArray,
   isNotNull,
   like,
@@ -718,6 +719,7 @@ interface ListArtifactCatalogArgs {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly keyword?: string;
 }
 
 interface ListArtifactCatalogResult {
@@ -864,6 +866,9 @@ export const listArtifactCatalog$ = command(
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
+            : undefined,
+          args.keyword
+            ? ilike(artifacts.title, `%${args.keyword}%`)
             : undefined,
           cursor
             ? lt(
