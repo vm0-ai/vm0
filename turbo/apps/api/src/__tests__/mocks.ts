@@ -18,6 +18,19 @@ type AbortSignalTimeoutMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+
+function resolveDefaultStripePrice(priceId: unknown): Promise<unknown> {
+  return Promise.resolve({
+    id: priceId,
+    active: true,
+    currency: "usd",
+    type: "recurring",
+    unit_amount: 4200,
+    recurring: { interval: "month", interval_count: 1 },
+    product: "prod_test_concurrency",
+  });
+}
+
 interface AxiomClientOptions {
   readonly onError?: (error: Error) => void;
   readonly token?: string;
@@ -451,7 +464,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     prices: {
-      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(
+        resolveDefaultStripePrice,
+      ),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
@@ -1299,6 +1314,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();
+  apiTestMocks.stripe.prices.retrieve.mockImplementation(
+    resolveDefaultStripePrice,
+  );
   apiTestMocks.stripe.prices.create.mockReset();
   apiTestMocks.webpush.sendNotification.mockReset();
   apiTestMocks.webpush.sendNotification.mockResolvedValue(undefined);
