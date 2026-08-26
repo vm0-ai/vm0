@@ -2419,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Arbeitskonto"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Anwenden",

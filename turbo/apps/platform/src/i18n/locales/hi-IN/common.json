@@ -2419,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "कार्य खाता"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "आवेदन करना",

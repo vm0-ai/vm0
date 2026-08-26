@@ -13,6 +13,7 @@ import {
   Input,
 } from "@okouai/ui";
 
+import { connectorAccountEffectiveLabel } from "../../../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { renameConnectorAccount$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import {
@@ -47,7 +48,7 @@ export function ConnectorAccountNameDialog() {
         await rename(
           {
             target: prompt.target,
-            connectionId: prompt.connectionId,
+            connectionId: prompt.account.id,
             displayName,
           },
           signal,
@@ -98,9 +99,15 @@ export function ConnectorAccountNameDialog() {
               onChange={(event) => {
                 return setValue(event.target.value);
               }}
-              placeholder={t(($) => {
-                return $.connectors.accounts.workPlaceholder;
-              })}
+              placeholder={connectorAccountEffectiveLabel(
+                prompt.account,
+                t(
+                  ($) => {
+                    return $.connectors.accounts.fallbackName;
+                  },
+                  { id: prompt.account.id.slice(0, 8) },
+                ),
+              )}
               maxLength={255}
             />
           </div>
