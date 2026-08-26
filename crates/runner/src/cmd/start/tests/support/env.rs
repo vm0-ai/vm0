@@ -258,6 +258,7 @@ fn build_mock_run_config_with_runtime(
         exec_config: Arc::new(executor::ExecutorConfig {
             api_url: api_url.to_string(),
             runner_name: "test-runner".to_string(),
+            runner_hostname: None,
             registry,
             http: crate::http::HttpClient::new(crate::http::HttpClientConfig {
                 api_url: api_url.to_string(),

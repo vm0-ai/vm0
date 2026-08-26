@@ -14,7 +14,7 @@ use std::time::Duration;
 use super::{
     AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH, INTERNAL_TARGET,
     TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER, init_from_env_values, init_with_base_url,
-    with_ingest_filter,
+    init_with_base_url_and_hostname, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -328,6 +328,8 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     let events = captured.events();
     let warning = event_with_message(&events, "a warning");
     assert_eq!(warning["service"], json!("runner"));
+    assert_eq!(warning["runner_version"], json!(env!("CARGO_PKG_VERSION")));
+    assert!(warning.get("runner_hostname").is_none());
     assert_eq!(warning["level"], json!("warn"));
     assert_eq!(warning["foo"], json!("bar"));
     assert!(
@@ -343,6 +345,36 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         !has_event_with_message(&events, "info is below threshold, should not be ingested"),
         "INFO event should not be ingested: {events:#?}",
     );
+}
+
+#[tokio::test]
+async fn configured_hostname_and_version_are_common_axiom_dimensions() {
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) = init_with_base_url_and_hostname(
+        &server.base_url(),
+        "test-token",
+        "test",
+        Some("prod-1.aws.vm3.ai".to_string()),
+    )
+    .expect("init must succeed");
+
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::warn!(
+            runner_hostname = "event-local-host",
+            runner_version = "event-local-version",
+            "attributed warning"
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let warning = event_with_message(&events, "attributed warning");
+    assert_eq!(warning["runner_hostname"], json!("prod-1.aws.vm3.ai"));
+    assert_eq!(warning["runner_version"], json!(env!("CARGO_PKG_VERSION")));
 }
 
 #[tokio::test]
@@ -449,7 +481,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
 
 #[test]
 fn init_returns_none_when_env_missing() {
-    let result = init_from_env_values("https://example.invalid", None, None);
+    let result = init_from_env_values("https://example.invalid", None, None, None);
     assert!(result.is_none());
 }
 
@@ -459,6 +491,7 @@ fn init_returns_none_when_token_empty() {
         "https://example.invalid",
         Some(String::new()),
         Some("dev".to_string()),
+        None,
     );
     assert!(result.is_none());
 }
@@ -693,6 +726,7 @@ fn burst_past_channel_cap_drops_without_blocking() {
     let layer = AxiomLayer {
         tx,
         dropped: AtomicU64::new(0),
+        runner_hostname: None,
     };
     let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     let dispatch = tracing::Dispatch::new(subscriber);
@@ -732,6 +766,7 @@ fn rejected_events_are_not_serialized() {
     let layer = AxiomLayer {
         tx,
         dropped: AtomicU64::new(0),
+        runner_hostname: None,
     };
     let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     let formatting_count = AtomicUsize::new(0);

@@ -403,6 +403,19 @@
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
 
+    # Write the additive YAML field after invoking the retained target binary.
+    # Older Serde readers ignore this field, while an older CLI would reject a
+    # new command-line option.
+    - name: Persist canonical runner hostname
+      when: not (skip_install | default(false))
+      lineinfile:
+        path: "{{ runner_dir }}/runner.yaml"
+        regexp: "^hostname:"
+        insertafter: "^name:"
+        line: "hostname: {{ inventory_hostname | to_json }}"
+      tags:
+        - runner-config-attribution
+
     # Both the readiness wait and the later non-target drain/stop operations
     # shell out to the target runner binary. On the skip_install path, Phase 5
     # was skipped, so assert the binary exists before entering the rescue-wrapped
