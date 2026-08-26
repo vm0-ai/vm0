@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import type { TeamComposeItem } from "@okouai/core";
 import { createElement } from "react";
 import { AgentDetailPage } from "../../views/team-page/agent-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -31,8 +30,8 @@ export const setupAgentDetailPage$ = command(
     const agents = await get(agents$);
     signal.throwIfAborted();
 
-    const agent = agents.find((a: TeamComposeItem) => {
-      return a.id === agentId;
+    const agent = agents.find((candidate) => {
+      return candidate.agentId === agentId;
     });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);

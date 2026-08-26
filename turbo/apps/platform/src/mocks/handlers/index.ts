@@ -59,7 +59,7 @@ import {
 } from "./api-integrations-github.ts";
 import {
   apiAgentsHandlers,
-  resetMockTeam,
+  resetMockAgents,
   resetMockUserConnectors,
 } from "./api-agents.ts";
 import { apiWorkflowsHandlers, resetMockWorkflows } from "./api-workflows.ts";
@@ -157,7 +157,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageRecord();
   resetMockWorkflowAutomations();
-  resetMockTeam();
+  resetMockAgents();
   resetMockUserConnectors();
   resetMockWorkflows();
   resetMockOnboardingStatus();

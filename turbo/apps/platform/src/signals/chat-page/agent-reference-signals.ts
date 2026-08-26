@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { agents$ } from "../agent.ts";
 import {
   createCardSignalsRegistry,
@@ -8,12 +8,12 @@ import {
 
 /**
  * Reactive agent data backing one or more structured agent references in a
- * chat thread. The agent is derived from the shared team list, so references
+ * chat thread. The agent is derived from the shared agents list, so references
  * do not issue one request per agent.
  */
 export interface AgentReferenceSignals {
   readonly agentId: string;
-  readonly agent$: Computed<Promise<TeamComposeItem | null>>;
+  readonly agent$: Computed<Promise<AgentResponse | null>>;
 }
 
 export type AgentReferenceSignalsRegistry = CardSignalsRegistry<
@@ -28,7 +28,7 @@ function createAgentReferenceSignals(agentId: string): AgentReferenceSignals {
       const agents = await get(agents$);
       return (
         agents.find((agent) => {
-          return agent.id === agentId;
+          return agent.agentId === agentId;
         }) ?? null
       );
     }),

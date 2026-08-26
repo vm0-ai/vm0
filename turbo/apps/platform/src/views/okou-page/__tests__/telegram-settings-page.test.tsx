@@ -1,4 +1,4 @@
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -15,30 +15,38 @@ const context = testContext();
 const ZERO_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const SUPPORT_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 
-function agent(): TeamComposeItem {
+function agent(): AgentResponse {
   return {
-    id: ZERO_AGENT_ID,
+    agentId: ZERO_AGENT_ID,
+    ownerId: "user_mock",
     displayName: null,
     description: null,
     sound: null,
     avatarUrl: null,
-    updatedAt: "2024-01-01T00:00:00Z",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
   };
 }
 
-function supportAgent(): TeamComposeItem {
+function supportAgent(): AgentResponse {
   return {
-    id: SUPPORT_AGENT_ID,
+    agentId: SUPPORT_AGENT_ID,
+    ownerId: "user_mock",
     displayName: "Support",
     description: null,
     sound: null,
     avatarUrl: null,
-    updatedAt: "2024-01-02T00:00:00Z",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
   };
 }
 
 function setupTelegramPage(): void {
-  context.mocks.data.team([agent(), supportAgent()]);
+  context.mocks.data.agents([agent(), supportAgent()]);
   detachedSetupPage({
     context,
     path: "/settings/telegram",

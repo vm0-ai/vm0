@@ -4,14 +4,17 @@ import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
-import { teamContract } from "@okouai/api-contracts/contracts/team";
+import {
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000901";
@@ -24,16 +27,13 @@ function mockAgentChatPage(): void {
     serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
-  context.mocks.api(teamContract.list, ({ respond }) => {
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
     return respond(200, [
-      {
-        id: AGENT_ID,
+      createMockAgentResponse({
+        agentId: AGENT_ID,
         displayName: "Annotation Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
+        visibility: "public",
+      }),
     ]);
   });
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {

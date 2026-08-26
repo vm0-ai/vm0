@@ -13,7 +13,7 @@ import {
   Settings,
 } from "lucide-react";
 import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { Button } from "@okouai/ui";
 import {
   Dialog,
@@ -114,14 +114,14 @@ const FEISHU_GUIDE_IMAGE_SOURCES = [
 type FeishuDialogData = FeishuBotInstallation;
 
 function agentLabel(
-  agent: TeamComposeItem,
+  agent: AgentResponse,
   defaultAgentId: string | null,
   defaultAgentName: string | null,
 ): string {
-  if (agent.id === defaultAgentId && defaultAgentName) {
+  if (agent.agentId === defaultAgentId && defaultAgentName) {
     return defaultAgentName;
   }
-  return agent.displayName ?? agent.id;
+  return agent.displayName ?? agent.agentId;
 }
 
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -407,7 +407,7 @@ function FeishuAgentSelect({
   onAgentChange,
 }: {
   form: FeishuSetupInput;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   saving: boolean;
@@ -441,7 +441,7 @@ function FeishuAgentSelect({
         <SelectContent>
           {agents.map((agent) => {
             return (
-              <SelectItem key={agent.id} value={agent.id}>
+              <SelectItem key={agent.agentId} value={agent.agentId}>
                 {agentLabel(agent, orgDefaultAgentId, orgDefaultAgentName)}
               </SelectItem>
             );
@@ -908,7 +908,7 @@ function FeishuPublishStep({
 }: {
   data: FeishuDialogData | null;
   form: FeishuSetupInput;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   readOnly: boolean;
@@ -1025,7 +1025,7 @@ function FeishuSetupStepContent({
   step: FeishuSetupStep;
   data: FeishuDialogData | null;
   form: FeishuSetupInput;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   saving: boolean;
@@ -1254,7 +1254,7 @@ function FeishuSetupWizard({
   onClose,
 }: {
   data: FeishuDialogData | null;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   readOnly: boolean;
@@ -1435,7 +1435,7 @@ function FeishuBotAgentSelect({
   disabled,
 }: {
   bot: FeishuBotInstallation;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   disabled: boolean;
 }) {
   const { t } = useTranslation();
@@ -1471,8 +1471,8 @@ function FeishuBotAgentSelect({
       <SelectContent>
         {agents.map((agent) => {
           return (
-            <SelectItem key={agent.id} value={agent.id}>
-              {agent.displayName ?? agent.id}
+            <SelectItem key={agent.agentId} value={agent.agentId}>
+              {agent.displayName ?? agent.agentId}
             </SelectItem>
           );
         })}
@@ -1586,7 +1586,7 @@ function FeishuBotRow({
   isAdmin,
 }: {
   bot: FeishuBotInstallation;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   agentsLoading: boolean;
   isAdmin: boolean;
 }) {
@@ -1675,7 +1675,7 @@ function FeishuBotList({
   isAdmin,
 }: {
   bots: FeishuBotInstallation[];
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   agentsLoading: boolean;
   isAdmin: boolean;
 }) {
@@ -1732,7 +1732,7 @@ function FeishuBotsCard({
   onAdd,
 }: {
   bots: FeishuBotInstallation[];
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   agentsLoading: boolean;
   isAdmin: boolean;
   onAdd: () => void;
@@ -1879,7 +1879,7 @@ function FeishuDialogBody({
 }: {
   data: FeishuDialogData | null;
   isAdmin: boolean;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   onClose: () => void;
@@ -1916,7 +1916,7 @@ function FeishuSetupDialog({
 }: {
   data: FeishuDialogData | null;
   isAdmin: boolean;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
 }) {
@@ -2115,9 +2115,9 @@ function dialogFeishuBot(args: {
 
 function initialFeishuAgentId(
   orgDefaultAgentId: string | null,
-  agents: readonly TeamComposeItem[],
+  agents: readonly AgentResponse[],
 ): string {
-  return orgDefaultAgentId ?? agents[0]?.id ?? "";
+  return orgDefaultAgentId ?? agents[0]?.agentId ?? "";
 }
 
 function feishuSettingsLoading(args: {

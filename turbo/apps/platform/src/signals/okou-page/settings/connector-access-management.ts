@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { apiClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -15,13 +15,13 @@ import { firewallPermissionMetadataByConnector } from "../../firewall-permission
 import type { PlatformUserPermissionGrant } from "../../connector-domain.ts";
 
 export interface ConnectorAgentAccessRow {
-  readonly agent: TeamComposeItem;
+  readonly agent: AgentResponse;
   readonly authorized: boolean;
   readonly grants: readonly PlatformUserPermissionGrant[];
 }
 
 interface ConnectorAgentAuthorizationRow {
-  readonly agent: TeamComposeItem;
+  readonly agent: AgentResponse;
   readonly enabledConnectorSlugs: readonly ConnectorSlug[];
 }
 
@@ -93,7 +93,7 @@ export const connectorAgentAuthorizations$ = computed(
         async (agent): Promise<ConnectorAgentAuthorizationRow | null> => {
           const authorizations = await get(
             agentConnectorAuthorizations({
-              agentId: agent.id,
+              agentId: agent.agentId,
               missing: "null",
             }),
           );
@@ -116,9 +116,9 @@ export const connectorAgentAuthorizations$ = computed(
 export const connectorAuthorizedAgentsBySlug$ = computed(
   async (
     get,
-  ): Promise<ReadonlyMap<ConnectorSlug, readonly TeamComposeItem[]>> => {
+  ): Promise<ReadonlyMap<ConnectorSlug, readonly AgentResponse[]>> => {
     const authorizations = await get(connectorAgentAuthorizations$);
-    const agentsBySlug = new Map<ConnectorSlug, TeamComposeItem[]>();
+    const agentsBySlug = new Map<ConnectorSlug, AgentResponse[]>();
     for (const row of authorizations) {
       for (const connectorSlug of row.enabledConnectorSlugs) {
         const agents = agentsBySlug.get(connectorSlug) ?? [];
@@ -147,7 +147,7 @@ export const managedConnectorAgentAccessRows$ = computed(
           let grants: readonly PlatformUserPermissionGrant[] = [];
           if (authorized) {
             const loadedGrants = await get(
-              userPermissionGrantsByAgentIfExists({ agentId: agent.id }),
+              userPermissionGrantsByAgentIfExists({ agentId: agent.agentId }),
             );
             if (loadedGrants === null) {
               return null;

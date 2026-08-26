@@ -49,7 +49,7 @@ export const directedConnectAgentName$ = computed(async (get) => {
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
-    return a.id === agentId;
+    return a.agentId === agentId;
   });
   return { agentId, displayName: agent?.displayName ?? null };
 });

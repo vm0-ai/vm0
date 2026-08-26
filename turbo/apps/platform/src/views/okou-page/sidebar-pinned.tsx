@@ -251,7 +251,7 @@ function OpenAgentListDialog({
 }
 
 interface PinnedGridAgent {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName?: string | null;
 }
 
@@ -314,25 +314,30 @@ function PinnedAgentGridCard({
   const setDropTarget = useSet(setPinnedAgentDropTarget$);
   const endDrag = useSet(endPinnedAgentDrag$);
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
-  const displayName = agent.displayName ?? agent.id;
+  const displayName = agent.displayName ?? agent.agentId;
 
-  const isDragging = draggingAgentId === agent.id;
+  const isDragging = draggingAgentId === agent.agentId;
   const isDragInFlight = draggingAgentId !== null;
   const acceptsDrop =
-    isReorderable && draggingAgentId !== null && draggingAgentId !== agent.id;
+    isReorderable &&
+    draggingAgentId !== null &&
+    draggingAgentId !== agent.agentId;
 
   return (
     <Link
       pathname="/agents/:agentId/chat"
-      options={{ pathParams: { agentId: agent.id } }}
+      options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
       title={displayName}
       draggable={isReorderable}
       onDragStart={(e) => {
         e.dataTransfer.clearData();
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("application/x-okou-pinned-agent", agent.id);
-        startDrag(agent.id);
+        e.dataTransfer.setData(
+          "application/x-okou-pinned-agent",
+          agent.agentId,
+        );
+        startDrag(agent.agentId);
       }}
       onDragEnd={() => {
         endDrag();
@@ -346,10 +351,10 @@ function PinnedAgentGridCard({
           return;
         }
         e.dataTransfer.dropEffect = "move";
-        setDropTarget(agent.id);
+        setDropTarget(agent.agentId);
       }}
       onDragLeave={() => {
-        if (dropTargetAgentId === agent.id) {
+        if (dropTargetAgentId === agent.agentId) {
           setDropTarget(null);
         }
       }}
@@ -363,7 +368,7 @@ function PinnedAgentGridCard({
         }
         detach(
           moveAgent(
-            { agentId: draggingAgentId, targetAgentId: agent.id },
+            { agentId: draggingAgentId, targetAgentId: agent.agentId },
             pageSignal,
           ),
           Reason.DomCallback,
@@ -396,7 +401,7 @@ function PinnedAgentGridCard({
       )}
       <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
         <AgentAvatarImg
-          name={agent.id}
+          name={agent.agentId}
           alt=""
           className="h-9 w-9 rounded-full object-cover object-top"
         />
@@ -437,10 +442,10 @@ function resolveDropSide({
     return null;
   }
   const from = agents.findIndex((a) => {
-    return a.id === draggingAgentId;
+    return a.agentId === draggingAgentId;
   });
   const to = agents.findIndex((a) => {
-    return a.id === agentId;
+    return a.agentId === agentId;
   });
   if (from === -1 || to === -1 || from === to) {
     return null;
@@ -505,7 +510,7 @@ export function PinnedAgentListSection({
     pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
   const pinnedAgentIds = new Set(
     pinnedAgents.map((agent) => {
-      return agent.id;
+      return agent.agentId;
     }),
   );
   const displayedPinnedAgents =
@@ -533,14 +538,14 @@ export function PinnedAgentListSection({
           )
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
-              isChatRoute(activeRoute) && selectedAgentId === agent.id;
-            const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
-            const isPinned = pinnedAgentIds.has(agent.id);
-            const isDefaultAgent = agent.id === defaultAgentId;
+              isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
+            const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
+            const isPinned = pinnedAgentIds.has(agent.agentId);
+            const isDefaultAgent = agent.agentId === defaultAgentId;
             return (
               <PinnedAgentContextDecorator
-                key={agent.id}
-                agentId={agent.id}
+                key={agent.agentId}
+                agentId={agent.agentId}
                 isDefaultAgent={isDefaultAgent}
                 isPinned={isPinned}
                 hasUnread={hasUnread}
@@ -554,7 +559,7 @@ export function PinnedAgentListSection({
                     agents: horizontalPinnedAgents,
                     draggingAgentId,
                     dropTargetAgentId,
-                    agentId: agent.id,
+                    agentId: agent.agentId,
                   })}
                 />
               </PinnedAgentContextDecorator>
@@ -668,21 +673,21 @@ export function PinnedAgentListSection({
           {pinnedAgentsLoadable.state === "hasData" &&
             displayedPinnedAgents.map((agent) => {
               const isPrimarySelected =
-                isChatRoute(activeRoute) && selectedAgentId === agent.id;
-              const isFromChat = sidebarAgentId === agent.id;
-              const isPinned = pinnedAgentIds.has(agent.id);
-              const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
-              const isDefaultAgent = agent.id === defaultAgentId;
+                isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
+              const isFromChat = sidebarAgentId === agent.agentId;
+              const isPinned = pinnedAgentIds.has(agent.agentId);
+              const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
+              const isDefaultAgent = agent.agentId === defaultAgentId;
               const hasSideActions = hasUnread || (!isDefaultAgent && isPinned);
               return (
                 <div
-                  key={agent.id}
+                  key={agent.agentId}
                   className="group relative"
                   data-testid="pinned-agent-card"
                 >
                   <Link
                     pathname="/agents/:agentId/chat"
-                    options={{ pathParams: { agentId: agent.id } }}
+                    options={{ pathParams: { agentId: agent.agentId } }}
                     onClick={(e) => {
                       if (e.metaKey || e.ctrlKey || e.shiftKey) {
                         return;
@@ -700,17 +705,17 @@ export function PinnedAgentListSection({
                     }`}
                   >
                     <AgentAvatarImg
-                      name={agent.id}
-                      alt={agent.displayName ?? agent.id}
+                      name={agent.agentId}
+                      alt={agent.displayName ?? agent.agentId}
                       className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                     />
                     <span className="truncate">
-                      {agent.displayName ?? agent.id}
+                      {agent.displayName ?? agent.agentId}
                     </span>
                   </Link>
                   {hasSideActions ? (
                     <PinnedAgentSideDecorator
-                      agentId={agent.id}
+                      agentId={agent.agentId}
                       isDefaultAgent={isDefaultAgent}
                       isPinned={isPinned}
                       isPrimarySelected={isPrimarySelected}

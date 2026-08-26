@@ -21,6 +21,7 @@ import {
 import {
   agentsByIdContract,
   agentInstructionsContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
   workflowsCollectionContract,
@@ -42,7 +43,6 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -117,16 +117,18 @@ function applyCustomConnectorUpdate(
   return [...requested];
 }
 
-function createAgent(id: string, displayName: string): TeamComposeItem {
+function createAgent(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: "test-owner-id",
     displayName,
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    updatedAt: "2024-01-02T00:00:00Z",
   };
 }
 
@@ -426,7 +428,7 @@ function mockTeamAPIs({
   readonly customConnector?: CustomConnectorResponse;
   readonly onCustomConnectorUpdate?: () => void;
 } = {}): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     createAgent(agentId, "Support Agent"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
@@ -864,7 +866,7 @@ describe("team page navigation", () => {
 
   it("shows a retryable error when agent details fail to load", async () => {
     const unavailableAgentId = "bbbbbbbb-0000-4000-a000-000000000500";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       createAgent(unavailableAgentId, "Archived Agent"),
       createAgent(researchAgentId, "Research Agent"),
     ]);

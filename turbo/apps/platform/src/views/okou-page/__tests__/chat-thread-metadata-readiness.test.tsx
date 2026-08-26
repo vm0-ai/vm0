@@ -69,16 +69,15 @@ afterAll(() => {
 });
 
 function prepareAgent(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2026-08-26T00:00:00.000Z",
     },
   ]);
 }

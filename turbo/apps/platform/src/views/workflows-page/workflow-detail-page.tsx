@@ -2220,7 +2220,7 @@ function WorkflowPublicToggle({
 }
 
 interface WorkflowCopyAgent {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName: string | null;
 }
 
@@ -2355,8 +2355,8 @@ function WorkflowCopyForm({
             <SelectContent>
               {agents.map((agent) => {
                 return (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.displayName ?? agent.id}
+                  <SelectItem key={agent.agentId} value={agent.agentId}>
+                    {agent.displayName ?? agent.agentId}
                   </SelectItem>
                 );
               })}
@@ -2423,7 +2423,7 @@ function WorkflowCopyDialog({
   const agentsLoaded = agentsLoadable.state === "hasData";
   const agents = agentsLoaded
     ? agentsLoadable.data.filter((agent) => {
-        return agent.id !== detail.agentId;
+        return agent.agentId !== detail.agentId;
       })
     : [];
   const submitting =
@@ -2439,7 +2439,7 @@ function WorkflowCopyDialog({
       return automation.id;
     });
   const selectedAgent = agents.find((agent) => {
-    return agent.id === form.selectedAgentId;
+    return agent.agentId === form.selectedAgentId;
   });
   const agentName =
     selectedAgent?.displayName ??

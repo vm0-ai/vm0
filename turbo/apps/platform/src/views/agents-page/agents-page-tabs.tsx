@@ -292,9 +292,9 @@ function AgentGrid({
       {agents.map((agent) => {
         return (
           <Link
-            key={agent.id}
+            key={agent.agentId}
             pathname="/agents/:agentId"
-            options={{ pathParams: { agentId: agent.id } }}
+            options={{ pathParams: { agentId: agent.agentId } }}
             className="block no-underline text-inherit"
           >
             <AgentCard
@@ -306,7 +306,7 @@ function AgentGrid({
                   return $.list.cards.unknownCreator;
                 }),
               )}
-              hasUnread={unreadAgentIds?.has(agent.id) ?? false}
+              hasUnread={unreadAgentIds?.has(agent.agentId) ?? false}
               showCreator={showCreator}
             />
           </Link>
@@ -621,7 +621,7 @@ function CreateTeammateDialogContent({
 
 type AgentProps = {
   agent: {
-    id: string;
+    agentId: string;
     ownerId?: string;
     displayName?: string | null;
     description?: string | null;
@@ -695,8 +695,8 @@ function AgentUnreadIndicator() {
 function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
   const { t } = useTranslation("agents");
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const lead = agent.id === defaultAgentId;
-  const displayName = agent.displayName ?? agent.id;
+  const lead = agent.agentId === defaultAgentId;
+  const displayName = agent.displayName ?? agent.agentId;
   const description = defaultAgentId
     ? agent.description ||
       (lead
@@ -713,7 +713,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">
             <AgentAvatarImg
-              name={agent.id}
+              name={agent.agentId}
               alt={displayName}
               className="h-10 w-10 rounded-full object-cover object-top"
             />

@@ -356,7 +356,7 @@ function createCustomConnectorSignals(
     );
     return (authorizedAgentsByConnectorId.get(connector.id) ?? []).some(
       (agent) => {
-        return agent.id === descriptor.agentId;
+        return agent.agentId === descriptor.agentId;
       },
     );
   });

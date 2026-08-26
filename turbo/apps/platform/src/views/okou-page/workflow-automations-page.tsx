@@ -5,7 +5,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import type {
   WorkflowSummary,
   WorkflowAutomationSummary,
@@ -610,7 +610,7 @@ function WorkflowAgentAvatar({
   agent,
   label,
 }: {
-  readonly agent: TeamComposeItem | undefined;
+  readonly agent: AgentResponse | undefined;
   readonly label: string;
 }) {
   const className =
@@ -772,7 +772,7 @@ function WorkflowSelectionStep({
   onCreateWorkflow,
 }: {
   readonly workflows: readonly WorkflowSummary[];
-  readonly agents: readonly TeamComposeItem[];
+  readonly agents: readonly AgentResponse[];
   readonly loading: boolean;
   readonly onSelectWorkflow: (workflow: WorkflowSummary) => void;
   readonly onCreateWorkflow: () => void;
@@ -826,7 +826,7 @@ function WorkflowSelectionStep({
           {workflows.map((workflow) => {
             const label = agentLabel(workflow);
             const agent = agents.find((item) => {
-              return item.id === workflow.agentId;
+              return item.agentId === workflow.agentId;
             });
             return (
               <button
@@ -877,7 +877,7 @@ function AgentSelectionStep({
   agents,
   onSelectAgent,
 }: {
-  readonly agents: readonly TeamComposeItem[];
+  readonly agents: readonly AgentResponse[];
   readonly onSelectAgent: (agentId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -886,10 +886,10 @@ function AgentSelectionStep({
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const pinnedIdSet = new Set(pinnedIds);
   const pinned = agents.filter((agent) => {
-    return pinnedIdSet.has(agent.id);
+    return pinnedIdSet.has(agent.agentId);
   });
   const unpinned = agents.filter((agent) => {
-    return !pinnedIdSet.has(agent.id);
+    return !pinnedIdSet.has(agent.agentId);
   });
   const trimmedQuery = query.trim().toLowerCase();
   const filteredPinned = trimmedQuery
@@ -931,13 +931,13 @@ function AgentSelectionStep({
             {filteredPinned.map((agent) => {
               return (
                 <div
-                  key={agent.id}
+                  key={agent.agentId}
                   className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}
                     onSelect={() => {
-                      onSelectAgent(agent.id);
+                      onSelectAgent(agent.agentId);
                     }}
                   />
                 </div>
@@ -962,13 +962,13 @@ function AgentSelectionStep({
             {filteredUnpinned.map((agent) => {
               return (
                 <div
-                  key={agent.id}
+                  key={agent.agentId}
                   className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-state-hover"
                 >
                   <AgentDialogAgentButton
                     agent={agent}
                     onSelect={() => {
-                      onSelectAgent(agent.id);
+                      onSelectAgent(agent.agentId);
                     }}
                   />
                 </div>
@@ -1028,7 +1028,7 @@ export function CreateWorkflowAutomationDialog() {
   const selectedAgentId = selectedAgentIdState;
   const selectedAgent =
     agents.find((agent) => {
-      return agent.id === selectedAgentId;
+      return agent.agentId === selectedAgentId;
     }) ?? null;
 
   const startChatCreation = (agentId: string, prompt: string) => {

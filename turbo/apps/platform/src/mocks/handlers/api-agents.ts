@@ -1,8 +1,4 @@
 import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
-import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
@@ -10,7 +6,9 @@ import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-con
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   agentsByIdContract,
+  agentsMainContract,
   agentInstructionsContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
   chatSearchContract,
@@ -27,25 +25,51 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { mockApi } from "../msw-contract.ts";
 
-const DEFAULT_TEAM: TeamComposeItem[] = [
+const DEFAULT_AGENTS: AgentResponse[] = [
   {
-    id: "c0000000-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    ownerId: "user_mock",
     displayName: null,
     description: null,
     sound: null,
     avatarUrl: null,
-    updatedAt: "2024-01-01T00:00:00Z",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
   },
 ];
 
-let mockTeam: TeamComposeItem[] = [...DEFAULT_TEAM];
+let mockAgents: AgentResponse[] = [...DEFAULT_AGENTS];
 
-export function setMockTeam(team: TeamComposeItem[]): void {
-  mockTeam = team;
+type MockAgentResponse = Pick<AgentResponse, "agentId"> &
+  Partial<Omit<AgentResponse, "agentId">>;
+
+export function createMockAgentResponse(
+  agent: MockAgentResponse,
+): AgentResponse {
+  return {
+    ownerId: "user_mock",
+    displayName: null,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
+    ...agent,
+  };
 }
 
-export function resetMockTeam(): void {
-  mockTeam = [...DEFAULT_TEAM];
+export function setMockAgents(agents: MockAgentResponse[]): void {
+  mockAgents = agents.map((agent) => {
+    return createMockAgentResponse(agent);
+  });
+}
+
+export function resetMockAgents(): void {
+  mockAgents = [...DEFAULT_AGENTS];
 }
 
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
@@ -105,9 +129,9 @@ function mockCustomConnectorGrantUpdateResponse(
 }
 
 export const apiAgentsHandlers = [
-  // GET /api/team
-  mockApi(teamContract.list, ({ respond }) => {
-    return respond(200, mockTeam);
+  // GET /api/agents
+  mockApi(agentsMainContract.list, ({ respond }) => {
+    return respond(200, mockAgents);
   }),
 
   // GET /api/agents/:id/user-connectors

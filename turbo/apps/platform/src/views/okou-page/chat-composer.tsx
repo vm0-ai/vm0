@@ -10682,7 +10682,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const agentRecordId = signals.agentId;
   const displayName =
     agents.find((agent) => {
-      return agent.id === agentRecordId;
+      return agent.agentId === agentRecordId;
     })?.displayName ?? "";
 
   const authorizedConnectors = matchingAuthorizedConnectorSlugs(

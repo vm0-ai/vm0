@@ -279,27 +279,25 @@ export function mockAgent(options?: {
 }): void {
   const agents = [
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       displayName: "Scout",
       description: null,
       sound: null,
       avatarUrl: null,
-      updatedAt: "2024-01-01T00:00:00Z",
     },
     ...(options?.includeOtherAgent
       ? [
           {
-            id: OTHER_AGENT_ID,
+            agentId: OTHER_AGENT_ID,
             displayName: "Other Agent",
             description: null,
             sound: null,
             avatarUrl: null,
-            updatedAt: "2024-01-01T00:00:00Z",
           },
         ]
       : []),
   ];
-  context.mocks.data.team(agents);
+  context.mocks.data.agents(agents);
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const isOtherAgent = params.id === OTHER_AGENT_ID;
     return respond(200, {

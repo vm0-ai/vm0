@@ -33,7 +33,7 @@ interface AgentListDialogChatMessageResult {
 }
 
 interface AgentListDialogSearchAgent {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName?: string | null;
 }
 
@@ -41,7 +41,7 @@ function agentSearchRank(
   agent: AgentListDialogSearchAgent,
   query: string,
 ): number | null {
-  const values = [agent.displayName ?? "", agent.id].map((value) => {
+  const values = [agent.displayName ?? "", agent.agentId].map((value) => {
     return value.toLowerCase();
   });
   if (

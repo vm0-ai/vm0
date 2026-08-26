@@ -50,7 +50,7 @@ function useAgentAvatarState(id: string): AgentAvatarState {
     return { src: null, rawAvatarUrl: null };
   }
   const agent = resolved.find((a) => {
-    return a.id === id;
+    return a.agentId === id;
   });
   const rawAvatarUrl = agent?.avatarUrl;
   const dbAvatar = resolveAvatarUrl(rawAvatarUrl);

@@ -1,7 +1,7 @@
 import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -16,22 +16,26 @@ const { set$: setLastUsedAgentId$, clear$: clearLastUsedAgentId$ } =
   localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 const DEFAULT_AGENT = {
-  id: "c0000000-0000-4000-a000-000000000001",
+  agentId: "c0000000-0000-4000-a000-000000000001",
+  ownerId: "user_mock",
   displayName: "Zero",
   description: null,
   sound: null,
   avatarUrl: null,
-  updatedAt: "2026-08-18T00:00:00Z",
-} satisfies TeamComposeItem;
+  modelProviderId: null,
+  selectedModel: null,
+  preferPersonalProvider: false,
+  visibility: "private",
+} satisfies AgentResponse;
 
 describe("settings deep-link handoff", () => {
   it("waits for the stable agent route before opening settings", async () => {
-    context.store.set(setLastUsedAgentId$, DEFAULT_AGENT.id);
-    const teamRequestStarted = context.mocks.deferred<void>();
-    const releaseTeamRequest = context.mocks.deferred<void>();
-    context.mocks.api(teamContract.list, async ({ respond }) => {
-      teamRequestStarted.resolve(undefined);
-      await releaseTeamRequest.promise;
+    context.store.set(setLastUsedAgentId$, DEFAULT_AGENT.agentId);
+    const agentsRequestStarted = context.mocks.deferred<void>();
+    const releaseAgentsRequest = context.mocks.deferred<void>();
+    context.mocks.api(agentsMainContract.list, async ({ respond }) => {
+      agentsRequestStarted.resolve(undefined);
+      await releaseAgentsRequest.promise;
       return respond(200, [DEFAULT_AGENT]);
     });
 
@@ -40,15 +44,15 @@ describe("settings deep-link handoff", () => {
       path: "/?settings=billing&billingView=plans",
     });
 
-    await teamRequestStarted.promise;
+    await agentsRequestStarted.promise;
     expect(
       screen.queryByRole("dialog", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
 
-    releaseTeamRequest.resolve(undefined);
+    releaseAgentsRequest.resolve(undefined);
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${DEFAULT_AGENT.id}/chat`);
+      expect(pathname()).toBe(`/agents/${DEFAULT_AGENT.agentId}/chat`);
     });
     await expect(
       screen.findByRole("dialog", { name: "Choose a plan" }),

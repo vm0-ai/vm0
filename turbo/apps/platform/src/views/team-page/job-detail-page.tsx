@@ -985,10 +985,10 @@ function AgentProfileSettings({
     agentsLoadable.state === "hasData"
       ? agentsLoadable.data
           .filter((agent) => {
-            return agent.id !== agentId;
+            return agent.agentId !== agentId;
           })
           .map((agent) => {
-            return { id: agent.id, displayName: agent.displayName };
+            return { id: agent.agentId, displayName: agent.displayName };
           })
       : [];
 

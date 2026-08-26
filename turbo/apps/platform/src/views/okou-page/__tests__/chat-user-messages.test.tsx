@@ -350,22 +350,20 @@ describe("user messages", () => {
     const threadId = "b0000000-0000-4000-a000-000000000749";
     const mentionedAgentId = "a1000000-0000-4000-a000-000000000009";
     const mentionedAgentAvatarUrl = "https://example.com/ada-agent-avatar.png";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       {
-        id: "c0000000-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
         sound: null,
         avatarUrl: null,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: mentionedAgentId,
+        agentId: mentionedAgentId,
         displayName: "Ada",
         description: null,
         sound: null,
         avatarUrl: mentionedAgentAvatarUrl,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
     mockChatLifecycle(context, {
@@ -454,22 +452,20 @@ describe("user messages", () => {
     const targetRunId = "d0000000-0000-4000-a000-000000000750";
     const sourceAgentId = "a1000000-0000-4000-a000-000000000010";
     const sourceAgentAvatarUrl = "https://example.com/source-agent-avatar.png";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       {
-        id: "c0000000-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
         sound: null,
         avatarUrl: null,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: sourceAgentId,
+        agentId: sourceAgentId,
         displayName: "Source agent",
         description: null,
         sound: null,
         avatarUrl: sourceAgentAvatarUrl,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
     mockChatLifecycle(context, {
@@ -534,22 +530,20 @@ describe("user messages", () => {
     const sourceThreadId = "b0000000-0000-4000-a000-000000000753";
     const sourceRunId = "d0000000-0000-4000-a000-000000000753";
     const sourceAgentId = "a1000000-0000-4000-a000-000000000011";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       {
-        id: "c0000000-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
         sound: null,
         avatarUrl: null,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: sourceAgentId,
+        agentId: sourceAgentId,
         displayName: "Source agent",
         description: null,
         sound: null,
         avatarUrl: "https://example.com/source-agent-avatar.png",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
     context.mocks.api(logsListContract.list, ({ respond }) => {
@@ -623,22 +617,20 @@ describe("user messages", () => {
     const sourceRunId = "d0000000-0000-4000-a000-000000000756";
     const sourceAgentId = "a1000000-0000-4000-a000-000000000012";
     const createdAt = "2026-08-04T10:00:00Z";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       {
-        id: "c0000000-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
         sound: null,
         avatarUrl: null,
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: sourceAgentId,
+        agentId: sourceAgentId,
         displayName: "Source agent",
         description: null,
         sound: null,
         avatarUrl: "https://example.com/source-agent-avatar.png",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
     context.mocks.api(browserContract.get, ({ respond }) => {
