@@ -20,6 +20,3 @@ export const HYPERFRAMES_RUNTIME = {
   version: "0.8.14",
   packageSpec: "hyperframes@0.8.14",
 } as const;
-
-export const HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV =
-  "OKOU_HYPERFRAMES_VIDEO_TEMPLATES_ENABLED";

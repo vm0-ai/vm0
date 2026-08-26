@@ -2,41 +2,45 @@ import {
   HYPERFRAMES_AUTHORING_SOURCE,
   HYPERFRAMES_RUNTIME,
 } from "@okouai/core/hyperframes-source";
-import type { HyperframesTemplateItem } from "@okouai/core/hyperframes-template-items";
+import type { IntroVideoTemplateItem } from "@okouai/core/intro-video-template-items";
 
-interface HyperframesTemplateAuthoringOptions {
+interface IntroVideoTemplateAuthoringOptions {
   readonly prompt: string;
-  readonly template: HyperframesTemplateItem;
+  readonly template: IntroVideoTemplateItem;
 }
 
-interface HyperframesTemplateAuthoringPacket {
-  readonly type: "hyperframes-authoring";
-  readonly kind: "intro-video";
+interface IntroVideoTemplateAuthoringPacket {
+  readonly type: "intro-video-authoring";
   readonly prompt: string;
-  readonly source: typeof HYPERFRAMES_AUTHORING_SOURCE;
-  readonly runtime: typeof HYPERFRAMES_RUNTIME;
-  readonly template: HyperframesTemplateItem;
+  readonly implementation: {
+    readonly type: "hyperframes";
+    readonly source: typeof HYPERFRAMES_AUTHORING_SOURCE;
+    readonly runtime: typeof HYPERFRAMES_RUNTIME;
+  };
+  readonly template: IntroVideoTemplateItem;
   readonly instructions: string;
 }
 
-export function createHyperframesTemplateAuthoringPacket(
-  options: HyperframesTemplateAuthoringOptions,
-): HyperframesTemplateAuthoringPacket {
+export function createIntroVideoTemplateAuthoringPacket(
+  options: IntroVideoTemplateAuthoringOptions,
+): IntroVideoTemplateAuthoringPacket {
   const sourceDir = "./generated/resources/hyperframes";
   const projectDir = `./generated/videos/${options.template.slug}`;
   const workflowSkillPath =
     HYPERFRAMES_AUTHORING_SOURCE.workflowSkillPaths[
-      options.template.workflow === "faceless-explainer"
+      options.template.implementation.workflow === "faceless-explainer"
         ? "facelessExplainer"
         : "productLaunchVideo"
     ];
   const storyBeats = options.template.story.beats.map((beat) => {
     return `- ${beat}`;
   });
-  const blueprintIds = options.template.motion.blueprintIds.map((id) => {
-    return `- ${id}`;
-  });
-  const ruleIds = options.template.motion.ruleIds.map((id) => {
+  const blueprintIds = options.template.implementation.motion.blueprintIds.map(
+    (id) => {
+      return `- ${id}`;
+    },
+  );
+  const ruleIds = options.template.implementation.motion.ruleIds.map((id) => {
     return `- ${id}`;
   });
   const instructions = [
@@ -50,7 +54,8 @@ export function createHyperframesTemplateAuthoringPacket(
     "## Selected Template Recipe",
     `- Template: ${options.template.title} (${options.template.id})`,
     `- Description: ${options.template.description}`,
-    `- Official workflow: ${options.template.workflow}`,
+    `- Implementation: ${options.template.implementation.label}`,
+    `- Official workflow: ${options.template.implementation.workflow}`,
     `- Story pattern: ${options.template.story.pattern}`,
     `- Framing rule: ${options.template.framingRule}`,
     "",
@@ -90,7 +95,7 @@ export function createHyperframesTemplateAuthoringPacket(
     "- Prefix init with `HYPERFRAMES_SKIP_SKILLS=1` so the pinned checkout is not replaced by global latest skills.",
     "",
     "## Authoring Flow",
-    `1. Scaffold with \`HYPERFRAMES_SKIP_SKILLS=1 npx --yes ${HYPERFRAMES_RUNTIME.packageSpec} init ${projectDir} --non-interactive --example=blank --skill=${options.template.workflow}\`.`,
+    `1. Scaffold with \`HYPERFRAMES_SKIP_SKILLS=1 npx --yes ${HYPERFRAMES_RUNTIME.packageSpec} init ${projectDir} --non-interactive --example=blank --skill=${options.template.implementation.workflow}\`.`,
     "2. Follow the checked-out workflow using the user's content and brand. Do not ask the user to choose story structure or motion again; this template recipe already supplies the defaults.",
     "3. Use the story beats as the narrative spine. Do not invent evidence that the source material does not support.",
     "4. Use the listed blueprints and rules as the preferred motion vocabulary when they fit the beat; do not force every reference into the cut.",
@@ -106,11 +111,13 @@ export function createHyperframesTemplateAuthoringPacket(
   ].join("\n");
 
   return {
-    type: "hyperframes-authoring",
-    kind: "intro-video",
+    type: "intro-video-authoring",
     prompt: options.prompt,
-    source: HYPERFRAMES_AUTHORING_SOURCE,
-    runtime: HYPERFRAMES_RUNTIME,
+    implementation: {
+      type: "hyperframes",
+      source: HYPERFRAMES_AUTHORING_SOURCE,
+      runtime: HYPERFRAMES_RUNTIME,
+    },
     template: options.template,
     instructions,
   };

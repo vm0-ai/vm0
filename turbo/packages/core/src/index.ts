@@ -32,13 +32,13 @@ export {
 export {
   HYPERFRAMES_AUTHORING_SOURCE,
   HYPERFRAMES_RUNTIME,
-  HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV,
 } from "./hyperframes-source";
 export {
-  HYPERFRAMES_TEMPLATE_ITEMS,
-  findHyperframesTemplateItem,
-  type HyperframesTemplateItem,
-} from "./hyperframes-template-items";
+  INTRO_VIDEO_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATES_ENABLED_ENV,
+  findIntroVideoTemplateItem,
+  type IntroVideoTemplateItem,
+} from "./intro-video-template-items";
 export {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,

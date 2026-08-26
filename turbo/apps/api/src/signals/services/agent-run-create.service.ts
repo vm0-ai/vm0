@@ -229,7 +229,7 @@ import {
   type PresentationRunbookArchiveVersion,
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
-import { HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/hyperframes-source";
+import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import {
   resolvePiSandboxModelConfig,
   shouldUsePiExecution,
@@ -6314,8 +6314,8 @@ function buildStoredPlatformEnvironment(args: {
   const platformEnvironment = {
     ...args.platformEnvironment,
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
-    [HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV]: isFeatureEnabled(
-      FeatureSwitchKey.HyperframesVideoTemplates,
+    [INTRO_VIDEO_TEMPLATES_ENABLED_ENV]: isFeatureEnabled(
+      FeatureSwitchKey.IntroVideoTemplates,
       args.featureSwitchContext,
     )
       ? "1"

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
-import { HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/hyperframes-source";
-import { HYPERFRAMES_TEMPLATE_ITEMS } from "@okouai/core/hyperframes-template-items";
+import {
+  INTRO_VIDEO_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATES_ENABLED_ENV,
+} from "@okouai/core/intro-video-template-items";
 
 import { generateCommand } from "../index";
 
@@ -16,7 +18,7 @@ describe("okou generate intro-video command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv(HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV, "1");
+    vi.stubEnv(INTRO_VIDEO_TEMPLATES_ENABLED_ENV, "1");
   });
 
   afterEach(() => {
@@ -26,7 +28,7 @@ describe("okou generate intro-video command", () => {
   });
 
   it("prints a locked Interview packet from the official HyperFrames source", async () => {
-    const template = HYPERFRAMES_TEMPLATE_ITEMS[0]!;
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
 
     await generateCommand.parseAsync([
       "node",
@@ -66,7 +68,7 @@ describe("okou generate intro-video command", () => {
   });
 
   it("rejects the command when the run switch is off", async () => {
-    vi.stubEnv(HYPERFRAMES_VIDEO_TEMPLATES_ENABLED_ENV, "0");
+    vi.stubEnv(INTRO_VIDEO_TEMPLATES_ENABLED_ENV, "0");
 
     await expect(async () => {
       await generateCommand.parseAsync([
@@ -74,7 +76,7 @@ describe("okou generate intro-video command", () => {
         "cli",
         "intro-video",
         "--template",
-        "hyperframes-template:interview",
+        "intro-video-template:interview",
         "--prompt",
         "Make an interview video",
       ]);
@@ -82,7 +84,7 @@ describe("okou generate intro-video command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "HyperFrames intro-video templates are not enabled for this run.",
+        "Intro-video templates are not enabled for this run.",
       ),
     );
     expect(mockConsoleLog).not.toHaveBeenCalled();

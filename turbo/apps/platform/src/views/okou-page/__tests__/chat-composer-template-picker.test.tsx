@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  HYPERFRAMES_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -529,15 +529,15 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("keeps the HyperFrames placeholder out of the picker while switched off", async () => {
+  it("keeps the intro-video placeholder out of the picker while switched off", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = HYPERFRAMES_TEMPLATE_ITEMS[0]!;
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.HyperframesVideoTemplates]: false,
+        [FeatureSwitchKey.IntroVideoTemplates]: false,
       },
       path: `/chats/${THREAD_ID}`,
     });
@@ -549,9 +549,9 @@ describe("chat composer templates", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("selects Interview as a switched-on HyperFrames video envelope", async () => {
+  it("selects Interview as a switched-on intro-video template", async () => {
     const user = userEvent.setup({ delay: null });
-    const template = HYPERFRAMES_TEMPLATE_ITEMS[0]!;
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -563,7 +563,7 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.HyperframesVideoTemplates]: true,
+        [FeatureSwitchKey.IntroVideoTemplates]: true,
       },
       path: `/chats/${THREAD_ID}`,
     });
@@ -587,8 +587,8 @@ describe("chat composer templates", () => {
     await user.click(screen.getByLabelText("Send"));
     await waitFor(() => {
       expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
-        type: "video",
-        selection: { stylePresetId: template.id },
+        type: "intro-video",
+        selection: { templateId: template.id },
       });
     });
   });

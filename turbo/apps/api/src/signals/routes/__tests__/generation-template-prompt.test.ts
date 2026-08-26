@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  HYPERFRAMES_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -418,20 +418,20 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("without `--template`");
   });
 
-  it("gates and resolves the HyperFrames intro-video authoring path", () => {
-    const item = HYPERFRAMES_TEMPLATE_ITEMS[0]!;
+  it("gates and resolves an intro-video template through its implementation", () => {
+    const item = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
     const selection = {
-      type: "video" as const,
-      selection: { stylePresetId: item.id },
+      type: "intro-video" as const,
+      selection: { templateId: item.id },
     };
 
     expect(buildGenerationTemplatePrompt(selection)).toStrictEqual({
       status: "invalid",
-      message: "Unknown video template",
+      message: "Unknown intro-video template",
     });
 
     const result = buildGenerationTemplatesPrompt([selection], {
-      hyperframesVideoTemplatesEnabled: true,
+      introVideoTemplatesEnabled: true,
     });
     expect(result.status).toBe("resolved");
     if (result.status !== "resolved") {
@@ -439,6 +439,7 @@ describe("buildGenerationTemplatePrompt", () => {
     }
     expect(result.prompt).toContain("## Template #1 (intro-video)");
     expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
+    expect(result.prompt).toContain("Implementation: HyperFrames");
     expect(result.prompt).toContain("Official workflow: faceless-explainer");
     expect(result.prompt).toContain(
       "heygen-com/hyperframes@6eaa2cb64b280c51cadb3843ce190f6f0b7493cc",

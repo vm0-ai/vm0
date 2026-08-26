@@ -132,10 +132,10 @@ import type { PresentationTemplateItem } from "@okouai/core/presentation-templat
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import type { VideoTemplateItem } from "@okouai/core/video-template-items";
 import {
-  HYPERFRAMES_TEMPLATE_ITEMS,
-  findHyperframesTemplateItem,
-  type HyperframesTemplateItem,
-} from "@okouai/core/hyperframes-template-items";
+  INTRO_VIDEO_TEMPLATE_ITEMS,
+  findIntroVideoTemplateItem,
+  type IntroVideoTemplateItem,
+} from "@okouai/core/intro-video-template-items";
 import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
@@ -194,7 +194,7 @@ import {
 import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
-  hyperframesVideoTemplatesEnabled$,
+  introVideoTemplatesEnabled$,
   imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
@@ -865,12 +865,9 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): string | undefined {
-  if (value?.type === "video") {
-    return (
-      avatarTemplateSelection(value)?.title ??
-      selectedVideoTemplateItem(value)?.title ??
-      selectedHyperframesTemplateItem(value)?.title
-    );
+  const videoTitle = selectedVideoFamilyTemplateTitle(value);
+  if (videoTitle !== undefined) {
+    return videoTitle;
   }
   if (value?.type === "workflow") {
     const workflowItem = selectedWorkflowTemplateItem(value);
@@ -886,6 +883,21 @@ function selectedTemplateTitle(
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
   );
+}
+
+function selectedVideoFamilyTemplateTitle(
+  value: GenerationTemplateRequest | undefined,
+): string | undefined {
+  if (value?.type === "video") {
+    return (
+      avatarTemplateSelection(value)?.title ??
+      selectedVideoTemplateItem(value)?.title
+    );
+  }
+  if (value?.type === "intro-video") {
+    return selectedIntroVideoTemplateItem(value)?.title;
+  }
+  return undefined;
 }
 
 function selectedPresentationTemplateItem(
@@ -967,34 +979,34 @@ function selectedVideoTemplateItem(
   return findVideoTemplateItem(value.selection.stylePresetId);
 }
 
-function isSelectedHyperframesTemplate(
-  item: HyperframesTemplateItem,
+function isSelectedIntroVideoTemplate(
+  item: IntroVideoTemplateItem,
   value: GenerationTemplateRequest | undefined,
 ): boolean {
   return (
-    value?.type === "video" &&
-    findHyperframesTemplateItem(value.selection.stylePresetId)?.id === item.id
+    value?.type === "intro-video" &&
+    findIntroVideoTemplateItem(value.selection.templateId)?.id === item.id
   );
 }
 
-function toHyperframesGenerationTemplate(
-  item: HyperframesTemplateItem,
+function toIntroVideoGenerationTemplate(
+  item: IntroVideoTemplateItem,
 ): GenerationTemplateRequest {
   return {
-    type: "video",
+    type: "intro-video",
     selection: {
-      stylePresetId: item.id,
+      templateId: item.id,
     },
   };
 }
 
-function selectedHyperframesTemplateItem(
+function selectedIntroVideoTemplateItem(
   value: GenerationTemplateRequest | undefined,
-): HyperframesTemplateItem | undefined {
-  if (value?.type !== "video") {
+): IntroVideoTemplateItem | undefined {
+  if (value?.type !== "intro-video") {
     return undefined;
   }
-  return findHyperframesTemplateItem(value.selection.stylePresetId);
+  return findIntroVideoTemplateItem(value.selection.templateId);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1284,26 +1296,26 @@ function VideoTemplateCard({
 
 function VideoTemplateGrid({
   items,
-  hyperframesItems,
+  introVideoItems,
   value,
   onSelect,
-  onSelectHyperframes,
+  onSelectIntroVideo,
 }: {
   items: readonly VideoTemplateItem[];
-  hyperframesItems: readonly HyperframesTemplateItem[];
+  introVideoItems: readonly IntroVideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoTemplateItem) => void;
-  onSelectHyperframes: (item: HyperframesTemplateItem) => void;
+  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {hyperframesItems.map((item) => {
+      {introVideoItems.map((item) => {
         return (
-          <HyperframesTemplateCard
+          <IntroVideoTemplateCard
             key={item.id}
             item={item}
-            selected={isSelectedHyperframesTemplate(item, value)}
-            onSelect={onSelectHyperframes}
+            selected={isSelectedIntroVideoTemplate(item, value)}
+            onSelect={onSelectIntroVideo}
           />
         );
       })}
@@ -1321,14 +1333,14 @@ function VideoTemplateGrid({
   );
 }
 
-function HyperframesTemplateCard({
+function IntroVideoTemplateCard({
   item,
   selected,
   onSelect,
 }: {
-  item: HyperframesTemplateItem;
+  item: IntroVideoTemplateItem;
   selected: boolean;
-  onSelect: (item: HyperframesTemplateItem) => void;
+  onSelect: (item: IntroVideoTemplateItem) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -1351,7 +1363,7 @@ function HyperframesTemplateCard({
                 {item.title}
               </span>
               <span className="ml-auto rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
-                {item.engineLabel}
+                {item.implementation.label}
               </span>
             </div>
             <div className="mt-3 rounded-xl bg-neutral-100 px-3 py-2 text-[10px] font-medium leading-4 text-neutral-700">
@@ -6284,9 +6296,9 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const hyperframesTemplatesEnabled = useGet(hyperframesVideoTemplatesEnabled$);
-  const hyperframesItems = hyperframesTemplatesEnabled
-    ? HYPERFRAMES_TEMPLATE_ITEMS
+  const introVideoTemplatesEnabled = useGet(introVideoTemplatesEnabled$);
+  const introVideoItems = introVideoTemplatesEnabled
+    ? INTRO_VIDEO_TEMPLATE_ITEMS
     : [];
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
@@ -6452,8 +6464,8 @@ function TemplatePickerDialog({
     closeTemplatePicker();
   };
 
-  const handleSelectHyperframes = (item: HyperframesTemplateItem) => {
-    onChange(toHyperframesGenerationTemplate(item));
+  const handleSelectIntroVideo = (item: IntroVideoTemplateItem) => {
+    onChange(toIntroVideoGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -6710,7 +6722,7 @@ function TemplatePickerDialog({
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
-                hyperframesItems={hyperframesItems}
+                introVideoItems={introVideoItems}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6726,7 +6738,7 @@ function TemplatePickerDialog({
                 onSelectIllustration={handleSelectIllustration}
                 onIllustrationVariantChange={setIllustrationVariantIndex}
                 onSelectVideo={handleSelectVideo}
-                onSelectHyperframes={handleSelectHyperframes}
+                onSelectIntroVideo={handleSelectIntroVideo}
                 onSelectAvatar={handleSelectAvatar}
                 onWorkflowCategoryChange={setWorkflowCategoryFilter}
                 onSelectWorkflow={handleSelectWorkflow}
@@ -6769,7 +6781,7 @@ function TemplatePickerCategoryContent({
   websiteItems,
   illustrationItems,
   videoItems,
-  hyperframesItems,
+  introVideoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -6785,7 +6797,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
-  onSelectHyperframes,
+  onSelectIntroVideo,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -6801,7 +6813,7 @@ function TemplatePickerCategoryContent({
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
-  hyperframesItems: readonly HyperframesTemplateItem[];
+  introVideoItems: readonly IntroVideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -6826,7 +6838,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
-  onSelectHyperframes: (item: HyperframesTemplateItem) => void;
+  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
   onSelectAvatar: (
     avatar: AvatarVideoAvatar,
     voice: AvatarVideoVoice,
@@ -6921,13 +6933,13 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 || hyperframesItems.length > 0 ? (
+        {videoItems.length > 0 || introVideoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
-            hyperframesItems={hyperframesItems}
+            introVideoItems={introVideoItems}
             value={value}
             onSelect={onSelectVideo}
-            onSelectHyperframes={onSelectHyperframes}
+            onSelectIntroVideo={onSelectIntroVideo}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -7045,9 +7057,13 @@ function selectedComposerTemplateAttachment(
   if (videoItem) {
     return { type: "video", title: videoItem.title, category: "video" };
   }
-  const hyperframesItem = selectedHyperframesTemplateItem(value);
-  if (hyperframesItem) {
-    return { type: "video", title: hyperframesItem.title, category: "video" };
+  const introVideoItem = selectedIntroVideoTemplateItem(value);
+  if (introVideoItem) {
+    return {
+      type: "intro-video",
+      title: introVideoItem.title,
+      category: "video",
+    };
   }
   const workflowItem = selectedWorkflowTemplateItem(value);
   if (workflowItem) {

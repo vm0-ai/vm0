@@ -34,9 +34,9 @@ import {
   HYPERFRAMES_RUNTIME,
 } from "@okouai/core/hyperframes-source";
 import {
-  findHyperframesTemplateItem,
-  type HyperframesTemplateItem,
-} from "@okouai/core/hyperframes-template-items";
+  findIntroVideoTemplateItem,
+  type IntroVideoTemplateItem,
+} from "@okouai/core/intro-video-template-items";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -60,6 +60,13 @@ interface VideoGenerationTemplateInput {
     readonly voiceId?: string;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly aspectRatio?: "portrait" | "landscape" | "square";
+  };
+}
+
+interface IntroVideoGenerationTemplateInput {
+  readonly type: "intro-video";
+  readonly selection: {
+    readonly templateId: string;
   };
 }
 
@@ -87,6 +94,7 @@ interface WebsiteGenerationTemplateInput {
 type GenerationTemplateInput =
   | PresentationGenerationTemplateInput
   | VideoGenerationTemplateInput
+  | IntroVideoGenerationTemplateInput
   | IllustrationGenerationTemplateInput
   | WorkflowGenerationTemplateInput
   | WebsiteGenerationTemplateInput;
@@ -112,13 +120,6 @@ function generationTemplateTypeLabel(
   ) {
     return "avatar";
   }
-  if (
-    generationTemplate.type === "video" &&
-    findHyperframesTemplateItem(generationTemplate.selection.stylePresetId) !==
-      undefined
-  ) {
-    return "intro-video";
-  }
   return generationTemplate.type;
 }
 
@@ -133,7 +134,7 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
-  readonly hyperframesVideoTemplatesEnabled?: boolean;
+  readonly introVideoTemplatesEnabled?: boolean;
   readonly latestWebsiteTemplatesEnabled?: boolean;
   readonly latestPresentationTemplatesEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
@@ -149,9 +150,12 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    return buildVideoGenerationTemplatePrompt(
+    return buildVideoGenerationTemplatePrompt(generationTemplate);
+  }
+  if (generationTemplate.type === "intro-video") {
+    return buildIntroVideoGenerationTemplatePrompt(
       generationTemplate,
-      options.hyperframesVideoTemplatesEnabled === true,
+      options.introVideoTemplatesEnabled === true,
     );
   }
   if (generationTemplate.type === "illustration") {
@@ -425,7 +429,6 @@ function buildWebsiteTemplatePackagePrompt(
 
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
-  hyperframesVideoTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const avatarId = parseAvatarTemplateStylePresetId(
     generationTemplate.selection.stylePresetId,
@@ -439,16 +442,6 @@ function buildVideoGenerationTemplatePrompt(
       avatarOptions.voiceId,
       avatarOptions.aspectRatio,
     );
-  }
-
-  const hyperframesTemplate = findHyperframesTemplateItem(
-    generationTemplate.selection.stylePresetId,
-  );
-  if (hyperframesTemplate) {
-    if (!hyperframesVideoTemplatesEnabled) {
-      return { status: "invalid", message: "Unknown video template" };
-    }
-    return buildHyperframesGenerationTemplatePrompt(hyperframesTemplate);
   }
 
   const template = findVideoTemplate(
@@ -481,19 +474,34 @@ function buildVideoGenerationTemplatePrompt(
   };
 }
 
-function buildHyperframesGenerationTemplatePrompt(
-  template: HyperframesTemplateItem,
+function buildIntroVideoGenerationTemplatePrompt(
+  generationTemplate: IntroVideoGenerationTemplateInput,
+  introVideoTemplatesEnabled: boolean,
+): GenerationTemplatePromptResult {
+  const template = findIntroVideoTemplateItem(
+    generationTemplate.selection.templateId,
+  );
+  if (!template || !introVideoTemplatesEnabled) {
+    return { status: "invalid", message: "Unknown intro-video template" };
+  }
+
+  return buildHyperframesIntroVideoGenerationTemplatePrompt(template);
+}
+
+function buildHyperframesIntroVideoGenerationTemplatePrompt(
+  template: IntroVideoTemplateItem,
 ): GenerationTemplatePromptResult {
   return {
     status: "resolved",
     prompt: [
       ...templateFraming("an intro video"),
-      "Selected HyperFrames intro-video template:",
+      "Selected intro-video template:",
       "- Artifact type: intro video",
       `- Template: ${template.title} (${template.id})`,
       `- Template description: ${template.description}`,
       `- Story pattern: ${template.story.pattern}`,
-      `- Official workflow: ${template.workflow}`,
+      `- Implementation: ${template.implementation.label}`,
+      `- Official workflow: ${template.implementation.workflow}`,
       `- Official source: ${HYPERFRAMES_AUTHORING_SOURCE.repo}@${HYPERFRAMES_AUTHORING_SOURCE.ref}`,
       `- Pinned runtime: ${HYPERFRAMES_RUNTIME.packageSpec}`,
       "",

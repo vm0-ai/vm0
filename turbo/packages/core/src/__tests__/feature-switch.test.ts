@@ -108,9 +108,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HyperframesVideoTemplates]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
@@ -145,9 +143,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HyperframesVideoTemplates]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
