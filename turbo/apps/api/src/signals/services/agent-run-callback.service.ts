@@ -143,6 +143,7 @@ const dispatchInternalCallback$ = command(
                 {
                   chatThreadId,
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+                  goalSchedulerOrigin: "chat_callback",
                   timing,
                 },
                 inputSignal,
