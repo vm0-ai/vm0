@@ -312,6 +312,36 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 
+  it("rejects legacy built-in policy writes with a provider ID", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const providerId = await createOrgProvider(fixture, "deepseek");
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const updates = toUpdate(listed.body).map((policy) => {
+      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
+        ? {
+            ...policy,
+            defaultProviderType: "vm0" as const,
+            modelProviderId: providerId,
+          }
+        : policy;
+    });
+
+    const response = await client.update({
+      headers: authHeaders(),
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Built-in routes cannot store a provider ID",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
     const fixture = await seedFixture();
     await makeLimitedFreeWorkspace(fixture);

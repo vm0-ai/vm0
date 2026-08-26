@@ -654,6 +654,12 @@ function getRouteStatus(params: {
     return { status: "valid", reason: null };
   }
   if (isBuiltInModelProviderType(providerType)) {
+    if (modelProviderId !== null) {
+      return {
+        status: "invalid",
+        reason: "Built-in routes cannot store a provider ID",
+      };
+    }
     return { status: "valid", reason: null };
   }
   if (!modelProviderId) {
