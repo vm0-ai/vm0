@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.803.1](https://github.com/vm0-ai/vm0/compare/app-v0.803.0...app-v0.803.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **platform:** keep cold start on one skeleton ([#29661](https://github.com/vm0-ai/vm0/issues/29661)) ([05c482c](https://github.com/vm0-ai/vm0/commit/05c482c4930e3209cd5853bbcef50205eee28983))
+
+
+### Refactoring
+
+* dual-accept built-in provider discriminator ([#29681](https://github.com/vm0-ai/vm0/issues/29681)) ([9a6d224](https://github.com/vm0-ai/vm0/commit/9a6d2247e14012fd5ba987bc44d1b6b11fb7bda1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.1
+    * @okouai/connectors bumped to 1.210.4
+    * @okouai/core bumped to 8.595.6
+
 ## [0.803.0](https://github.com/vm0-ai/vm0/compare/app-v0.802.0...app-v0.803.0) (2026-08-26)
 
 

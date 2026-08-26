@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.37...vsock-proto-v0.18.38) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.18.37](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.36...vsock-proto-v0.18.37) (2026-08-26)
 
 

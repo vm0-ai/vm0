@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.500.0](https://github.com/vm0-ai/vm0/compare/api-v1.499.0...api-v1.500.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** materialize chat tool activity ([#29665](https://github.com/vm0-ai/vm0/issues/29665)) ([8467582](https://github.com/vm0-ai/vm0/commit/8467582c87e631932861b04cc519278527e482e3))
+
+
+### Bug Fixes
+
+* **connectors:** maintain granted scopes across refresh ([#29678](https://github.com/vm0-ai/vm0/issues/29678)) ([53d0726](https://github.com/vm0-ai/vm0/commit/53d0726c562144917cf3697499cad0418fdead91))
+
+
+### Refactoring
+
+* **api:** cut over backend url writers to canonical alias ([#29664](https://github.com/vm0-ai/vm0/issues/29664)) ([41db895](https://github.com/vm0-ai/vm0/commit/41db895076754aac05d718bf8f230c8fc9330a40))
+* dual-accept built-in provider discriminator ([#29681](https://github.com/vm0-ai/vm0/issues/29681)) ([9a6d224](https://github.com/vm0-ai/vm0/commit/9a6d2247e14012fd5ba987bc44d1b6b11fb7bda1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.1
+    * @okouai/connectors bumped to 1.210.4
+    * @okouai/core bumped to 8.595.6
+    * @okouai/db bumped to 1.225.7
+
 ## [1.499.0](https://github.com/vm0-ai/vm0/compare/api-v1.498.1...api-v1.499.0) (2026-08-26)
 
 

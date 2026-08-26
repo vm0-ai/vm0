@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.253](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.252...sandbox-fc-v0.37.253) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.37.252](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.251...sandbox-fc-v0.37.252) (2026-08-26)
 
 
