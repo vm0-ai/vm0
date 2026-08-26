@@ -18,7 +18,8 @@ const SIZES = {
   },
   sm: {
     root: "h-4 w-7",
-    thumb: "h-3 w-3 data-checked:translate-x-3 data-unchecked:translate-x-0",
+    thumb:
+      "h-3 w-3 shadow-none data-checked:translate-x-3 data-unchecked:translate-x-0",
   },
 } as const;
 

@@ -307,7 +307,7 @@ describe("chat composer connector connection", () => {
     if (!accessLabel?.control) {
       throw new Error("Expected the Axiom label to target its access switch");
     }
-    expect(accessLabel.parentElement).toHaveClass("h-10");
+    expect(accessLabel.parentElement).toHaveClass("h-10", "shrink-0");
     expect(
       screen.getByLabelText("Configure Axiom permissions").closest("label"),
     ).toBeNull();
@@ -320,6 +320,7 @@ describe("chat composer connector connection", () => {
     const disconnectedAccess = await screen.findByLabelText("Add Axiom");
     expect(disconnectedAccess.closest("label")?.parentElement).toHaveClass(
       "h-10",
+      "shrink-0",
     );
     expect(
       screen.queryByLabelText("Configure Axiom permissions"),
