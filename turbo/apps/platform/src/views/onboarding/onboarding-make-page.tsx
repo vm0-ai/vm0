@@ -13,6 +13,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import type { TemplatePickerEntryCategory } from "../../signals/okou-page/template-picker-entry.ts";
 import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
 import { onboardingMakeOptions } from "./onboarding-data.ts";
@@ -47,19 +48,43 @@ function choicePath(choice: OnboardingChoice) {
       return ROUTES.onboardingWorkflowPicker;
     }
     case "presentation": {
-      return ROUTES.onboardingPresentationTemplate;
+      return ROUTES.home;
     }
     case "video": {
-      return ROUTES.onboardingVideoTemplate;
+      return ROUTES.home;
     }
     case "images": {
-      return ROUTES.onboardingImageTemplate;
+      return ROUTES.home;
     }
     case "website": {
       return ROUTES.home;
     }
     case "explore": {
       return ROUTES.home;
+    }
+  }
+}
+
+function choiceTemplatePickerCategory(
+  choice: OnboardingChoice,
+): TemplatePickerEntryCategory | null {
+  switch (choice) {
+    case "presentation": {
+      return "slides";
+    }
+    case "images": {
+      return "illustration";
+    }
+    case "video": {
+      return "video";
+    }
+    case "website": {
+      return "website";
+    }
+    case "slack":
+    case "workflow":
+    case "explore": {
+      return null;
     }
   }
 }
@@ -179,7 +204,12 @@ export function OnboardingMakePage() {
 
   const handleChoice = (choice: OnboardingChoice): void => {
     setDraft({ choice });
-    if (choice === "slack" || choice === "website" || choice === "explore") {
+    const templatePickerCategory = choiceTemplatePickerCategory(choice);
+    if (
+      choice === "slack" ||
+      templatePickerCategory !== null ||
+      choice === "explore"
+    ) {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
       const completeAndOpenDestination = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
@@ -187,7 +217,9 @@ export function OnboardingMakePage() {
           preserve: false,
           replace: true,
           updates:
-            choice === "website" ? { templatePicker: "website" } : undefined,
+            templatePickerCategory === null
+              ? undefined
+              : { templatePicker: templatePickerCategory },
         });
       };
       detach(completeAndOpenDestination(), Reason.DomCallback);

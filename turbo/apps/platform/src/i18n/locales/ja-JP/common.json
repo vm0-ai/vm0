@@ -3408,7 +3408,7 @@
         },
         "slack": {
           "description": "ワークスペースでAIチームメイトとチャット",
-          "title": "Slackを使う"
+          "title": "SlackでOkouとチャット"
         },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",
