@@ -16,7 +16,7 @@ import type {
 } from "@okouai/db/jsonb-contracts/agent-draft";
 
 export const agentDrafts = pgTable(
-  "zero_agent_drafts",
+  "agent_drafts",
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
@@ -31,17 +31,17 @@ export const agentDrafts = pgTable(
   (table) => {
     return {
       canonicalAgentFk: foreignKey({
-        name: "zero_agent_drafts_agent_id_agents_id_fk",
+        name: "agent_drafts_agent_id_agents_id_fk",
         columns: [table.agentId],
         foreignColumns: [agents.id],
       }).onDelete("cascade"),
-      userOrgAgentIdx: uniqueIndex("idx_zero_agent_drafts_user_org_agent").on(
+      userOrgAgentIdx: uniqueIndex("idx_agent_drafts_user_org_agent").on(
         table.userId,
         table.orgId,
         table.agentId,
       ),
       draftUserMessageCheck: check(
-        "zero_agent_drafts_draft_user_message_check",
+        "agent_drafts_draft_user_message_check",
         sql`${table.draftUserMessage} IS NOT NULL
           OR COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb`,
       ),

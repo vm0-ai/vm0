@@ -1331,6 +1331,13 @@
       "when": 1787673905270,
       "tag": "0997_agent_drafts_compatibility_relation",
       "breakpoints": true
+    },
+    {
+      "idx": 998,
+      "version": "7",
+      "when": 1787714630974,
+      "tag": "0998_agent_drafts_physical_switch",
+      "breakpoints": true
     }
   ]
 }

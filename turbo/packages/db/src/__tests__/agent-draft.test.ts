@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { agentDrafts } from "../schema/agent-draft";
 
 describe("agentDrafts schema", () => {
-  it("keeps the physical storage identifiers unchanged", () => {
+  it("uses canonical physical storage identifiers", () => {
     const config = getTableConfig(agentDrafts);
 
     expect({
@@ -18,8 +18,11 @@ describe("agentDrafts schema", () => {
       checks: config.checks.map((check) => {
         return check.name;
       }),
+      foreignKeys: config.foreignKeys.map((foreignKey) => {
+        return foreignKey.getName();
+      }),
     }).toStrictEqual({
-      table: "zero_agent_drafts",
+      table: "agent_drafts",
       columns: [
         "user_id",
         "org_id",
@@ -29,8 +32,9 @@ describe("agentDrafts schema", () => {
         "created_at",
         "updated_at",
       ],
-      indexes: ["idx_zero_agent_drafts_user_org_agent"],
-      checks: ["zero_agent_drafts_draft_user_message_check"],
+      indexes: ["idx_agent_drafts_user_org_agent"],
+      checks: ["agent_drafts_draft_user_message_check"],
+      foreignKeys: ["agent_drafts_agent_id_agents_id_fk"],
     });
   });
 
