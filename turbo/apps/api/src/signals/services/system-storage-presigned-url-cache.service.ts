@@ -64,8 +64,6 @@ export type WorkflowSkillStoragePresignedUrlCacheStatus =
   StoragePresignedUrlCacheStatus;
 export type ReadOnlyStoragePresignedUrlCacheStatus =
   StoragePresignedUrlCacheStatus;
-export type PresentationTemplatePreviewPresignedUrlCacheStatus =
-  StoragePresignedUrlCacheStatus;
 
 export interface SystemStoragePresignedUrlRequest {
   readonly bucket: string;

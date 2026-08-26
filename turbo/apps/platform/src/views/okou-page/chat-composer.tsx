@@ -25,7 +25,6 @@ import {
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
-  ImportedPresentationTemplateResource,
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
@@ -7197,66 +7196,6 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
-interface ImportedPresentationTemplatePagePreload {
-  readonly resource: ImportedPresentationTemplateResource;
-  readonly startPageIndex: number;
-  readonly pageCount: number;
-}
-
-function selectImportedPresentationTemplatePagePreloads(
-  resources: readonly ImportedPresentationTemplateResource[],
-  imageCount: number,
-): readonly ImportedPresentationTemplatePagePreload[] {
-  const preloads: ImportedPresentationTemplatePagePreload[] = [];
-  let remainingImageCount = Math.max(0, imageCount);
-  for (const resource of resources) {
-    if (remainingImageCount === 0) {
-      break;
-    }
-    const startPageIndex = resource.summary.coverUrl === null ? 0 : 1;
-    const pageCount = Math.min(
-      remainingImageCount,
-      Math.max(0, resource.summary.pageCount - startPageIndex),
-    );
-    if (pageCount === 0) {
-      continue;
-    }
-    preloads.push({ resource, startPageIndex, pageCount });
-    remainingImageCount -= pageCount;
-  }
-  return preloads;
-}
-
-function ImportedPresentationTemplateResourcePreload({
-  resource,
-  startPageIndex,
-  pageCount,
-}: {
-  resource: ImportedPresentationTemplateResource;
-  startPageIndex: number;
-  pageCount: number;
-}) {
-  const detail = useLastResolved(resource.detail$);
-  return detail?.pageUrls
-    .slice(startPageIndex, startPageIndex + pageCount)
-    .map((pageUrl) => {
-      const previewUrl = importedPptImageVariant(
-        pageUrl,
-        TEMPLATE_CARD_PREVIEW_SIZE,
-      );
-      return (
-        <img
-          key={previewUrl}
-          alt=""
-          src={previewUrl}
-          loading="eager"
-          decoding="async"
-          fetchPriority="low"
-        />
-      );
-    });
-}
-
 function ComposerTemplateAttachmentSync({
   signals,
 }: {
@@ -7281,9 +7220,6 @@ function ComposerTemplateAttachmentSync({
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
-  const importedTemplateResources =
-    useLastResolved(signals.template.importedPresentationTemplateResources$) ??
-    [];
   const attachment = selectedComposerTemplateAttachment(
     picker?.value,
     importedTemplates,
@@ -7297,11 +7233,6 @@ function ComposerTemplateAttachmentSync({
       return coverUrl === null ? [] : [coverUrl];
     }),
   );
-  const importedTemplatePagePreloads =
-    selectImportedPresentationTemplatePagePreloads(
-      importedTemplateResources,
-      TEMPLATE_PREWARM_IMAGE_COUNT,
-    );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -7337,16 +7268,6 @@ function ComposerTemplateAttachmentSync({
               loading="eager"
               decoding="async"
               fetchPriority="high"
-            />
-          );
-        })}
-        {importedTemplatePagePreloads.map((preload) => {
-          return (
-            <ImportedPresentationTemplateResourcePreload
-              key={preload.resource.summary.id}
-              resource={preload.resource}
-              startPageIndex={preload.startPageIndex}
-              pageCount={preload.pageCount}
             />
           );
         })}

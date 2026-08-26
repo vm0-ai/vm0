@@ -3632,7 +3632,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("prefetches stable uploaded preview assets without reloading on picker open", async () => {
+  it("caches stable uploaded preview assets while preloading only covers", async () => {
     const user = userEvent.setup({ delay: null });
     mockNow(context.signal, new Date("2026-08-23T03:00:00.000Z").getTime());
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -3726,17 +3726,17 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const preloadedPage = await waitFor(() => {
+    const preloadedCover = await waitFor(() => {
       const found = document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-16.png"]',
+        'img[src="https://example.com/prefetch-primary-page-1.png"]',
       );
       if (!(found instanceof HTMLImageElement)) {
-        throw new Error("Uploaded template page was not prefetched");
+        throw new Error("Uploaded template cover was not prefetched");
       }
       return found;
     });
-    expect(preloadedPage).toHaveAttribute("loading", "eager");
-    expect(preloadedPage).toHaveAttribute("fetchpriority", "low");
+    expect(preloadedCover).toHaveAttribute("loading", "eager");
+    expect(preloadedCover).toHaveAttribute("fetchpriority", "high");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     for (const coverUrl of [primaryPageUrls[0], secondaryPageUrls[0]]) {
       const cover = document.querySelector(`img[src="${coverUrl}"]`);
@@ -3745,10 +3745,10 @@ describe("chat composer templates", () => {
     }
     expect(
       document.querySelectorAll('img[src^="https://example.com/prefetch-"]'),
-    ).toHaveLength(17);
+    ).toHaveLength(2);
     expect(
       document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-17.png"]',
+        'img[src="https://example.com/prefetch-primary-page-2.png"]',
       ),
     ).not.toBeInTheDocument();
     expect(

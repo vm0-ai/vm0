@@ -23,7 +23,7 @@ export interface PresentationTemplateVolume {
 
 const PRESENTATION_TEMPLATE_PREVIEW_ASSET_PREFIX = "ptp:";
 
-export interface PresentationTemplatePreviewAssetIdentity {
+interface PresentationTemplatePreviewAssetIdentity {
   readonly templateId: string;
   readonly storageVersionId: string;
 }

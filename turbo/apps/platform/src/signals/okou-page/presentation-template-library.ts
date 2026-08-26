@@ -20,14 +20,14 @@ import { presentationTemplateImportEnabled$ } from "./presentation-template-impo
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
 
-export interface ImportedPresentationTemplateResource {
-  readonly summary: PresentationTemplateSummary;
-  readonly detail$: Computed<Promise<PresentationTemplateDetail | null>>;
-}
-
-type ImportedPresentationTemplateDetailResolver = (
+type ImportedPresentationTemplateDetailLookup = (
   templateId: string,
 ) => Computed<Promise<PresentationTemplateDetail | null>>;
+
+interface ImportedPresentationTemplateDetailResolver {
+  readonly resolve: ImportedPresentationTemplateDetailLookup;
+  readonly evict: (templateId: string) => void;
+}
 
 const presentationTemplatesVersion$ = state(0);
 const deletedPresentationTemplateIds$ = state<ReadonlySet<string>>(new Set());
@@ -241,6 +241,27 @@ interface ImportedPresentationTemplateCache {
   readonly previewUrlByAssetId: Map<string, PresentationTemplatePreviewAsset>;
 }
 
+export function evictImportedPresentationTemplateCache(
+  cache: ImportedPresentationTemplateCache,
+  templateId: string,
+): void {
+  const removedDetail = cache.detailByTemplateId.get(templateId);
+  cache.detailByTemplateId.delete(templateId);
+  if (removedDetail?.kind !== "preview-assets") {
+    return;
+  }
+  const retainedPreviewAssetIds = new Set(
+    [...cache.detailByTemplateId.values()].flatMap((detail) => {
+      return detail.kind === "preview-assets" ? detail.previewAssetIds : [];
+    }),
+  );
+  for (const previewAssetId of removedDetail.previewAssetIds) {
+    if (!retainedPreviewAssetIds.has(previewAssetId)) {
+      cache.previewUrlByAssetId.delete(previewAssetId);
+    }
+  }
+}
+
 function mergePresentationTemplatePreviewAsset(
   cache: ImportedPresentationTemplateCache,
   asset: PresentationTemplatePreviewAsset,
@@ -412,42 +433,28 @@ function createImportedPresentationTemplateDetailResolver(
     string,
     Computed<Promise<PresentationTemplateDetail | null>>
   >();
-  return (templateId) => {
-    const existing = detailByTemplateId.get(templateId);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const detail$ = computed(
-      async (get): Promise<PresentationTemplateDetail | null> => {
-        return (
-          (await get(catalog$)).templates.find((template) => {
-            return template.id === templateId;
-          }) ?? null
-        );
-      },
-    );
-    detailByTemplateId.set(templateId, detail$);
-    return detail$;
-  };
-}
-
-function createImportedPresentationTemplateResources$(
-  importedPresentationTemplates$: Computed<
-    Promise<readonly PresentationTemplateSummary[]>
-  >,
-  resolveDetail$: ImportedPresentationTemplateDetailResolver,
-) {
-  return computed(
-    async (get): Promise<readonly ImportedPresentationTemplateResource[]> => {
-      const templates = await get(importedPresentationTemplates$);
-      return templates.map((summary) => {
-        return {
-          summary,
-          detail$: resolveDetail$(summary.id),
-        };
-      });
+  return {
+    resolve: (templateId) => {
+      const existing = detailByTemplateId.get(templateId);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const detail$ = computed(
+        async (get): Promise<PresentationTemplateDetail | null> => {
+          return (
+            (await get(catalog$)).templates.find((template) => {
+              return template.id === templateId;
+            }) ?? null
+          );
+        },
+      );
+      detailByTemplateId.set(templateId, detail$);
+      return detail$;
     },
-  );
+    evict: (templateId) => {
+      detailByTemplateId.delete(templateId);
+    },
+  };
 }
 
 interface ImportedPresentationTemplateHover {
@@ -605,7 +612,7 @@ function createImportedPresentationTemplateUrlRefreshSignals(
 }
 
 function createImportedPresentationTemplateDetailSignals(
-  resolveDetail$: ImportedPresentationTemplateDetailResolver,
+  resolveDetail$: ImportedPresentationTemplateDetailLookup,
 ) {
   const internalRequestedTemplateId$ = state<string | null>(null);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -685,20 +692,15 @@ export function createImportedPresentationTemplateSignals() {
     deletedPresentationTemplateIds$,
     internalUpdatedTemplates$,
   );
-  const resolveDetail$ =
+  const detailResolver =
     createImportedPresentationTemplateDetailResolver(catalog$);
   const urlRefresh = createImportedPresentationTemplateUrlRefreshSignals(
     catalog$,
     cache,
     internalPreviewUrlsVersion$,
   );
-  const importedPresentationTemplateResources$ =
-    createImportedPresentationTemplateResources$(
-      importedPresentationTemplates$,
-      resolveDetail$,
-    );
   const { internalRequestedTemplateId$, ...detailSignals } =
-    createImportedPresentationTemplateDetailSignals(resolveDetail$);
+    createImportedPresentationTemplateDetailSignals(detailResolver.resolve);
 
   const internalPreviewTemplateId$ = state<string | null>(null);
   const importedPresentationTemplatePreviewId$ = computed((get) => {
@@ -749,6 +751,13 @@ export function createImportedPresentationTemplateSignals() {
         [204],
       );
       signal.throwIfAborted();
+      evictImportedPresentationTemplateCache(cache, templateId);
+      detailResolver.evict(templateId);
+      set(internalUpdatedTemplates$, (updatedTemplates) => {
+        return updatedTemplates.filter((template) => {
+          return template.id !== templateId;
+        });
+      });
       set(deletedPresentationTemplateIds$, (deletedTemplateIds) => {
         return new Set([...deletedTemplateIds, templateId]);
       });
@@ -770,7 +779,6 @@ export function createImportedPresentationTemplateSignals() {
   return {
     importedPresentationTemplates$,
     importedPresentationTemplateDeletedIds$,
-    importedPresentationTemplateResources$,
     ...detailSignals,
     ...urlRefresh,
     importedPresentationTemplatePreviewId$,
