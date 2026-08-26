@@ -273,7 +273,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           return $.settings.shared.close;
         })}
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
-        style={{ "--primary-foreground": "220 18% 10%" } as CSSProperties}
+        style={
+          {
+            "--color-primary-foreground": "hsl(220 18% 10%)",
+            "--primary-foreground": "220 18% 10%",
+          } as CSSProperties
+        }
       >
         <DialogTitle className="sr-only">
           {t(($) => {
