@@ -283,23 +283,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.VideoModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker pin the video model a chat thread generates with.",
-    enabled: true,
-  },
   [FeatureSwitchKey.IntroVideoTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Expose intro-video templates and their implementation-specific authoring flows.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ImageModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker choose the default built-in image model for a chat thread.",
-    enabled: true,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",

@@ -206,9 +206,7 @@ import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
   introVideoTemplatesEnabled$,
-  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
-  videoModelSelectionEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -10172,14 +10170,10 @@ function ComposerExistingMediaModelPickerSlot({
   signals,
   imageModelSignals,
   videoModelSignals,
-  imageModelEnabled,
-  videoModelEnabled,
 }: {
   signals: ComposerSignals;
   imageModelSignals: ComposerImageModelSignals;
   videoModelSignals: ComposerVideoModelSignals;
-  imageModelEnabled: boolean;
-  videoModelEnabled: boolean;
 }) {
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const selectedImageModel =
@@ -10189,26 +10183,20 @@ function ComposerExistingMediaModelPickerSlot({
   const setImageModel = useSet(imageModelSignals.setImageModel$);
   const setVideoModel = useSet(videoModelSignals.setVideoModel$);
   const pageSignal = useGet(pageSignal$);
-  const imageModel: ComposerImageModelPickerState | undefined =
-    imageModelEnabled
-      ? {
-          value: selectedImageModel,
-          onChange: (next) => {
-            detach(setImageModel(next, pageSignal), Reason.DomCallback);
-            setModelPickerOpen(false);
-          },
-        }
-      : undefined;
-  const videoModel: ComposerVideoModelPickerState | undefined =
-    videoModelEnabled
-      ? {
-          value: selectedVideoModel,
-          onChange: (next) => {
-            detach(setVideoModel(next, pageSignal), Reason.DomCallback);
-            setModelPickerOpen(false);
-          },
-        }
-      : undefined;
+  const imageModel: ComposerImageModelPickerState = {
+    value: selectedImageModel,
+    onChange: (next) => {
+      detach(setImageModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+  };
+  const videoModel: ComposerVideoModelPickerState = {
+    value: selectedVideoModel,
+    onChange: (next) => {
+      detach(setVideoModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+  };
   return (
     <ComposerModelPickerSlotBase
       signals={signals}
@@ -10219,26 +10207,18 @@ function ComposerExistingMediaModelPickerSlot({
 }
 
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
-  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
-  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
-  if (
-    (imageModelEnabled || videoModelEnabled) &&
-    imageModelSignals &&
-    videoModelSignals
-  ) {
+  if (imageModelSignals && videoModelSignals) {
     return (
       <ComposerExistingMediaModelPickerSlot
         signals={signals}
         imageModelSignals={imageModelSignals}
         videoModelSignals={videoModelSignals}
-        imageModelEnabled={imageModelEnabled}
-        videoModelEnabled={videoModelEnabled}
       />
     );
   }
-  if (videoModelEnabled && videoModelSignals) {
+  if (videoModelSignals) {
     return (
       <ComposerVideoModelPickerSlot
         signals={signals}
@@ -10460,8 +10440,6 @@ function ComposerTemporaryModelNoticeSlot({
   signals: ComposerSignals;
 }) {
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
-  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
-  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
   const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
@@ -10470,22 +10448,14 @@ function ComposerTemporaryModelNoticeSlot({
   }
   // One notice at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
-  if (
-    imageModelEnabled &&
-    imageModelSignals &&
-    mediaModelCategory === "image"
-  ) {
+  if (imageModelSignals && mediaModelCategory === "image") {
     return (
       <ComposerTemporaryImageModelNotice
         imageModelSignals={imageModelSignals}
       />
     );
   }
-  if (
-    videoModelEnabled &&
-    videoModelSignals &&
-    mediaModelCategory === "video"
-  ) {
+  if (videoModelSignals && mediaModelCategory === "video") {
     return (
       <ComposerTemporaryVideoModelNotice
         videoModelSignals={videoModelSignals}
