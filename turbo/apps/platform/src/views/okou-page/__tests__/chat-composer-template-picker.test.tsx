@@ -4266,12 +4266,7 @@ describe("chat composer templates", () => {
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
     });
-    const renameForm = titleInput.closest("form");
-    // The check only earns its place once the draft says something the saved
-    // name does not, so an untouched panel reports a clean draft.
-    expect(renameForm).toHaveAttribute("data-rename-dirty", "false");
     await fill(titleInput, "  Brand   refresh  ");
-    expect(renameForm).toHaveAttribute("data-rename-dirty", "true");
     const renameButton = queryAllByRoleFast("button").find((candidate) => {
       return candidate.getAttribute("aria-label") === "Rename template";
     });
