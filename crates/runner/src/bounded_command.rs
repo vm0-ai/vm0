@@ -654,7 +654,12 @@ mod tests {
                 return Err(error);
             }
         };
-        tokio::fs::write(&release_path, []).await?;
+        if let Err(error) = tokio::fs::write(&release_path, []).await {
+            task.abort();
+            let _ = task.await;
+            wait_for_process_exit(pid, starttime).await?;
+            return Err(error);
+        }
 
         let error = match tokio::time::timeout(PROCESS_OBSERVATION_TIMEOUT, &mut task).await {
             Ok(result) => result.unwrap().unwrap_err(),
