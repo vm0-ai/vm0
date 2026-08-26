@@ -1367,6 +1367,7 @@ name = "guest-reseed"
 version = "0.3.5"
 dependencies = [
  "libc",
+ "tempfile",
 ]
 
 [[package]]

@@ -20,7 +20,7 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x19`
+//! Non-error message types currently occupy the contiguous range `0x00..=0x1B`
 //! in allocation order. Existing values are stable wire assignments: do not
 //! renumber or reuse them. Allocate new non-error messages at the next unused
 //! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
@@ -55,13 +55,15 @@
 //! | 0x17 | G→H       | guest_dns_readiness_result | `[termination][4B duration_ms][1B flags][2B answer_len][answer][2B diagnostic_len][diagnostic]` |
 //! | 0x18 | H→G       | guest_storage_manifest | `[4B positive timeout_ms][2B run_id_len][run_id][2B runtime_dir_len][runtime_dir][4B manifest_len][manifest]` |
 //! | 0x19 | G→H       | guest_storage_manifest_result | same payload as `exec_result`, with both streams captured and bounded to 1 MiB each |
+//! | 0x1A | H→G       | guest_state_restore | `[4B positive timeout_ms][8B unix_seconds][4B unix_nanoseconds][1B timezone_mode][2B timezone_len][timezone][256B entropy]` |
+//! | 0x1B | G→H       | guest_state_restore_result | same payload as `exec_result`, with empty stdout and stderr bounded to 64 KiB |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
 //! covers `write_file`, `write_files`, `exec_start`, `exec_cancel`,
-//! `exec_control`, `guest_dns_readiness`, and `guest_storage_manifest`;
-//! operation replies reuse the
-//! original non-zero request sequence. `exec_output.output_seq` is per exec
+//! `exec_control`, `guest_dns_readiness`, `guest_storage_manifest`, and
+//! `guest_state_restore`; operation replies reuse the original non-zero request
+//! sequence. `exec_output.output_seq` is per exec
 //! operation and starts at 0, incrementing by 1 for each output frame across
 //! stdout and stderr.
 //! `write_file_result.success` / `write_files_result.success` use 0=false and
@@ -214,6 +216,14 @@ pub use payloads::guest_dns_readiness::{
     encode_guest_dns_readiness_request, encode_guest_dns_readiness_request_frame_into,
     encode_guest_dns_readiness_result,
 };
+pub use payloads::guest_state_restore::{
+    DecodedGuestStateRestoreRequest, GUEST_STATE_RESTORE_ENTROPY_BYTES,
+    GUEST_STATE_RESTORE_MAX_TIMEZONE_BYTES, GUEST_STATE_RESTORE_OUTPUT_LIMIT_BYTES,
+    GuestStateRestoreTimezone, decode_guest_state_restore_request,
+    decode_guest_state_restore_result, encode_guest_state_restore_request,
+    encode_guest_state_restore_request_frame_into, encode_guest_state_restore_result,
+    encode_guest_state_restore_result_frame_into,
+};
 pub use payloads::guest_storage_manifest::{
     DecodedGuestStorageManifestRequest, GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES,
     GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
@@ -235,10 +245,11 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STORAGE_MANIFEST,
-    MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
-    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STATE_RESTORE,
+    MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST, MSG_GUEST_STORAGE_MANIFEST_RESULT,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };
