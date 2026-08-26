@@ -20,6 +20,7 @@ import {
   getOkouAgentId,
   getOkouConnectorAccountContextFile,
 } from "../../lib/okou-env";
+import { connectorAccountCliLabel } from "./account-label";
 
 export const RUN_CONNECTOR_ACCOUNT_CONTEXT_MAX_BYTES = 1024 * 1024;
 
@@ -207,14 +208,6 @@ function metadataKey(
   return `${connectorAccountTargetKey(target)}:${connectionId}`;
 }
 
-function effectiveAccountLabel(metadata: RunConnectorAccountMetadata): string {
-  if (metadata.displayName) return metadata.displayName;
-  if (metadata.externalEmail) return metadata.externalEmail;
-  if (metadata.externalUsername) return `@${metadata.externalUsername}`;
-  if (metadata.externalId) return metadata.externalId;
-  return `Account #${metadata.connectionId.slice(0, 8)}`;
-}
-
 async function enrichTargets(
   targets: readonly RunConnectorAccountTarget[],
 ): Promise<ReadonlyMap<string, RunConnectorAccountMetadata>> {
@@ -315,7 +308,7 @@ export async function resolveRunConnectorAccountView(): Promise<RunConnectorAcco
           ? {
               state: "available" as const,
               connectionId: projected.connectionId,
-              label: effectiveAccountLabel(current),
+              label: connectorAccountCliLabel(current),
               metadata: current,
             }
           : {
