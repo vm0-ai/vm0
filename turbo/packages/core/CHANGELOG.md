@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.592.0](https://github.com/vm0-ai/vm0/compare/core-v8.591.1...core-v8.592.0) (2026-08-26)
+
+
+### Features
+
+* pin HyperFrames authoring source ([#29366](https://github.com/vm0-ai/vm0/issues/29366)) ([ea0a806](https://github.com/vm0-ai/vm0/commit/ea0a806fa2e79622e470da9be77d2e04cb059299))
+
 ## [8.591.1](https://github.com/vm0-ai/vm0/compare/core-v8.591.0...core-v8.591.1) (2026-08-25)
 
 
