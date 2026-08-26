@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.595.1](https://github.com/vm0-ai/vm0/compare/core-v8.595.0...core-v8.595.1) (2026-08-26)
+
+
+### Refactoring
+
+* remove home growth entry feature switch ([#29579](https://github.com/vm0-ai/vm0/issues/29579)) ([a6e7c72](https://github.com/vm0-ai/vm0/commit/a6e7c72715914cfe0bb4a4e780eac3c0c0285d47))
+
 ## [8.595.0](https://github.com/vm0-ai/vm0/compare/core-v8.594.4...core-v8.595.0) (2026-08-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.175.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.0...runner-rs-v0.175.1) (2026-08-26)
+
+
+### Documentation
+
+* **runner:** document bounded Axiom shutdown semantics ([#29625](https://github.com/vm0-ai/vm0/issues/29625)) ([b2f6c39](https://github.com/vm0-ai/vm0/commit/b2f6c39e19862e68f33d7b70401611cad9410ff9))
+
 ## [0.175.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.1...runner-rs-v0.175.0) (2026-08-26)
 
 

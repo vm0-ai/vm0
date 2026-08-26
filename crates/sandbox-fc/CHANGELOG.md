@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.252](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.251...sandbox-fc-v0.37.252) (2026-08-26)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** reset leak cleanup watchdog on progress ([#29621](https://github.com/vm0-ai/vm0/issues/29621)) ([6d49df4](https://github.com/vm0-ai/vm0/commit/6d49df40f0e62ad68369d9b871549fbc33c90209))
+
 ## [0.37.251](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.250...sandbox-fc-v0.37.251) (2026-08-26)
 
 ## [0.37.250](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.249...sandbox-fc-v0.37.250) (2026-08-26)
