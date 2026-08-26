@@ -137,13 +137,12 @@ function resolveDebugConfiguration(): DebugConfiguration {
   return { state: "conflicting-dual" };
 }
 
-// This API-process compatibility boundary retains VM0_DEBUG while the preview
-// writer (.github/actions/web-api-env/action.yml), local development writer
-// (turbo/apps/api/scripts/dev.sh), and Turbo pass-through (turbo/turbo.json)
-// remain legacy-only. Under #28914, refresh stale Worker PR #25722 before the
-// later writer cutover, preserve a supported rollback target that accepts
-// VM0_DEBUG, and remove this fallback only after bounded source evidence shows
-// zero legacy-only and equal-dual resolutions through the rollback window.
+// The preview and local-development writers now emit byte-equal OKOU_DEBUG and
+// VM0_DEBUG values, with Turbo passing both aliases. VM0_DEBUG remains for API
+// rollback artifacts whose reader is legacy-only. Under #28914, refresh stale
+// Worker PR #25722 before the later canonical-only writer cutover, then retain
+// this resolver until bounded source evidence records zero legacy-only and
+// equal-dual states throughout the supported rollback window.
 const debugConfiguration = singleton(resolveDebugConfiguration);
 
 function getDebugPatterns(): readonly string[] {
