@@ -38,12 +38,15 @@ fn claimed_context(run_id: RunId, reuse_key: &str, timezone: Option<&str>) -> Ex
     context
 }
 
-fn guest_restore_commands(overrides: &sandbox_mock::MockSandboxOverrides) -> Vec<String> {
+fn guest_restore_timezones(overrides: &sandbox_mock::MockSandboxOverrides) -> Vec<Option<String>> {
     overrides
-        .exec_calls()
+        .guest_state_restore_calls()
         .into_iter()
-        .filter(|call| call.cmd.contains("guest-reseed"))
-        .map(|call| call.cmd)
+        .map(|call| match call.timezone {
+            sandbox_mock::GuestStateRestoreTimezoneCall::None => None,
+            sandbox_mock::GuestStateRestoreTimezoneCall::BestEffort(timezone)
+            | sandbox_mock::GuestStateRestoreTimezoneCall::Required(timezone) => Some(timezone),
+        })
         .collect()
 }
 
@@ -123,13 +126,12 @@ async fn exact_reuse_restores_guest_while_claim_is_blocked() {
     );
     assert!(
         overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await,
         "guest restore did not run while claim was blocked"
     );
-    let restore_commands = guest_restore_commands(&overrides);
-    assert_eq!(restore_commands.len(), 1);
-    assert!(restore_commands[0].contains("/usr/share/zoneinfo/Asia/Shanghai"));
+    let restore_timezones = guest_restore_timezones(&overrides);
+    assert_eq!(restore_timezones, [Some("Asia/Shanghai".into())]);
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(
         overrides.start_process_calls().is_empty(),
@@ -151,7 +153,7 @@ async fn exact_reuse_restores_guest_while_claim_is_blocked() {
         .expect("exact-reuse run should complete after claim release");
     assert_eq!(completion.sandbox_id, Some(sandbox_id));
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    assert_eq!(guest_restore_commands(&overrides).len(), 1);
+    assert_eq!(guest_restore_timezones(&overrides).len(), 1);
     assert!(timezone_correction_commands(&overrides).is_empty());
 
     shutdown(&env, run_handle).await;
@@ -207,9 +209,8 @@ async fn assert_timezone_transition_with(
         .expect("timezone transition run should complete");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
-    let restores = guest_restore_commands(&overrides);
-    assert_eq!(restores.len(), 1);
-    assert!(restores[0].contains(&format!("/usr/share/zoneinfo/{expected_restore_zone}")));
+    let restores = guest_restore_timezones(&overrides);
+    assert_eq!(restores, [Some(expected_restore_zone.to_owned())]);
     let corrections = timezone_correction_commands(&overrides);
     match expected_correction_zone {
         Some(zone) => {
@@ -339,7 +340,7 @@ async fn unknown_previous_timezone_keeps_restore_after_claim() {
         .await
         .expect("unknown prediction should retain ordinary exact reuse");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    assert_eq!(guest_restore_commands(&overrides).len(), 1);
+    assert_eq!(guest_restore_timezones(&overrides).len(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -393,10 +394,8 @@ async fn unknown_claimed_timezone_repeats_authoritative_guest_restore() {
         .await
         .expect("unknown claimed timezone should complete through full restore fallback");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    let restores = guest_restore_commands(&overrides);
-    assert_eq!(restores.len(), 2);
-    assert!(restores[0].contains("/usr/share/zoneinfo/Asia/Shanghai"));
-    assert!(!restores[1].contains("/usr/share/zoneinfo/"));
+    let restores = guest_restore_timezones(&overrides);
+    assert_eq!(restores, [Some("Asia/Shanghai".into()), None]);
 
     shutdown(&env, run_handle).await;
 }
@@ -445,7 +444,7 @@ async fn unavailable_claim_reparks_speculative_sandbox() {
     );
     assert!(
         overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await
     );
     env.handle.unblock_claims();
@@ -595,7 +594,7 @@ async fn mismatched_claim_run_id_reparks_speculative_sandbox() {
     );
     assert!(
         overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await
     );
     env.handle.unblock_claims();
@@ -664,7 +663,7 @@ async fn cancellation_during_claim_completes_without_starting_agent_and_reparks(
     );
     assert!(
         overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await
     );
     let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
@@ -732,11 +731,6 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
         .wait_entered(1, Duration::from_secs(5))
         .await
         .unwrap();
-    exec_gate.release_one();
-    exec_gate
-        .wait_entered(2, Duration::from_secs(5))
-        .await
-        .unwrap();
     let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     assert!(cancellation.request_cooperative_user_cancellation().await);
 
@@ -748,7 +742,7 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
 
     exec_gate.release_one();
     exec_gate
-        .wait_entered(3, Duration::from_secs(5))
+        .wait_entered(2, Duration::from_secs(5))
         .await
         .unwrap();
     exec_gate.release_one();
@@ -966,7 +960,7 @@ async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
     );
     assert!(
         overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await
     );
     assert!(env.parking_gate.soft_drain());
@@ -1026,7 +1020,7 @@ async fn duplicate_repark_keeps_newer_idle_sandbox_and_destroys_speculation() {
     );
     assert!(
         original_overrides
-            .wait_exec_call_count(1, Duration::from_secs(5))
+            .wait_guest_state_restore_call_count(1, Duration::from_secs(5))
             .await
     );
 
@@ -1207,12 +1201,11 @@ async fn speculative_guest_restore_failure_destroys_before_fresh_fallback() {
         GuestTimezoneIntent::Default,
         None,
         |overrides| {
-            overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-                pattern: "guest-reseed".into(),
-                exit_code: 1,
-                stdout: Vec::new(),
-                stderr: b"guest-reseed failed".to_vec(),
-            });
+            overrides.push_guest_state_restore_result(Ok(sandbox::ExecResult::new(
+                1,
+                Vec::new(),
+                b"guest-reseed failed".to_vec(),
+            )));
         },
     )
     .await;
@@ -1224,14 +1217,11 @@ async fn speculative_guest_restore_transport_failure_destroys_before_fresh_fallb
         GuestTimezoneIntent::Default,
         None,
         |overrides| {
-            overrides.add_exec_error_matcher(
-                "guest-reseed",
-                sandbox::SandboxError::Operation {
-                    operation: sandbox::SandboxOperation::Exec,
-                    reason: sandbox::SandboxOperationReason::Guest,
-                    message: "simulated guest restore transport failure".into(),
-                },
-            );
+            overrides.push_guest_state_restore_result(Err(sandbox::SandboxError::Operation {
+                operation: sandbox::SandboxOperation::Exec,
+                reason: sandbox::SandboxOperationReason::Guest,
+                message: "simulated guest restore transport failure".into(),
+            }));
         },
     )
     .await;
