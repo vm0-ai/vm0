@@ -399,7 +399,13 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "internal error: failed to reload systemd after removing drain restart override for vm0-runner-test: internal error: cleanup reload failed; additionally failed to restore drain restart override: internal error: failed to reload systemd after restoring drain restart override for vm0-runner-test: internal error: compensation reload failed"
+            concat!(
+                "internal error: failed to reload systemd after removing drain restart override ",
+                "for vm0-runner-test: internal error: cleanup reload failed; additionally failed ",
+                "to restore drain restart override: internal error: failed to reload systemd after ",
+                "restoring drain restart override for vm0-runner-test: internal error: ",
+                "compensation reload failed",
+            )
         );
         assert_eq!(
             ops.events,
