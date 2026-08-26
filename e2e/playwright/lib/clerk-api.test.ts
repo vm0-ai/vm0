@@ -596,6 +596,128 @@ test("stale cleanup isolates roles, requires strict markers, and supports dry-ru
   );
 });
 
+test("stale cleanup removes example.com browser QA resources without shared organizations", async () => {
+  const cutoff = new Date(10_000);
+  await withClerkServer(
+    (request, response) => {
+      const url = new URL(request.url, "http://clerk.test");
+      if (request.method === "GET" && url.pathname === "/v1/users") {
+        sendJson(response, 200, [
+          clerkUser("user_example", "qa+clerk_test@example.com", 1_000),
+          clerkUser("user_fallback", "fallback@example.com", 1_000),
+          clerkUser(
+            "user_without_org",
+            "walkthrough+clerk_test@example.com",
+            1_000,
+          ),
+          clerkUser(
+            "user_shared_creator",
+            "shared+clerk_test@example.com",
+            1_000,
+          ),
+          clerkUser(
+            "user_recent_org_creator",
+            "recent-org+clerk_test@example.com",
+            1_000,
+          ),
+          clerkUser("user_recent", "active+clerk_test@example.com", 20_000),
+          clerkUser("user_team", "member@vm0.ai", 1_000),
+          {
+            id: "user_multiple_emails",
+            created_at: 1_000,
+            email_addresses: [
+              { email_address: "multiple+clerk_test@example.com" },
+              { email_address: "member@vm0.ai" },
+            ],
+          },
+        ]);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/organizations") {
+        sendJson(response, 200, {
+          data: [
+            clerkOwnedOrganization("org_example", "user_example", 1_000),
+            clerkOwnedOrganization("org_stale_members", "user_fallback", 1_000),
+            clerkOwnedOrganization(
+              "org_shared_member",
+              "user_shared_creator",
+              1_000,
+            ),
+            clerkOwnedOrganization(
+              "org_recent",
+              "user_recent_org_creator",
+              20_000,
+            ),
+            clerkOwnedOrganization("org_unrelated", "user_team", 1_000),
+          ],
+          total_count: 5,
+        });
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/organizations/org_example/memberships"
+      ) {
+        sendJson(response, 200, clerkMemberships("user_example"));
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/organizations/org_stale_members/memberships"
+      ) {
+        sendJson(
+          response,
+          200,
+          clerkMemberships("user_example", "user_fallback"),
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/organizations/org_shared_member/memberships"
+      ) {
+        sendJson(
+          response,
+          200,
+          clerkMemberships("user_shared_creator", "user_team"),
+        );
+        return;
+      }
+      if (request.method === "DELETE") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      sendJson(response, 500, { unexpected: request.url });
+    },
+    async (requests) => {
+      const result = await cleanupStaleClerkTestResources(["browser"], cutoff, {
+        stagingBrowserCreatedBefore: cutoff,
+      });
+      assert.equal(result.selectedOrganizations, 2);
+      assert.equal(result.selectedUsers, 3);
+      assert.deepEqual(
+        requests
+          .filter((request) => request.method === "DELETE")
+          .map((request) => request.url),
+        [
+          "/v1/organizations/org_example",
+          "/v1/organizations/org_stale_members",
+          "/v1/users/user_example",
+          "/v1/users/user_fallback",
+          "/v1/users/user_without_org",
+        ],
+      );
+      assert.equal(
+        requests.some((request) =>
+          request.url.startsWith("/v1/organizations/org_recent/memberships?"),
+        ),
+        false,
+      );
+    },
+  );
+});
+
 test("retries exact deletion and surfaces permanent HTTP failures", async () => {
   const email = "cleanup@example.com";
   await withClerkServer(
@@ -722,6 +844,25 @@ function clerkOrganization(
     ...(privateMetadata === undefined
       ? {}
       : { private_metadata: privateMetadata }),
+  };
+}
+
+function clerkOwnedOrganization(
+  id: string,
+  createdBy: string,
+  createdAt: number,
+): object {
+  return {
+    id,
+    created_by: createdBy,
+    created_at: createdAt,
+  };
+}
+
+function clerkMemberships(...userIds: readonly string[]): object {
+  return {
+    data: userIds.map((userId) => ({ public_user_data: { user_id: userId } })),
+    total_count: userIds.length,
   };
 }
 

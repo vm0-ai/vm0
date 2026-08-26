@@ -4,9 +4,10 @@ const DEFAULT_CLERK_API_BASE = "https://api.clerk.com/v1";
 const CLERK_PAGE_LIMIT = 500;
 const CLERK_RETRY_DELAYS_MS = [500, 1_500, 3_500] as const;
 const CLERK_MAX_RETRY_AFTER_MS = 30_000;
-const CLERK_DELETE_PACE_MS = 110;
+const CLERK_BULK_REQUEST_PACE_MS = 110;
 const CLERK_TEST_DOMAIN = "vm0-e2e.ai";
 const CLERK_TEST_MARKER = "clerk_test";
+const CLERK_STAGING_BROWSER_TEST_DOMAIN = "example.com";
 const LOCAL_JOB_REF = "local";
 const LOCAL_GENERATION = "local-1";
 
@@ -39,6 +40,10 @@ export interface ClerkCleanupOptions {
   readonly dryRun?: boolean;
 }
 
+export interface ClerkStaleCleanupOptions extends ClerkCleanupOptions {
+  readonly stagingBrowserCreatedBefore?: Date;
+}
+
 export interface ClerkCleanupResult {
   readonly scannedOrganizations: number;
   readonly selectedOrganizations: number;
@@ -65,12 +70,29 @@ interface ClerkUserSummary {
 interface ClerkOrganizationSummary {
   readonly id: string;
   readonly created_at?: number;
+  readonly created_by?: string | null;
   readonly private_metadata?: unknown;
 }
 
 interface ClerkOrganizationList {
   readonly data: readonly ClerkOrganizationSummary[];
   readonly total_count: number;
+}
+
+interface ClerkOrganizationMembershipSummary {
+  readonly public_user_data: {
+    readonly user_id: string;
+  };
+}
+
+interface ClerkOrganizationMembershipList {
+  readonly data: readonly ClerkOrganizationMembershipSummary[];
+  readonly total_count: number;
+}
+
+interface ClerkCleanupResources {
+  readonly organizations: readonly ClerkOrganizationSummary[];
+  readonly users: readonly ClerkUserSummary[];
 }
 
 interface RetryableClerkRequestInit extends RequestInit {
@@ -93,7 +115,8 @@ type ClerkCleanupSelection =
   | { readonly kind: "job-ref"; readonly jobRef: string }
   | {
       readonly kind: "stale";
-      readonly createdBeforeMs: number;
+      readonly ciCreatedBeforeMs: number;
+      readonly stagingBrowserCreatedBeforeMs?: number;
       readonly roles: readonly ClerkTestRole[];
     };
 
@@ -353,16 +376,33 @@ export async function cleanupClerkTestJobRef(
 
 export async function cleanupStaleClerkTestResources(
   roles: readonly ClerkTestRole[],
-  createdBefore: Date,
-  options: ClerkCleanupOptions = {},
+  ciCreatedBefore: Date,
+  options: ClerkStaleCleanupOptions = {},
 ): Promise<ClerkCleanupResult> {
   assertCleanupRoles(roles);
-  const createdBeforeMs = createdBefore.getTime();
-  if (!Number.isFinite(createdBeforeMs)) {
-    throw new Error("Stale Clerk cleanup cutoff must be a valid date");
+  const ciCreatedBeforeMs = ciCreatedBefore.getTime();
+  if (!Number.isFinite(ciCreatedBeforeMs)) {
+    throw new Error("Stale CI cleanup cutoff must be a valid date");
+  }
+  const stagingBrowserCreatedBeforeMs =
+    options.stagingBrowserCreatedBefore?.getTime();
+  if (
+    stagingBrowserCreatedBeforeMs !== undefined &&
+    !Number.isFinite(stagingBrowserCreatedBeforeMs)
+  ) {
+    throw new Error(
+      "Stale staging browser cleanup cutoff must be a valid date",
+    );
   }
   return await cleanupClerkTestResources(
-    { kind: "stale", createdBeforeMs, roles },
+    {
+      kind: "stale",
+      ciCreatedBeforeMs,
+      ...(stagingBrowserCreatedBeforeMs === undefined
+        ? {}
+        : { stagingBrowserCreatedBeforeMs }),
+      roles,
+    },
     options,
   );
 }
@@ -373,12 +413,17 @@ async function cleanupClerkTestResources(
 ): Promise<ClerkCleanupResult> {
   const users = await listClerkUsers();
   const organizations = await listClerkOrganizations();
+  const stagingBrowserResources = await selectStaleStagingBrowserResources(
+    selection,
+    users,
+    organizations,
+  );
 
   const organizationsWithOwners = organizations.map((organization) => ({
     organization,
     owner: parseClerkTestOrganizationMetadata(organization.private_metadata),
   }));
-  const selectedOrganizations = organizationsWithOwners
+  const selectedMarkedOrganizations = organizationsWithOwners
     .filter(({ organization, owner }) => {
       return (
         owner !== null &&
@@ -386,6 +431,10 @@ async function cleanupClerkTestResources(
       );
     })
     .map(({ organization }) => organization);
+  const selectedOrganizations = [
+    ...selectedMarkedOrganizations,
+    ...stagingBrowserResources.organizations,
+  ];
   const retainedOrganizationOwners = new Set<string>();
   if (selection.kind === "stale") {
     // Keep an owner user until every marked organization in its scope is old
@@ -399,7 +448,7 @@ async function cleanupClerkTestResources(
       }
     }
   }
-  const selectedUsers = users.filter((user) => {
+  const selectedMarkedUsers = users.filter((user) => {
     const emailAddress = user.email_addresses[0];
     if (user.email_addresses.length !== 1 || !emailAddress) {
       return false;
@@ -411,6 +460,10 @@ async function cleanupClerkTestResources(
       !retainedOrganizationOwners.has(clerkTestOwnerKey(owner))
     );
   });
+  const selectedUsers = [
+    ...selectedMarkedUsers,
+    ...stagingBrowserResources.users,
+  ];
 
   let deletedOrganizations = 0;
   let alreadyAbsentOrganizations = 0;
@@ -426,7 +479,7 @@ async function cleanupClerkTestResources(
         alreadyAbsentOrganizations += 1;
       }
       deletionIndex += 1;
-      await paceClerkDeletion(deletionIndex, deletionCount);
+      await paceClerkBulkRequest(deletionIndex, deletionCount);
     }
     for (const user of selectedUsers) {
       if (await deleteUserById(user.id)) {
@@ -435,7 +488,7 @@ async function cleanupClerkTestResources(
         alreadyAbsentUsers += 1;
       }
       deletionIndex += 1;
-      await paceClerkDeletion(deletionIndex, deletionCount);
+      await paceClerkBulkRequest(deletionIndex, deletionCount);
     }
   }
 
@@ -450,6 +503,66 @@ async function cleanupClerkTestResources(
     deletedUsers,
     alreadyAbsentUsers,
     skippedUsers: users.length - selectedUsers.length,
+  };
+}
+
+async function selectStaleStagingBrowserResources(
+  selection: ClerkCleanupSelection,
+  users: readonly ClerkUserSummary[],
+  organizations: readonly ClerkOrganizationSummary[],
+): Promise<ClerkCleanupResources> {
+  if (
+    selection.kind !== "stale" ||
+    selection.stagingBrowserCreatedBeforeMs === undefined
+  ) {
+    return { organizations: [], users: [] };
+  }
+  const stagingBrowserCreatedBeforeMs = selection.stagingBrowserCreatedBeforeMs;
+
+  const staleUsers = users.filter((user) => {
+    const emailAddress = user.email_addresses[0];
+    return (
+      user.email_addresses.length === 1 &&
+      emailAddress !== undefined &&
+      isStagingBrowserTestEmail(emailAddress.email_address) &&
+      user.created_at !== undefined &&
+      user.created_at < stagingBrowserCreatedBeforeMs
+    );
+  });
+  const staleUserIds = new Set(staleUsers.map((user) => user.id));
+  const retainedUserIds = new Set<string>();
+  const selectedOrganizations: ClerkOrganizationSummary[] = [];
+  const ownedOrganizations = organizations.flatMap((organization) => {
+    const createdBy = organization.created_by;
+    return typeof createdBy === "string" && staleUserIds.has(createdBy)
+      ? [{ organization, createdBy }]
+      : [];
+  });
+
+  for (const [index, ownedOrganization] of ownedOrganizations.entries()) {
+    const { organization, createdBy } = ownedOrganization;
+    if (
+      organization.created_at === undefined ||
+      organization.created_at >= stagingBrowserCreatedBeforeMs
+    ) {
+      retainedUserIds.add(createdBy);
+      continue;
+    }
+
+    const memberUserIds = await listClerkOrganizationMemberUserIds(
+      organization.id,
+    );
+    if (memberUserIds.every((userId) => staleUserIds.has(userId))) {
+      selectedOrganizations.push(organization);
+    } else {
+      retainedUserIds.add(createdBy);
+    }
+    await paceClerkBulkRequest(index + 1, ownedOrganizations.length);
+  }
+
+  return {
+    organizations: selectedOrganizations,
+    users: staleUsers.filter((user) => !retainedUserIds.has(user.id)),
   };
 }
 
@@ -477,7 +590,7 @@ function cleanupSelectionMatches(
       return (
         selection.roles.includes(owner.role) &&
         createdAt !== undefined &&
-        createdAt < selection.createdBeforeMs
+        createdAt < selection.ciCreatedBeforeMs
       );
   }
 }
@@ -552,6 +665,35 @@ async function listClerkOrganizations(): Promise<
   }
 }
 
+async function listClerkOrganizationMemberUserIds(
+  organizationId: string,
+): Promise<readonly string[]> {
+  const userIds: string[] = [];
+  let offset = 0;
+  while (true) {
+    const parameters = new URLSearchParams({
+      limit: String(CLERK_PAGE_LIMIT),
+      offset: String(offset),
+    });
+    const response = await requestClerkWithRetry(
+      "list Clerk test organization memberships",
+      `/organizations/${organizationId}/memberships?${parameters.toString()}`,
+      { method: "GET", headers: getClerkHeaders() },
+    );
+    const page = await readClerkOrganizationMemberships(
+      response,
+      "list Clerk test organization memberships",
+    );
+    userIds.push(
+      ...page.data.map((membership) => membership.public_user_data.user_id),
+    );
+    if (page.data.length === 0 || userIds.length >= page.total_count) {
+      return userIds;
+    }
+    offset += page.data.length;
+  }
+}
+
 export async function deleteOrganizationById(
   organizationId: string,
 ): Promise<boolean> {
@@ -611,14 +753,14 @@ async function deleteUserById(userId: string): Promise<boolean> {
   return response.status !== 404;
 }
 
-async function paceClerkDeletion(
-  deletionIndex: number,
-  deletionCount: number,
+async function paceClerkBulkRequest(
+  requestIndex: number,
+  requestCount: number,
 ): Promise<void> {
-  if (deletionIndex >= deletionCount || process.env.CLERK_API_TEST_BASE_URL) {
+  if (requestIndex >= requestCount || process.env.CLERK_API_TEST_BASE_URL) {
     return;
   }
-  await wait(CLERK_DELETE_PACE_MS);
+  await wait(CLERK_BULK_REQUEST_PACE_MS);
 }
 
 async function requestClerk(
@@ -751,6 +893,19 @@ async function readClerkOrganizations(
   return data;
 }
 
+async function readClerkOrganizationMemberships(
+  response: Response,
+  operation: string,
+): Promise<ClerkOrganizationMembershipList> {
+  const data = await readClerkJson(response, operation);
+  if (!isClerkOrganizationMembershipList(data)) {
+    throw new Error(
+      `${operation} returned an unexpected response: ${formatClerkResponseSummary(response)}`,
+    );
+  }
+  return data;
+}
+
 function isClerkUserList(value: unknown): value is readonly ClerkUserSummary[] {
   return Array.isArray(value) && value.every(isClerkUserSummary);
 }
@@ -790,13 +945,48 @@ function isClerkOrganizationSummary(
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
-    (!("created_at" in value) || typeof value.created_at === "number")
+    (!("created_at" in value) || typeof value.created_at === "number") &&
+    (!("created_by" in value) ||
+      value.created_by === null ||
+      typeof value.created_by === "string")
+  );
+}
+
+function isClerkOrganizationMembershipList(
+  value: unknown,
+): value is ClerkOrganizationMembershipList {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.data) &&
+    value.data.every(isClerkOrganizationMembershipSummary) &&
+    typeof value.total_count === "number" &&
+    Number.isInteger(value.total_count) &&
+    value.total_count >= 0
+  );
+}
+
+function isClerkOrganizationMembershipSummary(
+  value: unknown,
+): value is ClerkOrganizationMembershipSummary {
+  return (
+    isRecord(value) &&
+    isRecord(value.public_user_data) &&
+    typeof value.public_user_data.user_id === "string"
   );
 }
 
 function formatClerkTestEmail(owner: ClerkTestOwner, nonce?: string): string {
   const role = nonce ? `${owner.role}-${nonce}` : owner.role;
   return `${owner.jobRef}+${CLERK_TEST_MARKER}+${owner.generation}+${role}@${CLERK_TEST_DOMAIN}`;
+}
+
+function isStagingBrowserTestEmail(email: string): boolean {
+  const addressParts = email.split("@");
+  return (
+    addressParts.length === 2 &&
+    addressParts[0] !== "" &&
+    addressParts[1] === CLERK_STAGING_BROWSER_TEST_DOMAIN
+  );
 }
 
 function parseRolePart(rolePart: string): ClerkTestRole | null {

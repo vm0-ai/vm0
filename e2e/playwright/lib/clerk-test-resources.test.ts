@@ -38,8 +38,10 @@ test("runs generation and stale cleanup through the command entry point", async 
       [
         "cleanup-stale",
         "browser,playwright,paid-onboarding",
-        "--older-than-hours",
+        "--ci-older-than-hours",
         "6",
+        "--staging-browser-older-than-hours",
+        "8",
       ],
       { ...environment, DRY_RUN: "true" },
     );
@@ -54,7 +56,7 @@ test("runs generation and stale cleanup through the command entry point", async 
     );
     await assert.rejects(
       runClerkCommand(
-        ["cleanup-stale", "runner,unknown", "--older-than-hours", "30"],
+        ["cleanup-stale", "runner,unknown", "--ci-older-than-hours", "30"],
         environment,
       ),
       /Unknown Clerk test role: unknown/,
@@ -70,10 +72,25 @@ test("runs generation and stale cleanup through the command entry point", async 
     );
     await assert.rejects(
       runClerkCommand(
-        ["cleanup-stale", "runner", "--older-than-hours", "30", "unexpected"],
+        [
+          "cleanup-stale",
+          "runner",
+          "--ci-older-than-hours",
+          "30",
+          "--staging-browser-older-than-hours",
+          "8",
+          "unexpected",
+        ],
         environment,
       ),
       /Unexpected argument: unexpected/,
+    );
+    await assert.rejects(
+      runClerkCommand(
+        ["cleanup-stale", "runner", "--ci-older-than-hours", "30"],
+        environment,
+      ),
+      /cleanup-stale requires/,
     );
     assert.equal(requestCount, requestCountBeforeInvalidArguments);
   } finally {
