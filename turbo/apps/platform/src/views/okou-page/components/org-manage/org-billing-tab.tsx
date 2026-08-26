@@ -1520,6 +1520,7 @@ function ConcurrencyQuantityControl({
       <span className="text-muted-foreground">{label}</span>
       <div className="flex h-8 items-center rounded-lg border border-border/70 bg-background">
         <Button
+          showTooltip
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.decreaseAria;
@@ -1565,6 +1566,7 @@ function ConcurrencyQuantityControl({
           }}
         />
         <Button
+          showTooltip
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.increaseAria;
@@ -2530,6 +2532,7 @@ function UsagePackMigrationProgressPage({
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
         <Button
+          showTooltip
           type="button"
           variant="ghost"
           size="icon"

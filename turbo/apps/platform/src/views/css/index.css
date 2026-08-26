@@ -1370,6 +1370,12 @@ body {
    in a thread is the same height and none of them changes the height of the
    message it sits in once it appears. Below the max width the box keeps its
    ratio, so diagrams stay equally tall as the column narrows. */
+.wmde-markdown .mermaid-block > .icon-tooltip-trigger {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+}
+
 .wmde-markdown .mermaid-diagram-expand {
   position: relative;
   display: block;

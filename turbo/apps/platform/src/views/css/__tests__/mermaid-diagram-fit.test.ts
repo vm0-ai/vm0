@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { readCssRule, readGlobalCss } from "./global-css.ts";
 
 const BOX_SELECTOR = ".wmde-markdown .mermaid-diagram-expand";
+const TRIGGER_SELECTOR =
+  ".wmde-markdown .mermaid-block > .icon-tooltip-trigger";
 const IMAGE_SELECTOR = ".wmde-markdown .mermaid-diagram-image";
 const INSET_CHILDREN_SELECTOR = `${IMAGE_SELECTOR},\n.wmde-markdown .mermaid-diagram-pending,\n.wmde-markdown .mermaid-diagram-invalid`;
 
@@ -53,10 +55,14 @@ describe("mermaid diagram box", () => {
   it("reserves the same box for every diagram before it renders", () => {
     const globalCss = readGlobalCss();
     const box = readCssRule(globalCss, BOX_SELECTOR);
+    const trigger = readCssRule(globalCss, TRIGGER_SELECTOR);
 
     expect(box).toMatch(/max-width:\s*420px;/);
     expect(box).toMatch(/aspect-ratio:\s*4 \/ 3;/);
     expect(box).toMatch(/overflow:\s*hidden;/);
+    expect(trigger).toMatch(/display:\s*block;/);
+    expect(trigger).toMatch(/width:\s*100%;/);
+    expect(trigger).toMatch(/max-width:\s*420px;/);
     expect(readCssRule(globalCss, INSET_CHILDREN_SELECTOR)).toMatch(
       /position:\s*absolute;/,
     );

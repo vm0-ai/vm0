@@ -108,6 +108,7 @@ export function AgentDialogSearch({
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");
@@ -205,6 +206,7 @@ function AgentCommandSearch({
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");

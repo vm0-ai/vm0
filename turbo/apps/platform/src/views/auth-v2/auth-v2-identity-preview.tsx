@@ -14,6 +14,7 @@ export function AuthV2IdentityPreview({
     <div className="flex h-5 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground">
       <span className="min-w-0 flex-1 truncate text-center">{value}</span>
       <Button
+        showTooltip
         aria-label={actionLabel}
         className="relative size-4 shrink-0 rounded-sm p-0 text-muted-foreground after:absolute after:-inset-1"
         size="icon-2xs"

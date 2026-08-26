@@ -151,6 +151,7 @@ function ConnectionCard({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             type="button"
             variant="ghost"
             size="icon"

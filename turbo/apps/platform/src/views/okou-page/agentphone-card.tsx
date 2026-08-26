@@ -51,6 +51,7 @@ import {
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const imessageIconImg = settingsIconAssetUrl("imessage");
 
@@ -73,7 +74,7 @@ function PhoneNumberCopyButton({
   const formatted = formatAgentPhoneNumber(phoneNumber);
 
   return (
-    <button
+    <IconTooltipButton
       type="button"
       aria-label={t(
         ($) => {
@@ -106,7 +107,7 @@ function PhoneNumberCopyButton({
     >
       {formatted}
       <Copy size={13} className="shrink-0 text-muted-foreground" />
-    </button>
+    </IconTooltipButton>
   );
 }
 
@@ -408,6 +409,7 @@ function AgentPhoneCardActions() {
         <Popover>
           <PopoverTrigger asChild>
             <Button
+              showTooltip
               type="button"
               variant="quiet"
               size="icon-xs"
