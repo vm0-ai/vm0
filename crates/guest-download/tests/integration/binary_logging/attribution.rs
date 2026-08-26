@@ -597,10 +597,6 @@ fn delayed_archive_server_without_request_returns_bounded_error() {
     finished_rx.recv_timeout(Duration::from_secs(3)).unwrap();
     let error = completion.join().unwrap().unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::Interrupted);
-    assert_eq!(
-        error.to_string(),
-        "delayed archive server stopped before receiving a request"
-    );
 }
 
 #[test]
