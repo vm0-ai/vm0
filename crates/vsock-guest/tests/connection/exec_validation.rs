@@ -31,6 +31,7 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
         103,
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::None,
             command: "printf should-not-run",
             env: &[],
@@ -58,7 +59,7 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    zero_timeout_payload[2..6].copy_from_slice(&0u32.to_be_bytes());
+    zero_timeout_payload[3..7].copy_from_slice(&0u32.to_be_bytes());
     let zero_timeout_msg = vsock_proto::encode(MSG_EXEC_START, 104, &zero_timeout_payload).unwrap();
     host_stream.write_all(&zero_timeout_msg).unwrap();
     assert_eq!(
@@ -66,12 +67,11 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
         "invalid payload: exec start timeout duration must be positive"
     );
 
-    send_exec_start_request(
-        &mut host_stream,
-        105,
+    let mut invalid_control_payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
-            lifecycle: ExecLifecyclePolicy::OneShot,
-            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Workload,
+            timeout: ExecTimeoutPolicy::None,
             command: "printf should-not-run",
             env: &[],
             sudo: false,
@@ -85,10 +85,15 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
             },
             stdin_bytes: None,
         },
-    );
+    )
+    .unwrap();
+    invalid_control_payload[0] = zero_timeout_payload[0];
+    let invalid_control_msg =
+        vsock_proto::encode(MSG_EXEC_START, 105, &invalid_control_payload).unwrap();
+    host_stream.write_all(&invalid_control_msg).unwrap();
     assert_eq!(
         read_error_response(&mut host_stream, 105),
-        "exec control policy requires supervised lifecycle"
+        "invalid payload: exec start role, lifecycle, and control combination invalid"
     );
 
     send_quiesce_operations(&mut host_stream, 106);

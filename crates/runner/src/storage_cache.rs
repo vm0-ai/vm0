@@ -3855,6 +3855,13 @@ mod tests {
             self.inner.start_process(request).await
         }
 
+        async fn start_agent_process(
+            &self,
+            request: &sandbox::StartAgentProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestAgentProcessHandle> {
+            self.inner.start_agent_process(request).await
+        }
+
         async fn wait_process(
             &self,
             handle: sandbox::GuestProcessHandle,

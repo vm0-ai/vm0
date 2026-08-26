@@ -39,6 +39,7 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
             command: "exit 66",
             env: &[],

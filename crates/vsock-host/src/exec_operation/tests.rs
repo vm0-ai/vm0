@@ -36,7 +36,12 @@ fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
             normal_operations.reserve().unwrap(),
         )),
         lifecycle: ExecOperationLifecycle::OneShot,
-        diagnostic: ExecOperationDiagnostic::new(seq, label),
+        diagnostic: ExecOperationDiagnostic::new(
+            seq,
+            label,
+            vsock_proto::ExecProcessRole::Workload,
+            false,
+        ),
         result_tx,
         stream_tx: None,
         stdout_capture: ExecCaptureState::Discard,
@@ -87,7 +92,12 @@ fn capture_terminal_log_events_with_context(
     stream_overflowed: bool,
     host_cancel_requested: bool,
 ) -> Vec<CapturedEvent> {
-    let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log");
+    let mut diagnostic = ExecOperationDiagnostic::new(
+        7,
+        "terminal-log",
+        vsock_proto::ExecProcessRole::Workload,
+        false,
+    );
     if slow {
         diagnostic.registered_at =
             Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
@@ -427,7 +437,8 @@ fn shared_with_logged_operation(
         close_notify: tokio::sync::Notify::new(),
         exec_output_before_copy_hook: std::sync::Mutex::new(None),
     });
-    let mut diagnostic = ExecOperationDiagnostic::new(7, label);
+    let mut diagnostic =
+        ExecOperationDiagnostic::new(7, label, vsock_proto::ExecProcessRole::Workload, false);
     diagnostic.registered_at =
         Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
     {
@@ -1023,7 +1034,8 @@ fn exec_operation_diagnostic_keeps_only_truncated_label_log() {
         "{}secret-tail",
         "a".repeat(EXEC_OPERATION_LABEL_LOG_PREFIX_MAX_BYTES)
     );
-    let mut diagnostic = ExecOperationDiagnostic::new(7, &label);
+    let mut diagnostic =
+        ExecOperationDiagnostic::new(7, &label, vsock_proto::ExecProcessRole::Workload, false);
     diagnostic.registered_at =
         Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
 
@@ -1037,10 +1049,27 @@ fn exec_operation_diagnostic_keeps_only_truncated_label_log() {
     assert!(!diagnostic.label_log.contains("secret-tail"));
     assert_eq!(diagnostic.frame("start").label_log, diagnostic.label_log);
     assert_eq!(diagnostic.snapshot().label_log, diagnostic.label_log);
+    assert_eq!(diagnostic.process_class, "contained_workload");
+    assert_eq!(diagnostic.operation_kind, "exec");
     assert_eq!(
         diagnostic.mark_first_output().unwrap().label_log,
         diagnostic.label_log
     );
+}
+
+#[test]
+fn exec_operation_diagnostic_derives_agent_class_and_operation_kind() {
+    let diagnostic =
+        ExecOperationDiagnostic::new(8, "agent", vsock_proto::ExecProcessRole::Agent, true);
+
+    assert_eq!(diagnostic.process_class, "controlled_agent");
+    assert_eq!(diagnostic.operation_kind, "start_agent_process");
+    let frame = diagnostic.frame("start");
+    assert_eq!(frame.process_class, "controlled_agent");
+    assert_eq!(frame.operation_kind, "start_agent_process");
+    let snapshot = diagnostic.snapshot();
+    assert_eq!(snapshot.process_class, "controlled_agent");
+    assert_eq!(snapshot.operation_kind, "start_agent_process");
 }
 
 #[test]
@@ -1052,6 +1081,8 @@ fn exec_operation_diagnostic_marks_only_first_slow_output() {
             - EXEC_OPERATION_STAGE_SLOW_THRESHOLD
             - Duration::from_millis(1),
         first_output_at: None,
+        process_class: "contained_workload",
+        operation_kind: "exec",
     };
 
     let snapshot = diagnostic.mark_first_output().unwrap();

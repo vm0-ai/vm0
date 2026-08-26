@@ -124,6 +124,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         target_seq,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::None,
             command: &command,
             env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],

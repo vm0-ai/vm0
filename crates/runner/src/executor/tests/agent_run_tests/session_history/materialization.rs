@@ -1086,7 +1086,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
     }
 
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent process must not start before workspace session restore completes"
     );
     assert!(
@@ -1110,7 +1110,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
     );
     assert_eq!(writes[0].content, history.as_bytes());
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert!(
         sandbox
             .exec_calls()

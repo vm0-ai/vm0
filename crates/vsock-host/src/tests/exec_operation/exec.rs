@@ -30,6 +30,7 @@ async fn test_exec() {
             vsock_proto::ExecTimeoutPolicy::Duration { timeout_ms: 5000 }
         );
         assert_eq!(d.lifecycle, vsock_proto::ExecLifecyclePolicy::OneShot);
+        assert_eq!(d.role, vsock_proto::ExecProcessRole::Workload);
         assert_eq!(d.control, vsock_proto::ExecControlPolicy::Disabled);
         assert!(d.env.is_empty());
         assert!(!d.sudo);

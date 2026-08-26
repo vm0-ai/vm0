@@ -25,6 +25,7 @@ async fn supervised_exec_returns_handle_after_exec_started() {
 
     let decoded = vsock_proto::decode_exec_start(&pending.start.msg.payload).unwrap();
     assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::Supervised);
+    assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Workload);
     assert_eq!(decoded.timeout, ExecTimeoutPolicy::None);
     assert_eq!(decoded.control, ExecControlPolicy::Disabled);
 

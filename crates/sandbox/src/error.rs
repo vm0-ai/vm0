@@ -123,6 +123,8 @@ pub enum SandboxOperation {
     WriteFile,
     /// [`Sandbox::start_process`](crate::Sandbox::start_process).
     StartProcess,
+    /// [`Sandbox::start_agent_process`](crate::Sandbox::start_agent_process).
+    StartAgentProcess,
     /// [`GuestProcessControlHandle::control`](crate::GuestProcessControlHandle::control).
     ProcessControl,
     /// [`Sandbox::wait_process`](crate::Sandbox::wait_process).
@@ -137,6 +139,7 @@ impl fmt::Display for SandboxOperation {
             Self::CopyFile => f.write_str("copy file"),
             Self::WriteFile => f.write_str("write file"),
             Self::StartProcess => f.write_str("start process"),
+            Self::StartAgentProcess => f.write_str("start Agent process"),
             Self::ProcessControl => f.write_str("process control"),
             Self::WaitProcess => f.write_str("wait process"),
         }

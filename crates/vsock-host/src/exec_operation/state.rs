@@ -3,7 +3,9 @@ use std::io;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
-use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecOutputPolicy, ExecTermination};
+use vsock_proto::{
+    ExecControlNonce, ExecControlStatus, ExecOutputPolicy, ExecProcessRole, ExecTermination,
+};
 
 use crate::{
     CompositeNormalOperation, ConnectionState, RouteId, Shared, normal_operation_transition_error,
@@ -390,6 +392,7 @@ pub(in crate::exec_operation) struct ExecOperationRegistrationInput<'a> {
     pub(in crate::exec_operation) stderr: ExecOutputPolicy,
     pub(in crate::exec_operation) stream_queue_capacity: Option<usize>,
     pub(in crate::exec_operation) lifecycle: ExecOperationLifecycle,
+    pub(in crate::exec_operation) role: ExecProcessRole,
     pub(in crate::exec_operation) tracking: ExecOperationTracking<'a>,
 }
 
@@ -545,6 +548,7 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
         stderr,
         stream_queue_capacity,
         lifecycle,
+        role,
         tracking,
     } = input;
     let (stream_tx, stream_rx) = match stream_queue_capacity {
@@ -566,7 +570,11 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
     };
     let tracks_normal_operation = normal_operation.is_some();
     let (route_id, diagnostic) = shared.register_route(|route_id, state| {
-        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label);
+        let supervised = matches!(
+            lifecycle,
+            ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+        );
+        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label, role, supervised);
         let operation = ExecOperation {
             route_id,
             normal_operation,

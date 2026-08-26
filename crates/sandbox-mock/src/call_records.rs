@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode, SandboxControlTarget};
+use ::sandbox::{ExecOutputLimits, ProcessOutputMode, SandboxControlTarget};
 
 /// Behavior override applied to exec calls whose command contains the pattern.
 ///
@@ -115,8 +115,6 @@ pub struct StartProcessCall {
     pub sudo: bool,
     /// Output mode requested for the guest process.
     pub output: ProcessOutputMode,
-    /// Control mode requested for the guest process.
-    pub control: ProcessControlMode,
 }
 
 /// Captured `wait_process` request fields recorded for test assertions.

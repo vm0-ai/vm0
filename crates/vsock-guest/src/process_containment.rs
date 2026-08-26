@@ -23,6 +23,7 @@ use guest_contracts::process_containment::{
     WORKLOAD_CGROUP_NAME, WORKLOAD_MEMORY_OOM_GROUP, WorkloadResourceEvents,
     WorkloadResourcePolicy,
 };
+use vsock_proto::ExecProcessRole;
 
 use crate::log::log;
 
@@ -163,7 +164,7 @@ impl ExecProcessContainment {
     pub(crate) fn create(
         sequence: u32,
         mode: ProcessContainmentMode,
-        trusted_control: bool,
+        role: ExecProcessRole,
     ) -> Result<Self, ProcessContainmentError> {
         if use_test_noop_backend(mode) {
             return Ok(Self {
@@ -171,7 +172,7 @@ impl ExecProcessContainment {
             });
         }
 
-        CgroupGuard::create(sequence, trusted_control).map(|guard| Self {
+        CgroupGuard::create(sequence, role).map(|guard| Self {
             backend: ContainmentBackend::Cgroup(guard),
         })
     }
@@ -276,22 +277,18 @@ fn verify_exec_process_containment_empty_in(
 }
 
 impl CgroupGuard {
-    fn create(sequence: u32, trusted_control: bool) -> Result<Self, ProcessContainmentError> {
+    fn create(sequence: u32, role: ExecProcessRole) -> Result<Self, ProcessContainmentError> {
         let policy = workload_resource_policy()?;
-        Self::create_in(
-            Path::new(EXEC_CGROUP_BASE_PATH),
-            sequence,
-            trusted_control,
-            policy,
-        )
+        Self::create_in(Path::new(EXEC_CGROUP_BASE_PATH), sequence, role, policy)
     }
 
     fn create_in(
         base_path: &Path,
         sequence: u32,
-        trusted_control: bool,
+        role: ExecProcessRole,
         policy: WorkloadResourcePolicy,
     ) -> Result<Self, ProcessContainmentError> {
+        let trusted_control = role == ExecProcessRole::Agent;
         let started = Instant::now();
         let id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
         let group_name = format!(
@@ -1773,7 +1770,7 @@ mod tests {
         let policy =
             WorkloadResourcePolicy::for_guest_capacity(2, u64::from(4096_u32) * 1024 * 1024)
                 .unwrap();
-        let result = CgroupGuard::create_in(base.path(), 17, false, policy);
+        let result = CgroupGuard::create_in(base.path(), 17, ExecProcessRole::Workload, policy);
         let Err(error) = result else {
             panic!("placement-file open unexpectedly succeeded");
         };

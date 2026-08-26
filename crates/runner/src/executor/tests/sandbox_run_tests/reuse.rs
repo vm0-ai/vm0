@@ -125,7 +125,7 @@ async fn execute_job_reuse_model_provider_env_validation_failure_returns_sandbox
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after env validation failure"
     );
 }
@@ -153,7 +153,7 @@ async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after tool validation failure"
     );
 }
@@ -189,7 +189,7 @@ async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(reuse_outcome.workspace_image.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after resume session validation failure"
     );
 }

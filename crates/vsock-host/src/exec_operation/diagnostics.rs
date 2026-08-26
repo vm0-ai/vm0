@@ -1,7 +1,7 @@
 use std::io;
 
 use tokio::time::Instant;
-use vsock_proto::{ExecCapturedOutput, ExecTermination};
+use vsock_proto::{ExecCapturedOutput, ExecProcessRole, ExecTermination};
 
 use super::state::ExecOperationLifecycle;
 use super::{EXEC_OPERATION_LABEL_LOG_PREFIX_MAX_BYTES, EXEC_OPERATION_STAGE_SLOW_THRESHOLD};
@@ -68,12 +68,16 @@ pub(in crate::exec_operation) struct ExecOperationDiagnostic {
     pub(in crate::exec_operation) label_log: String,
     pub(in crate::exec_operation) registered_at: Instant,
     pub(in crate::exec_operation) first_output_at: Option<Instant>,
+    pub(in crate::exec_operation) process_class: &'static str,
+    pub(in crate::exec_operation) operation_kind: &'static str,
 }
 
 pub(in crate::exec_operation) struct ExecOperationSnapshot {
     pub(in crate::exec_operation) seq: u32,
     pub(in crate::exec_operation) label_log: String,
     pub(in crate::exec_operation) elapsed_ms: u128,
+    pub(in crate::exec_operation) process_class: &'static str,
+    pub(in crate::exec_operation) operation_kind: &'static str,
 }
 
 pub(crate) struct ExecOperationCloseSnapshot {
@@ -85,15 +89,34 @@ pub(in crate::exec_operation) struct ExecOperationFrameDiagnostic {
     pub(in crate::exec_operation) seq: u32,
     pub(in crate::exec_operation) label_log: String,
     pub(in crate::exec_operation) frame: &'static str,
+    pub(in crate::exec_operation) process_class: &'static str,
+    pub(in crate::exec_operation) operation_kind: &'static str,
 }
 
 impl ExecOperationDiagnostic {
-    pub(in crate::exec_operation) fn new(seq: u32, label: &str) -> Self {
+    pub(in crate::exec_operation) fn new(
+        seq: u32,
+        label: &str,
+        role: ExecProcessRole,
+        supervised: bool,
+    ) -> Self {
+        let process_class = match role {
+            ExecProcessRole::Workload => "contained_workload",
+            ExecProcessRole::Agent => "controlled_agent",
+        };
+        let operation_kind = match (role, supervised) {
+            (ExecProcessRole::Workload, false) => "exec",
+            (ExecProcessRole::Workload, true) => "start_process",
+            (ExecProcessRole::Agent, true) => "start_agent_process",
+            (ExecProcessRole::Agent, false) => "invalid",
+        };
         Self {
             seq,
             label_log: exec_operation_label_log(label),
             registered_at: Instant::now(),
             first_output_at: None,
+            process_class,
+            operation_kind,
         }
     }
 
@@ -105,6 +128,8 @@ impl ExecOperationDiagnostic {
             seq: self.seq,
             label_log: self.label_log.clone(),
             frame,
+            process_class: self.process_class,
+            operation_kind: self.operation_kind,
         }
     }
 
@@ -117,6 +142,8 @@ impl ExecOperationDiagnostic {
             seq: self.seq,
             label_log: self.label_log.clone(),
             elapsed_ms: self.elapsed_ms(),
+            process_class: self.process_class,
+            operation_kind: self.operation_kind,
         }
     }
 
@@ -132,6 +159,8 @@ impl ExecOperationDiagnostic {
                 seq: self.seq,
                 label_log: self.label_log.clone(),
                 elapsed_ms,
+                process_class: self.process_class,
+                operation_kind: self.operation_kind,
             });
         }
 
@@ -182,6 +211,8 @@ impl ExecOperationDiagnostic {
                     stderr_truncated,
                     diagnostic_present,
                     host_cancel_requested,
+                    process_class = self.process_class,
+                    operation_kind = self.operation_kind,
                     "exec operation terminal result"
                 )
             };
@@ -199,6 +230,8 @@ impl ExecOperationDiagnostic {
             label = %self.label_log,
             elapsed_ms = self.elapsed_ms(),
             error = %error,
+            process_class = self.process_class,
+            operation_kind = self.operation_kind,
             "exec operation error response"
         );
     }
@@ -312,8 +345,12 @@ pub(crate) fn log_operations_closed(reason: &'static str, snapshot: &ExecOperati
         .iter()
         .map(|operation| {
             format!(
-                "seq={} label={} elapsed_ms={}",
-                operation.seq, operation.label_log, operation.elapsed_ms
+                "seq={} label={} elapsed_ms={} process_class={} operation_kind={}",
+                operation.seq,
+                operation.label_log,
+                operation.elapsed_ms,
+                operation.process_class,
+                operation.operation_kind
             )
         })
         .collect::<Vec<_>>()

@@ -80,6 +80,7 @@
 //!
 //! ```text
 //! [1B lifecycle]
+//! [1B process_role]
 //! [timeout_policy]
 //! [1B flags]
 //! [4B cmd_len][command]
@@ -96,6 +97,11 @@
 //!
 //! - `0x00`: one-shot.
 //! - `0x01`: supervised.
+//!
+//! `process_role` values:
+//!
+//! - `0x00`: ordinary contained workload.
+//! - `0x01`: controlled Agent operation.
 //!
 //! `timeout_policy` values:
 //!
@@ -199,14 +205,14 @@ pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
     DecodedExecStart, DecodedExecStarted, EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN,
     ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
-    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
-    ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
-    decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
-    decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
-    encode_exec_control_frame_into, encode_exec_control_result, encode_exec_output,
-    encode_exec_output_frame_into, encode_exec_result, encode_exec_result_frame_into,
-    encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
-    validate_exec_control,
+    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecProcessRole,
+    ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES,
+    decode_exec_cancel, decode_exec_control, decode_exec_control_result, decode_exec_output,
+    decode_exec_result, decode_exec_start, decode_exec_started, encode_exec_cancel,
+    encode_exec_control, encode_exec_control_frame_into, encode_exec_control_result,
+    encode_exec_output, encode_exec_output_frame_into, encode_exec_result,
+    encode_exec_result_frame_into, encode_exec_start, encode_exec_start_with_expected_exit_codes,
+    encode_exec_started, validate_exec_control, validate_exec_process_contract,
 };
 pub use payloads::guest_dns_readiness::{
     DecodedGuestDnsReadinessRequest, DecodedGuestDnsReadinessResult,

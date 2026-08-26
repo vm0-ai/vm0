@@ -57,8 +57,8 @@ use guest_contracts::process_containment::{
 };
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
-    ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
-    MSG_EXEC_STARTED,
+    ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTermination, ExecTimeoutPolicy,
+    MSG_ERROR, MSG_EXEC_STARTED,
 };
 
 #[cfg(test)]
@@ -108,10 +108,18 @@ pub(crate) struct ExecOperationRegistry {
 struct ExecOperationRegistryEntry {
     cancel: Arc<AtomicBool>,
     label_preview: String,
+    process_class: &'static str,
+    operation_kind: &'static str,
 }
 
 impl ExecOperationRegistry {
-    pub(crate) fn register(&self, seq: u32, label: &str) -> Result<ExecOperationRegistration, ()> {
+    pub(crate) fn register(
+        &self,
+        seq: u32,
+        label: &str,
+        process_class: &'static str,
+        operation_kind: &'static str,
+    ) -> Result<ExecOperationRegistration, ()> {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
             return Err(());
@@ -123,6 +131,8 @@ impl ExecOperationRegistry {
             ExecOperationRegistryEntry {
                 cancel: cancel.clone(),
                 label_preview: truncate_command_preview(label),
+                process_class,
+                operation_kind,
             },
         );
         Ok(ExecOperationRegistration {
@@ -132,11 +142,15 @@ impl ExecOperationRegistry {
         })
     }
 
-    pub(crate) fn cancel(&self, seq: u32) -> Option<String> {
+    pub(crate) fn cancel(&self, seq: u32) -> Option<(String, &'static str, &'static str)> {
         let active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let cancel = active.get(&seq)?;
         cancel.cancel.store(true, Ordering::Release);
-        Some(cancel.label_preview.clone())
+        Some((
+            cancel.label_preview.clone(),
+            cancel.process_class,
+            cancel.operation_kind,
+        ))
     }
 
     fn remove_if_same(&self, seq: u32, cancel: &Arc<AtomicBool>) {
@@ -215,6 +229,7 @@ impl ExecOperationTimeout {
 pub(crate) struct ExecOperationWorkerRequest {
     seq: u32,
     lifecycle: ExecOperationLifecycle,
+    role: ExecProcessRole,
     timeout: ExecOperationTimeout,
     command: String,
     env: Vec<(String, String)>,
@@ -232,12 +247,34 @@ pub(crate) struct ExecOperationWorkerRequest {
 }
 
 impl ExecOperationWorkerRequest {
+    fn process_class(&self) -> &'static str {
+        match self.role {
+            ExecProcessRole::Workload => "contained_workload",
+            ExecProcessRole::Agent => "controlled_agent",
+        }
+    }
+
+    fn operation_kind(&self) -> &'static str {
+        match (self.role, self.lifecycle) {
+            (ExecProcessRole::Workload, ExecOperationLifecycle::OneShot) => "exec",
+            (ExecProcessRole::Workload, ExecOperationLifecycle::Supervised) => "start_process",
+            (ExecProcessRole::Agent, ExecOperationLifecycle::Supervised) => "start_agent_process",
+            (ExecProcessRole::Agent, ExecOperationLifecycle::OneShot) => "invalid",
+        }
+    }
+
     pub(crate) fn from_decoded(
         seq: u32,
         decoded: vsock_proto::DecodedExecStart<'_>,
         process_containment_mode: ProcessContainmentMode,
         drain_deadline: Duration,
     ) -> io::Result<Self> {
+        vsock_proto::validate_exec_process_contract(
+            decoded.role,
+            decoded.lifecycle,
+            decoded.control,
+        )
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
         let lifecycle = match decoded.lifecycle {
             ExecLifecyclePolicy::OneShot => ExecOperationLifecycle::OneShot,
             ExecLifecyclePolicy::Supervised => ExecOperationLifecycle::Supervised,
@@ -274,6 +311,7 @@ impl ExecOperationWorkerRequest {
         Ok(Self {
             seq,
             lifecycle,
+            role: decoded.role,
             timeout,
             command: decoded.command.to_owned(),
             env: decoded
@@ -314,6 +352,20 @@ impl ExecOperationWorkerRequest {
         self.exec_control_guard = Some(guard);
         self.exec_control_bootstrap_endpoint = bootstrap_endpoint;
     }
+
+    pub(crate) fn validate_control_attachment(&self) -> io::Result<()> {
+        match (self.role, self.exec_control_bootstrap_endpoint.is_some()) {
+            (ExecProcessRole::Workload, false) | (ExecProcessRole::Agent, true) => Ok(()),
+            (ExecProcessRole::Workload, true) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "workload process received an Agent control bootstrap endpoint",
+            )),
+            (ExecProcessRole::Agent, false) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Agent process did not receive a control bootstrap endpoint",
+            )),
+        }
+    }
 }
 
 struct DrainWorker {
@@ -333,16 +385,26 @@ struct ExecStreamWriter {
     writer: GuestWriter,
     output_seq: u32,
     frame: Vec<u8>,
+    process_class: &'static str,
+    operation_kind: &'static str,
 }
 
 impl ExecStreamWriter {
-    fn new(seq: u32, label_preview: String, writer: GuestWriter) -> Self {
+    fn new(
+        seq: u32,
+        label_preview: String,
+        writer: GuestWriter,
+        process_class: &'static str,
+        operation_kind: &'static str,
+    ) -> Self {
         Self {
             seq,
             label_preview,
             writer,
             output_seq: 0,
             frame: Vec::new(),
+            process_class,
+            operation_kind,
         }
     }
 
@@ -751,9 +813,11 @@ impl RunningExec {
             log(
                 "WARN",
                 &format!(
-                    "exec operation: drain deadline reached seq={} label={} after {:?}",
+                    "exec operation: drain deadline reached seq={} label={} process_class={} operation_kind={} after {:?}",
                     request.seq,
                     truncate_command_preview(&request.label),
+                    request.process_class(),
+                    request.operation_kind(),
                     request.drain_deadline,
                 ),
             );
@@ -904,7 +968,9 @@ where
     S: ThreadSpawner,
 {
     let seq = request.seq;
-    let registration = match registry.register(seq, &request.label) {
+    let process_class = request.process_class();
+    let operation_kind = request.operation_kind();
+    let registration = match registry.register(seq, &request.label, process_class, operation_kind) {
         Ok(registration) => registration,
         Err(()) => {
             return send_error_response(seq, "exec operation already active", &writer);
@@ -937,7 +1003,9 @@ where
             let diagnostic = format!("Failed to spawn exec operation worker thread: {e}");
             log(
                 "ERROR",
-                &format!("exec operation: worker spawn failed seq={seq}: {e}"),
+                &format!(
+                    "exec operation: worker spawn failed seq={seq} process_class={process_class} operation_kind={operation_kind}: {e}"
+                ),
             );
             send_exec_result_after_lock(
                 ExecResultFrame {
@@ -956,10 +1024,12 @@ where
 }
 
 pub(crate) fn cancel_exec_operation(registry: &ExecOperationRegistry, seq: u32) {
-    if let Some(label_preview) = registry.cancel(seq) {
+    if let Some((label_preview, process_class, operation_kind)) = registry.cancel(seq) {
         log(
             "INFO",
-            &format!("exec operation: cancel requested seq={seq} label={label_preview}"),
+            &format!(
+                "exec operation: cancel requested seq={seq} label={label_preview} process_class={process_class} operation_kind={operation_kind}"
+            ),
         );
     }
 }
@@ -1011,7 +1081,7 @@ fn run_exec_operation_worker<S>(
     let process_containment = match ExecProcessContainment::create(
         request.seq,
         request.process_containment_mode,
-        request.exec_control_bootstrap_endpoint.is_some(),
+        request.role,
     ) {
         Ok(process_containment) => process_containment,
         Err(error) => {
@@ -1093,9 +1163,11 @@ fn run_exec_operation_worker<S>(
         log(
             "WARN",
             &format!(
-                "exec operation: failed to send exec_started seq={} label={}: {e}",
+                "exec operation: failed to send exec_started seq={} label={} process_class={} operation_kind={}: {e}",
                 request.seq,
-                truncate_command_preview(&request.label)
+                truncate_command_preview(&request.label),
+                request.process_class(),
+                request.operation_kind(),
             ),
         );
         setup.abort_exec_started_send_failed(&completion);
@@ -1142,6 +1214,8 @@ fn run_exec_operation_worker<S>(
             request.seq,
             truncate_command_preview(&request.label),
             writer.clone(),
+            request.process_class(),
+            request.operation_kind(),
         )))
     });
 
@@ -1344,8 +1418,11 @@ where
                             log(
                                 "ERROR",
                                 &format!(
-                                    "exec operation: failed to encode output seq={} label={}: {e}",
-                                    writer.seq, writer.label_preview
+                                    "exec operation: failed to encode output seq={} label={} process_class={} operation_kind={}: {e}",
+                                    writer.seq,
+                                    writer.label_preview,
+                                    writer.process_class,
+                                    writer.operation_kind,
                                 ),
                             );
                             exec_cancel.store(true, Ordering::Release);
@@ -1356,8 +1433,11 @@ where
                             log(
                                 "WARN",
                                 &format!(
-                                    "exec operation: failed to send output chunk seq={} label={}: {e}",
-                                    writer.seq, writer.label_preview
+                                    "exec operation: failed to send output chunk seq={} label={} process_class={} operation_kind={}: {e}",
+                                    writer.seq,
+                                    writer.label_preview,
+                                    writer.process_class,
+                                    writer.operation_kind,
                                 ),
                             );
                             exec_cancel.store(true, Ordering::Release);
@@ -1737,9 +1817,11 @@ struct ExecTerminalLogMessageInput<'a> {
 fn exec_terminal_log_message(input: ExecTerminalLogMessageInput<'_>) -> Option<String> {
     let terminal_reason = exec_terminal_log_reason(input.slow, input.notable)?;
     Some(format!(
-        "exec result: seq={} label={} elapsed_ms={} slow={} notable={} terminal_reason={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
+        "exec result: seq={} label={} process_class={} operation_kind={} elapsed_ms={} slow={} notable={} terminal_reason={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
         input.request.seq,
         truncate_command_preview(&input.request.label),
+        input.request.process_class(),
+        input.request.operation_kind(),
         input.elapsed_ms,
         input.slow,
         input.notable,
@@ -1814,6 +1896,7 @@ mod tests {
         ExecOperationWorkerRequest {
             seq,
             lifecycle: ExecOperationLifecycle::OneShot,
+            role: ExecProcessRole::Workload,
             timeout: ExecOperationTimeout::Duration { timeout_ms: 0 },
             command: command.to_string(),
             env: Vec::new(),
@@ -1831,12 +1914,93 @@ mod tests {
         }
     }
 
+    fn decoded_request(
+        role: ExecProcessRole,
+        lifecycle: ExecLifecyclePolicy,
+        control: ExecControlPolicy,
+    ) -> vsock_proto::DecodedExecStart<'static> {
+        vsock_proto::DecodedExecStart {
+            lifecycle,
+            role,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+            command: "true",
+            env: Vec::new(),
+            sudo: false,
+            label: "test",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: Vec::new(),
+            control,
+            stdin_bytes: None,
+        }
+    }
+
     fn operation_guard() -> OperationGuard {
         crate::quiesce::OperationState::default().acquire().unwrap()
     }
 
+    #[test]
+    fn worker_boundary_rejects_invalid_process_contracts() {
+        for decoded in [
+            decoded_request(
+                ExecProcessRole::Agent,
+                ExecLifecyclePolicy::OneShot,
+                ExecControlPolicy::Disabled,
+            ),
+            decoded_request(
+                ExecProcessRole::Workload,
+                ExecLifecyclePolicy::Supervised,
+                ExecControlPolicy::Enabled {
+                    control_nonce: [1; vsock_proto::EXEC_CONTROL_NONCE_LEN],
+                    sink: true,
+                },
+            ),
+        ] {
+            let error = match ExecOperationWorkerRequest::from_decoded(
+                1,
+                decoded,
+                ProcessContainmentMode::TestNoop,
+                EXEC_OUTPUT_DRAIN_DEADLINE,
+            ) {
+                Ok(_) => panic!("worker accepted invalid process contract"),
+                Err(error) => error,
+            };
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn worker_boundary_rejects_role_and_control_endpoint_mismatches() {
+        let mut workload = request(1, "true");
+        workload.exec_control_bootstrap_endpoint = Some("endpoint".to_string());
+        assert_eq!(
+            workload.validate_control_attachment().unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+
+        let mut agent = request(2, "true");
+        agent.role = ExecProcessRole::Agent;
+        agent.lifecycle = ExecOperationLifecycle::Supervised;
+        agent.control = ExecControlPolicy::Enabled {
+            control_nonce: [2; vsock_proto::EXEC_CONTROL_NONCE_LEN],
+            sink: true,
+        };
+        assert_eq!(
+            agent.validate_control_attachment().unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    fn register_test_operation(
+        registry: &ExecOperationRegistry,
+        seq: u32,
+        label: &str,
+    ) -> Result<ExecOperationRegistration, ()> {
+        registry.register(seq, label, "contained_workload", "exec")
+    }
+
     fn assert_registry_released(registry: &ExecOperationRegistry, seq: u32) {
-        let registration = registry.register(seq, "test");
+        let registration = register_test_operation(registry, seq, "test");
         assert!(
             registration.is_ok(),
             "exec operation registry entry for seq={seq} was not released"
@@ -2110,17 +2274,20 @@ mod tests {
     #[test]
     fn registry_rejects_duplicate_active_sequence_and_cleans_on_drop() {
         let registry = ExecOperationRegistry::default();
-        let first = registry.register(7, "first").unwrap();
-        assert!(registry.register(7, "duplicate").is_err());
+        let first = register_test_operation(&registry, 7, "first").unwrap();
+        assert!(register_test_operation(&registry, 7, "duplicate").is_err());
         drop(first);
-        assert!(registry.register(7, "second").is_ok());
+        assert!(register_test_operation(&registry, 7, "second").is_ok());
     }
 
     #[test]
     fn registry_cancel_sets_token_and_unknown_cancel_is_noop() {
         let registry = ExecOperationRegistry::default();
-        let registration = registry.register(8, "cancel-me").unwrap();
-        assert_eq!(registry.cancel(8).as_deref(), Some("cancel-me"));
+        let registration = register_test_operation(&registry, 8, "cancel-me").unwrap();
+        assert_eq!(
+            registry.cancel(8),
+            Some(("cancel-me".to_string(), "contained_workload", "exec"))
+        );
         assert!(registration.cancel.load(Ordering::Acquire));
         assert!(registry.cancel(9).is_none());
     }
@@ -2129,10 +2296,12 @@ mod tests {
     fn registry_cancel_returns_truncated_label_preview() {
         let registry = ExecOperationRegistry::default();
         let long_label = format!("{}🔥tail", "a".repeat(99));
-        let registration = registry.register(10, &long_label).unwrap();
+        let registration = register_test_operation(&registry, 10, &long_label).unwrap();
 
-        let preview = registry.cancel(10).unwrap();
+        let (preview, process_class, operation_kind) = registry.cancel(10).unwrap();
         assert_eq!(preview, truncate_command_preview(&long_label));
+        assert_eq!(process_class, "contained_workload");
+        assert_eq!(operation_kind, "exec");
         assert!(preview.ends_with("..."));
         assert!(preview.len() < long_label.len());
         assert!(!preview.contains('🔥'));
@@ -2171,7 +2340,7 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let registry = ExecOperationRegistry::default();
-        let _registration = registry.register(11, "duplicate").unwrap();
+        let _registration = register_test_operation(&registry, 11, "duplicate").unwrap();
 
         start_exec_operation_with_spawner(
             request(11, "echo duplicate"),
@@ -2197,7 +2366,7 @@ mod tests {
         let registry = ExecOperationRegistry::default();
         let mut request = request(47, "sleep 60");
         request.lifecycle = ExecOperationLifecycle::Supervised;
-        let registration = registry.register(request.seq, &request.label).unwrap();
+        let registration = register_test_operation(&registry, request.seq, &request.label).unwrap();
         let exec_cancel = registration.cancel_token();
 
         run_exec_operation_worker(
@@ -2359,7 +2528,7 @@ mod tests {
             chunk_limit_bytes: 8,
         };
         let seq = request.seq;
-        let registration = registry.register(request.seq, &request.label).unwrap();
+        let registration = register_test_operation(&registry, request.seq, &request.label).unwrap();
         let exec_cancel = registration.cancel_token();
 
         run_exec_operation_worker(

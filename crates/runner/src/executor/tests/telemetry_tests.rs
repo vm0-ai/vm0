@@ -322,6 +322,13 @@ impl Sandbox for ObservedStartSandbox {
         self.inner.start_process(request).await
     }
 
+    async fn start_agent_process(
+        &self,
+        request: &sandbox::StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<sandbox::GuestAgentProcessHandle> {
+        self.inner.start_agent_process(request).await
+    }
+
     async fn wait_process(
         &self,
         handle: sandbox::GuestProcessHandle,
@@ -1314,7 +1321,7 @@ async fn assert_reused_private_write_timeout_telemetry(
     );
     assert_action_bounded_outcome(&telemetry, expected_action, expected_outcome);
     assert_lacks_action(&telemetry, "runner_agent_start_process");
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(
         overrides.private_write_file_calls().len(),
         successful_writes_before + 1
@@ -1372,7 +1379,7 @@ async fn reused_connector_account_context_timeout_records_failure_and_continues(
         Some("connector account context unavailable"),
     );
     assert_has_action(&telemetry, "runner_agent_start_process");
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(overrides.private_write_file_calls().len(), 2);
 }
 

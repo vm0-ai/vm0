@@ -313,7 +313,7 @@ async fn hard_cancelled_job_not_parked() {
         0,
         "hard-cancelled job must not park"
     );
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(overrides.park_call_count(), 0);
     assert_eq!(overrides.destroy_call_count(), 1);
 

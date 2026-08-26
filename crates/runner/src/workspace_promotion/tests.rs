@@ -18,8 +18,9 @@ use guest_contracts::session_history_identity::{
     SessionHistorySidecarRepresentation, SessionHistorySourceRef,
 };
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
+    GuestProcessHandle, ProcessExit, Sandbox, SandboxFactory, SandboxId, StartAgentProcessRequest,
+    StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 use sha2::{Digest, Sha256};
@@ -191,6 +192,13 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.start_process(request).await
     }
 
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        self.inner.start_agent_process(request).await
+    }
+
     async fn wait_process(
         &self,
         handle: GuestProcessHandle,
@@ -284,6 +292,13 @@ impl Sandbox for PanicExecSandbox {
         _request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         panic!("unused start_process");
+    }
+
+    async fn start_agent_process(
+        &self,
+        _request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        panic!("unused start_agent_process");
     }
 
     async fn wait_process(

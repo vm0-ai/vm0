@@ -115,6 +115,7 @@ fn production_exec_identity_matches_sandbox_user() {
     let command = "printf 'uid=%s\\ngid=%s\\ngroups=%s\\ncwd=%s\\nhome=%s\\nuser=%s\\nlogname=%s\\n' \"$(id -u)\" \"$(id -g)\" \"$(id -G)\" \"$(pwd -P)\" \"${HOME-}\" \"${USER-}\" \"${LOGNAME-}\"";
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: vsock_proto::ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5_000 },
         command,
         env: &[],
@@ -306,6 +307,7 @@ fn send_write_file(stream: &mut UnixStream, sequence: u32, path: &str, sudo: boo
 fn send_supervised_env_exec(stream: &mut UnixStream, sequence: u32) {
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
+        role: vsock_proto::ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::None,
         command: "printf '%s' \"$OKOU_TEST_ENV_SCRIPT_READY\"; sleep 60",
         env: &[("OKOU_TEST_ENV_SCRIPT_READY", "ready")],

@@ -16,6 +16,7 @@ const MAX_ARBITRARY_PAYLOAD_BYTES: usize = 512;
 #[derive(Debug, Clone)]
 struct OwnedExecStart {
     lifecycle: ExecLifecyclePolicy,
+    role: ExecProcessRole,
     timeout: ExecTimeoutPolicy,
     command: String,
     env: Vec<(String, String)>,
@@ -40,6 +41,7 @@ impl OwnedExecStart {
         let env = self.env_refs();
         encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
             lifecycle: self.lifecycle,
+            role: self.role,
             timeout: self.timeout,
             command: &self.command,
             env: &env,
@@ -71,6 +73,7 @@ impl OwnedExecStart {
     fn assert_decoded(&self, decoded: &DecodedExecStart<'_>) -> TestCaseResult {
         let env = self.env_refs();
         prop_assert_eq!(decoded.lifecycle, self.lifecycle);
+        prop_assert_eq!(decoded.role, self.role);
         prop_assert_eq!(decoded.timeout, self.timeout);
         prop_assert_eq!(decoded.command, self.command.as_str());
         prop_assert_eq!(decoded.env.as_slice(), env.as_slice());
@@ -93,6 +96,10 @@ impl OwnedExecStart {
             (
                 "invalid lifecycle tag",
                 with_byte(payload, layout.lifecycle_offset, u8::MAX),
+            ),
+            (
+                "invalid process role tag",
+                with_byte(payload, layout.role_offset, u8::MAX),
             ),
             (
                 "invalid timeout tag",
@@ -240,10 +247,35 @@ fn nonzero_u32_strategy() -> impl Strategy<Value = u32> {
     prop_oneof![Just(1), Just(u32::MAX), 1..u32::MAX]
 }
 
-fn lifecycle_strategy() -> impl Strategy<Value = ExecLifecyclePolicy> {
+fn process_contract_strategy()
+-> impl Strategy<Value = (ExecProcessRole, ExecLifecyclePolicy, ExecControlPolicy)> {
     prop_oneof![
-        Just(ExecLifecyclePolicy::OneShot),
-        Just(ExecLifecyclePolicy::Supervised),
+        Just((
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        )),
+        Just((
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        )),
+        any::<ExecControlNonce>().prop_map(|control_nonce| (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce,
+                sink: false,
+            },
+        )),
+        any::<ExecControlNonce>().prop_map(|control_nonce| (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce,
+                sink: true,
+            },
+        )),
     ]
 }
 
@@ -281,18 +313,6 @@ fn output_policy_strategy() -> impl Strategy<Value = ExecOutputPolicy> {
     ]
 }
 
-fn control_strategy() -> impl Strategy<Value = ExecControlPolicy> {
-    prop_oneof![
-        Just(ExecControlPolicy::Disabled),
-        (any::<ExecControlNonce>(), any::<bool>()).prop_map(|(control_nonce, sink)| {
-            ExecControlPolicy::Enabled {
-                control_nonce,
-                sink,
-            }
-        }),
-    ]
-}
-
 fn expected_exit_strategy() -> impl Strategy<Value = i32> {
     prop_oneof![
         Just(i32::MIN),
@@ -306,7 +326,7 @@ fn expected_exit_strategy() -> impl Strategy<Value = i32> {
 
 fn exec_start_strategy() -> impl Strategy<Value = OwnedExecStart> {
     (
-        lifecycle_strategy(),
+        process_contract_strategy(),
         timeout_strategy(),
         text_strategy(),
         proptest::collection::vec(
@@ -318,7 +338,6 @@ fn exec_start_strategy() -> impl Strategy<Value = OwnedExecStart> {
         output_policy_strategy(),
         output_policy_strategy(),
         proptest::collection::vec(expected_exit_strategy(), 0..=MAX_GENERATED_EXPECTED_EXITS),
-        control_strategy(),
         proptest::option::of(proptest::collection::vec(
             any::<u8>(),
             0..=MAX_GENERATED_STDIN_BYTES,
@@ -326,7 +345,7 @@ fn exec_start_strategy() -> impl Strategy<Value = OwnedExecStart> {
     )
         .prop_map(
             |(
-                lifecycle,
+                (role, lifecycle, control),
                 timeout,
                 command,
                 env,
@@ -335,10 +354,10 @@ fn exec_start_strategy() -> impl Strategy<Value = OwnedExecStart> {
                 stdout,
                 stderr,
                 expected_exit_codes,
-                control,
                 stdin_bytes,
             )| OwnedExecStart {
                 lifecycle,
+                role,
                 timeout,
                 command,
                 env,
@@ -399,6 +418,7 @@ proptest! {
 
             let reencoded = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
                 lifecycle: decoded.lifecycle,
+                role: decoded.role,
                 timeout: decoded.timeout,
                 command: decoded.command,
                 env: &decoded.env,
@@ -440,6 +460,7 @@ fn exec_start_roundtrips_collection_limits_and_unicode() {
         .collect::<Vec<_>>();
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::None,
         command: "打印“你好”",
         env: &env,
@@ -461,6 +482,7 @@ fn exec_start_roundtrips_collection_limits_and_unicode() {
         decoded,
         DecodedExecStart {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::None,
             command: "打印“你好”",
             env,

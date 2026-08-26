@@ -11,9 +11,9 @@ use guest_contracts::diagnostics::{
     FailureDiagnostic, PromptMetadata,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory,
-    SandboxGuestDnsReadinessReason, SandboxId, SandboxOperationReason,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk,
+    ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxGuestDnsReadinessReason,
+    SandboxId, SandboxOperationReason,
 };
 use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 

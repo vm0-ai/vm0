@@ -2,7 +2,8 @@ use std::io;
 use std::time::Duration;
 
 use vsock_proto::{
-    ExecControlStatus, ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy,
+    ExecControlStatus, ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTermination,
+    ExecTimeoutPolicy,
 };
 
 /// Owned terminal stdout or stderr representation selected by the requested
@@ -203,6 +204,8 @@ pub enum SupervisedExecControl {
 
 /// Request parameters for starting a supervised exec operation.
 pub struct SupervisedExecRequest<'a> {
+    /// Semantic role selected by the provider-level start entry point.
+    pub role: ExecProcessRole,
     /// Guest-side process timeout policy.
     ///
     /// `ExecTimeoutPolicy::None` lets the process run until it exits, is

@@ -256,7 +256,7 @@ async fn uncertain_reserved_cleanup_fails_claim_without_starting_replacement() {
         Some("reserved idle sandbox cleanup was uncertain; fresh replacement was not started")
     );
     assert!(
-        counter.start_process_calls().is_empty(),
+        counter.start_agent_process_calls().is_empty(),
         "uncertain cleanup must not start a fresh sandbox"
     );
     assert_eq!(counter.park_call_count(), 0);

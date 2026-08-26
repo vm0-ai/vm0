@@ -22,6 +22,7 @@ use crate::{ExecOperationResult, VsockHost};
 
 pub(super) fn supervised_request(command: &str) -> SupervisedExecRequest<'_> {
     SupervisedExecRequest {
+        role: vsock_proto::ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::None,
         command,
         env: &[],
@@ -168,6 +169,7 @@ pub(super) async fn start_control_supervised_exec_fixture(
     command: &'static str,
 ) -> StartedControlSupervisedExec {
     let started = start_supervised_exec_fixture(SupervisedExecRequest {
+        role: vsock_proto::ExecProcessRole::Agent,
         control: SupervisedExecControl::Enabled { sink: true },
         ..supervised_request(command)
     })

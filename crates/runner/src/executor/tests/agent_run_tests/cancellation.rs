@@ -180,7 +180,7 @@ async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pendin
     let failure = result.failure.expect("cancelled run should fail");
     assert_eq!(failure.exit_code, EXIT_SIGKILL);
     assert_eq!(failure.error, "cancelled by user");
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }
 
@@ -273,7 +273,7 @@ async fn run_in_sandbox_reports_cancelled_while_session_history_download_is_pend
     let failure = result.failure.expect("cancelled run should fail");
     assert_eq!(failure.exit_code, EXIT_SIGKILL);
     assert_eq!(failure.error, "cancelled by user");
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }
 
@@ -310,7 +310,7 @@ async fn run_in_sandbox_starts_no_guest_work_when_already_cancelled() {
     assert!(overrides.exec_calls().is_empty());
     assert!(overrides.write_file_calls().is_empty());
     assert!(overrides.private_write_file_calls().is_empty());
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }
 
@@ -343,7 +343,7 @@ async fn run_in_sandbox_observes_cancellation_while_guest_helper_is_pending() {
     assert_eq!(failure.error, "cancelled by user");
     assert!(overrides.exec_calls().is_empty());
     assert!(overrides.private_write_file_calls().is_empty());
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }
 
@@ -376,7 +376,7 @@ async fn run_in_sandbox_preserves_ready_start_result_when_cancellation_arrives()
 
     assert!(cancel.is_cancelled());
     assert!(result.failure.is_none());
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(overrides.wait_process_calls().len(), 1);
     assert!(overrides.process_cancel_calls().is_empty());
 }
@@ -542,12 +542,10 @@ async fn run_in_sandbox_falls_back_when_cooperative_cancellation_fails() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_falls_back_when_process_control_is_unavailable() {
+async fn run_in_sandbox_fails_startup_when_process_control_is_unavailable() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let wait_gate = MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     overrides.set_process_control_supported(false);
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
@@ -559,29 +557,22 @@ async fn run_in_sandbox_falls_back_when_process_control_is_unavailable() {
         cancellation.signals(),
         PROCESS_CANCEL_TIMEOUTS,
     );
-    wait_gate
-        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
-        .await
-        .expect("run should enter process wait before cancellation");
-
-    cancellation.request_cooperative_user_cancellation().await;
-    assert!(
-        overrides
-            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
-            .await
-    );
-
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
         .unwrap()
-        .unwrap()
         .unwrap();
-    assert!(overrides.process_control_calls().is_empty());
-    assert_eq!(overrides.process_cancel_calls().len(), 1);
-    assert_eq!(
-        result.failure.as_ref().map(|failure| failure.exit_code),
-        Some(EXIT_SIGKILL)
+    let error = match result {
+        Ok(_) => panic!("Agent run unexpectedly started without process control"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("provider returned an Agent process without process control")
     );
+    assert!(overrides.process_control_calls().is_empty());
+    assert!(overrides.process_cancel_calls().is_empty());
+    assert!(overrides.wait_process_calls().is_empty());
 }
 
 #[tokio::test]

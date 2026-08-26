@@ -235,9 +235,11 @@ async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
     let start_calls = overrides.start_process_calls();
-    assert_eq!(start_calls.len(), 2);
+    assert_eq!(start_calls.len(), 1);
     assert!(start_calls[0].cmd.contains("codex --version"));
-    assert!(!start_calls[1].cmd.contains("codex --version"));
+    let agent_calls = overrides.start_agent_process_calls();
+    assert_eq!(agent_calls.len(), 1);
+    assert!(!agent_calls[0].cmd.contains("codex --version"));
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -270,6 +272,7 @@ async fn execute_inner_does_not_prefetch_after_early_guest_state_failure() {
         overrides.start_process_calls().is_empty(),
         "neither prefetch nor agent may start after guest state failure"
     );
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -507,7 +510,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(overrides.create_configs().len(), 2);
     assert_eq!(overrides.destroy_call_count(), 1);
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(notifications.load(Ordering::SeqCst), 1);
     assert_proxy_registry_empty(dir.path()).await;
     assert_telemetry_action(
@@ -570,6 +573,7 @@ async fn execute_new_sandbox_does_not_replace_guest_exec_timing_failures() {
         assert_eq!(overrides.create_configs().len(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(overrides.start_process_calls().is_empty());
+        assert!(overrides.start_agent_process_calls().is_empty());
         assert_proxy_registry_empty(dir.path()).await;
         assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
     }
@@ -671,6 +675,7 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
     assert_eq!(overrides.create_configs().len(), 2);
     assert_eq!(overrides.destroy_call_count(), 2);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_proxy_registry_empty(dir.path()).await;
     assert_telemetry_action(
         &telemetry,
@@ -767,6 +772,7 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
     assert_eq!(overrides.create_configs().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_telemetry_action(
         &telemetry,
         "runner_fresh_sandbox_dns_readiness_retry",
@@ -1079,7 +1085,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
 
-    let start_calls = overrides.start_process_calls();
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     let expected_user_env_file = guest_user_env_file_path(ctx.run_id).unwrap();
@@ -1237,7 +1243,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
         private_writes[1].path,
         guest_run_payload_file_path(context.run_id).unwrap()
     );
-    let start_calls = overrides.start_process_calls();
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     assert!(!start_env.contains_key(USER_ENV_FILE_ENV_KEY));
@@ -1290,7 +1296,7 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
         private_writes[2].path
     );
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent must not start after run payload write failure"
     );
     assert_eq!(
@@ -1349,13 +1355,12 @@ async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
 
-    let calls = overrides.start_process_calls();
+    let calls = overrides.start_agent_process_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].output,
         ProcessOutputMode::stream_with_stderr_capture(64 * 1024)
     );
-    assert_eq!(calls[0].control, ProcessControlMode::Enabled);
 }
 
 #[tokio::test]

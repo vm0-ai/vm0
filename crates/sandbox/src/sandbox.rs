@@ -9,9 +9,9 @@ use tokio::sync::Notify;
 
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle,
-    GuestStateRestoreRequest, ProcessExit, StartProcessRequest, StorageManifestRequest,
-    WriteFileEntry,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
+    GuestProcessHandle, GuestStateRestoreRequest, ProcessExit, StartAgentProcessRequest,
+    StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
@@ -833,6 +833,13 @@ pub trait Sandbox: Send + Sync + Any {
     /// [`GuestProcessHandle::take_stdout_receiver`]. Callers that take the
     /// receiver are responsible for draining it while the process runs.
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle>;
+    /// Start the controlled guest Agent process.
+    ///
+    /// A successful result always includes process control by construction.
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> Result<GuestAgentProcessHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///
     /// Consumes the handle. If `stdout_rx` was not taken before waiting, the

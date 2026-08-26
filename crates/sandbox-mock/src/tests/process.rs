@@ -13,7 +13,6 @@ async fn overrides_record_start_process_output_modes_in_order() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -26,7 +25,6 @@ async fn overrides_record_start_process_output_modes_in_order() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::stream(),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -41,7 +39,6 @@ async fn overrides_record_start_process_output_modes_in_order() {
                 env: Vec::new(),
                 sudo: false,
                 output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-                control: ProcessControlMode::None,
             },
             StartProcessCall {
                 cmd: "agent".to_string(),
@@ -49,7 +46,6 @@ async fn overrides_record_start_process_output_modes_in_order() {
                 env: Vec::new(),
                 sudo: false,
                 output: ProcessOutputMode::stream(),
-                control: ProcessControlMode::None,
             },
         ]
     );
@@ -70,7 +66,6 @@ async fn start_process_emits_queued_stdout_chunks() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::stream(),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -84,7 +79,7 @@ async fn start_process_emits_queued_stdout_chunks() {
 }
 
 #[tokio::test]
-async fn start_process_returns_control_handle_when_requested() {
+async fn start_agent_process_returns_mandatory_control_handle() {
     let runtime = MockSandboxRuntime::new();
     let factory = runtime.create_factory(test_factory_config()).await.unwrap();
     let sandbox = factory.create(test_sandbox_config()).await.unwrap();
@@ -96,26 +91,24 @@ async fn start_process_returns_control_handle_when_requested() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
     assert!(without_control.control_handle().is_none());
 
     let with_control = sandbox
-        .start_process(&StartProcessRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::Enabled,
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            },
         })
         .await
         .unwrap();
-    let control = with_control
-        .control_handle()
-        .expect("enabled control should expose a handle");
+    let (_process, control) = with_control.into_parts();
     let ack = control
         .control("msg-1", b"payload", Duration::from_secs(5))
         .await
@@ -124,23 +117,56 @@ async fn start_process_returns_control_handle_when_requested() {
 }
 
 #[tokio::test]
+async fn start_agent_process_fails_when_control_is_unavailable() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.set_process_control_supported(false);
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+
+    let error = match sandbox
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            },
+        })
+        .await
+    {
+        Ok(_) => panic!("Agent start unexpectedly succeeded without control"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        SandboxError::Operation {
+            operation: SandboxOperation::StartAgentProcess,
+            reason: SandboxOperationReason::Other,
+            ..
+        }
+    ));
+    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
+}
+
+#[tokio::test]
 async fn process_control_calls_are_recorded_when_overrides_are_enabled() {
     let overrides = Arc::new(MockSandboxOverrides::new());
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
-        .start_process(&StartProcessRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::Enabled,
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            },
         })
         .await
         .unwrap();
-    let control = handle
-        .control_handle()
-        .expect("enabled control should expose a handle");
+    let (_process, control) = handle.into_parts();
 
     control
         .control("msg-1", b"payload", Duration::from_millis(250))
@@ -164,19 +190,18 @@ async fn queued_process_control_errors_are_consumed_fifo() {
     overrides.push_process_control_error("second control failed");
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
-        .start_process(&StartProcessRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::Enabled,
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            },
         })
         .await
         .unwrap();
-    let control = handle
-        .control_handle()
-        .expect("enabled control should expose a handle");
+    let (_process, control) = handle.into_parts();
 
     let outcome = control
         .control_outcome("msg-1", b"payload-1", Duration::from_secs(1))
@@ -217,19 +242,18 @@ async fn queued_structured_process_control_outcomes_are_preserved() {
     });
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
-        .start_process(&StartProcessRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::Enabled,
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            },
         })
         .await
         .unwrap();
-    let control = handle
-        .control_handle()
-        .expect("enabled control should expose a handle");
+    let (_process, control) = handle.into_parts();
 
     let outcome = control
         .control_outcome("msg-1", b"payload", Duration::from_secs(1))
@@ -330,7 +354,6 @@ async fn start_process_validates_stream_configuration() {
                 env: &[],
                 sudo: false,
                 output,
-                control: ProcessControlMode::None,
             })
             .await
         {
@@ -359,7 +382,6 @@ async fn start_process_validates_stream_configuration() {
             env: &[],
             sudo: false,
             output,
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -381,7 +403,6 @@ async fn start_process_rejects_invalid_env_key() {
             env: &[("1BAD", "x")],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await;
     let err = match result {
@@ -418,7 +439,6 @@ async fn queued_start_process_errors_are_consumed_fifo() {
         env: &[],
         sudo: false,
         output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-        control: ProcessControlMode::None,
     };
 
     let first_error = match sandbox.start_process(&request).await {
@@ -465,7 +485,6 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
                     env: &[],
                     sudo: false,
                     output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-                    control: ProcessControlMode::None,
                 })
                 .await
         })
@@ -490,7 +509,6 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -514,7 +532,6 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
             env: &[("1BAD", "value")],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await;
     assert!(invalid_start.is_err());
@@ -528,7 +545,6 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -542,7 +558,6 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -555,7 +570,6 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -603,7 +617,6 @@ async fn wait_process_rejects_consumed_guest_process_handle() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -639,7 +652,6 @@ async fn wait_process_returns_queued_process_exit() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -666,7 +678,6 @@ async fn wait_process_default_exit_is_unchanged_without_queued_exit() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -723,7 +734,6 @@ async fn wait_process_lifecycle_gate_blocks_until_released() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -755,7 +765,6 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -781,7 +790,6 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
@@ -818,7 +826,6 @@ async fn process_cancel_releases_wait_process_lifecycle_gate() {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
         })
         .await
         .unwrap();
