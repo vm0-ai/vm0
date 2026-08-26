@@ -705,6 +705,27 @@ impl FirecrackerSandbox {
         if backend_crashed {
             return Self::backend_crashed_error(operation);
         }
+        if let Some(timeout) = error
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<vsock_host::RequestTimeoutError>())
+        {
+            let stage = match timeout.stage() {
+                vsock_host::RequestTimeoutStage::BeforeFrameWrite => {
+                    sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite
+                }
+                vsock_host::RequestTimeoutStage::FrameWrite => {
+                    sandbox::SandboxOperationTimeoutStage::FrameWrite
+                }
+                vsock_host::RequestTimeoutStage::AwaitingTerminalResponse => {
+                    sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse
+                }
+            };
+            return SandboxError::OperationTimeout {
+                operation,
+                stage,
+                timeout_ms: u64::try_from(timeout.timeout().as_millis()).unwrap_or(u64::MAX),
+            };
+        }
         let reason = if error.kind() == io::ErrorKind::TimedOut {
             SandboxOperationReason::Timeout
         } else {

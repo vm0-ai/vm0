@@ -3751,6 +3751,7 @@ dependencies = [
 name = "vsock-host"
 version = "0.17.95"
 dependencies = [
+ "guest-contracts",
  "nix",
  "sandbox",
  "shell-quote",

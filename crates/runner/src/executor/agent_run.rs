@@ -91,6 +91,24 @@ const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
 const USER_CANCELLATION_CONTROL_PAYLOAD: &[u8] = br#"{"type":"user-cancellation"}"#;
 
+fn private_write_timeout_stage(error: &RunnerError) -> Option<&'static str> {
+    let RunnerError::Sandbox(sandbox::SandboxError::OperationTimeout {
+        operation: sandbox::SandboxOperation::WriteFile,
+        stage,
+        ..
+    }) = error
+    else {
+        return None;
+    };
+    Some(match stage {
+        sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite => "before_frame_write",
+        sandbox::SandboxOperationTimeoutStage::FrameWrite => "frame_write",
+        sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse => {
+            "await_terminal_response"
+        }
+    })
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
     FinalizeMetadataPathUnresolved,
@@ -2005,11 +2023,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             user_env_file
         }
         Err(error) => {
-            telemetry.record(
+            telemetry.record_with_outcome(
                 "runner_user_env_write",
                 user_env_started.elapsed(),
                 false,
                 None,
+                private_write_timeout_stage(&error),
             );
             return Err(error);
         }
@@ -2052,11 +2071,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             path
         }
         Err(error) => {
-            telemetry.record(
+            telemetry.record_with_outcome(
                 "runner_run_payload_write",
                 run_payload_write_started.elapsed(),
                 false,
                 None,
+                private_write_timeout_stage(&error),
             );
             return Err(error);
         }
