@@ -382,11 +382,20 @@ function commandItemByText(container: HTMLElement, text: string): HTMLElement {
  * jsdom does not implement DataTransfer, so drag events need a stub that keeps
  * the payload the pinned grid writes on drag start.
  */
-function createDataTransferStub(): DataTransfer {
-  const values = new Map<string, string>();
+function createDataTransferStub(
+  initialValues: Readonly<Record<string, string>> = {},
+): DataTransfer {
+  let values = new Map<string, string>(Object.entries(initialValues));
   return {
     effectAllowed: "none",
     dropEffect: "none",
+    clearData: (format?: string) => {
+      if (format === undefined) {
+        values = new Map<string, string>();
+        return;
+      }
+      values.delete(format);
+    },
     setData: (format: string, value: string) => {
       values.set(format, value);
     },
@@ -4072,7 +4081,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
   });
 
-  it("reorders pinned agents with drag and drop", async () => {
+  it("reorders pinned agents without retaining the browser link payload", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -4097,10 +4106,18 @@ describe("zero sidebar", () => {
       "Billing Agent",
     ]);
 
-    const dataTransfer = createDataTransferStub();
     const dragged = pinnedAgentLink(grid, "Support Agent");
     const target = pinnedAgentLink(grid, "Billing Agent");
+    const dataTransfer = createDataTransferStub({
+      "text/uri-list": dragged.href,
+      "text/plain": dragged.href,
+    });
     fireEvent.dragStart(dragged, { dataTransfer });
+    expect(dataTransfer.getData("text/uri-list")).toBe("");
+    expect(dataTransfer.getData("text/plain")).toBe("");
+    expect(dataTransfer.getData("application/x-okou-pinned-agent")).toBe(
+      SUPPORT_AGENT_ID,
+    );
     fireEvent.dragOver(target, { dataTransfer });
     fireEvent.drop(target, { dataTransfer });
 
@@ -4279,8 +4296,12 @@ describe("zero sidebar", () => {
     fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
       dataTransfer: leadDragTransfer,
     });
-    fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer });
-    fireEvent.drop(lead, { dataTransfer: leadDragTransfer });
+    expect(
+      fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer }),
+    ).toBeFalsy();
+    expect(
+      fireEvent.drop(lead, { dataTransfer: leadDragTransfer }),
+    ).toBeFalsy();
     fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
       dataTransfer: leadDragTransfer,
     });
