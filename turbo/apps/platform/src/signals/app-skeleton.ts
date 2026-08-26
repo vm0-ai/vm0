@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/okou-page/avatars.ts";
-import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
+import {
+  captureBootstrapPhaseTiming$,
+  captureFirstSkeletonHide$,
+} from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
 import { locale$ } from "./locale.ts";
 
@@ -224,4 +227,5 @@ export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
   set(internalVisible$, false);
   hideBootstrapSkeleton();
   set(captureFirstSkeletonHide$);
+  set(captureBootstrapPhaseTiming$);
 });
