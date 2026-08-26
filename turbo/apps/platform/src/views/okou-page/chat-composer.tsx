@@ -8472,7 +8472,7 @@ function ComposerConnectorAccountMenuContent({
 
   return (
     <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 px-2 text-sm font-medium text-foreground">
+      <div className="flex h-12 shrink-0 items-center gap-0.5 border-b border-border/60 pl-1.5 pr-2 text-sm font-medium text-foreground">
         <Button
           type="button"
           variant="quiet"
