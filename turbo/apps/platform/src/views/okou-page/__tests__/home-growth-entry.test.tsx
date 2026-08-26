@@ -3,7 +3,6 @@ import {
   integrationsSlackContract,
   type SlackOrgStatus,
 } from "@okouai/api-contracts/contracts/integrations-slack";
-import { FeatureSwitchKey } from "@okouai/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -37,7 +36,6 @@ function mockSlackStatus(overrides: Partial<SlackOrgStatus>): void {
 }
 
 interface GrowthEntrySetupOptions {
-  readonly growthEntryEnabled?: boolean;
   readonly role?: "admin" | "member";
 }
 
@@ -45,7 +43,7 @@ function setupGrowthEntry(
   slack: Partial<SlackOrgStatus>,
   options: GrowthEntrySetupOptions = {},
 ): void {
-  const { growthEntryEnabled = true, role = "admin" } = options;
+  const { role = "admin" } = options;
   mockAgent();
   context.mocks.data.org({
     id: "org_1",
@@ -56,34 +54,10 @@ function setupGrowthEntry(
   detachedSetupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: {
-      [FeatureSwitchKey.HomeGrowthEntry]: growthEntryEnabled,
-    },
   });
 }
 
 describe("home growth entry", () => {
-  it("keeps the existing invite entry when its feature switch is disabled", async () => {
-    const user = userEvent.setup();
-    setupGrowthEntry(
-      { isConnected: false, isInstalled: false },
-      { growthEntryEnabled: false },
-    );
-
-    const invite = await screen.findByTestId("invite-button");
-    await waitFor(() => {
-      expect(invite).not.toHaveAttribute("aria-hidden");
-    });
-    expect(invite).toHaveTextContent("Invite people");
-    expect(screen.queryByTestId("growth-entry")).not.toBeInTheDocument();
-
-    await user.click(invite);
-    await expect(screen.findByRole("dialog")).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(search()).toContain("settings=people");
-    });
-  });
-
   it("hides the growth entry from non-admin members", async () => {
     setupGrowthEntry(
       { isConnected: false, isInstalled: false },
@@ -92,7 +66,6 @@ describe("home growth entry", () => {
 
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(screen.queryByTestId("growth-entry")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("invite-button")).not.toBeInTheDocument();
   });
 
   it("leads with Slack before installation and opens the works page", async () => {
