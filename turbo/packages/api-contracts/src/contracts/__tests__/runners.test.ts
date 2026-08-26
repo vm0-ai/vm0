@@ -1521,6 +1521,24 @@ describe("runner resume session contract", () => {
 });
 
 describe("runner claim request contract", () => {
+  it("accepts committed claim recovery requests", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        recoverCommittedClaim: true,
+        runnerIdentity: {
+          runnerId: "11111111-1111-4111-8111-111111111111",
+          heartbeatGeneration: 7,
+        },
+      }),
+    ).toStrictEqual({
+      recoverCommittedClaim: true,
+      runnerIdentity: {
+        runnerId: "11111111-1111-4111-8111-111111111111",
+        heartbeatGeneration: 7,
+      },
+    });
+  });
+
   it("accepts omitted or complete runner identity", () => {
     expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
     expect(

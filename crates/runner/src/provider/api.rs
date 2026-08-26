@@ -61,6 +61,8 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
     runner_identity: &'a RunnerProcessIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recover_committed_claim: Option<bool>,
     telemetry: ClaimRequestTelemetry,
 }
 
@@ -1055,8 +1057,30 @@ impl ApiClient {
         candidate: &JobCandidate,
         runner_identity: &RunnerProcessIdentity,
     ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
+        match self.claim_once(candidate, runner_identity, false).await {
+            Err(error)
+                if matches!(
+                    &error,
+                    ClaimApiError::ResponseRead(_) | ClaimApiError::ResponseDecode(_)
+                ) =>
+            {
+                match self.claim_once(candidate, runner_identity, true).await {
+                    Ok(None) => Err(error),
+                    result => result,
+                }
+            }
+            result => result,
+        }
+    }
+
+    async fn claim_once(
+        &self,
+        candidate: &JobCandidate,
+        runner_identity: &RunnerProcessIdentity,
+        recover_committed_claim: bool,
+    ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate, runner_identity);
+        let body = claim_request_body(candidate, runner_identity, recover_committed_claim);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1259,6 +1283,7 @@ impl ApiClient {
 fn claim_request_body<'a>(
     candidate: &JobCandidate,
     runner_identity: &'a RunnerProcessIdentity,
+    recover_committed_claim: bool,
 ) -> ClaimRequestBody<'a> {
     let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
@@ -1288,6 +1313,7 @@ fn claim_request_body<'a>(
 
     ClaimRequestBody {
         runner_identity,
+        recover_committed_claim: recover_committed_claim.then_some(true),
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1606,7 +1632,7 @@ mod tests {
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> serde_json::Value {
         let runner_identity = test_runner_identity();
-        serde_json::to_value(claim_request_body(candidate, &runner_identity)).unwrap()
+        serde_json::to_value(claim_request_body(candidate, &runner_identity, false)).unwrap()
     }
 
     #[test]
@@ -1614,6 +1640,82 @@ mod tests {
         assert!(supports_thread_active_input(Some("thread:chat-id")));
         assert!(!supports_thread_active_input(Some("goal:goal-id")));
         assert!(!supports_thread_active_input(None));
+    }
+
+    #[tokio::test]
+    async fn claim_recovers_after_response_body_read_failure() {
+        let truncated_response =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 64\r\nConnection: close\r\n\r\n{}".to_vec();
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(truncated_response),
+            RawHttpAction::Respond(json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE)),
+        ])
+        .await;
+        let api = api_client_for_url(server.url());
+        let run_id = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+
+        let claim = api
+            .claim_for_test(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap();
+        assert!(claim.is_some());
+        let initial_request = server.next_request("initial claim request").await;
+        assert!(!initial_request.contains(r#""recoverCommittedClaim""#));
+        let recovery_request = server.next_request("claim recovery request").await;
+        assert!(recovery_request.contains(r#""recoverCommittedClaim":true"#));
+        server.assert_finished().await;
+    }
+
+    #[tokio::test]
+    async fn claim_recovers_after_response_decode_failure() {
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(json_response("200 OK", r#"{"runId":"truncated"#)),
+            RawHttpAction::Respond(json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE)),
+        ])
+        .await;
+        let api = api_client_for_url(server.url());
+        let run_id = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+
+        let claim = api
+            .claim_for_test(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap();
+        assert!(claim.is_some());
+        let initial_request = server.next_request("initial claim request").await;
+        assert!(!initial_request.contains(r#""recoverCommittedClaim""#));
+        let recovery_request = server.next_request("claim recovery request").await;
+        assert!(recovery_request.contains(r#""recoverCommittedClaim":true"#));
+        server.assert_finished().await;
+    }
+
+    #[tokio::test]
+    async fn claim_preserves_original_decode_failure_when_recovery_is_unavailable() {
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(json_response("200 OK", r#"{"runId":"truncated"#)),
+            RawHttpAction::Respond(status_response(404)),
+        ])
+        .await;
+        let api = api_client_for_url(server.url());
+        let run_id = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+
+        let error = api
+            .claim_for_test(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ClaimApiError::ResponseDecode(_)));
+        let _initial_request = server.next_request("initial claim request").await;
+        let recovery_request = server.next_request("claim recovery request").await;
+        assert!(recovery_request.contains(r#""recoverCommittedClaim":true"#));
+        server.assert_finished().await;
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -1640,7 +1742,7 @@ mod tests {
             ))
             .await
             .unwrap_err();
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
         mock.delete_async().await;
 
         let ClaimApiError::ResponseDecode(message) = error else {
@@ -3177,7 +3279,7 @@ mod tests {
         assert_eq!(next.discovery_source(), Some(JobDiscoverySource::Ably));
         assert!(provider.claim(next).await.is_some());
 
-        rejected_mock.assert_calls_async(1).await;
+        rejected_mock.assert_calls_async(2).await;
         next_mock.assert_calls_async(1).await;
     }
 
@@ -3513,7 +3615,7 @@ mod tests {
             !message.contains("secret-kind-value"),
             "decode error must not include invalid field values, got: {message}"
         );
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
     }
 
     #[tokio::test]
@@ -3563,7 +3665,7 @@ mod tests {
             !message.contains("secret-kind-value"),
             "decode error must not include invalid field values, got: {message}"
         );
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
     }
 
     #[tokio::test]
@@ -3617,7 +3719,7 @@ mod tests {
             !message.contains("github"),
             "decode error must not include response body values, got: {message}"
         );
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
     }
 
     #[tokio::test]
@@ -3673,7 +3775,7 @@ mod tests {
             !message.contains("presigned-value"),
             "decode error must not include response body values, got: {message}"
         );
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
     }
 
     #[tokio::test]
@@ -3722,7 +3824,7 @@ mod tests {
             !message.contains("claim-sandbox-token"),
             "decode error must not include response body values, got: {message}"
         );
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
     }
 
     #[tokio::test]

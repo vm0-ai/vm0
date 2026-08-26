@@ -1127,6 +1127,7 @@ export const runnersJobClaimContract = c.router({
       id: z.uuid(),
     }),
     body: z.object({
+      recoverCommittedClaim: z.literal(true).optional(),
       runnerIdentity: runnerProcessIdentitySchema.optional(),
       runnerHostname: runnerHostnameSchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),

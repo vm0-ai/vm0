@@ -4596,6 +4596,62 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("recovers a committed official runner claim for its exact identity", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "recover committed claim",
+      modelProvider: "anthropic-api-key",
+    });
+    const runnerIdentity = {
+      runnerId: randomUUID(),
+      heartbeatGeneration: 21,
+    };
+
+    const original = await api.requestClaimRunnerJob(true, run.runId, [200], {
+      runnerIdentity,
+    });
+    if (original.status !== 200) {
+      throw new Error("Expected the original runner claim to succeed");
+    }
+    expect(original.body.prompt).toBe("recover committed claim");
+    const runningBeforeRecovery = await api.readRun(actor, run.runId);
+
+    const wrongIdentity = await api.requestClaimRunnerJob(
+      true,
+      run.runId,
+      [404],
+      {
+        runnerIdentity: {
+          ...runnerIdentity,
+          heartbeatGeneration: runnerIdentity.heartbeatGeneration + 1,
+        },
+        recoverCommittedClaim: true,
+      },
+    );
+    expectApiError(wrongIdentity.body);
+
+    const recovered = await api.requestClaimRunnerJob(true, run.runId, [200], {
+      runnerIdentity,
+      recoverCommittedClaim: true,
+    });
+    if (recovered.status !== 200) {
+      throw new Error("Expected the committed runner claim to be recovered");
+    }
+    expect(recovered.body.prompt).toBe("recover committed claim");
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+      startedAt: runningBeforeRecovery.startedAt,
+    });
+    await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
+      runner_id: runnerIdentity.runnerId,
+      heartbeat_generation: runnerIdentity.heartbeatGeneration,
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("rejects an official runner claim without process identity", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();

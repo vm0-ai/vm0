@@ -33,6 +33,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
+import { runnerJobClaimRecovery } from "@okouai/db/schema/runner-job-claim-recovery";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   runnerState,
@@ -823,6 +824,14 @@ interface ClaimableJob {
   readonly run: ClaimedRun;
 }
 
+interface RecoverableClaim {
+  readonly job: Pick<
+    typeof runnerJobClaimRecovery.$inferSelect,
+    "reuseKey" | "executionContext"
+  >;
+  readonly run: ClaimedRun;
+}
+
 interface ClaimedRun {
   readonly id: string;
   readonly userId: string;
@@ -842,8 +851,15 @@ interface RunNetworkPolicyScope {
 }
 
 type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
+type ClaimRecoveryLookupResult = RecoverableClaim | ReturnType<typeof notFound>;
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
+  return "job" in value;
+}
+
+function isRecoverableClaim(
+  value: ClaimRecoveryLookupResult,
+): value is RecoverableClaim {
   return "job" in value;
 }
 
@@ -926,6 +942,56 @@ async function getClaimableJob(
       and(
         eq(runnerJobQueue.runId, runId),
         gt(runnerJobQueue.expiresAt, sql`now()`),
+        isNotNull(agentSessions.agentId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (jobWithRun?.run.agentId) {
+    return {
+      ...jobWithRun,
+      run: { ...jobWithRun.run, agentId: jobWithRun.run.agentId },
+    };
+  }
+  return notFound("Job not found in queue");
+}
+
+async function getRecoverableClaim(
+  db: Db,
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity,
+  signal: AbortSignal,
+): Promise<ClaimRecoveryLookupResult> {
+  const [jobWithRun] = await db
+    .select({
+      job: {
+        reuseKey: runnerJobClaimRecovery.reuseKey,
+        executionContext: runnerJobClaimRecovery.executionContext,
+      },
+      run: {
+        id: agentRuns.id,
+        userId: agentRuns.userId,
+        orgId: agentRuns.orgId,
+        agentId: agentSessions.agentId,
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+        vars: agentRuns.vars,
+      },
+    })
+    .from(runnerJobClaimRecovery)
+    .innerJoin(agentRuns, eq(runnerJobClaimRecovery.runId, agentRuns.id))
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(
+      and(
+        eq(runnerJobClaimRecovery.runId, runId),
+        gt(runnerJobClaimRecovery.expiresAt, sql`now()`),
+        eq(agentRuns.status, "running"),
+        eq(agentRuns.runnerId, runnerIdentity.runnerId),
+        eq(
+          agentRuns.runnerHeartbeatGeneration,
+          runnerIdentity.heartbeatGeneration,
+        ),
         isNotNull(agentSessions.agentId),
       ),
     )
@@ -1039,6 +1105,38 @@ async function lockRunnerJob(
   return row;
 }
 
+function buildClaimRecoveryInsertSql(
+  runnerId: string | null,
+  runnerHeartbeatGeneration: number | null,
+): SQL {
+  return sql`
+    inserted_recovery AS (
+      INSERT INTO ${runnerJobClaimRecovery} (
+        run_id,
+        reuse_key,
+        execution_context,
+        expires_at
+      )
+      SELECT
+        locked_job."runId",
+        locked_job."reuseKey",
+        locked_job."executionContext",
+        LEAST(
+          locked_job."expiresAt",
+          claim_clock."claimedAt" + INTERVAL '5 minutes'
+        )
+      FROM locked_job
+      INNER JOIN updated_run
+        ON updated_run."id" = locked_job."runId"
+      CROSS JOIN claim_clock
+      WHERE
+        ${runnerId}::uuid IS NOT NULL
+        AND ${runnerHeartbeatGeneration}::bigint IS NOT NULL
+      RETURNING run_id AS "runId"
+    )
+  `;
+}
+
 function buildClaimTransitionSql(
   runId: string,
   runnerId: string | null,
@@ -1059,6 +1157,9 @@ function buildClaimTransitionSql(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.reuseKey} AS "reuseKey",
+              ${runnerJobQueue.executionContext} AS "executionContext",
+              ${runnerJobQueue.expiresAt} AS "expiresAt",
               ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
@@ -1099,6 +1200,7 @@ function buildClaimTransitionSql(
             )}
             RETURNING ${agentRuns.id} AS "id", ${agentRuns.startedAt} AS "claimedAt"
           ),
+          ${buildClaimRecoveryInsertSql(runnerId, runnerHeartbeatGeneration)},
           deleted_job AS (
             DELETE FROM ${runnerJobQueue}
             USING locked_run, locked_job
@@ -1135,6 +1237,10 @@ function buildClaimTransitionSql(
                 THEN 'job-not-found'
               WHEN EXISTS (SELECT 1 FROM updated_run)
                 AND EXISTS (SELECT 1 FROM deleted_job)
+                AND (
+                  ${runnerId}::uuid IS NULL
+                  OR EXISTS (SELECT 1 FROM inserted_recovery)
+                )
                 THEN 'claimed'
               ELSE 'invariant-error'
             END AS "status",
@@ -2541,6 +2647,71 @@ const claimAuthorizedJob$ = command(
   },
 );
 
+const recoverCommittedClaim$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly runId: string;
+      readonly runnerIdentity: RunnerClaimIdentity;
+      readonly claimRequestStartedAtMs: number;
+      readonly claimRouteTiming: ClaimRouteTimingCollector;
+    },
+    signal: AbortSignal,
+  ) => {
+    const { db, runId, runnerIdentity, claimRouteTiming } = args;
+    const lookupStartedAt = now();
+    const jobWithRun = await getRecoverableClaim(
+      db,
+      runId,
+      runnerIdentity,
+      signal,
+    );
+    claimRouteTiming.recordElapsed(
+      "claim_route_lookup_authorization",
+      "top_level",
+      lookupStartedAt,
+    );
+    if (!isRecoverableClaim(jobWithRun)) {
+      return jobWithRun;
+    }
+
+    const contextParseStartedAt = now();
+    const compatibleStoredContext =
+      compatibleStoredExecutionContextSchema.parse(
+        jobWithRun.job.executionContext,
+      );
+    claimRouteTiming.recordElapsed(
+      "claim_route_context_parse",
+      "top_level",
+      contextParseStartedAt,
+    );
+    const { context: storedContext, connectorPermissionBaseline } =
+      decodeCompatibleStoredExecutionContext(compatibleStoredContext);
+    signal.throwIfAborted();
+
+    const body = await set(
+      buildClaimResponseBodyForClaim$,
+      {
+        db,
+        run: jobWithRun.run,
+        reuseKey: jobWithRun.job.reuseKey,
+        storedContext,
+        connectorPermissionBaseline,
+        timing: claimRouteTiming,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    claimRouteTiming.recordElapsed(
+      "claim_route_request_to_response_ready",
+      "parent",
+      args.claimRequestStartedAtMs,
+    );
+    return { status: 200 as const, body };
+  },
+);
+
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const claimRequestStartedAtMs = now();
   const claimRouteTiming = new ClaimRouteTimingCollector();
@@ -2582,6 +2753,23 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     "top_level",
     claimRequestStartedAtMs,
   );
+
+  if (body.data.recoverCommittedClaim) {
+    if (auth.type !== "official-runner" || !body.data.runnerIdentity) {
+      return notFound("Job not found in queue");
+    }
+    return await set(
+      recoverCommittedClaim$,
+      {
+        db,
+        runId,
+        runnerIdentity: body.data.runnerIdentity,
+        claimRequestStartedAtMs,
+        claimRouteTiming,
+      },
+      signal,
+    );
+  }
 
   const lookupAuthorizationStartedAt = now();
   const jobWithRun = await getClaimableJob(db, runId, signal);

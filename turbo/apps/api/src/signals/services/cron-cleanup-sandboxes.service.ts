@@ -3,6 +3,7 @@ import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { exportJobs } from "@okouai/db/schema/export-job";
+import { runnerJobClaimRecovery } from "@okouai/db/schema/runner-job-claim-recovery";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
@@ -439,11 +440,38 @@ async function cleanupExpiredRunnerJobs(
   return deletedCount;
 }
 
+async function cleanupExpiredRunnerClaimRecoveries(
+  db: Db,
+  runIds: readonly string[] | null,
+  signal: AbortSignal,
+): Promise<number> {
+  const { rowCount } = await db
+    .delete(runnerJobClaimRecovery)
+    .where(
+      and(
+        lte(runnerJobClaimRecovery.expiresAt, sql`now()`),
+        runIds === null
+          ? undefined
+          : inArray(runnerJobClaimRecovery.runId, runIds),
+      ),
+    );
+  signal.throwIfAborted();
+
+  const deletedCount = rowCount ?? 0;
+  if (deletedCount > 0) {
+    L.debug("Cleaned up expired runner claim recovery entries", {
+      count: deletedCount,
+    });
+  }
+  return deletedCount;
+}
+
 function logQueueMaintenance(args: {
   readonly expired: number;
   readonly expiredTimedOut: number;
   readonly launchOrphansTimedOut: number;
   readonly expiredRunnerJobs: number;
+  readonly expiredRunnerClaimRecoveries: number;
   readonly drained: number;
 }): void {
   if (
@@ -570,6 +598,9 @@ export const cleanupSandboxes$ = command(
       signal,
     );
     signal.throwIfAborted();
+    const expiredRunnerClaimRecoveryCount =
+      await cleanupExpiredRunnerClaimRecoveries(db, runIds, signal);
+    signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, orgIds, signal);
     signal.throwIfAborted();
     if (scope.kind === "global") {
@@ -587,6 +618,7 @@ export const cleanupSandboxes$ = command(
       expiredTimedOut: expiredQueueResult.timedOutRuns.length,
       launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
       expiredRunnerJobs: expiredRunnerJobCount,
+      expiredRunnerClaimRecoveries: expiredRunnerClaimRecoveryCount,
       drained: drainedCount,
     });
 
