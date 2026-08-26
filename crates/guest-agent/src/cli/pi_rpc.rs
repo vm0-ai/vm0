@@ -13,6 +13,7 @@ use crate::error::AgentError;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE: &str = "vm0_pi_api_first_turn_boundary";
+const PI_TOOL_RESULT_USER_CANCELLED_FIELD: &str = "vm0_user_cancelled";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 
 #[derive(Deserialize)]
@@ -159,10 +160,15 @@ pub(super) struct PiRpcProjection {
     emitted_session_init: bool,
     assistant_terminal: Option<PiAssistantTerminal>,
     terminal_error: bool,
+    user_cancellation: CancellationToken,
 }
 
 impl PiRpcProjection {
-    pub(super) fn new(run_id: &str, session_id: &str) -> Self {
+    pub(super) fn new(
+        run_id: &str,
+        session_id: &str,
+        user_cancellation: CancellationToken,
+    ) -> Self {
         Self {
             run_id: run_id.to_string(),
             session_id: session_id.to_string(),
@@ -170,6 +176,7 @@ impl PiRpcProjection {
             emitted_session_init: false,
             assistant_terminal: None,
             terminal_error: false,
+            user_cancellation,
         }
     }
 
@@ -324,17 +331,26 @@ impl PiRpcProjection {
                     "Pi RPC toolResult message omitted its error status".to_string(),
                 )
             })?;
+        let mut result = serde_json::Map::new();
+        result.insert("type".to_string(), Value::String("tool_result".to_string()));
+        result.insert(
+            "tool_use_id".to_string(),
+            Value::String(tool_use_id.to_string()),
+        );
+        result.insert("content".to_string(), Value::Array(content));
+        result.insert("is_error".to_string(), Value::Bool(is_error));
+        if self.user_cancellation.is_cancelled() {
+            result.insert(
+                PI_TOOL_RESULT_USER_CANCELLED_FIELD.to_string(),
+                Value::Bool(true),
+            );
+        }
         Ok(json!({
             "type": "user",
             "session_id": self.session_id,
             "message": {
                 "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": content,
-                    "is_error": is_error,
-                }],
+                "content": [Value::Object(result)],
             },
         }))
     }
@@ -680,7 +696,7 @@ mod tests {
     #[test]
     fn projection_uses_agent_settled_as_the_terminal_event() {
         let (responses, _rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session");
+        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
         assert!(
             projection
                 .project(
@@ -715,9 +731,50 @@ mod tests {
     }
 
     #[test]
+    fn projection_marks_tool_results_from_positive_user_cancellation_state() {
+        let (responses, _rx) = mpsc::unbounded_channel();
+        let user_cancellation = CancellationToken::new();
+        let mut projection = PiRpcProjection::new("run", "session", user_cancellation.clone());
+        let tool_result = |tool_call_id: &str| {
+            json!({
+                "type": "message_end",
+                "message": {
+                    "role": "toolResult",
+                    "toolCallId": tool_call_id,
+                    "content": [{ "type": "text", "text": "provider result text" }],
+                    "isError": true,
+                },
+            })
+        };
+
+        let ordinary = projection
+            .project(tool_result("ordinary"), &responses)
+            .expect("ordinary tool result should project")
+            .expect("ordinary tool result should emit an event");
+        assert_eq!(
+            ordinary.pointer("/message/content/0/vm0_user_cancelled"),
+            None
+        );
+
+        user_cancellation.cancel();
+        let cancelled = projection
+            .project(tool_result("cancelled"), &responses)
+            .expect("cancelled tool result should project")
+            .expect("cancelled tool result should emit an event");
+        assert_eq!(
+            cancelled.pointer("/message/content/0/vm0_user_cancelled"),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(
+            cancelled.pointer("/message/content/0/is_error"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
     fn projection_validates_get_state_session_identity() {
         let (responses, mut rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session");
+        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
         let event = projection
             .project(
                 json!({
@@ -748,7 +805,7 @@ mod tests {
     #[test]
     fn projection_discards_buffered_records_after_extension_failure() {
         let (responses, _rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session");
+        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
         let error = projection
             .project(
                 json!({

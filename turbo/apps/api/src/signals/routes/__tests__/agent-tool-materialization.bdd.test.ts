@@ -69,7 +69,9 @@ function managedCommand(command: string): string {
   return `exec '/usr/local/bin/guest-tool-exec' --shell "$0" -c ${quoteShellArgumentForFixture(command)}`;
 }
 
-async function entitledToolRunActor(): Promise<{
+async function entitledToolRunActor(
+  framework: "claude-code" | "codex" = "claude-code",
+): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
@@ -83,7 +85,23 @@ async function entitledToolRunActor(): Promise<{
   api.acceptTelemetryIngest();
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
+  if (framework === "claude-code") {
+    await api.ensureOrgModelProvider(actor);
+  } else {
+    const { providerId } = await api.createOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "tool-materialization-openai-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+  }
   const agent = await bdd.createAgent(actor, {
     displayName: `Tool materialization ${randomUUID().slice(0, 8)}`,
     description: "Exercises append-only provider tool materialization.",
@@ -130,6 +148,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [FeatureSwitchKey.ChatToolActivity]: true,
     });
     const claim = await claimRun(api, runId, runnerGroup);
+    expect(claim.cliAgentType).toBe("claude-code");
     await webhooks.requestAgentEvents(
       {
         runId,
@@ -237,6 +256,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [FeatureSwitchKey.ChatToolActivity]: false,
     });
     const claim = await claimRun(api, runId, runnerGroup);
+    expect(claim.cliAgentType).toBe("claude-code");
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
     const maskedCommand = managedCommand("printf '%s' '***'");
     const orderedBatch = [
@@ -615,7 +635,8 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     const chat = createChatFilesBddApi(context);
     const connectors = createConnectorBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const { actor, agentId, runnerGroup, api } = await entitledToolRunActor();
+    const { actor, agentId, runnerGroup, api } =
+      await entitledToolRunActor("codex");
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatToolActivity]: true,
     });
@@ -625,6 +646,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       "enabled Codex tool activity",
     );
     const claim = await claimRun(api, runId, runnerGroup);
+    expect(claim.cliAgentType).toBe("codex");
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
     const wrapped = `/bin/bash -lc ${quoteDoubleShellArgumentForFixture(
       managedCommand("echo ***"),

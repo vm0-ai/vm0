@@ -7,6 +7,7 @@ import { and, asc, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
 import type {
   AgentEvent,
@@ -248,6 +249,7 @@ function toolRunEventId(sequenceNumber: number): string {
 function assistantEventItems(args: {
   readonly events: readonly AgentEvent[];
   readonly runId: string;
+  readonly framework: AgentRunLaunchSnapshot["framework"] | null;
   readonly toolActivityEnabled: boolean;
   readonly priorToolOperations: ReadonlyMap<string, ToolOperationState>;
 }): InsertAssistantEventsInput["items"] {
@@ -282,7 +284,7 @@ function assistantEventItems(args: {
     if (!args.toolActivityEnabled) {
       continue;
     }
-    const normalized = normalizeAgentToolEvent(event);
+    const normalized = normalizeAgentToolEvent(event, args.framework);
     if (normalized === null) {
       continue;
     }
@@ -314,6 +316,12 @@ function assistantEventItems(args: {
     );
     const prior = toolOperations.get(toolUseId);
     if (normalized.kind === "correlated-terminal") {
+      if (
+        normalized.requiresPendingOperation === true &&
+        prior?.status !== "pending"
+      ) {
+        continue;
+      }
       const sourceOperation =
         prior ??
         (normalized.standaloneOperation === undefined
@@ -408,6 +416,7 @@ async function insertRunOutputChatEvents(
   const [run] = await tx
     .select({
       chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
+      launchSnapshot: agentRuns.launchSnapshot,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, payload.runId))
@@ -425,6 +434,7 @@ async function insertRunOutputChatEvents(
   const assistantItems = assistantEventItems({
     events: payload.events,
     runId: payload.runId,
+    framework: run.launchSnapshot?.framework ?? null,
     toolActivityEnabled,
     priorToolOperations,
   });

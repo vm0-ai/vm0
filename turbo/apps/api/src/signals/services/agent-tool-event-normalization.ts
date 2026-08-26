@@ -1,15 +1,18 @@
 import type { OutputToolPayload } from "@okouai/api-contracts/contracts/chat-events";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
 import type { AgentEvent } from "../../lib/event-consumer/verify";
 
 type ToolAction = OutputToolPayload["action"];
 type ToolTerminalStatus = Exclude<OutputToolPayload["status"], "pending">;
 type ToolSummaryLifecycle = "pending" | "terminal";
+type ToolCorrelationProvider = "claude" | "codex" | "pi";
+type ToolEventFramework = AgentRunLaunchSnapshot["framework"] | null;
 
 type NormalizedAgentToolEvent =
   | {
       readonly kind: "correlated";
-      readonly provider: "claude" | "codex";
+      readonly provider: ToolCorrelationProvider;
       readonly providerOperationId: string;
       readonly action: ToolAction;
       readonly status: "pending";
@@ -17,9 +20,10 @@ type NormalizedAgentToolEvent =
     }
   | {
       readonly kind: "correlated-terminal";
-      readonly provider: "claude" | "codex";
+      readonly provider: ToolCorrelationProvider;
       readonly providerOperationId: string;
       readonly status: ToolTerminalStatus;
+      readonly requiresPendingOperation?: true;
       readonly standaloneOperation?: {
         readonly action: ToolAction;
         readonly summary: string;
@@ -262,7 +266,9 @@ function decodedToolCommand(value: unknown): string | null {
   return command;
 }
 
-function claudeContentBlock(event: AgentEvent): Record<string, unknown> | null {
+function singleMessageContentBlock(
+  event: AgentEvent,
+): Record<string, unknown> | null {
   const message = recordOf(event.message);
   const content = message?.content;
   if (!Array.isArray(content) || content.length !== 1) {
@@ -275,7 +281,7 @@ function claudeToolUse(event: AgentEvent): NormalizedAgentToolEvent | null {
   if (event.type !== "assistant") {
     return null;
   }
-  const block = claudeContentBlock(event);
+  const block = singleMessageContentBlock(event);
   if (block?.type !== "tool_use") {
     return null;
   }
@@ -336,7 +342,7 @@ function claudeToolResult(event: AgentEvent): NormalizedAgentToolEvent | null {
   if (event.type !== "user") {
     return null;
   }
-  const block = claudeContentBlock(event);
+  const block = singleMessageContentBlock(event);
   if (block?.type !== "tool_result") {
     return null;
   }
@@ -491,14 +497,118 @@ function codexFile(event: AgentEvent): NormalizedAgentToolEvent | null {
     : { kind: "standalone", action, status, summary };
 }
 
+function piToolUse(event: AgentEvent): NormalizedAgentToolEvent | null {
+  if (event.type !== "assistant") {
+    return null;
+  }
+  const block = singleMessageContentBlock(event);
+  if (block?.type !== "tool_use") {
+    return null;
+  }
+  const providerOperationId = nonBlankProviderId(block.id);
+  const input = recordOf(block.input);
+  if (providerOperationId === null || input === null) {
+    return null;
+  }
+
+  let action: ToolAction;
+  let target: unknown;
+  switch (block.name) {
+    case "bash": {
+      action = "run";
+      target = decodedToolCommand(input.command);
+      break;
+    }
+    case "read": {
+      action = "read";
+      target = input.path;
+      break;
+    }
+    case "write": {
+      action = "write";
+      target = input.path;
+      break;
+    }
+    case "edit": {
+      action = "edit";
+      target = input.path;
+      break;
+    }
+    default: {
+      return null;
+    }
+  }
+  const summary = toolSummary(action, "pending", target);
+  if (summary === null) {
+    return null;
+  }
+  return {
+    kind: "correlated",
+    provider: "pi",
+    providerOperationId,
+    action,
+    status: "pending",
+    summary,
+  };
+}
+
+function piToolResult(event: AgentEvent): NormalizedAgentToolEvent | null {
+  if (event.type !== "user") {
+    return null;
+  }
+  const block = singleMessageContentBlock(event);
+  if (block?.type !== "tool_result" || typeof block.is_error !== "boolean") {
+    return null;
+  }
+  const providerOperationId = nonBlankProviderId(block.tool_use_id);
+  if (providerOperationId === null) {
+    return null;
+  }
+  const cancelled = block.vm0_user_cancelled === true;
+  return {
+    kind: "correlated-terminal",
+    provider: "pi",
+    providerOperationId,
+    status: cancelled ? "cancelled" : block.is_error ? "error" : "success",
+    ...(cancelled ? { requiresPendingOperation: true } : {}),
+  };
+}
+
+function normalizeClaudeToolEvent(
+  event: AgentEvent,
+): NormalizedAgentToolEvent | null {
+  return claudeToolUse(event) ?? claudeToolResult(event);
+}
+
+function normalizeCodexToolEvent(
+  event: AgentEvent,
+): NormalizedAgentToolEvent | null {
+  return codexCommand(event) ?? codexFile(event);
+}
+
+function normalizePiToolEvent(
+  event: AgentEvent,
+): NormalizedAgentToolEvent | null {
+  return piToolUse(event) ?? piToolResult(event);
+}
+
 /** Normalize one already-masked, already-sequenced provider event. */
 export function normalizeAgentToolEvent(
   event: AgentEvent,
+  framework: ToolEventFramework,
 ): NormalizedAgentToolEvent | null {
-  return (
-    claudeToolUse(event) ??
-    claudeToolResult(event) ??
-    codexCommand(event) ??
-    codexFile(event)
-  );
+  switch (framework) {
+    case "claude-code": {
+      return normalizeClaudeToolEvent(event);
+    }
+    case "codex": {
+      return normalizeCodexToolEvent(event);
+    }
+    case "pi": {
+      return normalizePiToolEvent(event);
+    }
+    case null: {
+      return normalizeClaudeToolEvent(event) ?? normalizeCodexToolEvent(event);
+    }
+  }
 }

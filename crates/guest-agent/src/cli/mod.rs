@@ -1139,7 +1139,11 @@ async fn execute_cli_inner(
     let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
     let pi_rpc_cancellation = CancellationToken::new();
     let mut pi_rpc_projection = pi_execution.then(|| {
-        pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
+        pi_rpc::PiRpcProjection::new(
+            runtime.run_id.as_ref(),
+            runtime.pi_session_id.as_ref(),
+            user_cancellation.clone(),
+        )
     });
     let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
     let mut claude_stdin_write_handle = Some({
