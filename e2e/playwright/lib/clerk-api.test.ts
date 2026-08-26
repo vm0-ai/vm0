@@ -692,7 +692,7 @@ test("stale cleanup removes example.com browser QA resources without shared orga
     },
     async (requests) => {
       const result = await cleanupStaleClerkTestResources(["browser"], cutoff, {
-        exampleCreatedBefore: cutoff,
+        stagingBrowserCreatedBefore: cutoff,
       });
       assert.equal(result.selectedOrganizations, 2);
       assert.equal(result.selectedUsers, 3);

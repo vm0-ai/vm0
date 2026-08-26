@@ -41,7 +41,7 @@ export interface ClerkCleanupOptions {
 }
 
 export interface ClerkStaleCleanupOptions extends ClerkCleanupOptions {
-  readonly exampleCreatedBefore?: Date;
+  readonly stagingBrowserCreatedBefore?: Date;
 }
 
 export interface ClerkCleanupResult {
@@ -116,7 +116,7 @@ type ClerkCleanupSelection =
   | {
       readonly kind: "stale";
       readonly createdBeforeMs: number;
-      readonly exampleCreatedBeforeMs?: number;
+      readonly stagingBrowserCreatedBeforeMs?: number;
       readonly roles: readonly ClerkTestRole[];
     };
 
@@ -384,20 +384,23 @@ export async function cleanupStaleClerkTestResources(
   if (!Number.isFinite(createdBeforeMs)) {
     throw new Error("Stale Clerk cleanup cutoff must be a valid date");
   }
-  const exampleCreatedBeforeMs = options.exampleCreatedBefore?.getTime();
+  const stagingBrowserCreatedBeforeMs =
+    options.stagingBrowserCreatedBefore?.getTime();
   if (
-    exampleCreatedBeforeMs !== undefined &&
-    !Number.isFinite(exampleCreatedBeforeMs)
+    stagingBrowserCreatedBeforeMs !== undefined &&
+    !Number.isFinite(stagingBrowserCreatedBeforeMs)
   ) {
-    throw new Error("Stale example.com cleanup cutoff must be a valid date");
+    throw new Error(
+      "Stale staging browser cleanup cutoff must be a valid date",
+    );
   }
   return await cleanupClerkTestResources(
     {
       kind: "stale",
       createdBeforeMs,
-      ...(exampleCreatedBeforeMs === undefined
+      ...(stagingBrowserCreatedBeforeMs === undefined
         ? {}
-        : { exampleCreatedBeforeMs }),
+        : { stagingBrowserCreatedBeforeMs }),
       roles,
     },
     options,
@@ -410,7 +413,7 @@ async function cleanupClerkTestResources(
 ): Promise<ClerkCleanupResult> {
   const users = await listClerkUsers();
   const organizations = await listClerkOrganizations();
-  const exampleResources = await selectStaleExampleResources(
+  const stagingBrowserResources = await selectStaleStagingBrowserResources(
     selection,
     users,
     organizations,
@@ -430,7 +433,7 @@ async function cleanupClerkTestResources(
     .map(({ organization }) => organization);
   const selectedOrganizations = [
     ...selectedMarkedOrganizations,
-    ...exampleResources.organizations,
+    ...stagingBrowserResources.organizations,
   ];
   const retainedOrganizationOwners = new Set<string>();
   if (selection.kind === "stale") {
@@ -457,7 +460,10 @@ async function cleanupClerkTestResources(
       !retainedOrganizationOwners.has(clerkTestOwnerKey(owner))
     );
   });
-  const selectedUsers = [...selectedMarkedUsers, ...exampleResources.users];
+  const selectedUsers = [
+    ...selectedMarkedUsers,
+    ...stagingBrowserResources.users,
+  ];
 
   let deletedOrganizations = 0;
   let alreadyAbsentOrganizations = 0;
@@ -500,18 +506,18 @@ async function cleanupClerkTestResources(
   };
 }
 
-async function selectStaleExampleResources(
+async function selectStaleStagingBrowserResources(
   selection: ClerkCleanupSelection,
   users: readonly ClerkUserSummary[],
   organizations: readonly ClerkOrganizationSummary[],
 ): Promise<ClerkCleanupResources> {
   if (
     selection.kind !== "stale" ||
-    selection.exampleCreatedBeforeMs === undefined
+    selection.stagingBrowserCreatedBeforeMs === undefined
   ) {
     return { organizations: [], users: [] };
   }
-  const exampleCreatedBeforeMs = selection.exampleCreatedBeforeMs;
+  const stagingBrowserCreatedBeforeMs = selection.stagingBrowserCreatedBeforeMs;
 
   const staleUsers = users.filter((user) => {
     const emailAddress = user.email_addresses[0];
@@ -520,7 +526,7 @@ async function selectStaleExampleResources(
       emailAddress !== undefined &&
       isStagingBrowserTestEmail(emailAddress.email_address) &&
       user.created_at !== undefined &&
-      user.created_at < exampleCreatedBeforeMs
+      user.created_at < stagingBrowserCreatedBeforeMs
     );
   });
   const staleUserIds = new Set(staleUsers.map((user) => user.id));
@@ -537,7 +543,7 @@ async function selectStaleExampleResources(
     const { organization, createdBy } = ownedOrganization;
     if (
       organization.created_at === undefined ||
-      organization.created_at >= exampleCreatedBeforeMs
+      organization.created_at >= stagingBrowserCreatedBeforeMs
     ) {
       retainedUserIds.add(createdBy);
       continue;
