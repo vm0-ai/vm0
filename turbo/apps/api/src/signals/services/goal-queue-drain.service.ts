@@ -13,6 +13,7 @@ import {
 import {
   ApiDispatchTimingCollector,
   type ApiDispatchTimingDimensions,
+  type GoalSchedulerTimingCollector,
 } from "./api-dispatch-timing.service";
 import {
   loadGoalQueueTarget,
@@ -480,6 +481,7 @@ export const drainGoalQueueForThread$ = command(
       readonly chatThreadId: string;
       readonly apiStartTime: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly goalSchedulerTiming: GoalSchedulerTimingCollector;
       readonly queueItemCreatedBefore?: Date;
     },
     signal: AbortSignal,
@@ -487,12 +489,23 @@ export const drainGoalQueueForThread$ = command(
     const drainStartedAt = now();
     const apiStartTime = args.apiStartTime;
     const timing = new ApiDispatchTimingCollector();
+    args.goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+      drainStartedAt,
+    );
+    args.goalSchedulerTiming.appendTo(
+      timing,
+      goalDrainTimingDimensions({ role: "phase" }),
+    );
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
       "nested",
       apiStartTime,
       drainStartedAt,
-      goalDrainTimingDimensions({ role: "waiting" }),
+      {
+        ...goalDrainTimingDimensions({ role: "waiting" }),
+        goal_scheduler_origin: args.goalSchedulerTiming.origin,
+      },
     );
     const db = set(writeDb$);
 
