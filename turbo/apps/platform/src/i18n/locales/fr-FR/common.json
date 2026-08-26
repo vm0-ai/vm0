@@ -2022,6 +2022,7 @@
     "forward": {
       "action": "Transférer",
       "agents": "Agents",
+      "agentsDescription": "Démarrez un nouveau chat avec un agent.",
       "back": "Retour",
       "content": "Contenu",
       "description": "Transférez le contenu sélectionné vers un agent ou un chat.",
@@ -2029,6 +2030,7 @@
       "search": "Rechercher des agents et des chats...",
       "sent": "Transfert réussi",
       "threads": "Chats",
+      "threadsDescription": "Ajoutez ce contenu à un chat existant.",
       "title": "Transférer vers"
     },
     "mail": {

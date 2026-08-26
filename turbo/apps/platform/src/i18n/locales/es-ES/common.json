@@ -2022,6 +2022,7 @@
     "forward": {
       "action": "Reenviar",
       "agents": "Agentes",
+      "agentsDescription": "Inicia una nueva conversación con un agente.",
       "back": "Atrás",
       "content": "Contenido",
       "description": "Reenvía el contenido seleccionado a un agente o una conversación.",
@@ -2029,6 +2030,7 @@
       "search": "Buscar agentes y conversaciones...",
       "sent": "Reenviado correctamente",
       "threads": "Conversaciones",
+      "threadsDescription": "Añade este contenido a una conversación existente.",
       "title": "Reenviar a"
     },
     "mail": {

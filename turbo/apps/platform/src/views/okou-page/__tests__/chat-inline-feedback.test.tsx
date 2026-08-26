@@ -410,6 +410,12 @@ describe("chat inline feedback", () => {
     const dialog = await screen.findByRole("dialog", { name: "Forward to" });
     expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
     expect(within(dialog).getByText("Content")).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleDescription(
+      "Forward selected content to an agent or chat.",
+    );
+    expect(
+      within(dialog).getByText("Start a new chat with an agent."),
+    ).toBeVisible();
     const search = within(dialog).getByPlaceholderText(
       "Search agents and chats...",
     );
@@ -518,6 +524,9 @@ describe("chat inline feedback", () => {
       "Search agents and chats...",
     );
     await fill(search, "Launch ownership");
+    await expect(
+      within(dialog).findByText("Add this content to an existing chat."),
+    ).resolves.toBeVisible();
     await user.keyboard("{ArrowDown}{Enter}");
 
     const feedbackNote = await findForwardFeedbackNote(dialog);

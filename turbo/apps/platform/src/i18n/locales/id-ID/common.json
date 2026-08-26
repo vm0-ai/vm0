@@ -1986,6 +1986,7 @@
     "forward": {
       "action": "Teruskan",
       "agents": "Agen",
+      "agentsDescription": "Mulai chat baru dengan agen.",
       "back": "Kembali",
       "content": "Konten",
       "description": "Teruskan konten yang dipilih ke agen atau chat.",
@@ -1993,6 +1994,7 @@
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",
       "threads": "Chat",
+      "threadsDescription": "Tambahkan konten ini ke chat yang sudah ada.",
       "title": "Teruskan ke"
     },
     "mail": {

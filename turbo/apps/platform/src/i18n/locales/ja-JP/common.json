@@ -1986,6 +1986,7 @@
     "forward": {
       "action": "転送",
       "agents": "エージェント",
+      "agentsDescription": "エージェントとの新しいチャットを開始します。",
       "back": "戻る",
       "content": "内容",
       "description": "選択した内容をエージェントまたはチャットに転送します。",
@@ -1993,6 +1994,7 @@
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
       "threads": "チャット",
+      "threadsDescription": "この内容を既存のチャットに追加します。",
       "title": "転送先"
     },
     "mail": {
