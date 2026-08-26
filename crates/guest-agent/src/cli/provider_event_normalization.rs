@@ -7,9 +7,8 @@ use crate::env::Framework;
 
 pub(super) fn normalize_for_sequencing(framework: Framework, event: Value) -> Vec<Value> {
     let events = match framework {
-        Framework::ClaudeCode => expand_claude_message_content(event),
+        Framework::ClaudeCode | Framework::Pi => expand_message_content(event),
         Framework::Codex => expand_codex_file_changes(event),
-        Framework::Pi => vec![event],
     };
     events
         .into_iter()
@@ -60,7 +59,7 @@ fn codex_command_mut(event: &mut Value) -> Option<&mut Value> {
     item.get_mut("command")
 }
 
-fn expand_claude_message_content(event: Value) -> Vec<Value> {
+fn expand_message_content(event: Value) -> Vec<Value> {
     let Value::Object(mut outer) = event else {
         return vec![event];
     };
