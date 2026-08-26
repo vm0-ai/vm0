@@ -339,9 +339,9 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   expect(Number.parseFloat(threadUnreadStyle.width)).toBeGreaterThan(0);
   expect(agentUnreadStyle).toStrictEqual(threadUnreadStyle);
 
-  await page.getByLabel("Search conversations").click();
+  await page.getByLabel("Search workspace").click();
   const searchDialog = page.getByRole("dialog", {
-    name: "Search chats and messages...",
+    name: "Search chats, messages, workflows, and artifacts...",
   });
   await expect(searchDialog).toBeVisible();
   expect(
