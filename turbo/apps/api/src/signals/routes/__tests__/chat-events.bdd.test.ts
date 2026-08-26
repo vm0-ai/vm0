@@ -9797,48 +9797,50 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
+      "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
+      "Image workflow: use supplied images first;",
     );
-    expect(websitePrompt).toContain("resolve-images.mjs");
-    expect(websitePrompt).not.toContain("use `seedream4` by default");
-    expect(websitePrompt).not.toContain("okou generate image-batch start");
-    expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
+    expect(websitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
+    );
+    expect(websitePrompt).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(websitePrompt).not.toContain("tools/generate-images.mjs");
+    expect(websitePrompt).not.toContain("resolve-images.mjs");
+    expect(websitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, website.runId);
 
+    // The rollout keeps its rollback lever: an override back to off restores
+    // the pre-cutover renderer guidance without a deployment.
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.LatestWebsiteTemplates]: true },
+      { [FeatureSwitchKey.LatestWebsiteTemplates]: false },
     );
-    const latestWebsite = await sendChatRun(actor, {
+    const previousWebsite = await sendChatRun(actor, {
       agentId,
-      prompt: "make a campaign landing page with the latest template",
+      prompt: "make a campaign landing page with the pre-cutover template",
       template: {
         type: "website",
         selection: { websiteTemplateId: websiteTemplate.id },
       },
     });
-    const latestWebsiteRun = await api.readRun(actor, latestWebsite.runId);
-    const latestWebsitePrompt = latestWebsiteRun.appendSystemPrompt ?? "";
-    expect(latestWebsitePrompt).toContain(
-      "okou resource pull template:black-slabs --dir ./generated/resources",
+    const previousWebsiteRun = await api.readRun(actor, previousWebsite.runId);
+    const previousWebsitePrompt = previousWebsiteRun.appendSystemPrompt ?? "";
+    expect(previousWebsitePrompt).toContain(
+      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
-    expect(latestWebsitePrompt).toContain(
-      "Image workflow: use supplied images first;",
+    expect(previousWebsitePrompt).toContain(
+      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(latestWebsitePrompt).toMatch(
-      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
+    expect(previousWebsitePrompt).toContain("resolve-images.mjs");
+    expect(previousWebsitePrompt).toContain(
+      "okou host <output-dir> --site <slug>",
     );
-    expect(latestWebsitePrompt).toMatch(
-      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
-    );
-    expect(latestWebsitePrompt).not.toContain("tools/generate-images.mjs");
-    expect(latestWebsitePrompt).not.toContain("resolve-images.mjs");
-    expect(latestWebsitePrompt).not.toContain("render.mjs");
-    await cancelChatRun(actor, latestWebsite.runId);
+    await cancelChatRun(actor, previousWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {

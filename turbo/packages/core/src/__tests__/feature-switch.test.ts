@@ -153,7 +153,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
