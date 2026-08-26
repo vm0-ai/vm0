@@ -100,7 +100,7 @@ function ForwardTargetPicker({
     threadResult.query === normalizedQuery ? threadResult.chatThreads : [];
   return (
     <Command shouldFilter={false} loop className="min-h-0">
-      <div className="relative px-5 pb-2 pt-3">
+      <div className="relative px-5 pb-4 pt-3">
         <CommandInput
           value={query}
           onValueChange={setQuery}
