@@ -1294,6 +1294,37 @@ test("model picker grows by a row rather than scrolling", async ({ page }) => {
   );
 });
 
+test("model picker stops at the space it has on a short viewport", async ({
+  page,
+}) => {
+  const boundary = await mockModelPickerBoundary(page);
+  boundary.showEightModels();
+  // Removing the row-count cap leaves the available height as the popup's only
+  // bound, so it needs a case where that bound bites. 320px is under the 324px
+  // the eight-model list asks for, which makes this independent of where the
+  // composer happens to sit: no popup can both stay on screen and show every
+  // row here. An unbounded popup -- or one still capped at `SelectContent`'s
+  // own 24rem default, which outlives this viewport -- would lay out its whole
+  // list and run past the screen instead of scrolling.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await expect(popup).toBeInViewport({ ratio: 1 });
+  const bounded = await popup.evaluate((element) => {
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(bounded.scrollHeight).toBeGreaterThan(bounded.clientHeight);
+});
+
 test("model picker image category settles without a scrollbar", async ({
   page,
 }) => {
