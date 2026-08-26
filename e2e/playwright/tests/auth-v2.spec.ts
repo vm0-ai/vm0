@@ -60,6 +60,37 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
   }
 });
 
+test("primary and link actions retain accessible brand colors in both themes", async ({
+  page,
+}) => {
+  await openAuthV2(page, "/v2/sign-up");
+
+  const root = authV2Root(page);
+  const continueButton = root.getByRole("button", { name: "Continue" });
+  const currentSignUpLink = page.getByRole("link", {
+    name: "Use current sign-up",
+  });
+  const passwordVisibilityAction = root.getByRole("button", {
+    name: "Show password",
+  });
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(currentSignUpLink).toHaveCSS("color", "rgb(208, 67, 1)");
+  await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
+
+  await page.getByRole("button", { name: "Toggle theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(currentSignUpLink).toHaveCSS("color", "rgb(239, 90, 15)");
+  await expect(passwordVisibilityAction).toHaveCSS(
+    "color",
+    "rgb(233, 234, 236)",
+  );
+});
+
 test.describe("localized mobile presentation", () => {
   test.use({
     colorScheme: "dark",

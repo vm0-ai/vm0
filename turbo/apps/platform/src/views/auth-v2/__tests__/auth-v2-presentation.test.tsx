@@ -6,7 +6,6 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockSignUpConfiguration } from "../../../__tests__/mock-auth.ts";
 import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -58,16 +57,6 @@ function buttonByLabel(label: string): HTMLButtonElement {
   });
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error(`Button not found: ${label}`);
-  }
-  return button;
-}
-
-function buttonByText(text: string): HTMLButtonElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!(button instanceof HTMLButtonElement)) {
-    throw new Error(`Button not found: ${text}`);
   }
   return button;
 }
@@ -125,44 +114,11 @@ describe("auth v2 presentation", () => {
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
-    expect(passwordVisibilityAction).toHaveClass("text-foreground");
     const currentSignUpAction = linkByText("Use current sign-up");
     expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
     expect(
       currentSignUpAction.closest('[data-testid="app-auth-v2"]'),
     ).toBeNull();
-  });
-
-  it("uses contrast-safe brand colors for primary actions and links", async () => {
-    mockSignUpConfiguration({
-      legalConsentEnabled: true,
-      privacyPolicyUrl: "https://vm0.ai/legal/privacy",
-      termsUrl: "https://vm0.ai/legal/terms",
-    });
-    setBrowserUrl("https://app.vm0.ai/v2/sign-up");
-
-    detachedSetupPage({ context, path: "/v2/sign-up" });
-
-    await screen.findByLabelText("Email address");
-    const continueButton = buttonByText("Continue");
-    expect(continueButton).toHaveClass(
-      "bg-[#d04301]",
-      "text-[#ffffff]",
-      "hover:bg-[#bb3c01]",
-      "active:bg-[#af3801]",
-    );
-
-    for (const link of [
-      linkByText("Terms of Service"),
-      linkByText("Sign in"),
-      linkByText("Use current sign-up"),
-    ]) {
-      expect(link).toHaveClass(
-        "text-[#d04301]",
-        "hover:text-[#bb3c01]",
-        "dark:text-[#ef5a0f]",
-      );
-    }
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
