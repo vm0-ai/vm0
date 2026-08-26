@@ -1031,11 +1031,22 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
 
-    click(
-      within(threadRowByTitle("Release plan")).getByTestId(
-        "chat-thread-pinned-indicator",
-      ),
+    const pinnedRow = threadRowByTitle("Release plan");
+    const pinnedMenu = within(pinnedRow).getByTestId(
+      "chat-thread-menu-trigger",
     );
+    expect(pinnedMenu.className).toContain("text-muted-foreground");
+    expect(pinnedMenu.className).toContain("hover:text-foreground");
+    expect(
+      Array.from(pinnedRow.querySelectorAll("svg")).every((icon) => {
+        return (
+          !icon.classList.contains("opacity-50") &&
+          !icon.classList.contains("opacity-70")
+        );
+      }),
+    ).toBeTruthy();
+
+    click(within(pinnedRow).getByTestId("chat-thread-pinned-indicator"));
     click(menuItemByText("Unpin chat"));
 
     await waitFor(() => {
@@ -3285,9 +3296,12 @@ describe("zero sidebar", () => {
     expect(newChatIcon.style.opacity).toBe("");
     expect(searchButton.className).toContain("[&_svg]:size-[18px]");
     expect(newChatButton.className).toContain("[&_svg]:size-[18px]");
-    expect(
-      within(list).getByTestId("pinned-agents-horizontal"),
-    ).toBeInTheDocument();
+    const pinnedAgents = within(list).getByTestId("pinned-agents-horizontal");
+    const pinAgentButton = within(pinnedAgents).getByLabelText("Pin an agent");
+    expect(pinAgentButton.className).toContain("text-muted-foreground");
+    expect(pinAgentButton.className).toContain("hover:text-foreground");
+    expect(pinAgentButton.className).not.toContain("opacity-70");
+    expect(pinAgentButton.querySelector("svg")).toHaveAttribute("width", "18");
   });
 
   it("hides only the three-column chat list and keeps search available", async () => {

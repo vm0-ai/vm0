@@ -221,12 +221,15 @@ function ChatThreadMenu({
     <TooltipProvider delayDuration={200}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={preventChatThreadMenuNavigation}
-            className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
+            variant="quiet"
+            size="icon-2xs"
+            iconSize="sm"
+            className={`peer pointer-events-auto absolute left-1 top-1 cursor-pointer rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
-            } md:invisible md:group-hover:visible md:data-popup-open:visible transition-opacity duration-150 text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover`}
+            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -251,14 +254,11 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <Pin size={16} className="md:hidden opacity-70" />
-                      <Ellipsis
-                        size={16}
-                        className="hidden md:block opacity-70"
-                      />
+                      <Pin size={16} className="md:hidden" />
+                      <Ellipsis size={16} className="hidden md:block" />
                     </>
                   ) : (
-                    <Ellipsis className="opacity-70" size={16} />
+                    <Ellipsis size={16} />
                   )}
                 </span>
               </TooltipTrigger>
@@ -270,7 +270,7 @@ function ChatThreadMenu({
                 </p>
               </TooltipContent>
             </Tooltip>
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onSelect={handleTogglePin}>
@@ -346,9 +346,9 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-popup-open:hidden md:flex"
+                className="hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex"
               >
-                <Pin className="opacity-50" size={16} />
+                <Pin size={16} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -698,7 +698,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Ellipsis className="opacity-70" size={16} />
+          <Ellipsis size={18} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -858,18 +858,21 @@ function ChatThreadsListMenu({
     <TooltipProvider delayDuration={200}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
             }}
-            className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
+            className="relative z-10 shrink-0"
             aria-label={t(($) => {
               return $.chat.sidebar.openListMenu;
             })}
           >
             <ChatThreadsListMenuTooltip />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"

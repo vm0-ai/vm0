@@ -293,11 +293,6 @@ const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web cons
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-// `Button` sizes its icons to 16px. These controls drew at 18px before they were
-// routed through `Button`, and icon sizing is owned by a separate workstream, so
-// pin the existing value here rather than change two things at once.
-const COMPOSER_CONTROL_ICON_CLASS = "[&_svg]:size-[18px]";
-
 function isHappyDomTestEnvironment(): boolean {
   return (
     typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
@@ -7458,9 +7453,9 @@ function TemplatePickerButton({
               type="button"
               variant="quiet"
               size="icon-sm"
+              iconSize="md"
               className={cn(
                 "shrink-0",
-                COMPOSER_CONTROL_ICON_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label={t(($) => {
@@ -7568,7 +7563,8 @@ function CreateWorkflowPromptButton({
             type="button"
             variant="quiet"
             size="icon-sm"
-            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
+            iconSize="md"
+            className="shrink-0"
             aria-label={t(($) => {
               return $.chat.composer.createWorkflow;
             })}
@@ -9295,9 +9291,9 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             type="button"
             variant="quiet"
             size="icon-sm"
+            iconSize="md"
             className={cn(
               "relative shrink-0",
-              COMPOSER_CONTROL_ICON_CLASS,
               (recording || starting || transcribing) &&
                 "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
@@ -9344,7 +9340,8 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
             type="button"
             variant="quiet"
             size="icon-sm"
-            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
+            iconSize="md"
+            className="shrink-0"
             aria-label={t(($) => {
               return $.chat.attachments.attach;
             })}

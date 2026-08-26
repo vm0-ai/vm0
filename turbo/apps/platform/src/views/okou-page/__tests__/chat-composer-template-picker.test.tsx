@@ -821,6 +821,12 @@ describe("chat composer templates", () => {
       });
 
       expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+      for (const label of ["Attach", "Template"]) {
+        const control = within(composer).getByLabelText(label);
+        expect(control.className).toContain("text-muted-foreground");
+        expect(control.className).toContain("hover:text-foreground");
+        expect(control.className).toContain("[&_svg]:size-[18px]");
+      }
       expect(
         composer.querySelector('button[aria-label="Upload"]'),
       ).not.toBeInTheDocument();
