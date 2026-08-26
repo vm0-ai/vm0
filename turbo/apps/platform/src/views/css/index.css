@@ -547,7 +547,16 @@ body {
   --background-50: var(--gray-50);
   --state-layer: var(--zero-color-theme-ring);
   --segment-selected: var(--card);
-  --zero-color-theme-selected: var(--zero-color-theme-hue) 91% 86.9%;
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    #ffffff 78%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      22%
+  );
 }
 
 :root:is(
@@ -576,7 +585,16 @@ body {
   --background-50: var(--gray-50);
   --state-layer: var(--zero-color-theme-ring);
   --segment-selected: var(--gray-500);
-  --zero-color-theme-selected: var(--zero-color-theme-hue) 15.2% 25.9%;
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    hsl(var(--card)) 82%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      18%
+  );
 }
 
 .zero-color-theme-swatch {
