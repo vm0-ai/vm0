@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.595.7](https://github.com/vm0-ai/vm0/compare/core-v8.595.6...core-v8.595.7) (2026-08-26)
+
+
+### Refactoring
+
+* disable chat tool activity for staff ([#29692](https://github.com/vm0-ai/vm0/issues/29692)) ([8e875ca](https://github.com/vm0-ai/vm0/commit/8e875ca04414a919355290748892f4c37bae07ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.2
+
 ## [8.595.6](https://github.com/vm0-ai/vm0/compare/core-v8.595.5...core-v8.595.6) (2026-08-26)
 
 
