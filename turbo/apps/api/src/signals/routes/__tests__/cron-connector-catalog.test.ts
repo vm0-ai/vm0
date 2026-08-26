@@ -4591,7 +4591,7 @@ describe("connector catalog valid lifecycle", () => {
     ]);
   });
 
-  it("derives connected scope and refresh status from the accepted release", async () => {
+  it("preserves the authorization-start scope snapshot across catalog updates", async () => {
     mockDatadogConnectorOAuth();
     configureSource();
     const matching = buildRelease({
@@ -4627,6 +4627,29 @@ describe("connector catalog valid lifecycle", () => {
     if (!state) {
       throw new Error("Expected Datadog authorization state");
     }
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-scope-change",
+      connectorSlug: "datadog",
+      label: "Datadog",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "oauth",
+          grantKind: "auth-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          datadogPrivateAuthMethod([
+            "dashboards_read",
+            "logs_read_index_data",
+            "future_scope",
+          ]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+    await syncCatalog();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
     });
@@ -4661,12 +4684,12 @@ describe("connector catalog valid lifecycle", () => {
       context,
       routes: connectorCatalogRoutes,
     })(connectorCatalogContract);
-    const connected = await accept(catalogClient.status({ headers }), [200]);
-    expect(connected.body.connectors[0]).toMatchObject({
+    const mismatched = await accept(catalogClient.status({ headers }), [200]);
+    expect(mismatched.body.connectors[0]).toMatchObject({
       slug: "datadog",
       connected: true,
-      connectionStatus: "connected",
-      scopeMismatch: false,
+      connectionStatus: "scope-mismatch",
+      scopeMismatch: true,
       authMethodSupportsRefresh: true,
       tokenExpiresAt: expect.any(String),
       singleAuthCodeAuthMethodId: "oauth",
@@ -4677,40 +4700,20 @@ describe("connector catalog valid lifecycle", () => {
         reconnectReason: null,
       },
     });
-    expect(connected.body.connectors[0]?.connection).not.toHaveProperty(
+    expect(mismatched.body.connectors[0]?.connection).not.toHaveProperty(
       "oauthScopes",
     );
-
-    const changedScopes = buildRelease({
-      version: "2026-07-15.external-scope-change",
-      connectorSlug: "datadog",
-      label: "Datadog",
-      mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "oauth",
-          grantKind: "auth-code",
-        });
-        setArtifactAuthMethods(artifact, [method]);
-      },
-      mutateRuntime: (artifact) => {
-        setArtifactAuthMethods(artifact, [
-          datadogPrivateAuthMethod([
-            "dashboards_read",
-            "logs_read_index_data",
-            "future_scope",
-          ]),
-        ]);
-      },
-    });
-    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
-    await syncCatalog();
-    const mismatched = await accept(catalogClient.status({ headers }), [200]);
-    expect(mismatched.body.connectors[0]).toMatchObject({
-      slug: "datadog",
-      connected: true,
-      connectionStatus: "scope-mismatch",
-      scopeMismatch: true,
-      authMethodSupportsRefresh: true,
+    await expect(
+      connectorsApi.readScopeDiff(actor, "datadog"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: [
+        "dashboards_read",
+        "logs_read_index_data",
+        "future_scope",
+      ],
+      storedScopes: ["dashboards_read", "logs_read_index_data"],
     });
   });
 
