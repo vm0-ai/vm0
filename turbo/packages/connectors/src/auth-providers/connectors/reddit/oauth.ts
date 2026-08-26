@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
-import { effectiveOAuthScopes } from "../../oauth/scope";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 
@@ -152,6 +152,7 @@ interface RedditRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 /**
@@ -188,6 +189,7 @@ export async function refreshRedditToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -205,5 +207,6 @@ export async function refreshRedditToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }

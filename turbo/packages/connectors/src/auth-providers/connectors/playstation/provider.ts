@@ -2,6 +2,7 @@ import type {
   ExternalCodeConnectorAuthProvider,
   RefreshTokenAccessProvider,
 } from "../../types";
+import { reportedOAuthScopes } from "../../oauth/scope";
 import {
   buildPlaystationNpssoUrl,
   exchangePlaystationAccessCodeForAuthTokens,
@@ -79,6 +80,7 @@ function createPlaystationRefreshTokenAccessProvider(): RefreshTokenAccessProvid
         },
         signal,
       );
+      const scopes = reportedOAuthScopes(token.scope, " ");
       return {
         outputs: {
           accessToken: token.accessToken,
@@ -86,6 +88,7 @@ function createPlaystationRefreshTokenAccessProvider(): RefreshTokenAccessProvid
           idToken: token.idToken,
         },
         expiresIn: token.expiresIn,
+        ...(scopes === null ? {} : { scopes }),
       };
     },
   };

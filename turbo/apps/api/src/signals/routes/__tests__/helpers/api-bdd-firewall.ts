@@ -219,11 +219,13 @@ export function createFirewallApi(context: TestContext) {
       accessToken: string;
       refreshToken?: string;
       expiresIn?: number;
+      scope?: string;
     }): Response {
       return HttpResponse.json({
         access_token: args.accessToken,
         ...(args.refreshToken ? { refresh_token: args.refreshToken } : {}),
         ...(args.expiresIn !== undefined ? { expires_in: args.expiresIn } : {}),
+        ...(args.scope === undefined ? {} : { scope: args.scope }),
       });
     },
   };

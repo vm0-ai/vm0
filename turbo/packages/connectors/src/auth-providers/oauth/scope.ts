@@ -14,7 +14,16 @@ export function effectiveOAuthScopes(
   authorizationScopes: readonly string[],
   separator: string | RegExp,
 ): string[] {
+  return (
+    reportedOAuthScopes(reportedScopes, separator) ?? [...authorizationScopes]
+  );
+}
+
+export function reportedOAuthScopes(
+  reportedScopes: string | null | undefined,
+  separator: string | RegExp,
+): string[] | null {
   return reportedScopes === null || reportedScopes === undefined
-    ? [...authorizationScopes]
+    ? null
     : reportedScopes.split(separator).filter(Boolean);
 }

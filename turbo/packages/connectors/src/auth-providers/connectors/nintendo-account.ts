@@ -33,7 +33,7 @@ export interface NintendoAccountToken {
   readonly accessToken: string;
   readonly expiresIn?: number;
   readonly idToken: string;
-  readonly scopes: readonly string[];
+  readonly scopes: readonly string[] | null;
   readonly tokenType: string;
 }
 
@@ -259,9 +259,9 @@ export async function exchangeNintendoAccountSessionTokenCode(
 
 function normalizeScopes(
   scope: string | readonly string[] | undefined,
-): readonly string[] {
+): readonly string[] | null {
   if (typeof scope !== "string") {
-    return scope ?? [];
+    return scope ?? null;
   }
   return scope.split(/\s+/u).filter((value: string) => {
     return value.length > 0;
