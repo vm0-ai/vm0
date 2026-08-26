@@ -138,6 +138,22 @@ assert_debug_aliases_absent() {
   assert_env_key_absent "$env_file" VM0_DEBUG
 }
 
+assert_web_url_aliases_equal_dual() {
+  local env_file="$1"
+  local expected="$2"
+  assert_env_key_count "$env_file" OKOU_WEB_URL 1
+  assert_env_key_count "$env_file" VM0_WEB_URL 1
+  assert_env_value "$env_file" OKOU_WEB_URL "$expected"
+  assert_env_value "$env_file" VM0_WEB_URL "$expected"
+  assert_env_values_equal "$env_file" OKOU_WEB_URL VM0_WEB_URL
+}
+
+assert_web_url_aliases_absent() {
+  local env_file="$1"
+  assert_env_key_absent "$env_file" OKOU_WEB_URL
+  assert_env_key_absent "$env_file" VM0_WEB_URL
+}
+
 assert_zero_keys_with_live_readers_absent() {
   local env_file="$1"
   local key
@@ -490,7 +506,7 @@ assert_env_values_equal "$success_env_file" OKOU_PREVIEW_JOB_REF VM0_PREVIEW_JOB
 assert_env_value "$success_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
-assert_env_value "$success_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
+assert_web_url_aliases_equal_dual "$success_env_file" "https://pr-123-www.vm0.test"
 assert_env_value "$success_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
@@ -533,6 +549,7 @@ preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${
 assert_contains "$preview_web_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
 assert_debug_aliases_equal_dual "$preview_web_env_file"
+assert_web_url_aliases_absent "$preview_web_env_file"
 
 empty_job_ref_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_job_ref_dir")
@@ -566,6 +583,7 @@ assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
 assert_zero_keys_with_live_readers_absent "$production_web_env_file"
 assert_debug_aliases_absent "$production_web_env_file"
+assert_web_url_aliases_absent "$production_web_env_file"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
@@ -592,7 +610,7 @@ assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
 assert_zero_keys_with_live_readers_absent "$production_api_env_file"
 assert_debug_aliases_absent "$production_api_env_file"
-assert_env_value "$production_api_env_file" VM0_WEB_URL "https://pr-123-www.vm0.test"
+assert_web_url_aliases_equal_dual "$production_api_env_file" "https://pr-123-www.vm0.test"
 assert_env_value "$production_api_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
