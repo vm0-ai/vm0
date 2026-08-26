@@ -196,7 +196,19 @@ describe("auth v2 sign-up flow", () => {
       screen.getByRole("region", { name: "Create your account" }),
     ).toContainElement(signIn);
     expect(roleElement("link", "Use current sign-up")).toBeDefined();
-    expect(screen.getByRole("checkbox")).toBeVisible();
+    const legalConsent = screen.getByRole("checkbox");
+    expect(legalConsent).toBeVisible();
+    expect(legalConsent).toHaveClass(
+      "h-4",
+      "w-4",
+      "rounded-md",
+      "border-border",
+      "bg-input",
+    );
+    expect(legalConsent).not.toHaveClass(
+      "rounded-[3px]",
+      "border-foreground/50",
+    );
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",

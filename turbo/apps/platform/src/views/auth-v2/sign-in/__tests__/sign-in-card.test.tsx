@@ -1572,6 +1572,17 @@ describe("auth v2 sign-in flow", () => {
       name: "Sign out of all other devices",
     });
     expect(signOutOtherDevices).toBeChecked();
+    expect(signOutOtherDevices).toHaveClass(
+      "h-4",
+      "w-4",
+      "rounded-md",
+      "border-border",
+      "bg-input",
+    );
+    expect(signOutOtherDevices).not.toHaveClass(
+      "rounded-[3px]",
+      "border-foreground/50",
+    );
     expect(
       screen.getByRole("region", { name: "Set new password" }),
     ).not.toHaveAttribute("aria-describedby");

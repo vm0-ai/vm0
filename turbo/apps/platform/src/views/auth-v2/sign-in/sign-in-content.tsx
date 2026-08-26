@@ -1033,7 +1033,7 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
           <label className="flex cursor-pointer items-start gap-1.5 text-sm leading-5 font-medium text-foreground">
             <Checkbox
               checked={signOutOfOtherSessions}
-              className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/50"
+              className="mt-0.5"
               onCheckedChange={(checked) => {
                 setSignOutOfOtherSessions(checked === true);
               }}

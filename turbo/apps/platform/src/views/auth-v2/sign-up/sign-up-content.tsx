@@ -487,7 +487,7 @@ function DetailsStep({
                   }
                   aria-invalid={error?.field === "legal" ? true : undefined}
                   checked={legalAccepted}
-                  className="mt-0.5 size-4 shrink-0 rounded-[3px] border-foreground/50"
+                  className="mt-0.5"
                   onCheckedChange={(checked) => {
                     setLegalAccepted(checked === true);
                   }}
