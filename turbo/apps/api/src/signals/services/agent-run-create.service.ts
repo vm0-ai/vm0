@@ -9296,7 +9296,6 @@ function prepareRunContext(
         orgId: args.orgId,
         userId: args.userId,
         chatThreadId: args.chatThreadId,
-        featureSwitchContext: bodyContext.featureSwitchContext,
       });
       signal.throwIfAborted();
 

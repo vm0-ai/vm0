@@ -9698,11 +9698,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.VideoModelSelection]: true },
-    );
 
     // Run options are the composer's channel for video parameters now. They
     // ride one message, reach no table, and only enter the prompt when the
@@ -13585,13 +13580,8 @@ describe("CHAT-02: shared user message queue", () => {
   }, 90_000);
 });
 
-/**
- * Creation-time pinning follows the picker's own switch, so a video test has to
- * say which side of that switch it is on.
- */
-async function videoModelSelectionActor(args: {
-  readonly selectionEnabled: boolean;
-}): Promise<{
+/** Creation-time pinning is org-scoped, so a video test resolves the org too. */
+async function videoModelSelectionActor(): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly orgId: string;
@@ -13601,51 +13591,12 @@ async function videoModelSelectionActor(args: {
   if (!orgId) {
     throw new Error("Expected an entitled chat actor to own an org");
   }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId },
-    { [FeatureSwitchKey.VideoModelSelection]: args.selectionEnabled },
-  );
   return { actor, agentId, orgId };
 }
 
 describe("CHAT-02: run video model snapshot", () => {
-  it("leaves a thread unpinned while video model selection is disabled", async () => {
-    const { actor, agentId, orgId } = await videoModelSelectionActor({
-      selectionEnabled: false,
-    });
-
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "no video picker means nothing to freeze at creation",
-    });
-    await expect(readRunVideoModelFixture(anchor.runId)).resolves.toBe(
-      DEFAULT_VIDEO_MODEL,
-    );
-    await cancelChatRun(actor, anchor.runId);
-
-    // Without a pin the thread keeps following the live default, so a member
-    // default written later still reaches it.
-    await setOrgMemberVideoModelFixture({
-      orgId,
-      userId: actor.userId,
-      selectedVideoModel: "MiniMax-H3",
-    });
-    const followsDefault = await sendChatRun(actor, {
-      agentId,
-      threadId: anchor.threadId,
-      prompt: "an unpinned thread still follows the member default",
-    });
-    await expect(readRunVideoModelFixture(followsDefault.runId)).resolves.toBe(
-      "MiniMax-H3",
-    );
-    await cancelChatRun(actor, followsDefault.runId);
-  }, 90_000);
-
   it("pins a thread at creation and resolves later runs through that pin", async () => {
-    const { actor, agentId, orgId } = await videoModelSelectionActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId, orgId } = await videoModelSelectionActor();
 
     const catalogDefault = await sendChatRun(actor, {
       agentId,
@@ -13722,9 +13673,7 @@ describe("CHAT-02: run video model snapshot", () => {
   }, 90_000);
 
   it("still follows the member default for a thread that predates the pin", async () => {
-    const { actor, agentId, orgId } = await videoModelSelectionActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId, orgId } = await videoModelSelectionActor();
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -13861,9 +13810,8 @@ describe("CHAT-02: run video model snapshot", () => {
   }, 90_000);
 });
 
-async function imageModelSnapshotActor(args: {
-  readonly selectionEnabled: boolean;
-}): Promise<{
+/** The image snapshot is org-scoped, so these tests resolve the org too. */
+async function imageModelSnapshotActor(): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly orgId: string;
@@ -13874,60 +13822,12 @@ async function imageModelSnapshotActor(args: {
   if (!orgId) {
     throw new Error("Expected an entitled chat actor to own an org");
   }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId },
-    { [FeatureSwitchKey.ImageModelSelection]: args.selectionEnabled },
-  );
   return { actor, agentId, orgId, runnerGroup };
 }
 
 describe("CHAT-02: run image model snapshot", () => {
-  it("keeps the run snapshot null while image model selection is disabled", async () => {
-    const { actor, agentId, runnerGroup } = await imageModelSnapshotActor({
-      selectionEnabled: false,
-    });
-
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "image snapshot stays dormant for a new thread",
-    });
-    await expect(
-      readRunImageModelSnapshotFixture(anchor.runId),
-    ).resolves.toBeNull();
-    expect(
-      (await api.readRun(actor, anchor.runId)).appendSystemPrompt ?? "",
-    ).not.toContain("# Default built-in image model");
-    await cancelChatRun(actor, anchor.runId);
-
-    await chat.updateUserModelPreference(actor, null, "gpt-image-2");
-    await chat.updateThreadImageModel(
-      actor,
-      anchor.threadId,
-      "fal-ai/qwen-image",
-    );
-    const continued = await sendChatRun(actor, {
-      agentId,
-      threadId: anchor.threadId,
-      prompt: "image snapshot stays dormant for a continued thread",
-    });
-    await expect(
-      readRunImageModelSnapshotFixture(continued.runId),
-    ).resolves.toBeNull();
-    const { claim: disabledClaim } = await claimChatRun(
-      runnerGroup,
-      continued.runId,
-    );
-    expect(
-      claimEnvironment(disabledClaim)[DEFAULT_IMAGE_MODEL_ENV],
-    ).toBeUndefined();
-    await cancelChatRun(actor, continued.runId);
-  }, 90_000);
-
   it("resolves thread, member, and global image defaults into stable snapshots", async () => {
-    const { actor, agentId, runnerGroup } = await imageModelSnapshotActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId, runnerGroup } = await imageModelSnapshotActor();
 
     const globalDefault = await sendChatRun(actor, {
       agentId,
@@ -14021,9 +13921,7 @@ describe("CHAT-02: run image model snapshot", () => {
   }, 90_000);
 
   it("falls through image model IDs that the catalog no longer supports", async () => {
-    const { actor, agentId, orgId } = await imageModelSnapshotActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId, orgId } = await imageModelSnapshotActor();
     const retiredImageModel = "fal-ai/retired-image-model";
 
     const anchor = await sendChatRun(actor, {
@@ -14066,9 +13964,7 @@ describe("CHAT-02: run image model snapshot", () => {
   }, 90_000);
 
   it("persists the image snapshot when dispatch fails before runner start", async () => {
-    const { actor, agentId } = await imageModelSnapshotActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId } = await imageModelSnapshotActor();
     await chat.updateUserModelPreference(actor, null, "gpt-image-2");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
 
@@ -14091,9 +13987,7 @@ describe("CHAT-02: run image model snapshot", () => {
   }, 90_000);
 
   it("persists the resolved image model on a queued run", async () => {
-    const { actor, agentId } = await imageModelSnapshotActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId } = await imageModelSnapshotActor();
     await chat.updateUserModelPreference(actor, null, "fal-ai/qwen-image");
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
 
@@ -14125,9 +14019,7 @@ describe("CHAT-02: run image model snapshot", () => {
   }, 90_000);
 
   it("snapshots direct runs and re-resolves on session continuation", async () => {
-    const { actor, agentId } = await imageModelSnapshotActor({
-      selectionEnabled: true,
-    });
+    const { actor, agentId } = await imageModelSnapshotActor();
 
     const first = await api.createRun(actor, {
       agentId,

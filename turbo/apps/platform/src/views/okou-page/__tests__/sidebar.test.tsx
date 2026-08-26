@@ -559,7 +559,6 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -3728,7 +3727,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -3787,7 +3785,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 

@@ -41,9 +41,7 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
-  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
-  videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
@@ -574,11 +572,8 @@ const sendNewThreadMessage$ = command(
     const features = get(featureSwitch$);
     // Pin only an explicit per-thread pick; an unpinned (null) thread follows
     // the member's live default, so changing the default later updates it.
-    const imageModel = get(imageModelSelectionEnabled$)
-      ? request.imageModel
-      : undefined;
-    const videoModelEnabled = get(videoModelSelectionEnabled$);
-    const videoModel = videoModelEnabled ? request.videoModel : undefined;
+    const imageModel = request.imageModel;
+    const videoModel = request.videoModel;
     const { annotatedUserMessage, optimisticUserMessage } =
       annotatedMessagesForNewThread(
         request,
@@ -649,7 +644,7 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      videoRunOptions: videoModelEnabled ? request.videoRunOptions : undefined,
+      videoRunOptions: request.videoRunOptions,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {

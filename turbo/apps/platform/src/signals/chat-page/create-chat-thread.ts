@@ -2847,9 +2847,7 @@ function sendRuntimeOptions(
     runOptions: runOptionsFromModelProviderSelection(
       modelSelection,
       features[FeatureSwitchKey.CodexFastMode] ?? false,
-      (features[FeatureSwitchKey.VideoModelSelection] ?? false)
-        ? videoRunOptions
-        : undefined,
+      videoRunOptions,
     ),
     realAgentInPreviewEnabled:
       features[FeatureSwitchKey.RealAgentInPreview] ?? false,
