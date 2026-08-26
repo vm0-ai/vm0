@@ -455,7 +455,7 @@
         "workflows": "ワークフロー",
         "works": "連携先"
       },
-      "searchConversations": "会話を検索する",
+      "searchWorkspace": "ワークスペースを検索",
       "showChatList": "チャットリストを表示",
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",

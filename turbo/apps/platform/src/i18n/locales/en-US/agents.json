@@ -619,13 +619,15 @@
     "resultCount_other": "{{count}} results",
     "searchAgents": "Search agents...",
     "searchAgentsAndChats": "Search agents and chats...",
-    "searchChatsAndMessages": "Search chats and messages...",
     "searching": "Searching...",
+    "searchWorkspace": "Search chats, messages, workflows, and artifacts...",
     "sections": {
+      "artifacts": "Artifacts",
       "chats": "Chats",
       "lead": "Lead",
       "messages": "Messages",
-      "others": "Others"
+      "others": "Others",
+      "workflows": "Workflows"
     },
     "talkTo": "Talk to",
     "unpin": "Unpin",

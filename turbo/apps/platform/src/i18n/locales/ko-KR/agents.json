@@ -618,13 +618,15 @@
     "resultCount_other": "결과 {{count}}개",
     "searchAgents": "에이전트 검색...",
     "searchAgentsAndChats": "에이전트 및 채팅 검색...",
-    "searchChatsAndMessages": "채팅 및 메시지 검색...",
     "searching": "검색 중...",
+    "searchWorkspace": "채팅, 메시지, 워크플로, 아티팩트 검색...",
     "sections": {
+      "artifacts": "아티팩트",
       "chats": "채팅",
       "lead": "리드",
       "messages": "메시지",
-      "others": "기타"
+      "others": "기타",
+      "workflows": "워크플로"
     },
     "talkTo": "대화하기",
     "unpin": "고정 해제",

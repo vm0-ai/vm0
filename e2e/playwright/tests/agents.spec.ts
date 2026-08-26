@@ -361,7 +361,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   ).toStrictEqual({ height: "17px", opacity: "0.7", width: "17px" });
 
   for (const control of [
-    chatList.getByLabel("Search conversations"),
+    chatList.getByLabel("Search workspace"),
     chatList.getByLabel("New chat"),
     chatList.getByLabel("Hide chat list"),
     pinAgent,
@@ -374,9 +374,9 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     });
   }
 
-  await page.getByLabel("Search conversations").click();
+  await page.getByLabel("Search workspace").click();
   const searchDialog = page.getByRole("dialog", {
-    name: "Search chats and messages...",
+    name: "Search chats, messages, workflows, and artifacts...",
   });
   await expect(searchDialog).toBeVisible();
   expect(

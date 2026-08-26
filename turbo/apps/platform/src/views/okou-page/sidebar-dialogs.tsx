@@ -1,10 +1,33 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode, SyntheticEvent } from "react";
-import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastResolved,
+  useLoadable,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
+import {
+  File,
+  Globe,
+  Image,
+  Loader2,
+  MessagesSquare,
+  Pin,
+  PinOff,
+  Presentation,
+  Route,
+  Search,
+  User,
+  Video,
+  X,
+} from "lucide-react";
+import { r2ImageTransformUrl } from "@okouai/core";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   Button,
   CommandDialog,
@@ -21,6 +44,7 @@ import {
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { useTranslation } from "react-i18next";
 import { formatRelativeTimestamp } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 import { emptySearchImg } from "./platform-assets.ts";
 import {
   chatListQuery$,
@@ -59,6 +83,12 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./sidebar-shared.tsx";
 import { AgentRowSideActions } from "./sidebar-agent-row-actions.tsx";
+import {
+  threeColumnArtifactSearchResults$,
+  threeColumnWorkflowSearchResults$,
+  type ThreeColumnArtifactSearchItem,
+} from "../../signals/okou-page/three-column-search-resources.ts";
+import { ArtifactThumbnailImage } from "./artifact-thumbnail.tsx";
 
 interface AgentDialogItem {
   readonly id: string;
@@ -984,6 +1014,166 @@ function SpotlightMessageCommandItem({
   );
 }
 
+const SPOTLIGHT_RESOURCE_ICON_CLASS =
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground";
+const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
+
+function SpotlightWorkflowCommandItem({
+  workflow,
+  onSelect,
+}: {
+  readonly workflow: WorkflowSummary;
+  readonly onSelect: () => void;
+}) {
+  const title = workflow.displayName ?? workflow.name;
+  return (
+    <CommandItem
+      value={`spotlight-workflow-${workflow.id}`}
+      onSelect={onSelect}
+      className={SPOTLIGHT_ROW_CLASS}
+    >
+      <span className={SPOTLIGHT_RESOURCE_ICON_CLASS} aria-hidden="true">
+        <Route size={16} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-sm text-foreground">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          /{workflow.name}
+        </span>
+      </span>
+      <SpotlightRowMeta
+        indicator={null}
+        timestamp={formatRelativeTimestamp(workflow.createdAt)}
+      />
+    </CommandItem>
+  );
+}
+
+function artifactKindLabel(kind: ArtifactCatalogKind): string {
+  switch (kind) {
+    case "presentation": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.presentation;
+      });
+    }
+    case "hosted-site": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.hostedSite;
+      });
+    }
+    case "image": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.image;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.video;
+      });
+    }
+    case "avatar": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.avatar;
+      });
+    }
+    case "shared-thread": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.sharedConversation;
+      });
+    }
+    case "file": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.file;
+      });
+    }
+  }
+}
+
+function SpotlightArtifactKindIcon({
+  kind,
+}: {
+  readonly kind: ArtifactCatalogKind;
+}) {
+  const icon =
+    kind === "presentation" ? (
+      <Presentation size={16} />
+    ) : kind === "hosted-site" ? (
+      <Globe size={16} />
+    ) : kind === "image" ? (
+      <Image size={16} />
+    ) : kind === "video" ? (
+      <Video size={16} />
+    ) : kind === "avatar" ? (
+      <User size={16} />
+    ) : kind === "shared-thread" ? (
+      <MessagesSquare size={16} />
+    ) : (
+      <File size={16} />
+    );
+  return (
+    <span
+      className={SPOTLIGHT_RESOURCE_ICON_CLASS}
+      aria-hidden="true"
+      data-testid={`spotlight-artifact-kind-icon-${kind}`}
+    >
+      {icon}
+    </span>
+  );
+}
+
+function SpotlightArtifactThumbnail({
+  artifact,
+}: {
+  readonly artifact: ThreeColumnArtifactSearchItem;
+}) {
+  if (!artifact.thumbnail) {
+    return <SpotlightArtifactKindIcon kind={artifact.kind} />;
+  }
+  return (
+    <ArtifactThumbnailImage
+      src={r2ImageTransformUrl(artifact.thumbnail.url, {
+        width: SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX,
+        fit: "scale-down",
+      })}
+      load={artifact.thumbnailLoad}
+      loading="eager"
+      className="h-8 w-8 shrink-0 rounded-lg bg-gray-50 object-cover"
+      fallback={<SpotlightArtifactKindIcon kind={artifact.kind} />}
+      testId="spotlight-artifact-thumbnail"
+    />
+  );
+}
+
+function SpotlightArtifactCommandItem({
+  artifact,
+  onSelect,
+}: {
+  readonly artifact: ThreeColumnArtifactSearchItem;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <CommandItem
+      value={`spotlight-artifact-${artifact.id}`}
+      onSelect={onSelect}
+      className={SPOTLIGHT_ROW_CLASS}
+    >
+      <SpotlightArtifactThumbnail artifact={artifact} />
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-sm text-foreground">
+          {artifact.title}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {artifactKindLabel(artifact.kind)}
+        </span>
+      </span>
+      <SpotlightRowMeta
+        indicator={null}
+        timestamp={formatRelativeTimestamp(artifact.createdAt)}
+      />
+    </CommandItem>
+  );
+}
+
 function SpotlightFilterButton({
   active,
   label,
@@ -1028,7 +1218,7 @@ function SpotlightSearchInput({
           value={query}
           onValueChange={onValueChange}
           placeholder={t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
           wrapperClassName="h-10"
           className="pr-12"
@@ -1076,13 +1266,28 @@ function SpotlightSearchFilterBar({
         return $.sidebar.sections.messages;
       }),
     },
+    {
+      value: "workflows",
+      label: t(($) => {
+        return $.sidebar.sections.workflows;
+      }),
+    },
+    {
+      value: "artifacts",
+      label: t(($) => {
+        return $.sidebar.sections.artifacts;
+      }),
+    },
   ];
 
   return (
     // No divider: the search field and the list are already separated by their
     // own padding, and a full-bleed rule ran into the dialog's 24px corners.
     <div className="mb-3 flex h-7 items-center justify-between px-5">
-      <div role="tablist" className="flex items-center gap-1">
+      <div
+        role="tablist"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+      >
         {options.map((option) => {
           return (
             <SpotlightFilterButton
@@ -1096,7 +1301,10 @@ function SpotlightSearchFilterBar({
           );
         })}
       </div>
-      <span className="text-xs text-muted-foreground" role="status">
+      <span
+        className="ml-2 shrink-0 text-xs text-muted-foreground"
+        role="status"
+      >
         {t(
           ($) => {
             return $.sidebar.resultCount;
@@ -1111,27 +1319,126 @@ function SpotlightSearchFilterBar({
 interface SpotlightSearchResultsProps {
   readonly threads: readonly AgentListDialogChatThread[];
   readonly messages: readonly ChatSearchResult[];
+  readonly workflows: readonly WorkflowSummary[];
+  readonly artifacts: readonly ThreeColumnArtifactSearchItem[];
   readonly threadMap: ReadonlyMap<string, AgentListDialogChatThread>;
   readonly activeThreadIds: ReadonlySet<string> | undefined;
   readonly unreadThreadIds: ReadonlySet<string> | undefined;
   readonly showThreads: boolean;
   readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
   readonly searching: boolean;
   readonly showNoResults: boolean;
-  readonly onSelect: (threadId: string) => void;
+  readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectWorkflow: (workflowId: string) => void;
+  readonly onSelectArtifact: (artifactId: string) => void;
+}
+
+interface SpotlightQueryResult {
+  readonly query: string;
+}
+
+function spotlightRowsFromLoadable<Result extends SpotlightQueryResult, Item>(
+  loadable: Loadable<Result>,
+  query: string,
+  selectRows: (result: Result) => readonly Item[],
+): readonly Item[] {
+  if (loadable.state !== "hasData") {
+    return [];
+  }
+  if (loadable.data.query !== query) {
+    return [];
+  }
+  return selectRows(loadable.data);
+}
+
+function spotlightLoadableIsSearching<Result extends SpotlightQueryResult>(
+  loadable: Loadable<Result>,
+  query: string,
+): boolean {
+  if (loadable.state === "loading") {
+    return true;
+  }
+  if (loadable.state !== "hasData") {
+    return false;
+  }
+  return loadable.data.query !== query;
+}
+
+function spotlightFilterShows(
+  filter: ThreeColumnSearchFilter,
+  category: Exclude<ThreeColumnSearchFilter, "all">,
+): boolean {
+  return filter === "all" || filter === category;
+}
+
+function spotlightVisibleResultCount({
+  showThreads,
+  showMessages,
+  showWorkflows,
+  showArtifacts,
+  threadCount,
+  messageCount,
+  workflowCount,
+  artifactCount,
+}: {
+  readonly showThreads: boolean;
+  readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
+  readonly threadCount: number;
+  readonly messageCount: number;
+  readonly workflowCount: number;
+  readonly artifactCount: number;
+}): number {
+  return (
+    Number(showThreads) * threadCount +
+    Number(showMessages) * messageCount +
+    Number(showWorkflows) * workflowCount +
+    Number(showArtifacts) * artifactCount
+  );
+}
+
+function spotlightVisibleSearchIsPending({
+  showMessages,
+  showWorkflows,
+  showArtifacts,
+  messageSearching,
+  workflowSearching,
+  artifactSearching,
+}: {
+  readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
+  readonly messageSearching: boolean;
+  readonly workflowSearching: boolean;
+  readonly artifactSearching: boolean;
+}): boolean {
+  return (
+    (showMessages && messageSearching) ||
+    (showWorkflows && workflowSearching) ||
+    (showArtifacts && artifactSearching)
+  );
 }
 
 function SpotlightSearchResults({
   threads,
   messages,
+  workflows,
+  artifacts,
   threadMap,
   activeThreadIds,
   unreadThreadIds,
   showThreads,
   showMessages,
+  showWorkflows,
+  showArtifacts,
   searching,
   showNoResults,
-  onSelect,
+  onSelectChatThread,
+  onSelectWorkflow,
+  onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
 
@@ -1157,7 +1464,7 @@ function SpotlightSearchResults({
                     unreadThreadIds,
                   )}
                   onSelect={() => {
-                    return onSelect(thread.id);
+                    return onSelectChatThread(thread.id);
                   }}
                 />
               );
@@ -1176,7 +1483,33 @@ function SpotlightSearchResults({
                     unreadThreadIds,
                   )}
                   onSelect={() => {
-                    return onSelect(message.chatThreadId);
+                    return onSelectChatThread(message.chatThreadId);
+                  }}
+                />
+              );
+            })
+          : null}
+        {showWorkflows
+          ? workflows.map((workflow) => {
+              return (
+                <SpotlightWorkflowCommandItem
+                  key={workflow.id}
+                  workflow={workflow}
+                  onSelect={() => {
+                    return onSelectWorkflow(workflow.id);
+                  }}
+                />
+              );
+            })
+          : null}
+        {showArtifacts
+          ? artifacts.map((artifact) => {
+              return (
+                <SpotlightArtifactCommandItem
+                  key={artifact.id}
+                  artifact={artifact}
+                  onSelect={() => {
+                    return onSelectArtifact(artifact.id);
                   }}
                 />
               );
@@ -1221,10 +1554,14 @@ export function ThreeColumnSearchDialog({
   open,
   onOpenChange,
   onSelectChatThread,
+  onSelectWorkflow,
+  onSelectArtifact,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectWorkflow: (workflowId: string) => void;
+  readonly onSelectArtifact: (artifactId: string) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
@@ -1234,6 +1571,8 @@ export function ThreeColumnSearchDialog({
   const threadResult = useGet(agentListDialogChatThreads$);
   const threadMap = useGet(agentListDialogChatThreadMap$);
   const messageLoadable = useLoadable(agentListDialogChatMessages$);
+  const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
+  const artifactLoadable = useLoadable(threeColumnArtifactSearchResults$);
   const activeThreadIds = useLastResolved(sidebarActiveThreadIds$, {
     equalityFn: equalSets,
   });
@@ -1243,26 +1582,70 @@ export function ThreeColumnSearchDialog({
   const trimmedQuery = query.trim().toLowerCase();
   const threadMatches =
     threadResult.query === trimmedQuery ? threadResult.chatThreads : [];
-  const messageResult =
-    messageLoadable.state === "hasData" &&
-    messageLoadable.data.query === trimmedQuery
-      ? messageLoadable.data
-      : undefined;
-  const messageMatches = messageResult?.chatMessages ?? [];
-  const searching =
-    messageLoadable.state === "loading" ||
-    (messageLoadable.state === "hasData" &&
-      messageLoadable.data.query !== trimmedQuery);
-  const showThreads = filter !== "messages";
-  const showMessages = filter !== "chats";
-  const resultCount =
-    (showThreads ? threadMatches.length : 0) +
-    (showMessages ? messageMatches.length : 0);
-  const visibleSearching = searching && showMessages;
+  const messageMatches = spotlightRowsFromLoadable(
+    messageLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.chatMessages;
+    },
+  );
+  const workflowMatches = spotlightRowsFromLoadable(
+    workflowLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.workflows;
+    },
+  );
+  const artifactMatches = spotlightRowsFromLoadable(
+    artifactLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.artifacts;
+    },
+  );
+  const showThreads = spotlightFilterShows(filter, "chats");
+  const showMessages = spotlightFilterShows(filter, "messages");
+  const showWorkflows = spotlightFilterShows(filter, "workflows");
+  const showArtifacts = spotlightFilterShows(filter, "artifacts");
+  const resultCount = spotlightVisibleResultCount({
+    showThreads,
+    showMessages,
+    showWorkflows,
+    showArtifacts,
+    threadCount: threadMatches.length,
+    messageCount: messageMatches.length,
+    workflowCount: workflowMatches.length,
+    artifactCount: artifactMatches.length,
+  });
+  const visibleSearching = spotlightVisibleSearchIsPending({
+    showMessages,
+    showWorkflows,
+    showArtifacts,
+    messageSearching: spotlightLoadableIsSearching(
+      messageLoadable,
+      trimmedQuery,
+    ),
+    workflowSearching: spotlightLoadableIsSearching(
+      workflowLoadable,
+      trimmedQuery,
+    ),
+    artifactSearching: spotlightLoadableIsSearching(
+      artifactLoadable,
+      trimmedQuery,
+    ),
+  });
   const showNoResults = !visibleSearching && resultCount === 0;
   const selectThread = (threadId: string) => {
     onOpenChange(false);
     onSelectChatThread(threadId);
+  };
+  const selectWorkflow = (workflowId: string) => {
+    onOpenChange(false);
+    onSelectWorkflow(workflowId);
+  };
+  const selectArtifact = (artifactId: string) => {
+    onOpenChange(false);
+    onSelectArtifact(artifactId);
   };
 
   return (
@@ -1279,12 +1662,12 @@ export function ThreeColumnSearchDialog({
       <DialogHeader className="sr-only">
         <DialogTitle>
           {t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
         </DialogTitle>
         <DialogDescription>
           {t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
         </DialogDescription>
       </DialogHeader>
@@ -1297,14 +1680,20 @@ export function ThreeColumnSearchDialog({
       <SpotlightSearchResults
         threads={threadMatches}
         messages={messageMatches}
+        workflows={workflowMatches}
+        artifacts={artifactMatches}
         threadMap={threadMap}
         activeThreadIds={activeThreadIds}
         unreadThreadIds={unreadThreadIds}
         showThreads={showThreads}
         showMessages={showMessages}
+        showWorkflows={showWorkflows}
+        showArtifacts={showArtifacts}
         searching={visibleSearching}
         showNoResults={showNoResults}
-        onSelect={selectThread}
+        onSelectChatThread={selectThread}
+        onSelectWorkflow={selectWorkflow}
+        onSelectArtifact={selectArtifact}
       />
     </CommandDialog>
   );

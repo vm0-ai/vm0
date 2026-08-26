@@ -21,7 +21,13 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
+import {
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  type WorkflowDetailResponse,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   teamContract,
   type TeamComposeItem,
@@ -75,6 +81,8 @@ const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
+const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000001";
+const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
 
 interface SidebarThread {
   readonly id: string;
@@ -302,6 +310,19 @@ function buttonByText(
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -2517,7 +2538,7 @@ describe("zero sidebar", () => {
 
     expect(event.defaultPrevented).toBeTruthy();
     const dialog = await screen.findByRole("dialog", {
-      name: "Search chats and messages...",
+      name: "Search chats, messages, workflows, and artifacts...",
     });
     expect(dialog).toBeInTheDocument();
   });
@@ -2542,7 +2563,7 @@ describe("zero sidebar", () => {
     expect(event.defaultPrevented).toBeFalsy();
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats and messages...",
+        name: "Search chats, messages, workflows, and artifacts...",
       }),
     ).not.toBeInTheDocument();
   });
@@ -3267,7 +3288,7 @@ describe("zero sidebar", () => {
     // The middle list column owns the chat header and pinned agents.
     const list = screen.getByTestId("chat-list-column");
     expect(within(list).getByText("Chat")).toBeInTheDocument();
-    const searchButton = within(list).getByLabelText("Search conversations");
+    const searchButton = within(list).getByLabelText("Search workspace");
     const newChatButton = within(list).getByLabelText("New chat");
     expect(searchButton).toHaveAttribute(
       "aria-keyshortcuts",
@@ -3318,13 +3339,13 @@ describe("zero sidebar", () => {
 
     expect(searchEvent.defaultPrevented).toBeTruthy();
     const dialog = await screen.findByRole("dialog", {
-      name: "Search chats and messages...",
+      name: "Search chats, messages, workflows, and artifacts...",
     });
     fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", {
-          name: "Search chats and messages...",
+          name: "Search chats, messages, workflows, and artifacts...",
         }),
       ).not.toBeInTheDocument();
     });
@@ -3452,6 +3473,9 @@ describe("zero sidebar", () => {
         hasMore: false,
       });
     });
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, { artifacts: [], nextCursor: null });
+    });
 
     setupSidebarPage({
       context,
@@ -3462,16 +3486,18 @@ describe("zero sidebar", () => {
     });
 
     const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Search conversations"));
+    click(within(list).getByLabelText("Search workspace"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Search chats and messages...",
+      name: "Search chats, messages, workflows, and artifacts...",
     });
     expect(
       screen.queryByRole("dialog", { name: "Talk to" }),
     ).not.toBeInTheDocument();
     await fill(
-      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
       "deploy",
     );
 
@@ -3491,7 +3517,9 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
 
     await fill(
-      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
       "missing",
     );
     await waitFor(() => {
@@ -3500,7 +3528,9 @@ describe("zero sidebar", () => {
     });
 
     await fill(
-      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
       "deploy",
     );
     click(buttonByText("Chats", dialog));
@@ -3516,9 +3546,210 @@ describe("zero sidebar", () => {
       expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
       expect(
         screen.queryByRole("dialog", {
-          name: "Search chats and messages...",
+          name: "Search chats, messages, workflows, and artifacts...",
         }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("searches workflows and artifacts in the three-column spotlight", async () => {
+    prepareAgentTeam();
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Launch notes", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
+      createThread(INCIDENT_THREAD_ID, "Incident response", {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      }),
+    ]);
+    context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
+      return respond(200, {
+        results:
+          query.keyword === "launch"
+            ? [
+                {
+                  chatThreadId: INCIDENT_THREAD_ID,
+                  agentName: "Support Agent",
+                  matchedMessage: {
+                    chatThreadId: INCIDENT_THREAD_ID,
+                    role: "user" as const,
+                    content: "Prepare the launch checklist",
+                    createdAt: "2026-03-10T00:10:00Z",
+                    seqId: 1,
+                    runId: null,
+                  },
+                  matchedRanges: [{ start: 12, end: 18 }],
+                  contextBefore: [],
+                  contextAfter: [],
+                },
+              ]
+            : [],
+        hasMore: false,
+      });
+    });
+    const workflow: WorkflowDetailResponse = {
+      id: WORKFLOW_ID,
+      agentId: RESEARCH_AGENT_ID,
+      agentName: "research-agent",
+      agentDisplayName: "Research Agent",
+      name: "launch-workflow",
+      displayName: "Launch workflow",
+      description: "Prepare a launch plan",
+      visibility: "private",
+      ownerUserId: "test-user-123",
+      ownerUserDisplayName: "Test User",
+      ownerUserImageUrl: null,
+      createdAt: "2026-03-10T00:05:00.000Z",
+      canManage: true,
+      canPublish: true,
+      createdByUserId: "test-user-123",
+      updatedByUserId: "test-user-123",
+      updatedAt: "2026-03-10T00:05:00.000Z",
+      instruction: "Prepare a launch plan",
+      files: [],
+      fileContents: [],
+      automations: [],
+    };
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [workflow]);
+    });
+    context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+      return respond(200, workflow);
+    });
+    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+      return respond(200, {
+        artifacts:
+          query.keyword === "launch"
+            ? [
+                {
+                  id: ARTIFACT_ID,
+                  kind: "video",
+                  title: "launch-demo.mp4",
+                  thumbnail: {
+                    url: "https://cdn.vm0.io/artifacts/test/launch-demo.webp",
+                  },
+                  createdAt: "2026-03-10T00:06:00.000Z",
+                  updatedAt: "2026-03-10T00:06:00.000Z",
+                },
+              ]
+            : [],
+        nextCursor: null,
+      });
+    });
+    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        id: ARTIFACT_ID,
+        kind: "video",
+        title: "launch-demo.mp4",
+        thumbnail: null,
+        createdAt: "2026-03-10T00:06:00.000Z",
+        updatedAt: "2026-03-10T00:06:00.000Z",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000001",
+          filename: "launch-demo.mp4",
+          contentType: "video/mp4",
+          size: 4096,
+          url: "https://artifacts.example.com/launch-demo.mp4",
+          previewImageUrl: null,
+        },
+        model: "video-model",
+        durationSeconds: 12,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("Search workspace"));
+    let dialog = await screen.findByRole("dialog", {
+      name: "Search chats, messages, workflows, and artifacts...",
+    });
+    await fill(
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
+      "launch",
+    );
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("4 results")).toBeInTheDocument();
+      expect(within(dialog).getByText("Launch notes")).toBeInTheDocument();
+      expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+      expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
+      expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
+    });
+    const artifactThumbnail = within(dialog).getByTestId(
+      "spotlight-artifact-thumbnail",
+    );
+    expect(artifactThumbnail).toHaveAttribute(
+      "src",
+      "https://cdn.vm0.io/cdn-cgi/image/width=64,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/launch-demo.webp",
+    );
+    expect(artifactThumbnail).toHaveAttribute("loading", "eager");
+    fireEvent.error(artifactThumbnail);
+    await waitFor(() => {
+      expect(artifactThumbnail).toHaveClass("hidden");
+      expect(
+        within(dialog).getByTestId("spotlight-artifact-kind-icon-video"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Workflows", dialog));
+    expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Launch notes")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("launch-demo.mp4"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Artifacts", dialog));
+    expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Launch workflow"),
+    ).not.toBeInTheDocument();
+    click(within(dialog).getByText("launch-demo.mp4"));
+
+    await expect(
+      screen.findByLabelText("Video preview for launch-demo.mp4"),
+    ).resolves.toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/launch-demo.mp4",
+    );
+    click(buttonByLabel("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Video preview for launch-demo.mp4"),
+      ).not.toBeInTheDocument();
+    });
+
+    const searchEvent = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(searchEvent);
+    expect(searchEvent.defaultPrevented).toBeTruthy();
+    dialog = await screen.findByRole("dialog", {
+      name: "Search chats, messages, workflows, and artifacts...",
+    });
+    await fill(
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
+      "launch",
+    );
+    click(buttonByText("Workflows", dialog));
+    click(await within(dialog).findByText("Launch workflow"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/workflows/${WORKFLOW_ID}`);
     });
   });
 
@@ -3542,6 +3773,9 @@ describe("zero sidebar", () => {
     context.mocks.api(chatSearchContract.search, ({ respond }) => {
       return respond(200, { results: [], hasMore: false });
     });
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, { artifacts: [], nextCursor: null });
+    });
 
     setupSidebarPage({
       context,
@@ -3552,10 +3786,10 @@ describe("zero sidebar", () => {
     });
 
     const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Search conversations"));
+    click(within(list).getByLabelText("Search workspace"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Search chats and messages...",
+      name: "Search chats, messages, workflows, and artifacts...",
     });
 
     const rowFor = async (title: string): Promise<HTMLElement> => {
@@ -3583,7 +3817,9 @@ describe("zero sidebar", () => {
     expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
 
     await fill(
-      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      within(dialog).getByPlaceholderText(
+        "Search chats, messages, workflows, and artifacts...",
+      ),
       "nothing matches this",
     );
 
