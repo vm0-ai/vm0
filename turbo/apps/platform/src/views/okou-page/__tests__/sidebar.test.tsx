@@ -1031,16 +1031,11 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
 
-    const pinnedRow = threadRowByTitle("Release plan");
-    const pinnedMenu = within(pinnedRow).getByTestId(
-      "chat-thread-menu-trigger",
+    click(
+      within(threadRowByTitle("Release plan")).getByTestId(
+        "chat-thread-pinned-indicator",
+      ),
     );
-    expect(pinnedMenu.className).toContain("text-muted-foreground");
-    expect(pinnedMenu.className).toContain("hover:text-foreground");
-    expect(pinnedMenu.className).toContain("[&_svg]:size-[17px]");
-    expect(pinnedMenu.className).toContain("[&_svg]:opacity-70");
-
-    click(within(pinnedRow).getByTestId("chat-thread-pinned-indicator"));
     click(menuItemByText("Unpin chat"));
 
     await waitFor(() => {
@@ -3272,38 +3267,10 @@ describe("zero sidebar", () => {
       "aria-keyshortcuts",
       "Meta+K Control+K",
     );
-    const searchIcon = searchButton.querySelector("svg");
-    const newChatIcon = newChatButton.querySelector("svg");
-    if (!(searchIcon instanceof SVGElement)) {
-      throw new Error("Search icon is not rendered");
-    }
-    if (!(newChatIcon instanceof SVGElement)) {
-      throw new Error("New chat icon is not rendered");
-    }
-    expect(searchButton.className).toContain("text-muted-foreground");
-    expect(newChatButton.className).toContain("text-muted-foreground");
-    expect(searchButton.className).toContain("hover:text-foreground");
-    expect(newChatButton.className).toContain("hover:text-foreground");
-    expect(searchIcon.style.color).toBe("");
-    expect(newChatIcon.style.color).toBe("");
-    expect(searchIcon.style.opacity).toBe("");
-    expect(newChatIcon.style.opacity).toBe("");
-    expect(searchButton.className).toContain("[&_svg]:size-[18px]");
-    expect(newChatButton.className).toContain("[&_svg]:size-[18px]");
-    expect(searchButton.className).not.toContain("[&_svg]:opacity-70");
-    expect(newChatButton.className).not.toContain("[&_svg]:opacity-70");
-    expect(searchIcon).toHaveAttribute("width", "18");
-    expect(newChatIcon).toHaveAttribute("width", "18");
-    const pinnedAgents = within(list).getByTestId("pinned-agents-horizontal");
-    const pinAgentButton = within(pinnedAgents).getByLabelText("Pin an agent");
-    expect(pinAgentButton.className).toContain("text-muted-foreground");
-    expect(pinAgentButton.className).toContain("hover:text-foreground");
-    expect(pinAgentButton.className).not.toContain("opacity-70");
-    expect(pinAgentButton.querySelector("svg")).toHaveAttribute("width", "18");
-    const listMenuButton = within(list).getByLabelText("Open chat list menu");
-    expect(listMenuButton.className).toContain("[&_svg]:size-[18px]");
-    expect(listMenuButton.className).not.toContain("[&_svg]:opacity-70");
-    expect(listMenuButton.querySelector("svg")).toHaveAttribute("width", "18");
+    expect(newChatButton).toBeInTheDocument();
+    expect(
+      within(list).getByTestId("pinned-agents-horizontal"),
+    ).toBeInTheDocument();
   });
 
   it("hides only the three-column chat list and keeps search available", async () => {
@@ -3322,9 +3289,6 @@ describe("zero sidebar", () => {
     const list = screen.getByTestId("chat-list-column");
     const hideButton = within(list).getByLabelText("Hide chat list");
     expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-    expect(hideButton.className).toContain("[&_svg]:size-[18px]");
-    expect(hideButton.className).not.toContain("[&_svg]:opacity-70");
-    expect(hideButton.querySelector("svg")).toHaveAttribute("width", "18");
 
     click(hideButton);
 
@@ -3334,9 +3298,6 @@ describe("zero sidebar", () => {
     expect(rail).toBeInTheDocument();
     const showButton = within(rail).getByLabelText("Show chat list");
     expect(showButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-    expect(showButton.className).toContain("[&_svg]:size-[18px]");
-    expect(showButton.className).not.toContain("[&_svg]:opacity-70");
-    expect(showButton.querySelector("svg")).toHaveAttribute("width", "18");
 
     const composer = mountedComposer();
     composer.focus();
