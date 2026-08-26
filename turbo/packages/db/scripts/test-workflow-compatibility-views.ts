@@ -359,6 +359,27 @@ function expectedCreateViewStatement(definition: {
   )} FROM "${definition.legacy}";`;
 }
 
+function validateMigrationJournalEntries(
+  entries: readonly JournalEntry[],
+): void {
+  const previousPosition = entries.findIndex(({ tag }) => {
+    return tag === previousMigration;
+  });
+  const expansionPosition = entries.findIndex(({ tag }) => {
+    return tag === expansionMigration;
+  });
+  assert.notEqual(previousPosition, -1);
+  assert.equal(expansionPosition, previousPosition + 1);
+
+  const previousEntry = entries[previousPosition];
+  const expansionEntry = entries[expansionPosition];
+  assert.ok(previousEntry);
+  assert.ok(expansionEntry);
+  assert.equal(previousEntry.idx, 1003);
+  assert.equal(expansionEntry.idx, 1004);
+  assert.equal(expansionEntry.idx, previousEntry.idx + 1);
+}
+
 async function validateMigrationArtifacts(): Promise<void> {
   const migrationSql = await fs.readFile(
     path.join(migrationsDirectory, `${expansionMigration}.sql`),
@@ -404,16 +425,12 @@ async function validateMigrationArtifacts(): Promise<void> {
       "utf8",
     ),
   ) as { entries: JournalEntry[] };
-  const previousEntry = journal.entries.find(({ tag }) => {
-    return tag === previousMigration;
-  });
-  const expansionEntry = journal.entries.find(({ tag }) => {
-    return tag === expansionMigration;
-  });
-  assert.ok(previousEntry);
-  assert.ok(expansionEntry);
-  assert.equal(expansionEntry.idx, previousEntry.idx + 1);
-  assert.equal(journal.entries.at(-1)?.tag, expansionMigration);
+  validateMigrationJournalEntries(journal.entries);
+  validateMigrationJournalEntries([
+    { idx: 1003, tag: previousMigration },
+    { idx: 1004, tag: expansionMigration },
+    { idx: 1005, tag: "1005_later_migration" },
+  ]);
 }
 
 async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
