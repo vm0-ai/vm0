@@ -1054,7 +1054,23 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
         (USER_ENV_FILE_ENV_KEY.into(), "/tmp/evil-env.json".into()),
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
+        (
+            guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
+            "/tmp/evil-connector-account-context.json".into(),
+        ),
     ]));
+    ctx.connector_runtime_targets = vec![
+        ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "github".into(),
+            base_url_vars: None,
+            source_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
+        },
+        ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".into(),
+            base_url_vars: HashMap::new(),
+            source_id: None,
+        },
+    ];
 
     let (exit_code, error_msg) = run_new_sandbox_status(&factory, &ctx, &config, &default_params())
         .await
@@ -1068,6 +1084,8 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     let expected_user_env_file = guest_user_env_file_path(ctx.run_id).unwrap();
     let expected_run_payload_file = guest_run_payload_file_path(ctx.run_id).unwrap();
+    let expected_connector_account_context_file =
+        guest_connector_account_context_file_path(ctx.run_id).unwrap();
     assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(
@@ -1128,7 +1146,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "user env file should not be written through shell exec"
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 2);
+    assert_eq!(private_writes.len(), 3);
     let user_env_write = private_writes
         .iter()
         .find(|write| write.path == expected_user_env_file)
@@ -1136,6 +1154,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let run_payload_write = private_writes
         .iter()
         .find(|write| write.path == expected_run_payload_file)
+        .unwrap();
+    let connector_account_context_write = private_writes
+        .iter()
+        .find(|write| write.path == expected_connector_account_context_file)
         .unwrap();
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
@@ -1158,9 +1180,67 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert_eq!(
+        user_env
+            .get(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV)
+            .map(String::as_str),
+        Some(expected_connector_account_context_file.as_str())
+    );
+    let connector_account_context: guest_contracts::connector_account_context::RunConnectorAccountContext =
+        serde_json::from_slice(&connector_account_context_write.content).unwrap();
+    assert_eq!(
+        connector_account_context,
+        guest_contracts::connector_account_context::RunConnectorAccountContext {
+            schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
+            targets: vec![
+                guest_contracts::connector_account_context::RunConnectorAccountTarget::Builtin {
+                    connector_slug: "github".into(),
+                    connection_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
+                },
+                guest_contracts::connector_account_context::RunConnectorAccountTarget::Custom {
+                    custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".into(),
+                    connection_id: None,
+                },
+            ],
+        }
+    );
     let run_payload: guest_contracts::env::RunPayload =
         serde_json::from_slice(&run_payload_write.content).unwrap();
     assert_eq!(run_payload.prompt, ctx.prompt);
+}
+
+#[tokio::test]
+async fn execute_inner_continues_when_connector_account_context_write_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+        "connector account context write failed",
+    )));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = minimal_context();
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &context, &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(error_msg.is_none());
+    let private_writes = overrides.private_write_file_calls();
+    assert_eq!(private_writes.len(), 2);
+    assert_eq!(
+        private_writes[0].path,
+        guest_connector_account_context_file_path(context.run_id).unwrap()
+    );
+    assert_eq!(
+        private_writes[1].path,
+        guest_run_payload_file_path(context.run_id).unwrap()
+    );
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
+    assert!(!start_env.contains_key(USER_ENV_FILE_ENV_KEY));
 }
 
 #[tokio::test]
@@ -1168,6 +1248,8 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Ok(()));
+    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_file_result(Err(sandbox_write_file_error(
         "No space left on device (os error 28)",
     )));
@@ -1199,13 +1281,13 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
+    assert_eq!(private_writes.len(), 3);
     assert!(
-        private_writes[0]
+        private_writes[2]
             .path
             .ends_with("/run-payload/payload.json"),
         "got: {}",
-        private_writes[0].path
+        private_writes[2].path
     );
     assert!(
         overrides.start_process_calls().is_empty(),

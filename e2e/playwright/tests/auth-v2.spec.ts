@@ -267,10 +267,11 @@ test("existing sessions continue without exposing organization creation", async 
   await page.goto("/_/skeleton", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.Clerk?.loaded));
   await clerk.signIn({ emailAddress: identity.email, page });
+  await waitForSignedInAccount(page, identity.email);
 
   await openAuthV2(page, authUrl("/v2/sign-in", redirect));
   const account = authV2Root(page).getByRole("button", {
-    name: /Auth Browser/i,
+    name: identity.email,
   });
   await expect(account).toBeVisible();
   await expectStepAnnouncement(page);
@@ -493,19 +494,38 @@ async function waitForActivatedSessionOrRedirect(
   page: Page,
   redirect: URL,
 ): Promise<void> {
-  await expect
-    .poll(async () => {
-      if (new URL(page.url()).pathname === redirect.pathname) {
-        return "activated";
-      }
-      return await page.evaluate(() => {
-        return window.Clerk?.client?.signUp.status === "complete" &&
-          window.Clerk.session
-          ? "activated"
-          : "pending";
-      });
-    })
-    .toBe("activated");
+  await page.waitForFunction(
+    (redirectPathname) => {
+      return (
+        window.location.pathname === redirectPathname ||
+        Boolean(
+          window.Clerk?.client?.signUp.status === "complete" &&
+            window.Clerk.session,
+        )
+      );
+    },
+    redirect.pathname,
+    { timeout: 5_000 },
+  );
+}
+
+async function waitForSignedInAccount(
+  page: Page,
+  emailAddress: string,
+): Promise<void> {
+  await page.waitForFunction(
+    (expectedEmailAddress) => {
+      return Boolean(
+        window.Clerk?.client?.signedInSessions.some(
+          (session) =>
+            session.user.primaryEmailAddress?.emailAddress ===
+            expectedEmailAddress,
+        ),
+      );
+    },
+    emailAddress,
+    { timeout: 5_000 },
+  );
 }
 
 function organizationButton(page: Page, organizationName: string): Locator {

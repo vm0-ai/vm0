@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.175.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.1...runner-rs-v0.175.0) (2026-08-26)
+
+
+### Features
+
+* **runner:** publish canonical host attribution ([#29613](https://github.com/vm0-ai/vm0/issues/29613)) ([e023ea6](https://github.com/vm0-ai/vm0/commit/e023ea652c0812574e112ac1cdc6101bc0590022))
+
+
+### Bug Fixes
+
+* **python:** detect dict.fromkeys keys composed with zip ([#29603](https://github.com/vm0-ai/vm0/issues/29603)) ([9e51c8b](https://github.com/vm0-ai/vm0/commit/9e51c8b0b51ec095457318dcd1a572b4e022d952))
+* **python:** preserve jsonl cleanup after reporter failure ([#29601](https://github.com/vm0-ai/vm0/issues/29601)) ([69382ff](https://github.com/vm0-ai/vm0/commit/69382ff125b16d87237d438f1bad2390a65f192e))
+* **python:** roll back firewall auth task startup state ([#29604](https://github.com/vm0-ai/vm0/issues/29604)) ([d22e7db](https://github.com/vm0-ai/vm0/commit/d22e7dba65a21353200b9280b467eb765f6802fe))
+* **runner:** apply parent-death setup to kmsg monitor ([#29609](https://github.com/vm0-ai/vm0/issues/29609)) ([ddc9ea5](https://github.com/vm0-ai/vm0/commit/ddc9ea589f605fc79a40398f468632a110385395))
+
+
+### Documentation
+
+* **python:** document buffered response capture decode policy ([#29602](https://github.com/vm0-ai/vm0/issues/29602)) ([30dc571](https://github.com/vm0-ai/vm0/commit/30dc5714d7b9e7a9cef49bafe1d6d64197d65792))
+
+## [0.174.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.0...runner-rs-v0.174.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **python:** protect refreshed auth cache entries from late 401s ([#29558](https://github.com/vm0-ai/vm0/issues/29558)) ([93385d4](https://github.com/vm0-ai/vm0/commit/93385d438bbf8255655df9acccda12e74c607afc))
+* **runner:** report unavailable best-effort timezones ([#29568](https://github.com/vm0-ai/vm0/issues/29568)) ([db27c70](https://github.com/vm0-ai/vm0/commit/db27c7048a1146dcaf02d363f86d5da7833df543))
+
+
+### Documentation
+
+* **python:** document firewall rule specificity ordering ([#29554](https://github.com/vm0-ai/vm0/issues/29554)) ([59824da](https://github.com/vm0-ai/vm0/commit/59824dae7a6c95cb6f7747989502dcd3c0a44d0f))
+
+
+### Refactoring
+
+* **python:** avoid caching resolved auth base urls ([#29570](https://github.com/vm0-ai/vm0/issues/29570)) ([eefb22f](https://github.com/vm0-ai/vm0/commit/eefb22fec3eec66d587725be23db419d739ab038))
+
+
+### Performance Improvements
+
+* **runner:** bound mitmdump log record buffering ([#29560](https://github.com/vm0-ai/vm0/issues/29560)) ([12d6dd6](https://github.com/vm0-ai/vm0/commit/12d6dd6616c22a340a89904314b13f489ba81dc4))
+
+## [0.174.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.12...runner-rs-v0.174.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Documentation
+
+* **python:** document network-log capture sanitization contract ([#29520](https://github.com/vm0-ai/vm0/issues/29520)) ([d045922](https://github.com/vm0-ai/vm0/commit/d04592238dab57c39fcaf70e946234c482b6bb71))
+
+
+### Performance Improvements
+
+* **runner:** bound axiom textual fields before queueing ([#29522](https://github.com/vm0-ai/vm0/issues/29522)) ([65cc652](https://github.com/vm0-ai/vm0/commit/65cc65243f9d49f689e51ee7ccc61dfabdd6dfb6))
+
 ## [0.173.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.11...runner-rs-v0.173.12) (2026-08-26)
 
 

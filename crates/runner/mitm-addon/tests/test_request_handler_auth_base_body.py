@@ -482,6 +482,7 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     mock_forward = AsyncMock(return_value=(200, b"ok", {}))
 
@@ -530,6 +531,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
     with (
@@ -662,6 +664,7 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
     with (

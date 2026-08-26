@@ -9,7 +9,10 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createRouteMocks } from "./helpers/route-test";
-import { billingRedeemCodeRoutes } from "../billing-redeem-code";
+import {
+  billingRedeemCodeRoutes,
+  reportMachineSecretAliasSourceAtProcessInitialization,
+} from "../billing-redeem-code";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
@@ -133,7 +136,7 @@ describe("POST /api/billing/redeem-code", () => {
     });
   });
 
-  it("reports every machine secret source once per process without exposing values", async () => {
+  it("reports every machine secret source at initialization once per process without exposing values", async () => {
     server.use(
       http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
         return HttpResponse.json({ ok: true });
@@ -157,6 +160,9 @@ describe("POST /api/billing/redeem-code", () => {
           return message === MACHINE_SECRET_ALIAS_RESOLUTION_EVENT;
         },
       ).length;
+
+      reportMachineSecretAliasSourceAtProcessInitialization();
+      reportMachineSecretAliasSourceAtProcessInitialization();
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const response = await accept(
@@ -536,8 +542,9 @@ describe("POST /api/billing/redeem-code", () => {
       expected: "msk_test_atom_equal_dual",
     },
   ])(
-    "redeems a code with $source machine secret configuration",
+    "redeems a code with $source machine secret configuration after startup observation",
     async ({ canonical, legacy, expected }) => {
+      reportMachineSecretAliasSourceAtProcessInitialization();
       mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", canonical);
       mockOptionalEnv("VM0_MACHINE_SECRET_KEY", legacy);
       const fixture = setAdminSession();

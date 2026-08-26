@@ -119,3 +119,15 @@
         --runner-dirname {{ runner_name }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
+
+    # Keep deployment identity separate from the version-shaped runner name.
+    # JSON strings are valid YAML scalars and preserve inventory_hostname
+    # without relying on manual quote escaping.
+    - name: Persist canonical runner hostname
+      lineinfile:
+        path: "{{ runner_dir }}/runner.yaml"
+        regexp: "^hostname:"
+        insertafter: "^name:"
+        line: "hostname: {{ inventory_hostname | to_json }}"
+      tags:
+        - runner-config-attribution

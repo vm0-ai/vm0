@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.800.0](https://github.com/vm0-ai/vm0/compare/app-v0.799.4...app-v0.800.0) (2026-08-26)
+
+
+### Features
+
+* add gradient color themes ([#29449](https://github.com/vm0-ai/vm0/issues/29449)) ([5ce77fb](https://github.com/vm0-ai/vm0/commit/5ce77fbbd64f2bf6ebf991587aab295f2a67155e))
+
+
+### Bug Fixes
+
+* **auth:** remove heading focus ring ([#29550](https://github.com/vm0-ai/vm0/issues/29550)) ([bff5e44](https://github.com/vm0-ai/vm0/commit/bff5e444a121069a37a31d5195c7bf7dcf3bfd0a))
+* **billing:** read concurrency price from stripe ([#29359](https://github.com/vm0-ai/vm0/issues/29359)) ([aac0e75](https://github.com/vm0-ai/vm0/commit/aac0e7537423f201225b8960839e6e0e8b33d4d6))
+* **platform:** add missing icon tooltips ([#29556](https://github.com/vm0-ai/vm0/issues/29556)) ([bddc882](https://github.com/vm0-ai/vm0/commit/bddc8827d4ef8a0feaa12cc73cc105eabf6b1f7f))
+* **platform:** stabilize connector row alignment ([#29584](https://github.com/vm0-ai/vm0/issues/29584)) ([309a88b](https://github.com/vm0-ai/vm0/commit/309a88bbbd610b051355a58dc22b20484bae5db0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+    * @okouai/ui bumped to 1.0.1
+
+## [0.799.4](https://github.com/vm0-ai/vm0/compare/app-v0.799.3...app-v0.799.4) (2026-08-26)
+
+
+### Bug Fixes
+
+* **auth:** align Clerk passkey action styling ([#29549](https://github.com/vm0-ai/vm0/issues/29549)) ([66e28c4](https://github.com/vm0-ai/vm0/commit/66e28c4874286b75a43919bdcb1b006a9f35c1f3))
+* **auth:** reuse alert for field errors ([#29548](https://github.com/vm0-ai/vm0/issues/29548)) ([2119a9b](https://github.com/vm0-ai/vm0/commit/2119a9b8cd0f5dd07017fe7746bd764ef7adafe6))
+* drop the model picker's fixed dropdown height cap ([#29533](https://github.com/vm0-ai/vm0/issues/29533)) ([6247a94](https://github.com/vm0-ai/vm0/commit/6247a94ef585d0ed57512dca00af6da9c99a952d))
+* **platform:** clarify forward target choices ([#29539](https://github.com/vm0-ai/vm0/issues/29539)) ([f85cfe1](https://github.com/vm0-ai/vm0/commit/f85cfe19e3691ee7094290e07ad87303be8d162c))
+* **platform:** keep pin dialog open after updates ([#29561](https://github.com/vm0-ai/vm0/issues/29561)) ([a9f721f](https://github.com/vm0-ai/vm0/commit/a9f721f4dad80d405aadfb78901e297502798e3d))
+* **platform:** label three-column works nav as channels ([#29535](https://github.com/vm0-ai/vm0/issues/29535)) ([1cc80d5](https://github.com/vm0-ai/vm0/commit/1cc80d503445e1bb2e77f88d6bb1beebf5f624da))
+* **platform:** prevent pinned agent drags from opening split view ([#29559](https://github.com/vm0-ai/vm0/issues/29559)) ([897a6ef](https://github.com/vm0-ai/vm0/commit/897a6ef9464d81479a8989295498ef3c1b8e2547))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+    * @okouai/ui bumped to 1.0.0
+
+## [0.799.3](https://github.com/vm0-ai/vm0/compare/app-v0.799.2...app-v0.799.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **platform:** keep connector row height stable ([#29502](https://github.com/vm0-ai/vm0/issues/29502)) ([e67a40c](https://github.com/vm0-ai/vm0/commit/e67a40c22f7e4a0df671fe315aba00e4bfdac2a3))
+* **platform:** keep thread account selection in a menu ([#29526](https://github.com/vm0-ai/vm0/issues/29526)) ([f3b0840](https://github.com/vm0-ai/vm0/commit/f3b0840afc628c01cae5c81a260f7a0b0355b3f7))
+* **platform:** preview the real shape while drawing and widen the keyboard ([#29505](https://github.com/vm0-ai/vm0/issues/29505)) ([ae7fef8](https://github.com/vm0-ai/vm0/commit/ae7fef885b83f59c9c974dbf4d07b5db5934cef1))
+* **platform:** share uploaded template resources ([#29506](https://github.com/vm0-ai/vm0/issues/29506)) ([1ec4a25](https://github.com/vm0-ai/vm0/commit/1ec4a250ac4aa5a33a302f65863da2c421cb3d8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+
 ## [0.799.2](https://github.com/vm0-ai/vm0/compare/app-v0.799.1...app-v0.799.2) (2026-08-26)
 
 

@@ -18,6 +18,7 @@ import {
   Input,
   RunningIndicator,
 } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useTranslation } from "react-i18next";
 import { formatRelativeTimestamp } from "../../i18n/format.ts";
 import { emptySearchImg } from "./platform-assets.ts";
@@ -107,6 +108,7 @@ export function AgentDialogSearch({
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");
@@ -204,6 +206,7 @@ function AgentCommandSearch({
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");
@@ -282,16 +285,19 @@ function AgentCommandPinToggle({
   label,
   icon,
   onToggle,
+  disabled,
 }: {
   readonly label: string;
   readonly icon: ReactNode;
   readonly onToggle: () => void;
+  readonly disabled: boolean;
 }) {
   return (
     <Button
       type="button"
       variant="quiet"
       size="xs"
+      disabled={disabled}
       className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
       onClick={(e) => {
         e.stopPropagation();
@@ -1694,12 +1700,14 @@ export function PinAgentDialog({
   open,
   onOpenChange,
   subagents,
+  saving,
   onSetAgentPinned,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subagents: SubagentInfo[];
-  onSetAgentPinned: (agentId: string, pinned: boolean) => void;
+  saving: boolean;
+  onSetAgentPinned: (agentId: string, pinned: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(pinAgentDialogQuery$);
@@ -1725,9 +1733,26 @@ export function PinAgentDialog({
     return matchedIds.has(agent.id);
   });
 
-  const setAgentPinned = (agentId: string, pinned: boolean) => {
-    onOpenChange(false);
-    onSetAgentPinned(agentId, pinned);
+  const saveAgentPinned = async (agent: SubagentInfo, pinned: boolean) => {
+    await onSetAgentPinned(agent.id, pinned);
+    toast.success(
+      pinned
+        ? t(
+            ($) => {
+              return $.sidebar.pinSuccess;
+            },
+            { agentName: agentDialogLabel(agent) },
+          )
+        : t(
+            ($) => {
+              return $.sidebar.unpinSuccess;
+            },
+            { agentName: agentDialogLabel(agent) },
+          ),
+    );
+  };
+  const setAgentPinned = (agent: SubagentInfo, pinned: boolean) => {
+    detach(saveAgentPinned(agent, pinned), Reason.DomCallback);
   };
   const pinLabel = t(($) => {
     return $.sidebar.addPin;
@@ -1791,8 +1816,9 @@ export function PinAgentDialog({
                 <CommandItem
                   key={agent.id}
                   value={agent.id}
+                  disabled={saving}
                   onSelect={() => {
-                    return setAgentPinned(agent.id, true);
+                    return setAgentPinned(agent, true);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
@@ -1800,8 +1826,9 @@ export function PinAgentDialog({
                   <AgentCommandPinToggle
                     label={pinLabel}
                     icon={<Pin size={16} />}
+                    disabled={saving}
                     onToggle={() => {
-                      return setAgentPinned(agent.id, true);
+                      return setAgentPinned(agent, true);
                     }}
                   />
                 </CommandItem>
@@ -1821,8 +1848,9 @@ export function PinAgentDialog({
                 <CommandItem
                   key={agent.id}
                   value={agent.id}
+                  disabled={saving}
                   onSelect={() => {
-                    return setAgentPinned(agent.id, false);
+                    return setAgentPinned(agent, false);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
@@ -1830,8 +1858,9 @@ export function PinAgentDialog({
                   <AgentCommandPinToggle
                     label={unpinLabel}
                     icon={<PinOff size={16} />}
+                    disabled={saving}
                     onToggle={() => {
-                      return setAgentPinned(agent.id, false);
+                      return setAgentPinned(agent, false);
                     }}
                   />
                 </CommandItem>

@@ -614,6 +614,7 @@
     "pinAgentDescription": "साइडबार पर पिन करने के लिए एक एजेंट चुनें।",
     "pinned": "पिन की गई",
     "pinnedAgents": "पिन किए गए एजेंट",
+    "pinSuccess": "{{agentName}} को पिन किया गया",
     "resultCount_one": "{{count}} परिणाम",
     "resultCount_other": "{{count}} परिणाम",
     "searchAgents": "खोज एजेंट...",
@@ -627,7 +628,8 @@
       "others": "अन्य"
     },
     "talkTo": "से बात",
-    "unpin": "अनपिन"
+    "unpin": "अनपिन",
+    "unpinSuccess": "{{agentName}} को अनपिन किया गया"
   },
   "status": {
     "unread": "अपठित"

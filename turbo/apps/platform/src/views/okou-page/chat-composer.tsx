@@ -287,6 +287,7 @@ import {
   findVideoTemplateItem,
   findWebsiteTemplateItem,
 } from "../../lib/platform-template-items.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -637,7 +638,7 @@ function ComposerStripRow({
           <span className="min-w-0 flex-1 truncate">{text}</span>
         </>
       )}
-      <button
+      <IconTooltipButton
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => {
@@ -646,7 +647,7 @@ function ComposerStripRow({
         aria-label={removeAriaLabel}
       >
         <X size={16} />
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }
@@ -1193,7 +1194,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         data-video-template-poster=""
         className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200 peer-data-[preview-playing=true]:opacity-0"
       />
-      <button
+      <IconTooltipButton
         type="button"
         aria-label={t(
           ($) => {
@@ -1215,7 +1216,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
           <Play size={20} />
         </span>
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }
@@ -8142,7 +8143,7 @@ function ComposerConnectorAccessRow({
   readonly ariaLabel: string;
 }) {
   return (
-    <div className="flex h-10 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
+    <div className="flex h-10 shrink-0 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
       {actions ? (
         <span className="order-2 flex shrink-0 items-center gap-2">
           {actions}
@@ -8974,6 +8975,7 @@ function ConnectorsPopoverButton({
                               <>
                                 {showPermissionAction ? (
                                   <Button
+                                    showTooltip
                                     type="button"
                                     onClick={() => {
                                       updateConnectorUi({
@@ -9695,6 +9697,7 @@ function ComposerSendButton({
   if (action === "stop") {
     return (
       <Button
+        showTooltip
         size="icon-sm"
         variant="destructive"
         className="shrink-0"
@@ -9709,6 +9712,7 @@ function ComposerSendButton({
   }
   return (
     <Button
+      showTooltip
       size="icon-sm"
       className="shrink-0"
       onClick={onActivate}

@@ -21,6 +21,12 @@ class FirewallAuthFetchSaturatedError(Exception):
     """Raised when firewall auth fetch admission is saturated."""
 
 
+class FirewallAuthCacheEntryIdentity:
+    """Credential-free process-local identity for one cached auth result."""
+
+    __slots__ = ()
+
+
 @dataclass(frozen=True)
 class FirewallAuthCacheKey:
     """Auth cache identity for one run, API, and resolved auth input set."""
@@ -41,6 +47,7 @@ class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
     payload: FirewallAuthPayload
+    identity: FirewallAuthCacheEntryIdentity = field(default_factory=FirewallAuthCacheEntryIdentity)
     expires_at: object = None
 
 
@@ -59,12 +66,14 @@ class FirewallAuthStateSnapshotForTests:
     """Copied auth cache state exposed to tests without leaking private storage."""
 
     has_cached_headers: bool
+    has_in_flight_fetch: bool
     headers: dict[str, str] = field(default_factory=dict)
     resolved_secrets: list[str] = field(default_factory=list)
     base: str | None = None
     query: dict[str, str] | None = None
     aws_sigv4: AwsSigV4Credentials | None = None
     expires_at: object = None
+    cache_entry_identity: FirewallAuthCacheEntryIdentity | None = None
     force_refresh_pending: bool = False
     last_force_refresh_monotonic_at: float | None = None
 
@@ -155,11 +164,16 @@ def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
         state.force_refresh_pending = True
 
 
-def clear_cached_firewall_headers(cache_key: FirewallAuthCacheKey) -> None:
-    """Invalidate only cached headers while preserving refresh lifecycle state."""
+def invalidate_cached_firewall_headers(
+    cache_key: FirewallAuthCacheKey,
+    cache_entry_identity: FirewallAuthCacheEntryIdentity,
+) -> None:
+    """Invalidate and request refresh only for the currently cached entry."""
     state = _auth_state.get(cache_key)
-    if state:
-        state.cache = None
+    if state is None or state.cache is None or state.cache.identity is not cache_entry_identity:
+        return
+    state.cache = None
+    request_force_refresh(cache_key)
 
 
 def reconcile_registry_cache_ownership(active_run_generations: dict[str, int]) -> None:
@@ -271,6 +285,7 @@ def auth_state_snapshot_for_tests(
     if cache is None:
         return FirewallAuthStateSnapshotForTests(
             has_cached_headers=False,
+            has_in_flight_fetch=state.in_flight is not None,
             force_refresh_pending=state.force_refresh_pending,
             last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
         )
@@ -278,12 +293,14 @@ def auth_state_snapshot_for_tests(
     payload = cache.payload
     return FirewallAuthStateSnapshotForTests(
         has_cached_headers=True,
+        has_in_flight_fetch=state.in_flight is not None,
         headers=dict(payload.headers),
         resolved_secrets=list(payload.resolved_secrets),
         base=payload.base,
         query=dict(payload.query) if payload.query is not None else None,
         aws_sigv4=payload.aws_sigv4,
         expires_at=cache.expires_at,
+        cache_entry_identity=cache.identity,
         force_refresh_pending=state.force_refresh_pending,
         last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
     )
@@ -301,16 +318,18 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
 
 
 def _build_token_meta(
-    payload: FirewallAuthPayload,
+    cache_entry: _FirewallHeaderCacheEntry,
     *,
     cache_hit: bool,
     refreshed_connectors: list[str] | None = None,
     refreshed_secrets: list[str] | None = None,
 ) -> dict:
+    payload = cache_entry.payload
     token_meta: dict = {
         "headers": payload.headers,
         "resolved_secrets": payload.resolved_secrets,
         "cache_hit": cache_hit,
+        "cache_entry_identity": cache_entry.identity,
     }
     if refreshed_connectors is not None:
         token_meta["refreshed_connectors"] = refreshed_connectors
@@ -336,7 +355,7 @@ def _build_cache_hit(
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    return _build_token_meta(cached.payload, cache_hit=True)
+    return _build_token_meta(cached, cache_hit=True)
 
 
 def _observe_fetch_task_exception(task: asyncio.Task[dict]) -> None:
@@ -375,7 +394,7 @@ async def _fetch_and_cache_firewall_headers(
             state.cache = cache_entry
 
         return _build_token_meta(
-            result.payload,
+            cache_entry,
             cache_hit=False,
             refreshed_connectors=result.refreshed_connectors,
             refreshed_secrets=result.refreshed_secrets,
@@ -418,24 +437,32 @@ async def get_firewall_headers(
         fetch_task = state.in_flight
         created_fetch = fetch_task is None
         if fetch_task is None:
+            force_refresh = state.force_refresh_pending
+            force_refresh_started_at = time.monotonic() if force_refresh else None
             _reserve_firewall_auth_fetch()
 
-            # Consume the marker before creating the task so only this shared
-            # operation can trigger the refresh. Recording before the fetch
-            # preserves the intentional failed-refresh cooldown semantics.
-            force_refresh = state.force_refresh_pending
+            fetch_coroutine = _fetch_and_cache_firewall_headers(
+                state,
+                request,
+                force_refresh=force_refresh,
+            )
+            try:
+                fetch_task = asyncio.create_task(fetch_coroutine)
+            except BaseException:
+                fetch_coroutine.close()
+                _release_firewall_auth_fetch()
+                raise
+
+            state.in_flight = fetch_task
+
+            # Task selection and publication contain no await, so consuming
+            # the marker here is still atomic with choosing this shared fetch.
+            # Recording before the task runs preserves the intentional
+            # failed-refresh cooldown once task ownership has transferred.
             state.force_refresh_pending = False
             if force_refresh:
-                state.last_force_refresh_monotonic_at = time.monotonic()
+                state.last_force_refresh_monotonic_at = force_refresh_started_at
 
-            fetch_task = asyncio.create_task(
-                _fetch_and_cache_firewall_headers(
-                    state,
-                    request,
-                    force_refresh=force_refresh,
-                )
-            )
-            state.in_flight = fetch_task
             fetch_task.add_done_callback(_observe_fetch_task_exception)
 
         result = await asyncio.shield(fetch_task)

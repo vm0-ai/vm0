@@ -188,6 +188,7 @@ fn guest_runtime_path(
 pub struct ExecutorConfig {
     pub api_url: String,
     pub runner_name: String,
+    pub runner_hostname: Option<String>,
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
@@ -606,6 +607,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         run_id,
         context.sandbox_token.clone(),
         config.runner_name.clone(),
+        config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
@@ -714,6 +716,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         run_id,
         context.sandbox_token.clone(),
         config.runner_name.clone(),
+        config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 

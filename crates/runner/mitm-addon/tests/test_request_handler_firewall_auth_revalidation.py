@@ -275,6 +275,7 @@ def _firewall_flow(
 
 
 def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
+    cache_entry_identity = auth.FirewallAuthCacheEntryIdentity()
     if auth_base:
         return {
             "headers": {},
@@ -283,6 +284,7 @@ def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": cache_entry_identity,
         }
     return {
         "headers": {"Authorization": _RESOLVED_AUTHORIZATION},
@@ -291,6 +293,7 @@ def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": cache_entry_identity,
     }
 
 

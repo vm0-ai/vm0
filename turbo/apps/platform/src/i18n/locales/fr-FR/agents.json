@@ -614,6 +614,7 @@
     "pinAgentDescription": "Choisissez un agent à épingler à la barre latérale.",
     "pinned": "Épinglé",
     "pinnedAgents": "Agents épinglés",
+    "pinSuccess": "{{agentName}} épinglé",
     "resultCount_one": "{{count}} résultat",
     "resultCount_many": "{{count}} résultats",
     "resultCount_other": "{{count}} résultats",
@@ -628,7 +629,8 @@
       "others": "Autres"
     },
     "talkTo": "Parler à",
-    "unpin": "Détacher"
+    "unpin": "Détacher",
+    "unpinSuccess": "{{agentName}} détaché"
   },
   "status": {
     "unread": "Non lu"

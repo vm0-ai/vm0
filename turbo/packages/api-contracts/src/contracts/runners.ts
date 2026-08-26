@@ -95,11 +95,22 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
-const runnerHeartbeatGenerationSchema = z
+export const runnerHeartbeatGenerationSchema = z
   .number()
   .int()
   .positive()
   .max(Number.MAX_SAFE_INTEGER);
+
+export const RUNNER_HOSTNAME_MAX_LENGTH = 255;
+export const RUNNER_VERSION_MAX_LENGTH = 128;
+export const runnerHostnameSchema = z
+  .string()
+  .min(1)
+  .max(RUNNER_HOSTNAME_MAX_LENGTH);
+export const runnerVersionSchema = z
+  .string()
+  .min(1)
+  .max(RUNNER_VERSION_MAX_LENGTH);
 
 const runnerProcessIdentitySchema = z
   .object({
@@ -1117,6 +1128,7 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
+      runnerHostname: runnerHostnameSchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {

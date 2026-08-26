@@ -614,6 +614,7 @@
     "pinAgentDescription": "Choose an agent to pin to the sidebar.",
     "pinned": "Pinned",
     "pinnedAgents": "Pinned agents",
+    "pinSuccess": "{{agentName}} pinned",
     "resultCount_one": "{{count}} result",
     "resultCount_other": "{{count}} results",
     "searchAgents": "Search agents...",
@@ -627,7 +628,8 @@
       "others": "Others"
     },
     "talkTo": "Talk to",
-    "unpin": "Unpin"
+    "unpin": "Unpin",
+    "unpinSuccess": "{{agentName}} unpinned"
   },
   "status": {
     "unread": "Unread"

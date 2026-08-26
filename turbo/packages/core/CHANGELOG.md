@@ -1,5 +1,38 @@
 # Changelog
 
+## [8.595.0](https://github.com/vm0-ai/vm0/compare/core-v8.594.4...core-v8.595.0) (2026-08-26)
+
+
+### Features
+
+* add gradient color themes ([#29449](https://github.com/vm0-ai/vm0/issues/29449)) ([5ce77fb](https://github.com/vm0-ai/vm0/commit/5ce77fbbd64f2bf6ebf991587aab295f2a67155e))
+* **core:** enable connector accounts for staff ([#29611](https://github.com/vm0-ai/vm0/issues/29611)) ([bac7e55](https://github.com/vm0-ai/vm0/commit/bac7e5573d2b0ee4a43d00a0c43c8ce9c84baf44))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+
+## [8.594.4](https://github.com/vm0-ai/vm0/compare/core-v8.594.3...core-v8.594.4) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.370.0
+
+## [8.594.3](https://github.com/vm0-ai/vm0/compare/core-v8.594.2...core-v8.594.3) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+
 ## [8.594.2](https://github.com/vm0-ai/vm0/compare/core-v8.594.1...core-v8.594.2) (2026-08-26)
 
 

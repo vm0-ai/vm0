@@ -233,6 +233,9 @@ jobs:
       - name: Audit Okou CLI cutover
         run: .github/scripts/audit-okou-cli-cutover.sh
 
+      - name: Check Release Please workspace coverage
+        run: .github/scripts/check-release-please-workspace-coverage.sh
+
       - name: Run workflow script tests
         run: |
           shopt -s nullglob
@@ -247,6 +250,7 @@ jobs:
             .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
+            .github/scripts/check-release-please-workspace-coverage.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cleanup-turbo-runner-namespace.sh \
             .github/scripts/cloudflare-ssh-command.sh \
@@ -272,6 +276,7 @@ jobs:
             .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
+            .github/scripts/tests/check-release-please-workspace-coverage-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
             .github/scripts/tests/clerk-test-resource-workflow-test.sh \
@@ -291,6 +296,7 @@ jobs:
             .github/scripts/tests/provision-runner-kvm-test.sh \
             .github/scripts/tests/release-tool-downloads-test.sh \
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
+            .github/scripts/tests/runner-attribution-ansible-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
             .github/scripts/tests/report-cgroup-memory-peak-test.sh \

@@ -6,7 +6,6 @@ import {
   HIGHLIGHT_FILL,
   REDACT_FILL,
   STROKE_HALO_INNER,
-  STROKE_HALO_OUTER,
 } from "./image-annotation.ts";
 import { createDeferredPromise } from "../utils.ts";
 
@@ -95,9 +94,9 @@ function roundedRectPath(
 }
 
 /**
- * Draws the same shape three times — dark, light, then ink — so the stroke ends
- * up with a halo on both of its edges. This is what lets any swatch stay legible
- * over a photo, a white page, or a dark IDE screenshot.
+ * Draws the shape twice — a light halo, then the ink over it — matching what
+ * the editor shows. The dark outer pass is gone: it read as a grey outline
+ * around every mark.
  */
 function strokeWithHalo(
   context: CanvasRenderingContext2D,
@@ -111,18 +110,13 @@ function strokeWithHalo(
   context.lineCap = "round";
   context.lineJoin = "round";
 
-  context.strokeStyle = STROKE_HALO_OUTER;
+  context.strokeStyle = STROKE_HALO_INNER;
   context.lineWidth = stroke + halo * 2;
   path();
   context.stroke();
 
-  context.strokeStyle = STROKE_HALO_INNER;
-  context.lineWidth = stroke;
-  path();
-  context.stroke();
-
   context.strokeStyle = ink;
-  context.lineWidth = Math.max(1, stroke - halo);
+  context.lineWidth = stroke;
   path();
   context.stroke();
 }

@@ -92,6 +92,7 @@ def _resolved_token_meta() -> dict[str, object]:
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
 

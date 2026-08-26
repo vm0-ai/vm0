@@ -181,6 +181,19 @@ pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 /// Private runtime filename used by [`USER_ENV_FILE_ENV`].
 pub const USER_ENV_FILENAME: &str = "env.json";
 
+/// Path to the non-secret connector account context for the current run.
+///
+/// The runner adds this key to the filtered user environment after removing
+/// untrusted runner-owned keys. Managed CLI children may read the referenced
+/// file for self-inspection; authorization does not consume it.
+pub const CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV: &str = "OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE";
+
+/// Private runtime subdirectory used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
+pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-context";
+
+/// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
+pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
+
 /// Path to the private runner-owned run payload JSON file.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
@@ -504,6 +517,7 @@ const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     PI_LAUNCH_CONFIG_ENV,
     PI_LAUNCH_PAYLOAD_FILE_ENV,
     PI_MODEL_CONFIG_ENV,
+    CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
@@ -622,6 +636,15 @@ mod tests {
         assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
+        assert_eq!(
+            CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
+            "OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE"
+        );
+        assert_eq!(
+            CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME,
+            "connector-account-context"
+        );
+        assert_eq!(CONNECTOR_ACCOUNT_CONTEXT_FILENAME, "context.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
@@ -836,6 +859,7 @@ mod tests {
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
+            CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
             CANONICAL_USER_ENV_FILE_ENV,

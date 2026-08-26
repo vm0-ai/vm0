@@ -51,6 +51,10 @@
             "release-type": "node",
             "skip-changelog": true
         },
+        "turbo/packages/ui": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
         "crates/ably-subscriber": {
             "release-type": "rust"
         },
@@ -127,9 +131,6 @@
             "release-type": "rust"
         },
         "crates/vsock-proto": {
-            "release-type": "rust"
-        },
-        "crates/vsock-test": {
             "release-type": "rust"
         }
     },

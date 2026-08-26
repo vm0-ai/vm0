@@ -9,6 +9,7 @@ import { cronRetainChatEventsRoutes } from "./routes/cron-retain-chat-events";
 import { cronCompactUsageEventsRoutes } from "./routes/cron-compact-usage-events";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
+import { cronOfficialWorkflowCatalogRoutes } from "./routes/cron-official-workflow-catalog";
 import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
@@ -70,7 +71,10 @@ import { billingCreditCheckoutRoutes } from "./routes/billing-credit-checkout";
 import { billingDowngradeRoutes } from "./routes/billing-downgrade";
 import { billingInvoicesRoutes } from "./routes/billing-invoices";
 import { billingPortalRoutes } from "./routes/billing-portal";
-import { billingRedeemCodeRoutes } from "./routes/billing-redeem-code";
+import {
+  billingRedeemCodeRoutes,
+  reportMachineSecretAliasSourceAtProcessInitialization,
+} from "./routes/billing-redeem-code";
 import { billingRedeemRoutes } from "./routes/billing-redeem";
 import { billingRestoreRoutes } from "./routes/billing-restore";
 import { billingStatusRoutes } from "./routes/billing-status";
@@ -195,6 +199,8 @@ import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
 
+reportMachineSecretAliasSourceAtProcessInitialization();
+
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
@@ -231,6 +237,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactUsageEventsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
+  ...cronOfficialWorkflowCatalogRoutes,
   ...cronConnectorOauthStateCleanupRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,

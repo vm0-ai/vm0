@@ -453,7 +453,7 @@
       "rail": {
         "new": "New",
         "workflows": "Workflows",
-        "works": "Works"
+        "works": "Channels"
       },
       "searchConversations": "Search conversations",
       "showChatList": "Show chat list",
@@ -1991,7 +1991,7 @@
       "agents": "Agents",
       "back": "Back",
       "content": "Content",
-      "description": "Forward selected content to an agent or chat.",
+      "description": "Send selected content to an agent or chat to continue working on it.",
       "noResults": "No agents or chats found",
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
@@ -5023,6 +5023,20 @@
         "sectionTitle": "Account & Security"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Carry a bright, subtle palette across every interface layer.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Color theme"
+        },
         "description": "Choose how the interface looks.",
         "sectionTitle": "Appearance",
         "theme": {

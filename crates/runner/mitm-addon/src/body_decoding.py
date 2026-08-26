@@ -386,7 +386,31 @@ def decode_response_body_for_network_log_capture(
     *,
     max_output: int = DEFAULT_BODY_DECODE_LIMIT,
 ) -> bytes | None:
-    """Decode a buffered response body with bounded mitmproxy compatibility."""
+    """Decode a buffered response body with bounded mitmproxy-compatible semantics.
+
+    Missing or ``identity`` encoding returns ``data`` unchanged. A supported
+    encoding returns decoded bytes on success, including ``b""`` for a
+    successful empty result. ``None`` means that the encoding is unsupported or
+    that decoding failed. For supported encodings, decoded output is bounded by
+    ``max_output``; reaching that bound returns the successful decoded prefix,
+    even when the compressed input has not reached a complete frame where the
+    codec policy permits that result.
+
+    The supported codec compatibility is intentionally aligned with mitmproxy:
+
+    - ``gzip`` accepts gzip and zlib wrappers and may return output from an
+      incomplete stream.
+    - ``deflate`` tries the zlib wrapper and then the raw-deflate wrapper, and
+      requires a complete stream unless the decoded-output bound is reached.
+    - ``br`` rejects invalid or incomplete input, except that reaching the
+      decoded-output bound returns the bounded prefix.
+    - ``zstd`` reads concatenated frames up to ``max_output`` bytes and returns
+      ``None`` when the reader reports malformed or invalid trailing input.
+
+    This is stricter than the best-effort ``decompress_body()`` path used for
+    retained streaming buffers, which can preserve original wire bytes or
+    partial decoded output after a decode problem.
+    """
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
         return data

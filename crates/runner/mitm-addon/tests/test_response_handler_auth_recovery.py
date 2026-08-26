@@ -42,7 +42,10 @@ def test_401_firewall_cache_invalidation(real_flow, mitm_ctx, headers):
     # Pre-populate firewall header cache with the request auth identity key.
     cache_key = auth_cache_key(run_id="run-conn-1", api_id="run-conn-1:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -77,7 +80,10 @@ def test_invalid_content_length_without_network_log_does_not_block_401_cache_inv
         api_id="run-conn-invalid-length:0",
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -116,7 +122,10 @@ def test_invalid_content_length_with_network_log_does_not_block_401_cache_invali
         api_id="run-conn-invalid-length-log:0",
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -144,7 +153,10 @@ def test_late_401_does_not_recreate_registry_evicted_auth_state(tmp_path, real_f
 
     cache_key = auth_cache_key(run_id="run-conn-old", api_id="run-conn-old:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     registry_file.write_text('{"updatedAt": 1, "sandboxes": {}}')
     removed_run_state = registry.load_registry_state(str(registry_file))
@@ -174,7 +186,10 @@ def test_401_within_cooldown_does_not_re_mark(real_flow, mitm_ctx, headers):
 
     cache_key = auth_cache_key(run_id="run-conn-cd", api_id="run-conn-cd:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     # Simulate: a forced refresh JUST completed a moment ago
     set_last_force_refresh_monotonic_at(cache_key, time.monotonic())
 
@@ -203,6 +218,10 @@ def test_401_after_cooldown_re_marks(real_flow, mitm_ctx, headers):
 
     cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     # Simulate: last forced refresh happened well before the cooldown window
     set_last_force_refresh_monotonic_at(cache_key, 0.0)
 
@@ -226,7 +245,10 @@ def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(real_flow, mitm_
 
     cache_key = auth_cache_key(run_id="run-conn-skew", api_id="run-conn-skew:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     set_last_force_refresh_monotonic_at(cache_key, 1000.0)
 
     with (

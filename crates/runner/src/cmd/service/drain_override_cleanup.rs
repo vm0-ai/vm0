@@ -382,6 +382,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cleanup_and_compensation_reload_failures_keep_both_errors_and_order() {
+        let policy = bounded_policy();
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::OverrideRemoved),
+            [
+                Err(fake_error("cleanup reload failed")),
+                Err(fake_error("compensation reload failed")),
+            ],
+        );
+
+        let error =
+            reconcile_drain_restart_override_removal_with_ops(&service_unit(), policy, &mut ops)
+                .await
+                .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            concat!(
+                "internal error: failed to reload systemd after removing drain restart override ",
+                "for vm0-runner-test: internal error: cleanup reload failed; additionally failed ",
+                "to restore drain restart override: internal error: failed to reload systemd after ",
+                "restoring drain restart override for vm0-runner-test: internal error: ",
+                "compensation reload failed",
+            )
+        );
+        assert_eq!(
+            ops.events,
+            [
+                Event::Remove,
+                Event::Reload(
+                    policy,
+                    SystemdReloadRequirement::dirty().with_drain_override(false),
+                ),
+                Event::Restore,
+                Event::Reload(
+                    policy,
+                    SystemdReloadRequirement::dirty().with_drain_override(true),
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn removal_and_reload_failures_keep_both_errors_without_restoration() {
         let mut ops = fake_ops(
             Err(fake_error("remove failed")),

@@ -31,6 +31,7 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+import { runRunnerContract } from "../run-routes";
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
@@ -73,6 +74,48 @@ describe("cancellation recovery timing contract", () => {
       CANCELLATION_RECOVERY_STALE_AFTER_MS -
         RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     ).toBe(30_000);
+  });
+});
+
+describe("runner claim attribution contract", () => {
+  it("accepts an optional bounded runner hostname", () => {
+    const previousRequest = runnersJobClaimContract.claim.body.parse({});
+    expect(previousRequest).not.toHaveProperty("runnerHostname");
+
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        runnerHostname: "prod-1.aws.vm3.ai",
+      }),
+    ).toMatchObject({ runnerHostname: "prod-1.aws.vm3.ai" });
+
+    for (const runnerHostname of ["", "x".repeat(256)]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({ runnerHostname })
+          .success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("run runner response compatibility", () => {
+  it("accepts the previous response and current explicit-null attribution", () => {
+    expect(
+      runRunnerContract.getRunner.responses[200].parse({
+        sandboxReuseResult: null,
+      }),
+    ).toStrictEqual({ sandboxReuseResult: null });
+
+    const currentResponse = {
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
+    };
+    expect(
+      runRunnerContract.getRunner.responses[200].parse(currentResponse),
+    ).toStrictEqual(currentResponse);
   });
 });
 

@@ -410,6 +410,9 @@ describe("chat inline feedback", () => {
     const dialog = await screen.findByRole("dialog", { name: "Forward to" });
     expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
     expect(within(dialog).getByText("Content")).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleDescription(
+      "Send selected content to an agent or chat to continue working on it.",
+    );
     const search = within(dialog).getByPlaceholderText(
       "Search agents and chats...",
     );

@@ -614,6 +614,7 @@
     "pinAgentDescription": "Elige un agente para fijarlo en la barra lateral.",
     "pinned": "Fijados",
     "pinnedAgents": "Agentes fijados",
+    "pinSuccess": "{{agentName}} fijado",
     "resultCount_one": "{{count}} resultado",
     "resultCount_many": "{{count}} resultados",
     "resultCount_other": "{{count}} resultados",
@@ -628,7 +629,8 @@
       "others": "Otros"
     },
     "talkTo": "Hablar con",
-    "unpin": "Desfijar"
+    "unpin": "Desfijar",
+    "unpinSuccess": "{{agentName}} desfijado"
   },
   "status": {
     "unread": "No leído"

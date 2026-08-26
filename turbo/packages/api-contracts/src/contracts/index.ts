@@ -741,10 +741,12 @@ export {
 } from "./logs";
 
 export {
+  CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
   connectorAccountDisplayNameSchema,
   connectorAccountTargetSchema,
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
+  connectorAccountInspectionResultSchema,
   connectorAccountMutationIntentSchema,
   connectorAccountTargetQuerySchema,
   connectorAccountListQuerySchema,
@@ -753,6 +755,7 @@ export {
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
   type ConnectorAccountSelection,
+  type ConnectorAccountInspectionResult,
   type ConnectorAccountMutationIntent,
   type ConnectorAccountSummary,
 } from "./connector-accounts";

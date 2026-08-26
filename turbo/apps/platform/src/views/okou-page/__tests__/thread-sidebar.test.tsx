@@ -897,14 +897,35 @@ describe("thread-owned utility sidebar", () => {
 
     await openCatalogArtifact("launch-visual.png");
     const zoomLevel = screen.getByTestId("artifact-sidebar-image-zoom-level");
+    const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
+    const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");
+    const resetZoom = screen.getByTestId("artifact-sidebar-image-reset-zoom");
     expect(zoomLevel).toHaveTextContent("100%");
+    expect(zoomOut).not.toHaveAttribute("title");
+    expect(zoomIn).not.toHaveAttribute("title");
+    expect(resetZoom).not.toHaveAttribute("title");
 
-    await user.click(screen.getByTestId("artifact-sidebar-image-zoom-in"));
+    const expectControlTooltip = async (button: HTMLElement, label: string) => {
+      const trigger =
+        button.closest<HTMLElement>('[data-slot="tooltip-trigger"]') ?? button;
+      await user.hover(trigger);
+      await expect(screen.findByText(label)).resolves.toBeVisible();
+      await user.unhover(trigger);
+      await waitFor(() => {
+        expect(screen.queryByText(label)).not.toBeInTheDocument();
+      });
+    };
+
+    await expectControlTooltip(zoomOut, "Zoom out");
+    await expectControlTooltip(zoomIn, "Zoom in");
+    await expectControlTooltip(resetZoom, "Reset zoom");
+
+    await user.click(zoomIn);
     await waitFor(() => {
       expect(zoomLevel).toHaveTextContent("115%");
     });
 
-    await user.click(screen.getByTestId("artifact-sidebar-image-reset-zoom"));
+    await user.click(resetZoom);
     await waitFor(() => {
       expect(zoomLevel).toHaveTextContent("100%");
     });

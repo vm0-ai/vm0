@@ -11,6 +11,7 @@ import {
   runnersJobClaimContract,
   runnersModelProviderFailuresContract,
   runnersPollContract,
+  runnerVersionSchema,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
   type ExecutionContext,
@@ -22,6 +23,7 @@ import {
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@okouai/api-contracts/contracts/runners";
+import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   runStatusSchema,
   type RunStatus,
@@ -56,7 +58,7 @@ import { z } from "zod";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
-import { authorization$ } from "../context/hono";
+import { authorization$, request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$, type Db } from "../external/db";
@@ -128,10 +130,37 @@ type SandboxOperationAttrs = Parameters<
 type RunnerClaimIdentity = NonNullable<
   z.infer<(typeof runnersJobClaimContract.claim)["body"]>["runnerIdentity"]
 >;
+interface RunnerClaimAttribution {
+  readonly runnerIdentity: RunnerClaimIdentity;
+  readonly runnerHostname: string | null;
+  readonly runnerVersion: string | null;
+}
+
+function runnerClaimAttributionDimensions(
+  attribution: RunnerClaimAttribution | undefined,
+): Record<string, string> {
+  if (!attribution) {
+    return {};
+  }
+
+  return {
+    runner_id: attribution.runnerIdentity.runnerId,
+    runner_heartbeat_generation: String(
+      attribution.runnerIdentity.heartbeatGeneration,
+    ),
+    ...(attribution.runnerHostname
+      ? { runner_hostname: attribution.runnerHostname }
+      : {}),
+    ...(attribution.runnerVersion
+      ? { runner_version: attribution.runnerVersion }
+      : {}),
+  };
+}
 
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
+const runnerClaimVersionHeaderSchema = runnerVersionSchema.optional();
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
 const DEFAULT_BUILT_IN_MODEL_PROVIDER_COOLDOWN_SECONDS = 5 * 60;
@@ -282,6 +311,7 @@ class ClaimRouteTimingCollector {
     readonly authType: RunnerAuthContext["type"];
     readonly discoverySource: string | undefined;
     readonly pollReason: string | undefined;
+    readonly runnerAttribution: RunnerClaimAttribution | undefined;
   }): void {
     const records = this.records.splice(0);
     const dimensions: Record<string, string> = {
@@ -308,6 +338,9 @@ class ClaimRouteTimingCollector {
           dimensions: {
             ...dimensions,
             span_kind: record.spanKind,
+            ...(record.spanKind === "nested"
+              ? runnerClaimAttributionDimensions(args.runnerAttribution)
+              : {}),
             ...(record.fallbackReason
               ? { fallback_reason: record.fallbackReason }
               : {}),
@@ -1010,6 +1043,8 @@ function buildClaimTransitionSql(
   runId: string,
   runnerId: string | null,
   runnerHeartbeatGeneration: number | null,
+  runnerHostname: string | null,
+  runnerVersion: string | null,
 ): SQL {
   // Materialized outputs make the row locks depend on run, then queue.
   return sql`
@@ -1051,7 +1086,9 @@ function buildClaimTransitionSql(
               last_heartbeat_at = claim_clock."claimedAt",
               cancellation_recovery_completed = false,
               runner_id = ${runnerId},
-              runner_heartbeat_generation = ${runnerHeartbeatGeneration}
+              runner_heartbeat_generation = ${runnerHeartbeatGeneration},
+              runner_hostname = ${runnerHostname},
+              runner_version = ${runnerVersion}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -1114,14 +1151,16 @@ function buildClaimTransitionSql(
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
-  runnerIdentity: RunnerClaimIdentity | undefined,
+  runnerAttribution: RunnerClaimAttribution | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
   const query = buildClaimTransitionSql(
     runId,
-    runnerIdentity?.runnerId ?? null,
-    runnerIdentity?.heartbeatGeneration ?? null,
+    runnerAttribution?.runnerIdentity.runnerId ?? null,
+    runnerAttribution?.runnerIdentity.heartbeatGeneration ?? null,
+    runnerAttribution?.runnerHostname ?? null,
+    runnerAttribution?.runnerVersion ?? null,
   );
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
@@ -1971,14 +2010,14 @@ function scheduleSuccessfulClaimSideEffects(args: {
   readonly claimRequestStartedAtMs: number;
   readonly claimResult: ClaimedTransitionResult;
   readonly telemetry: ClaimTimingTelemetry | undefined;
-  readonly runnerIdentity: RunnerClaimIdentity | undefined;
+  readonly runnerAttribution: RunnerClaimAttribution | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   const { job, run } = args.jobWithRun;
   const queueCreatedAtMs = job.createdAt.getTime();
   const preferenceTelemetry = successfulClaimPreferenceTelemetry({
     telemetry: args.telemetry,
-    runnerIdentity: args.runnerIdentity,
+    runnerIdentity: args.runnerAttribution?.runnerIdentity,
   });
   scheduleClaimSucceededSideEffects({
     runId: run.id,
@@ -2027,6 +2066,7 @@ function scheduleSuccessfulClaimSideEffects(args: {
     historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       args.storedContext,
     ),
+    runnerAttribution: args.runnerAttribution,
     claimRouteTiming: args.claimRouteTiming,
   });
 }
@@ -2057,6 +2097,7 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
   readonly preferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
+  readonly runnerAttribution: RunnerClaimAttribution | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   waitUntil(
@@ -2092,6 +2133,7 @@ interface ClaimTimingMetricArgs {
   readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
   readonly preferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
+  readonly runnerAttribution: RunnerClaimAttribution | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
 
@@ -2169,6 +2211,7 @@ async function recordClaimTimingMetrics(
     authType: args.authType,
     discoverySource: args.discoverySource,
     pollReason: args.pollReason,
+    runnerAttribution: args.runnerAttribution,
   });
 }
 
@@ -2196,10 +2239,7 @@ function claimTimingOperations(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): SandboxOperationAttrs[] {
-  const successfulClaimDimensions = claimSuccessfulPreferenceDimensions(
-    args,
-    dimensions,
-  );
+  const successfulClaimDimensions = claimSuccessfulDimensions(args, dimensions);
   return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
     return claimTimingOperation(
       args.runId,
@@ -2214,20 +2254,13 @@ function claimTimingOperations(
   });
 }
 
-function claimSuccessfulPreferenceDimensions(
+function claimSuccessfulDimensions(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): Record<string, string> {
-  if (
-    args.preferenceResolution === undefined &&
-    args.preferenceClaimState === undefined &&
-    args.preferenceTargetedSelf === undefined
-  ) {
-    return dimensions;
-  }
-
   return {
     ...dimensions,
+    ...runnerClaimAttributionDimensions(args.runnerAttribution),
     ...(args.preferenceResolution
       ? {
           runner_preference_resolution: args.preferenceResolution,
@@ -2391,7 +2424,7 @@ const claimAuthorizedJob$ = command(
       readonly db: Db;
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
-      readonly runnerIdentity: RunnerClaimIdentity | undefined;
+      readonly runnerAttribution: RunnerClaimAttribution | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2476,7 +2509,7 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
-          args.runnerIdentity,
+          args.runnerAttribution,
           signal,
           claimRouteTiming,
         );
@@ -2500,7 +2533,7 @@ const claimAuthorizedJob$ = command(
       claimRequestStartedAtMs: args.claimRequestStartedAtMs,
       claimResult,
       telemetry: args.telemetry,
-      runnerIdentity: args.runnerIdentity,
+      runnerAttribution: args.runnerAttribution,
       claimRouteTiming,
     });
 
@@ -2525,6 +2558,22 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.type === "official-runner" && !body.data.runnerIdentity) {
     return badRequestMessage("Official runner claim requires runnerIdentity");
   }
+
+  const runnerVersionResult = runnerClaimVersionHeaderSchema.safeParse(
+    get(request$).header(CLIENT_VERSION_HEADER),
+  );
+  if (!runnerVersionResult.success) {
+    return badRequestMessage("Invalid X-Client-Version header");
+  }
+
+  const runnerAttribution: RunnerClaimAttribution | undefined =
+    auth.type === "official-runner" && body.data.runnerIdentity
+      ? {
+          runnerIdentity: body.data.runnerIdentity,
+          runnerHostname: body.data.runnerHostname ?? null,
+          runnerVersion: runnerVersionResult.data ?? null,
+        }
+      : undefined;
 
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
   const db = set(writeDb$);
@@ -2555,8 +2604,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       db,
       runId,
       authType: auth.type,
-      runnerIdentity:
-        auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
+      runnerAttribution,
       jobWithRun,
       telemetry: body.data.telemetry,
       claimRequestStartedAtMs,

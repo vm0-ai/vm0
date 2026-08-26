@@ -11,13 +11,16 @@ use tokio_util::sync::CancellationToken;
 async fn execute_job_reuse_succeeds() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut first_context = minimal_context();
+    first_context.run_id = RunId::new_v4();
 
     // First: create a sandbox via normal execute_job
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, _telemetry) = execute_job(
         &factory,
-        minimal_context(),
+        first_context,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
             reuse_result: SandboxReuseResult::NoReuseKey,
@@ -34,9 +37,13 @@ async fn execute_job_reuse_succeeds() {
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
     let cancel = tokio_util::sync::CancellationToken::new();
+    let mut reused_context = minimal_context();
+    reused_context.run_id = RunId::new_v4();
+    let reused_context_path =
+        guest_connector_account_context_file_path(reused_context.run_id).unwrap();
     let (reuse_outcome, _telemetry) = execute_job_reuse(
         idle_sandbox,
-        minimal_context(),
+        reused_context,
         &config,
         &default_params(),
         cancel,
@@ -45,6 +52,20 @@ async fn execute_job_reuse_succeeds() {
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.error().is_none());
     assert!(reuse_outcome.sandbox.is_some());
+    let connector_account_context_writes = overrides
+        .private_write_file_calls()
+        .into_iter()
+        .filter(|write| {
+            write
+                .path
+                .ends_with("/connector-account-context/context.json")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(connector_account_context_writes.len(), 2);
+    assert_eq!(
+        connector_account_context_writes[1].path,
+        reused_context_path
+    );
 }
 
 #[tokio::test]

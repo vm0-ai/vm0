@@ -614,6 +614,7 @@
     "pinAgentDescription": "Wähle einen Agenten aus, den du an die Seitenleiste anheften möchtest.",
     "pinned": "Angepinnt",
     "pinnedAgents": "Angepinnte Agenten",
+    "pinSuccess": "{{agentName}} angepinnt",
     "resultCount_one": "{{count}} Ergebnis",
     "resultCount_other": "{{count}} Ergebnisse",
     "searchAgents": "Suchagenten...",
@@ -627,7 +628,8 @@
       "others": "Andere"
     },
     "talkTo": "Sprechen mit",
-    "unpin": "Nicht mehr anheften"
+    "unpin": "Nicht mehr anheften",
+    "unpinSuccess": "{{agentName}} nicht mehr angepinnt"
   },
   "status": {
     "unread": "Ungelesen"

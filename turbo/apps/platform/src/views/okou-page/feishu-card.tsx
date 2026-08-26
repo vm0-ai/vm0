@@ -1503,6 +1503,7 @@ function FeishuBotMenu({
     <Popover>
       <PopoverTrigger asChild>
         <Button
+          showTooltip
           type="button"
           disabled={disconnecting}
           variant="quiet"

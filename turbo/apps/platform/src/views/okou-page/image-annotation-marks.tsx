@@ -7,7 +7,6 @@ import {
   HIGHLIGHT_FILL,
   REDACT_FILL,
   STROKE_HALO_INNER,
-  STROKE_HALO_OUTER,
 } from "../../signals/okou-page/image-annotation.ts";
 
 /**
@@ -52,7 +51,7 @@ function StrokeMark({
         <polyline
           points={points}
           fill="none"
-          stroke={STROKE_HALO_OUTER}
+          stroke={STROKE_HALO_INNER}
           vectorEffect="non-scaling-stroke"
           style={{ strokeWidth: 5 }}
         />
@@ -103,7 +102,7 @@ function StrokeMark({
       <path
         d={`${shaft} ${arrowHead}`}
         fill="none"
-        stroke={STROKE_HALO_OUTER}
+        stroke={STROKE_HALO_INNER}
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
@@ -134,7 +133,7 @@ function boxedFill(
   return {
     border: `2.5px solid ${mark.ink}`,
     background: `${mark.ink}1A`,
-    boxShadow: `0 0 0 1px ${STROKE_HALO_OUTER}, inset 0 0 0 1px ${STROKE_HALO_INNER}`,
+    boxShadow: `inset 0 0 0 1px ${STROKE_HALO_INNER}`,
   };
 }
 

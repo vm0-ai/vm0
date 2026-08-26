@@ -38,6 +38,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { ChatComposer } from "./chat-composer.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function ForwardContent({ text }: { readonly text: string }) {
   const { t } = useTranslation();
@@ -100,7 +101,7 @@ function ForwardTargetPicker({
     threadResult.query === normalizedQuery ? threadResult.chatThreads : [];
   return (
     <Command shouldFilter={false} loop className="min-h-0">
-      <div className="relative px-5 py-3">
+      <div className="relative px-5 pb-4 pt-3">
         <CommandInput
           value={query}
           onValueChange={setQuery}
@@ -113,9 +114,13 @@ function ForwardTargetPicker({
       <CommandList className="max-h-[min(40vh,320px)] px-5 pb-3">
         {matchingAgents.length > 0 ? (
           <CommandGroup
-            heading={t(($) => {
-              return $.chat.forward.agents;
-            })}
+            heading={
+              <span className="block pb-2 text-sm font-medium leading-5 text-foreground">
+                {t(($) => {
+                  return $.chat.forward.agents;
+                })}
+              </span>
+            }
           >
             {matchingAgents.map((agent) => {
               const title = agent.displayName ?? agent.id;
@@ -138,9 +143,14 @@ function ForwardTargetPicker({
         ) : null}
         {threads.length > 0 ? (
           <CommandGroup
-            heading={t(($) => {
-              return $.chat.forward.threads;
-            })}
+            className={matchingAgents.length > 0 ? "mt-4" : undefined}
+            heading={
+              <span className="block pb-2 text-sm font-medium leading-5 text-foreground">
+                {t(($) => {
+                  return $.chat.forward.threads;
+                })}
+              </span>
+            }
           >
             {threads.map((thread) => {
               const target: ChatForwardTarget = {
@@ -271,7 +281,7 @@ export function ChatForwardDialog({
         <DialogHeader className="min-w-0 px-5 pb-3 pt-5">
           <div className="flex min-w-0 items-center gap-2 pr-8">
             {target ? (
-              <button
+              <IconTooltipButton
                 type="button"
                 onClick={() => {
                   onComposerStateChange(null);
@@ -282,7 +292,7 @@ export function ChatForwardDialog({
                 })}
               >
                 <ArrowLeft size={16} />
-              </button>
+              </IconTooltipButton>
             ) : null}
             <DialogTitle className="min-w-0 flex-1 overflow-hidden text-base font-semibold">
               {target ? (
@@ -294,7 +304,7 @@ export function ChatForwardDialog({
               )}
             </DialogTitle>
           </div>
-          <DialogDescription className="sr-only">
+          <DialogDescription className={target ? "sr-only" : undefined}>
             {t(($) => {
               return $.chat.forward.description;
             })}

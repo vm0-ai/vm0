@@ -1262,9 +1262,7 @@ test("checkmark keeps its column across selection states and previews deactivati
   await expectModelRowColumns(page);
 });
 
-test("model picker fits seven rows and scrolls one row for eight", async ({
-  page,
-}) => {
+test("model picker grows by a row rather than scrolling", async ({ page }) => {
   const boundary = await mockModelPickerBoundary(page);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -1280,16 +1278,102 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
   boundary.showEightModels();
   await page.reload();
 
+  // The popup is bounded by the space it has, not by a row count, so an eighth
+  // model makes it one row taller instead of parking that row under a
+  // scrollbar. A fixed cap used to stop it here, and the category-switch height
+  // animation kept travelling to a height the popup could not reach.
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 288,
+    clientHeight: 324,
     optionCount: 8,
     rowStep: 36,
     scrollHeight: 324,
   });
-  expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
+  expect(eightModels.clientHeight - sevenModels.clientHeight).toBe(
     eightModels.rowStep,
   );
+});
+
+test("model picker stops at the space it has on a short viewport", async ({
+  page,
+}) => {
+  const boundary = await mockModelPickerBoundary(page);
+  boundary.showEightModels();
+  // Removing the row-count cap leaves the available height as the popup's only
+  // bound, so it needs a case where that bound bites. 320px is under the 324px
+  // the eight-model list asks for, which makes this independent of where the
+  // composer happens to sit: no popup can both stay on screen and show every
+  // row here. An unbounded popup -- or one still capped at `SelectContent`'s
+  // own 24rem default, which outlives this viewport -- would lay out its whole
+  // list and run past the screen instead of scrolling.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await expect(popup).toBeInViewport({ ratio: 1 });
+  const bounded = await popup.evaluate((element) => {
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(bounded.scrollHeight).toBeGreaterThan(bounded.clientHeight);
+});
+
+test("model picker image category settles without a scrollbar", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" })
+    .click();
+
+  // The image catalog is the longest of the three categories, so it is the one
+  // that outgrew the old cap. The switch animates the popup's height and hides
+  // the overflow while it runs, so wait for the rows to land and the animation
+  // to finish -- that is the frame where a scrollbar used to appear.
+  const imageRows = popup.locator('[data-slot="select-group"] > button');
+  await expect(imageRows.last()).toBeVisible();
+  const imageCategory = await popup.evaluate(async (element) => {
+    // The resize observer starts the height animation from the frame the
+    // swapped list lays out in, so let that frame pass before collecting it.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+  expect(imageCategory.scrollHeight).toBe(imageCategory.clientHeight);
+  expect(imageCategory.scrollTop).toBe(0);
+  // Every row the category offers is on screen, so nothing is hidden below the
+  // fold that the height assertion above would miss.
+  await expect(imageRows.last()).toBeInViewport({ ratio: 1 });
 });
 
 test("model picker category switch marks its selection without a raised shadow", async ({

@@ -344,6 +344,7 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)

@@ -7,6 +7,7 @@ import type { BrowserSessionSignals } from "../../signals/chat-page/browser-sess
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { BrowserSessionPanel } from "./browser-session-panel.tsx";
+import { IconTooltip } from "../components/icon-tooltip.tsx";
 
 interface BrowserSessionSidebarProps {
   readonly signals: BrowserSessionSignals;
@@ -34,18 +35,21 @@ export function BrowserSessionSidebar({
             return $.browserSession.title;
           })}
         </span>
-        <a
-          href={signals.href}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={t(($) => {
-            return $.browserSession.openNewPage;
-          })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
-        >
-          <Maximize2 size={16} />
-        </a>
+        <IconTooltip>
+          <a
+            href={signals.href}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={t(($) => {
+              return $.browserSession.openNewPage;
+            })}
+            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          >
+            <Maximize2 size={16} />
+          </a>
+        </IconTooltip>
         <Button
+          showTooltip
           type="button"
           onClick={() => {
             onClose();

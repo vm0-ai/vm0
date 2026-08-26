@@ -1,5 +1,45 @@
 # Changelog
 
+## [9.291.1](https://github.com/vm0-ai/vm0/compare/cli-v9.291.0...cli-v9.291.1) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+
+## [9.291.0](https://github.com/vm0-ai/vm0/compare/cli-v9.290.0...cli-v9.291.0) (2026-08-26)
+
+
+### Features
+
+* **chat:** expose unread threads to workflows ([#29566](https://github.com/vm0-ai/vm0/issues/29566)) ([0592465](https://github.com/vm0-ai/vm0/commit/05924657c5a154e45c5df69b08be268daa6b3a0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+
+## [9.290.0](https://github.com/vm0-ai/vm0/compare/cli-v9.289.3...cli-v9.290.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+
 ## [9.289.3](https://github.com/vm0-ai/vm0/compare/cli-v9.289.2...cli-v9.289.3) (2026-08-26)
 
 

@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -84,6 +85,23 @@ describe("auth v2 presentation", () => {
       name: "Choose an account",
     });
 
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = [
+      "h1 { box-shadow: none; }",
+      tailwindCompiler.build([...heading.classList]),
+    ].join("\n");
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+    const headingStyle = getComputedStyle(heading);
+    expect(headingStyle.boxShadow).toBe("none");
+    expect(headingStyle.outlineStyle).toBe("none");
     expect(screen.getByRole("main")).toContainElement(heading);
     expect(
       screen.getByRole("region", { name: "Choose an account" }),

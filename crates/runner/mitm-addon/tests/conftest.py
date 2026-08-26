@@ -444,6 +444,7 @@ def fake_firewall_headers():
                 "refreshed_connectors": [],
                 "refreshed_secrets": [],
                 "cache_hit": False,
+                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
             }
         )
         with patch.object(auth, "get_firewall_headers", mock):

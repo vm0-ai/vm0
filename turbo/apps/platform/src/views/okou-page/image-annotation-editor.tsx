@@ -3,6 +3,7 @@ import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
+  EyeOff,
   Minus,
   Pencil,
   Plus,
@@ -68,7 +69,7 @@ const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
   { tool: "arrow", icon: ArrowUpRight },
   { tool: "pen", icon: Pencil },
   { tool: "text", icon: Type },
-  { tool: "redact", icon: Trash2 },
+  { tool: "redact", icon: EyeOff },
 ];
 
 /**
@@ -77,6 +78,15 @@ const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
  * is impossible to see and impossible to select in order to delete.
  */
 const MIN_DRAG = 0.005;
+
+/** One letter per tool, matching the first letter of each label. */
+const TOOL_SHORTCUTS: Readonly<Record<string, AnnotationTool | undefined>> = {
+  b: "box",
+  a: "arrow",
+  d: "pen",
+  t: "text",
+  r: "redact",
+};
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -98,8 +108,9 @@ function percent(value: number): string {
 function buildMark(
   stroke: AnnotationStroke,
   ink: AnnotationInk,
+  previewId?: string,
 ): ImageAnnotationMark | null {
-  const id = crypto.randomUUID();
+  const id = previewId ?? crypto.randomUUID();
   const rect = rectFrom(stroke.from, stroke.to);
   const dragged = rect.width > MIN_DRAG || rect.height > MIN_DRAG;
 
@@ -214,14 +225,21 @@ function InkSwatches() {
                   onClick={() => {
                     setInk(candidate);
                   }}
+                  className={cn(active && "bg-state-selected")}
                 >
                   <span
-                    style={{ background: candidate }}
+                    style={{
+                      background: candidate,
+                      // The ring is the ink itself, held off the swatch by the
+                      // toolbar colour, so the selected colour is announced by
+                      // the colour rather than by two pixels of extra diameter.
+                      boxShadow: active
+                        ? `0 0 0 2px hsl(var(--background)), 0 0 0 4px ${candidate}`
+                        : "none",
+                    }}
                     className={cn(
                       "rounded-full transition-all",
-                      active
-                        ? "h-[18px] w-[18px] ring-2 ring-card ring-offset-2"
-                        : "h-4 w-4",
+                      active ? "h-3.5 w-3.5" : "h-4 w-4",
                     )}
                   />
                 </Button>
@@ -244,6 +262,7 @@ function ZoomControls() {
   return (
     <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-1 shadow-sm">
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-xs"
@@ -264,6 +283,7 @@ function ZoomControls() {
         {Math.round(zoom * 100)}%
       </button>
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-xs"
@@ -330,6 +350,7 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
   const { t } = useTranslation();
   const setNote = useSet(setAnnotationMarkNote$);
   const removeMark = useSet(removeAnnotationMark$);
+  const deselect = useSet(selectAnnotationMark$);
   const anchor = markAnchor(mark);
 
   return (
@@ -353,10 +374,24 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
           className="h-2.5 w-2.5 shrink-0 rounded-full"
         />
         <Input
-          autoFocus
+          // Only text marks take the caret. Focusing the field for every mark
+          // is what made Delete land in the input instead of removing the mark.
+          autoFocus={mark.shape === "text"}
           value={noteOf(mark)}
           onChange={(event) => {
             setNote(mark.id, event.target.value);
+          }}
+          onKeyDown={(event) => {
+            // Backspace edits the text. Once the field is empty the next press
+            // dismisses the note — deleting the mark from here would be a
+            // surprise, so that stays on the bin button alone.
+            if (
+              (event.key === "Backspace" || event.key === "Delete") &&
+              noteOf(mark).length === 0
+            ) {
+              event.preventDefault();
+              deselect(null);
+            }
           }}
           placeholder={
             mark.shape === "text"
@@ -370,6 +405,7 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
           className="h-8 flex-1 text-sm"
         />
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon-sm"
@@ -456,6 +492,7 @@ function EditorHeader({ filename }: { filename: string }) {
         </TooltipContent>
       </Tooltip>
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-sm"
@@ -497,9 +534,19 @@ function EditorFooter() {
   );
 }
 
-/** Delete and Backspace remove the selected mark, unless a field has focus. */
-function DeleteKeyBinding() {
+/**
+ * The editor's keyboard surface. Every binding steps aside while a field has
+ * focus, so typing a note never triggers a shortcut.
+ */
+function KeyboardShortcuts() {
   const removeSelected = useSet(removeSelectedAnnotationMark$);
+  const selectMark = useSet(selectAnnotationMark$);
+  const setTool = useSet(setAnnotationTool$);
+  const undo = useSet(undoAnnotation$);
+  const redo = useSet(redoAnnotation$);
+  const close = useSet(closeAnnotationEditor$);
+  const commit = useSet(commitAnnotation$);
+  const selectedId = useGet(annotationSelectedMarkId$);
   let cleanup: (() => void) | null = null;
 
   return (
@@ -511,19 +558,53 @@ function DeleteKeyBinding() {
           return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-          if (event.key !== "Delete" && event.key !== "Backspace") {
-            return;
-          }
           const active = document.activeElement;
-          if (
+          const typing =
             active instanceof HTMLInputElement ||
             active instanceof HTMLTextAreaElement ||
-            (active instanceof HTMLElement && active.isContentEditable)
+            (active instanceof HTMLElement && active.isContentEditable);
+
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key.toLowerCase() === "z"
           ) {
+            event.preventDefault();
+            if (event.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
             return;
           }
-          event.preventDefault();
-          removeSelected();
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            commit();
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            // Escape backs out one layer at a time: the selection first, the
+            // editor only once nothing is selected.
+            if (selectedId) {
+              selectMark(null);
+            } else {
+              close();
+            }
+            return;
+          }
+          if (typing) {
+            return;
+          }
+          if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            removeSelected();
+            return;
+          }
+          const shortcut = TOOL_SHORTCUTS[event.key.toLowerCase()];
+          if (shortcut) {
+            event.preventDefault();
+            setTool(shortcut);
+          }
         };
         document.addEventListener("keydown", onKeyDown, true);
         cleanup = () => {
@@ -732,8 +813,10 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
 
   const box = surface?.getBoundingClientRect();
   const aspect = box && box.height > 0 ? box.width / box.height : 1;
-  const preview =
-    stroke && stroke.tool !== "pen" ? rectFrom(stroke.from, stroke.to) : null;
+  // Previewing through the same renderer is what makes a drag show the arrow or
+  // the freehand line it is about to become, rather than a dashed rectangle
+  // standing in for every tool.
+  const preview = stroke ? buildMark(stroke, ink, "annotation-preview") : null;
   const selectedMark = annotation.marks.find((mark) => {
     return mark.id === selectedId;
   });
@@ -830,15 +913,10 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
           <MarkNotePopover mark={selectedMark} />
         )}
         {preview && (
-          <div
-            style={{
-              left: percent(preview.x),
-              top: percent(preview.y),
-              width: percent(preview.width),
-              height: percent(preview.height),
-              border: `2.5px dashed ${ink}`,
-            }}
-            className="pointer-events-none absolute rounded"
+          <MarkShape
+            mark={preview}
+            ordinal={annotation.marks.length + 1}
+            aspect={aspect}
           />
         )}
       </div>
@@ -876,7 +954,7 @@ function AnnotationSurface({ target }: { target: AnnotationTarget }) {
         className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
         data-testid="image-annotation-editor"
       >
-        <DeleteKeyBinding />
+        <KeyboardShortcuts />
         <div
           className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
           data-testid="image-annotation-panel"

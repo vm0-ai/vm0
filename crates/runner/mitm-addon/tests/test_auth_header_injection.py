@@ -89,6 +89,7 @@ async def test_bulk_headers_preserve_semantics_without_per_header_rebuilds(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     header_set_all_calls = 0
     original_set_all = http.Headers.set_all

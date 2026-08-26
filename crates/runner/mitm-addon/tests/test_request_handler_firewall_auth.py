@@ -130,8 +130,10 @@ async def test_initial_firewall_fetch_reuses_identity_request_bytes(tmp_path, re
 
         await mitm_addon.request(flows[1])
 
-        auth_cache.clear_cached_firewall_headers(cache_key)
-        auth_cache.request_force_refresh(cache_key)
+        auth_cache.invalidate_cached_firewall_headers(
+            cache_key,
+            flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY],
+        )
         await mitm_addon.request(flows[2])
 
     assert serialized_force_refresh == [False, True]
@@ -150,6 +152,58 @@ async def test_initial_firewall_fetch_reuses_identity_request_bytes(tmp_path, re
     refreshed_body = endpoint.requests[1].json_body()
     assert "forceRefresh" not in normal_body
     assert refreshed_body == normal_body | {"forceRefresh": True}
+
+
+async def test_late_401_does_not_invalidate_refreshed_auth_entry(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(firewall_auth_success_response({"Authorization": "Bearer v1"}))
+    endpoint.queue_json_response(firewall_auth_success_response({"Authorization": "Bearer v2"}))
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(4)
+    ]
+    request_a, request_b, request_c, request_d = flows
+
+    with endpoint.run(), mitm_ctx(registry_path=str(reg_path), api_url=endpoint.api_url):
+        await mitm_addon.request(request_a)
+        await mitm_addon.request(request_b)
+
+        cache_key = request_a.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        v1_identity = request_a.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY]
+        assert request_a.request.headers["Authorization"] == "Bearer v1"
+        assert request_b.request.headers["Authorization"] == "Bearer v1"
+        assert request_b.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] is v1_identity
+
+        request_a.response = tutils.tresp(status_code=401)
+        mitm_addon.response(request_a)
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+        await mitm_addon.request(request_c)
+        v2_identity = request_c.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY]
+        assert v2_identity is not v1_identity
+        assert request_c.request.headers["Authorization"] == "Bearer v2"
+        assert not force_refresh_pending(cache_key)
+
+        request_b.response = tutils.tresp(status_code=401)
+        mitm_addon.response(request_b)
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer v2"}
+        assert not force_refresh_pending(cache_key)
+
+        await mitm_addon.request(request_d)
+
+    assert endpoint.request_count == 2
+    assert "forceRefresh" not in endpoint.requests[0].json_body()
+    assert endpoint.requests[1].json_body()["forceRefresh"] is True
+    assert request_d.metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert request_d.request.headers["Authorization"] == "Bearer v2"
+    assert request_d.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] is v2_identity
 
 
 async def test_head_firewall_auth_failure_is_bodyless(tmp_path, real_flow, mitm_ctx, headers):
@@ -424,6 +478,7 @@ async def test_custom_firewall_change_during_auth_discards_stale_credentials(
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
@@ -815,6 +870,7 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)

@@ -332,6 +332,7 @@ server:
 
     let config = fixture.load_config(&yaml, true).await.unwrap();
     assert_eq!(config.name, "test-runner");
+    assert_eq!(config.hostname, None);
     assert_eq!(config.profiles.len(), 1);
     let default = &config.profiles["vm0/default"];
     assert_eq!(default.vcpu, 2);
@@ -343,6 +344,37 @@ server:
     let server = config.server.unwrap();
     assert_eq!(server.url, "https://api.example.com");
     assert_eq!(server.token, "secret");
+}
+
+#[tokio::test]
+async fn load_preserves_optional_hostname() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml_with_default_profile("hostname: prod-1.aws.vm3.ai\n");
+
+    let config = fixture.load_config(&yaml, true).await.unwrap();
+
+    assert_eq!(config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
+}
+
+#[tokio::test]
+async fn load_enforces_api_hostname_length_semantics() {
+    let fixture = ConfigFixture::new().await;
+    let accepted = format!("{}a", "😀".repeat(127));
+    let accepted_yaml = fixture.yaml_with_default_profile(&format!(
+        "hostname: {}\n",
+        serde_yaml_ng::to_string(&accepted).unwrap().trim()
+    ));
+    let config = fixture.load_config(&accepted_yaml, true).await.unwrap();
+    assert_eq!(config.hostname.as_deref(), Some(accepted.as_str()));
+
+    for rejected in [String::new(), "😀".repeat(128)] {
+        let rejected_yaml = fixture.yaml_with_default_profile(&format!(
+            "hostname: {}\n",
+            serde_yaml_ng::to_string(&rejected).unwrap().trim()
+        ));
+        let err = fixture.load_config(&rejected_yaml, true).await.unwrap_err();
+        assert!(err.to_string().contains("hostname"), "got: {err}");
+    }
 }
 
 #[tokio::test]
@@ -1108,6 +1140,7 @@ async fn generate_then_load_round_trip() {
     let runner_dir = fixture.path().join("my-runner");
     let config = RunnerConfig {
         name: "test-runner".into(),
+        hostname: Some("prod-1.aws.vm3.ai".into()),
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),
         ca_dir: fixture.path().to_path_buf(),
@@ -1167,6 +1200,7 @@ async fn generate_tightens_existing_runner_dir_and_config_file() {
 
     let config = RunnerConfig {
         name: "test-runner".into(),
+        hostname: None,
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),
         ca_dir: fixture.path().to_path_buf(),
@@ -1245,6 +1279,7 @@ fn factory_config_resolves_paths() {
 
     let config = RunnerConfig {
         name: "test".into(),
+        hostname: None,
         group: "test/group".into(),
         base_dir: dir.path().join("runner"),
         ca_dir: dir.path().join("ca"),
@@ -1277,6 +1312,7 @@ async fn idle_pool_config_round_trip() {
     let runner_dir = fixture.path().join("my-runner");
     let config = RunnerConfig {
         name: "test-runner".into(),
+        hostname: None,
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),
         ca_dir: fixture.path().to_path_buf(),

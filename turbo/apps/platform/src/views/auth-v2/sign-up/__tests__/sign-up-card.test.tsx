@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import { mockNow, now } from "../../../../lib/time.ts";
@@ -25,6 +26,7 @@ import {
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
+import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -196,7 +198,20 @@ describe("auth v2 sign-up flow", () => {
       screen.getByRole("region", { name: "Create your account" }),
     ).toContainElement(signIn);
     expect(roleElement("link", "Use current sign-up")).toBeDefined();
-    expect(screen.getByRole("checkbox")).toBeVisible();
+    const legalConsent = screen.getByRole("checkbox");
+    expect(legalConsent).toBeVisible();
+    await expect(
+      renderedCheckboxPresentation(legalConsent, context.signal),
+    ).resolves.toStrictEqual({
+      backgroundColor: "rgb(40 50 60)",
+      borderColor: "rgb(10 20 30)",
+      borderRadius: "6px",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      flexShrink: "0",
+      height: "calc(4px * 4)",
+      width: "calc(4px * 4)",
+    });
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",
@@ -888,6 +903,26 @@ describe("auth v2 sign-up flow", () => {
     expect(legalError).toHaveTextContent(
       "Please read and accept the terms to continue",
     );
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = tailwindCompiler.build([
+      ...legalError.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+    const legalErrorStyle = getComputedStyle(legalError);
+    expect([
+      legalErrorStyle.borderTopWidth,
+      legalErrorStyle.borderRightWidth,
+      legalErrorStyle.borderBottomWidth,
+      legalErrorStyle.borderLeftWidth,
+    ]).toStrictEqual(["1px", "1px", "1px", "1px"]);
     expect(document.activeElement).toBe(legalError);
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 

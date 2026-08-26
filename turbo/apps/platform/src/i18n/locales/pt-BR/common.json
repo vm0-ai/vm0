@@ -2024,7 +2024,7 @@
       "agents": "Agentes",
       "back": "Voltar",
       "content": "Conteúdo",
-      "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
+      "description": "Envie o conteúdo selecionado para um agente ou uma conversa e continue trabalhando nele.",
       "noResults": "Nenhum agente ou conversa foi encontrado",
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",
@@ -5089,6 +5089,20 @@
         "sectionTitle": "Conta e segurança"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Aplique uma paleta luminosa e sutil a todas as camadas da interface.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema de cores"
+        },
         "description": "Escolha a aparência da interface.",
         "sectionTitle": "Aparência",
         "theme": {

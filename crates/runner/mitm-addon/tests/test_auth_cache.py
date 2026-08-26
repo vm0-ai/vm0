@@ -1,10 +1,13 @@
 """Tests for firewall auth cache behavior."""
 
 import asyncio
+import gc
 import json
 import threading
 import time
 import urllib.error
+from collections.abc import Coroutine
+from typing import Never
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,6 +17,7 @@ import registry as registry_cache
 from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import (
     auth_cache_key,
+    auth_state_snapshot,
     cached_headers,
     force_refresh_pending,
     has_auth_state,
@@ -75,6 +79,10 @@ class TestFirewallHeaderCache:
         cache_hit_flags = [result["cache_hit"] for result in results]
         assert sum(flag is False for flag in cache_hit_flags) == 1
         assert sum(flag is True for flag in cache_hit_flags) == 2
+        assert all(
+            result["cache_entry_identity"] is results[0]["cache_entry_identity"]
+            for result in results
+        )
         assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer token"}
 
     async def test_cancelled_force_refresh_leader_keeps_shared_fetch(self, mitm_ctx):
@@ -179,6 +187,96 @@ class TestFirewallHeaderCache:
         assert retry["headers"] == {"Authorization": "Bearer retry"}
         assert retry["cache_hit"] is False
         assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer retry"}
+
+    async def test_task_startup_failure_rolls_back_admission_and_allows_retry(self, recwarn):
+        cache_key = auth_cache_key()
+        auth_request = firewall_auth_request(auth_headers={"Authorization": "template"})
+        task_factory_error = RuntimeError("task factory failed")
+
+        def reject_task_creation(coroutine: Coroutine[object, object, object]) -> Never:
+            raise task_factory_error
+
+        with (
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache.asyncio, "create_task", new=reject_task_creation),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+        assert exc_info.value is task_factory_error
+        task_factory_error.__traceback__ = None
+        del exc_info
+        gc.collect()
+        assert not any(
+            warning.category is RuntimeWarning and "was never awaited" in str(warning.message)
+            for warning in recwarn
+        )
+        assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+        failed_state = auth_state_snapshot(cache_key)
+        assert failed_state is not None
+        assert not failed_state.has_in_flight_fetch
+
+        mock_fetch = AsyncMock(
+            return_value=firewall_auth_success(headers={"Authorization": "Bearer recovered"})
+        )
+        with (
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache, "fetch_firewall_headers", mock_fetch),
+        ):
+            result = await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+        assert result["headers"] == {"Authorization": "Bearer recovered"}
+        assert result["cache_hit"] is False
+        assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+        recovered_state = auth_state_snapshot(cache_key)
+        assert recovered_state is not None
+        assert not recovered_state.has_in_flight_fetch
+
+    async def test_force_refresh_task_startup_failure_preserves_refresh_for_retry(self):
+        cache_key = auth_cache_key()
+        auth_request = firewall_auth_request(auth_headers={"Authorization": "template"})
+        set_last_force_refresh_monotonic_at(cache_key, 1000.0)
+        mark_force_refresh(cache_key)
+        task_factory_error = RuntimeError("task factory failed")
+
+        def reject_task_creation(coroutine: Coroutine[object, object, object]) -> Never:
+            raise task_factory_error
+
+        with (
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache.time, "monotonic", return_value=2000.0),
+            patch.object(auth_cache.asyncio, "create_task", new=reject_task_creation),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+        assert exc_info.value is task_factory_error
+        assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+        failed_state = auth_state_snapshot(cache_key)
+        assert failed_state is not None
+        assert not failed_state.has_in_flight_fetch
+        assert failed_state.force_refresh_pending
+        assert failed_state.last_force_refresh_monotonic_at == 1000.0
+
+        mock_fetch = AsyncMock(
+            return_value=firewall_auth_success(headers={"Authorization": "Bearer refreshed"})
+        )
+        with (
+            patch.object(auth_cache, "MAX_ADMITTED_FIREWALL_AUTH_FETCHES", 1),
+            patch.object(auth_cache.time, "monotonic", return_value=3000.0),
+            patch.object(auth_cache, "fetch_firewall_headers", mock_fetch),
+        ):
+            result = await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+        assert result["headers"] == {"Authorization": "Bearer refreshed"}
+        assert result["cache_hit"] is False
+        assert mock_fetch.call_args.kwargs["force_refresh"] is True
+        assert auth_cache.admitted_firewall_auth_fetches_for_tests() == 0
+        recovered_state = auth_state_snapshot(cache_key)
+        assert recovered_state is not None
+        assert not recovered_state.has_in_flight_fetch
+        assert not recovered_state.force_refresh_pending
+        assert recovered_state.last_force_refresh_monotonic_at == 3000.0
 
     async def test_different_keys_fetch_independently(self, mitm_ctx):
         """Different auth cache keys should fetch independently."""

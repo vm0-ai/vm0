@@ -1988,7 +1988,7 @@
       "agents": "에이전트",
       "back": "뒤로",
       "content": "내용",
-      "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
+      "description": "선택한 내용을 에이전트 또는 채팅으로 보내 계속 작업하세요.",
       "noResults": "에이전트 또는 채팅을 찾을 수 없습니다",
       "search": "에이전트 및 채팅 검색...",
       "sent": "전달했습니다",
@@ -5023,6 +5023,20 @@
         "sectionTitle": "계정 및 보안"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "밝고 은은한 팔레트를 인터페이스의 모든 계층에 적용합니다.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "컬러 테마"
+        },
         "description": "인터페이스 모양을 선택하세요.",
         "sectionTitle": "외관",
         "theme": {

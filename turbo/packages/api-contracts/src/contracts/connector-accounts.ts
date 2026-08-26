@@ -60,6 +60,39 @@ export const connectorAccountSelectionSchema = z
   })
   .strict();
 
+export const CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS = 256;
+
+const connectorAccountInspectionAvailableSchema = z
+  .object({
+    kind: z.literal("available"),
+    connectionId: z.uuid(),
+    target: connectorAccountTargetSchema,
+    authMethod: connectorAuthMethodIdSchema,
+    displayName: z.string().min(1).max(255).nullable(),
+    externalId: z.string().nullable(),
+    externalUsername: z.string().nullable(),
+    externalEmail: z.string().nullable(),
+    connectionStatus: connectorResponseConnectionStatusSchema,
+    reconnectReason: connectorReconnectReasonSchema.nullable(),
+  })
+  .strict();
+
+const connectorAccountInspectionUnavailableSchema = z
+  .object({
+    kind: z.literal("unavailable"),
+    connectionId: z.uuid(),
+    target: connectorAccountTargetSchema,
+  })
+  .strict();
+
+export const connectorAccountInspectionResultSchema = z.discriminatedUnion(
+  "kind",
+  [
+    connectorAccountInspectionAvailableSchema,
+    connectorAccountInspectionUnavailableSchema,
+  ],
+);
+
 export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   "intent",
   [
@@ -139,6 +172,30 @@ const connectorAccountExactTargetBodySchema = z
   .strict();
 
 export const connectorAccountsContract = c.router({
+  inspect: {
+    method: "POST",
+    path: "/api/connector-accounts/inspect",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        selections: z
+          .array(connectorAccountSelectionSchema)
+          .max(CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS),
+      })
+      .strict(),
+    responses: {
+      200: z
+        .object({
+          results: z.array(connectorAccountInspectionResultSchema),
+        })
+        .strict(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Inspect exact connector accounts",
+  },
   summaries: {
     method: "GET",
     path: "/api/connector-accounts",
@@ -288,6 +345,9 @@ export type ConnectorAccountConnection = z.infer<
 >;
 export type ConnectorAccountSelection = z.infer<
   typeof connectorAccountSelectionSchema
+>;
+export type ConnectorAccountInspectionResult = z.infer<
+  typeof connectorAccountInspectionResultSchema
 >;
 export type ConnectorAccountMutationIntent = z.infer<
   typeof connectorAccountMutationIntentSchema

@@ -7506,6 +7506,7 @@ function GmailMatchConditionRow({
         }}
       />
       <Button
+        showTooltip
         type="button"
         variant="ghost"
         size="icon"

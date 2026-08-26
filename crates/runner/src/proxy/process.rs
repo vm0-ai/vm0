@@ -1,11 +1,12 @@
 //! Mitmdump process supervision.
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tracing::{error, info, warn};
 
@@ -25,6 +26,8 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const START_MAX_ATTEMPTS: usize = 3;
 const ADDON_READY_FILENAME: &str = "addon-ready";
+/// Maximum raw bytes retained from one mitmdump stdout or stderr record.
+const MITMDUMP_LOG_RECORD_MAX_BYTES: usize = 64 * 1024;
 /// Short bounded retry for Linux `execve` returning ETXTBSY while a freshly
 /// installed/replaced mitmdump binary is still observed as writable.
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
@@ -62,6 +65,129 @@ impl std::fmt::Display for MitmdumpStartupFailure {
             Self::PortInUse(error) | Self::Other(error) => error.fmt(formatter),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum MitmdumpLogRecord {
+    Line(String),
+    Oversized { observed_bytes: usize },
+}
+
+fn finish_mitmdump_log_record(
+    mut retained: Vec<u8>,
+    observed_bytes: usize,
+    oversized: bool,
+    terminated_by_newline: bool,
+) -> io::Result<MitmdumpLogRecord> {
+    if oversized {
+        return Ok(MitmdumpLogRecord::Oversized { observed_bytes });
+    }
+
+    if terminated_by_newline && retained.last() == Some(&b'\r') {
+        retained.pop();
+    }
+    String::from_utf8(retained)
+        .map(MitmdumpLogRecord::Line)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+async fn read_mitmdump_log_record<R>(reader: &mut R) -> io::Result<Option<MitmdumpLogRecord>>
+where
+    R: AsyncBufRead + Unpin,
+{
+    let mut retained = Vec::new();
+    let mut observed_bytes = 0usize;
+    let mut oversized = false;
+
+    loop {
+        let (consumed_bytes, terminated_by_newline) = {
+            let available = reader.fill_buf().await?;
+            if available.is_empty() {
+                if observed_bytes == 0 {
+                    return Ok(None);
+                }
+                return finish_mitmdump_log_record(retained, observed_bytes, oversized, false)
+                    .map(Some);
+            }
+
+            let fragment_bytes = available
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .unwrap_or(available.len());
+            let terminated_by_newline = fragment_bytes < available.len();
+            observed_bytes = observed_bytes.saturating_add(fragment_bytes);
+
+            if !oversized {
+                let remaining_bytes = MITMDUMP_LOG_RECORD_MAX_BYTES.saturating_sub(retained.len());
+                if fragment_bytes <= remaining_bytes {
+                    let (fragment, _) = available.split_at(fragment_bytes);
+                    retained.extend_from_slice(fragment);
+                } else {
+                    oversized = true;
+                    retained.clear();
+                }
+            }
+
+            (
+                fragment_bytes + usize::from(terminated_by_newline),
+                terminated_by_newline,
+            )
+        };
+        reader.consume(consumed_bytes);
+
+        if terminated_by_newline {
+            return finish_mitmdump_log_record(retained, observed_bytes, oversized, true).map(Some);
+        }
+    }
+}
+
+fn log_oversized_mitmdump_record(stream: &'static str, observed_bytes: usize) {
+    warn!(
+        target: "mitmdump",
+        stream,
+        max_bytes = MITMDUMP_LOG_RECORD_MAX_BYTES,
+        observed_bytes,
+        "discarded oversized mitmdump log record"
+    );
+}
+
+async fn monitor_mitmdump_stdout<R>(stdout: R)
+where
+    R: AsyncRead + Unpin,
+{
+    let mut reader = tokio::io::BufReader::new(stdout);
+    while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
+        match record {
+            MitmdumpLogRecord::Line(line) if !line.is_empty() => {
+                info!(target: "mitmdump", "{line}");
+            }
+            MitmdumpLogRecord::Line(_) => {}
+            MitmdumpLogRecord::Oversized { observed_bytes } => {
+                log_oversized_mitmdump_record("stdout", observed_bytes);
+            }
+        }
+    }
+}
+
+async fn monitor_mitmdump_stderr<R>(stderr: R, port: u16) -> bool
+where
+    R: AsyncRead + Unpin,
+{
+    let mut reader = tokio::io::BufReader::new(stderr);
+    let mut port_in_use = false;
+    while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
+        match record {
+            MitmdumpLogRecord::Line(line) if !line.is_empty() => {
+                port_in_use |= mitmdump_stderr_reports_port_in_use(&line, port);
+                log_mitmdump_stderr_line(&line);
+            }
+            MitmdumpLogRecord::Line(_) => {}
+            MitmdumpLogRecord::Oversized { observed_bytes } => {
+                log_oversized_mitmdump_record("stderr", observed_bytes);
+            }
+        }
+    }
+    port_in_use
 }
 
 /// Configuration for starting the proxy.
@@ -653,32 +779,11 @@ async fn spawn_mitmdump(
     let stdout_monitor = child
         .child_mut()
         .and_then(|child| child.stdout.take())
-        .map(|stdout| {
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.is_empty() {
-                        info!(target: "mitmdump", "{line}");
-                    }
-                }
-            })
-        });
+        .map(|stdout| tokio::spawn(async move { monitor_mitmdump_stdout(stdout).await }));
     let stderr_monitor = child
         .child_mut()
         .and_then(|child| child.stderr.take())
-        .map(|stderr| {
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stderr).lines();
-                let mut port_in_use = false;
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.is_empty() {
-                        port_in_use |= mitmdump_stderr_reports_port_in_use(&line, port);
-                        log_mitmdump_stderr_line(&line);
-                    }
-                }
-                port_in_use
-            })
-        });
+        .map(|stderr| tokio::spawn(async move { monitor_mitmdump_stderr(stderr, port).await }));
 
     if let Err(error) = wait_for_ready(
         child.child_mut().ok_or_else(|| {
@@ -870,6 +975,161 @@ mod tests {
     use super::*;
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
+    use tokio::io::AsyncWriteExt;
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    async fn capture_mitmdump_monitor_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let output = future.with_subscriber(subscriber).await;
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    async fn write_oversized_record_then(mut writer: tokio::io::DuplexStream, next_record: &[u8]) {
+        let oversized = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES + 1];
+        writer.write_all(&oversized).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+        writer.write_all(next_record).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bounded_mitmdump_reader_accepts_record_at_limit() {
+        let mut input = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES];
+        input.push(b'\n');
+        let mut reader = tokio::io::BufReader::with_capacity(1024, input.as_slice());
+
+        let record = read_mitmdump_log_record(&mut reader).await.unwrap();
+
+        let MitmdumpLogRecord::Line(line) = record.unwrap() else {
+            panic!("record at limit should not be discarded");
+        };
+        assert_eq!(line.len(), MITMDUMP_LOG_RECORD_MAX_BYTES);
+        assert!(line.bytes().all(|byte| byte == b'x'));
+    }
+
+    #[tokio::test]
+    async fn bounded_mitmdump_reader_finishes_oversized_record_at_eof() {
+        let input = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES + 1];
+        let mut reader = tokio::io::BufReader::with_capacity(1024, input.as_slice());
+
+        let record = read_mitmdump_log_record(&mut reader).await.unwrap();
+
+        assert_eq!(
+            record,
+            Some(MitmdumpLogRecord::Oversized {
+                observed_bytes: MITMDUMP_LOG_RECORD_MAX_BYTES + 1,
+            })
+        );
+        assert!(
+            read_mitmdump_log_record(&mut reader)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn stdout_monitor_discards_oversized_record_and_recovers() {
+        let (writer, reader) = tokio::io::duplex(1024);
+        let future = async {
+            tokio::join!(
+                write_oversized_record_then(writer, b"stdout recovered"),
+                monitor_mitmdump_stdout(reader),
+            );
+        };
+
+        let (_, events) = capture_mitmdump_monitor_events(future).await;
+
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stdout monitor events: {events:#?}"
+        );
+        let overflow = captured_event(&events, "discarded oversized mitmdump log record");
+        assert_eq!(
+            overflow.fields.get("stream").map(String::as_str),
+            Some("stdout")
+        );
+        assert_eq!(
+            overflow.fields.get("max_bytes").map(String::as_str),
+            Some(MITMDUMP_LOG_RECORD_MAX_BYTES.to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.get("observed_bytes").map(String::as_str),
+            Some((MITMDUMP_LOG_RECORD_MAX_BYTES + 1).to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.len(),
+            4,
+            "overflow event leaked record content"
+        );
+        captured_event(&events, "stdout recovered");
+    }
+
+    #[tokio::test]
+    async fn stderr_monitor_discards_oversized_record_and_recovers() {
+        let next_record = b"[error] type=usage_underbilling reason=test_failure \
+                            underbilling_class=risk component=mitm_addon";
+        let (writer, reader) = tokio::io::duplex(1024);
+        let future = async {
+            let (_, port_in_use) = tokio::join!(
+                write_oversized_record_then(writer, next_record),
+                monitor_mitmdump_stderr(reader, 4321),
+            );
+            port_in_use
+        };
+
+        let (port_in_use, events) = capture_mitmdump_monitor_events(future).await;
+
+        assert!(!port_in_use);
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stderr monitor events: {events:#?}"
+        );
+        let overflow = captured_event(&events, "discarded oversized mitmdump log record");
+        assert_eq!(
+            overflow.fields.get("stream").map(String::as_str),
+            Some("stderr")
+        );
+        assert_eq!(
+            overflow.fields.get("observed_bytes").map(String::as_str),
+            Some((MITMDUMP_LOG_RECORD_MAX_BYTES + 1).to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.len(),
+            4,
+            "overflow event leaked record content"
+        );
+
+        let recovered = captured_event(&events, "mitmdump usage underbilling signal");
+        assert_eq!(
+            recovered.fields.get("reason").map(String::as_str),
+            Some("test_failure")
+        );
+        assert_eq!(
+            recovered.fields.get("mitmdump_stderr").map(String::as_str),
+            Some(std::str::from_utf8(next_record).unwrap())
+        );
+    }
 
     // Mirrors the pre-#28989 reader retained by rollback runners. Keep this
     // test-only so Stage 1 proves its dual writer remains legacy-readable.

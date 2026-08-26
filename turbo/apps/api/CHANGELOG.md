@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.496.1](https://github.com/vm0-ai/vm0/compare/api-v1.496.0...api-v1.496.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **billing:** read concurrency price from stripe ([#29359](https://github.com/vm0-ai/vm0/issues/29359)) ([aac0e75](https://github.com/vm0-ai/vm0/commit/aac0e7537423f201225b8960839e6e0e8b33d4d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+    * @okouai/db bumped to 1.225.1
+
+## [1.496.0](https://github.com/vm0-ai/vm0/compare/api-v1.495.0...api-v1.496.0) (2026-08-26)
+
+
+### Features
+
+* **api:** persist runner hostname and version attribution ([#29557](https://github.com/vm0-ai/vm0/issues/29557)) ([5f0f394](https://github.com/vm0-ai/vm0/commit/5f0f3945df7e7d476a8847bd6599e0e11f9147f3))
+* **chat:** expose unread threads to workflows ([#29566](https://github.com/vm0-ai/vm0/issues/29566)) ([0592465](https://github.com/vm0-ai/vm0/commit/05924657c5a154e45c5df69b08be268daa6b3a0d))
+
+
+### Refactoring
+
+* **api:** report machine secret alias source at startup ([#29565](https://github.com/vm0-ai/vm0/issues/29565)) ([c073b7c](https://github.com/vm0-ai/vm0/commit/c073b7cea572ba1943cc0890c2055a5663481f7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+    * @okouai/db bumped to 1.225.0
+
+## [1.495.0](https://github.com/vm0-ai/vm0/compare/api-v1.494.3...api-v1.495.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Performance Improvements
+
+* **api:** collapse media model snapshot reads ([#29525](https://github.com/vm0-ai/vm0/issues/29525)) ([5e286d5](https://github.com/vm0-ai/vm0/commit/5e286d54a7b006d82dbc51012234fd32e3d10993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+    * @okouai/db bumped to 1.224.10
+
 ## [1.494.3](https://github.com/vm0-ai/vm0/compare/api-v1.494.2...api-v1.494.3) (2026-08-26)
 
 

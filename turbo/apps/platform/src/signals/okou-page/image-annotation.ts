@@ -37,11 +37,11 @@ export const HIGHLIGHT_FILL = "rgba(237, 196, 62, 0.32)";
 export const REDACT_FILL = "#525B68";
 
 /**
- * Strokes carry a halo on both sides — dark outside, light inside — so a mark
- * keeps an edge on white, on near-black, and on the busy mid-tones of a photo.
- * Without it the ink swatch would be a contrast gamble rather than a preference.
+ * A mark is drawn in ink alone. An earlier version carried a dark outer halo
+ * for contrast on busy imagery, but it read as a grey outline around every
+ * shape, which is worse than the problem it solved. The light halo stays: it is
+ * invisible on a white screenshot and does the separating work on a dark one.
  */
-export const STROKE_HALO_OUTER = "rgba(20, 23, 29, 0.30)";
 export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
 
 /**

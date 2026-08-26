@@ -2024,7 +2024,7 @@
       "agents": "Agents",
       "back": "Retour",
       "content": "Contenu",
-      "description": "Transférez le contenu sélectionné vers un agent ou un chat.",
+      "description": "Envoyez le contenu sélectionné à un agent ou un chat pour continuer à travailler dessus.",
       "noResults": "Aucun agent ni chat trouvé",
       "search": "Rechercher des agents et des chats...",
       "sent": "Transfert réussi",
@@ -5089,6 +5089,20 @@
         "sectionTitle": "Compte et sécurité"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Appliquez une palette lumineuse et subtile à toutes les couches de l’interface.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Thème de couleur"
+        },
         "description": "Choisissez l'apparence de l'interface.",
         "sectionTitle": "Apparence",
         "theme": {

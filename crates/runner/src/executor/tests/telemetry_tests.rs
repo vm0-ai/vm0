@@ -111,6 +111,7 @@ fn new_telemetry() -> JobTelemetry {
         RunId::nil(),
         "tok".to_string(),
         "test-runner".to_string(),
+        None,
     )
 }
 
@@ -1266,6 +1267,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 async fn assert_reused_private_write_timeout_telemetry(
     context: crate::types::ExecutionContext,
     expected_action: &str,
+    successful_writes_before: usize,
     stage: SandboxOperationTimeoutStage,
     expected_outcome: &str,
 ) {
@@ -1279,6 +1281,9 @@ async fn assert_reused_private_write_timeout_telemetry(
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    for _ in 0..successful_writes_before {
+        overrides.push_private_write_file_result(Ok(()));
+    }
     overrides.push_private_write_file_result(Err(SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,
         stage,
@@ -1310,7 +1315,65 @@ async fn assert_reused_private_write_timeout_telemetry(
     assert_action_bounded_outcome(&telemetry, expected_action, expected_outcome);
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_process_calls().is_empty());
-    assert_eq!(overrides.private_write_file_calls().len(), 1);
+    assert_eq!(
+        overrides.private_write_file_calls().len(),
+        successful_writes_before + 1
+    );
+}
+
+#[tokio::test]
+async fn reused_connector_account_context_timeout_records_failure_and_continues() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(SandboxError::OperationTimeout {
+        operation: SandboxOperation::WriteFile,
+        stage: SandboxOperationTimeoutStage::FrameWrite,
+        timeout_ms: 60_000,
+    }));
+    let sandbox = Box::new(MockSandbox::with_overrides(
+        "connector-account-context-timeout",
+        Arc::clone(&overrides),
+    ));
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, telemetry) = execute_job_reuse_with_hooks(
+        idle_sandbox,
+        minimal_context(),
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    assert!(outcome.failure.is_none());
+    let operations = telemetry.pending_ops_with_outcome_snapshot();
+    let matching: Vec<_> = operations
+        .iter()
+        .filter(|operation| operation.0 == "runner_connector_account_context_write")
+        .collect();
+    assert_eq!(matching.len(), 1);
+    assert!(!matching[0].1);
+    assert_eq!(matching[0].2.as_deref(), Some("frame_write"));
+    assert_eq!(matching[0].3, None);
+    assert_action_outcome(
+        &telemetry,
+        "runner_connector_account_context_write",
+        false,
+        Some("connector account context unavailable"),
+    );
+    assert_has_action(&telemetry, "runner_agent_start_process");
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.private_write_file_calls().len(), 2);
 }
 
 #[tokio::test]
@@ -1323,6 +1386,7 @@ async fn reused_user_env_write_timeout_records_bounded_stage_before_agent_start(
     assert_reused_private_write_timeout_telemetry(
         context,
         "runner_user_env_write",
+        1,
         SandboxOperationTimeoutStage::FrameWrite,
         "frame_write",
     )
@@ -1334,6 +1398,7 @@ async fn reused_run_payload_write_timeout_records_bounded_stage_before_agent_sta
     assert_reused_private_write_timeout_telemetry(
         minimal_context(),
         "runner_run_payload_write",
+        2,
         SandboxOperationTimeoutStage::AwaitingTerminalResponse,
         "await_terminal_response",
     )

@@ -51,6 +51,7 @@ from aws_sigv4 import (
 from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
 from firewall_auth_cache import (
     FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+    FirewallAuthCacheEntryIdentity,
     FirewallAuthCacheKey,
     FirewallAuthFetchSaturatedError,
     InvalidBillableAuthExpiryError,
@@ -219,6 +220,7 @@ class _ResolvedFirewallAuth:
     query: dict | None
     base: str | None
     aws_sigv4: AwsSigV4Credentials | None
+    cache_entry_identity: FirewallAuthCacheEntryIdentity | None
 
 
 def is_billable_firewall(firewall_name: str, sandbox_info: dict) -> bool:
@@ -456,7 +458,11 @@ def _merge_auth_headers(
     ] + auth_pairs
 
 
-def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
+def _record_firewall_auth_success_metadata(
+    flow: http.HTTPFlow,
+    resolved_auth: _ResolvedFirewallAuth,
+) -> None:
+    token_meta = resolved_auth.token_meta
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
     flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] = token_meta.get(
@@ -464,6 +470,10 @@ def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict
     )
     flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] = token_meta.get("refreshed_secrets", [])
     flow.metadata[metadata_keys.AUTH_CACHE_HIT] = token_meta.get("cache_hit", False)
+    if resolved_auth.cache_entry_identity is not None:
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = (
+            resolved_auth.cache_entry_identity
+        )
 
 
 def _empty_firewall_auth_metadata() -> dict:
@@ -577,12 +587,23 @@ def _validate_resolved_firewall_auth(
             raise ValueError("resolved AWS SigV4 credentials are unexpected")
         aws_sigv4 = None
 
+    cache_entry_identity_value = token_meta.get("cache_entry_identity")
+    if plan.needs_resolution:
+        if not isinstance(cache_entry_identity_value, FirewallAuthCacheEntryIdentity):
+            raise TypeError("resolved auth cache entry identity is missing")
+        cache_entry_identity = cache_entry_identity_value
+    else:
+        if cache_entry_identity_value is not None:
+            raise ValueError("resolved auth cache entry identity is unexpected")
+        cache_entry_identity = None
+
     return _ResolvedFirewallAuth(
         token_meta=token_meta,
         headers=headers,
         query=query,
         base=base,
         aws_sigv4=aws_sigv4,
+        cache_entry_identity=cache_entry_identity,
     )
 
 
@@ -1603,10 +1624,10 @@ async def _apply_resolved_firewall_auth(
 def _finalize_firewall_auth_success(
     flow: http.HTTPFlow,
     context: _FirewallAuthContext,
-    token_meta: dict,
+    resolved_auth: _ResolvedFirewallAuth,
 ) -> None:
     """Record successful auth metadata and proxy log after auth application."""
-    _record_firewall_auth_success_metadata(flow, token_meta)
+    _record_firewall_auth_success_metadata(flow, resolved_auth)
 
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata) or flow.request.pretty_host
     log_proxy_entry(
@@ -1716,7 +1737,7 @@ async def handle_firewall_request(
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)
 
-        _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
+        _finalize_firewall_auth_success(flow, context, resolved_auth)
         return auth_result
     except BaseException:
         release_forward_request_admission_from_flow(flow)
@@ -1812,5 +1833,5 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
+    _finalize_firewall_auth_success(flow, context, resolved_auth)
     return FirewallHeaderPhaseAuthResult.APPLIED
