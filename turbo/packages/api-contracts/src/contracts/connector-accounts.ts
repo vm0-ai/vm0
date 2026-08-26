@@ -61,6 +61,7 @@ export const connectorAccountSelectionSchema = z
   .strict();
 
 export const CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS = 256;
+export const CONNECTOR_ACCOUNT_LIST_MAX_LIMIT = 100;
 
 const connectorAccountInspectionAvailableSchema = z
   .object({
@@ -133,7 +134,12 @@ export const connectorAccountTargetQuerySchema = z.discriminatedUnion("kind", [
 
 const connectorAccountListQueryFields = {
   cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(CONNECTOR_ACCOUNT_LIST_MAX_LIMIT)
+    .default(50),
   search: z.string().trim().min(1).max(255).optional(),
 } as const;
 
@@ -343,6 +349,27 @@ export function connectorAccountTargetKey(
 export type ConnectorAccountConnection = z.infer<
   typeof connectorAccountConnectionSchema
 >;
+export type ConnectorAccountIdentityFields = Pick<
+  ConnectorAccountConnection,
+  "displayName" | "externalEmail" | "externalId" | "externalUsername"
+>;
+export function connectorAccountExternalIdentity(
+  account: Omit<ConnectorAccountIdentityFields, "displayName">,
+): string | null {
+  return (
+    account.externalEmail ?? account.externalUsername ?? account.externalId
+  );
+}
+export function connectorAccountEffectiveLabel(
+  account: ConnectorAccountIdentityFields,
+  fallbackLabel: string,
+): string {
+  return (
+    account.displayName ??
+    connectorAccountExternalIdentity(account) ??
+    fallbackLabel
+  );
+}
 export type ConnectorAccountSelection = z.infer<
   typeof connectorAccountSelectionSchema
 >;

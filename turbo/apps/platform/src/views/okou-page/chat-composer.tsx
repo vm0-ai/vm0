@@ -147,15 +147,13 @@ import {
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type {
-  ConnectorAccountConnection,
-  ConnectorAccountSelection,
-  ConnectorAccountTarget,
-} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorAccountEffectiveLabel,
-  type PlatformConnectorCatalogStatusItem,
-} from "../../signals/connector-domain.ts";
+  type ConnectorAccountConnection,
+  type ConnectorAccountSelection,
+  type ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   isIntegrationManagedCustomConnector,
   type CustomConnectorResponse,

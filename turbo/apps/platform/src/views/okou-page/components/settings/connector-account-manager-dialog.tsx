@@ -3,9 +3,11 @@ import { useGet, useLoadable, useSet, type Loadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { EllipsisVertical } from "lucide-react";
-import type {
-  ConnectorAccountConnection,
-  ConnectorAccountTarget,
+import {
+  connectorAccountEffectiveLabel,
+  connectorAccountExternalIdentity,
+  type ConnectorAccountConnection,
+  type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   Button,
@@ -22,7 +24,6 @@ import {
   Input,
 } from "@okouai/ui";
 
-import { connectorAccountEffectiveLabel } from "../../../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   connectorAccountSummaryByTarget$,
@@ -56,15 +57,6 @@ interface ConnectorAccountManagerDialogProps {
   readonly onClose: () => void;
   readonly onAdd: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
-}
-
-function accountIdentity(account: ConnectorAccountConnection): string | null {
-  return (
-    account.externalEmail ??
-    account.externalUsername ??
-    account.externalId ??
-    null
-  );
 }
 
 function AccountStatus({ account }: { account: ConnectorAccountConnection }) {
@@ -179,7 +171,7 @@ function AccountRow({
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
-  const identity = accountIdentity(account);
+  const identity = connectorAccountExternalIdentity(account);
   const label = connectorAccountEffectiveLabel(
     account,
     t(

@@ -742,6 +742,9 @@ export {
 
 export {
   CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
+  CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
+  connectorAccountEffectiveLabel,
+  connectorAccountExternalIdentity,
   connectorAccountDisplayNameSchema,
   connectorAccountTargetSchema,
   connectorAccountConnectionSchema,
@@ -754,6 +757,7 @@ export {
   connectorAccountsContract,
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
+  type ConnectorAccountIdentityFields,
   type ConnectorAccountSelection,
   type ConnectorAccountInspectionResult,
   type ConnectorAccountMutationIntent,
