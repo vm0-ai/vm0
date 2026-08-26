@@ -33,11 +33,13 @@ const BATCH_SIZE: usize = 50;
 /// Time-based flush trigger for batches that stay below `BATCH_SIZE`. Keeps
 /// events from sitting in the buffer indefinitely when traffic is sparse.
 const BATCH_INTERVAL: Duration = Duration::from_secs(5);
-/// Upper bound on how long `AxiomGuard::shutdown` waits for the dispatcher
-/// to drain before returning. Must stay `>= HTTP_TIMEOUT` with enough slack
-/// for queued events to reach the `Close` marker — otherwise the final
-/// in-flight flush gets aborted mid-request and the most valuable batch
-/// (errors emitted right before shutdown) never reaches Axiom.
+/// The current 15-second upper bound on how long `AxiomGuard::shutdown` waits
+/// for the dispatcher. It covers both sending the `Close` marker and waiting
+/// for the dispatcher to finish, so shutdown is a bounded, best-effort drain:
+/// queued or in-flight events may remain undelivered when it expires. Must
+/// stay `>= HTTP_TIMEOUT` with enough slack for queued events to reach the
+/// `Close` marker — otherwise the final batch (errors emitted right before
+/// shutdown) may be aborted mid-request and never reach Axiom.
 const FLUSH_DEADLINE: Duration = Duration::from_secs(15);
 /// Per-request HTTP timeout on the reqwest client — bounds the time a single
 /// stuck ingest call can hold up the dispatcher's batch loop. Must stay
@@ -114,15 +116,22 @@ fn format_bounded(arguments: std::fmt::Arguments<'_>) -> String {
     output.finish()
 }
 
-/// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
-/// without calling `shutdown` leaves the tokio runtime to abort the task.
+/// Holds the dispatcher task.
+///
+/// `shutdown().await` attempts a best-effort drain bounded by the current
+/// 15-second `FLUSH_DEADLINE`. The bound covers sending `Msg::Close` and
+/// waiting for the dispatcher to finish; if it expires, queued or in-flight
+/// events may remain undelivered and shutdown returns without guaranteeing
+/// that the queue was fully drained. Dropping without calling `shutdown`
+/// leaves the Tokio runtime to abort the task without waiting for this bound.
 ///
 /// **Abnormal-exit caveat**: on `panic!`, `std::process::exit`, or
-/// `std::process::abort`, `shutdown` does not run — the tokio runtime tears
-/// down mid-flight and the events buffered at that moment (often the most
-/// valuable batch, since they include whatever triggered the exit) are lost.
-/// Sentry's panic integration still captures the panic itself; Axiom just
-/// does not receive the corresponding structured log.
+/// `std::process::abort`, `shutdown` does not run — the Tokio runtime tears
+/// down mid-flight without even attempting this bounded drain. Events buffered
+/// at that moment (often the most valuable batch, since they include whatever
+/// triggered the exit) are lost. Sentry's panic integration still captures
+/// the panic itself; Axiom just does not receive the corresponding structured
+/// log.
 pub(crate) struct AxiomGuard {
     tx: mpsc::Sender<Msg>,
     handle: Option<JoinHandle<()>>,
