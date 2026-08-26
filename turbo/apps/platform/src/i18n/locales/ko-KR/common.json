@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "작업 공간 배경에 밝고 은은한 색감을 더합니다.",
+          "description": "밝고 은은한 팔레트를 인터페이스의 모든 계층에 적용합니다.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

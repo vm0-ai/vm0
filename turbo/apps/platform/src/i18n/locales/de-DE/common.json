@@ -5034,7 +5034,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Verleihen Sie dem Hintergrund des Arbeitsbereichs einen hellen, dezenten Farbton.",
+          "description": "Übertragen Sie eine helle, dezente Farbpalette auf alle Ebenen der Benutzeroberfläche.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

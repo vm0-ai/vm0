@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Add a bright, subtle tint to the workspace background.",
+          "description": "Carry a bright, subtle palette across every interface layer.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",
