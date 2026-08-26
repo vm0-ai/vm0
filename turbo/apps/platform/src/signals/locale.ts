@@ -84,7 +84,8 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    const preferredLocale = preferences.locale ?? resolveDocumentLocale();
+    const preferredLocale =
+      preferences.locale ?? initialLocaleLoadFailure ?? resolveDocumentLocale();
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;
