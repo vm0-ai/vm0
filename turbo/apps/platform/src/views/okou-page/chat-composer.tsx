@@ -5603,6 +5603,28 @@ function ImportedPptCard({
   );
 }
 
+/** A name wraps across lines on screen but is stored as one. */
+function normalizeImportedTemplateTitle(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * A template name is one line of meaning but not one line of layout: the panel
+ * is 320px wide, so anything past a dozen or so characters has to go somewhere.
+ * An `<input>` answers that by scrolling the overflow out of view without even
+ * an ellipsis, which is how a name ends up cut mid-glyph. A textarea wraps
+ * instead, and the mirrored `::after` grows the grid row to the wrapped text so
+ * the field gains lines rather than a scrollbar. Enter still submits and
+ * whitespace folds on the way out, so the value stays the single line it models.
+ *
+ * The check then keeps its column at every height but not its ink. Lit from
+ * the moment the panel opens it reads as a state badge rather than an action,
+ * so it waits for a reason to exist: pointing at the control, entering it, or
+ * a draft that differs from the saved name. Hover and focus have to count
+ * because the check is now the only thing that says the name is editable —
+ * a hairline border alone reads as decoration. A dirty draft pins it on, so
+ * the way back to the check is never to go find the field again.
+ */
 function ImportedPresentationTemplateRenameControl({
   title,
   updating,
@@ -5618,24 +5640,58 @@ function ImportedPresentationTemplateRenameControl({
   });
   return (
     <form
-      className="flex min-w-0 items-center gap-1.5"
+      className="group flex min-w-0 items-start gap-1.5"
+      data-rename-dirty="false"
       onSubmit={(event) => {
         event.preventDefault();
         const nextTitle = new FormData(event.currentTarget).get("title");
-        if (typeof nextTitle === "string") {
-          onRename(nextTitle);
+        if (typeof nextTitle !== "string") {
+          return;
+        }
+        const normalized = normalizeImportedTemplateTitle(nextTitle);
+        if (normalized.length > 0 && normalized !== title) {
+          onRename(normalized);
         }
       }}
     >
-      <Input
-        key={title}
-        name="title"
-        aria-label={label}
-        defaultValue={title}
-        required
-        maxLength={255}
-        className="h-10 min-w-0 flex-1 border-transparent bg-transparent px-1 text-xl font-semibold hover:border-[hsl(var(--gray-400))]"
-      />
+      <div
+        className="grid min-h-10 min-w-0 flex-1 rounded-lg border-[0.7px] border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
+        data-value={title}
+      >
+        <textarea
+          name="title"
+          aria-label={label}
+          defaultValue={title}
+          required
+          rows={1}
+          maxLength={255}
+          className="col-start-1 row-start-1 resize-none overflow-hidden break-words bg-transparent p-0 outline-none"
+          onChange={(event) => {
+            const field = event.currentTarget;
+            const mirror = field.parentElement;
+            const form = field.form;
+            if (!mirror || !form) {
+              return;
+            }
+            const normalized = normalizeImportedTemplateTitle(field.value);
+            mirror.dataset.value = field.value;
+            form.dataset.renameDirty = String(
+              normalized.length > 0 && normalized !== title,
+            );
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key !== "Enter" ||
+              event.shiftKey ||
+              event.nativeEvent.isComposing
+            ) {
+              return;
+            }
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
+        />
+      </div>
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -5645,7 +5701,7 @@ function ImportedPresentationTemplateRenameControl({
               size="icon-sm"
               disabled={updating}
               aria-label={label}
-              className="shrink-0"
+              className="invisible mt-1 shrink-0 group-focus-within:visible group-hover:visible group-data-[rename-dirty=true]:visible"
             >
               {updating ? <Loader2 className="animate-spin" /> : <Check />}
             </Button>
@@ -5875,6 +5931,7 @@ function ImportedPresentationTemplateSidebar({
       <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
         {activeTemplate.canManage ? (
           <ImportedPresentationTemplateRenameControl
+            key={title}
             title={title}
             updating={updating}
             onRename={(nextTitle) => {

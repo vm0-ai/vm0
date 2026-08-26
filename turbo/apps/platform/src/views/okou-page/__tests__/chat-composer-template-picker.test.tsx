@@ -4263,7 +4263,7 @@ describe("chat composer templates", () => {
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
     });
-    await fill(titleInput, "Brand refresh");
+    await fill(titleInput, "  Brand   refresh  ");
     const renameButton = queryAllByRoleFast("button").find((candidate) => {
       return candidate.getAttribute("aria-label") === "Rename template";
     });
@@ -4271,6 +4271,8 @@ describe("chat composer templates", () => {
       throw new Error("Imported template Rename button not found");
     }
     await user.click(renameButton);
+    // A wrapping field can take newlines and stray runs of spaces; the saved
+    // name is still the single line the preview keys off.
     await expect(
       screen.findByTestId("Brand refresh imported detail image preview"),
     ).resolves.toBeInTheDocument();
