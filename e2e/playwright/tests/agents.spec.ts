@@ -182,6 +182,23 @@ async function visibleIndicatorStyle(locator: Locator): Promise<{
   });
 }
 
+async function computedIconStyle(control: Locator): Promise<{
+  readonly height: string;
+  readonly opacity: string;
+  readonly width: string;
+}> {
+  const icon = control.locator("svg").first();
+  await expect(icon).toBeAttached();
+  return icon.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: style.height,
+      opacity: style.opacity,
+      width: style.width,
+    };
+  });
+}
+
 test("navigate to agents page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/agents`);
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({
@@ -274,6 +291,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   ]);
 
   const grid = page.getByTestId("pinned-agents-grid");
+  const chatList = page.getByTestId("chat-list-column");
   const cards = grid.getByTestId("pinned-agent-card");
   const pinAgent = grid.getByRole("button", {
     name: "Pin an agent",
@@ -324,8 +342,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     `[data-testid="pinned-agent-card"][href="/agents/${defaultAgentId}/chat"]`,
   );
   const agentUnread = defaultAgentCard.getByLabel("Unread");
-  const threadRow = page
-    .getByTestId("chat-list-column")
+  const threadRow = chatList
     .locator(`[data-sidebar-chat-thread-id="${unreadThreadStory.id}"]`)
     .locator("..");
   const threadUnread = threadRow.getByLabel("Unread");
@@ -338,6 +355,24 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   ]);
   expect(Number.parseFloat(threadUnreadStyle.width)).toBeGreaterThan(0);
   expect(agentUnreadStyle).toStrictEqual(threadUnreadStyle);
+
+  expect(
+    await computedIconStyle(threadRow.getByTestId("chat-thread-menu-trigger")),
+  ).toStrictEqual({ height: "17px", opacity: "0.7", width: "17px" });
+
+  for (const control of [
+    chatList.getByLabel("Search conversations"),
+    chatList.getByLabel("New chat"),
+    chatList.getByLabel("Hide chat list"),
+    pinAgent,
+    chatList.getByLabel("Open chat list menu"),
+  ]) {
+    expect(await computedIconStyle(control)).toStrictEqual({
+      height: "18px",
+      opacity: "1",
+      width: "18px",
+    });
+  }
 
   await page.getByLabel("Search conversations").click();
   const searchDialog = page.getByRole("dialog", {
