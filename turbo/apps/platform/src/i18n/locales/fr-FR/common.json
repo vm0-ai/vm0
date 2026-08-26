@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Ajoutez un dégradé lumineux et subtil à l'arrière-plan de l'espace de travail.",
+          "description": "Appliquez une palette lumineuse et subtile à toutes les couches de l’interface.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

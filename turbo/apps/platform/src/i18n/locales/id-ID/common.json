@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Tambahkan gradasi cerah dan lembut ke latar ruang kerja.",
+          "description": "Terapkan palet yang cerah dan lembut ke setiap lapisan antarmuka.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

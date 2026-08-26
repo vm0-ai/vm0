@@ -5034,7 +5034,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "वर्कस्पेस की पृष्ठभूमि में चमकदार और हल्का ग्रेडिएंट जोड़ें.",
+          "description": "हर इंटरफ़ेस परत में एक चमकदार और हल्का रंग पैलेट लागू करें।",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

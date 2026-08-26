@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Adicione um gradiente luminoso e sutil ao fundo da área de trabalho.",
+          "description": "Aplique uma paleta luminosa e sutil a todas as camadas da interface.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Añade un degradado luminoso y sutil al fondo del espacio de trabajo.",
+          "description": "Aplica una paleta luminosa y sutil a todas las capas de la interfaz.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

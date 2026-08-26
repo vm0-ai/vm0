@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "ワークスペースの背景に明るく淡いグラデーションを加えます。",
+          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",
