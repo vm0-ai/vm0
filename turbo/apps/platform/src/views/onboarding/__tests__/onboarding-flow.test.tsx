@@ -1493,21 +1493,22 @@ describe("onboarding flow", () => {
       });
     });
 
-    await openMakePage();
-
-    expect(sentConversions(gtag)).toStrictEqual([
-      ONBOARDING_START_SEND_TO,
-      ADSMARCH_ONBOARDING_START_SEND_TO,
-    ]);
-
-    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoTemplate, {
-      searchParams: new URLSearchParams({ choice: "video" }),
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
     });
+
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
       }),
     ).resolves.toBeInTheDocument();
+
+    expect(sentConversions(gtag)).toStrictEqual([
+      ONBOARDING_START_SEND_TO,
+      ADSMARCH_ONBOARDING_START_SEND_TO,
+    ]);
     chooseTemplate(template.title, "video");
 
     await expect(
