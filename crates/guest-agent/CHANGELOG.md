@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.80.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.7...guest-agent-v0.80.0) (2026-08-26)
+
+
+### Features
+
+* **guest-agent:** normalize pi message blocks before sequencing ([#29624](https://github.com/vm0-ai/vm0/issues/29624)) ([80ef970](https://github.com/vm0-ai/vm0/commit/80ef97097b7a0fffaf34cf25ffc44af31b80ea37))
+
 ## [0.79.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.6...guest-agent-v0.79.7) (2026-08-26)
 
 ## [0.79.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.5...guest-agent-v0.79.6) (2026-08-26)

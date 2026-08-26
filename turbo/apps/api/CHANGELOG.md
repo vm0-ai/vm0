@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.496.2](https://github.com/vm0-ai/vm0/compare/api-v1.496.1...api-v1.496.2) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write machine secret environment aliases ([#29628](https://github.com/vm0-ai/vm0/issues/29628)) ([f95caaf](https://github.com/vm0-ai/vm0/commit/f95caaf85f82b90d5f612ba8dfa3ee28fa293040))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.595.1
+    * @okouai/db bumped to 1.225.2
+
 ## [1.496.1](https://github.com/vm0-ai/vm0/compare/api-v1.496.0...api-v1.496.1) (2026-08-26)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.800.1](https://github.com/vm0-ai/vm0/compare/app-v0.800.0...app-v0.800.1) (2026-08-26)
+
+
+### Refactoring
+
+* remove home growth entry feature switch ([#29579](https://github.com/vm0-ai/vm0/issues/29579)) ([a6e7c72](https://github.com/vm0-ai/vm0/commit/a6e7c72715914cfe0bb4a4e780eac3c0c0285d47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.595.1
+
 ## [0.800.0](https://github.com/vm0-ai/vm0/compare/app-v0.799.4...app-v0.800.0) (2026-08-26)
 
 
