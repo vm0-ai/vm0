@@ -80,11 +80,13 @@ export function MorningBriefSettings() {
   }
 
   if (!preferences) {
-    return <Skeleton className="h-[76px] w-full rounded-xl" />;
+    return (
+      <Skeleton className="h-[76px] w-full rounded-[var(--zero-card-radius)]" />
+    );
   }
 
   return (
-    <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+    <div className="zero-card flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4">
       <div className="flex flex-1 items-center gap-4 min-w-0">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
@@ -97,7 +99,7 @@ export function MorningBriefSettings() {
               return $.settings.preferences.morningBrief.title;
             })}
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-[13px] text-muted-foreground">
             {t(($) => {
               return $.settings.preferences.morningBrief.description;
             })}

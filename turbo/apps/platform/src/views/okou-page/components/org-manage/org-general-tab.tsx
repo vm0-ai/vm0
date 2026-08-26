@@ -42,10 +42,7 @@ import {
   WORKSPACE_DELETE_CONFIRMATION,
 } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import { readImageDimensions } from "./read-image-dimensions.ts";
-
-const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
+import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 const MIN_LOGO_DIMENSION = 100;
 const MAX_LOGO_DIMENSION = 4096;
@@ -158,17 +155,14 @@ function ProfileSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">
-        {t(($) => {
+      <SettingsSectionHeading
+        title={t(($) => {
           return $.settings.workspace.profile.sectionTitle;
         })}
-      </h3>
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={sectionCardStyle}
-      >
+      />
+      <div className="zero-card overflow-hidden">
         {/* Logo row */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
               {t(($) => {
@@ -239,7 +233,7 @@ function ProfileSection({
         </div>
         <div className="h-0 zero-border-t mx-5" />
         {/* Name row */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
               {t(($) => {
@@ -262,7 +256,7 @@ function ProfileSection({
               placeholder={t(($) => {
                 return $.settings.workspace.profile.name.placeholder;
               })}
-              className="w-[220px] shrink-0"
+              className="w-full shrink-0 sm:w-[220px]"
             />
           ) : (
             <span className="text-sm text-foreground shrink-0">
@@ -339,19 +333,16 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">
-        {t(($) => {
+      <SettingsSectionHeading
+        title={t(($) => {
           return $.settings.workspace.danger.sectionTitle;
         })}
-      </h3>
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={sectionCardStyle}
-      >
+      />
+      <div className="zero-card overflow-hidden">
         {canLeave && (
           <>
             {/* Leave workspace */}
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
                   {t(($) => {
@@ -369,7 +360,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="shrink-0 gap-1.5"
+                    className="w-full shrink-0 gap-1.5 sm:w-auto"
                   >
                     {t(($) => {
                       return $.settings.workspace.danger.leave.title;
@@ -426,7 +417,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
           <>
             {canLeave && <div className="h-0 zero-border-t mx-5" />}
             {/* Delete workspace */}
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
                   {t(($) => {
@@ -444,7 +435,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="shrink-0 gap-1.5"
+                    className="w-full shrink-0 gap-1.5 sm:w-auto"
                   >
                     {t(($) => {
                       return $.settings.shared.delete;
@@ -551,12 +542,9 @@ function GeneralTabSkeleton() {
       {/* Profile section skeleton */}
       <section className="flex flex-col gap-3">
         <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
+        <div className="zero-card overflow-hidden">
           {/* Logo row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <div className="h-4 w-8 rounded bg-muted/50 animate-pulse" />
               <div className="h-3 w-48 rounded bg-muted/30 animate-pulse mt-1.5" />
@@ -565,23 +553,20 @@ function GeneralTabSkeleton() {
           </div>
           <div className="h-0 zero-border-t mx-5" />
           {/* Name row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <div className="h-4 w-10 rounded bg-muted/50 animate-pulse" />
               <div className="h-3 w-40 rounded bg-muted/30 animate-pulse mt-1.5" />
             </div>
-            <div className="h-9 w-[220px] shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+            <div className="h-9 w-full shrink-0 rounded-lg bg-muted/30 animate-pulse sm:w-[220px]" />
           </div>
         </div>
       </section>
       {/* Danger zone skeleton */}
       <section className="flex flex-col gap-3">
         <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="zero-card overflow-hidden">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <div className="h-4 w-28 rounded bg-muted/50 animate-pulse" />
               <div className="h-3 w-64 rounded bg-muted/30 animate-pulse mt-1.5" />

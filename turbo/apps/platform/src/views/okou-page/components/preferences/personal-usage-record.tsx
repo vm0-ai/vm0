@@ -54,8 +54,6 @@ import {
   formatLocalizedNumber,
 } from "../../../../i18n/format.ts";
 
-const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
-
 const SOURCE_ICONS = {
   chat: MessageCircle,
   automation: Clock,
@@ -459,10 +457,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
 
 function UsageRecordSkeleton() {
   return (
-    <div
-      className="overflow-hidden rounded-xl bg-card"
-      style={{ border: CARD_BORDER }}
-    >
+    <div className="zero-card overflow-hidden">
       {[0, 1, 2].map((i) => {
         return (
           <div
@@ -504,8 +499,7 @@ function UsageRecordEmpty({
 }) {
   return (
     <div
-      className="flex flex-col items-center rounded-xl bg-card px-6 py-12 text-center"
-      style={{ border: CARD_BORDER }}
+      className="zero-card flex flex-col items-center px-6 py-12 text-center"
       data-testid="usage-records-empty"
     >
       <img
@@ -593,10 +587,7 @@ function UsageRecordList({ data }: { data: UsageRecordResponse }) {
   return (
     <div className="flex flex-col gap-3">
       <TooltipProvider delayDuration={100}>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={{ border: CARD_BORDER }}
-        >
+        <div className="zero-card overflow-hidden">
           <UsageRecordSummary
             count={data.pagination.total}
             totalCredits={data.totalCredits}

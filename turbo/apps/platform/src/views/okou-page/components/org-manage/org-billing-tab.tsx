@@ -100,6 +100,7 @@ import {
   UsagePackMigrationPlanSelectionPage,
   UsagePackPricingDialogs,
 } from "./usage-pack-pricing-page.tsx";
+import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 const PLANS = [
   {
@@ -628,7 +629,7 @@ function PlanCard({
   });
 
   return (
-    <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
+    <div className="relative flex flex-col rounded-[var(--zero-card-radius)] transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
       {plan.tier === "pro" && (
         <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <Crown size={12} className="text-amber-500" />
@@ -647,7 +648,7 @@ function PlanCard({
         />
       )}
 
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-[#D27939] font-mono">
+      <h3 className="text-sm font-semibold text-[#D27939] font-mono">
         {planName(plan.tier)}
       </h3>
 
@@ -1249,7 +1250,7 @@ function PlanActionButtons({
   const showRestore = !futureTier && !customLocked && isPaid && canRestorePlan;
 
   return (
-    <div className="flex items-center gap-2 shrink-0">
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
       {showRestore && (
         <Button
           size="sm"
@@ -1612,7 +1613,7 @@ function ConcurrencySubscriptionRow({
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="mb-0.5 text-[12px] font-medium text-muted-foreground first-letter:uppercase">
+        <p className="mb-0.5 text-[12px] font-medium text-muted-foreground">
           {i18n.t(($) => {
             return $.billing.concurrency.paidAddOn;
           })}
@@ -2322,12 +2323,12 @@ function ConcurrencyBillingSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">
-        {i18n.t(($) => {
+      <SettingsSectionHeading
+        title={i18n.t(($) => {
           return $.billing.concurrency.title;
         })}
-      </h3>
-      <div className="overflow-hidden rounded-xl bg-card zero-border">
+      />
+      <div className="zero-card overflow-hidden">
         <div className="px-5 py-4">
           <p className="text-2xl font-medium tracking-tight text-foreground tabular-nums">
             {i18n.t(
@@ -2444,22 +2445,18 @@ function UsagePackMigrationAvailability({
   const configurable = usagePackMigrationConfigurable(migration);
   return (
     <section className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-sm font-medium text-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.migration.title;
-          })}
-        </h3>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.usagePacks.migration.description;
-            },
-            { plan: planName(migration.tier) },
-          )}
-        </p>
-      </div>
-      <div className="flex items-center justify-between gap-4 rounded-xl bg-card px-5 py-4 zero-border">
+      <SettingsSectionHeading
+        title={i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.title;
+        })}
+        description={i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.migration.description;
+          },
+          { plan: planName(migration.tier) },
+        )}
+      />
+      <div className="zero-card flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <p className="text-sm text-muted-foreground">
           {configurable
             ? i18n.t(($) => {
@@ -2905,14 +2902,14 @@ export function OrgBillingTab() {
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t(($) => {
+        <SettingsSectionHeading
+          title={t(($) => {
             return $.billing.plans.sectionTitle;
           })}
-        </h3>
-        <div className="overflow-hidden rounded-xl bg-card zero-border">
+        />
+        <div className="zero-card overflow-hidden">
           {statusLoading && !status ? (
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <div className="h-4 w-28 rounded bg-muted/50 animate-pulse" />
                 <div className="h-3 w-48 rounded bg-muted/30 animate-pulse mt-1.5" />
@@ -2940,7 +2937,7 @@ export function OrgBillingTab() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <CurrentPlanTitle
                     label={currentPlanLabel}
@@ -2999,7 +2996,7 @@ export function OrgBillingTab() {
               {canManageBilling && (
                 <>
                   <div className="h-0 zero-border-t mx-5" />
-                  <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
                         {t(($) => {

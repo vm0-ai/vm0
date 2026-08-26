@@ -70,7 +70,7 @@ describe("preferences page", () => {
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
 
-    click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("preferences page", () => {
     expect(cmdEnterSegment).toBeInTheDocument();
     click(cmdEnterSegment as HTMLElement);
 
-    click(screen.getByText("Time Zone"));
+    click(screen.getByText("Time zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();

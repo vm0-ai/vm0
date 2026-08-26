@@ -107,8 +107,8 @@ function memberRowGrid(showUsagePack: boolean): string {
   return cn(
     ROW_GRID,
     showUsagePack
-      ? "grid-cols-[minmax(0,1fr)_6rem_13rem_5.5rem_2rem]"
-      : "grid-cols-[minmax(0,1fr)_6rem_5.5rem_2rem]",
+      ? "min-w-[720px] grid-cols-[minmax(0,1fr)_6rem_13rem_5.5rem_2rem]"
+      : "min-w-[480px] grid-cols-[minmax(0,1fr)_6rem_5.5rem_2rem]",
   );
 }
 
@@ -254,7 +254,7 @@ export function OrgMembersTab() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-card zero-border">
+      <div className="zero-card overflow-x-auto">
         <MembersTableHeader showUsagePack={showUsagePack} />
         <div className="h-0 zero-border-t mx-5" />
 
@@ -286,7 +286,7 @@ export function OrgMembersTab() {
         {!isLoading && membershipRequests.length > 0 && (
           <>
             <div className="px-5 pt-3 pb-1">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <UserPlus size={13} />
                 {t(($) => {
                   return $.settings.workspace.members.joinRequests;

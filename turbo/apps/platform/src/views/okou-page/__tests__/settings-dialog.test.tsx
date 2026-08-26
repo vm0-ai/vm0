@@ -1164,9 +1164,9 @@ describe("settings dialog", () => {
       return button;
     };
 
-    click(dialogButton("Preference"));
+    click(dialogButton("Preferences"));
     await expect(
-      screen.findByRole("heading", { name: "Preference" }),
+      screen.findByRole("heading", { name: "Preferences" }),
     ).resolves.toBeInTheDocument();
     click(dialogButton("Debug"));
     await waitFor(() => {
@@ -1392,9 +1392,9 @@ describe("settings dialog", () => {
       return button;
     };
 
-    click(dialogButton("Preference"));
+    click(dialogButton("Preferences"));
     await expect(
-      screen.findByRole("heading", { name: "Preference" }),
+      screen.findByRole("heading", { name: "Preferences" }),
     ).resolves.toBeInTheDocument();
 
     click(dialogButton("Debug"));

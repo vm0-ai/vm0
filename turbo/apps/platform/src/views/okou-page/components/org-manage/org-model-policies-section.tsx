@@ -321,8 +321,7 @@ function DefaultModelRow({
   return (
     <div
       data-testid="default-model-row"
-      className="flex flex-col gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      className="zero-card flex flex-col gap-3 overflow-hidden px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">
@@ -361,10 +360,7 @@ function DefaultModelRow({
           }}
           disabled={disabled}
         >
-          <SelectTrigger
-            className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
+          <SelectTrigger className="zero-btn-morandi h-9 w-full shrink-0 sm:w-[280px]">
             <SelectValue
               placeholder={t(($) => {
                 return $.settings.models.policies.selectDefaultModel;
@@ -738,7 +734,7 @@ function RouteChoiceButton({
           : "0.7px solid hsl(var(--gray-400))",
       }}
       className={cn(
-        "flex flex-col gap-0.5 rounded-xl bg-card px-5 py-4 text-left transition-colors",
+        "flex flex-col gap-0.5 rounded-[var(--zero-card-radius)] bg-card px-5 py-4 text-left transition-colors",
         active && "bg-primary/5",
         !active && !disabled && "hover:bg-state-hover",
         disabled && "cursor-not-allowed opacity-50",
@@ -1808,7 +1804,7 @@ export function OrgModelPoliciesSection() {
   };
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-8">
       <DefaultModelRow
         policies={visiblePolicies}
         workspaceDefaultModel={data.workspaceDefaultModel}
@@ -1833,10 +1829,7 @@ export function OrgModelPoliciesSection() {
             />
           }
         />
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        >
+        <div className="zero-card overflow-hidden">
           <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
             <span>
               {t(($) => {
@@ -1891,7 +1884,7 @@ function ModelPoliciesSkeleton() {
   return (
     <section className="flex flex-col gap-3">
       <div className="h-5 w-24 rounded bg-muted/50 animate-pulse" />
-      <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+      <div className="zero-card overflow-hidden">
         {[0, 1, 2].map((item) => {
           return (
             <div key={item} className="flex h-16 items-center gap-3 px-4">

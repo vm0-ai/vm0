@@ -49,7 +49,7 @@ export function UsageRecordsSection() {
   return (
     <div className="flex flex-col gap-4">
       {/* One compact header row: tabs on the left, range filter on the right. */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
           value={tab}
           onValueChange={(value) => {

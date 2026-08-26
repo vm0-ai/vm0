@@ -9,7 +9,7 @@ export function ModelSection() {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {isAdmin && <OrgProvidersTab />}
       <PersonalProvidersTab />
     </div>

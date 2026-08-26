@@ -39,9 +39,8 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { currentLocale } from "../../../../i18n/index.ts";
 import { formatUsd } from "../../../../i18n/format.ts";
 
-const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
-
-const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
+const ROW_GRID =
+  "grid min-w-[560px] grid-cols-[1fr_8rem_6rem_3rem] items-center gap-x-6";
 
 function formatDate(unixTimestamp: number): string {
   return new Date(unixTimestamp * 1000).toLocaleDateString(currentLocale());
@@ -308,7 +307,7 @@ export function OrgInvoicesTab() {
 
   if (!loading && invoices.length === 0) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="zero-card flex flex-col items-center px-6 py-12 text-center">
         <p className="text-sm text-muted-foreground">
           {t(($) => {
             return $.billing.invoices.empty;
@@ -325,10 +324,7 @@ export function OrgInvoicesTab() {
           <DownloadReceiptsDialog months={months} />
         </div>
       )}
-      <div
-        className="overflow-hidden rounded-[10px] bg-card"
-        style={cardBorder}
-      >
+      <div className="zero-card overflow-x-auto">
         <div
           className={cn(
             ROW_GRID,

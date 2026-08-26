@@ -27,7 +27,7 @@ export function OrgProvidersTab() {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       {isAdmin && <OrgModelPoliciesSection />}
       <StaleBannerSection />
       {isAdmin && <ModelProviderConnectionsSection />}
@@ -111,7 +111,7 @@ function StaleProviderBanner({
   })();
   return (
     <section
-      className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
+      className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-destructive/40 bg-destructive/5 p-4"
       role="alert"
     >
       <div className="min-w-0 flex-1">

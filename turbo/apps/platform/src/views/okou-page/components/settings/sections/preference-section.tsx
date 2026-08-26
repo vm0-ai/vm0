@@ -41,7 +41,7 @@ function AppearanceBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+      <div className="zero-card flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
@@ -54,7 +54,7 @@ function AppearanceBlock() {
                 return $.settings.preferences.appearance.theme.title;
               })}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-[13px] text-muted-foreground">
               {t(($) => {
                 return $.settings.preferences.appearance.theme.description;
               })}
@@ -122,7 +122,7 @@ function EnterBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+      <div className="zero-card flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
@@ -135,7 +135,7 @@ function EnterBlock() {
                 return $.settings.preferences.send.title;
               })}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-[13px] text-muted-foreground">
               {effective === "enter"
                 ? t(($) => {
                     return $.settings.preferences.send.enterDescription;

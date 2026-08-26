@@ -4718,7 +4718,7 @@
         },
         "preference": {
           "description": "Personalize how the app looks and behaves.",
-          "title": "Preference"
+          "title": "Preferences"
         },
         "usage": {
           "balanceDescription": "What your team has left to spend.",
@@ -5020,7 +5020,7 @@
     "preferences": {
       "account": {
         "manage": "Manage",
-        "sectionTitle": "Account & Security"
+        "sectionTitle": "Account & security"
       },
       "appearance": {
         "description": "Choose how the interface looks.",
@@ -5126,14 +5126,14 @@
       },
       "tabs": {
         "appearance": "Appearance",
-        "models": "Personal Models",
-        "timezone": "Time Zone"
+        "models": "Personal models",
+        "timezone": "Time zone"
       },
       "timezone": {
         "description": "Times shown to you and used for automation runs.",
         "rowDescription": "Your agents will use this time zone during runs",
         "rowTitle": "Time zone",
-        "sectionTitle": "Time Zone",
+        "sectionTitle": "Time zone",
         "zones": {
           "alaska": "Alaska Time (AKT)",
           "auckland": "New Zealand Time (NZST)",

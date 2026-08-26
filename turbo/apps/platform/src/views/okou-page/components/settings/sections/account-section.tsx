@@ -26,24 +26,28 @@ export function AccountSection() {
   const initial = (displayName || email || "U").charAt(0).toUpperCase();
 
   return (
-    <div className="flex items-center gap-4 bg-card rounded-xl zero-border p-5">
-      <UserAvatar
-        imageUrl={user?.imageUrl}
-        name={displayName}
-        initial={initial}
-        size="xl"
-      />
-      <div className="flex-1 min-w-0">
-        {displayName && (
-          <div className="text-sm font-medium text-foreground truncate">
-            {displayName}
-          </div>
-        )}
-        {email && (
-          <div className="text-sm text-muted-foreground truncate">{email}</div>
-        )}
+    <div className="zero-card flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <UserAvatar
+          imageUrl={user?.imageUrl}
+          name={displayName}
+          initial={initial}
+          size="xl"
+        />
+        <div className="min-w-0 flex-1">
+          {displayName && (
+            <div className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </div>
+          )}
+          {email && (
+            <div className="truncate text-sm text-muted-foreground">
+              {email}
+            </div>
+          )}
+        </div>
       </div>
-      <Button asChild className="shrink-0">
+      <Button asChild className="w-full shrink-0 sm:w-auto">
         <a href={userProfileUrl} target="_blank" rel="noreferrer">
           <ExternalLink size={14} />
           {t(($) => {

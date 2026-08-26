@@ -368,7 +368,7 @@ function UsageAllowanceCard({
   return (
     <div
       data-testid="usage-allowance-section"
-      className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
+      className="zero-card overflow-hidden px-5 py-4"
     >
       <p className="text-sm font-semibold text-foreground">
         {t(($) => {
@@ -906,7 +906,7 @@ export function CreditBalanceCard({
           splitLayout={splitLayout}
         />
       ) : null}
-      <div className="overflow-hidden rounded-xl bg-card zero-border">
+      <div className="zero-card overflow-hidden">
         {billingLoading && !billing ? (
           <div className="px-5 py-4 space-y-2">
             <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
@@ -946,7 +946,7 @@ export function MemberUsageTable({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="overflow-hidden rounded-xl bg-card zero-border">
+    <div className="zero-card overflow-hidden">
       {/* Header */}
       <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
         <span>

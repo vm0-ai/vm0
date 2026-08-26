@@ -25,12 +25,9 @@ import {
 } from "../../signals/okou-page/billing.ts";
 import { UnsavedBar } from "./components/org-manage/unsaved-bar.tsx";
 import { formatUsd } from "../../i18n/format.ts";
+import { SettingsSectionHeading } from "./components/settings/settings-section-heading.tsx";
 
 const CREDITS_PER_DOLLAR = 1000;
-
-const settingsCardBorder = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
 
 export function AutoRechargeSection({
   allowed,
@@ -107,21 +104,18 @@ export function AutoRechargeSection({
     detach(doSave(values, pageSignal), Reason.DomCallback);
   };
 
-  const inputRowClass = "h-9 w-[200px] shrink-0";
+  const inputRowClass = "h-9 w-full shrink-0 sm:w-[200px]";
 
   return (
     <>
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t(($) => {
+        <SettingsSectionHeading
+          title={t(($) => {
             return $.billing.autoRecharge.title;
           })}
-        </h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={settingsCardBorder}
-        >
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
+        />
+        <div className="zero-card overflow-hidden">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
                 {t(($) => {
@@ -149,7 +143,7 @@ export function AutoRechargeSection({
           {displayEnabled && (
             <>
               <div className="h-0 zero-border-t mx-5" />
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
                     {t(($) => {
@@ -183,7 +177,7 @@ export function AutoRechargeSection({
                 />
               </div>
               <div className="h-0 zero-border-t mx-5" />
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex flex-col gap-1">
                   <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
                     {dollarAmount}
@@ -194,7 +188,7 @@ export function AutoRechargeSection({
                     })}
                   </p>
                 </div>
-                <div className="relative w-[200px] shrink-0">
+                <div className="relative w-full shrink-0 sm:w-[200px]">
                   <Input
                     type="text"
                     inputMode="numeric"

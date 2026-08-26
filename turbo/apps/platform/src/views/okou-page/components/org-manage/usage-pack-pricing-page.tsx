@@ -934,7 +934,7 @@ function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
 
 function PlanSelectionPanel({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 overflow-hidden rounded-xl bg-card zero-border sm:grid-cols-2">
+    <div className="zero-card grid grid-cols-1 overflow-hidden sm:grid-cols-2">
       {children}
     </div>
   );
@@ -1811,7 +1811,7 @@ function SubscriptionComparisonTable({
           className={
             tooltip
               ? "text-[13px] font-normal leading-5 text-muted-foreground"
-              : "bg-muted/40 text-sm font-medium uppercase tracking-wide text-muted-foreground"
+              : "bg-muted/40 text-sm font-medium text-muted-foreground"
           }
         >
           <tr>
@@ -2542,7 +2542,7 @@ function MigrationOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className={inDialog ? undefined : "rounded-xl bg-card p-4 zero-border"}
+      className={inDialog ? undefined : "zero-card p-4"}
     >
       {!inDialog && (
         <>
@@ -2644,7 +2644,7 @@ function MigrationRevisionOrderSummary({
       aria-label={i18n.t(($) => {
         return $.billing.plans.usagePacks.orderSummary;
       })}
-      className={inDialog ? undefined : "rounded-xl bg-card p-4 zero-border"}
+      className={inDialog ? undefined : "zero-card p-4"}
     >
       {!inDialog && (
         <>

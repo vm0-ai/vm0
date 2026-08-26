@@ -135,13 +135,10 @@ function OAuthAccountGroupsSection() {
   };
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <PersonalModelsHeading />
       <TooltipProvider delayDuration={100}>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        >
+        <div className="zero-card overflow-hidden">
           {isLoading ? (
             <>
               <OAuthCredentialRowSkeleton />
@@ -563,12 +560,9 @@ function LegacyOAuthCredentialsSection() {
   };
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <PersonalModelsHeading />
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="zero-card overflow-hidden">
         {isLoading ? (
           <>
             <OAuthCredentialRowSkeleton />

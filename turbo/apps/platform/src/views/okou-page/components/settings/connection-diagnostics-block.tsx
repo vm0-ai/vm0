@@ -38,7 +38,7 @@ function ConnectionDiagnosticsSummary({
   const channelState = diagnostics.snapshot.channelState ?? unavailable;
 
   return (
-    <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
+    <summary className="flex w-full cursor-pointer list-none items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center">
         <RadioTower size={22} className="text-muted-foreground" />
       </span>
@@ -48,7 +48,7 @@ function ConnectionDiagnosticsSummary({
             return $.settings.preferences.debug.connectionDiagnostics.title;
           })}
         </span>
-        <span className="text-sm text-muted-foreground">
+        <span className="text-[13px] text-muted-foreground">
           {t(($) => {
             return $.settings.preferences.debug.connectionDiagnostics
               .description;
@@ -157,7 +157,7 @@ function ConnectionDiagnosticsDetails({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-4 border-t border-border/60 p-4">
+    <div className="flex flex-col gap-4 border-t border-border/60 px-5 py-4">
       <div className="grid gap-2 font-mono text-[11px] sm:grid-cols-2">
         <div className="rounded-md bg-muted/40 px-3 py-2 break-all">
           {t(($) => {
@@ -250,7 +250,7 @@ export function ConnectionDiagnosticsBlock() {
   };
 
   return (
-    <details className="group overflow-hidden rounded-xl bg-card zero-border">
+    <details className="zero-card group overflow-hidden">
       <ConnectionDiagnosticsSummary diagnostics={diagnostics} />
       <ConnectionDiagnosticsDetails
         diagnostics={diagnostics}

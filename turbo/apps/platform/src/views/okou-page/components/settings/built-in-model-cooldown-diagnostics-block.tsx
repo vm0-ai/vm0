@@ -40,7 +40,7 @@ function CooldownDiagnosticsSummary({
   const { t } = useTranslation();
 
   return (
-    <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
+    <summary className="flex w-full cursor-pointer list-none items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center">
         <Cpu size={22} className="text-muted-foreground" />
       </span>
@@ -53,7 +53,7 @@ function CooldownDiagnosticsSummary({
             return $.settings.preferences.debug.builtInModelCooldown.title;
           })}
         </span>
-        <span className="text-sm text-muted-foreground">
+        <span className="text-[13px] text-muted-foreground">
           {t(($) => {
             return $.settings.preferences.debug.builtInModelCooldown
               .description;
@@ -375,12 +375,12 @@ export function BuiltInModelCooldownDiagnosticsBlock() {
   return (
     <section
       aria-labelledby="built-in-model-cooldown-diagnostics-title"
-      className="overflow-hidden rounded-xl bg-card zero-border"
+      className="zero-card overflow-hidden"
     >
       {diagnostics ? (
         <details className="group">
           <CooldownDiagnosticsSummary diagnostics={diagnostics} />
-          <div className="border-t border-border/60 p-4">
+          <div className="border-t border-border/60 px-5 py-4">
             <CooldownDiagnosticsContent
               diagnostics={diagnostics}
               loading={loading}
@@ -388,7 +388,7 @@ export function BuiltInModelCooldownDiagnosticsBlock() {
           </div>
         </details>
       ) : (
-        <div className="flex items-start gap-4 p-4">
+        <div className="flex items-start gap-4 px-5 py-4">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
               <Cpu size={22} className="text-muted-foreground" />
@@ -404,7 +404,7 @@ export function BuiltInModelCooldownDiagnosticsBlock() {
               })}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-muted-foreground">
+              <div className="text-[13px] text-muted-foreground">
                 {loading
                   ? t(($) => {
                       return $.settings.preferences.debug.builtInModelCooldown

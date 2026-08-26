@@ -16,6 +16,7 @@ import {
   type CreditCheckoutSelection,
 } from "../../../../signals/okou-page/billing.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
+import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 const CREDITS_PER_DOLLAR = 1000;
 const PRESETS = [10, 20, 50] as const;
@@ -24,12 +25,8 @@ const MAX_CUSTOM_USD = 10_000;
 
 type Preset = (typeof PRESETS)[number];
 
-const settingsCardBorder = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
-
 const tileBaseClass =
-  "flex flex-col rounded-xl bg-background px-4 py-3 text-left transition-colors";
+  "flex flex-col rounded-[var(--zero-card-radius)] bg-background px-4 py-3 text-left transition-colors";
 
 function tileBorderClass(selected: boolean): string {
   return selected
@@ -256,15 +253,12 @@ export function BuyCreditsSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">
-        {t(($) => {
+      <SettingsSectionHeading
+        title={t(($) => {
           return $.billing.credits.title;
         })}
-      </h3>
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={settingsCardBorder}
-      >
+      />
+      <div className="zero-card overflow-hidden">
         <div className="flex flex-col gap-3 px-5 py-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">

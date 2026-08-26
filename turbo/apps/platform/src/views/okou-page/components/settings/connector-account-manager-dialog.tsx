@@ -197,7 +197,7 @@ function AccountRow({
             {label}
           </span>
           {account.isDefault ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {t(($) => {
                 return $.connectors.accounts.default;
               })}

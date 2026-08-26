@@ -38,7 +38,7 @@ function CaptureNetworkBodiesBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
+      <div className="zero-card flex items-center gap-4 px-5 py-4">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <Bug size={22} className="text-muted-foreground" />
@@ -50,7 +50,7 @@ function CaptureNetworkBodiesBlock() {
               return $.settings.preferences.debug.capture.title;
             })}
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-[13px] text-muted-foreground">
             {enabled
               ? t(
                   ($) => {
@@ -77,7 +77,7 @@ function CaptureNetworkBodiesBlock() {
 
 export function DebugSection() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <BuildInfoBlock />
       <ConnectionDiagnosticsBlock />
       <ConnectorCatalogDiagnosticsBlock />

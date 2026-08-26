@@ -125,10 +125,7 @@ function ConnectionCard({
     return null;
   }
   return (
-    <div
-      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3"
-      style={ZERO_BORDER}
-    >
+    <div className="zero-card flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
           {connection.displayName}
@@ -514,7 +511,7 @@ export function ModelProviderConnectionsSection() {
     return null;
   }
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <SettingsSectionHeading
         title={t(($) => {
           return $.settings.models.gateways.title;
@@ -525,10 +522,7 @@ export function ModelProviderConnectionsSection() {
         action={<AddConnectionMenu />}
       />
       {connections.length === 0 ? (
-        <p
-          className="rounded-xl bg-card px-4 py-5 text-sm text-muted-foreground"
-          style={ZERO_BORDER}
-        >
+        <p className="zero-card px-4 py-5 text-sm text-muted-foreground">
           {t(($) => {
             return $.settings.models.gateways.empty;
           })}

@@ -228,7 +228,7 @@ function CatalogDiagnosticsSummary({
   );
 
   return (
-    <summary className="flex w-full cursor-pointer list-none items-start gap-4 p-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
+    <summary className="flex w-full cursor-pointer list-none items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-state-hover [&::-webkit-details-marker]:hidden">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center">
         <Plug size={22} className="text-muted-foreground" />
       </span>
@@ -287,7 +287,7 @@ function RejectedCandidateDiagnostics({
 }) {
   return (
     <div className="border-t border-border/60 pt-4">
-      <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="mb-3 text-xs font-medium text-muted-foreground">
         {i18n.t(($) => {
           return $.connectors.providerSettings.catalogDiagnostics.sections
             .rejectedCandidate;
@@ -437,7 +437,7 @@ function DiagnosticsContent({
       <CatalogSyncDiagnostics diagnostics={diagnostics} />
 
       <div className="border-t border-border/60 pt-4">
-        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="mb-3 text-xs font-medium text-muted-foreground">
           {i18n.t(($) => {
             return $.connectors.providerSettings.catalogDiagnostics.sections
               .compatibility;
@@ -505,7 +505,7 @@ function DiagnosticsContent({
       </div>
 
       <div className="border-t border-border/60 pt-4">
-        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="mb-3 text-xs font-medium text-muted-foreground">
           {i18n.t(($) => {
             return $.connectors.providerSettings.catalogDiagnostics.sections
               .credentialStorage;
@@ -564,17 +564,17 @@ export function ConnectorCatalogDiagnosticsBlock() {
   return (
     <section
       aria-labelledby="connector-catalog-diagnostics-title"
-      className="overflow-hidden rounded-xl bg-card zero-border"
+      className="zero-card overflow-hidden"
     >
       {diagnostics ? (
         <details className="group">
           <CatalogDiagnosticsSummary diagnostics={diagnostics} />
-          <div className="border-t border-border/60 p-4">
+          <div className="border-t border-border/60 px-5 py-4">
             <DiagnosticsContent diagnostics={diagnostics} />
           </div>
         </details>
       ) : (
-        <div className="flex items-start gap-4 p-4">
+        <div className="flex items-start gap-4 px-5 py-4">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
               <Plug size={22} className="text-muted-foreground" />
@@ -589,7 +589,7 @@ export function ConnectorCatalogDiagnosticsBlock() {
                 return $.connectors.providerSettings.catalogDiagnostics.title;
               })}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-[13px] text-muted-foreground">
               {loading
                 ? t(($) => {
                     return $.connectors.providerSettings.catalogDiagnostics

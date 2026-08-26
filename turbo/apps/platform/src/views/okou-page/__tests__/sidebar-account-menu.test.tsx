@@ -1215,11 +1215,11 @@ describe("zero sidebar account menu", () => {
       const dialog = screen.getByRole("dialog", { name: "Settings" });
       expect(dialog).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Preference" }),
+        screen.getByRole("heading", { name: "Preferences" }),
       ).toBeInTheDocument();
       // Scoped to the dialog: the sidebar account row also carries the name.
       expect(
-        within(dialog).getByText("Account & Security"),
+        within(dialog).getByText("Account & security"),
       ).toBeInTheDocument();
       expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
       expect(
@@ -1329,7 +1329,7 @@ describe("zero sidebar account menu", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(
-      within(dialog).getByRole("heading", { name: "Preference" }),
+      within(dialog).getByRole("heading", { name: "Preferences" }),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText("Debug")).not.toBeInTheDocument();
   });
