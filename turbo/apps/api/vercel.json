@@ -77,6 +77,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/sync-official-workflow-catalog",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/process-usage-events",
       "schedule": "* * * * *"
     },
