@@ -323,7 +323,16 @@ impl WorkspaceCacheWatcher {
         }
         let entries = std::fs::read_dir(self.cache.workspace_image_cache_dir())
             .map_err(|error| watcher_io_error("scan entries", error.kind()))?;
-        for entry in entries.take(MAX_HELD_WORKSPACE_STATES) {
+        self.reconcile_entry_watches(entries, committed_cache_keys)
+            .await
+    }
+
+    async fn reconcile_entry_watches(
+        &mut self,
+        entries: impl Iterator<Item = std::io::Result<std::fs::DirEntry>>,
+        committed_cache_keys: &mut BTreeSet<String>,
+    ) -> RunnerResult<()> {
+        for entry in entries {
             if self.watch_by_cache_key.len() == MAX_HELD_WORKSPACE_STATES {
                 break;
             }
@@ -820,6 +829,65 @@ mod tests {
 
         assert!(!watcher.watch_by_cache_key.contains_key(&foreign_cache_key));
         assert!(watcher.watch_by_cache_key.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconciliation_scans_past_irrelevant_raw_entry_limit() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(temp.path().join("runner"));
+        let cache = WorkspaceImageCache::new(paths);
+        let mut watcher = WorkspaceCacheWatcher::new(cache.clone()).await.unwrap();
+
+        for index in 0..MAX_HELD_WORKSPACE_STATES {
+            std::fs::create_dir(
+                cache
+                    .workspace_image_cache_dir()
+                    .join(format!("irrelevant-{index:04}")),
+            )
+            .unwrap();
+        }
+        let relevant_cache_key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "relevant-after-raw-limit",
+            TEST_WORKING_DIR,
+            b"image-relevant-after-raw-limit".len() as u64,
+        );
+        cache
+            .ensure_workspace_cache_entry_dir(&relevant_cache_key)
+            .await
+            .unwrap();
+
+        let mut entries = std::fs::read_dir(cache.workspace_image_cache_dir())
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        entries.sort_by_key(|entry| entry.file_name() == OsStr::new(&relevant_cache_key));
+        assert_eq!(entries.len(), MAX_HELD_WORKSPACE_STATES + 1);
+        assert_eq!(
+            entries.last().unwrap().file_name(),
+            OsStr::new(&relevant_cache_key)
+        );
+
+        watcher
+            .reconcile_entry_watches(entries.into_iter().map(Ok), &mut BTreeSet::new())
+            .await
+            .unwrap();
+
+        assert!(watcher.watch_by_cache_key.contains_key(&relevant_cache_key));
+        assert_eq!(watcher.watch_by_cache_key.len(), 1);
+
+        assert_eq!(
+            commit_entry(&cache, "relevant-after-raw-limit").await,
+            relevant_cache_key
+        );
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), watcher.next_change())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([relevant_cache_key])
+        );
     }
 
     #[tokio::test]
