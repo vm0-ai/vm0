@@ -76,7 +76,9 @@ fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {
 }
 
 fn log_embedded_timezone_failure(run_id: RunId, tz: &str, result: &sandbox::ExecResult) {
-    if !stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER) {
+    if !stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER)
+        && !stderr_contains_marker(result, TIMEZONE_UNAVAILABLE_MARKER)
+    {
         return;
     }
 

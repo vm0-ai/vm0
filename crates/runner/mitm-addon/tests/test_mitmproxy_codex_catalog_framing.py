@@ -157,6 +157,7 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),

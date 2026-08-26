@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "guest-reseed"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "libc",
  "tempfile",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.174.0"
+version = "0.174.1"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

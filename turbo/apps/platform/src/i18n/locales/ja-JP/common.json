@@ -1988,7 +1988,7 @@
       "agents": "エージェント",
       "back": "戻る",
       "content": "内容",
-      "description": "選択した内容をエージェントまたはチャットに転送します。",
+      "description": "選択した内容をエージェントまたはチャットに送り、そのまま作業を続けます。",
       "noResults": "エージェントまたはチャットが見つかりません",
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
@@ -5023,6 +5023,20 @@
         "sectionTitle": "アカウントとセキュリティ"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "カラーテーマ"
+        },
         "description": "インターフェイスの外観を選択します。",
         "sectionTitle": "外観",
         "theme": {

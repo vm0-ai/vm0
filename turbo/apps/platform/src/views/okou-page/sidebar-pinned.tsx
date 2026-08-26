@@ -328,18 +328,22 @@ function PinnedAgentGridCard({
       title={displayName}
       draggable={isReorderable}
       onDragStart={(e) => {
+        e.dataTransfer.clearData();
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", agent.id);
+        e.dataTransfer.setData("application/x-okou-pinned-agent", agent.id);
         startDrag(agent.id);
       }}
       onDragEnd={() => {
         endDrag();
       }}
       onDragOver={(e) => {
-        if (!acceptsDrop) {
+        if (draggingAgentId === null) {
           return;
         }
         e.preventDefault();
+        if (!acceptsDrop) {
+          return;
+        }
         e.dataTransfer.dropEffect = "move";
         setDropTarget(agent.id);
       }}
@@ -349,10 +353,13 @@ function PinnedAgentGridCard({
         }
       }}
       onDrop={(e) => {
-        if (!acceptsDrop || draggingAgentId === null) {
+        if (draggingAgentId === null) {
           return;
         }
         e.preventDefault();
+        if (!acceptsDrop) {
+          return;
+        }
         detach(
           moveAgent(
             { agentId: draggingAgentId, targetAgentId: agent.id },
@@ -445,7 +452,7 @@ function PinAgentDialogContainer() {
   const onOpenChange = useSet(setPinAgentDialogOpen$);
   const subagents = useLastResolved(subagents$) ?? [];
   const pageSignal = useGet(pageSignal$);
-  const [, saveAgentPinned] = useLoadableSet(setAgentPinned$);
+  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
 
   if (!open) {
     return null;
@@ -456,11 +463,9 @@ function PinAgentDialogContainer() {
       open
       onOpenChange={onOpenChange}
       subagents={subagents}
+      saving={pinLoadable.state === "loading"}
       onSetAgentPinned={(agentId, pinned) => {
-        detach(
-          saveAgentPinned({ agentId, pinned }, pageSignal),
-          Reason.DomCallback,
-        );
+        return saveAgentPinned({ agentId, pinned }, pageSignal);
       }}
     />
   );

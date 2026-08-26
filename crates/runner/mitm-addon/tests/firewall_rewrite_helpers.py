@@ -2,6 +2,7 @@
 
 from urllib.parse import urlparse
 
+import auth
 import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import make_allow
 
@@ -80,6 +81,7 @@ def _make_rewrite_inputs(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     if token_overrides:
         token_meta.update(token_overrides)

@@ -684,6 +684,236 @@ async fn run_in_sandbox_stops_when_reserve_reports_terminal() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_stops_when_reserve_reports_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
+    let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+        "200 OK",
+        &format!(r#"{{"outcome":"held","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"]}}"#,),
+    ))])
+    .await;
+    let api_url = server.url();
+    let notifications = ActiveInputNotifications::new();
+    let source = api_active_input_source(api_url, run_id, &notifications, "active-input-held-test");
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let run_task = tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        )
+        .await
+    });
+
+    let requests = server.assert_finished_with_requests().await;
+    wait_gate.notify_one();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with(&format!("POST {reserve_path} ")));
+    assert!(overrides.process_control_calls().is_empty());
+}
+
+#[tokio::test]
+async fn run_in_sandbox_stops_when_reserve_rejects_run_not_running() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
+    let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+        "200 OK",
+        r#"{"outcome":"rejected","reason":"run_not_running"}"#,
+    ))])
+    .await;
+    let api_url = server.url();
+    let notifications = ActiveInputNotifications::new();
+    let source = api_active_input_source(
+        api_url,
+        run_id,
+        &notifications,
+        "active-input-run-not-running-test",
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let run_task = tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        )
+        .await
+    });
+
+    let requests = server.assert_finished_with_requests().await;
+    wait_gate.notify_one();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with(&format!("POST {reserve_path} ")));
+    assert!(overrides.process_control_calls().is_empty());
+}
+
+#[tokio::test]
+async fn run_in_sandbox_reconciles_after_payload_too_large_rejection() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response(
+            "200 OK",
+            r#"{"outcome":"rejected","reason":"payload_too_large"}"#,
+        )),
+        RawHttpAction::Respond(json_response("200 OK", r#"{"outcome":"terminal"}"#)),
+    ])
+    .await;
+    let api_url = server.url();
+    let notifications = ActiveInputNotifications::new();
+    let source = api_active_input_source(
+        api_url,
+        run_id,
+        &notifications,
+        "active-input-payload-too-large-test",
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_cancel = cancel.clone();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let mut run_task = Some(tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(run_cancel, Some(source)),
+        )
+        .await
+    }));
+    let mut server = Some(server);
+    let deadline = tokio::time::Instant::now() + RUN_IN_SANDBOX_TEST_TIMEOUT;
+
+    let scenario = async {
+        let Some(server_fixture) = server.as_mut() else {
+            return Err("active-input server ownership was lost before the first request".into());
+        };
+        let first_request = receive_http_request_before(
+            deadline,
+            server_fixture,
+            "the payload-too-large reserve request",
+        )
+        .await?;
+        notifications.notify(run_id);
+        let Some(server_fixture) = server.as_mut() else {
+            return Err("active-input server ownership was lost before the second request".into());
+        };
+        let second_request = receive_http_request_before(
+            deadline,
+            server_fixture,
+            "the terminal reserve request after payload-too-large rejection",
+        )
+        .await?;
+        wait_gate.notify_one();
+
+        let Some(run_handle) = run_task.as_mut() else {
+            return Err("runner task ownership was lost before completion".into());
+        };
+        let run_outcome = tokio::time::timeout_at(deadline, run_handle)
+            .await
+            .map_err(|_| "timed out waiting for the runner task to finish".to_string())?;
+        run_task.take();
+        let result = run_outcome
+            .map_err(|error| format!("runner task failed: {error}"))?
+            .map_err(|error| format!("run_in_sandbox failed: {error}"))?;
+
+        let Some(server_fixture) = server.take() else {
+            return Err("active-input server task ownership was lost before completion".into());
+        };
+        server_fixture.assert_finished().await;
+        Ok::<_, String>((result, [first_request, second_request]))
+    }
+    .await;
+
+    let (result, requests) = match scenario {
+        Ok(result) => result,
+        Err(error) => {
+            cancel.cancel();
+            wait_gate.notify_one();
+            if let Some(server_fixture) = server.take() {
+                server_fixture.cancel_and_reap().await;
+            }
+            let cleanup_errors = reap_spawned_test_task(run_task.take(), "runner")
+                .await
+                .into_iter()
+                .collect::<Vec<_>>();
+            if cleanup_errors.is_empty() {
+                panic!("{error}");
+            }
+            panic!("{error}; cleanup errors: {}", cleanup_errors.join("; "));
+        }
+    };
+    assert!(result.failure.is_none());
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.starts_with(&format!("POST {reserve_path} ")))
+    );
+    assert!(overrides.process_control_calls().is_empty());
+}
+
+#[tokio::test]
 async fn run_in_sandbox_retries_not_written_delivery_with_same_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

@@ -1988,7 +1988,7 @@
       "agents": "Agen",
       "back": "Kembali",
       "content": "Konten",
-      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "description": "Kirim konten yang dipilih ke agen atau chat untuk melanjutkan pengerjaannya.",
       "noResults": "Agen atau chat tidak ditemukan",
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",
@@ -5023,6 +5023,20 @@
         "sectionTitle": "Akun & Keamanan"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Terapkan palet yang cerah dan lembut ke setiap lapisan antarmuka.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema warna"
+        },
         "description": "Pilih tampilan antarmuka.",
         "sectionTitle": "Tampilan",
         "theme": {

@@ -17,6 +17,7 @@ from authority_utils import (
 )
 from host_normalization import normalize_hostname
 from path_security import has_unsafe_path
+from runtime_url_parsing import split_runtime_url
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_url_codepoint,
@@ -194,7 +195,7 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
             "Invalid auth.base URL: must not contain control characters or invalid Unicode"
         )
 
-    parsed = urllib.parse.urlsplit(resolved_base)
+    parsed = split_runtime_url(resolved_base)
     if parsed.scheme.lower() != _VALID_AUTH_BASE_SCHEME:
         raise ValueError("Invalid auth.base URL: scheme must be https")
     if not parsed.netloc:

@@ -1991,7 +1991,7 @@
       "agents": "एजेंट",
       "back": "वापस",
       "content": "सामग्री",
-      "description": "चुनी गई सामग्री को किसी एजेंट या चैट में फ़ॉरवर्ड करें।",
+      "description": "चुनी गई सामग्री पर काम जारी रखने के लिए उसे किसी एजेंट या चैट में भेजें।",
       "noResults": "कोई एजेंट या चैट नहीं मिली",
       "search": "एजेंट और चैट खोजें...",
       "sent": "सफलतापूर्वक फ़ॉरवर्ड किया गया",
@@ -5031,6 +5031,20 @@
         "sectionTitle": "खाता एवं सुरक्षा"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "हर इंटरफ़ेस परत में एक चमकदार और हल्का रंग पैलेट लागू करें।",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "कलर थीम"
+        },
         "description": "चुनें कि इंटरफ़ेस कैसा दिखेगा.",
         "sectionTitle": "उपस्थिति",
         "theme": {

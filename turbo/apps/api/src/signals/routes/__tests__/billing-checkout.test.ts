@@ -205,6 +205,17 @@ function mockUsagePackCatalog(): void {
     if (typeof priceId !== "string") {
       throw new Error("Expected a Stripe Price ID");
     }
+    if (priceId === TEST_PRICE_CONCURRENCY) {
+      return Promise.resolve({
+        id: priceId,
+        active: true,
+        currency: "usd",
+        type: "recurring",
+        recurring: { interval: "month", interval_count: 1 },
+        unit_amount: 10_000,
+        product: "prod_concurrency",
+      });
+    }
     const configuration = usagePackPriceConfiguration(priceId);
     return Promise.resolve({
       id: priceId,

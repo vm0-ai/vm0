@@ -49,6 +49,10 @@ import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purc
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
 import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -339,10 +343,23 @@ function AttachmentLightboxMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const colorTheme = useGet(colorTheme$);
+  const gradientColorThemesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
   const { t } = useTranslation();
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background">
+    <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
+      className="zero-app zero-viewport-shell flex w-full bg-background"
+      data-gradient-color-themes={gradientColorThemesEnabled || undefined}
+      data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
+    >
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <ConcurrencyConfirmDialog />

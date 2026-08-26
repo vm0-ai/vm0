@@ -745,6 +745,28 @@ describe("app auth pages", () => {
     expect(getComputedStyle(checkbox).height).toBe("16px");
   });
 
+  it("presents the Clerk passkey action as a full-width outline control", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    const action = document.createElement("div");
+    action.className = "cl-footerAction cl-footerAction__usePasskey";
+    const link = document.createElement("a");
+    link.className = "cl-footerActionLink cl-footerActionLink__usePasskey";
+    link.href = "#";
+    link.textContent = "Use passkey instead";
+    action.append(link);
+    clerkSurface.append(action);
+
+    expect(getComputedStyle(action).width).toBe("100%");
+    expect(getComputedStyle(link).display).toBe("inline-flex");
+    expect(getComputedStyle(link).height).toBe("36px");
+    expect(getComputedStyle(link).width).toBe("100%");
+    expect(getComputedStyle(link).borderStyle).toBe("solid");
+  });
+
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);

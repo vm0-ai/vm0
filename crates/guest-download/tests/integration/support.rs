@@ -1,13 +1,113 @@
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Map, Value, json};
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+const TCP_SERVER_ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const TCP_SERVER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const TCP_SERVER_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(1);
+
+pub(crate) struct TcpTestServerControl {
+    listener: TcpListener,
+    stop_rx: Receiver<()>,
+}
+
+impl TcpTestServerControl {
+    pub(crate) fn accept(&self) -> io::Result<Option<TcpStream>> {
+        loop {
+            match self.stop_rx.try_recv() {
+                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return Ok(None),
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+
+            match self.listener.accept() {
+                Ok((stream, _)) => return Ok(Some(stream)),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    match self.stop_rx.recv_timeout(TCP_SERVER_ACCEPT_POLL_INTERVAL) {
+                        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    pub(crate) fn wait_for_shutdown(&self) {
+        let _ = self.stop_rx.recv();
+    }
+}
+
+pub(crate) struct TcpTestServer<T: Send + 'static> {
+    base_url: String,
+    stop_tx: Sender<()>,
+    handle: Option<JoinHandle<io::Result<T>>>,
+}
+
+impl<T: Send + 'static> TcpTestServer<T> {
+    pub(crate) fn start(
+        serve: impl FnOnce(TcpTestServerControl) -> io::Result<T> + Send + 'static,
+    ) -> io::Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let handle = thread::spawn(move || serve(TcpTestServerControl { listener, stop_rx }));
+
+        Ok(Self {
+            base_url,
+            stop_tx,
+            handle: Some(handle),
+        })
+    }
+
+    pub(crate) fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    pub(crate) fn finish(mut self) -> io::Result<T> {
+        self.shutdown()
+    }
+
+    fn shutdown(&mut self) -> io::Result<T> {
+        let handle = self
+            .handle
+            .take()
+            .ok_or_else(|| io::Error::other("TCP test server lost its thread"))?;
+        let _ = self.stop_tx.send(());
+        let deadline = Instant::now() + TCP_SERVER_CLEANUP_TIMEOUT;
+        while !handle.is_finished() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("TCP test server did not stop within {TCP_SERVER_CLEANUP_TIMEOUT:?}"),
+                ));
+            }
+            thread::sleep(remaining.min(TCP_SERVER_JOIN_POLL_INTERVAL));
+        }
+
+        handle
+            .join()
+            .map_err(|_| io::Error::other("TCP test server panicked"))?
+    }
+}
+
+impl<T: Send + 'static> Drop for TcpTestServer<T> {
+    fn drop(&mut self) {
+        if self.handle.is_some() {
+            let _ = self.shutdown();
+        }
+    }
+}
 
 pub(crate) fn read_http_request_path(stream: &mut TcpStream) -> std::io::Result<String> {
     let mut request = Vec::new();

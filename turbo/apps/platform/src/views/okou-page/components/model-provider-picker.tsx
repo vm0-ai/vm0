@@ -1213,16 +1213,14 @@ function ModelFirstModelPickerContentLayout({
         // model name; now that a family contributes one row, the widest row is
         // a name beside a badge again.
         "min-w-[260px]",
-        mediaModelPanel
-          ? // The 290px bordered cap leaves a 288px scroll viewport: enough for
-            // the header and seven model rows, while an eighth adds one 32px
-            // row plus its 4px gap. The image category is the one that runs
-            // past it today, and scrolls by that single row. The cap tracks the
-            // header's height -- it lost 12px when the header went to `py-1`
-            // and dropped the gap beneath it; both numbers move together or
-            // seven rows stop fitting.
-            "max-h-[290px]"
-          : "max-h-[280px]",
+        // No row-count cap: a fixed one made the popup taller than the space it
+        // had on short viewports and shorter than its own list on tall ones.
+        // The image category was the list that outgrew it, so switching to it
+        // animated the popup up to the cap, stopped short of the height the
+        // animation was still travelling to, and then dropped a scrollbar in
+        // when the animation restored the overflow. The available height is
+        // the only real limit, and the popup carries its own list under it.
+        "max-h-[var(--available-height)]",
       )}
     >
       {/* A media-model panel replaces the model rows, so keep the selected run

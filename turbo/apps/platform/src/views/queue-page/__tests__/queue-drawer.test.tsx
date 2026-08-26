@@ -83,6 +83,7 @@ function mockConcurrencyCapability(
   canBuyConcurrency: boolean,
   concurrencySubscriptions: BillingStatusResponse["concurrencySubscriptions"] = [],
   purchaseReviewAvailable = false,
+  concurrencyUnitAmountCents = 10_000,
 ): void {
   const status: BillingStatusResponse = {
     tier: "pro",
@@ -100,6 +101,7 @@ function mockConcurrencyCapability(
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions,
+    concurrencyUnitAmountCents,
     ...(purchaseReviewAvailable
       ? { concurrencyPurchaseReviewAvailable: true }
       : {}),
@@ -327,7 +329,7 @@ describe("queue drawer", () => {
   });
 
   it("shows additional concurrency checkout for Team admins", async () => {
-    mockConcurrencyCapability(true);
+    mockConcurrencyCapability(true, [], false, 4200);
     context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
@@ -351,8 +353,8 @@ describe("queue drawer", () => {
     });
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
     expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
-    expect(screen.getByText("$100/month")).toBeInTheDocument();
-    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    expect(screen.getByText("$42/month")).toBeInTheDocument();
+    expect(screen.getByText("Buy $42/month")).toBeInTheDocument();
   });
 
   it("refreshes the concurrency limit when billing changes in realtime", async () => {

@@ -22,6 +22,7 @@ import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 import { LanguageSettings } from "../language-settings.tsx";
+import { ColorThemeSettings } from "../color-theme-settings.tsx";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
@@ -212,6 +213,7 @@ export function PreferenceSection() {
           })}
         />
         <AppearanceBlock />
+        <ColorThemeSettings />
         <LanguageSettings />
       </section>
 

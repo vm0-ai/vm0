@@ -1,6 +1,12 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable, type Loadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
@@ -1430,8 +1436,6 @@ function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
   );
 }
 
-const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
-
 function slotCountLabel(count: number): string {
   return i18n.t(
     ($) => {
@@ -1441,13 +1445,20 @@ function slotCountLabel(count: number): string {
   );
 }
 
-function concurrencyMonthlyPrice(quantity: number): string {
+function concurrencyMonthlyPrice(
+  quantity: number,
+  unitAmountCents: number | undefined,
+): string | null {
+  if (unitAmountCents === undefined) {
+    return null;
+  }
+  const amountCents = quantity * unitAmountCents;
   return i18n.t(
     ($) => {
       return $.billing.plans.pricePerMonth;
     },
     {
-      price: formatUsd(quantity * CONCURRENCY_SLOT_MONTHLY_PRICE_USD, 0),
+      price: formatUsd(amountCents / 100, amountCents % 100 === 0 ? 0 : 2),
     },
   );
 }
@@ -1825,12 +1836,14 @@ function ConcurrencyQuantityEditor({
   targetQuantity,
   loading,
   onQuantityChange,
+  unitAmountCents,
 }: {
   readonly currentQuantity: number;
   readonly canReduce: boolean;
   readonly targetQuantity: number | null;
   readonly loading: boolean;
   readonly onQuantityChange: (quantity: number | null) => void;
+  readonly unitAmountCents: number | undefined;
 }) {
   const minimumChangeQuantity = concurrencyMinimumChangeQuantity(
     currentQuantity,
@@ -1862,7 +1875,7 @@ function ConcurrencyQuantityEditor({
         </span>
         <span className="font-medium tabular-nums text-foreground">
           {quantityAllowed && targetQuantity !== null
-            ? concurrencyMonthlyPrice(targetQuantity)
+            ? (concurrencyMonthlyPrice(targetQuantity, unitAmountCents) ?? "—")
             : "—"}
         </span>
       </div>
@@ -1941,6 +1954,7 @@ function ConcurrencyConfirmDialogContent({
   readonly onClose: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const status = useLastResolved(billingStatusAsync$);
   const setChangeMode = useSet(setConcurrencyChangeMode$);
   const setTargetQuantity = useSet(setConcurrencyTargetQuantity$);
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
@@ -2071,6 +2085,7 @@ function ConcurrencyConfirmDialogContent({
           targetQuantity={targetQuantity}
           loading={loading}
           onQuantityChange={setTargetQuantity}
+          unitAmountCents={status?.concurrencyUnitAmountCents}
         />
       ) : null}
 
@@ -2187,6 +2202,7 @@ function ConcurrencyPurchaseDialog({
   readonly reviewAvailable: boolean;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const status = useLastResolved(billingStatusAsync$);
   const open = useGet(concurrencyPurchaseDialogOpen$);
   const close = useSet(closeConcurrencyPurchaseDialog$);
   const quantityOverride = useGet(concurrencySubscriptionQuantity$);
@@ -2205,6 +2221,10 @@ function ConcurrencyPurchaseDialog({
       confirmDialog.origin === "billing");
   const quantity = quantityOverride;
   const effectiveQuantity = quantity ?? 0;
+  const monthlyPrice = concurrencyMonthlyPrice(
+    effectiveQuantity,
+    status?.concurrencyUnitAmountCents,
+  );
   const actionLabel = checkoutLoading
     ? i18n.t(($) => {
         return reviewAvailable
@@ -2215,12 +2235,16 @@ function ConcurrencyPurchaseDialog({
       ? i18n.t(($) => {
           return $.billing.concurrency.reviewPurchase;
         })
-      : i18n.t(
-          ($) => {
-            return $.billing.concurrency.buyAmount;
-          },
-          { amount: concurrencyMonthlyPrice(effectiveQuantity) },
-        );
+      : monthlyPrice
+        ? i18n.t(
+            ($) => {
+              return $.billing.concurrency.buyAmount;
+            },
+            { amount: monthlyPrice },
+          )
+        : i18n.t(($) => {
+            return $.billing.concurrency.buyButton;
+          });
 
   return (
     <Dialog
@@ -2254,7 +2278,7 @@ function ConcurrencyPurchaseDialog({
               })}
             </span>
             <span className="font-medium tabular-nums text-foreground">
-              {concurrencyMonthlyPrice(effectiveQuantity)}
+              {monthlyPrice ?? "—"}
             </span>
           </div>
         </div>

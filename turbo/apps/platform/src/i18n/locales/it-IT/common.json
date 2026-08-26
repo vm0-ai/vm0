@@ -2024,7 +2024,7 @@
       "agents": "Agenti",
       "back": "Indietro",
       "content": "Contenuto",
-      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "description": "Invia il contenuto selezionato a un agente o a una chat per continuare a lavorarci.",
       "noResults": "Nessun agente o chat trovato",
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",
@@ -5089,6 +5089,20 @@
         "sectionTitle": "Conto e sicurezza"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Applica una palette luminosa e delicata a ogni livello dell'interfaccia.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema colore"
+        },
         "description": "Scegli l'aspetto dell'interfaccia.",
         "sectionTitle": "Aspetto",
         "theme": {
