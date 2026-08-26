@@ -236,23 +236,25 @@ function OAuthAccountGroup({
 
   return (
     <div className="[&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50">
-      <div className="flex items-center gap-3 px-5 py-4">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ProviderIcon type={type} size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
-            {title}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {description}
-          </p>
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+            <ProviderIcon type={type} size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="break-words text-sm font-medium text-foreground sm:truncate">
+              {title}
+            </p>
+            <p className="mt-0.5 break-words text-xs text-muted-foreground sm:truncate">
+              {description}
+            </p>
+          </div>
         </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="zero-btn-morandi h-9 w-full shrink-0 gap-1.5 rounded-lg border sm:w-auto"
           disabled={actionPending || accounts.length >= 10}
           onClick={onAdd}
         >
@@ -1275,30 +1277,32 @@ function OAuthCredentialRow({
       data-testid={testId}
       className="px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
     >
-      <div className="flex items-center gap-3">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ProviderIcon type={type} size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p
-            data-testid="connector-card-label"
-            className="truncate text-sm font-medium text-foreground"
-          >
-            {title}
-          </p>
-          <p
-            data-testid="connector-help-text"
-            className="mt-0.5 truncate text-xs text-muted-foreground"
-          >
-            {description}
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+            <ProviderIcon type={type} size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p
+              data-testid="connector-card-label"
+              className="break-words text-sm font-medium text-foreground sm:truncate"
+            >
+              {title}
+            </p>
+            <p
+              data-testid="connector-help-text"
+              className="mt-0.5 break-words text-xs text-muted-foreground sm:truncate"
+            >
+              {description}
+            </p>
+          </div>
         </div>
         {status === "missing" ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+            className="zero-btn-morandi h-9 w-full shrink-0 rounded-lg border sm:w-auto"
             aria-label={t(
               ($) => {
                 return $.settings.models.personal.actionForProvider;
@@ -1314,7 +1318,7 @@ function OAuthCredentialRow({
             {actionLabel}
           </Button>
         ) : (
-          <div className="ml-auto flex items-center justify-end gap-1.5">
+          <div className="flex w-full items-center justify-between gap-1.5 sm:ml-auto sm:w-auto sm:justify-end">
             <OAuthFooterStatus
               status={status}
               detail={status === "connected" ? connectedDetail : null}
@@ -1406,14 +1410,16 @@ function OAuthCredentialRowSkeleton() {
   return (
     <div
       data-testid="oauth-card-skeleton"
-      className="flex animate-pulse items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
+      className="flex animate-pulse flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
     >
-      <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
-      <div className="min-w-0 flex-1">
-        <span className="block h-4 w-32 rounded bg-muted/50" />
-        <span className="mt-1.5 block h-3 w-48 rounded bg-muted/30" />
+      <div className="flex w-full min-w-0 items-center gap-3">
+        <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+        <div className="min-w-0 flex-1">
+          <span className="block h-4 w-32 rounded bg-muted/50" />
+          <span className="mt-1.5 block h-3 w-48 max-w-full rounded bg-muted/30" />
+        </div>
       </div>
-      <span className="h-9 w-20 shrink-0 rounded bg-muted/30" />
+      <span className="h-9 w-full shrink-0 rounded bg-muted/30 sm:w-20" />
     </div>
   );
 }
