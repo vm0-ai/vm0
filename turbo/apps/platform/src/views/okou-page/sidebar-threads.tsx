@@ -20,10 +20,7 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import {
-  CHAT_SIDEBAR_ICON_CLASS,
-  useChatThreadsTitleLabels,
-} from "./sidebar-shared.tsx";
+import { useChatThreadsTitleLabels } from "./sidebar-shared.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -96,6 +93,8 @@ import {
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { equalArrays } from "../../lib/equality.ts";
+
+const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px] [&_svg]:opacity-70";
 
 function equalSidebarChatThreadWindows(
   previous: SidebarChatThreadWindow,
@@ -231,7 +230,7 @@ function ChatThreadMenu({
             size="icon-2xs"
             className={`peer pointer-events-auto absolute left-1 top-1 cursor-pointer rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
-            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible ${CHAT_SIDEBAR_ICON_CLASS}`}
+            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible ${CHAT_THREAD_ROW_ICON_CLASS}`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -348,7 +347,7 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className={`hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex ${CHAT_SIDEBAR_ICON_CLASS}`}
+                className={`hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex ${CHAT_THREAD_ROW_ICON_CLASS}`}
               >
                 <Pin size={17} />
               </span>
@@ -700,7 +699,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Ellipsis size={17} />
+          <Ellipsis size={18} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -867,7 +866,8 @@ function ChatThreadsListMenu({
             }}
             variant="quiet"
             size="icon-sm"
-            className={`relative z-10 shrink-0 ${CHAT_SIDEBAR_ICON_CLASS}`}
+            iconSize="md"
+            className="relative z-10 shrink-0"
             aria-label={t(($) => {
               return $.chat.sidebar.openListMenu;
             })}

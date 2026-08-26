@@ -6,8 +6,6 @@ import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 
-export const CHAT_SIDEBAR_ICON_CLASS = "[&_svg]:size-[17px] [&_svg]:opacity-70";
-
 /**
  * Returns labels for the current agent-scoped chat thread list.
  * Used by both the sidebar thread list and the full chat-list page so the two

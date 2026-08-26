@@ -64,8 +64,6 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { CHAT_SIDEBAR_ICON_CLASS } from "./sidebar-shared.tsx";
-
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
@@ -706,10 +704,10 @@ function ThreeColumnChatListToggle({
           aria-keyshortcuts="Meta+B Control+B"
           variant="quiet"
           size="icon-sm"
-          className={CHAT_SIDEBAR_ICON_CLASS}
+          iconSize="md"
         >
           <PanelLeftClose
-            size={17}
+            size={18}
             className={cn(
               "transition-transform duration-200",
               hidden && "rotate-180",
@@ -869,9 +867,9 @@ function ChatListColumn() {
                 aria-keyshortcuts="Meta+K Control+K"
                 variant="quiet"
                 size="icon-sm"
-                className={CHAT_SIDEBAR_ICON_CLASS}
+                iconSize="md"
               >
-                <Search size={17} />
+                <Search size={18} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -890,9 +888,9 @@ function ChatListColumn() {
                 aria-label={newChatLabel}
                 variant="quiet"
                 size="icon-sm"
-                className={CHAT_SIDEBAR_ICON_CLASS}
+                iconSize="md"
               >
-                <Edit size={17} />
+                <Edit size={18} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
