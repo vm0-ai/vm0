@@ -4,7 +4,7 @@ import {
 } from "@okouai/api-contracts/contracts/runs";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { logger } from "../../lib/log";
@@ -157,6 +157,38 @@ async function lockExistingRoute(
     .for("update")
     .limit(1);
   return row ?? null;
+}
+
+async function hasReconcilableObservation(
+  tx: Tx,
+  args: {
+    readonly route: RouteIdentity;
+    readonly runId: string;
+    readonly timestamp: Date;
+  },
+): Promise<boolean> {
+  const [row] = await tx
+    .select({
+      connectionObservationRunId:
+        builtInModelCandidateCooldown.connectionObservationRunId,
+    })
+    .from(builtInModelCandidateCooldown)
+    .where(
+      and(
+        routeCondition(args.route),
+        eq(
+          builtInModelCandidateCooldown.connectionObservationRunId,
+          args.runId,
+        ),
+        gt(
+          builtInModelCandidateCooldown.connectionObservationUntil,
+          args.timestamp,
+        ),
+        lte(builtInModelCandidateCooldown.unavailableUntil, args.timestamp),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
 
 async function materializeAndLockRoute(
@@ -422,6 +454,15 @@ export async function reconcileBuiltInModelProviderFailureObservation(
     return undefined;
   }
   const timestamp = nowDate();
+  if (
+    !(await hasReconcilableObservation(tx, {
+      route,
+      runId: args.run.id,
+      timestamp,
+    }))
+  ) {
+    return undefined;
+  }
   const row = await lockExistingRoute(tx, route);
   if (
     !row ||
