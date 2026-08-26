@@ -39,14 +39,14 @@ export interface ComposerConnectorAccountSignals {
   readonly summaryByTarget$: Computed<
     Promise<ReadonlyMap<string, ConnectorAccountSummary>>
   >;
-  readonly panelTarget$: Computed<ConnectorAccountTarget | null>;
-  readonly panelOpen$: Computed<boolean>;
+  readonly menuTarget$: Computed<ConnectorAccountTarget | null>;
+  readonly menuOpen$: Computed<boolean>;
   readonly search$: Computed<string>;
   readonly accounts$: ReturnType<
     typeof createConnectorAccountListSignals
   >["accounts$"];
   readonly openTarget$: Command<void, [ConnectorAccountTarget, AbortSignal]>;
-  readonly closePanel$: Command<void, []>;
+  readonly closeMenu$: Command<void, []>;
   readonly setSearch$: ReturnType<
     typeof createConnectorAccountListSignals
   >["setSearch$"];
@@ -182,8 +182,8 @@ export function createComposerConnectorAccountSignals(
   threadId?: string,
 ): ComposerConnectorAccountSignals {
   const list = createConnectorAccountListSignals();
-  const panelTarget$ = state<ConnectorAccountTarget | null>(null);
-  const panelOpen$ = state(false);
+  const menuTarget$ = state<ConnectorAccountTarget | null>(null);
+  const menuOpen$ = state(false);
   const reloadVersion$ = state(0);
   const pendingState$ = state<ComposerConnectorAccountPreferenceState>(
     emptyPreferenceState(),
@@ -229,8 +229,8 @@ export function createComposerConnectorAccountSignals(
       target: ConnectorAccountTarget,
       signal: AbortSignal,
     ): void => {
-      const currentTarget = get(panelTarget$);
-      set(panelTarget$, target);
+      const currentTarget = get(menuTarget$);
+      set(menuTarget$, target);
       if (
         currentTarget &&
         connectorAccountTargetKey(currentTarget) ===
@@ -240,11 +240,11 @@ export function createComposerConnectorAccountSignals(
       } else {
         set(list.setTarget$, target, signal);
       }
-      set(panelOpen$, true);
+      set(menuOpen$, true);
     },
   );
-  const closePanel$ = command(({ set }): void => {
-    set(panelOpen$, false);
+  const closeMenu$ = command(({ set }): void => {
+    set(menuOpen$, false);
     set(list.resetSearch$);
   });
 
@@ -267,16 +267,16 @@ export function createComposerConnectorAccountSignals(
     enabled$,
     preferenceState$,
     summaryByTarget$: connectorAccountSummaryByTarget$,
-    panelTarget$: computed((get) => {
-      return get(panelTarget$);
+    menuTarget$: computed((get) => {
+      return get(menuTarget$);
     }),
-    panelOpen$: computed((get) => {
-      return get(panelOpen$);
+    menuOpen$: computed((get) => {
+      return get(menuOpen$);
     }),
     search$: list.search$,
     accounts$: list.accounts$,
     openTarget$,
-    closePanel$,
+    closeMenu$,
     setSearch$: list.setSearch$,
     loadMore$: list.loadMore$,
     selectAccount$,

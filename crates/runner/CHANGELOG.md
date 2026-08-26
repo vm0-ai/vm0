@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.174.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.12...runner-rs-v0.174.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Documentation
+
+* **python:** document network-log capture sanitization contract ([#29520](https://github.com/vm0-ai/vm0/issues/29520)) ([d045922](https://github.com/vm0-ai/vm0/commit/d04592238dab57c39fcaf70e946234c482b6bb71))
+
+
+### Performance Improvements
+
+* **runner:** bound axiom textual fields before queueing ([#29522](https://github.com/vm0-ai/vm0/issues/29522)) ([65cc652](https://github.com/vm0-ai/vm0/commit/65cc65243f9d49f689e51ee7ccc61dfabdd6dfb6))
+
 ## [0.173.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.11...runner-rs-v0.173.12) (2026-08-26)
 
 

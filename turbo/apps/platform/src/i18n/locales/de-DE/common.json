@@ -1929,13 +1929,13 @@
       "yourComputer": "Ihr Computer"
     },
     "connectors": {
+      "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",
       "addConnectors": "Integrationen hinzufügen",
       "authorizationFailed": "{{connectorName}} verbunden, konnte aber nicht für {{agentName}} autorisiert werden",
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
-      "back": "Zurück",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
       "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",

@@ -15,6 +15,7 @@ import anthropic_accounting
 import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import response_streaming
 import usage
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
@@ -222,6 +223,84 @@ class TestAnthropicMessagesSseUsage:
             event="compressed_body",
             error=body_decoding.INCOMPLETE_COMPRESSED_BODY,
         )
+
+    def test_incomplete_anthropic_accounting_missing_run_id_is_not_retained(
+        self,
+        tmp_path: Path,
+        real_flow: RealFlowFactory,
+        mitm_ctx,
+        usage_webhook_server: UsageWebhookServer,
+    ) -> None:
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        pending_path = install_runner_usage_flush_request(tmp_path)
+
+        with mitm_ctx(api_url=usage_webhook_server.api_url):
+            _feed_incomplete_anthropic_sse_without_recoverable_usage(flow)
+            flow.metadata[metadata_keys.SANDBOX_RUN_ID] = ""
+            response_streaming.finalize_model_sse_usage(flow)
+
+            assert _anthropic_accounting_requests(usage_webhook_server) == []
+            assert_current_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+            )
+
+            request_runner_usage_flush()
+
+            assert _anthropic_accounting_requests(usage_webhook_server) == []
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+
+    @pytest.mark.parametrize(
+        ("sandbox_token", "has_api_url"),
+        [
+            pytest.param("", True, id="missing-sandbox-token"),
+            pytest.param("tok-xyz", False, id="missing-api-url"),
+        ],
+    )
+    def test_incomplete_anthropic_accounting_missing_reporting_context_is_not_retained(
+        self,
+        tmp_path: Path,
+        real_flow: RealFlowFactory,
+        mitm_ctx,
+        usage_webhook_server: UsageWebhookServer,
+        sandbox_token: str,
+        has_api_url: bool,
+    ) -> None:
+        flow = _anthropic_messages_sse_flow(tmp_path, real_flow)
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = sandbox_token
+        pending_path = install_runner_usage_flush_request(tmp_path)
+        api_url = usage_webhook_server.api_url if has_api_url else ""
+
+        with mitm_ctx(api_url=api_url):
+            _feed_incomplete_anthropic_sse_without_recoverable_usage(flow)
+            mitm_addon.response(flow)
+
+            assert _anthropic_accounting_requests(usage_webhook_server) == []
+            assert_current_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+            )
+
+            request_runner_usage_flush()
+
+            assert _anthropic_accounting_requests(usage_webhook_server) == []
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
 
     def test_saturated_incomplete_anthropic_accounting_retries_through_runner_flush(
         self,

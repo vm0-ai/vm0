@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.799.3](https://github.com/vm0-ai/vm0/compare/app-v0.799.2...app-v0.799.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **platform:** keep connector row height stable ([#29502](https://github.com/vm0-ai/vm0/issues/29502)) ([e67a40c](https://github.com/vm0-ai/vm0/commit/e67a40c22f7e4a0df671fe315aba00e4bfdac2a3))
+* **platform:** keep thread account selection in a menu ([#29526](https://github.com/vm0-ai/vm0/issues/29526)) ([f3b0840](https://github.com/vm0-ai/vm0/commit/f3b0840afc628c01cae5c81a260f7a0b0355b3f7))
+* **platform:** preview the real shape while drawing and widen the keyboard ([#29505](https://github.com/vm0-ai/vm0/issues/29505)) ([ae7fef8](https://github.com/vm0-ai/vm0/commit/ae7fef885b83f59c9c974dbf4d07b5db5934cef1))
+* **platform:** share uploaded template resources ([#29506](https://github.com/vm0-ai/vm0/issues/29506)) ([1ec4a25](https://github.com/vm0-ai/vm0/commit/1ec4a250ac4aa5a33a302f65863da2c421cb3d8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+
 ## [0.799.2](https://github.com/vm0-ai/vm0/compare/app-v0.799.1...app-v0.799.2) (2026-08-26)
 
 

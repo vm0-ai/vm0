@@ -4,6 +4,11 @@ import type {
   ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
+  connectorAccountsContract,
+  type ConnectorAccountInspectionResult,
+  type ConnectorAccountSelection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
   connectorManualGrantContract,
   connectorsBySlugContract,
   connectorsMainContract,
@@ -49,6 +54,27 @@ type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
 type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
+
+export async function inspectConnectorAccounts(
+  selections: readonly ConnectorAccountSelection[],
+): Promise<readonly ConnectorAccountInspectionResult[] | null> {
+  const config = await getClientConfig();
+  const client = initClient(connectorAccountsContract, {
+    ...config,
+    validateResponse: true,
+  });
+  const result = await client.inspect({
+    headers: {},
+    body: { selections: [...selections] },
+  });
+  if (result.status === 200) {
+    return result.body.results;
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, "Failed to inspect connector accounts for this run");
+}
 
 /**
  * List all connectors for the authenticated user (zero proxy)

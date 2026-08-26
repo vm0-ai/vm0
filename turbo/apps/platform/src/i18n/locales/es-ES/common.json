@@ -1959,6 +1959,7 @@
       "yourComputer": "Tu ordenador"
     },
     "connectors": {
+      "accountForThread": "Cuenta para este hilo",
       "add": "Añadir {{connectorName}}",
       "addConnectors": "Añadir conectores",
       "authorizationFailed": "{{connectorName}} está conectado, pero no se pudo autorizar para {{agentName}}",
@@ -1966,7 +1967,6 @@
       "available_one": "Conectores disponibles para conectar ({{count}})",
       "available_many": "Conectores disponibles para conectar ({{count}})",
       "available_other": "Conectores disponibles para conectar ({{count}})",
-      "back": "Atrás",
       "configurePermissions": "Configurar permisos de {{connectorName}}",
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
       "defaultAccountFor": "{{connector}} · Usando la cuenta predeterminada: {{account}}",

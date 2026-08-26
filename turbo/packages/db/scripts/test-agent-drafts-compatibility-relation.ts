@@ -11,6 +11,7 @@ const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "0996_curvy_ben_urich";
 const expansionMigration = "0997_agent_drafts_compatibility_relation";
 const switchMigration = "0998_agent_drafts_physical_switch";
+const contractMigration = "1001_contract_legacy_agent_drafts_view";
 const testDatabase = "migration_agent_drafts_relation";
 
 const parentAgentId = "00000000-0000-4000-8000-000000099701";
@@ -99,6 +100,15 @@ interface RelationIdentity {
   readonly relationOid: string;
 }
 
+interface PhysicalRelationIdentity extends RelationIdentity {
+  readonly relationFileNode: string;
+}
+
+interface LegacyViewCatalogIdentity {
+  readonly relationOid: string;
+  readonly rewriteRuleOid: string;
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -132,6 +142,15 @@ async function validateMigrationSql(): Promise<void> {
   assert.equal(
     switchSql.trim().replace(/\s+/gu, " "),
     'DROP VIEW "agent_drafts"; --> statement-breakpoint ALTER TABLE "zero_agent_drafts" RENAME TO "agent_drafts"; --> statement-breakpoint ALTER TABLE "agent_drafts" RENAME CONSTRAINT "zero_agent_drafts_agent_id_agents_id_fk" TO "agent_drafts_agent_id_agents_id_fk"; --> statement-breakpoint ALTER TABLE "agent_drafts" RENAME CONSTRAINT "zero_agent_drafts_draft_user_message_check" TO "agent_drafts_draft_user_message_check"; --> statement-breakpoint ALTER INDEX "idx_zero_agent_drafts_user_org_agent" RENAME TO "idx_agent_drafts_user_org_agent"; --> statement-breakpoint CREATE VIEW "zero_agent_drafts" AS SELECT "user_id", "org_id", "agent_id", "draft_user_message", "draft_attachments", "created_at", "updated_at" FROM "agent_drafts";',
+  );
+
+  const contractSql = await fs.readFile(
+    path.join(migrationsDirectory, `${contractMigration}.sql`),
+    "utf8",
+  );
+  assert.equal(
+    contractSql.trim().replace(/\s+/gu, " "),
+    'DROP VIEW "zero_agent_drafts";',
   );
 }
 
@@ -280,6 +299,162 @@ async function validateCompatibilityCatalog(
   return relations.rows;
 }
 
+async function readPhysicalRelationIdentity(
+  client: Client,
+  relationName: RelationName,
+): Promise<PhysicalRelationIdentity> {
+  const relations = await client.query<PhysicalRelationIdentity>(
+    `
+      SELECT
+        "pg_relation_filenode"("pg_class"."oid")::text AS "relationFileNode",
+        "pg_class"."relkind"::text AS "relationKind",
+        "pg_class"."relname" AS "relationName",
+        "pg_class"."oid"::text AS "relationOid"
+      FROM "pg_class"
+      INNER JOIN "pg_namespace"
+        ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+      WHERE "pg_namespace"."nspname" = 'public'
+        AND "pg_class"."relname" = $1
+    `,
+    [relationName],
+  );
+  assert.equal(relations.rows.length, 1);
+  const [identity] = relations.rows;
+  assert.ok(identity);
+  assert.equal(identity.relationKind, "r");
+  assert.equal(identity.relationName, relationName);
+  assert.ok(identity.relationFileNode.length > 0);
+  assert.ok(identity.relationOid.length > 0);
+  return identity;
+}
+
+async function readLegacyViewCatalogIdentity(
+  client: Client,
+): Promise<LegacyViewCatalogIdentity> {
+  const identities = await client.query<LegacyViewCatalogIdentity>(`
+    SELECT
+      "pg_class"."oid"::text AS "relationOid",
+      "pg_rewrite"."oid"::text AS "rewriteRuleOid"
+    FROM "pg_class"
+    INNER JOIN "pg_namespace"
+      ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+    INNER JOIN "pg_rewrite"
+      ON "pg_rewrite"."ev_class" = "pg_class"."oid"
+      AND "pg_rewrite"."rulename" = '_RETURN'
+    WHERE "pg_namespace"."nspname" = 'public'
+      AND "pg_class"."relname" = 'zero_agent_drafts'
+      AND "pg_class"."relkind" = 'v'
+  `);
+  assert.equal(identities.rows.length, 1);
+  const [identity] = identities.rows;
+  assert.ok(identity);
+  return identity;
+}
+
+async function validateCanonicalOnlyCatalog(
+  client: Client,
+  legacyIdentity: LegacyViewCatalogIdentity,
+): Promise<void> {
+  const relations = await client.query<{
+    relationKind: string;
+    relationName: string;
+  }>(`
+    SELECT
+      "pg_class"."relkind"::text AS "relationKind",
+      "pg_class"."relname" AS "relationName"
+    FROM "pg_class"
+    INNER JOIN "pg_namespace"
+      ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+    WHERE "pg_namespace"."nspname" = 'public'
+      AND "pg_class"."relname" IN ('agent_drafts', 'zero_agent_drafts')
+    ORDER BY "pg_class"."relname"
+  `);
+  assert.deepEqual(relations.rows, [
+    { relationKind: "r", relationName: canonicalRelation },
+  ]);
+
+  const legacyViews = await client.query<{ tableName: string }>(`
+    SELECT "table_name" AS "tableName"
+    FROM "information_schema"."views"
+    WHERE "table_schema" = 'public'
+      AND "table_name" = 'zero_agent_drafts'
+  `);
+  assert.deepEqual(legacyViews.rows, []);
+
+  const legacyRules = await client.query<{ ruleOid: string }>(
+    `
+      SELECT "oid"::text AS "ruleOid"
+      FROM "pg_rewrite"
+      WHERE "ev_class" = $1::oid
+        OR "oid" = $2::oid
+    `,
+    [legacyIdentity.relationOid, legacyIdentity.rewriteRuleOid],
+  );
+  assert.deepEqual(legacyRules.rows, []);
+
+  const legacyTriggers = await client.query<{ triggerOid: string }>(
+    `
+      SELECT "oid"::text AS "triggerOid"
+      FROM "pg_trigger"
+      WHERE "tgrelid" = $1::oid
+    `,
+    [legacyIdentity.relationOid],
+  );
+  assert.deepEqual(legacyTriggers.rows, []);
+
+  const legacyDependencies = await client.query<{ dependencyOid: string }>(
+    `
+      SELECT "objid"::text AS "dependencyOid"
+      FROM "pg_depend"
+      WHERE (
+          "classid" = 'pg_class'::regclass
+          AND "objid" = $1::oid
+        )
+        OR (
+          "refclassid" = 'pg_class'::regclass
+          AND "refobjid" = $1::oid
+        )
+        OR (
+          "classid" = 'pg_rewrite'::regclass
+          AND "objid" = $2::oid
+        )
+        OR (
+          "refclassid" = 'pg_rewrite'::regclass
+          AND "refobjid" = $2::oid
+        )
+    `,
+    [legacyIdentity.relationOid, legacyIdentity.rewriteRuleOid],
+  );
+  assert.deepEqual(legacyDependencies.rows, []);
+
+  const legacySharedDependencies = await client.query<{
+    dependencyOid: string;
+  }>(
+    `
+      SELECT "objid"::text AS "dependencyOid"
+      FROM "pg_shdepend"
+      WHERE (
+          "classid" = 'pg_class'::regclass
+          AND "objid" = $1::oid
+        )
+        OR (
+          "refclassid" = 'pg_class'::regclass
+          AND "refobjid" = $1::oid
+        )
+        OR (
+          "classid" = 'pg_rewrite'::regclass
+          AND "objid" = $2::oid
+        )
+        OR (
+          "refclassid" = 'pg_rewrite'::regclass
+          AND "refobjid" = $2::oid
+        )
+    `,
+    [legacyIdentity.relationOid, legacyIdentity.rewriteRuleOid],
+  );
+  assert.deepEqual(legacySharedDependencies.rows, []);
+}
+
 async function readPhysicalObjectDefinitions(
   client: Client,
 ): Promise<PhysicalObjectDefinition[]> {
@@ -335,6 +510,61 @@ async function readPhysicalObjectDefinitions(
 
     ORDER BY "objectName"
   `);
+  return objects.rows;
+}
+
+async function readAllPhysicalObjectDefinitions(
+  client: Client,
+  relationName: RelationName,
+): Promise<PhysicalObjectDefinition[]> {
+  const objects = await client.query<PhysicalObjectDefinition>(
+    `
+      SELECT
+        NULL::text AS "constraintType",
+        "pg_get_indexdef"("pg_index"."indexrelid") AS "definition",
+        "pg_index"."indisunique" AS "isUnique",
+        "index_relation"."relname" AS "objectName",
+        "pg_index"."indexrelid"::text AS "objectOid",
+        'index'::text AS "objectType",
+        NULL::text AS "referencedRelation",
+        "table_relation"."relname" AS "relationName"
+      FROM "pg_index"
+      INNER JOIN "pg_class" AS "index_relation"
+        ON "index_relation"."oid" = "pg_index"."indexrelid"
+      INNER JOIN "pg_class" AS "table_relation"
+        ON "table_relation"."oid" = "pg_index"."indrelid"
+      INNER JOIN "pg_namespace"
+        ON "pg_namespace"."oid" = "table_relation"."relnamespace"
+      WHERE "pg_namespace"."nspname" = 'public'
+        AND "table_relation"."relname" = $1
+
+      UNION ALL
+
+      SELECT
+        "pg_constraint"."contype"::text AS "constraintType",
+        "pg_get_constraintdef"("pg_constraint"."oid", true) AS "definition",
+        NULL::boolean AS "isUnique",
+        "pg_constraint"."conname" AS "objectName",
+        "pg_constraint"."oid"::text AS "objectOid",
+        'constraint'::text AS "objectType",
+        CASE
+          WHEN "pg_constraint"."confrelid" = 0 THEN NULL
+          ELSE "pg_constraint"."confrelid"::regclass::text
+        END AS "referencedRelation",
+        "table_relation"."relname" AS "relationName"
+      FROM "pg_constraint"
+      INNER JOIN "pg_class" AS "table_relation"
+        ON "table_relation"."oid" = "pg_constraint"."conrelid"
+      INNER JOIN "pg_namespace"
+        ON "pg_namespace"."oid" = "table_relation"."relnamespace"
+      WHERE "pg_namespace"."nspname" = 'public'
+        AND "table_relation"."relname" = $1
+        AND "pg_constraint"."contype" IN ('f', 'c')
+
+      ORDER BY "objectName"
+    `,
+    [relationName],
+  );
   return objects.rows;
 }
 
@@ -1101,6 +1331,101 @@ async function validateBothApiMappings(
   }
 }
 
+async function validateCanonicalStatementShapes(
+  client: Client,
+  databaseUrl: string,
+): Promise<void> {
+  const userId = "after-contract-canonical-statement-user";
+  const orgId = "after-contract-canonical-statement-org";
+  const initialMessage =
+    '{"version":1,"parts":[{"type":"text","text":"canonical initial"}]}';
+  const insertedRows = await insertDraftWithDefaults(
+    client,
+    canonicalRelation,
+    userId,
+    orgId,
+    parentAgentId,
+    initialMessage,
+  );
+  assert.equal(insertedRows.length, 1);
+  const [insertedRow] = insertedRows;
+  assert.ok(insertedRow);
+  assert.ok(insertedRow.createdAt.length > 0);
+  assert.equal(insertedRow.updatedAt, insertedRow.createdAt);
+  assert.deepEqual(
+    await selectDraft(client, canonicalRelation, userId, orgId, parentAgentId),
+    insertedRows,
+  );
+
+  const updatedMessage =
+    '{"version":1,"parts":[{"type":"text","text":"canonical updated"}]}';
+  const updatedRows = await updateDraft(
+    client,
+    canonicalRelation,
+    userId,
+    orgId,
+    parentAgentId,
+    updatedMessage,
+  );
+  assert.equal(updatedRows.length, 1);
+  const [updatedRow] = updatedRows;
+  assert.ok(updatedRow);
+  assert.equal(updatedRow.createdAt, insertedRow.createdAt);
+  assert.deepEqual(
+    await selectDraft(client, canonicalRelation, userId, orgId, parentAgentId),
+    updatedRows,
+  );
+
+  await validateCrossRelationLock(
+    client,
+    databaseUrl,
+    canonicalRelation,
+    canonicalRelation,
+    userId,
+    orgId,
+    parentAgentId,
+  );
+
+  const deletedRows = await deleteDraft(
+    client,
+    canonicalRelation,
+    userId,
+    orgId,
+    parentAgentId,
+  );
+  assert.deepEqual(deletedRows, updatedRows);
+  assert.deepEqual(
+    await selectDraft(client, canonicalRelation, userId, orgId, parentAgentId),
+    [],
+  );
+}
+
+async function validateCanonicalOnlyBehavior(
+  client: Client,
+  databaseUrl: string,
+): Promise<void> {
+  await validateCanonicalStatementShapes(client, databaseUrl);
+  await validateSealedPersistence(
+    client,
+    canonicalRelation,
+    canonicalRelation,
+    "after-contract",
+  );
+  await validateConstraintPropagation(
+    client,
+    canonicalRelation,
+    canonicalRelation,
+    "after-contract",
+  );
+  await validateConcurrentFirstWrites(
+    client,
+    databaseUrl,
+    canonicalRelation,
+    canonicalRelation,
+    "after-contract",
+  );
+}
+
 export async function validateAgentDraftsCompatibilityRelation(): Promise<void> {
   console.log("=== Validate Agent Draft physical relation switch ===\n");
 
@@ -1205,6 +1530,51 @@ export async function validateAgentDraftsCompatibilityRelation(): Promise<void> 
 
     await validateBothApiMappings(client, testUrl.toString(), "after-switch");
 
+    const canonicalIdentityBeforeContract = await readPhysicalRelationIdentity(
+      client,
+      canonicalRelation,
+    );
+    const legacyIdentityBeforeContract =
+      await readLegacyViewCatalogIdentity(client);
+    const physicalObjectsBeforeContract =
+      await readAllPhysicalObjectDefinitions(client, canonicalRelation);
+    assert.deepEqual(physicalObjectsBeforeContract, physicalObjectsAfterSwitch);
+    const rowsBeforeContract = await selectAllDrafts(client, canonicalRelation);
+
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractMigration,
+    );
+    await validateCanonicalOnlyCatalog(client, legacyIdentityBeforeContract);
+
+    const canonicalIdentityAfterContract = await readPhysicalRelationIdentity(
+      client,
+      canonicalRelation,
+    );
+    assert.deepEqual(
+      canonicalIdentityAfterContract,
+      canonicalIdentityBeforeContract,
+    );
+
+    const physicalObjectsAfterContract = await readAllPhysicalObjectDefinitions(
+      client,
+      canonicalRelation,
+    );
+    validatePhysicalObjectDefinitions(
+      physicalObjectsAfterContract,
+      canonicalRelation,
+    );
+    assert.deepEqual(
+      physicalObjectsAfterContract,
+      physicalObjectsBeforeContract,
+    );
+
+    const rowsAfterContract = await selectAllDrafts(client, canonicalRelation);
+    assert.deepEqual(rowsAfterContract, rowsBeforeContract);
+
+    await validateCanonicalOnlyBehavior(client, testUrl.toString());
+
     console.log(
       "   ✅ the canonical table preserves the legacy table OID and every row",
     );
@@ -1219,6 +1589,15 @@ export async function validateAgentDraftsCompatibilityRelation(): Promise<void> 
     );
     console.log(
       "   ✅ both mappings preserve the sealed update-first/plain-insert/exact-23505 retry behavior\n",
+    );
+    console.log(
+      "   ✅ the contract removes every legacy relation, rule, trigger, and dependency",
+    );
+    console.log(
+      "   ✅ the canonical table, filenode, rows, index, foreign key, and check survive unchanged",
+    );
+    console.log(
+      "   ✅ canonical-only SELECT, DML, defaults, returning, locking, constraints, and exact-23505 recovery pass\n",
     );
   } finally {
     await client.end();
