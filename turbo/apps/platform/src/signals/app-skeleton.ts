@@ -15,6 +15,9 @@ const internalOverlayMounted$ = state(true);
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
   "vm0AppSkeletonVisibleEventQueued";
+const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
+const APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY =
+  "vm0AppFirstContentVisibleEventDispatched";
 const APP_BOOTSTRAP_SKELETON_ID = "app-bootstrap-skeleton";
 const APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS = "app-bootstrap-skeleton--hidden";
 
@@ -50,6 +53,22 @@ function queueAppSkeletonVisibleEvent(): void {
 export const appSkeletonVisibleEventRef$ = onRef(
   command((_visitor, _element: HTMLDivElement, _signal: AbortSignal) => {
     queueAppSkeletonVisibleEvent();
+  }),
+);
+
+export const firstAppContentVisibleEventRef$ = onRef(
+  command((_visitor, _element: HTMLSpanElement, _signal: AbortSignal) => {
+    if (
+      document.documentElement.dataset[
+        APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+      ] === "true"
+    ) {
+      return;
+    }
+    document.documentElement.dataset[
+      APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+    ] = "true";
+    window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
   }),
 );
 
