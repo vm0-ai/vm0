@@ -432,6 +432,8 @@ mod tests {
         let profile = runner_config.profiles.get("vm0/default").unwrap();
         assert_eq!(profile.rootfs_hash, rootfs_hash);
         assert_eq!(profile.snapshot_hash, snapshot_hash);
+        assert_eq!(profile.rootfs_disk_mb, 12288);
+        assert_eq!(profile.workspace_disk_mb, 16384);
     }
 
     fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {

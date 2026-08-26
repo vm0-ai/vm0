@@ -19,7 +19,7 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     static DEFAULT: ProfileDef = ProfileDef {
         vcpu: 2,
         memory_mb: 4096,
-        rootfs_disk_mb: 8192,
+        rootfs_disk_mb: 12288,
         workspace_disk_mb: 16384,
     };
 
@@ -54,7 +54,7 @@ mod tests {
         let def = get("vm0/default").unwrap();
         assert_eq!(def.vcpu, 2);
         assert_eq!(def.memory_mb, 4096);
-        assert_eq!(def.rootfs_disk_mb, 8192);
+        assert_eq!(def.rootfs_disk_mb, 12288);
         assert_eq!(def.workspace_disk_mb, 16384);
     }
 
