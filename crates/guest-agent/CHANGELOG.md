@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.81.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.80.0...guest-agent-v0.81.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** accept dynamic handoff sequence boundaries ([#29636](https://github.com/vm0-ai/vm0/issues/29636)) ([d52059f](https://github.com/vm0-ai/vm0/commit/d52059fb35108354d70078edd84404eae7008647))
+
 ## [0.80.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.7...guest-agent-v0.80.0) (2026-08-26)
 
 

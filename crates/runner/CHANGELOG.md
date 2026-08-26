@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.176.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.1...runner-rs-v0.176.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** accept dynamic handoff sequence boundaries ([#29636](https://github.com/vm0-ai/vm0/issues/29636)) ([d52059f](https://github.com/vm0-ai/vm0/commit/d52059fb35108354d70078edd84404eae7008647))
+
 ## [0.175.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.0...runner-rs-v0.175.1) (2026-08-26)
 
 
