@@ -220,7 +220,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     await api.requestCancelRun(actor, runId, [200]);
   });
 
-  it("folds Claude starts and results across batches using the immutable true gate", async () => {
+  it("persists progressive Claude starts and past-tense results across batches", async () => {
     const chat = createChatFilesBddApi(context);
     const connectors = createConnectorBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -501,7 +501,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 1,
         action: "run",
         status: "pending",
-        summary: "Ran printf '%s' '***'",
+        summary: "Running printf '%s' '***'",
       },
       {
         sequenceNumber: 3,
@@ -513,7 +513,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 4,
         action: "read",
         status: "pending",
-        summary: "Read /workspace/***/read.ts",
+        summary: "Reading /workspace/***/read.ts",
       },
       {
         sequenceNumber: 5,
@@ -525,7 +525,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 6,
         action: "write",
         status: "pending",
-        summary: "Wrote /workspace/write.ts",
+        summary: "Writing /workspace/write.ts",
       },
       {
         sequenceNumber: 7,
@@ -537,7 +537,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 8,
         action: "edit",
         status: "pending",
-        summary: "Edited /workspace/edit.ts",
+        summary: "Editing /workspace/edit.ts",
       },
       {
         sequenceNumber: 9,
@@ -844,7 +844,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 0,
         action: "run",
         status: "pending",
-        summary: "Ran echo ***",
+        summary: "Running echo ***",
       },
       {
         sequenceNumber: 1,
@@ -868,7 +868,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
         sequenceNumber: 5,
         action: "run",
         status: "pending",
-        summary: "Ran printf codex-tool-v1",
+        summary: "Running printf codex-tool-v1",
       },
       {
         sequenceNumber: 6,

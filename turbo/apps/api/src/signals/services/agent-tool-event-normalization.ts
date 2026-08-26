@@ -4,6 +4,7 @@ import type { AgentEvent } from "../../lib/event-consumer/verify";
 
 type ToolAction = OutputToolPayload["action"];
 type ToolTerminalStatus = Exclude<OutputToolPayload["status"], "pending">;
+type ToolSummaryLifecycle = "pending" | "terminal";
 
 type NormalizedAgentToolEvent =
   | {
@@ -33,6 +34,12 @@ type NormalizedAgentToolEvent =
 
 const TOOL_SUMMARY_MAX_LENGTH = 240;
 const TOOL_SUMMARY_ELLIPSIS = "…";
+const TOOL_SUMMARY_VERB_BY_ACTION = {
+  run: { pending: "Running", terminal: "Ran" },
+  read: { pending: "Reading", terminal: "Read" },
+  write: { pending: "Writing", terminal: "Wrote" },
+  edit: { pending: "Editing", terminal: "Edited" },
+} satisfies Record<ToolAction, Record<ToolSummaryLifecycle, string>>;
 const MANAGED_TOOL_EXECUTABLE = "exec '/usr/local/bin/guest-tool-exec'";
 const MANAGED_TOOL_PREFIX = `${MANAGED_TOOL_EXECUTABLE} --shell "$0" -c `;
 
@@ -65,7 +72,11 @@ function truncateToolSummary(summary: string): string {
   return `${summary.slice(0, end)}${TOOL_SUMMARY_ELLIPSIS}`;
 }
 
-function toolSummary(verb: string, target: unknown): string | null {
+function toolSummary(
+  action: ToolAction,
+  lifecycle: ToolSummaryLifecycle,
+  target: unknown,
+): string | null {
   if (typeof target !== "string" || target.includes("\0")) {
     return null;
   }
@@ -73,7 +84,24 @@ function toolSummary(verb: string, target: unknown): string | null {
   if (normalizedTarget.length === 0) {
     return null;
   }
-  return truncateToolSummary(`${verb} ${normalizedTarget}`);
+  return truncateToolSummary(
+    `${TOOL_SUMMARY_VERB_BY_ACTION[action][lifecycle]} ${normalizedTarget}`,
+  );
+}
+
+/** Re-tense a persisted pending summary when a provider result omits its target. */
+export function terminalToolSummary(
+  action: OutputToolPayload["action"],
+  summary: string,
+): string {
+  const verbs = TOOL_SUMMARY_VERB_BY_ACTION[action];
+  const pendingPrefix = `${verbs.pending} `;
+  if (!summary.startsWith(pendingPrefix)) {
+    throw new Error(`Pending ${action} tool summary is not progressive`);
+  }
+  return truncateToolSummary(
+    `${verbs.terminal} ${summary.slice(pendingPrefix.length)}`,
+  );
 }
 
 /** Decode the exact single-quote dialect emitted by shell_quote::quote_shell_arg. */
@@ -261,29 +289,29 @@ function claudeToolUse(event: AgentEvent): NormalizedAgentToolEvent | null {
   let summary: string | null;
   if (typeof block.name === "string" && block.name.toLowerCase() === "bash") {
     action = "run";
-    summary = toolSummary("Ran", decodedToolCommand(input.command));
+    summary = toolSummary("run", "pending", decodedToolCommand(input.command));
   } else {
     switch (block.name) {
       case "Read": {
         action = "read";
-        summary = toolSummary("Read", input.file_path);
+        summary = toolSummary("read", "pending", input.file_path);
         break;
       }
       case "Write": {
         action = "write";
-        summary = toolSummary("Wrote", input.file_path);
+        summary = toolSummary("write", "pending", input.file_path);
         break;
       }
       case "Edit": {
         action = "edit";
-        summary = toolSummary("Edited", input.file_path);
+        summary = toolSummary("edit", "pending", input.file_path);
         break;
       }
       case "NotebookEdit": {
         action = "edit";
         summary =
-          toolSummary("Edited", input.notebook_path) ??
-          toolSummary("Edited", input.file_path);
+          toolSummary("edit", "pending", input.notebook_path) ??
+          toolSummary("edit", "pending", input.file_path);
         break;
       }
       default: {
@@ -364,7 +392,11 @@ function codexCommand(event: AgentEvent): NormalizedAgentToolEvent | null {
     return null;
   }
   if (event.type === "item.started") {
-    const summary = toolSummary("Ran", decodedToolCommand(item.command));
+    const summary = toolSummary(
+      "run",
+      "pending",
+      decodedToolCommand(item.command),
+    );
     if (item.status !== "in_progress" || summary === null) {
       return null;
     }
@@ -382,7 +414,11 @@ function codexCommand(event: AgentEvent): NormalizedAgentToolEvent | null {
   if (status === null) {
     return null;
   }
-  const summary = toolSummary("Ran", decodedToolCommand(item.command));
+  const summary = toolSummary(
+    "run",
+    "terminal",
+    decodedToolCommand(item.command),
+  );
   if (summary === null) {
     return null;
   }
@@ -449,10 +485,7 @@ function codexFile(event: AgentEvent): NormalizedAgentToolEvent | null {
     }
   }
 
-  const summary = toolSummary(
-    action === "read" ? "Read" : action === "write" ? "Wrote" : "Edited",
-    target,
-  );
+  const summary = toolSummary(action, "terminal", target);
   return summary === null
     ? null
     : { kind: "standalone", action, status, summary };

@@ -2307,9 +2307,36 @@
     },
     "toolActivity": {
       "categories": {
-        "changes": "Dateien geändert",
-        "read": "Dateien gelesen",
-        "run": "Befehle ausgeführt"
+        "changes": {
+          "pending": {
+            "plural": "Dateien werden geändert",
+            "singular": "Datei wird geändert"
+          },
+          "terminal": {
+            "plural": "Dateien geändert",
+            "singular": "Datei geändert"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "Dateien werden gelesen",
+            "singular": "Datei wird gelesen"
+          },
+          "terminal": {
+            "plural": "Dateien gelesen",
+            "singular": "Datei gelesen"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "Befehle werden ausgeführt",
+            "singular": "Befehl wird ausgeführt"
+          },
+          "terminal": {
+            "plural": "Befehle ausgeführt",
+            "singular": "Befehl ausgeführt"
+          }
+        }
       },
       "collapse": "Tool-Aktivität einklappen",
       "expand": "Tool-Aktivität ausklappen",

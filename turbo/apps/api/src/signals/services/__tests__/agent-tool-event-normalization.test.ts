@@ -103,7 +103,7 @@ describe("agent tool event normalization", () => {
       providerOperationId: "claude-operation-1",
       action: "run",
       status: "pending",
-      summary: "Ran printf '***'",
+      summary: "Running printf '***'",
     });
     expect(
       normalizeAgentToolEvent(
@@ -112,7 +112,7 @@ describe("agent tool event normalization", () => {
           input: { file_path: " /workspace/a.ts " },
         }),
       ),
-    ).toMatchObject({ action: "read", summary: "Read /workspace/a.ts" });
+    ).toMatchObject({ action: "read", summary: "Reading /workspace/a.ts" });
     expect(
       normalizeAgentToolEvent(
         claudeToolUse({
@@ -120,7 +120,7 @@ describe("agent tool event normalization", () => {
           input: { file_path: "/workspace/b.ts" },
         }),
       ),
-    ).toMatchObject({ action: "write", summary: "Wrote /workspace/b.ts" });
+    ).toMatchObject({ action: "write", summary: "Writing /workspace/b.ts" });
     expect(
       normalizeAgentToolEvent(
         claudeToolUse({
@@ -128,7 +128,7 @@ describe("agent tool event normalization", () => {
           input: { file_path: "/workspace/c.ts" },
         }),
       ),
-    ).toMatchObject({ action: "edit", summary: "Edited /workspace/c.ts" });
+    ).toMatchObject({ action: "edit", summary: "Editing /workspace/c.ts" });
     expect(
       normalizeAgentToolEvent(
         claudeToolUse({
@@ -141,7 +141,7 @@ describe("agent tool event normalization", () => {
       ),
     ).toMatchObject({
       action: "edit",
-      summary: "Edited /workspace/notebook.ipynb",
+      summary: "Editing /workspace/notebook.ipynb",
     });
 
     expect(
@@ -208,7 +208,7 @@ describe("agent tool event normalization", () => {
         ).toMatchObject({
           action: "run",
           status: "pending",
-          summary: `Ran printf '%s\\n' "$HOME"`,
+          summary: `Running printf '%s\\n' "$HOME"`,
         });
       }
     }
@@ -222,7 +222,7 @@ describe("agent tool event normalization", () => {
       providerOperationId: "exec-8993fae2-8f50-4963-989c-3489ab724f2e",
       action: "run",
       status: "pending",
-      summary: "Ran printf codex-tool-v1",
+      summary: "Running printf codex-tool-v1",
     });
     if (started?.kind !== "correlated") {
       throw new Error("Expected the live Codex start to normalize");
@@ -296,7 +296,7 @@ describe("agent tool event normalization", () => {
       }),
     );
     expect(normalized).toMatchObject({
-      summary: `Read ${"a".repeat(233)}…`,
+      summary: `Reading ${"a".repeat(231)}…`,
     });
     if (normalized?.kind !== "correlated") {
       throw new Error("Expected a correlated Claude tool event");
@@ -356,7 +356,7 @@ describe("agent tool event normalization", () => {
       ),
     ).toMatchObject({
       summary:
-        "Ran printf '%s' \"exec '/usr/local/bin/guest-tool-exec' --shell\"",
+        "Running printf '%s' \"exec '/usr/local/bin/guest-tool-exec' --shell\"",
     });
   });
 

@@ -2303,9 +2303,36 @@
     },
     "toolActivity": {
       "categories": {
-        "changes": "ファイルを変更",
-        "read": "ファイルを読み取り",
-        "run": "コマンドを実行"
+        "changes": {
+          "pending": {
+            "plural": "複数のファイルを変更中",
+            "singular": "ファイルを変更中"
+          },
+          "terminal": {
+            "plural": "複数のファイルを変更",
+            "singular": "ファイルを変更"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "複数のファイルを読み取り中",
+            "singular": "ファイルを読み取り中"
+          },
+          "terminal": {
+            "plural": "複数のファイルを読み取り",
+            "singular": "ファイルを読み取り"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "複数のコマンドを実行中",
+            "singular": "コマンドを実行中"
+          },
+          "terminal": {
+            "plural": "複数のコマンドを実行",
+            "singular": "コマンドを実行"
+          }
+        }
       },
       "collapse": "ツールアクティビティを折りたたむ",
       "expand": "ツールアクティビティを展開",

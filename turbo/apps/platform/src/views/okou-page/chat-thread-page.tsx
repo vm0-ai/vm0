@@ -3719,23 +3719,62 @@ function toolActivityCategory(
 
 function toolActivityCategoryLabel(
   category: ToolActivityCategory,
+  operationCount: number,
+  hasPending: boolean,
   t: TFunction<"common">,
 ): string {
+  const singular = operationCount === 1;
   switch (category) {
     case "run": {
-      return t(($) => {
-        return $.chat.toolActivity.categories.run;
-      });
+      return hasPending
+        ? singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.run.pending.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.run.pending.plural;
+            })
+        : singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.run.terminal.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.run.terminal.plural;
+            });
     }
     case "read": {
-      return t(($) => {
-        return $.chat.toolActivity.categories.read;
-      });
+      return hasPending
+        ? singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.read.pending.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.read.pending.plural;
+            })
+        : singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.read.terminal.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.read.terminal.plural;
+            });
     }
     case "changes": {
-      return t(($) => {
-        return $.chat.toolActivity.categories.changes;
-      });
+      return hasPending
+        ? singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.changes.pending.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.changes.pending.plural;
+            })
+        : singular
+          ? t(($) => {
+              return $.chat.toolActivity.categories.changes.terminal.singular;
+            })
+          : t(($) => {
+              return $.chat.toolActivity.categories.changes.terminal.plural;
+            });
     }
   }
 }
@@ -3744,19 +3783,36 @@ function toolActivityGroupLabel(
   events: readonly ToolActivityEvent[],
   t: TFunction<"common">,
 ): string {
-  const seen = new Set<ToolActivityCategory>();
-  const labels = events.flatMap((event) => {
+  const categoryStates = new Map<
+    ToolActivityCategory,
+    { readonly operationCount: number; readonly hasPending: boolean }
+  >();
+  for (const event of events) {
     const category = toolActivityCategory(event.action);
-    if (seen.has(category)) {
-      return [];
-    }
-    seen.add(category);
-    return [toolActivityCategoryLabel(category, t)];
+    const prior = categoryStates.get(category);
+    categoryStates.set(category, {
+      operationCount: (prior?.operationCount ?? 0) + 1,
+      hasPending: (prior?.hasPending ?? false) || event.status === "pending",
+    });
+  }
+  const labels = Array.from(categoryStates, ([category, state]) => {
+    return toolActivityCategoryLabel(
+      category,
+      state.operationCount,
+      state.hasPending,
+      t,
+    );
   });
-  return new Intl.ListFormat(i18n.resolvedLanguage, {
+  const label = new Intl.ListFormat(i18n.resolvedLanguage, {
     style: "short",
     type: "conjunction",
   }).format(labels);
+  for (const state of categoryStates.values()) {
+    if (state.hasPending) {
+      return `${label}…`;
+    }
+  }
+  return label;
 }
 
 const TOOL_ACTIVITY_ICON_BY_ACTION = {
@@ -3790,6 +3846,13 @@ function ToolActivityStatus({
             });
   if (status === "success") {
     return <span className="sr-only">{label}</span>;
+  }
+  if (status === "pending") {
+    return (
+      <span role="status" className="sr-only">
+        {label}
+      </span>
+    );
   }
   return (
     <span
