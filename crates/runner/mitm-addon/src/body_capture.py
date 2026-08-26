@@ -444,8 +444,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     prefix did not contain every header field; it does not describe body
     capture. Body dependency headers are inspected separately with the same
     field and byte budgets, so unrelated header overflow cannot hide a later
-    ``content-type`` or ``content-encoding`` field. Duplicate, malformed,
-    unsafe, or over-budget dependency metadata fails body capture closed.
+    ``content-type`` or ``content-encoding`` field. Multiple ``content-type``
+    values are ambiguous, while repeated ``content-encoding`` fields are folded
+    and validated. Malformed, unsafe, or over-budget dependency metadata fails
+    body capture closed.
 
     Bodies are bounded by ``BODY_CAPTURE_LIMIT`` (currently 64 KiB) after
     decoding. Empty bodies have no body or encoding field. Text-like bodies are
