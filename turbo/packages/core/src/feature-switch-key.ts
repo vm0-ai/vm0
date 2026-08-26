@@ -71,6 +71,7 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
+  IntroVideoTemplates = "introVideoTemplates",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
   LatestWebsiteTemplates = "latestWebsiteTemplates",

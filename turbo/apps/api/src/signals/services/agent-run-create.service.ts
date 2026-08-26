@@ -229,6 +229,7 @@ import {
   type PresentationRunbookArchiveVersion,
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
+import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import {
   resolvePiSandboxModelConfig,
   shouldUsePiExecution,
@@ -6313,6 +6314,12 @@ function buildStoredPlatformEnvironment(args: {
   const platformEnvironment = {
     ...args.platformEnvironment,
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    [INTRO_VIDEO_TEMPLATES_ENABLED_ENV]: isFeatureEnabled(
+      FeatureSwitchKey.IntroVideoTemplates,
+      args.featureSwitchContext,
+    )
+      ? "1"
+      : "0",
     [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
     ),
