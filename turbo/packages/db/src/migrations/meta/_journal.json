@@ -1338,6 +1338,13 @@
       "when": 1787714630974,
       "tag": "0998_agent_drafts_physical_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 999,
+      "version": "7",
+      "when": 1787718296818,
+      "tag": "0999_cutover_connector_runtime_projections_v2",
+      "breakpoints": true
     }
   ]
 }

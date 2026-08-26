@@ -26,7 +26,6 @@ type ConnectorRuntimeProjectionCacheOutcome =
 type ConnectorRuntimeSelectionSource = "projection" | "full_fallback";
 type ConnectorRuntimeProjectionReadiness =
   | "ready"
-  | "schema_unavailable"
   | "not_ready"
   | "unsupported"
   | "compatibility_not_ready"
@@ -161,7 +160,6 @@ function projectionReadiness(
   fallbackReason: ConnectorCatalogRuntimeProjectionFallbackReason | undefined,
 ): ConnectorRuntimeProjectionReadiness {
   switch (fallbackReason) {
-    case "schema_unavailable":
     case "not_ready":
     case "unsupported":
     case "compatibility_not_ready":
