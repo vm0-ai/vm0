@@ -8,6 +8,7 @@
     "id": "skill:presentation-reverse-template",
     "slug": "reverse-template",
     "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
+    "supersedesVersionId": "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
     "expectedVersionId": "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
     "expectedSha256": "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11"
   }

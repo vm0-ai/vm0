@@ -324,15 +324,23 @@ function assertR2Manifest(actual, expected) {
   }
 }
 
-function assertStorageIdentity(storage, expected) {
+// The head this publication is allowed to find and move. A first publication
+// finds a missing or headless storage; a republication finds the head it
+// supersedes, which the release pins so an unexpected head still aborts.
+function acceptableIncomingHeads(versionId) {
+  return metadata.resource.supersedesVersionId
+    ? [null, versionId, metadata.resource.supersedesVersionId]
+    : [null, versionId];
+}
+
+function assertStorageIdentity(storage, expected, acceptableHeadVersionIds) {
   if (
     storage.id !== expected.id ||
     storage.name !== expected.name ||
     storage.org_id !== SYSTEM_ORG_ID ||
     storage.user_id !== VOLUME_ORG_USER_ID ||
     storage.s3_prefix !== expected.s3Prefix ||
-    (storage.head_version_id !== null &&
-      storage.head_version_id !== expected.versionId)
+    !acceptableHeadVersionIds.includes(storage.head_version_id)
   ) {
     throw new Error("Production storage has an unexpected identity");
   }
@@ -385,7 +393,11 @@ async function publish() {
       );
     }
     if (storageRows[0]) {
-      assertStorageIdentity(storageRows[0], expectedStorage);
+      assertStorageIdentity(
+        storageRows[0],
+        expectedStorage,
+        acceptableIncomingHeads(pkg.versionId),
+      );
     }
 
     const manifest = {
@@ -440,7 +452,11 @@ async function publish() {
         throw new Error("Storage identity became ambiguous before commit");
       }
       if (lockedRows[0]) {
-        assertStorageIdentity(lockedRows[0], expectedStorage);
+        assertStorageIdentity(
+          lockedRows[0],
+          expectedStorage,
+          acceptableIncomingHeads(pkg.versionId),
+        );
       } else {
         await tx`
           INSERT INTO storages
@@ -524,7 +540,8 @@ async function publish() {
     if (rows.length !== 1) {
       throw new Error("Post-publication database verification failed");
     }
-    assertStorageIdentity(rows[0], expectedStorage);
+    // After the transaction the head must be exactly this publication.
+    assertStorageIdentity(rows[0], expectedStorage, [pkg.versionId]);
     if (
       rows[0].version_id !== pkg.versionId ||
       rows[0].s3_key !== s3Key ||
