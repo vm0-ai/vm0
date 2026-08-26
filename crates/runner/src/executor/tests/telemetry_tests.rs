@@ -106,13 +106,7 @@ fn new_telemetry() -> JobTelemetry {
         client_session_id: "runner-session-test".to_string(),
     })
     .unwrap();
-    JobTelemetry::new(
-        http,
-        RunId::nil(),
-        "tok".to_string(),
-        "test-runner".to_string(),
-        None,
-    )
+    JobTelemetry::new(http, RunId::nil(), "tok".to_string(), None)
 }
 
 fn assert_has_action(telemetry: &JobTelemetry, action: &str) {

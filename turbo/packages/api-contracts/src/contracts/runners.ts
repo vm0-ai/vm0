@@ -1320,7 +1320,7 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 export const heartbeatBodySchema = z
   .object({
     runnerId: z.uuid(),
-    runnerName: z.string(),
+    runnerName: z.string().optional(),
     group: runnerGroupSchema,
     snapshotGeneration: runnerHeartbeatGenerationSchema,
     snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

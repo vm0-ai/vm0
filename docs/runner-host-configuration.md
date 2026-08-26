@@ -14,18 +14,23 @@ load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
 Those lifecycle identities continue to use the version-shaped `name`, such as
-`v0.174.0`. During the compatibility window, sandbox telemetry sends all of:
+`v0.174.0`. Current Runner binaries send optional canonical `runnerHostname`
+from configuration and canonical `runnerVersion` compiled into the binary. They
+no longer send legacy `runnerName` in heartbeats or sandbox telemetry. During
+the compatibility window, the API still accepts `runnerName` from draining
+older Runner binaries and preserves its version-shaped value as `runner_name`.
 
-- legacy `runnerName`, retaining its version-shaped value;
-- optional canonical `runnerHostname` from configuration; and
-- canonical `runnerVersion` compiled into the Runner binary.
+Operational queries and alerts should use `runner_hostname` and
+`runner_version`. A bounded historical fallback may use `runner_name` only for
+records that lack the canonical dimensions from before the cutover. Never
+interpret `runner_name` as a hostname.
 
 Runner Axiom warning/error events similarly include optional
-`runner_hostname` and required `runner_version`. Deploy the compatible API
-receiver before deploying a Runner that produces these fields. Canary the
-Runner and verify claim snapshots, telemetry/Axiom dimensions, distinct
+`runner_hostname` and required `runner_version`. Deploy the API and nullable
+heartbeat storage before deploying a Runner that omits the legacy name. Canary
+the Runner and verify claim snapshots, telemetry/Axiom dimensions, distinct
 hostnames on two hosts running one version, and retained-version rollback
-before relying on canonical attribution in presentation code.
+before removing the legacy receiver or historical query fallback.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
