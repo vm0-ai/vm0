@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.293.0](https://github.com/vm0-ai/vm0/compare/cli-v9.292.2...cli-v9.293.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** list connector accounts ([#29634](https://github.com/vm0-ai/vm0/issues/29634)) ([867a92f](https://github.com/vm0-ai/vm0/commit/867a92f821ebdae8558f2ccbba5bd342d3707089))
+* **pi:** emit api-first content block events ([#29653](https://github.com/vm0-ai/vm0/issues/29653)) ([c9ea26b](https://github.com/vm0-ai/vm0/commit/c9ea26b736a743bc810da5482b8dfb99ecae1313))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.374.0
+    * @okouai/connectors bumped to 1.210.3
+    * @okouai/core bumped to 8.595.5
+
 ## [9.292.2](https://github.com/vm0-ai/vm0/compare/cli-v9.292.1...cli-v9.292.2) (2026-08-26)
 
 

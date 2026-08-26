@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.499.0](https://github.com/vm0-ai/vm0/compare/api-v1.498.1...api-v1.499.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** emit api-first content block events ([#29653](https://github.com/vm0-ai/vm0/issues/29653)) ([c9ea26b](https://github.com/vm0-ai/vm0/commit/c9ea26b736a743bc810da5482b8dfb99ecae1313))
+
+
+### Bug Fixes
+
+* separate requested and granted oauth scopes ([#29509](https://github.com/vm0-ai/vm0/issues/29509)) ([8f2c584](https://github.com/vm0-ai/vm0/commit/8f2c58413029090974c908de8595d1fda55af74d))
+
+
+### Refactoring
+
+* **api:** observe backend url aliases at startup ([#29659](https://github.com/vm0-ai/vm0/issues/29659)) ([7c4b484](https://github.com/vm0-ai/vm0/commit/7c4b484771961bf6f13847199e9d9544967587c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.0
+    * @okouai/connectors bumped to 1.210.3
+    * @okouai/core bumped to 8.595.5
+    * @okouai/db bumped to 1.225.6
+
 ## [1.498.1](https://github.com/vm0-ai/vm0/compare/api-v1.498.0...api-v1.498.1) (2026-08-26)
 
 

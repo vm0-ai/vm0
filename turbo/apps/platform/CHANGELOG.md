@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.802.0](https://github.com/vm0-ai/vm0/compare/app-v0.801.1...app-v0.802.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** list connector accounts ([#29634](https://github.com/vm0-ai/vm0/issues/29634)) ([867a92f](https://github.com/vm0-ai/vm0/commit/867a92f821ebdae8558f2ccbba5bd342d3707089))
+
+
+### Bug Fixes
+
+* separate requested and granted oauth scopes ([#29509](https://github.com/vm0-ai/vm0/issues/29509)) ([8f2c584](https://github.com/vm0-ai/vm0/commit/8f2c58413029090974c908de8595d1fda55af74d))
+
+
+### Performance Improvements
+
+* **platform:** lazy-load selected locale resources ([#29597](https://github.com/vm0-ai/vm0/issues/29597)) ([52cf4b9](https://github.com/vm0-ai/vm0/commit/52cf4b9418620d13537f30dd5017d5b34e4c89d5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.0
+    * @okouai/connectors bumped to 1.210.3
+    * @okouai/core bumped to 8.595.5
+
 ## [0.801.1](https://github.com/vm0-ai/vm0/compare/app-v0.801.0...app-v0.801.1) (2026-08-26)
 
 
