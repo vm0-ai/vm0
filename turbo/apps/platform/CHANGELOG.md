@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.803.2](https://github.com/vm0-ai/vm0/compare/app-v0.803.1...app-v0.803.2) (2026-08-26)
+
+
+### Performance Improvements
+
+* **platform:** render agent chat before team validation ([#29691](https://github.com/vm0-ai/vm0/issues/29691)) ([9ecbdba](https://github.com/vm0-ai/vm0/commit/9ecbdba24c6613145d9bae6d6a7c94177c2a70b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.2
+    * @okouai/core bumped to 8.595.7
+
 ## [0.803.1](https://github.com/vm0-ai/vm0/compare/app-v0.803.0...app-v0.803.1) (2026-08-26)
 
 

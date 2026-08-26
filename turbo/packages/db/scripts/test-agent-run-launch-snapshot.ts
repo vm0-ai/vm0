@@ -361,7 +361,9 @@ function validateCallerIsolation(): void {
     "turbo/apps/api/src/signals/routes/__tests__/helpers/runtime-state.ts",
     "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
     "turbo/apps/api/src/signals/routes/test-runtime-state.ts",
+    "turbo/apps/api/src/signals/services/agent-event-consumer-run-output.service.ts",
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
+    "turbo/apps/api/src/signals/services/agent-tool-event-normalization.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-complete.service.ts",
     "turbo/apps/api/src/signals/services/log-detail-run-selection.ts",
@@ -618,9 +620,7 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
     );
     console.log("   ✅ ordinary DML remains healthy under validation lock");
     console.log("   ✅ migration retries are exact and idempotent");
-    console.log(
-      "   ✅ runtime callers contain no launch-snapshot dependency\n",
-    );
+    console.log("   ✅ runtime launch-snapshot caller inventory is exact\n");
   } finally {
     await blocker.query("ROLLBACK");
     await migrator.query("ROLLBACK");

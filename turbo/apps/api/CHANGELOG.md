@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.500.1](https://github.com/vm0-ai/vm0/compare/api-v1.500.0...api-v1.500.1) (2026-08-26)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#29693](https://github.com/vm0-ai/vm0/issues/29693)) ([9c0eada](https://github.com/vm0-ai/vm0/commit/9c0eada71869b644896d26109b4b19139193570d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.374.2
+    * @okouai/core bumped to 8.595.7
+    * @okouai/db bumped to 1.225.8
+
 ## [1.500.0](https://github.com/vm0-ai/vm0/compare/api-v1.499.0...api-v1.500.0) (2026-08-26)
 
 

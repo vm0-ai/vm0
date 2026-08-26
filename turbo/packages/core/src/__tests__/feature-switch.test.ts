@@ -126,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",

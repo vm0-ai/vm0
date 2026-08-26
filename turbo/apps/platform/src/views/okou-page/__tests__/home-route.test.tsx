@@ -4,13 +4,11 @@ import {
   teamContract,
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/team";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { HttpResponse } from "msw";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
-  queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -22,12 +20,8 @@ import { isAbortError } from "../../../signals/utils.ts";
 
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
-const TEAM_REQUEST_PATTERN = `*${teamContract.list.path}`;
-const {
-  get$: lastUsedAgentId$,
-  set$: setLastUsedAgentId$,
-  clear$: clearLastUsedAgentId$,
-} = localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
+const { set$: setLastUsedAgentId$, clear$: clearLastUsedAgentId$ } =
+  localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RETURNING_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -96,23 +90,12 @@ function recordAgentDraftLoads(): () => readonly string[] {
   };
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!button) {
-    throw new Error(`Button not found: ${text}`);
-  }
-  return button;
-}
-
 function setupCandidateHomeRoute(
   candidate: (typeof UNVALIDATED_AGENT_CASES)[number],
-  path = "/",
 ): void {
   detachedSetupPage({
     context,
-    path,
+    path: "/",
     ...(candidate.switchedOrganization
       ? {
           org: {
@@ -163,11 +146,8 @@ describe("home route", () => {
     await team.started.promise;
     expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
     await expect(
-      screen.findByTestId("agent-chat-validation"),
+      screen.findByRole("textbox", { name: "Message" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: "Message" }),
-    ).not.toBeInTheDocument();
 
     team.release.resolve(undefined);
     await waitFor(() => {
@@ -192,11 +172,8 @@ describe("home route", () => {
     expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
     expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
     await expect(
-      screen.findByTestId("agent-chat-validation"),
+      screen.findByRole("textbox", { name: "Message" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: "Message" }),
-    ).not.toBeInTheDocument();
 
     team.release.resolve(undefined);
     await waitFor(() => {
@@ -227,7 +204,7 @@ describe("home route", () => {
   });
 
   it.each(UNVALIDATED_AGENT_CASES)(
-    "keeps a $label persisted candidate non-interactive until validation",
+    "shows a $label persisted candidate while validation resolves",
     async (candidate) => {
       context.store.set(setLastUsedAgentId$, candidate.candidateId);
       context.mocks.data.onboardingStatus({
@@ -243,16 +220,8 @@ describe("home route", () => {
       await team.started.promise;
       expect(pathname()).toBe(`/agents/${candidate.candidateId}/chat`);
       await expect(
-        screen.findByTestId("agent-chat-validation"),
+        screen.findByRole("textbox", { name: "Message" }),
       ).resolves.toBeInTheDocument();
-      expect(
-        screen.queryByRole("textbox", { name: "Message" }),
-      ).not.toBeInTheDocument();
-      expect(
-        queryAllByRoleFast("button").some((button) => {
-          return button.textContent?.trim() === "Send";
-        }),
-      ).toBeFalsy();
       expect(draftLoads()).not.toContain(candidate.candidateId);
 
       team.release.resolve(undefined);
@@ -324,96 +293,7 @@ describe("home route", () => {
     expect(teamRequestCount()).toBe(0);
   });
 
-  it("keeps a persisted route non-interactive and retryable when team validation fails", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    const bootstrapSkeleton = installBootstrapSkeleton();
-    const teamRequestStarted = context.mocks.deferred<void>();
-    let teamRequestCount = 0;
-    context.mocks.http.get(TEAM_REQUEST_PATTERN, () => {
-      teamRequestCount += 1;
-      if (teamRequestCount === 1) {
-        teamRequestStarted.resolve(undefined);
-        return HttpResponse.error();
-      }
-      return HttpResponse.json([
-        teamAgent(DEFAULT_AGENT_ID, "Default agent"),
-        teamAgent(RETURNING_AGENT_ID, "Returning agent"),
-      ]);
-    });
-    const draftLoads = recordAgentDraftLoads();
-
-    detachedSetupPage({ context, path: "/?prompt=Recovered%20prompt" });
-
-    await teamRequestStarted.promise;
-    expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
-    expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
-    expect(context.store.get(lastUsedAgentId$)).toBe(RETURNING_AGENT_ID);
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      "Failed to load agent",
-    );
-    expect(
-      screen.queryByRole("textbox", { name: "Message" }),
-    ).not.toBeInTheDocument();
-    expect(draftLoads()).not.toContain(RETURNING_AGENT_ID);
-
-    fireEvent.click(buttonByText("Try again"));
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    await waitFor(() => {
-      expect(document.title).toContain("Returning agent");
-      expect(composer).toHaveTextContent("Recovered prompt");
-    });
-    expect(teamRequestCount).toBe(2);
-  });
-
-  it.each(UNVALIDATED_AGENT_CASES)(
-    "recovers a $label candidate safely after team validation fails",
-    async (candidate) => {
-      context.store.set(setLastUsedAgentId$, candidate.candidateId);
-      context.mocks.data.onboardingStatus({
-        defaultAgentId: candidate.recoveryAgentId,
-      });
-      const teamRequestStarted = context.mocks.deferred<void>();
-      let teamRequestCount = 0;
-      context.mocks.http.get(TEAM_REQUEST_PATTERN, () => {
-        teamRequestCount += 1;
-        if (teamRequestCount === 1) {
-          teamRequestStarted.resolve(undefined);
-          return HttpResponse.error();
-        }
-        return HttpResponse.json([
-          teamAgent(candidate.recoveryAgentId, candidate.recoveryAgentName),
-        ]);
-      });
-      const draftLoads = recordAgentDraftLoads();
-
-      setupCandidateHomeRoute(candidate, "/?prompt=Safe%20recovery");
-
-      await teamRequestStarted.promise;
-      expect(pathname()).toBe(`/agents/${candidate.candidateId}/chat`);
-      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-        "Failed to load agent",
-      );
-      expect(
-        screen.queryByRole("textbox", { name: "Message" }),
-      ).not.toBeInTheDocument();
-      expect(draftLoads()).not.toContain(candidate.candidateId);
-
-      fireEvent.click(buttonByText("Try again"));
-
-      await waitFor(() => {
-        expect(pathname()).toBe(`/agents/${candidate.recoveryAgentId}/chat`);
-      });
-      const composer = await screen.findByRole("textbox", { name: "Message" });
-      await waitFor(() => {
-        expect(composer).toHaveTextContent("Safe recovery");
-      });
-      expect(teamRequestCount).toBe(2);
-      expect(draftLoads()).not.toContain(candidate.candidateId);
-    },
-  );
-
-  it("does not activate an agent after chat validation navigation is aborted", async () => {
+  it("does not resume agent validation after navigation is aborted", async () => {
     const draftLoads = recordAgentDraftLoads();
     const team = deferTeamResponse([
       teamAgent(RETURNING_AGENT_ID, "Returning agent"),
@@ -426,11 +306,8 @@ describe("home route", () => {
 
     await team.started.promise;
     await expect(
-      screen.findByTestId("agent-chat-validation"),
+      screen.findByRole("textbox", { name: "Message" }),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: "Message" }),
-    ).not.toBeInTheDocument();
 
     context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
     await waitFor(() => {

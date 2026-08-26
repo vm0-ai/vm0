@@ -120,10 +120,8 @@ export const homeAgentId$ = computed(async (get) => {
     return lastUsedAgentId;
   }
 
-  // The agent chat route renders a non-interactive shell, validates the
-  // candidate against the current org's team, and only then activates its
-  // draft and composer. Avoid repeating that validation while the home
-  // route's full-screen skeleton is still visible.
+  // Onboarding status already identifies the default agent. Resolve it
+  // directly so the home route can hand off without waiting for /api/team.
   return await get(defaultAgentId$);
 });
 
