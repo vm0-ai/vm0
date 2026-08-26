@@ -283,7 +283,34 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("opens website templates from the make page", async () => {
+  it.each([
+    ["Generate a presentation", "Presentation"],
+    ["Generate images", "Illustration"],
+    ["Video production", "Video"],
+    ["Build a website", "Website"],
+  ])(
+    "opens the %s product templates from the make page",
+    async (option, tab) => {
+      await openMakePage();
+
+      const makeOption = screen.getByRole("radio", {
+        name: new RegExp(option, "u"),
+      });
+      click(makeOption);
+
+      await waitFor(() => {
+        const selectedTab = queryAllByRoleFast("tab").find((candidate) => {
+          return (
+            candidate.textContent === tab &&
+            candidate.getAttribute("aria-selected") === "true"
+          );
+        });
+        expect(selectedTab).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("shows the website choice illustration", async () => {
     await openMakePage();
 
     const websiteOption = screen.getByRole("radio", {
@@ -293,18 +320,6 @@ describe("onboarding flow", () => {
       "src",
       expect.stringContaining("v2-choice-website_80x80.png"),
     );
-
-    click(websiteOption);
-
-    await waitFor(() => {
-      const websiteTab = queryAllByRoleFast("tab").find((candidate) => {
-        return (
-          candidate.textContent === "Website" &&
-          candidate.getAttribute("aria-selected") === "true"
-        );
-      });
-      expect(websiteTab).toBeInTheDocument();
-    });
   });
 
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
@@ -1118,10 +1133,13 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("selects and reviews a presentation template", async () => {
+  it("keeps the presentation template deep link available", async () => {
     const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
-    await openMakePage();
-    chooseMakeOption("Generate a presentation");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/presentation-template?choice=presentation",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1167,8 +1185,11 @@ describe("onboarding flow", () => {
       },
     });
 
-    await openMakePage();
-    chooseMakeOption("Generate images");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/image-template?choice=images",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1218,8 +1239,11 @@ describe("onboarding flow", () => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage();
-    chooseMakeOption("Video production");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1315,14 +1339,8 @@ describe("onboarding flow", () => {
     mockOnboardingNeeded();
     detachedSetupPage({
       context,
-      path: "/onboarding",
+      path: "/onboarding/video-template?choice=video",
     });
-    await expect(
-      screen.findByRole("heading", {
-        name: "What do you want to make first",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseMakeOption("Video production");
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
@@ -1482,7 +1500,9 @@ describe("onboarding flow", () => {
       ADSMARCH_ONBOARDING_START_SEND_TO,
     ]);
 
-    chooseMakeOption("Video production");
+    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoTemplate, {
+      searchParams: new URLSearchParams({ choice: "video" }),
+    });
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
