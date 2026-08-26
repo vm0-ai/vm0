@@ -149,7 +149,12 @@ export function TimezoneSettings() {
             onValueChange={handleChange}
             disabled={loading}
           >
-            <SelectTrigger className="zero-btn-morandi">
+            <SelectTrigger
+              className="zero-btn-morandi"
+              aria-label={t(($) => {
+                return $.settings.preferences.timezone.rowTitle;
+              })}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

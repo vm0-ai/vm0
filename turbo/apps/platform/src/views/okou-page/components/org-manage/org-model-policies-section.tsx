@@ -360,7 +360,12 @@ function DefaultModelRow({
           }}
           disabled={disabled}
         >
-          <SelectTrigger className="zero-btn-morandi h-9 w-full shrink-0 sm:w-[280px]">
+          <SelectTrigger
+            className="zero-btn-morandi h-9 w-full shrink-0 sm:w-[280px]"
+            aria-label={t(($) => {
+              return $.settings.models.policies.defaultModel;
+            })}
+          >
             <SelectValue
               placeholder={t(($) => {
                 return $.settings.models.policies.selectDefaultModel;
