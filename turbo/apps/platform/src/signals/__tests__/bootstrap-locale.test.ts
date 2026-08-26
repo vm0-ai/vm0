@@ -1,13 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { HttpResponse } from "msw";
+import { describe, expect, it, vi } from "vitest";
 
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
 import { formatAppNumber } from "../../i18n/format.ts";
-import { DEFAULT_LOCALE, resources } from "../../i18n/resources.ts";
-import { i18n } from "../../i18n/index.ts";
+import frFRCommonUrl from "../../i18n/locales/fr-FR/common.json?url";
+import hiINAgents from "../../i18n/locales/hi-IN/agents.json";
+import hiINCommon from "../../i18n/locales/hi-IN/common.json";
+import idIDAgents from "../../i18n/locales/id-ID/agents.json";
+import itITCommon from "../../i18n/locales/it-IT/common.json";
+import {
+  CHAT_ATTACHMENT_HEADINGS,
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+} from "../../i18n/resources.ts";
+import { changeI18nLanguage, i18n, initializeI18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 import { locale$, setLocale$ } from "../locale.ts";
+import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const ACTIVE_ORG_STORAGE_KEY = "clerk-active-org-id";
@@ -104,6 +115,115 @@ function bindBootstrapStateToSignal(): void {
 }
 
 describe("bootstrap locale", () => {
+  it("loads English resources for the default locale", async () => {
+    context.mocks.browser.language(DEFAULT_LOCALE);
+    executeLocaleEntrypoint();
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(i18n.hasResourceBundle(DEFAULT_LOCALE, "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle(DEFAULT_LOCALE, "agents")).toBeTruthy();
+  });
+
+  it("loads resources for every supported locale", async () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      await expect(initializeI18n(locale)).resolves.toBe(locale);
+      expect(i18n.hasResourceBundle(locale, "common")).toBeTruthy();
+      expect(i18n.hasResourceBundle(locale, "agents")).toBeTruthy();
+      expect(
+        i18n.t(($) => {
+          return $.chat.attachments.title;
+        }),
+      ).toBe(CHAT_ATTACHMENT_HEADINGS[locale]);
+    }
+  });
+
+  it("switches at runtime to every supported locale", async () => {
+    await initializeI18n(DEFAULT_LOCALE);
+
+    for (const locale of SUPPORTED_LOCALES) {
+      await context.store.set(setLocale$, locale, context.signal);
+      expect(context.store.get(locale$)).toBe(locale);
+      expect(i18n.language).toBe(locale);
+      expect(document.documentElement.lang).toBe(locale);
+      expect(
+        i18n.t(($) => {
+          return $.chat.attachments.title;
+        }),
+      ).toBe(CHAT_ATTACHMENT_HEADINGS[locale]);
+    }
+  });
+
+  it("falls back to English when the selected locale fails to load", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    context.mocks.http.get(frFRCommonUrl, () => {
+      return new HttpResponse(null, { status: 503 });
+    });
+
+    await expect(initializeI18n("fr-FR")).resolves.toBe(DEFAULT_LOCALE);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[E][I18n]",
+      `Failed to load fr-FR locale resources; falling back to ${DEFAULT_LOCALE}`,
+      expect.any(Error),
+    );
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(
+      i18n.t(($) => {
+        return $.settings.preferences.language.title;
+      }),
+    ).toBe("Language");
+  });
+
+  it("keeps runtime locale state unchanged when resources fail to load", async () => {
+    await initializeI18n(DEFAULT_LOCALE);
+    context.mocks.http.get(frFRCommonUrl, () => {
+      return new HttpResponse(null, { status: 503 });
+    });
+
+    await expect(
+      context.store.set(setLocale$, "fr-FR", context.signal),
+    ).rejects.toThrow(
+      "Failed to load fr-FR common locale resources (HTTP 503)",
+    );
+
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(i18n.hasResourceBundle("fr-FR", "common")).toBeFalsy();
+    expect(i18n.hasResourceBundle("fr-FR", "agents")).toBeFalsy();
+  });
+
+  it("does not apply a locale switch after its lifecycle is aborted", async () => {
+    await initializeI18n(DEFAULT_LOCALE);
+    const requestStarted = context.mocks.deferred<void>();
+    context.mocks.http.get(frFRCommonUrl, ({ never }) => {
+      requestStarted.resolve(undefined);
+      return never();
+    });
+    const resetLocaleSwitchSignal$ = resetSignal();
+    const localeSwitchSignal = context.store.set(
+      resetLocaleSwitchSignal$,
+      context.signal,
+    );
+
+    const switching = changeI18nLanguage("fr-FR", localeSwitchSignal);
+    await requestStarted.promise;
+    context.store.set(resetLocaleSwitchSignal$, context.signal);
+
+    await expect(switching).rejects.toMatchObject({ name: "AbortError" });
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(i18n.hasResourceBundle("fr-FR", "common")).toBeFalsy();
+    expect(i18n.hasResourceBundle("fr-FR", "agents")).toBeFalsy();
+  });
+
   it("normalizes a Japanese browser language before bundle render", () => {
     context.mocks.browser.language("ja");
 
@@ -267,13 +387,13 @@ describe("bootstrap locale", () => {
     expect(i18n.language).toBe("id-ID");
     expect(document.documentElement.lang).toBe("id-ID");
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("fr-FR", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("ja-JP", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("id-ID", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("es-ES", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("hi-IN", "common")).toBeTruthy();
+    for (const unloadedLocale of SUPPORTED_LOCALES.filter((locale) => {
+      return locale !== DEFAULT_LOCALE && locale !== "id-ID";
+    })) {
+      expect(i18n.hasResourceBundle(unloadedLocale, "common")).toBeFalsy();
+      expect(i18n.hasResourceBundle(unloadedLocale, "agents")).toBeFalsy();
+    }
     expect(new Intl.NumberFormat(i18n.language).format(1234.5)).toBe("1.234,5");
     expect(
       new Intl.DateTimeFormat(i18n.language, {
@@ -290,11 +410,10 @@ describe("bootstrap locale", () => {
       ),
     ).toBe("2 jam");
 
-    const indonesianAgents = resources["id-ID"].agents;
     context.signal.addEventListener(
       "abort",
       () => {
-        i18n.addResourceBundle("id-ID", "agents", indonesianAgents, true, true);
+        i18n.addResourceBundle("id-ID", "agents", idIDAgents, true, true);
       },
       { once: true },
     );
@@ -476,17 +595,10 @@ describe("bootstrap locale", () => {
       },
     });
 
-    const indonesianAgentResources = resources["id-ID"].agents;
     context.signal.addEventListener(
       "abort",
       () => {
-        i18n.addResourceBundle(
-          "id-ID",
-          "agents",
-          indonesianAgentResources,
-          true,
-          true,
-        );
+        i18n.addResourceBundle("id-ID", "agents", idIDAgents, true, true);
       },
       { once: true },
     );
@@ -606,9 +718,7 @@ describe("bootstrap locale", () => {
       }),
     ).toBe("QuickBooks finance dashboard बनाएँ");
 
-    const hindiWorkflowCopy = JSON.stringify(
-      resources["hi-IN"].common.onboarding.workflows,
-    );
+    const hindiWorkflowCopy = JSON.stringify(hiINCommon.onboarding.workflows);
     expect(hindiWorkflowCopy).not.toMatch(
       /suggested_questions|hå|Traffik|गोल्डेन ग्लाउच|अटो-लीन्डर/iu,
     );
@@ -700,7 +810,7 @@ describe("bootstrap locale", () => {
     expect(i18n.hasResourceBundle("it-IT", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("it-IT", "agents")).toBeTruthy();
 
-    const italianCommon = structuredClone(resources["it-IT"].common);
+    const italianCommon = structuredClone(itITCommon);
     context.signal.addEventListener(
       "abort",
       () => {
@@ -801,17 +911,10 @@ describe("bootstrap locale", () => {
       },
     });
 
-    const hindiAgentResources = resources["hi-IN"].agents;
     context.signal.addEventListener(
       "abort",
       () => {
-        i18n.addResourceBundle(
-          "hi-IN",
-          "agents",
-          hindiAgentResources,
-          true,
-          true,
-        );
+        i18n.addResourceBundle("hi-IN", "agents", hiINAgents, true, true);
       },
       { once: true },
     );

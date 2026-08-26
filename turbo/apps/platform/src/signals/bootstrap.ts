@@ -1,6 +1,7 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { SupportedLocale } from "../i18n/resources.ts";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
@@ -453,10 +454,16 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
-  await set(reloadFeatureSwitch$, signal);
-  await set(syncLocalePreference$, signal);
-});
+const setupFeatureSwitches$ = command(
+  async (
+    { set },
+    initialLocaleLoadFailure: SupportedLocale | null,
+    signal: AbortSignal,
+  ) => {
+    await set(reloadFeatureSwitch$, signal);
+    await set(syncLocalePreference$, initialLocaleLoadFailure, signal);
+  },
+);
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
@@ -480,7 +487,7 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 export const bootstrap$ = command(
   async ({ get, set }, render: () => void, signal: AbortSignal) => {
     set(captureInvitationRedirect$);
-    await set(initLocale$, signal);
+    const initialLocaleLoadFailure = await set(initLocale$, signal);
     signal.throwIfAborted();
     set(initTheme$);
     set(setRootSignal$, signal);
@@ -512,7 +519,7 @@ export const bootstrap$ = command(
       set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(setupFeatureSwitches$, signal),
+      set(setupFeatureSwitches$, initialLocaleLoadFailure, signal),
     ]);
 
     signal.throwIfAborted();

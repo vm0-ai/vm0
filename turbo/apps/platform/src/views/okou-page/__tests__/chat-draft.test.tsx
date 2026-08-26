@@ -1965,7 +1965,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("falls back to plain text when copied chat html only carries attachments", async () => {
+  it("falls back to plain text from another locale when copied chat html only carries attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e3000000-0000-4000-a000-000000000004";
     const pastedText = "123";
@@ -2003,7 +2003,7 @@ describe("chat drafts", () => {
             return [
               pastedText,
               "",
-              "Attachments:",
+              "Pièces jointes:",
               `- [${filename}](${url}): ${url}`,
             ].join("\n");
           }

@@ -403,34 +403,32 @@ describe("chat tool activity", () => {
       });
 
       await waitFor(() => {
-        expect(
-          document.querySelectorAll("[data-chat-tool-activity] > button"),
-        ).toHaveLength(labels.length);
-      });
-      const buttons = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "[data-chat-tool-activity] > button",
-        ),
-      );
-      for (const [index, expectedLabels] of labels.entries()) {
-        const button = buttons[index]!;
-        for (const expectedLabel of expectedLabels) {
-          expect(button).toHaveTextContent(expectedLabel);
+        const buttons = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "[data-chat-tool-activity] > button",
+          ),
+        );
+        expect(buttons).toHaveLength(labels.length);
+        for (const [index, expectedLabels] of labels.entries()) {
+          const button = buttons[index]!;
+          for (const expectedLabel of expectedLabels) {
+            expect(button).toHaveTextContent(expectedLabel);
+          }
+          const text = button.textContent ?? "";
+          expect(text.indexOf(expectedLabels[0])).toBeLessThan(
+            text.indexOf(expectedLabels[1]),
+          );
+          expect(text.indexOf(expectedLabels[1])).toBeLessThan(
+            text.indexOf(expectedLabels[2]),
+          );
         }
-        const text = button.textContent ?? "";
-        expect(text.indexOf(expectedLabels[0])).toBeLessThan(
-          text.indexOf(expectedLabels[1]),
-        );
-        expect(text.indexOf(expectedLabels[1])).toBeLessThan(
-          text.indexOf(expectedLabels[2]),
-        );
-      }
-      for (const button of buttons.slice(0, 2)) {
-        expect(button).toHaveTextContent(/…$/u);
-      }
-      for (const button of buttons.slice(2)) {
-        expect(button).not.toHaveTextContent(/…$/u);
-      }
+        for (const button of buttons.slice(0, 2)) {
+          expect(button).toHaveTextContent(/…$/u);
+        }
+        for (const button of buttons.slice(2)) {
+          expect(button).not.toHaveTextContent(/…$/u);
+        }
+      });
     },
   );
 

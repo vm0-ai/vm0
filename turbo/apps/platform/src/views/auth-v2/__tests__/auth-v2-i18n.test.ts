@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { resources, SUPPORTED_LOCALES } from "../../../i18n/resources.ts";
+import deDECommon from "../../../i18n/locales/de-DE/common.json";
+import enUSCommon from "../../../i18n/locales/en-US/common.json";
+import esESCommon from "../../../i18n/locales/es-ES/common.json";
+import frFRCommon from "../../../i18n/locales/fr-FR/common.json";
+import hiINCommon from "../../../i18n/locales/hi-IN/common.json";
+import idIDCommon from "../../../i18n/locales/id-ID/common.json";
+import itITCommon from "../../../i18n/locales/it-IT/common.json";
+import jaJPCommon from "../../../i18n/locales/ja-JP/common.json";
+import koKRCommon from "../../../i18n/locales/ko-KR/common.json";
+import ptBRCommon from "../../../i18n/locales/pt-BR/common.json";
+import {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  type SupportedLocale,
+} from "../../../i18n/resources.ts";
+
+const commonResources = {
+  "de-DE": deDECommon,
+  "en-US": enUSCommon,
+  "es-ES": esESCommon,
+  "fr-FR": frFRCommon,
+  "hi-IN": hiINCommon,
+  "id-ID": idIDCommon,
+  "it-IT": itITCommon,
+  "ja-JP": jaJPCommon,
+  "ko-KR": koKRCommon,
+  "pt-BR": ptBRCommon,
+} as const satisfies Record<SupportedLocale, Readonly<Record<string, unknown>>>;
 
 const authV2ViewSources = import.meta.glob("../**/*.{ts,tsx}", {
   eager: true,
@@ -61,14 +88,14 @@ function leafEntries(
 
 describe("auth v2 platform localization ownership", () => {
   it("defines the complete Auth v2 key set for every supported locale", () => {
-    const expectedKeys = leafEntries(resources["en-US"].common.auth.v2)
+    const expectedKeys = leafEntries(commonResources[DEFAULT_LOCALE].auth.v2)
       .map(([key]) => {
         return key;
       })
       .sort();
 
     for (const locale of SUPPORTED_LOCALES) {
-      const entries = leafEntries(resources[locale].common.auth.v2);
+      const entries = leafEntries(commonResources[locale].auth.v2);
       expect(
         entries
           .map(([key]) => {
@@ -85,7 +112,7 @@ describe("auth v2 platform localization ownership", () => {
 
   it("keeps Clerk template syntax out of platform-owned Auth v2 copy", () => {
     for (const locale of SUPPORTED_LOCALES) {
-      const copy = JSON.stringify(resources[locale].common.auth.v2);
+      const copy = JSON.stringify(commonResources[locale].auth.v2);
       expect(copy).not.toContain("{{applicationName}}");
       expect(copy).not.toContain("{{provider");
       expect(copy).not.toContain("termsOfServiceLink");
@@ -96,15 +123,15 @@ describe("auth v2 platform localization ownership", () => {
   it("localizes critical Auth v2 recovery and CAPTCHA copy outside English", () => {
     expect(criticalLocalizedAuthV2Keys).not.toHaveLength(0);
     const englishEntries = new Map(
-      leafEntries(resources["en-US"].common.auth.v2),
+      leafEntries(commonResources[DEFAULT_LOCALE].auth.v2),
     );
 
     for (const locale of SUPPORTED_LOCALES) {
-      if (locale === "en-US") {
+      if (locale === DEFAULT_LOCALE) {
         continue;
       }
       const localizedEntries = new Map(
-        leafEntries(resources[locale].common.auth.v2),
+        leafEntries(commonResources[locale].auth.v2),
       );
       for (const key of criticalLocalizedAuthV2Keys) {
         expect([locale, key, localizedEntries.get(key)]).not.toStrictEqual([
@@ -118,7 +145,7 @@ describe("auth v2 platform localization ownership", () => {
 
   it("preserves every localized legal-link token contract", () => {
     for (const locale of SUPPORTED_LOCALES) {
-      const copy = resources[locale].common.auth.v2.signUp;
+      const copy = commonResources[locale].auth.v2.signUp;
       expect(copy.legalPrivacyOnly).toMatch(/<privacy>.+<\/privacy>/);
       expect(copy.legalTermsOnly).toMatch(/<terms>.+<\/terms>/);
       expect(copy.legalTermsAndPrivacy).toMatch(/<terms>.+<\/terms>/);

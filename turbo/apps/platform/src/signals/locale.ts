@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { i18n, initializeI18n } from "../i18n/index.ts";
+import { changeI18nLanguage, initializeI18n } from "../i18n/index.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import {
   localeStorageKey,
@@ -33,18 +33,21 @@ export const availableLocalePreferences$ = computed(async (get) => {
   return preferences.supportedLocales;
 });
 
-export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
-  const locale = resolveDocumentLocale();
-  await initializeI18n(locale);
-  signal.throwIfAborted();
-  applyDocumentLocaleCopy();
-  set(internalLocale$, locale);
-  document.documentElement.lang = locale;
-});
+export const initLocale$ = command(
+  async ({ set }, signal: AbortSignal): Promise<SupportedLocale | null> => {
+    const requestedLocale = resolveDocumentLocale();
+    const locale = await initializeI18n(requestedLocale, signal);
+    signal.throwIfAborted();
+    applyDocumentLocaleCopy();
+    set(internalLocale$, locale);
+    document.documentElement.lang = locale;
+    return locale === requestedLocale ? null : requestedLocale;
+  },
+);
 
 export const setLocale$ = command(
   async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
-    await i18n.changeLanguage(locale);
+    await changeI18nLanguage(locale, signal);
     signal.throwIfAborted();
     applyDocumentLocaleCopy();
     set(internalLocale$, locale);
@@ -67,7 +70,11 @@ const applyLocalePreference$ = command(
 );
 
 export const syncLocalePreference$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async (
+    { get, set },
+    initialLocaleLoadFailure: SupportedLocale | null,
+    signal: AbortSignal,
+  ) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -81,6 +88,15 @@ export const syncLocalePreference$ = command(
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;
+
+    // This completes the cold-start presentation fallback in
+    // loadInitialLocaleResources. Retrying the same failed asset pair here
+    // would reject bootstrap after English was already selected. Keep the
+    // preference intact so a later entrance or explicit switch can retry.
+    // Remove with vm0-ai/vm0#29610 after its zero-error Sentry gate is met.
+    if (locale === initialLocaleLoadFailure) {
+      return;
+    }
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);
 
     if (preferences.locale === null) {

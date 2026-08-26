@@ -3,7 +3,7 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { i18n } from "../../i18n/index.ts";
-import { SUPPORTED_LOCALES } from "../../i18n/resources.ts";
+import { CHAT_ATTACHMENT_HEADINGS } from "../../i18n/resources.ts";
 import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
@@ -94,18 +94,7 @@ function attachmentHeading(): string {
 }
 
 function supportedAttachmentHeadings(): readonly string[] {
-  return Array.from(
-    new Set(
-      SUPPORTED_LOCALES.map((lng) => {
-        return i18n.t(
-          ($) => {
-            return $.chat.attachments.title;
-          },
-          { lng },
-        );
-      }),
-    ),
-  );
+  return Array.from(new Set(Object.values(CHAT_ATTACHMENT_HEADINGS)));
 }
 
 function formatPlainText(payload: ChatClipboardPayload): string {
