@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadMetadataContract,
   chatThreadsContract,
@@ -11,8 +11,32 @@ import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { threadMeta } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { navigateToChat$ } from "../../../signals/okou-page/nav.ts";
+import type { ChatThreadMetadataShortcutOutcome } from "../../../lib/posthog.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+
+const metadataShortcutCapture = vi.hoisted(() => {
+  return {
+    onCapture: undefined as
+      | ((outcome: ChatThreadMetadataShortcutOutcome) => void)
+      | undefined,
+  };
+});
+
+vi.mock("../../../lib/posthog.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../lib/posthog.ts")>();
+  const { command } = await import("ccstate");
+  return {
+    ...actual,
+    captureChatThreadMetadataShortcut$: command(
+      (_, outcome: ChatThreadMetadataShortcutOutcome): void => {
+        metadataShortcutCapture.onCapture?.(outcome);
+      },
+    ),
+  };
+});
 
 const context = testContext();
 
@@ -22,6 +46,10 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const FIRST_EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const SECOND_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const THIRD_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
+
+beforeEach(() => {
+  metadataShortcutCapture.onCapture = undefined;
+});
 
 function prepareAgent(): void {
   context.mocks.data.team([
@@ -480,5 +508,47 @@ describe("chat thread metadata readiness", () => {
       document.querySelector(`[data-chat-thread-container-id="${THREAD_ID}"]`),
     ).toBeNull();
     expect(screen.queryByText("Stale route")).not.toBeInTheDocument();
+  });
+
+  it("does not retain metadata when navigation aborts after cold resolution", async () => {
+    const secondMetadataRequested = context.mocks.deferred<void>();
+    let firstThreadRequestCount = 0;
+    context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
+      if (params.id === THREAD_ID) {
+        firstThreadRequestCount += 1;
+        if (firstThreadRequestCount === 1) {
+          return respond(200, shellMetadata(THREAD_ID, "Stale resolved route"));
+        }
+        secondMetadataRequested.resolve();
+        return respond(404, {
+          error: {
+            code: "CHAT_THREAD_NOT_FOUND",
+            message: "Chat thread not found",
+          },
+        });
+      }
+      return respond(200, shellMetadata(OTHER_THREAD_ID, "Current route"));
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
+      return never();
+    });
+    metadataShortcutCapture.onCapture = (outcome) => {
+      if (outcome !== "hit") {
+        return;
+      }
+      metadataShortcutCapture.onCapture = undefined;
+      context.store.set(navigateToChat$, OTHER_THREAD_ID);
+    };
+
+    setupChatPage();
+
+    await expectActiveThread(OTHER_THREAD_ID, "Current route");
+    expect(context.store.get(threadMeta(THREAD_ID))).toBeNull();
+
+    context.store.set(navigateToChat$, THREAD_ID);
+
+    await secondMetadataRequested.promise;
+    expect(firstThreadRequestCount).toBe(2);
+    expect(screen.queryByText("Stale resolved route")).not.toBeInTheDocument();
   });
 });

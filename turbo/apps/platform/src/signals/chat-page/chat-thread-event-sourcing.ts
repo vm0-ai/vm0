@@ -152,13 +152,11 @@ const registerBootstrapThreadMeta$ = command(
     syncVersion: number,
     signal: AbortSignal,
   ): boolean => {
+    signal.throwIfAborted();
     if (get(chatThreadEventSyncVersion$) !== syncVersion) {
       return false;
     }
     const owner = {};
-    const next = new Map(get(bootstrapThreadMetaState$));
-    next.set(meta.id, { meta, owner });
-    set(bootstrapThreadMetaState$, next);
     signal.addEventListener(
       "abort",
       () => {
@@ -172,6 +170,9 @@ const registerBootstrapThreadMeta$ = command(
       },
       { once: true },
     );
+    const next = new Map(get(bootstrapThreadMetaState$));
+    next.set(meta.id, { meta, owner });
+    set(bootstrapThreadMetaState$, next);
     return true;
   },
 );
@@ -928,6 +929,7 @@ export const resolveThreadMeta$ = command(
       canonicalSync,
       signal,
     );
+    signal.throwIfAborted();
     if (resolution.meta && resolution.source === "metadata") {
       const registered = set(
         registerBootstrapThreadMeta$,
