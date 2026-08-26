@@ -246,12 +246,11 @@ async fn execute_inner_does_not_prefetch_after_early_guest_state_failure() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "guest-reseed".to_string(),
-        exit_code: 64,
-        stdout: Vec::new(),
-        stderr: b"restore denied".to_vec(),
-    });
+    overrides.push_guest_state_restore_result(Ok(sandbox::ExecResult::new(
+        64,
+        Vec::new(),
+        b"restore denied".to_vec(),
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let params = JobParams {
         restore_guest_state: true,

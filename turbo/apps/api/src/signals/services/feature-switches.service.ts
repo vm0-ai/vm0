@@ -16,6 +16,7 @@ const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
   FeatureSwitchKey.ChatErrorRecovery,
   FeatureSwitchKey.BuiltInModelProviderFallback,
   FeatureSwitchKey.PiLoop,
+  FeatureSwitchKey.PresentationTemplates,
 ];
 
 function isOrgScopedFeatureSwitchKey(key: string): boolean {

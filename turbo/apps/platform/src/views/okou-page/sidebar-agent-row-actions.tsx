@@ -21,7 +21,7 @@ export interface AgentRowMenuAction {
   readonly onSelect: () => void;
 }
 
-function AgentUnreadIndicator() {
+export function AgentUnreadIndicator() {
   const { t } = useTranslation("agents");
 
   return (

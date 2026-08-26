@@ -28,6 +28,31 @@ const LOG_LEVEL_PRIORITY: Readonly<Record<Level, number>> = {
   [Level.Fatal]: 4,
 };
 
+const CANONICAL_DEBUG_KEY = "OKOU_DEBUG";
+const LEGACY_DEBUG_KEY = "VM0_DEBUG";
+const DEBUG_ALIAS_RESOLUTION_EVENT = "debug_environment_alias_resolution";
+const DEBUG_ALIAS_LOG_CONTEXT = "DebugEnvironment";
+const DEBUG_ALIAS_CONFLICT_ERROR =
+  "Debug environment aliases conflict: canonicalKey=OKOU_DEBUG legacyKey=VM0_DEBUG state=conflicting-dual";
+
+type DebugAliasState =
+  | "absent"
+  | "canonical-only"
+  | "legacy-only"
+  | "equal-dual"
+  | "conflicting-dual";
+
+type DebugConfiguration =
+  | {
+      readonly state:
+        | "absent"
+        | "canonical-only"
+        | "legacy-only"
+        | "equal-dual";
+      readonly patterns: readonly string[];
+    }
+  | { readonly state: "conflicting-dual" };
+
 interface Logger {
   readonly debug: LogMethod;
   readonly info: LogMethod;
@@ -54,8 +79,7 @@ const loggerRegistry = singleton(() => {
   return new LoggerRegistry();
 });
 
-function getDebugPatterns(): string[] {
-  const value = env("VM0_DEBUG");
+function parseDebugPatterns(value: string | undefined): readonly string[] {
   if (!value) {
     return [];
   }
@@ -68,6 +92,66 @@ function getDebugPatterns(): string[] {
     .filter((pattern) => {
       return pattern.length > 0;
     });
+}
+
+function reportDebugAliasResolution(state: DebugAliasState): void {
+  logToAxiom(
+    state === "conflicting-dual" ? Level.Warn : Level.Debug,
+    DEBUG_ALIAS_LOG_CONTEXT,
+    [
+      DEBUG_ALIAS_RESOLUTION_EVENT,
+      {
+        canonicalKey: CANONICAL_DEBUG_KEY,
+        legacyKey: LEGACY_DEBUG_KEY,
+        state,
+      },
+    ],
+  );
+}
+
+function resolveDebugConfiguration(): DebugConfiguration {
+  const canonical = env(CANONICAL_DEBUG_KEY);
+  const legacy = env(LEGACY_DEBUG_KEY);
+
+  if (!canonical) {
+    const state = legacy ? "legacy-only" : "absent";
+    reportDebugAliasResolution(state);
+    return { state, patterns: parseDebugPatterns(legacy) };
+  }
+  if (!legacy) {
+    reportDebugAliasResolution("canonical-only");
+    return {
+      state: "canonical-only",
+      patterns: parseDebugPatterns(canonical),
+    };
+  }
+  if (canonical === legacy) {
+    reportDebugAliasResolution("equal-dual");
+    return {
+      state: "equal-dual",
+      patterns: parseDebugPatterns(canonical),
+    };
+  }
+
+  reportDebugAliasResolution("conflicting-dual");
+  return { state: "conflicting-dual" };
+}
+
+// This API-process compatibility boundary retains VM0_DEBUG while the preview
+// writer (.github/actions/web-api-env/action.yml), local development writer
+// (turbo/apps/api/scripts/dev.sh), and Turbo pass-through (turbo/turbo.json)
+// remain legacy-only. Under #28914, refresh stale Worker PR #25722 before the
+// later writer cutover, preserve a supported rollback target that accepts
+// VM0_DEBUG, and remove this fallback only after bounded source evidence shows
+// zero legacy-only and equal-dual resolutions through the rollback window.
+const debugConfiguration = singleton(resolveDebugConfiguration);
+
+function getDebugPatterns(): readonly string[] {
+  const configuration = debugConfiguration();
+  if (configuration.state === "conflicting-dual") {
+    throw new Error(DEBUG_ALIAS_CONFLICT_ERROR);
+  }
+  return configuration.patterns;
 }
 
 function matchesDebugPattern(name: string, pattern: string): boolean {
@@ -348,6 +432,7 @@ export function logger(name: string): Logger {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export function __resetForTest(): void {
+  debugConfiguration.reset();
   getAxiomLogger.reset();
   loggerRegistry.reset();
 }

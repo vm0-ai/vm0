@@ -93,6 +93,45 @@ pub struct StorageManifestRequest<'a> {
     pub timeout: Duration,
 }
 
+/// Timezone behavior for a fixed guest-state restore operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestStateRestoreTimezone<'a> {
+    /// Leave the guest timezone unchanged.
+    None,
+    /// Attempt timezone synchronization without failing the restore.
+    BestEffort(&'a str),
+    /// Require timezone synchronization to succeed.
+    Required(&'a str),
+}
+
+/// Request to restore snapshot-sensitive guest state through a fixed helper.
+///
+/// The provider selects the executable, root identity, arguments, containment,
+/// and output bounds. Callers supply only the state values consumed by that
+/// operation.
+pub struct GuestStateRestoreRequest<'a> {
+    /// Whole Unix timestamp seconds applied to the guest realtime clock.
+    pub unix_seconds: u64,
+    /// Nanoseconds within the Unix timestamp second.
+    pub unix_nanoseconds: u32,
+    /// Exact host entropy payload mixed into the guest CRNG.
+    pub entropy: &'a [u8; 256],
+    /// Optional guest timezone behavior.
+    pub timezone: GuestStateRestoreTimezone<'a>,
+    /// Guest-side helper timeout.
+    pub timeout: Duration,
+}
+
+impl GuestStateRestoreRequest<'_> {
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded operation into a zero-timeout request.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
+}
+
 impl StorageManifestRequest<'_> {
     /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     ///

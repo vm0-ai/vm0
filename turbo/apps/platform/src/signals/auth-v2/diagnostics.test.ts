@@ -38,15 +38,37 @@ const TEST_EMAIL_ADDRESS$ = computed(() => {
 const TRUE$ = computed(() => {
   return true;
 });
-const FALSE$ = computed(() => {
-  return false;
+const NULL$ = computed(() => {
+  return null;
 });
 const READY_SIGN_IN_RESEND_STATE$ = computed(() => {
+  return { remainingSeconds: 0, status: "ready" } as const;
+});
+const READY_SIGN_UP_RESEND_STATE$ = computed(() => {
   return { remainingSeconds: 0, status: "ready" } as const;
 });
 const TEST_PASSWORD$ = computed(() => {
   return "password";
 });
+
+const SIGN_IN_NO_OP$ = command((): void => {});
+const SIGN_IN_NO_OP_REF$ = onRef(
+  command((_context, _element: HTMLSpanElement, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+  }),
+);
+const SIGN_IN_ASYNC_NO_OP$ = command(
+  (_context, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
+const SIGN_IN_STRING_ASYNC_NO_OP$ = command(
+  (_context, _value: string, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
 
 function createSignInHarness(options?: {
   readonly initialize?: () => Promise<void>;
@@ -56,6 +78,7 @@ function createSignInHarness(options?: {
   const flowState$ = state<AuthV2SignInState>({
     accounts: [],
     factors: [],
+    identifierMode: "email",
     selectedFactor: null,
     status: "incomplete",
     step: "identifier",
@@ -66,6 +89,7 @@ function createSignInHarness(options?: {
   const identifier$ = state("person@example.com");
   const newPassword$ = state("");
   const password$ = state("");
+  const signOutOfOtherSessions$ = state(true);
   const sourceSubmit = vi.fn(
     options?.submit ??
       (() => {
@@ -78,28 +102,10 @@ function createSignInHarness(options?: {
         return Promise.resolve();
       }),
   );
-  const noOp$ = command((): void => {});
-  const noOpRef$ = onRef(
-    command(
-      (_context, _element: HTMLSpanElement, signal: AbortSignal): void => {
-        signal.throwIfAborted();
-      },
-    ),
-  );
-  const asyncNoOp$ = command((_context, signal: AbortSignal): Promise<void> => {
-    signal.throwIfAborted();
-    return Promise.resolve();
-  });
   const initialize$ = command(
     async (_context, signal: AbortSignal): Promise<void> => {
       await sourceInitialize();
       signal.throwIfAborted();
-    },
-  );
-  const stringAsyncNoOp$ = command(
-    (_context, _value: string, signal: AbortSignal): Promise<void> => {
-      signal.throwIfAborted();
-      return Promise.resolve();
     },
   );
   const setCode$ = command(({ set }, value: string): void => {
@@ -117,6 +123,11 @@ function createSignInHarness(options?: {
   const setPassword$ = command(({ set }, value: string): void => {
     set(password$, value);
   });
+  const setSignOutOfOtherSessions$ = command(
+    ({ set }, value: boolean): void => {
+      set(signOutOfOtherSessions$, value);
+    },
+  );
   const submit$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       await sourceSubmit();
@@ -132,8 +143,12 @@ function createSignInHarness(options?: {
     flowState$,
     identifier$,
     signals: {
-      backToIdentifier$: noOp$,
-      backToMethods$: noOp$,
+      backFromHelp$: SIGN_IN_NO_OP$,
+      backFromMethods$: SIGN_IN_NO_OP$,
+      backFromNewPassword$: SIGN_IN_NO_OP$,
+      backFromPasswordRecovery$: SIGN_IN_NO_OP$,
+      backToIdentifier$: SIGN_IN_NO_OP$,
+      backToMethods$: SIGN_IN_NO_OP$,
       code$: computed((get) => {
         return get(code$);
       }),
@@ -150,25 +165,32 @@ function createSignInHarness(options?: {
       newPassword$: computed((get) => {
         return get(newPassword$);
       }),
+      pendingFactorId$: NULL$,
       password$: computed((get) => {
         return get(password$);
       }),
-      resendCode$: asyncNoOp$,
-      resendCooldownLifecycleRef$: noOpRef$,
+      resendCode$: SIGN_IN_ASYNC_NO_OP$,
+      resendCooldownLifecycleRef$: SIGN_IN_NO_OP_REF$,
       resendState$: READY_SIGN_IN_RESEND_STATE$,
-      restart$: noOp$,
-      selectFactor$: stringAsyncNoOp$,
-      selectSession$: stringAsyncNoOp$,
+      restart$: SIGN_IN_NO_OP$,
+      selectFactor$: SIGN_IN_STRING_ASYNC_NO_OP$,
+      selectSession$: SIGN_IN_STRING_ASYNC_NO_OP$,
       setCode$,
       setConfirmPassword$,
       setIdentifier$,
       setNewPassword$,
       setPassword$,
+      setSignOutOfOtherSessions$,
+      showHelp$: SIGN_IN_NO_OP$,
+      showPasswordRecovery$: SIGN_IN_NO_OP$,
+      signOutOfOtherSessions$: computed((get) => {
+        return get(signOutOfOtherSessions$);
+      }),
       state$: computed((get) => {
         return get(flowState$);
       }),
       submit$,
-      useAnotherAccount$: noOp$,
+      useAnotherAccount$: SIGN_IN_NO_OP$,
     } satisfies AuthV2SignInSignals,
     sourceInitialize,
     sourceSubmit,
@@ -234,8 +256,12 @@ function createSignUpHarness(options?: {
       signal.throwIfAborted();
     },
   );
-  const startGoogleOAuth$ = command(
-    async (_context, signal: AbortSignal): Promise<void> => {
+  const startOAuth$ = command(
+    async (
+      _context,
+      _strategy: "oauth_apple" | "oauth_google",
+      signal: AbortSignal,
+    ): Promise<void> => {
       await sourceGoogleOAuth();
       signal.throwIfAborted();
     },
@@ -251,13 +277,17 @@ function createSignUpHarness(options?: {
         return get(error$);
       }),
       firstName$: EMPTY_STRING$,
-      googleOAuthAvailable$: TRUE$,
       initialize$: asyncNoOp$,
       lastName$: EMPTY_STRING$,
       legalAccepted$: TRUE$,
+      oauthStrategies$: computed(() => {
+        return ["oauth_google"] as const;
+      }),
+      pendingOAuthStrategy$: NULL$,
       password$: TEST_PASSWORD$,
       resendCode$: asyncNoOp$,
-      resendCoolingDown$: FALSE$,
+      resendCooldownLifecycleRef$: SIGN_IN_NO_OP_REF$,
+      resendState$: READY_SIGN_UP_RESEND_STATE$,
       restart$: asyncNoOp$,
       setCode$: setString$,
       setEmailAddress$: setString$,
@@ -265,7 +295,7 @@ function createSignUpHarness(options?: {
       setLastName$: setString$,
       setLegalAccepted$: setBoolean$,
       setPassword$: setString$,
-      startGoogleOAuth$,
+      startOAuth$,
       state$: computed((get) => {
         return get(flowState$);
       }),
@@ -332,7 +362,8 @@ describe("auth v2 diagnostic attempt ownership", () => {
 
     const passwordAttempt = context.store.set(signals.submit$, context.signal);
     const coalescedGoogleAttempt = context.store.set(
-      signals.startGoogleOAuth$,
+      signals.startOAuth$,
+      "oauth_google",
       context.signal,
     );
 
@@ -350,7 +381,11 @@ describe("auth v2 diagnostic attempt ownership", () => {
       step: "details",
     });
 
-    await context.store.set(signals.startGoogleOAuth$, context.signal);
+    await context.store.set(
+      signals.startOAuth$,
+      "oauth_google",
+      context.signal,
+    );
 
     expect(harness.sourceGoogleOAuth).toHaveBeenCalledOnce();
     expect(capture).toHaveBeenCalledTimes(2);
@@ -511,6 +546,7 @@ describe("auth v2 diagnostic privacy", () => {
     context.store.set(harness.flowState$, {
       accounts: [],
       factors: [],
+      identifierMode: "email",
       selectedFactor: null,
       status: "incomplete",
       step: "identifier",

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.173.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.6...runner-rs-v0.173.7) (2026-08-25)
+
+## [0.173.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.5...runner-rs-v0.173.6) (2026-08-25)
+
+## [0.173.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.4...runner-rs-v0.173.5) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api backend url aliases ([#29369](https://github.com/vm0-ai/vm0/issues/29369)) ([84295ac](https://github.com/vm0-ai/vm0/commit/84295ac0c3d66185b90d59fc6afa3f79903aac9a))
+
+## [0.173.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.3...runner-rs-v0.173.4) (2026-08-25)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve path base precedence ([#29352](https://github.com/vm0-ai/vm0/issues/29352)) ([19a1657](https://github.com/vm0-ai/vm0/commit/19a16573e9fbd2cd1860eaf032a1edaad511b74a))
+* **python:** settle websocket prewarm after usage errors ([#29347](https://github.com/vm0-ai/vm0/issues/29347)) ([2680f20](https://github.com/vm0-ai/vm0/commit/2680f2078be89e365bd5ba7fd9a2894649fd1746))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read tuning environment aliases ([#29329](https://github.com/vm0-ai/vm0/issues/29329)) ([d5dbae8](https://github.com/vm0-ai/vm0/commit/d5dbae8abbb4141eb10bb22ab3a8d588628b1e7c))
+* **python:** centralize upstream binding resolution ([#29345](https://github.com/vm0-ai/vm0/issues/29345)) ([3444174](https://github.com/vm0-ai/vm0/commit/3444174fbb9cc5c60ad9337751944fa8c6d8d40a))
+
 ## [0.173.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.2...runner-rs-v0.173.3) (2026-08-25)
 
 

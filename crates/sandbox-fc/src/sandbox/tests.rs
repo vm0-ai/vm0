@@ -2515,6 +2515,63 @@ async fn apply_storage_manifest_preserves_terminal_metadata() {
     assert_eq!(result.diagnostic, "containment cleanup failed");
 }
 
+#[tokio::test]
+async fn restore_guest_state_preserves_fixed_request_and_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let entropy = [0xA5; 256];
+    let request = GuestStateRestoreRequest {
+        unix_seconds: 1_778_000_000,
+        unix_nanoseconds: 123_000_000,
+        entropy: &entropy,
+        timezone: GuestStateRestoreTimezone::Required("Asia/Shanghai"),
+        timeout: Duration::from_secs(5),
+    };
+
+    let restore = sandbox.restore_guest_state(&request);
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_GUEST_STATE_RESTORE);
+        let decoded = vsock_proto::decode_guest_state_restore_request(&request.payload).unwrap();
+        assert_eq!(decoded.timeout_ms, 5_000);
+        assert_eq!(decoded.unix_seconds, 1_778_000_000);
+        assert_eq!(decoded.unix_nanoseconds, 123_000_000);
+        assert_eq!(decoded.entropy, entropy);
+        assert_eq!(
+            decoded.timezone,
+            vsock_proto::GuestStateRestoreTimezone::Required("Asia/Shanghai")
+        );
+
+        let payload = vsock_proto::encode_guest_state_restore_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            19,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: true,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_GUEST_STATE_RESTORE_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(restore, respond);
+    let result = result.unwrap();
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(19));
+    assert!(result.stdout.is_empty());
+    assert_eq!(result.stderr, b"err");
+    assert!(!result.stdout_truncated);
+    assert!(result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
+}
+
 #[test]
 fn exec_result_from_operation_result_maps_terminal_edge_states() {
     for (termination, diagnostic, input_stderr, expected_termination) in [

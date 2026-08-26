@@ -238,6 +238,7 @@ import {
   userMessageFileAttachments,
 } from "./user-message-files.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
+import { createComposerConnectorSignals } from "../okou-page/connectors.ts";
 
 const L = logger("ChatThread");
 const noOpComposerDraftSave$ = command(
@@ -1384,13 +1385,17 @@ function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
   trees: ReadonlyMap<string, Root>,
+  chatToolActivityEnabled: boolean,
 ): SemanticChatEvent[] {
   const renderDocumentByEventId = new Map(
     raw.map((entry) => {
       return [entry.event.id, entry.userMessageRenderDocument] as const;
     }),
   );
-  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
+  return semanticChatEventsFromChatEvents(
+    chatEvents,
+    chatToolActivityEnabled,
+  ).map((entry) => {
     return {
       ...entry,
       tree: trees.get(entry.event.id),
@@ -1403,7 +1408,8 @@ function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
   const { event } = entry;
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+    (event.eventType === "output.tool" ||
+      (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       ("error" in event && Boolean(event.error)))
   );
 }
@@ -2058,6 +2064,7 @@ function createPagedEventProjections({
       get(rawEvents$),
       get(chatEvents$),
       get(eventTrees$),
+      get(featureSwitch$)[FeatureSwitchKey.ChatToolActivity] ?? false,
     );
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
@@ -2452,6 +2459,8 @@ interface RunTrackingDeps {
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
+  reloadConnectorAccounts$: Command<void, []>;
+  reloadConnectorAccountPreference$: Command<void, []>;
 }
 
 interface ChatRenderWindowState {
@@ -2673,17 +2682,20 @@ function createOnSubscribedCommand({
   catchUpChatEvents$,
   reloadArtifacts$,
   cancellationRecovery,
+  reloadConnectorAccounts$,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
   | "catchUpChatEvents$"
   | "reloadArtifacts$"
   | "cancellationRecovery"
+  | "reloadConnectorAccounts$"
 >): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(cancellationRecovery.reload$);
     set(reloadArtifacts$);
+    set(reloadConnectorAccounts$);
     await Promise.all([
       get(cancellationRecovery.pending$),
       set(reloadMountedComposerWorkflows$, signal),
@@ -2702,12 +2714,15 @@ function createRunTracking({
   subscribeBrowserSessions$,
   automationSignals,
   cancellationRecovery,
+  reloadConnectorAccounts$,
+  reloadConnectorAccountPreference$,
 }: RunTrackingDeps) {
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
     catchUpChatEvents$,
     reloadArtifacts$,
     cancellationRecovery,
+    reloadConnectorAccounts$,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
@@ -2718,6 +2733,7 @@ function createRunTracking({
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(cancellationRecovery.reload$);
+      set(reloadConnectorAccountPreference$);
       return false;
     });
 
@@ -3764,6 +3780,7 @@ interface CreateChatThreadComposerSignalsOptions {
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;
+  readonly connector: ComposerSignals["connector"];
 }
 
 interface ChatThreadComposerContext {
@@ -3887,6 +3904,7 @@ function createChatThreadComposerSignals(
   );
   return createComposerSignals({
     agentId: options.agentId,
+    connector: options.connector,
     draft: {
       signals: options.draft,
       save$: options.forward ? noOpComposerDraftSave$ : options.queueDraftSync$,
@@ -3925,6 +3943,7 @@ function createThreadComposerSignalsWithContext(
   context: ChatThreadComposerContext,
   draft: DraftSignals,
 ): ComposerSignals {
+  const connector = createComposerConnectorSignals(context.agentId, threadId);
   const modelSelection = createModelSelection(threadId, context.threadMeta$);
   const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const imageModelSelection = createImageModelSelection(
@@ -3963,6 +3982,7 @@ function createThreadComposerSignalsWithContext(
     computerUseHostSelection,
     messageActions,
     cancellationRecoveryPending$: context.cancellationRecoveryPending$,
+    connector,
     forward: context.forward,
     onOptimisticSend: context.onOptimisticSend,
   });
@@ -4052,6 +4072,9 @@ function createChatPanelSignalsWithDraft(
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,
     cancellationRecovery,
+    reloadConnectorAccounts$: composer.connector.accounts.reload$,
+    reloadConnectorAccountPreference$:
+      composer.connector.accounts.reloadPreference$,
   });
   return {
     threadId,

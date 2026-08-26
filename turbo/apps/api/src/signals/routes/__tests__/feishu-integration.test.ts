@@ -66,6 +66,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   readFeishuMemberConnectorState,
   seedConnectorStorageRow,
+  seedCustomThreadConnectorSelection,
   seedLegacyCustomFeishuOAuthState,
   setConnectorExternalIdState,
   setFeishuMemberConnectorLink,
@@ -697,7 +698,8 @@ describe("Feishu integration", () => {
   beforeEach(() => {
     oauthUserOpenId = "ou_oauth_user";
     mockEnv("APP_URL", APP_ORIGIN);
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("VM0_API_BACKEND_URL", undefined);
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     mockEnv("FEISHU_CALLBACK_BASE_URL", FEISHU_CALLBACK_ORIGIN);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
@@ -4086,6 +4088,11 @@ describe("Feishu integration", () => {
       }),
       "Expected the canonical Feishu chat thread",
     );
+    await seedCustomThreadConnectorSelection(context, {
+      chatThreadId: created.chatThreadId,
+      connectorId,
+      customConnectorId: customConnector.id,
+    });
     const selections = await accept(
       chatThreadConnectorSelectionsClient().get({
         headers: { authorization: "Bearer clerk-session" },
@@ -4094,6 +4101,45 @@ describe("Feishu integration", () => {
       [200],
     );
     expect(selections.body.selections).toStrictEqual([]);
+    expect(selections.body.selectedConnections).toStrictEqual([]);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: created.chatThreadId },
+        body: {
+          connectionId: connectorId,
+          target: {
+            kind: "custom",
+            customConnectorId: customConnector.id,
+          },
+        },
+      }),
+      [400],
+    );
+    const genericCreate = await accept(
+      setupApp({ context, routes: chatThreadRoutes })(
+        chatThreadsContract,
+      ).create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: fixture.defaultAgentId,
+          model: "claude-sonnet-5",
+          connectorSelections: [
+            {
+              connectionId: connectorId,
+              target: {
+                kind: "custom",
+                customConnectorId: customConnector.id,
+              },
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+    expect(genericCreate.body.error.message).toBe(
+      "Connector account is unavailable for thread selection",
+    );
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadDetailChanged:${created.chatThreadId}`,
       null,

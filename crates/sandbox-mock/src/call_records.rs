@@ -70,6 +70,34 @@ pub struct StorageManifestCall {
     pub timeout: Duration,
 }
 
+/// Owned timezone behavior recorded for a fixed guest-state restore call.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GuestStateRestoreTimezoneCall {
+    /// The request left the timezone unchanged.
+    None,
+    /// The request used best-effort timezone synchronization.
+    BestEffort(String),
+    /// The request required timezone synchronization.
+    Required(String),
+}
+
+/// Captured fixed guest-state restore request fields.
+///
+/// Entropy contents are intentionally omitted from observations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestStateRestoreCall {
+    /// Whole Unix timestamp seconds supplied to the fixed helper.
+    pub unix_seconds: u64,
+    /// Nanoseconds within the timestamp second.
+    pub unix_nanoseconds: u32,
+    /// Entropy payload length without the entropy bytes themselves.
+    pub entropy_len: usize,
+    /// Requested timezone behavior.
+    pub timezone: GuestStateRestoreTimezoneCall,
+    /// Helper timeout supplied by the caller.
+    pub timeout: Duration,
+}
+
 /// Captured `start_process` request fields recorded for test assertions.
 ///
 /// Unlike [`ExecCall`], this record captures environment values as well as

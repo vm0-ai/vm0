@@ -9,7 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { now } from "../../../../lib/time.ts";
+import { mockNow, now } from "../../../../lib/time.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
@@ -179,12 +179,23 @@ describe("auth v2 sign-up flow", () => {
 
     const emailInput = await screen.findByLabelText("Email address");
     const passwordInput = screen.getByLabelText("Password");
-    const firstNameInput = screen.getByLabelText(/First name/);
-    const lastNameInput = screen.getByLabelText(/Last name/);
     expect(emailInput).toBeRequired();
     expect(passwordInput).toBeRequired();
-    expect(firstNameInput).not.toBeRequired();
-    expect(lastNameInput).not.toBeRequired();
+    expect(emailInput).toHaveAttribute(
+      "placeholder",
+      "Enter your email address",
+    );
+    expect(passwordInput).toHaveAttribute("placeholder", "Create a password");
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last name/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Create your account" }),
+    ).toBeVisible();
+    const signIn = await waitForRoleElement("link", "Sign in");
+    expect(
+      screen.getByRole("region", { name: "Create your account" }),
+    ).toContainElement(signIn);
+    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.getByRole("checkbox")).toBeVisible();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
@@ -236,6 +247,8 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
+    expect(roleElement("link", "Sign in")).toBeUndefined();
+    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.queryByText("Access restricted")).not.toBeInTheDocument();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,
@@ -245,8 +258,9 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Email address"),
     ).resolves.toBeRequired();
-    expect(screen.getByLabelText(/First name/)).not.toBeRequired();
-    expect(screen.getByLabelText(/Last name/)).not.toBeRequired();
+    expect(roleElement("link", "Sign in")).toBeDefined();
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last name/)).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
@@ -288,68 +302,98 @@ describe("auth v2 sign-up flow", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows supported Google sign-up without starting One Tap", async () => {
-    mockAuthV2Capabilities({ googleOAuth: true });
+  it("shows configured Apple and Google sign-up with compact provider labels", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
     setupSignUpPage({ status: null });
 
-    await expect(
-      waitForRoleElement("button", "Continue with Google"),
-    ).resolves.toBeVisible();
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(apple).toBeVisible();
+    expect(google).toBeVisible();
+    expect(apple.textContent?.trim()).toBe("Apple");
+    expect(google.textContent?.trim()).toBe("Google");
     expect(
       document.querySelector("script[data-auth-v2-google-one-tap]"),
     ).not.toBeInTheDocument();
   });
 
-  it("coalesces Google handoff and preserves safe campaign attribution", async () => {
-    const redirect = createDeferredPromise<void>(context.signal);
-    mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
-      return redirect.promise;
-    });
-    mockAuthV2Capabilities({ googleOAuth: true });
-    const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
-    const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
-    setupSignUpPage(
-      { status: null },
-      {
-        path,
-        url: `https://app.vm0.ai${path}`,
-      },
-    );
-
-    const google = await waitForRoleElement("button", "Continue with Google");
-    fireEvent.click(google);
-    fireEvent.click(google);
-
-    await waitFor(() => {
-      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
-        1,
-      );
-    });
-    const handoff =
-      mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
-    expect(handoff).toMatchObject({
-      continueSignIn: false,
-      continueSignUp: false,
+  it.each([
+    { competingProvider: "Google", provider: "Apple", strategy: "oauth_apple" },
+    {
+      competingProvider: "Apple",
+      provider: "Google",
       strategy: "oauth_google",
-    });
-    const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
-    const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
-    expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
-    expect(callbackUrl.searchParams.get("redirect_url")).toBe(
-      completionUrl.toString(),
-    );
-    expect(callbackUrl.hash).toBe("#/start?step=oauth");
-    expect(completionUrl.origin).toBe("https://app.vm0.ai");
-    expect(completionUrl.pathname).toBe("/onboarding");
-    expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
-    expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
-    expect(completionUrl.toString()).not.toContain("evil.example");
+    },
+  ] as const)(
+    "coalesces $provider handoff and preserves safe campaign attribution",
+    async ({ competingProvider, provider, strategy }) => {
+      const redirect = createDeferredPromise<void>(context.signal);
+      mockedClerk.signUpAuthenticateWithRedirect.mockImplementation(() => {
+        return redirect.promise;
+      });
+      mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+      const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
+      const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
+      setupSignUpPage(
+        { status: null },
+        {
+          path,
+          url: `https://app.vm0.ai${path}`,
+        },
+      );
 
-    await act(async () => {
-      redirect.resolve(undefined);
-      await redirect.promise;
-    });
-  });
+      const selected = await waitForRoleElement(
+        "button",
+        `Continue with ${provider}`,
+      );
+      const competing = await waitForRoleElement(
+        "button",
+        `Continue with ${competingProvider}`,
+      );
+      fireEvent.click(selected);
+      fireEvent.click(selected);
+
+      await waitFor(() => {
+        expect(
+          mockedClerk.signUpAuthenticateWithRedirect,
+        ).toHaveBeenCalledTimes(1);
+        expect(selected).toHaveAttribute("aria-busy", "true");
+      });
+      expect(selected).toHaveAccessibleName(`Continue with ${provider}`);
+      expect(selected.textContent?.trim()).toBe("");
+      expect(competing).toBeDisabled();
+      expect(competing).toHaveAttribute("aria-busy", "false");
+      expect(competing.textContent?.trim()).toBe(competingProvider);
+      const handoff =
+        mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
+      expect(handoff).toMatchObject({
+        continueSignIn: false,
+        continueSignUp: false,
+        strategy,
+      });
+      const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
+      const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
+      expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
+      expect(callbackUrl.searchParams.get("redirect_url")).toBe(
+        completionUrl.toString(),
+      );
+      expect(callbackUrl.hash).toBe("#/start?step=oauth");
+      expect(completionUrl.origin).toBe("https://app.vm0.ai");
+      expect(completionUrl.pathname).toBe("/onboarding");
+      expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
+      expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
+      expect(completionUrl.toString()).not.toContain("evil.example");
+
+      await act(async () => {
+        redirect.resolve(undefined);
+        await redirect.promise;
+      });
+      await waitFor(() => {
+        expect(selected).toHaveAttribute("aria-busy", "false");
+        expect(selected).toHaveTextContent(provider);
+      });
+    },
+  );
 
   it("requires legal consent before Google handoff and forwards acceptance", async () => {
     const user = userEvent.setup();
@@ -637,6 +681,20 @@ describe("auth v2 sign-up flow", () => {
       return moveSignUpToAsync(readyEmailVerificationState());
     });
 
+    mockSignUpConfiguration({
+      attributes: {
+        first_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+        last_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+      },
+    });
     setupSignUpPage({ status: null });
     const { emailInput } = await fillRequiredDetails();
     const firstNameInput = screen.getByLabelText(/First name/);
@@ -689,12 +747,15 @@ describe("auth v2 sign-up flow", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("heading", {
         level: 1,
-        name: "Create your VM0 account",
+        name: "Verify your email",
       }),
     );
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
   });
 
   it("coalesces resend and code attempts, applies cooldown, preserves attribution, and activates once", async () => {
+    const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+    mockNow(startedAt, context.signal);
     const resend = createDeferredPromise<
       ReturnType<typeof currentSignUpResource>
     >(context.signal);
@@ -726,7 +787,15 @@ describe("auth v2 sign-up flow", () => {
       expect(
         mockedClerk.signUpPrepareEmailAddressVerification,
       ).toHaveBeenCalledTimes(1);
+      expect(resendButton).toHaveAttribute("aria-busy", "true");
     });
+    expect(resendButton).toHaveAccessibleName("Didn't receive a code? Resend");
+    expect(resendButton.textContent?.trim()).toBe("");
+    expect(screen.getByLabelText("Verification code")).toBeVisible();
+    expect(
+      within(containingForm(resendButton)).queryByRole("status"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
 
     await act(async () => {
       resend.resolve(moveSignUpTo(readyEmailVerificationState()));
@@ -735,10 +804,24 @@ describe("auth v2 sign-up flow", () => {
 
     const cooldownButton = await waitForRoleElement(
       "button",
-      "Didn't receive a code? Resend (30s)",
+      "Didn't receive a code? Resend (30)",
     );
     expect(cooldownButton).toBeDisabled();
+    mockNow(startedAt + 1000, context.signal);
+    const advancingCooldownButton = await waitForRoleElement(
+      "button",
+      "Didn't receive a code? Resend (29)",
+    );
+    expect(advancingCooldownButton).toBeDisabled();
     const readyCodeInput = await screen.findByLabelText("Verification code");
+    expect(readyCodeInput).toHaveAttribute("autocomplete", "one-time-code");
+    expect(readyCodeInput).toHaveAttribute("inputmode", "numeric");
+    expect(readyCodeInput).toHaveAttribute("maxlength", "6");
+    expect(
+      readyCodeInput.parentElement?.querySelectorAll(
+        '[aria-hidden="true"] > span',
+      ),
+    ).toHaveLength(6);
     fireEvent.change(readyCodeInput, { target: { value: "123456" } });
     const form = containingForm(readyCodeInput);
     fireEvent.submit(form);
@@ -789,7 +872,7 @@ describe("auth v2 sign-up flow", () => {
       requiredFields: ["email_address", "password", "legal_accepted"],
       status: null,
     });
-    const { emailInput } = await fillRequiredDetails();
+    const { emailInput, passwordInput } = await fillRequiredDetails();
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",
@@ -823,6 +906,16 @@ describe("auth v2 sign-up flow", () => {
         "Your password is not strong enough.",
       );
     });
+    const passwordError = screen.getByRole("alert");
+    expect(document.activeElement).toBe(passwordError);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(passwordInput).toHaveAttribute("aria-describedby", passwordError.id);
+
+    fireEvent.change(passwordInput, {
+      target: { value: "valid-password" },
+    });
+    expect(screen.getByRole("alert")).toBe(passwordError);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 
     mockSignUpPasswordValidation({ complexity: {}, strength: undefined });
@@ -989,6 +1082,62 @@ describe("auth v2 sign-up flow", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
   });
+
+  it.each([
+    {
+      name: "transfer",
+      state: readyEmailVerificationState({
+        emailVerificationExpireAt: null,
+        emailVerificationStatus: null,
+        emailVerificationStrategy: null,
+        isTransferable: true,
+      }),
+    },
+    {
+      name: "fail-closed recovery",
+      state: {
+        missingFields: ["phone_number"],
+        requiredFields: ["phone_number"],
+        status: "missing_requirements",
+      },
+    },
+  ] as const)(
+    "shows one owned restart indicator from the $name state",
+    async ({ state }) => {
+      const restart = createDeferredPromise<{ readonly error: null }>(
+        context.signal,
+      );
+      mockedClerk.signUpFutureReset.mockImplementation(() => {
+        return restart.promise;
+      });
+      setupSignUpPage(state);
+
+      const restartButton = await waitForRoleElement(
+        "button",
+        "Use another method",
+      );
+      fireEvent.click(restartButton);
+
+      await waitFor(() => {
+        expect(mockedClerk.signUpFutureReset).toHaveBeenCalledTimes(1);
+        expect(restartButton).toHaveAttribute("aria-busy", "true");
+      });
+      expect(restartButton).toHaveAccessibleName("Use another method");
+      expect(restartButton).toBeDisabled();
+      expect(restartButton.textContent?.trim()).toBe("");
+      expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+      moveSignUpTo({ status: null });
+      await act(async () => {
+        restart.resolve({ error: null });
+        await restart.promise;
+      });
+
+      await expect(
+        screen.findByLabelText("Email address"),
+      ).resolves.toBeVisible();
+    },
+  );
 
   it.each([
     {

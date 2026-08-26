@@ -14,9 +14,9 @@
 #   CLERK_SECRET_KEY    - Backend key used to clean the exact test account
 #
 # Optional env vars:
-#   VM0_AUTH_URL           - Target auth URL (e.g., https://pr-123-app.omby.ai)
-#   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
-#   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
+#   OKOU_AUTH_URL           - Target auth URL (e.g., https://pr-123-app.omby.ai)
+#   OKOU_AUTH_DOMAIN        - API domain override for auth callbacks
+#   OKOU_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
 #   E2E_ACCOUNT            - Test email (auto-generated if empty)
 
 load '../../helpers/setup'
@@ -36,9 +36,9 @@ setup_file() {
   export SIGN_UP_COMPLETE_FILE
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
-  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
-  echo "#   Auth domain: ${VM0_AUTH_DOMAIN:-<default>}" >&3
-  echo "#   Auth redirect URL: ${VM0_AUTH_REDIRECT_URL:-<default>}" >&3
+  echo "#   Auth URL: ${OKOU_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
+  echo "#   Auth domain: ${OKOU_AUTH_DOMAIN:-<default>}" >&3
+  echo "#   Auth redirect URL: ${OKOU_AUTH_REDIRECT_URL:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
 }
 
@@ -51,23 +51,23 @@ teardown_file() {
 
 auth_url() {
   local path="$1"
-  local base="${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}"
+  local base="${OKOU_AUTH_URL:-${VM0_API_BACKEND_URL:-}}"
   local url="${base%/}${path}"
 
-  if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
+  if [[ -n "${OKOU_AUTH_REDIRECT_URL:-}" ]]; then
     local separator="?"
     if [[ "$url" == *\?* ]]; then
       separator="&"
     fi
-    url="${url}${separator}redirect_url=$(encode_uri_component "$VM0_AUTH_REDIRECT_URL")"
+    url="${url}${separator}redirect_url=$(encode_uri_component "$OKOU_AUTH_REDIRECT_URL")"
   fi
 
-  if [[ -n "${VM0_AUTH_DOMAIN:-}" ]]; then
+  if [[ -n "${OKOU_AUTH_DOMAIN:-}" ]]; then
     local separator="?"
     if [[ "$url" == *\?* ]]; then
       separator="&"
     fi
-    url="${url}${separator}domain=$(encode_uri_component "$VM0_AUTH_DOMAIN")"
+    url="${url}${separator}domain=$(encode_uri_component "$OKOU_AUTH_DOMAIN")"
   fi
 
   printf '%s' "$url"
@@ -81,11 +81,11 @@ wait_for_auth_completion() {
   local auth_path="$1"
   local completion_expression
 
-  if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
+  if [[ -n "${OKOU_AUTH_REDIRECT_URL:-}" ]]; then
     local redirect_url_json
     redirect_url_json=$(node -e \
       'process.stdout.write(JSON.stringify(process.argv[1]))' \
-      "$VM0_AUTH_REDIRECT_URL")
+      "$OKOU_AUTH_REDIRECT_URL")
     completion_expression="window.location.href.startsWith(${redirect_url_json})"
   else
     completion_expression="!window.location.pathname.includes('/${auth_path}')"

@@ -1,5 +1,42 @@
 # Changelog
 
+## [8.592.0](https://github.com/vm0-ai/vm0/compare/core-v8.591.1...core-v8.592.0) (2026-08-26)
+
+
+### Features
+
+* pin HyperFrames authoring source ([#29366](https://github.com/vm0-ai/vm0/issues/29366)) ([ea0a806](https://github.com/vm0-ai/vm0/commit/ea0a806fa2e79622e470da9be77d2e04cb059299))
+
+## [8.591.1](https://github.com/vm0-ai/vm0/compare/core-v8.591.0...core-v8.591.1) (2026-08-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.367.0
+
+## [8.591.0](https://github.com/vm0-ai/vm0/compare/core-v8.590.3...core-v8.591.0) (2026-08-25)
+
+
+### Features
+
+* add output tool transport foundation ([#29361](https://github.com/vm0-ai/vm0/issues/29361)) ([0820224](https://github.com/vm0-ai/vm0/commit/0820224394881c0a76d2376bcbff728061b0dd55))
+* refresh the built-in website template archives ([#29327](https://github.com/vm0-ai/vm0/issues/29327)) ([e6ef597](https://github.com/vm0-ai/vm0/commit/e6ef5971bc8f1329ad05f2b74f299fdb99175442))
+
+
+### Refactoring
+
+* remove boxConnector feature switch ([#29342](https://github.com/vm0-ai/vm0/issues/29342)) ([76667a2](https://github.com/vm0-ai/vm0/commit/76667a2c2d1f2eef9f44e557487ce5d8fdd2f85a))
+* remove usage pack plans feature switch ([#29349](https://github.com/vm0-ai/vm0/issues/29349)) ([eb8a72a](https://github.com/vm0-ai/vm0/commit/eb8a72a5ae960eb4e2ff70c2c15e45e2c351b6b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.366.0
+
 ## [8.590.3](https://github.com/vm0-ai/vm0/compare/core-v8.590.2...core-v8.590.3) (2026-08-25)
 
 

@@ -94,6 +94,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
 
 function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
   const defaults: FeishuConnectStatus = {
+    publicBrand: "vm0",
     isConnected: false,
     isInstalled: false,
     isAdmin: true,
@@ -186,6 +187,7 @@ describe("works page", () => {
     context.mocks.api(feishuConnectContract.getStatus, async ({ respond }) => {
       await responseReady.promise;
       return respond(200, {
+        publicBrand: "vm0",
         isConnected: false,
         isInstalled: false,
         isAdmin: true,
@@ -491,6 +493,7 @@ describe("works page", () => {
       defaultAgentName: "Okou",
       installations: [
         {
+          publicBrand: "vm0",
           id: "00000000-0000-4000-8000-000000000001",
           isConnected: true,
           connectedUserName: "Feishu User",
@@ -687,6 +690,7 @@ describe("works page", () => {
       defaultAgentName: "Okou",
       installations: [
         {
+          publicBrand: "vm0",
           id: installationId,
           isConnected: false,
           appId: "cli_member",
@@ -733,6 +737,7 @@ describe("works page", () => {
       defaultAgentName: "Okou",
       installations: [
         {
+          publicBrand: "vm0",
           id: installationId,
           isConnected: true,
           appId: "cli_completed_admin",
@@ -856,6 +861,7 @@ describe("works page", () => {
       defaultAgentName: "Okou",
       installations: [
         {
+          publicBrand: "vm0",
           id: installationId,
           isConnected: true,
           appId: "cli_member",
@@ -902,6 +908,7 @@ describe("works page", () => {
       defaultAgentName: "Okou",
       installations: [
         {
+          publicBrand: "vm0",
           id: installationId,
           isConnected: false,
           appId: "cli_member_connect",
@@ -943,6 +950,7 @@ describe("works page", () => {
     context.mocks.api(feishuConnectContract.getStatus, ({ respond }) => {
       const installation = {
         id: installationId,
+        publicBrand: "vm0" as const,
         isConnected,
         appId: "cli_feishu",
         callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
@@ -955,6 +963,7 @@ describe("works page", () => {
         defaultAgentName: "Okou",
       };
       return respond(200, {
+        publicBrand: "vm0",
         isConnected,
         isInstalled: true,
         isAdmin: true,

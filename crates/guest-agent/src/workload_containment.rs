@@ -31,7 +31,7 @@ const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
 const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(debug_assertions)]
-const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
+const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CgroupPlacementEnvSource {

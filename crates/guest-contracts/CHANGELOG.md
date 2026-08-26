@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.11.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.21...guest-contracts-v0.11.22) (2026-08-25)
+
+
+### Refactoring
+
+* **guest:** dual-read mock binary path aliases ([#29385](https://github.com/vm0-ai/vm0/issues/29385)) ([15e79f4](https://github.com/vm0-ai/vm0/commit/15e79f42c3522856c4debe98c19af6b47bf54a30))
+
+## [0.11.21](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.20...guest-contracts-v0.11.21) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api backend url aliases ([#29369](https://github.com/vm0-ai/vm0/issues/29369)) ([84295ac](https://github.com/vm0-ai/vm0/commit/84295ac0c3d66185b90d59fc6afa3f79903aac9a))
+
+## [0.11.20](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.19...guest-contracts-v0.11.20) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read tuning environment aliases ([#29329](https://github.com/vm0-ai/vm0/issues/29329)) ([d5dbae8](https://github.com/vm0-ai/vm0/commit/d5dbae8abbb4141eb10bb22ab3a8d588628b1e7c))
+
 ## [0.11.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.18...guest-contracts-v0.11.19) (2026-08-25)
 
 

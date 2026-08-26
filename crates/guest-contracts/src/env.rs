@@ -21,6 +21,18 @@
 /// processes by the guest-agent's curated child environment.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
+/// Canonical backend API URL spelling shared by migration readers.
+///
+/// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
+/// spelling but have independent rollout floors. On the Runner-to-Guest surface,
+/// Runner writers keep using [`API_URL_ENV`], and the guest-agent keeps exposing
+/// that legacy spelling to managed CLI children. Remove that legacy reader only
+/// after the exact production Runner plus embedded-Guest reader floor, complete
+/// pre-reader service and reusable-sandbox drain, supported rollback window,
+/// and value-free legacy-source-zero gates in #28914. Runner operator input and
+/// managed CLI-child exposure each have their own later support floors.
+pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
+
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
@@ -447,10 +459,24 @@ pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
 
+/// Canonical mock Claude binary path alias accepted by guest readers.
+///
+/// Existing test/debug writers keep using [`MOCK_CLAUDE_PATH_ENV`] until the
+/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
+
 /// Optional test/debug override for the mock Codex binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
+
+/// Canonical mock Codex binary path alias accepted by guest readers.
+///
+/// Existing test/debug writers keep using [`MOCK_CODEX_PATH_ENV`] until the
+/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
 /// boundary.
@@ -557,6 +583,7 @@ mod tests {
     #[test]
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
+        assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -615,6 +642,10 @@ mod tests {
             CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             "OKOU_POST_RESULT_SIGKILL_GRACE_SECS"
         );
+        assert_eq!(MOCK_CLAUDE_PATH_ENV, "VM0_MOCK_CLAUDE_PATH");
+        assert_eq!(CANONICAL_MOCK_CLAUDE_PATH_ENV, "OKOU_MOCK_CLAUDE_PATH");
+        assert_eq!(MOCK_CODEX_PATH_ENV, "VM0_MOCK_CODEX_PATH");
+        assert_eq!(CANONICAL_MOCK_CODEX_PATH_ENV, "OKOU_MOCK_CODEX_PATH");
     }
 
     #[test]
@@ -791,6 +822,7 @@ mod tests {
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
             API_URL_ENV,
+            CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
             API_TOKEN_ENV,
             CANONICAL_API_TOKEN_ENV,
@@ -860,7 +892,12 @@ mod tests {
                 "canonical reader alias {key} must not become a local tuning input"
             );
         }
-        assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
+        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
+            assert!(
+                !is_guest_agent_tuning_env_key(key),
+                "API URL bootstrap key {key} must not become a local tuning input"
+            );
+        }
     }
 
     /// Contract sources scanned for declared environment key constants.

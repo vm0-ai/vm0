@@ -19,9 +19,5 @@ export type FeishuDeliveryTarget = z.infer<typeof feishuDeliveryTargetSchema>;
 export const feishuChatCallbackPayloadSchema =
   feishuDeliveryTargetSchema.extend({
     chatEventId: z.string(),
-    // #27750 rollout fallback: callbacks persisted by the previous API omit
-    // the Host brand and may complete after an old runner/sandbox drains (up
-    // to 2h). Remove this optional field and the installation-brand read after
-    // all pre-#28935 callbacks and API rollback writers have drained.
-    publicBrand: publicBrandSchema.optional(),
+    publicBrand: publicBrandSchema,
   });

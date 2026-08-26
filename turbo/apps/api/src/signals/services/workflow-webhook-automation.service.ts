@@ -12,9 +12,9 @@ import {
   workflowWebhookAutomations,
   workflows,
 } from "@okouai/db/schema/workflow";
-import { env } from "../../lib/env";
 import { verifyCallbackRequest } from "../../lib/event-consumer/verify-signature";
 import { testOverride } from "../../lib/singleton";
+import { webUrl } from "../../lib/web-url";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse } from "../utils";
@@ -72,7 +72,7 @@ function workflowWebhookUrlForToken(
   token: string,
   publicBrand: PublicBrand,
 ): string {
-  const baseUrl = apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand);
+  const baseUrl = apiUrlForPublicBrand(webUrl(), publicBrand);
   return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
   )}`;

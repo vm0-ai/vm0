@@ -15,11 +15,14 @@ import {
 export interface AuthV2SignInCopy {
   readonly accessNotAllowed: string;
   readonly addAccount: string;
+  readonly appleMethod: string;
+  readonly appleProvider: string;
   readonly back: string;
   readonly chooseAccountSubtitle: string;
   readonly chooseAccountTitle: string;
   readonly chooseMethodSubtitle: string;
   readonly chooseMethodTitle: string;
+  readonly clientTrustNotice: string;
   readonly codeExpired: string;
   readonly codeLabel: string;
   readonly completeSubtitle: string;
@@ -27,15 +30,24 @@ export interface AuthV2SignInCopy {
   readonly confirmPasswordLabel: string;
   readonly continue: string;
   readonly editIdentifier: string;
+  readonly emailAddressLabel: string;
+  readonly emailAddressPlaceholder: string;
   readonly emailCodeMethod: (identifier: string) => string;
   readonly emailCodeSubtitle: string;
   readonly emailCodeTitle: string;
+  readonly emailSupport: string;
   readonly forgotPassword: string;
+  readonly getHelp: string;
   readonly googleMethod: string;
+  readonly googleProvider: string;
   readonly hidePassword: string;
+  readonly helpDescription: string;
+  readonly helpTitle: string;
   readonly identifierLabel: string;
+  readonly identifierPlaceholder: string;
   readonly legacySignIn: string;
   readonly loading: string;
+  readonly methodsHelpPrompt: string;
   readonly newPasswordLabel: string;
   readonly newPasswordSubtitle: string;
   readonly newPasswordTitle: string;
@@ -45,6 +57,7 @@ export interface AuthV2SignInCopy {
   readonly passwordLabel: string;
   readonly passwordMethod: string;
   readonly passwordMismatch: string;
+  readonly passwordPlaceholder: string;
   readonly passwordResetMethod: string;
   readonly passwordSubtitle: string;
   readonly passwordTitle: string;
@@ -53,16 +66,23 @@ export interface AuthV2SignInCopy {
   readonly passkeyUnavailable: string;
   readonly resendCode: string;
   readonly resendCodeCooldown: (remainingSeconds: number) => string;
+  readonly recoveryMethodsDivider: string;
+  readonly recoveryTitle: string;
   readonly resetPassword: string;
   readonly resetPasswordCodeSubtitle: string;
   readonly resetPasswordCodeTitle: string;
   readonly showPassword: string;
+  readonly signOutOfOtherSessions: string;
   readonly signInTitle: string;
   readonly signUp: string;
+  readonly separator: string;
   readonly startSubtitle: string;
+  readonly supportEmailHref: string;
   readonly unknownError: string;
   readonly useAnotherMethod: string;
   readonly userBanned: string;
+  readonly usernameLabel: string;
+  readonly usernamePlaceholder: string;
   readonly verify: string;
 }
 
@@ -73,6 +93,12 @@ function signInEntryCopy(
   return {
     addAccount: t(($) => {
       return $.auth.v2.signIn.addAccount;
+    }),
+    appleMethod: t(($) => {
+      return $.auth.v2.signIn.appleMethod;
+    }),
+    appleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.apple;
     }),
     chooseAccountSubtitle: t(($) => {
       return $.auth.v2.signIn.chooseAccountSubtitle;
@@ -89,6 +115,12 @@ function signInEntryCopy(
     editIdentifier: t(($) => {
       return $.auth.v2.signIn.editIdentifier;
     }),
+    emailAddressLabel: t(($) => {
+      return $.auth.v2.signIn.emailAddressLabel;
+    }),
+    emailAddressPlaceholder: t(($) => {
+      return $.auth.v2.signIn.emailAddressPlaceholder;
+    }),
     emailCodeMethod: (identifier: string) => {
       return t(
         ($) => {
@@ -100,8 +132,14 @@ function signInEntryCopy(
     googleMethod: t(($) => {
       return $.auth.v2.signIn.googleMethod;
     }),
+    googleProvider: t(($) => {
+      return $.auth.v2.oauthProviders.google;
+    }),
     identifierLabel: t(($) => {
       return $.auth.v2.signIn.identifierLabel;
+    }),
+    identifierPlaceholder: t(($) => {
+      return $.auth.v2.signIn.identifierPlaceholder;
     }),
     noAccount: t(($) => {
       return $.auth.v2.signIn.noAccount;
@@ -118,6 +156,9 @@ function signInEntryCopy(
     signUp: t(($) => {
       return $.auth.v2.signIn.signUp;
     }),
+    separator: t(($) => {
+      return $.auth.v2.signIn.separator;
+    }),
     startSubtitle: t(
       ($) => {
         return $.auth.v2.signIn.startSubtitle;
@@ -126,6 +167,12 @@ function signInEntryCopy(
     ),
     useAnotherMethod: t(($) => {
       return $.auth.v2.signIn.useAnotherMethod;
+    }),
+    usernameLabel: t(($) => {
+      return $.auth.v2.signIn.usernameLabel;
+    }),
+    usernamePlaceholder: t(($) => {
+      return $.auth.v2.signIn.usernamePlaceholder;
     }),
   };
 }
@@ -140,6 +187,9 @@ function signInCodeCopy(
   return {
     back: t(($) => {
       return $.auth.v2.signIn.back;
+    }),
+    clientTrustNotice: t(($) => {
+      return $.auth.v2.signIn.clientTrustNotice;
     }),
     codeExpired: t(($) => {
       return $.auth.v2.signIn.codeExpired;
@@ -212,6 +262,9 @@ function signInPasswordCopy(
     passwordMismatch: t(($) => {
       return $.auth.v2.signIn.passwordMismatch;
     }),
+    passwordPlaceholder: t(($) => {
+      return $.auth.v2.signIn.passwordPlaceholder;
+    }),
     passwordSubtitle: t(
       ($) => {
         return $.auth.v2.signIn.passwordSubtitle;
@@ -221,11 +274,20 @@ function signInPasswordCopy(
     passwordTitle: t(($) => {
       return $.auth.v2.signIn.passwordTitle;
     }),
+    recoveryMethodsDivider: t(($) => {
+      return $.auth.v2.signIn.recoveryMethodsDivider;
+    }),
+    recoveryTitle: t(($) => {
+      return $.auth.v2.signIn.recoveryTitle;
+    }),
     resetPassword: t(($) => {
       return $.auth.v2.signIn.resetPassword;
     }),
     showPassword: t(($) => {
       return $.auth.v2.signIn.showPassword;
+    }),
+    signOutOfOtherSessions: t(($) => {
+      return $.auth.v2.signIn.signOutOfOtherSessions;
     }),
   };
 }
@@ -250,11 +312,26 @@ function signInTerminalCopy(
     completeTitle: t(($) => {
       return $.auth.v2.signIn.completeTitle;
     }),
+    emailSupport: t(($) => {
+      return $.auth.v2.signIn.emailSupport;
+    }),
+    getHelp: t(($) => {
+      return $.auth.v2.signIn.getHelp;
+    }),
+    helpDescription: t(($) => {
+      return $.auth.v2.signIn.helpDescription;
+    }),
+    helpTitle: t(($) => {
+      return $.auth.v2.signIn.helpTitle;
+    }),
     legacySignIn: t(($) => {
       return $.auth.v2.signIn.action;
     }),
     loading: t(($) => {
       return $.auth.loading;
+    }),
+    methodsHelpPrompt: t(($) => {
+      return $.auth.v2.signIn.methodsHelpPrompt;
     }),
     noMethodsMessage: t(($) => {
       return $.auth.v2.signIn.noMethodsMessage;
@@ -274,6 +351,7 @@ function signInTerminalCopy(
       },
       { brandName: authBrand.brandName },
     ),
+    supportEmailHref: `mailto:${supportEmail}`,
     unknownError: t(($) => {
       return $.auth.v2.signIn.unknownError;
     }),
@@ -328,7 +406,7 @@ export function signInErrorMessage(
 export function signInCardDescription(
   flowState: AuthV2SignInState,
   copy: AuthV2SignInCopy,
-): string {
+): string | null {
   if (flowState.status === "loading") {
     return copy.loading;
   }
@@ -351,6 +429,15 @@ export function signInCardDescription(
     return copy.passwordSubtitle;
   }
   if (
+    flowState.step === "password-recovery" ||
+    flowState.step === "new-password"
+  ) {
+    return null;
+  }
+  if (flowState.step === "help") {
+    return copy.helpDescription;
+  }
+  if (
     flowState.step === "email-code" ||
     flowState.step === "client-trust-code"
   ) {
@@ -359,10 +446,50 @@ export function signInCardDescription(
   if (flowState.step === "password-reset-code") {
     return copy.resetPasswordCodeSubtitle;
   }
-  if (flowState.step === "new-password") {
-    return copy.newPasswordSubtitle;
-  }
   return copy.startSubtitle;
+}
+
+export function signInCardTitle(
+  flowState: AuthV2SignInState,
+  copy: AuthV2SignInCopy,
+): string {
+  if (flowState.status === "complete") {
+    return copy.completeTitle;
+  }
+  if (flowState.status === "unknown") {
+    return copy.noMethodsTitle;
+  }
+  if (flowState.status !== "incomplete") {
+    return copy.signInTitle;
+  }
+  if (flowState.step === "choose-session") {
+    return copy.chooseAccountTitle;
+  }
+  if (flowState.step === "choose-factor") {
+    return copy.chooseMethodTitle;
+  }
+  if (flowState.step === "password") {
+    return copy.passwordTitle;
+  }
+  if (flowState.step === "password-recovery") {
+    return copy.recoveryTitle;
+  }
+  if (flowState.step === "help") {
+    return copy.helpTitle;
+  }
+  if (
+    flowState.step === "email-code" ||
+    flowState.step === "client-trust-code"
+  ) {
+    return copy.emailCodeTitle;
+  }
+  if (flowState.step === "password-reset-code") {
+    return copy.resetPasswordCodeTitle;
+  }
+  if (flowState.step === "new-password") {
+    return copy.newPasswordTitle;
+  }
+  return copy.signInTitle;
 }
 
 export function signInFactorLabel(
@@ -376,7 +503,9 @@ export function signInFactorLabel(
     return copy.passwordResetMethod;
   }
   if (factor.kind === "oauth") {
-    return copy.googleMethod;
+    return factor.strategy === "oauth_apple"
+      ? copy.appleMethod
+      : copy.googleMethod;
   }
   if (factor.kind === "passkey") {
     return copy.passkeyMethod;
