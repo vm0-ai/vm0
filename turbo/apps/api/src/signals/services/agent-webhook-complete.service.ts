@@ -38,6 +38,12 @@ import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.serv
 import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
+import {
+  logBuiltInModelProviderFailureTransition,
+  reconcileBuiltInModelProviderFailureObservation,
+  type BuiltInModelProviderFailureRun,
+  type BuiltInModelProviderFailureTransition,
+} from "./built-in-model-provider-failure.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -100,7 +106,7 @@ interface CompletionResponse {
   readonly sideEffects?: CompleteSideEffectsInput;
 }
 
-interface RunRecord {
+interface RunRecord extends BuiltInModelProviderFailureRun {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly orgId: string;
   readonly sessionId: string;
@@ -124,6 +130,7 @@ interface CompletionCommit {
   readonly transitionError?: string;
   readonly transitionFailureKind?: PreparedCompletion["failureKind"];
   readonly finalization: FinalizeActiveInputDeliveryResult;
+  readonly providerFailureTransition?: BuiltInModelProviderFailureTransition;
 }
 
 type CompletionTransactionResult =
@@ -181,6 +188,7 @@ async function loadCompletionRun(
 ): Promise<RunRecord | null> {
   const [run] = await db
     .select({
+      id: agentRuns.id,
       orgId: agentRuns.orgId,
       sessionId: agentRuns.sessionId,
       status: agentRuns.status,
@@ -188,6 +196,11 @@ async function loadCompletionRun(
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
+      selectedModel: agentRuns.selectedModel,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
     })
     .from(agentRuns)
     .where(
@@ -248,6 +261,7 @@ async function lockCompletionRun(
 ): Promise<RunRecord | null> {
   const [run] = await tx
     .select({
+      id: agentRuns.id,
       orgId: agentRuns.orgId,
       sessionId: agentRuns.sessionId,
       status: agentRuns.status,
@@ -255,6 +269,11 @@ async function lockCompletionRun(
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
+      selectedModel: agentRuns.selectedModel,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
     })
     .from(agentRuns)
     .where(
@@ -414,6 +433,11 @@ async function completeAgentRunTransition(
       throw new Error("Active agent run completion was not prepared");
     }
     await applyTerminalCompletion(tx, input, run, prepared);
+    const providerFailureTransition =
+      await reconcileBuiltInModelProviderFailureObservation(tx, {
+        run,
+        terminalStatus: prepared.status,
+      });
     return {
       kind: "committed",
       commit: {
@@ -423,12 +447,20 @@ async function completeAgentRunTransition(
         transitionError: prepared.error,
         transitionFailureKind: prepared.failureKind,
         finalization,
+        ...(providerFailureTransition ? { providerFailureTransition } : {}),
       },
     };
   }
   if (run.status === "cancelled") {
     await applyCancelledCompletionMetadata(tx, input, run);
   }
+  const providerFailureTransition =
+    run.status === "cancelled"
+      ? await reconcileBuiltInModelProviderFailureObservation(tx, {
+          run,
+          terminalStatus: "cancelled",
+        })
+      : undefined;
   return {
     kind: "committed",
     commit: {
@@ -436,6 +468,7 @@ async function completeAgentRunTransition(
       transitioned: false,
       responseStatus: run.status === "completed" ? "completed" : "failed",
       finalization,
+      ...(providerFailureTransition ? { providerFailureTransition } : {}),
     },
   };
 }
@@ -699,6 +732,11 @@ export const completeAgentRun$ = command(
       break;
     }
 
+    if (commit.providerFailureTransition) {
+      logBuiltInModelProviderFailureTransition(
+        commit.providerFailureTransition,
+      );
+    }
     if (commit.transitioned) {
       recordSandboxOperation({
         sandboxType: "runner",

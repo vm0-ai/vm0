@@ -1408,6 +1408,13 @@
       "when": 1787794381799,
       "tag": "1008_spotty_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 1009,
+      "version": "7",
+      "when": 1787796086222,
+      "tag": "1009_famous_husk",
+      "breakpoints": true
     }
   ]
 }

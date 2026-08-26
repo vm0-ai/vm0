@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 interface CooldownRow {
+  readonly connectionObservationRunId?: string | null;
+  readonly connectionObservationUntil?: Date | null;
   readonly providerType: string;
   readonly selectedModel: string;
   readonly unavailableUntil: Date;
@@ -28,6 +30,11 @@ const fixture = {
     selectedModel: "permanent-built-in-model-cooldown-statements",
     upstreamModel: "permanent-upstream-statements",
   },
+  observation: {
+    providerType: "permanent-provider-observation",
+    selectedModel: "permanent-built-in-model-cooldown-observation",
+    upstreamModel: "permanent-upstream-observation",
+  },
 } as const;
 
 async function readFixture(
@@ -44,7 +51,9 @@ async function readFixture(
         "selected_model" AS "selectedModel",
         "provider_type" AS "providerType",
         "upstream_model" AS "upstreamModel",
-        "unavailable_until" AS "unavailableUntil"
+        "unavailable_until" AS "unavailableUntil",
+        "connection_observation_run_id" AS "connectionObservationRunId",
+        "connection_observation_until" AS "connectionObservationUntil"
       FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
         AND "provider_type" = $2
@@ -108,6 +117,33 @@ async function assertCanonicalSchema(client: Client): Promise<void> {
       columnName: "unavailable_until",
       dataType: "timestamp without time zone",
       isNullable: "NO",
+    },
+    {
+      characterMaximumLength: null,
+      columnName: "connection_observation_run_id",
+      dataType: "uuid",
+      isNullable: "YES",
+    },
+    {
+      characterMaximumLength: null,
+      columnName: "connection_observation_until",
+      dataType: "timestamp without time zone",
+      isNullable: "YES",
+    },
+  ]);
+
+  const checkConstraints = await client.query<{ constraintName: string }>(`
+    SELECT "constraint"."conname" AS "constraintName"
+    FROM "pg_constraint" AS "constraint"
+    INNER JOIN "pg_class" AS "relation"
+      ON "relation"."oid" = "constraint"."conrelid"
+    WHERE "relation"."relname" = 'built_in_model_candidate_cooldown'
+      AND "constraint"."contype" = 'c'
+    ORDER BY "constraint"."conname"
+  `);
+  assert.deepEqual(checkConstraints.rows, [
+    {
+      constraintName: "built_in_model_cooldown_observation_pair_check",
     },
   ]);
 
@@ -248,6 +284,94 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
   );
 }
 
+async function validateObservationStatements(client: Client): Promise<void> {
+  const inactiveDeadline = new Date("1970-01-01T00:00:00.000Z");
+  const observationUntil = new Date("2026-08-25T09:00:00.000Z");
+  const observationRunId = "00000000-0000-4000-8000-000000000001";
+
+  await assert.rejects(
+    client.query(
+      `
+        INSERT INTO "built_in_model_candidate_cooldown" (
+          "selected_model",
+          "provider_type",
+          "upstream_model",
+          "unavailable_until",
+          "connection_observation_run_id"
+        )
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [
+        fixture.observation.selectedModel,
+        fixture.observation.providerType,
+        fixture.observation.upstreamModel,
+        inactiveDeadline,
+        observationRunId,
+      ],
+    ),
+    { code: "23514" },
+  );
+
+  await client.query(
+    `
+      INSERT INTO "built_in_model_candidate_cooldown" (
+        "selected_model",
+        "provider_type",
+        "upstream_model",
+        "unavailable_until",
+        "connection_observation_run_id",
+        "connection_observation_until"
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [
+      fixture.observation.selectedModel,
+      fixture.observation.providerType,
+      fixture.observation.upstreamModel,
+      inactiveDeadline,
+      observationRunId,
+      observationUntil,
+    ],
+  );
+  assert.deepEqual(await readFixture(client, fixture.observation), [
+    {
+      selectedModel: fixture.observation.selectedModel,
+      providerType: fixture.observation.providerType,
+      upstreamModel: fixture.observation.upstreamModel,
+      unavailableUntil: inactiveDeadline,
+      connectionObservationRunId: observationRunId,
+      connectionObservationUntil: observationUntil,
+    },
+  ]);
+
+  await client.query(
+    `
+      UPDATE "built_in_model_candidate_cooldown"
+      SET
+        "connection_observation_run_id" = NULL,
+        "connection_observation_until" = NULL
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+    `,
+    [
+      fixture.observation.selectedModel,
+      fixture.observation.providerType,
+      fixture.observation.upstreamModel,
+    ],
+  );
+  assert.deepEqual(await readFixture(client, fixture.observation), [
+    {
+      selectedModel: fixture.observation.selectedModel,
+      providerType: fixture.observation.providerType,
+      upstreamModel: fixture.observation.upstreamModel,
+      unavailableUntil: inactiveDeadline,
+      connectionObservationRunId: null,
+      connectionObservationUntil: null,
+    },
+  ]);
+}
+
 export async function validatePermanentBuiltInModelCooldownState(
   databaseUrl: string,
 ): Promise<void> {
@@ -257,17 +381,23 @@ export async function validatePermanentBuiltInModelCooldownState(
   try {
     await assertCanonicalSchema(client);
     await validateCanonicalStatements(client);
+    await validateObservationStatements(client);
 
     console.log("   ✅ only the canonical cooldown relation exists");
     console.log("   ✅ canonical columns and primary key are stable");
     console.log("   ✅ current statements preserve monotonic deadlines\n");
+    console.log("   ✅ observation pairs can be written and cleared\n");
   } finally {
     await client.query(
       `
         DELETE FROM "built_in_model_candidate_cooldown"
-        WHERE "selected_model" IN ($1, $2)
+        WHERE "selected_model" IN ($1, $2, $3)
       `,
-      [fixture.baseline.selectedModel, fixture.statement.selectedModel],
+      [
+        fixture.baseline.selectedModel,
+        fixture.statement.selectedModel,
+        fixture.observation.selectedModel,
+      ],
     );
     await client.end();
   }

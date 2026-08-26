@@ -227,12 +227,26 @@ pub mod runners {
                 Connection,
             }
 
+            /// Origin of a connection failure used to select cooldown policy.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestConnectionSource {
+                /// The provider returned the connection error.
+                #[serde(rename = "provider_response")]
+                ProviderResponse,
+                /// The runner observed an upstream transport interruption.
+                #[serde(rename = "upstream_transport")]
+                UpstreamTransport,
+            }
+
             /// Request body for reporting a built-in model provider failure.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct Request {
                 /// Normalized eligible provider failure kind.
                 pub failure_kind: RequestFailureKind,
+                /// Optional source for connection failures; absent preserves legacy behavior.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub connection_source: Option<RequestConnectionSource>,
                 /// Optional bounded provider retry delay in seconds.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub retry_after_seconds: Option<i64>,

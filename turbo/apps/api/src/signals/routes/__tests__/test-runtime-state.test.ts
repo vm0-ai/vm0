@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { ALL_RUN_STATUSES } from "@okouai/api-contracts/contracts/runs";
@@ -11,6 +11,7 @@ import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
 import {
@@ -28,6 +29,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const runs = createRunsApi(context);
 const reads = createRunReadsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 
 interface ClaimedVm0Run {
   readonly actor: ReturnType<typeof bdd.user>;
@@ -71,6 +73,53 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
     runId: run.runId,
     selectedModel: keyFixture.selectedModel,
   };
+}
+
+function sandboxHeadersForRun(claimed: ClaimedVm0Run): {
+  readonly authorization: string;
+} {
+  return {
+    authorization: `Bearer ${runs.sandboxTokenForRun(
+      claimed.actor,
+      claimed.runId,
+    )}`,
+  };
+}
+
+async function checkpointClaimedVm0Run(claimed: ClaimedVm0Run): Promise<void> {
+  const headers = sandboxHeadersForRun(claimed);
+  const historyHash = createHash("sha256")
+    .update(`runtime state session history ${claimed.runId}`)
+    .digest("hex");
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: claimed.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `runtime-state-${claimed.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    headers,
+    [200],
+  );
+}
+
+async function completeClaimedVm0Run(
+  claimed: ClaimedVm0Run,
+  exitCode: 0 | 1,
+): Promise<void> {
+  const headers = sandboxHeadersForRun(claimed);
+  if (exitCode === 0) {
+    await checkpointClaimedVm0Run(claimed);
+  }
+  await webhooks.requestAgentComplete(
+    {
+      runId: claimed.runId,
+      exitCode,
+      ...(exitCode === 0 ? {} : { error: "provider transport failed" }),
+    },
+    headers,
+    [200],
+  );
 }
 
 describe("POST /api/test/runtime-state/action", () => {
@@ -456,48 +505,67 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     {
       caseName: "authentication intervention",
       failureKind: "authentication",
+      connectionSource: undefined,
       retryAfterSeconds: 1,
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "billing intervention",
       failureKind: "billing",
+      connectionSource: undefined,
       retryAfterSeconds: 1,
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "rate limit default",
       failureKind: "rate_limit",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "provider unavailable default",
       failureKind: "provider_unavailable",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "timeout default",
       failureKind: "timeout",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "connection default",
       failureKind: "connection",
+      connectionSource: undefined,
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "provider-returned connection default",
+      failureKind: "connection",
+      connectionSource: "provider_response",
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "bounded provider retry delay",
       failureKind: "rate_limit",
+      connectionSource: undefined,
       retryAfterSeconds: 120,
       cooldownSeconds: 120,
     },
   ] as const)(
     "records the $caseName cooldown for only the persisted built-in model route",
-    async ({ failureKind, retryAfterSeconds, cooldownSeconds }) => {
+    async ({
+      failureKind,
+      connectionSource,
+      retryAfterSeconds,
+      cooldownSeconds,
+    }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
       await withMockNowForTest(startedAt, async () => {
         const claimed = await createClaimedVm0Run();
@@ -518,6 +586,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         await expect(
           runs.reportRunnerModelProviderFailure(claimed.runId, {
             failureKind,
+            ...(connectionSource === undefined ? {} : { connectionSource }),
             ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
           }),
         ).resolves.toStrictEqual({ outcome: "recorded" });
@@ -531,6 +600,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
             providerType: primary.provider_type,
             upstreamModel: primary.upstream_model,
             failureKind,
+            connectionSource: connectionSource ?? "legacy",
             retryAfterSeconds: cooldownSeconds,
             unavailableUntil: new Date(
               startedAt + cooldownSeconds * 1000,
@@ -599,6 +669,348 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
     },
   );
+
+  it("observes one transport failure without extending same-run evidence", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 3, 0, 0);
+    const first = await createClaimedVm0Run();
+    const second = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      first.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      first.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(first.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(context, first.selectedModel, true),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Built-in model provider failure observation updated",
+      expect.objectContaining({
+        type: "built_in_model_provider_observation",
+        context: "Runners",
+        runId: first.runId,
+        selectedModel: first.selectedModel,
+        providerType: primary.provider_type,
+        upstreamModel: primary.upstream_model,
+        connectionSource: "upstream_transport",
+        disposition: "created",
+        observationUntil: new Date(startedAt + 5 * 60_000).toISOString(),
+      }),
+    );
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalledWith(
+      "Built-in model provider failure report recorded",
+      expect.anything(),
+    );
+
+    await withMockNowForTest(startedAt + 100_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(first.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenLastCalledWith(
+      "Built-in model provider failure observation updated",
+      expect.objectContaining({
+        disposition: "same_run",
+        observationUntil: new Date(startedAt + 5 * 60_000).toISOString(),
+      }),
+    );
+
+    await withMockNowForTest(startedAt + 5 * 60_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(second.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenLastCalledWith(
+      "Built-in model provider failure observation updated",
+      expect.objectContaining({
+        runId: second.runId,
+        disposition: "replaced",
+        observationUntil: new Date(startedAt + 10 * 60_000).toISOString(),
+      }),
+    );
+  });
+
+  it("promotes current transport evidence from a distinct run", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 4, 0, 0);
+    const first = await createClaimedVm0Run();
+    const second = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      first.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      first.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(first.runId, {
+        failureKind: "connection",
+        connectionSource: "upstream_transport",
+      });
+    });
+    await withMockNowForTest(startedAt + 1000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(second.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(context, first.selectedModel, true),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Built-in model provider failure report recorded",
+      expect.objectContaining({
+        type: "built_in_model_provider_cooldown",
+        context: "Runners",
+        runId: second.runId,
+        connectionSource: "upstream_transport",
+        activationReason: "distinct_run",
+        unavailableUntil: new Date(startedAt + 1000 + 5 * 60_000).toISOString(),
+      }),
+    );
+  });
+
+  it("clears current transport evidence when its run completes", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 5, 0, 0);
+    const first = await createClaimedVm0Run();
+    const second = await createClaimedVm0Run();
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(first.runId, {
+        failureKind: "connection",
+        connectionSource: "upstream_transport",
+      });
+      await completeClaimedVm0Run(first, 0);
+      await expect(
+        runs.reportRunnerModelProviderFailure(first.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "ignored" });
+      await expect(
+        runs.reportRunnerModelProviderFailure(second.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    await expect(runs.readRun(first.actor, first.runId)).resolves.toMatchObject(
+      {
+        status: "completed",
+      },
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Built-in model provider failure observation cleared",
+      expect.objectContaining({
+        runId: first.runId,
+        connectionSource: "upstream_transport",
+        disposition: "completed",
+      }),
+    );
+  });
+
+  it("promotes current transport evidence when its run fails", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 6, 0, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(claimed.runId, {
+        failureKind: "connection",
+        connectionSource: "upstream_transport",
+      });
+      await completeClaimedVm0Run(claimed, 1);
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+    });
+    await expect(
+      runs.readRun(claimed.actor, claimed.runId),
+    ).resolves.toMatchObject({ status: "failed" });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Built-in model provider failure report recorded",
+      expect.objectContaining({
+        runId: claimed.runId,
+        connectionSource: "upstream_transport",
+        activationReason: "failed_run",
+      }),
+    );
+  });
+
+  it("clears current transport evidence in the cancellation transaction", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 7, 0, 0);
+    const first = await createClaimedVm0Run();
+    const second = await createClaimedVm0Run();
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(first.runId, {
+        failureKind: "connection",
+        connectionSource: "upstream_transport",
+      });
+      await runs.requestCancelRun(first.actor, first.runId, [200]);
+      await expect(
+        runs.reportRunnerModelProviderFailure(first.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "ignored" });
+      await expect(
+        runs.reportRunnerModelProviderFailure(second.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Built-in model provider failure observation cleared",
+      expect.objectContaining({
+        runId: first.runId,
+        connectionSource: "upstream_transport",
+        disposition: "cancelled",
+      }),
+    );
+  });
+
+  it("preserves the cancellation invariant when report and cancel race", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 8, 10, 0);
+    const cancelled = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      cancelled.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      cancelled.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      const [report] = await Promise.all([
+        runs.reportRunnerModelProviderFailure(cancelled.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+        runs.requestCancelRun(cancelled.actor, cancelled.runId, [200]),
+      ]);
+      expect(["ignored", "observed"]).toContain(report.outcome);
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          cancelled.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
+  it("preserves the failure invariant when report and completion race", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 8, 20, 0);
+    const failed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      failed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      failed.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      const [report] = await Promise.all([
+        runs.reportRunnerModelProviderFailure(failed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+        webhooks.requestAgentComplete(
+          {
+            runId: failed.runId,
+            exitCode: 1,
+            error: "provider transport failed",
+          },
+          sandboxHeadersForRun(failed),
+          [200],
+        ),
+      ]);
+      expect(["observed", "recorded"]).toContain(report.outcome);
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(context, failed.selectedModel, true),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
 
   it("writes a reported cooldown to the built-in table", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 30, 0);
@@ -803,6 +1215,14 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         {
           failureKind: "connection",
           retryAfterSeconds: 301,
+        },
+        {
+          failureKind: "rate_limit",
+          connectionSource: "upstream_transport",
+        },
+        {
+          failureKind: "connection",
+          connectionSource: "network",
         },
       ]) {
         const invalid = await runs.requestRawRunnerModelProviderFailure(

@@ -308,12 +308,27 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestConnectionSource",
+        rustDoc: [
+          "Origin of a connection failure used to select cooldown policy.",
+        ],
+        variants: {
+          provider_response: ["The provider returned the connection error."],
+          upstream_transport: [
+            "The runner observed an upstream transport interruption.",
+          ],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: [
           "Request body for reporting a built-in model provider failure.",
         ],
         fields: {
           failureKind: ["Normalized eligible provider failure kind."],
+          connectionSource: [
+            "Optional source for connection failures; absent preserves legacy behavior.",
+          ],
           retryAfterSeconds: [
             "Optional bounded provider retry delay in seconds.",
           ],
