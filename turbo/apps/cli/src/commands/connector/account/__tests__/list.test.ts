@@ -104,6 +104,9 @@ describe("okou connector account list command", () => {
         connectorAccount({
           id: "44444444-4444-4444-8444-444444444444",
           authMethod: "api-token",
+          externalEmail: "",
+          externalId: "",
+          externalUsername: "",
         }),
       ]),
     );

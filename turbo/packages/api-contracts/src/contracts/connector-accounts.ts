@@ -357,7 +357,10 @@ export function connectorAccountExternalIdentity(
   account: Omit<ConnectorAccountIdentityFields, "displayName">,
 ): string | null {
   return (
-    account.externalEmail ?? account.externalUsername ?? account.externalId
+    account.externalEmail ||
+    account.externalUsername ||
+    account.externalId ||
+    null
   );
 }
 export function connectorAccountEffectiveLabel(
