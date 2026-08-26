@@ -1553,44 +1553,46 @@ details > summary {
 }
 
 .zero-app[data-gradient-color-themes] .zero-workspace-bg::before {
-  background-color: hsl(var(--background));
+  background-color: hsl(var(--card));
   background-image:
     radial-gradient(
-      105% 95% at -8% -12%,
-      color-mix(in srgb, #ffffff 88%, var(--zero-color-theme-anchor)) 0%,
-      transparent 60%
+      ellipse 58% 64% at 0% 0%,
+      color-mix(in srgb, hsl(var(--card)) 88%, var(--zero-color-theme-anchor))
+        0%,
+      transparent 70%
     ),
     radial-gradient(
-      95% 90% at 108% 112%,
-      color-mix(in srgb, #ffffff 92%, var(--zero-color-theme-companion)) 0%,
-      transparent 62%
+      ellipse 54% 60% at 100% 100%,
+      color-mix(
+          in srgb,
+          hsl(var(--card)) 92%,
+          var(--zero-color-theme-companion)
+        )
+        0%,
+      transparent 70%
     );
 }
 
 :where([data-theme="dark"])
   .zero-app[data-gradient-color-themes]
   .zero-workspace-bg::before {
-  background-color: hsl(var(--background));
+  background-color: hsl(var(--card));
   background-image:
     radial-gradient(
-      105% 95% at -8% -12%,
-      color-mix(
-          in srgb,
-          hsl(var(--background)) 92%,
-          var(--zero-color-theme-anchor)
-        )
+      ellipse 58% 64% at 0% 0%,
+      color-mix(in srgb, hsl(var(--card)) 92%, var(--zero-color-theme-anchor))
         0%,
-      transparent 60%
+      transparent 70%
     ),
     radial-gradient(
-      95% 90% at 108% 112%,
+      ellipse 54% 60% at 100% 100%,
       color-mix(
           in srgb,
-          hsl(var(--background)) 94%,
+          hsl(var(--card)) 94%,
           var(--zero-color-theme-companion)
         )
         0%,
-      transparent 62%
+      transparent 70%
     );
 }
 
