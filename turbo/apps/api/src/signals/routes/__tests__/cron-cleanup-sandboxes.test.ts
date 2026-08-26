@@ -348,6 +348,18 @@ async function insertRunnerJobEntry(
   });
 }
 
+async function insertRunnerClaimRecovery(
+  fixture: RunFixture,
+  expiresAt: Date,
+): Promise<void> {
+  await postCronCleanupState({
+    action: "seed-runner-claim-recovery",
+    run_id: fixture.runId,
+    api_start_time: new Date(FIXED_NOW_MS).toISOString(),
+    expires_at: expiresAt.toISOString(),
+  });
+}
+
 async function insertExportJob(args: {
   readonly status: string;
   readonly createdAt?: Date;
@@ -410,6 +422,17 @@ async function findRunnerJob(runId: string): Promise<{
     run_id: runId,
   });
   const row = recordField(response, "runner_job");
+  return row ? { runId: stringField(row, "runId") } : null;
+}
+
+async function findRunnerClaimRecovery(runId: string): Promise<{
+  readonly runId: string;
+} | null> {
+  const response = await postCronCleanupState({
+    action: "get-runner-claim-recovery",
+    run_id: runId,
+  });
+  const row = recordField(response, "runner_claim_recovery");
   return row ? { runId: stringField(row, "runId") } : null;
 }
 
@@ -1090,6 +1113,25 @@ describe("sandbox cleanup", () => {
     await expect(findRunnerJob(unexpired.runId)).resolves.toStrictEqual({
       runId: unexpired.runId,
     });
+  });
+
+  it("deletes expired runner claim recovery entries", async () => {
+    const expired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    const unexpired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    await insertRunnerClaimRecovery(expired, minutesAgo(1));
+    await insertRunnerClaimRecovery(unexpired, farFuture());
+
+    const response = await cleanupRegisteredFixtures();
+
+    expect(response.body.cleaned).toBe(0);
+    await expect(findRunnerClaimRecovery(expired.runId)).resolves.toBeNull();
+    await expect(
+      findRunnerClaimRecovery(unexpired.runId),
+    ).resolves.toStrictEqual({ runId: unexpired.runId });
   });
 
   it("cleans up running runs after the heartbeat timeout", async () => {

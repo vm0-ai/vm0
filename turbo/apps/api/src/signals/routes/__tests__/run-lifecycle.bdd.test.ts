@@ -4616,6 +4616,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected the original runner claim to succeed");
     }
     expect(original.body.prompt).toBe("recover committed claim");
+    await flushWaitUntilForTest();
+    const claimSideEffectCount = claimRouteTimingEventsForRun(run.runId).length;
+    expect(claimSideEffectCount).toBeGreaterThan(0);
     const runningBeforeRecovery = await api.readRun(actor, run.runId);
 
     const wrongIdentity = await api.requestClaimRunnerJob(
@@ -4640,6 +4643,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected the committed runner claim to be recovered");
     }
     expect(recovered.body.prompt).toBe("recover committed claim");
+    await flushWaitUntilForTest();
+    expect(claimRouteTimingEventsForRun(run.runId)).toHaveLength(
+      claimSideEffectCount,
+    );
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "running",
       startedAt: runningBeforeRecovery.startedAt,
@@ -4743,6 +4750,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
+    const runnerIdentity = {
+      runnerId: randomUUID(),
+      heartbeatGeneration: 13,
+    };
     const claim = await api.requestClaimRunnerJobAs(
       `Bearer ${apiKey.token}`,
       run.runId,

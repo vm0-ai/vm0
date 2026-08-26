@@ -6,6 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
+import type { RunnerJobQueueExecutionContext } from "@okouai/db/jsonb-contracts/runner-job-queue";
 import { agents } from "@okouai/db/schema/agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { browserSessions } from "@okouai/db/schema/browser-session";
@@ -19,6 +20,7 @@ import { exportJobs } from "@okouai/db/schema/export-job";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { runnerJobClaimRecovery } from "@okouai/db/schema/runner-job-claim-recovery";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
@@ -586,6 +588,19 @@ async function deleteRunOwnershipForAction(
   return actionOk();
 }
 
+function runnerJobExecutionContextForAction(
+  body: Record<string, unknown>,
+): RunnerJobQueueExecutionContext {
+  return {
+    storageMounts: [],
+    environment: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "claude-code",
+    apiStartTime: readDate(body, "api_start_time")?.getTime() ?? 0,
+  };
+}
+
 async function seedRunnerJobForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -600,14 +615,27 @@ async function seedRunnerJobForAction(
     runId,
     runnerGroup: readOptionalString(body, "runner_group") ?? "vm0/test",
     profile: readOptionalString(body, "profile") ?? "vm0/default",
-    executionContext: {
-      storageMounts: [],
-      environment: null,
-      resumeSession: null,
-      encryptedSecrets: null,
-      cliAgentType: "claude-code",
-      apiStartTime: readDate(body, "api_start_time")?.getTime() ?? 0,
-    },
+    executionContext: runnerJobExecutionContextForAction(body),
+    expiresAt,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedRunnerClaimRecoveryForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  const expiresAt = readDate(body, "expires_at");
+  if (!runId || !expiresAt) {
+    return actionBadRequest("run_id and expires_at are required");
+  }
+  await db.insert(runnerJobClaimRecovery).values({
+    runId,
+    reuseKey: readOptionalString(body, "reuse_key"),
+    executionContext: runnerJobExecutionContextForAction(body),
     expiresAt,
   });
   signal.throwIfAborted();
@@ -861,6 +889,24 @@ async function getRunnerJobForAction(
   return actionOk({ runner_job: job ?? null });
 }
 
+async function getRunnerClaimRecoveryForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const [recovery] = await db
+    .select({ runId: runnerJobClaimRecovery.runId })
+    .from(runnerJobClaimRecovery)
+    .where(eq(runnerJobClaimRecovery.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({ runner_claim_recovery: recovery ?? null });
+}
+
 async function getQueueEntryForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -927,6 +973,7 @@ const cronCleanupSandboxesActionHandlers = {
   "delete-run-ownership": deleteRunOwnershipForAction,
   "delete-run-thread": deleteRunThreadForAction,
   "seed-runner-job": seedRunnerJobForAction,
+  "seed-runner-claim-recovery": seedRunnerClaimRecoveryForAction,
   "seed-queue-entry": seedQueueEntryForAction,
   "seed-queue-marker": seedQueueMarkerForAction,
   "seed-export-job": seedExportJobForAction,
@@ -934,6 +981,7 @@ const cronCleanupSandboxesActionHandlers = {
   "get-run": getRunForAction,
   "get-run-ownership": getRunOwnershipForAction,
   "get-runner-job": getRunnerJobForAction,
+  "get-runner-claim-recovery": getRunnerClaimRecoveryForAction,
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
