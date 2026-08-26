@@ -8872,27 +8872,30 @@ function ConnectorsPopoverButton({
                             showPermissionAction || accountAction ? (
                               <>
                                 {showPermissionAction ? (
-                                  <Button
-                                    showTooltip
-                                    type="button"
-                                    onClick={() => {
-                                      updateConnectorUi({
-                                        permissionConnectorSlug: connector.slug,
-                                      });
-                                    }}
-                                    aria-label={t(
-                                      ($) => {
-                                        return $.chat.connectors
-                                          .configurePermissions;
-                                      },
-                                      { connectorName: connector.label },
-                                    )}
-                                    variant="quiet"
-                                    size="icon-2xs"
-                                    className="shrink-0"
-                                  >
-                                    <SlidersHorizontal size={15} />
-                                  </Button>
+                                  <PopoverClose asChild>
+                                    <Button
+                                      showTooltip
+                                      type="button"
+                                      onClick={() => {
+                                        updateConnectorUi({
+                                          permissionConnectorSlug:
+                                            connector.slug,
+                                        });
+                                      }}
+                                      aria-label={t(
+                                        ($) => {
+                                          return $.chat.connectors
+                                            .configurePermissions;
+                                        },
+                                        { connectorName: connector.label },
+                                      )}
+                                      variant="quiet"
+                                      size="icon-2xs"
+                                      className="shrink-0"
+                                    >
+                                      <SlidersHorizontal size={15} />
+                                    </Button>
+                                  </PopoverClose>
                                 ) : null}
                                 {accountAction}
                               </>

@@ -92,6 +92,16 @@ function connectorStatus({
   };
 }
 
+function buttonByText(text: string, container: ParentNode): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
@@ -274,6 +284,59 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("makes connector permissions interactive on the first click", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockThread();
+    mockConnectors([{ connectorSlug: "axiom", authMethod: "api-token" }]);
+    mockAgentConnectorAuthorizations(["axiom"]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    const connectorsTrigger = within(composer).getByLabelText("Connectors");
+    await user.click(connectorsTrigger);
+    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(
+      await screen.findByLabelText("Configure Axiom permissions"),
+    );
+
+    const permissionsDialog = await screen.findByRole("dialog", {
+      name: /Axiom permissions/u,
+    });
+    await waitFor(() => {
+      expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Add connectors")).not.toBeInTheDocument();
+    });
+
+    const permissionName =
+      await within(permissionsDialog).findByText("annotations|create");
+    const permissionRow = permissionName.parentElement?.parentElement;
+    if (!(permissionRow instanceof HTMLElement)) {
+      throw new Error("Expected an Axiom permission row");
+    }
+    const denyButton = buttonByText("Deny", permissionRow);
+    const applyButton = buttonByText("Apply", permissionsDialog);
+    expect(denyButton).toHaveAttribute("aria-pressed", "false");
+    expect(applyButton).toBeDisabled();
+
+    await user.click(denyButton);
+
+    expect(denyButton).toHaveAttribute("aria-pressed", "true");
+    expect(applyButton).toBeEnabled();
+
+    await user.click(buttonByText("Cancel", permissionsDialog));
+    await waitFor(() => {
+      expect(permissionsDialog).not.toBeInTheDocument();
+    });
+    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("keeps permissioned connector row height stable while toggling access", async () => {
     const user = userEvent.setup({ delay: null });
     let authorizationWrites = 0;
