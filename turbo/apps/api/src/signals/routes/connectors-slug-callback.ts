@@ -8,10 +8,7 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import {
-  connectorGrantScopes,
-  resolveConnectorAuthClient,
-} from "@okouai/connectors/connector-auth-method";
+import { resolveConnectorAuthClient } from "@okouai/connectors/connector-auth-method";
 import {
   exchangeConnectorAuthCodeWithMethod,
   verifyConnectorOpenIdAuthCallbackWithMethod,
@@ -576,7 +573,7 @@ const completeOAuthCallback$ = command(
         snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
+        oauthScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,

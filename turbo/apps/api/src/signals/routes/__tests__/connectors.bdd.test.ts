@@ -712,16 +712,7 @@ describe("CONN-02: OAuth start and callback", () => {
       authMethod: "oauth",
       externalId: "us3.datadoghq.com",
       externalUsername: "us3.datadoghq.com",
-      oauthScopes: [
-        "dashboards_read",
-        "events_read",
-        "incident_read",
-        "logs_read_index_data",
-        "metrics_read",
-        "monitors_read",
-        "slos_read",
-      ],
-      connectionStatus: "connected",
+      oauthScopes: ["dashboards_read", "logs_read_index_data"],
     });
     expectNoVisibleSecret(connected, "bdd-datadog-access-token");
     expectNoVisibleSecret(connected, "bdd-datadog-refresh-token");
@@ -6160,6 +6151,85 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 });
 
 describe("CONN-02: test-oauth auth-code journey", () => {
+  it("persists reported and normalized effective scopes through auth-code callbacks", async () => {
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const supplementalProvider = mockTestOAuthAuthCodeProvider({
+      accessToken: "bdd-test-oauth-supplemental-token",
+      scope: "read provider-added",
+    });
+    const supplementalStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    const supplementalCallback = await connectorsApi.completeOauthCallback(
+      "test-oauth",
+      {
+        code: "bdd-test-oauth-supplemental-code",
+        state: stateFromAuthorizationUrl(supplementalStart.authorizationUrl),
+      },
+    );
+    expect(redirectLocation(supplementalCallback).pathname).toBe(
+      "/connector/success",
+    );
+    expect(supplementalProvider.tokenBodies).toHaveLength(1);
+
+    const supplemental = await connectorsApi.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(supplemental).toMatchObject({
+      oauthScopes: ["read", "provider-added"],
+      connectionStatus: "connected",
+    });
+
+    const omittedProvider = mockTestOAuthAuthCodeProvider({
+      accessToken: "bdd-test-oauth-omitted-scope-token",
+      scope: null,
+    });
+    const omittedStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    expect(
+      new URL(omittedStart.authorizationUrl).searchParams.get("scope"),
+    ).toBe("read");
+    const omittedCallback = await connectorsApi.completeOauthCallback(
+      "test-oauth",
+      {
+        code: "bdd-test-oauth-omitted-scope-code",
+        state: stateFromAuthorizationUrl(omittedStart.authorizationUrl),
+      },
+    );
+    expect(redirectLocation(omittedCallback).pathname).toBe(
+      "/connector/success",
+    );
+    expect(omittedProvider.tokenBodies).toHaveLength(1);
+
+    const normalized = await connectorsApi.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(normalized).toMatchObject({
+      id: supplemental.id,
+      oauthScopes: ["read"],
+      connectionStatus: "connected",
+    });
+
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      actor,
+      "test-oauth",
+    );
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
   it("replaces a manual-grant connection through the auth-code callback with method-scoped state cleanup", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
