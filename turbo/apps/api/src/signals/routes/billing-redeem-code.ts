@@ -112,6 +112,10 @@ function resolveMachineSecretKey(): MachineSecretKeyResolution {
   return { source: "conflicting-dual" };
 }
 
+export function reportMachineSecretAliasSourceAtProcessInitialization(): void {
+  reportMachineSecretResolution(resolveMachineSecretKey().source);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
