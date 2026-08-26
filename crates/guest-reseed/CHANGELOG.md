@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.5...guest-reseed-v0.3.6) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.4...guest-reseed-v0.3.5) (2026-08-24)
 
 

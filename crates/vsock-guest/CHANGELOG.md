@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.111](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.110...vsock-guest-v0.19.111) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.19.110](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.109...vsock-guest-v0.19.110) (2026-08-25)
 
 ## [0.19.109](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.108...vsock-guest-v0.19.109) (2026-08-25)

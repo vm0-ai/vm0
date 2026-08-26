@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.796.2](https://github.com/vm0-ai/vm0/compare/app-v0.796.1...app-v0.796.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **auth:** restore accessible brand action colors ([#29410](https://github.com/vm0-ai/vm0/issues/29410)) ([139e91e](https://github.com/vm0-ai/vm0/commit/139e91e6c56936849c7da98a53761d45d80fd560))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.592.1
+
 ## [0.796.1](https://github.com/vm0-ai/vm0/compare/app-v0.796.0...app-v0.796.1) (2026-08-26)
 
 
