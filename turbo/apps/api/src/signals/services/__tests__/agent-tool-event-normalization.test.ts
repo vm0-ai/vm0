@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentEvent } from "../../../lib/event-consumer/verify";
-import { normalizeAgentToolEvent } from "../agent-tool-event-normalization";
+import { normalizeAgentToolEvent as normalizeProviderToolEvent } from "../agent-tool-event-normalization";
 import {
   assistantEventIdForRunEvent,
   toolEventIdForRunEvent,
@@ -86,6 +86,14 @@ function codexItem(
   item: Record<string, unknown>,
 ): AgentEvent {
   return agentEvent(1, { type: eventType, item });
+}
+
+function normalizeAgentToolEvent(event: AgentEvent) {
+  const framework =
+    event.type === "item.started" || event.type === "item.completed"
+      ? "codex"
+      : "claude-code";
+  return normalizeProviderToolEvent(event, framework);
 }
 
 describe("agent tool event normalization", () => {
@@ -494,6 +502,183 @@ describe("agent tool event normalization", () => {
       ).toBeNull();
     }
   });
+
+  it("dispatches provider adapters from the durable framework", () => {
+    const piRead = claudeToolUse({
+      name: "read",
+      input: { path: "/workspace/pi.ts" },
+    });
+    const claudeRead = claudeToolUse({
+      name: "Read",
+      input: { file_path: "/workspace/claude.ts" },
+    });
+    const codexRead = codexItem("item.completed", {
+      id: "codex-read",
+      type: "file_read",
+      status: "completed",
+      path: "/workspace/codex.ts",
+    });
+
+    expect(normalizeProviderToolEvent(piRead, "pi")).toMatchObject({
+      provider: "pi",
+      action: "read",
+    });
+    expect(normalizeProviderToolEvent(piRead, "claude-code")).toBeNull();
+    expect(normalizeProviderToolEvent(piRead, "codex")).toBeNull();
+    expect(normalizeProviderToolEvent(piRead, null)).toBeNull();
+
+    expect(normalizeProviderToolEvent(claudeRead, "claude-code")).toMatchObject(
+      { provider: "claude", action: "read" },
+    );
+    expect(normalizeProviderToolEvent(claudeRead, "pi")).toBeNull();
+    expect(normalizeProviderToolEvent(codexRead, "codex")).toMatchObject({
+      action: "read",
+    });
+    expect(normalizeProviderToolEvent(codexRead, "claude-code")).toBeNull();
+
+    const historicalBash = claudeToolUse({
+      name: "bash",
+      input: { command: "printf historical" },
+    });
+    expect(normalizeProviderToolEvent(historicalBash, null)).toMatchObject({
+      provider: "claude",
+      action: "run",
+    });
+  });
+
+  it("maps exact Pi actions and structured terminal states", () => {
+    const cases = [
+      {
+        name: "bash",
+        input: { command: "  printf\tpi\n " },
+        action: "run",
+        summary: "Running printf pi",
+      },
+      {
+        name: "read",
+        input: { path: " /workspace/read.ts " },
+        action: "read",
+        summary: "Reading /workspace/read.ts",
+      },
+      {
+        name: "write",
+        input: { path: "/workspace/write.ts", content: "raw content" },
+        action: "write",
+        summary: "Writing /workspace/write.ts",
+      },
+      {
+        name: "edit",
+        input: { path: "/workspace/edit.ts", diff: "raw diff" },
+        action: "edit",
+        summary: "Editing /workspace/edit.ts",
+      },
+    ] as const;
+    for (const fixture of cases) {
+      expect(
+        normalizeProviderToolEvent(
+          claudeToolUse({ name: fixture.name, input: fixture.input }),
+          "pi",
+        ),
+      ).toStrictEqual({
+        kind: "correlated",
+        provider: "pi",
+        providerOperationId: "claude-operation-1",
+        action: fixture.action,
+        status: "pending",
+        summary: fixture.summary,
+      });
+    }
+
+    const result = (
+      id: string,
+      isError: unknown,
+      cancelled: unknown = undefined,
+    ) => {
+      return agentEvent(2, {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: id,
+              is_error: isError,
+              vm0_user_cancelled: cancelled,
+              content: "raw Pi result must not be projected",
+              error: "raw Pi error must not be projected",
+            },
+          ],
+        },
+      });
+    };
+    expect(
+      normalizeProviderToolEvent(result("success", false), "pi"),
+    ).toStrictEqual({
+      kind: "correlated-terminal",
+      provider: "pi",
+      providerOperationId: "success",
+      status: "success",
+    });
+    expect(
+      normalizeProviderToolEvent(result("error", true), "pi"),
+    ).toStrictEqual({
+      kind: "correlated-terminal",
+      provider: "pi",
+      providerOperationId: "error",
+      status: "error",
+    });
+    expect(
+      normalizeProviderToolEvent(result("cancelled", true, true), "pi"),
+    ).toStrictEqual({
+      kind: "correlated-terminal",
+      provider: "pi",
+      providerOperationId: "cancelled",
+      status: "cancelled",
+      requiresPendingOperation: true,
+    });
+  });
+
+  it("fails closed for unsupported, malformed, and unsafe Pi records", () => {
+    const malformedResults = [
+      { tool_use_id: "missing-error" },
+      { tool_use_id: "string-error", is_error: "false" },
+      { tool_use_id: " ", is_error: false },
+    ];
+    const events = [
+      claudeToolUse({ name: "Bash", input: { command: "pwd" } }),
+      claudeToolUse({ name: "Read", input: { path: "/workspace/a" } }),
+      claudeToolUse({ name: "read", input: { file_path: "/workspace/a" } }),
+      claudeToolUse({ name: "read", input: { path: "   " } }),
+      claudeToolUse({ name: "read", input: { path: "bad\0path" } }),
+      claudeToolUse({
+        name: "bash",
+        input: { command: "/bin/bash -lc 'unterminated" },
+      }),
+      claudeToolUse({ name: "search", input: { query: "needle" } }),
+      ...malformedResults.map((block) => {
+        return agentEvent(2, {
+          type: "user",
+          message: { content: [{ type: "tool_result", ...block }] },
+        });
+      }),
+      agentEvent(3, {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "multi",
+              name: "read",
+              input: { path: "/workspace/a" },
+            },
+            { type: "text", text: "not canonical" },
+          ],
+        },
+      }),
+    ];
+    for (const event of events) {
+      expect(normalizeProviderToolEvent(event, "pi")).toBeNull();
+    }
+  });
 });
 
 describe("tool event identity", () => {
@@ -511,6 +696,11 @@ describe("tool event identity", () => {
       "codex",
       "provider-operation-secret",
     );
+    const piOperationId = toolUseIdForProviderOperation(
+      RUN_ID,
+      "pi",
+      "provider-operation-secret",
+    );
 
     expect(transcriptId).toBe("ae848beb-761a-548f-8929-874f825c4b37");
     expect(pendingRowId).toBe("20054cbd-fac3-585a-8641-99a881e3900e");
@@ -525,6 +715,9 @@ describe("tool event identity", () => {
     expect(pendingRowId).not.toBe(terminalRowId);
     expect(pendingRowId).not.toBe(transcriptId);
     expect(claudeOperationId).not.toBe(codexOperationId);
+    expect(piOperationId).not.toBe(claudeOperationId);
+    expect(piOperationId).not.toBe(codexOperationId);
+    expect(piOperationId).not.toContain("provider-operation-secret");
     expect(claudeOperationId).not.toContain("provider-operation-secret");
     expect(toolUseIdForRunEvent(RUN_ID, "tool:event:4")).not.toBe(
       toolUseIdForRunEvent(RUN_ID, "tool:event:5"),

@@ -28,7 +28,7 @@ export function toolEventIdForRunEvent(
 /** Provider IDs are derivation seeds only; the returned correlation is opaque. */
 export function toolUseIdForProviderOperation(
   runId: string,
-  provider: "claude" | "codex",
+  provider: "claude" | "codex" | "pi",
   providerOperationId: string,
 ): string {
   return uuidv5(
