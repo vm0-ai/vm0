@@ -274,13 +274,14 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
-  it("uses permissioned connector content to toggle only access", async () => {
+  it("keeps permissioned connector row height stable while toggling access", async () => {
     const user = userEvent.setup({ delay: null });
     let authorizationWrites = 0;
+    let enabledConnectorSlugs = ["axiom"];
     mockThread();
     mockConnectors([{ connectorSlug: "axiom", authMethod: "api-token" }]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledConnectorSlugs: ["axiom"] });
+      return respond(200, { enabledConnectorSlugs });
     });
     context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
       expect(body).toStrictEqual({
@@ -288,7 +289,8 @@ describe("chat composer connector connection", () => {
         operation: "remove",
       });
       authorizationWrites += 1;
-      return respond(200, { enabledConnectorSlugs: [] });
+      enabledConnectorSlugs = [];
+      return respond(200, { enabledConnectorSlugs });
     });
 
     detachedSetupPage({
@@ -305,6 +307,7 @@ describe("chat composer connector connection", () => {
     if (!accessLabel?.control) {
       throw new Error("Expected the Axiom label to target its access switch");
     }
+    expect(accessLabel.parentElement).toHaveClass("h-10");
     expect(
       screen.getByLabelText("Configure Axiom permissions").closest("label"),
     ).toBeNull();
@@ -314,6 +317,13 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(authorizationWrites).toBe(1);
     });
+    const disconnectedAccess = await screen.findByLabelText("Add Axiom");
+    expect(disconnectedAccess.closest("label")?.parentElement).toHaveClass(
+      "h-10",
+    );
+    expect(
+      screen.queryByLabelText("Configure Axiom permissions"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("dialog", { name: /Axiom permissions/u }),
     ).not.toBeInTheDocument();

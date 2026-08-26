@@ -8143,7 +8143,7 @@ function ComposerConnectorAccessRow({
   readonly ariaLabel: string;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
+    <div className="flex h-10 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
       {actions ? (
         <span className="order-2 flex shrink-0 items-center gap-2">
           {actions}
