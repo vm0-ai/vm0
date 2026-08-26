@@ -15,7 +15,10 @@ import {
 import { sql } from "drizzle-orm";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
-import type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
+import type {
+  OfficialWorkflowParameterBindings,
+  WorkflowAutomationEventConfig,
+} from "@okouai/db/jsonb-contracts/workflow";
 export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
 
 /**
@@ -26,6 +29,12 @@ export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/w
  * stored through the existing custom-skill volume storage name.
  */
 export type WorkflowVisibility = "public" | "private";
+export type OfficialWorkflowInstallationState = "installing" | "installed";
+export type OfficialWorkflowReconciliationStatus =
+  | "current"
+  | "reconciling"
+  | "needs_reconfiguration"
+  | "failed";
 
 /**
  * Workflows table
@@ -52,6 +61,10 @@ export const workflows = pgTable(
     ownerUserId: text("owner_user_id").notNull(),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
+    officialDefinitionName: varchar("official_definition_name", { length: 64 }),
+    officialInstallationState: varchar("official_installation_state", {
+      length: 32,
+    }).$type<OfficialWorkflowInstallationState>(),
     createdBy: text("created_by").notNull(),
     updatedBy: text("updated_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -83,6 +96,21 @@ export const workflows = pgTable(
       ownerIdx: index("idx_zero_workflows_org_owner").on(
         table.orgId,
         table.ownerUserId,
+      ),
+      officialInstallationCheck: check(
+        "zero_workflows_official_installation_check",
+        sql`(
+          ${table.officialDefinitionName} IS NULL
+          AND ${table.officialInstallationState} IS NULL
+        ) OR (
+          ${table.officialDefinitionName} IS NOT NULL
+          AND ${table.officialInstallationState} IN ('installing', 'installed')
+          AND ${table.officialDefinitionName} = ${table.name}
+          AND ${table.visibility} = 'private'
+          AND ${table.instruction} IS NULL
+          AND ${table.displayName} IS NULL
+          AND ${table.description} IS NULL
+        )`,
       ),
     };
   },
@@ -218,6 +246,17 @@ export const workflowAutomations = pgTable(
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
     autonomyBudget: integer("autonomy_budget").notNull().default(10),
+    officialBlueprintKey: varchar("official_blueprint_key", { length: 64 }),
+    officialAppliedFingerprint: varchar("official_applied_fingerprint", {
+      length: 64,
+    }),
+    officialReconciliationStatus: varchar("official_reconciliation_status", {
+      length: 32,
+    }).$type<OfficialWorkflowReconciliationStatus>(),
+    officialParameterBindings: jsonb(
+      "official_parameter_bindings",
+    ).$type<OfficialWorkflowParameterBindings>(),
+    officialIntendedEnabled: boolean("official_intended_enabled"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -255,6 +294,25 @@ export const workflowAutomations = pgTable(
       check(
         "zero_workflow_automations_autonomy_budget_check",
         sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
+      ),
+      uniqueIndex("idx_zero_workflow_automations_official_blueprint_unique")
+        .on(table.workflowId, table.officialBlueprintKey)
+        .where(sql`${table.officialBlueprintKey} IS NOT NULL`),
+      check(
+        "zero_workflow_automations_official_binding_check",
+        sql`(
+          ${table.officialBlueprintKey} IS NULL
+          AND ${table.officialAppliedFingerprint} IS NULL
+          AND ${table.officialReconciliationStatus} IS NULL
+          AND ${table.officialParameterBindings} IS NULL
+          AND ${table.officialIntendedEnabled} IS NULL
+        ) OR (
+          ${table.officialBlueprintKey} IS NOT NULL
+          AND ${table.officialAppliedFingerprint} ~ '^[0-9a-f]{64}$'
+          AND ${table.officialReconciliationStatus} IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')
+          AND jsonb_typeof(${table.officialParameterBindings}) = 'array'
+          AND ${table.officialIntendedEnabled} IS NOT NULL
+        )`,
       ),
     ];
   },

@@ -56,6 +56,27 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
 
+  it("should apply user overrides to the staff-default Official Workflows switch", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.OfficialWorkflows, {
+        orgId: staffOrgId,
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.OfficialWorkflows, {
+        orgId: staffOrgId,
+        overrides: { [FeatureSwitchKey.OfficialWorkflows]: false },
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.OfficialWorkflows, {
+        orgId: "org_nonexistent",
+        overrides: { [FeatureSwitchKey.OfficialWorkflows]: true },
+      }),
+    ).toBe(true);
+  });
+
   it("should return true when orgId matches even if userId does not", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
@@ -127,6 +148,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -161,6 +183,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
   });
 
   it("should enable gradient color themes for Ming only", () => {

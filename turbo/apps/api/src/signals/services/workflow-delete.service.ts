@@ -15,6 +15,8 @@ import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecy
 interface DeleteWorkflowInput {
   readonly orgId: string;
   readonly workflowId: string;
+  readonly allowOfficialInstallationDeletion?: boolean;
+  readonly requiredOfficialInstallationState?: "installing";
 }
 
 export const deleteWorkflow$ = command(
@@ -27,7 +29,11 @@ export const deleteWorkflow$ = command(
 
     const result = await writeDb.transaction(async (tx) => {
       const [workflow] = await tx
-        .select({ id: workflows.id })
+        .select({
+          id: workflows.id,
+          officialDefinitionName: workflows.officialDefinitionName,
+          officialInstallationState: workflows.officialInstallationState,
+        })
         .from(workflows)
         .where(
           and(
@@ -35,10 +41,26 @@ export const deleteWorkflow$ = command(
             eq(workflows.id, args.workflowId),
           ),
         )
+        .for("update")
         .limit(1);
 
       if (!workflow) {
         return { deleted: false as const };
+      }
+      if (
+        args.requiredOfficialInstallationState !== undefined &&
+        workflow.officialInstallationState !==
+          args.requiredOfficialInstallationState
+      ) {
+        return { deleted: false as const };
+      }
+      if (
+        workflow.officialDefinitionName !== null &&
+        args.allowOfficialInstallationDeletion !== true
+      ) {
+        throw new Error(
+          "Uninstall Official Workflows through the Official installation endpoint",
+        );
       }
 
       const automations = await tx

@@ -28,6 +28,9 @@ export const updateWorkflow$ = command(
   ): Promise<void> => {
     const writeDb = set(writeDb$);
     const { workflow, body } = args;
+    if (workflow.officialDefinitionName !== null) {
+      throw new Error("Official Workflow content and structure are read-only");
+    }
 
     const nextName = body.name !== undefined ? body.name : workflow.name;
     const nextInstruction =

@@ -3,12 +3,13 @@ import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows"
 import { agents } from "@okouai/db/schema/agent";
 import { workflows } from "@okouai/db/schema/workflow";
 import { userCache } from "@okouai/db/schema/user-cache";
-import { and, asc, desc, eq, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, type SQL } from "drizzle-orm";
 
 import { db$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { now, nowDate } from "../../lib/time";
+import { readAcceptedOfficialWorkflowCatalog } from "./official-workflow-catalog-read.service";
 
 const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -27,6 +28,8 @@ export interface WorkflowRow {
   readonly ownerUserId: string;
   readonly displayName: string | null;
   readonly description: string | null;
+  readonly officialDefinitionName: string | null;
+  readonly officialInstallationState: "installing" | "installed" | null;
   readonly createdBy: string;
   readonly updatedBy: string;
   readonly createdAt: Date;
@@ -42,6 +45,8 @@ type WorkflowSummaryRow = Pick<
   | "ownerUserId"
   | "displayName"
   | "description"
+  | "officialDefinitionName"
+  | "officialInstallationState"
   | "createdAt"
 >;
 
@@ -129,6 +134,9 @@ function canManageWorkflow(
   agent: WorkflowAgentInfo,
   member: WorkflowMember,
 ): boolean {
+  if (workflow.officialDefinitionName !== null) {
+    return false;
+  }
   if (workflow.visibility === "private") {
     return workflow.ownerUserId === member.userId;
   }
@@ -144,6 +152,9 @@ function canPublishWorkflow(
   agent: WorkflowAgentInfo,
   member: WorkflowMember,
 ): boolean {
+  if (workflow.officialDefinitionName !== null) {
+    return false;
+  }
   return (
     workflow.visibility === "private" &&
     workflow.ownerUserId === member.userId &&
@@ -197,9 +208,12 @@ export function visibleWorkflowCondition(member: WorkflowMember): SQL {
     agentVisibleToMember,
   );
 
-  return or(
-    publicWorkflowOnVisibleAgent,
-    eq(workflows.ownerUserId, member.userId),
+  return and(
+    or(
+      isNull(workflows.officialDefinitionName),
+      eq(workflows.officialInstallationState, "installed"),
+    ),
+    or(publicWorkflowOnVisibleAgent, eq(workflows.ownerUserId, member.userId)),
   ) as SQL;
 }
 
@@ -209,6 +223,7 @@ export async function loadVisibleWorkflowById(
     readonly orgId: string;
     readonly member: WorkflowMember;
     readonly workflowId: string;
+    readonly includeInstallingOfficial?: boolean;
   },
 ): Promise<{ workflow: WorkflowRow; agent: VisibleWorkflowAgentInfo } | null> {
   const [row] = await db
@@ -229,7 +244,15 @@ export async function loadVisibleWorkflowById(
       and(
         eq(workflows.orgId, args.orgId),
         eq(workflows.id, args.workflowId),
-        visibleWorkflowCondition(args.member),
+        args.includeInstallingOfficial
+          ? or(
+              visibleWorkflowCondition(args.member),
+              and(
+                eq(workflows.ownerUserId, args.member.userId),
+                eq(workflows.officialInstallationState, "installing"),
+              ),
+            )
+          : visibleWorkflowCondition(args.member),
       ),
     )
     .limit(1);
@@ -246,6 +269,7 @@ export function workflowSummary(args: {
   readonly member: WorkflowMember;
   readonly ownerProfile?: WorkflowOwnerProfile | null;
   readonly shadowedBy?: WorkflowShadow | null;
+  readonly officialDefinitionLifecycle?: "active" | "retired" | "unavailable";
 }): WorkflowSummary {
   return {
     id: args.workflow.id,
@@ -262,6 +286,17 @@ export function workflowSummary(args: {
     createdAt: args.workflow.createdAt.toISOString(),
     canManage: canManageWorkflow(args.workflow, args.agent, args.member),
     canPublish: canPublishWorkflow(args.workflow, args.agent, args.member),
+    official:
+      args.workflow.officialDefinitionName === null ||
+      args.workflow.officialInstallationState === null
+        ? null
+        : {
+            definitionName: args.workflow.officialDefinitionName,
+            installationState: args.workflow.officialInstallationState,
+            definitionLifecycle:
+              args.officialDefinitionLifecycle ?? "unavailable",
+            readOnly: true,
+          },
     shadowedBy: args.shadowedBy ?? null,
   };
 }
@@ -279,9 +314,9 @@ function workflowRunPrioritySort(userId: string): SQL[] {
 }
 
 function injectableWorkflowCondition(userId: string): SQL {
-  return or(
-    eq(workflows.visibility, "public"),
-    eq(workflows.ownerUserId, userId),
+  return and(
+    isNull(workflows.officialDefinitionName),
+    or(eq(workflows.visibility, "public"), eq(workflows.ownerUserId, userId)),
   ) as SQL;
 }
 
@@ -300,8 +335,9 @@ function shadowWinnerFromRows(
     const winner = workflows
       .filter((workflow) => {
         return (
-          workflow.visibility === "public" ||
-          workflow.ownerUserId === member.userId
+          workflow.officialDefinitionName === null &&
+          (workflow.visibility === "public" ||
+            workflow.ownerUserId === member.userId)
         );
       })
       .sort((a, b) => {
@@ -458,6 +494,8 @@ export function workflowList(args: {
           ownerUserId: workflows.ownerUserId,
           displayName: workflows.displayName,
           description: workflows.description,
+          officialDefinitionName: workflows.officialDefinitionName,
+          officialInstallationState: workflows.officialInstallationState,
           createdAt: workflows.createdAt,
         },
         agent: {
@@ -485,6 +523,18 @@ export function workflowList(args: {
         ),
       )
       .orderBy(asc(workflows.name));
+
+    const hasOfficialWorkflow = rows.some((row) => {
+      return row.workflow.officialDefinitionName !== null;
+    });
+    const acceptedCatalog = hasOfficialWorkflow
+      ? await readAcceptedOfficialWorkflowCatalog(db)
+      : null;
+    const officialLifecycleByName = new Map(
+      acceptedCatalog?.payload.definitions.map((definition) => {
+        return [definition.name, definition.lifecycle] as const;
+      }) ?? [],
+    );
 
     const winners = shadowWinnerFromRows(rows, args.member);
     const currentTime = now();
@@ -527,6 +577,10 @@ export function workflowList(args: {
         },
         shadowedBy:
           winner && winner.id !== row.workflow.id ? winner : undefined,
+        officialDefinitionLifecycle: row.workflow.officialDefinitionName
+          ? (officialLifecycleByName.get(row.workflow.officialDefinitionName) ??
+            "unavailable")
+          : undefined,
       });
     });
   });

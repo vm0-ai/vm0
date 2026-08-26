@@ -39,6 +39,7 @@ export enum FeatureSwitchKey {
   NotionWorkflowAutomations = "notionWorkflowAutomations",
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
+  OfficialWorkflows = "officialWorkflows",
   MorningBrief = "morningBrief",
   ManualMorningBrief = "manualMorningBrief",
   TestOauthConnector = "testOauthConnector",

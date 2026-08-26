@@ -38,6 +38,7 @@ import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+import { OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE } from "./official-workflow-constants";
 
 export type AutomationRow = typeof workflowAutomations.$inferSelect;
 
@@ -457,6 +458,12 @@ async function checkWorkflowAutomationTargetReadable(
     "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
     "nested",
     async (): Promise<RunFailure | undefined> => {
+      if (args.automation.officialBlueprintKey !== null) {
+        return {
+          kind: "conflict",
+          message: OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
+        };
+      }
       const canFire = await workflowAutomationCanFire(
         args.db,
         {

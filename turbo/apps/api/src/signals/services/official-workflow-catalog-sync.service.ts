@@ -24,6 +24,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
+import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   OFFICIAL_WORKFLOW_CATALOG_AUTHORITY,
   readAllAcceptedOfficialWorkflowRevisions,
@@ -43,8 +44,6 @@ import {
   prepareVolumeServerSide$,
   type PreparedServerSideVolume,
 } from "./storage-volume-publication.service";
-
-const CATALOG_ACTIVATION_LOCK = "official-workflow-catalog-activation";
 
 interface PreparedOfficialWorkflowDefinition {
   readonly definition: OfficialWorkflowDefinitionRevisionPayload;
@@ -571,7 +570,7 @@ async function activateCandidate(
 ): Promise<OfficialWorkflowCatalogSyncResponse> {
   return await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${CATALOG_ACTIVATION_LOCK}))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
     );
     signal.throwIfAborted();
     const current = await readAcceptedOfficialWorkflowCatalog(tx, signal);

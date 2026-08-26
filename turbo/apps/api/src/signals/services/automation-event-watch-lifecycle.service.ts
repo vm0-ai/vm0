@@ -6,9 +6,18 @@ import {
 } from "@okouai/api-contracts/contracts/workflows";
 
 import type { Db } from "../external/db";
-import { reconcileGmailWatchesForUser } from "./gmail-automation-event.service";
-import { reconcileGoogleCalendarWatchesForUser } from "./google-calendar-automation-event.service";
-import { reconcileGoogleFormsWatchesForUser } from "./google-forms-automation-event.service";
+import {
+  ensureGmailWatchForUser,
+  reconcileGmailWatchesForUser,
+} from "./gmail-automation-event.service";
+import {
+  ensureGoogleCalendarWatchForUser,
+  reconcileGoogleCalendarWatchesForUser,
+} from "./google-calendar-automation-event.service";
+import {
+  ensureGoogleFormsWatchForUser,
+  reconcileGoogleFormsWatchesForUser,
+} from "./google-forms-automation-event.service";
 
 interface AutomationEventWatchAutomation {
   readonly orgId: string;
@@ -34,6 +43,7 @@ type AutomationEventWatchTarget =
       readonly orgId: string;
       readonly userId: string;
       readonly formId: string;
+      readonly connectorId: string;
     };
 
 function googleCalendarId(
@@ -85,6 +95,7 @@ function automationEventWatchTarget(
       orgId: automation.orgId,
       userId: automation.ownerUserId,
       formId: config.data.form.id,
+      connectorId: config.data.connectorId,
     };
   }
   const calendarId = googleCalendarId(automation);
@@ -158,4 +169,133 @@ export async function reconcileAutomationEventWatches(
       signal,
     );
   }
+}
+
+interface CurrentAutomationEventWatchAutomation extends AutomationEventWatchAutomation {
+  readonly id: string;
+  readonly enabled: boolean;
+}
+
+export interface GoogleFormsEventWatchPreparation {
+  readonly automationId: string;
+  readonly seedCursor: string;
+}
+
+export type AutomationEventWatchReconfigurationResult =
+  | { readonly kind: "ok" }
+  | { readonly kind: "bad-request"; readonly message: string };
+
+async function ensureNonFormsTarget(
+  db: Db,
+  target: Exclude<AutomationEventWatchTarget, { provider: "google_forms" }>,
+  signal: AbortSignal,
+): Promise<AutomationEventWatchReconfigurationResult> {
+  const result =
+    target.provider === "gmail"
+      ? await ensureGmailWatchForUser(
+          {
+            db,
+            orgId: target.orgId,
+            userId: target.userId,
+            forceRefresh: false,
+          },
+          signal,
+        )
+      : await ensureGoogleCalendarWatchForUser(
+          {
+            db,
+            orgId: target.orgId,
+            userId: target.userId,
+            calendarId: target.calendarId,
+            forceRefresh: false,
+          },
+          signal,
+        );
+  signal.throwIfAborted();
+  return result.kind === "ok"
+    ? result
+    : { kind: "bad-request", message: result.message };
+}
+
+async function ensureGoogleFormsTarget(
+  db: Db,
+  automation: CurrentAutomationEventWatchAutomation,
+  target: Extract<AutomationEventWatchTarget, { provider: "google_forms" }>,
+  seedCursor: string | undefined,
+  signal: AbortSignal,
+): Promise<AutomationEventWatchReconfigurationResult> {
+  const result = await ensureGoogleFormsWatchForUser(
+    {
+      db,
+      orgId: target.orgId,
+      userId: target.userId,
+      formId: target.formId,
+      connectorId: target.connectorId,
+      ...(seedCursor === undefined
+        ? {}
+        : {
+            resetAutomationId: automation.id,
+            seedCursor,
+          }),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return result.kind === "ok"
+    ? { kind: "ok" }
+    : { kind: "bad-request", message: result.message };
+}
+
+export async function reconcileAutomationEventWatchReconfiguration(
+  db: Db,
+  args: {
+    readonly previous: readonly AutomationEventWatchAutomation[];
+    readonly current: readonly CurrentAutomationEventWatchAutomation[];
+    readonly googleForms: readonly GoogleFormsEventWatchPreparation[];
+  },
+  signal: AbortSignal,
+): Promise<AutomationEventWatchReconfigurationResult> {
+  const seedByAutomationId = new Map(
+    args.googleForms.map((entry) => {
+      return [entry.automationId, entry.seedCursor] as const;
+    }),
+  );
+  const nonFormsTargets = new Map<
+    string,
+    Exclude<AutomationEventWatchTarget, { provider: "google_forms" }>
+  >();
+  for (const automation of args.current) {
+    if (!automation.enabled) {
+      continue;
+    }
+    const target = automationEventWatchTarget(automation);
+    if (!target) {
+      continue;
+    }
+    if (target.provider === "google_forms") {
+      const ensured = await ensureGoogleFormsTarget(
+        db,
+        automation,
+        target,
+        seedByAutomationId.get(automation.id),
+        signal,
+      );
+      if (ensured.kind !== "ok") {
+        return ensured;
+      }
+      continue;
+    }
+    nonFormsTargets.set(targetKey(target), target);
+  }
+  for (const target of nonFormsTargets.values()) {
+    const ensured = await ensureNonFormsTarget(db, target, signal);
+    if (ensured.kind !== "ok") {
+      return ensured;
+    }
+  }
+  await reconcileAutomationEventWatches(
+    { db, automations: [...args.previous, ...args.current] },
+    signal,
+  );
+  return { kind: "ok" };
 }

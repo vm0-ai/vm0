@@ -1,6 +1,23 @@
 import { z } from "zod";
 
 import { automationEventTypeSchema, workflowNameSchema } from "./workflows";
+import {
+  officialWorkflowBlueprintKeySchema,
+  officialWorkflowParameterKeySchema,
+} from "./official-workflow-bindings";
+
+export {
+  officialWorkflowBlueprintKeySchema,
+  officialWorkflowParameterKeySchema,
+  officialWorkflowParameterValueSchema,
+  officialWorkflowParameterBindingSchema,
+  officialWorkflowBlueprintBindingsSchema,
+} from "./official-workflow-bindings";
+export type {
+  OfficialWorkflowParameterValue,
+  OfficialWorkflowParameterBinding,
+  OfficialWorkflowBlueprintBindings,
+} from "./official-workflow-bindings";
 
 export const OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION = 1 as const;
 
@@ -8,18 +25,6 @@ export const officialWorkflowLifecycleSchema = z.enum(["active", "retired"]);
 export type OfficialWorkflowLifecycle = z.infer<
   typeof officialWorkflowLifecycleSchema
 >;
-
-export const officialWorkflowBlueprintKeySchema = z
-  .string()
-  .min(2)
-  .max(64)
-  .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/);
-
-export const officialWorkflowParameterKeySchema = z
-  .string()
-  .min(2)
-  .max(64)
-  .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 
 const officialWorkflowUserTimezoneDerivationSchema = z
   .object({ kind: z.literal("user-timezone") })
