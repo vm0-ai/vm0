@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.289.0](https://github.com/vm0-ai/vm0/compare/cli-v9.288.2...cli-v9.289.0) (2026-08-26)
+
+
+### Features
+
+* scaffold intro-video templates ([#29370](https://github.com/vm0-ai/vm0/issues/29370)) ([8c5da7c](https://github.com/vm0-ai/vm0/commit/8c5da7c4ca03434810c4d401e1b6f11a9cac305e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.368.0
+    * @okouai/core bumped to 8.593.0
+
 ## [9.288.2](https://github.com/vm0-ai/vm0/compare/cli-v9.288.1...cli-v9.288.2) (2026-08-26)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.493.0](https://github.com/vm0-ai/vm0/compare/api-v1.492.2...api-v1.493.0) (2026-08-26)
+
+
+### Features
+
+* **chat:** make tool activity copy lifecycle-aware ([#29434](https://github.com/vm0-ai/vm0/issues/29434)) ([bec654e](https://github.com/vm0-ai/vm0/commit/bec654e4597cbbe2b4a1776cd9fc439a19e66489))
+* scaffold intro-video templates ([#29370](https://github.com/vm0-ai/vm0/issues/29370)) ([8c5da7c](https://github.com/vm0-ai/vm0/commit/8c5da7c4ca03434810c4d401e1b6f11a9cac305e))
+
+
+### Refactoring
+
+* **api:** dual-write web URL aliases ([#29443](https://github.com/vm0-ai/vm0/issues/29443)) ([fe2d09f](https://github.com/vm0-ai/vm0/commit/fe2d09fdfec462e63bb028f96e819855f77a37d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.0
+    * @okouai/core bumped to 8.593.0
+    * @okouai/db bumped to 1.224.5
+
 ## [1.492.2](https://github.com/vm0-ai/vm0/compare/api-v1.492.1...api-v1.492.2) (2026-08-26)
 
 
