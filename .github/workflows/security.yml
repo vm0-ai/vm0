@@ -277,6 +277,7 @@ jobs:
             .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-release-please-workspace-coverage-test.sh \
+            .github/scripts/tests/pass-release-pr-ci-gates-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
             .github/scripts/tests/clerk-test-resource-workflow-test.sh \
@@ -321,6 +322,20 @@ jobs:
       - name: Run actionlint
         run: ./actionlint
 
+  release-workspace-coverage:
+    needs: [detect-release]
+    name: Release Please Workspace Coverage
+    if: ${{ needs.detect-release.outputs.skip == 'true' && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check Release Please workspace coverage
+        run: .github/scripts/check-release-please-workspace-coverage.sh
+
   gitleaks:
     needs: [detect-release]
     name: Gitleaks Secrets Detection
@@ -362,6 +377,7 @@ jobs:
       - codeql
       - pnpm-audit
       - actionlint
+      - release-workspace-coverage
       - gitleaks
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
@@ -370,10 +386,15 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
+          RELEASE_WORKSPACE_COVERAGE_RESULT: ${{ needs.release-workspace-coverage.result }}
         run: |
-          # Auto-pass for release-please PRs, commits, and merge queue entries
+          # Release candidates retain the fast path after workspace validation.
           if [[ "$IS_RELEASE" == "true" ]]; then
-            echo "✅ Release-please — skipping CI gate"
+            if [[ "$EVENT_NAME" != "push" && "$RELEASE_WORKSPACE_COVERAGE_RESULT" != "success" ]]; then
+              echo "::error::release-workspace-coverage: expected success, got $RELEASE_WORKSPACE_COVERAGE_RESULT"
+              exit 1
+            fi
+            echo "✅ Release-please — workspace coverage validated; skipping remaining CI"
             exit 0
           fi
           echo "::group::CI Gate Results"
