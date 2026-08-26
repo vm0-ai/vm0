@@ -155,10 +155,16 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
       return button;
     }
 
+    const tooltipTrigger = buttonProps.disabled ? (
+      <span className="inline-flex">{button}</span>
+    ) : (
+      button
+    );
+
     return (
       <TooltipProvider delayDuration={200}>
         <Tooltip>
-          <TooltipTrigger render={button} />
+          <TooltipTrigger render={tooltipTrigger} />
           <TooltipContent>
             <p className="text-xs">{buttonProps["aria-label"]}</p>
           </TooltipContent>

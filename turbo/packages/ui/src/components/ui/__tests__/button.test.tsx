@@ -54,6 +54,27 @@ describe("Button", () => {
     expect(await screen.findByText("Open settings")).toBeVisible();
   });
 
+  it("shows the accessible label for a disabled button", async () => {
+    const user = userEvent.setup();
+    render(
+      <Button showTooltip disabled aria-label="Send message">
+        Send icon
+      </Button>,
+    );
+
+    const button = screen.getByRole("button", { name: "Send message" });
+    expect(button).toBeDisabled();
+    const trigger = button.closest<HTMLElement>(
+      '[data-slot="tooltip-trigger"]',
+    );
+    if (trigger === null) {
+      throw new Error("Disabled button tooltip trigger not found");
+    }
+    await user.hover(trigger);
+
+    expect(await screen.findByText("Send message")).toBeVisible();
+  });
+
   it("keeps dropdown trigger composition when showing a tooltip", async () => {
     const user = userEvent.setup();
     render(

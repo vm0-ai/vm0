@@ -12,13 +12,22 @@ export function IconTooltip({
   children,
   side = "top",
 }: {
-  readonly children: ReactElement<{ "aria-label": string }>;
+  readonly children: ReactElement<{
+    "aria-label": string;
+    disabled?: boolean;
+  }>;
   readonly side?: TooltipSide;
 }) {
+  const trigger = children.props.disabled ? (
+    <span className="inline-flex">{children}</span>
+  ) : (
+    children
+  );
+
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger render={children} />
+        <TooltipTrigger render={trigger} />
         <TooltipContent side={side}>
           <p className="text-xs">{children.props["aria-label"]}</p>
         </TooltipContent>
