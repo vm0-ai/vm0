@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.173.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.10...runner-rs-v0.173.11) (2026-08-26)
+
+
+### Performance Improvements
+
+* scope connector runtime refresh catalog loads ([#29471](https://github.com/vm0-ai/vm0/issues/29471)) ([d8ebf8a](https://github.com/vm0-ai/vm0/commit/d8ebf8a06a25ced82d02bfed54baf230ff17e72c))
+
 ## [0.173.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.9...runner-rs-v0.173.10) (2026-08-26)
 
 

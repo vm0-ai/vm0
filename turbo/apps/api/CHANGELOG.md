@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.494.2](https://github.com/vm0-ai/vm0/compare/api-v1.494.1...api-v1.494.2) (2026-08-26)
+
+
+### Performance Improvements
+
+* scope connector runtime refresh catalog loads ([#29471](https://github.com/vm0-ai/vm0/issues/29471)) ([d8ebf8a](https://github.com/vm0-ai/vm0/commit/d8ebf8a06a25ced82d02bfed54baf230ff17e72c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.2
+    * @okouai/connectors bumped to 1.210.2
+    * @okouai/core bumped to 8.594.2
+    * @okouai/db bumped to 1.224.8
+
 ## [1.494.1](https://github.com/vm0-ai/vm0/compare/api-v1.494.0...api-v1.494.1) (2026-08-26)
 
 
