@@ -1359,6 +1359,13 @@
       "when": 1787726838608,
       "tag": "1001_contract_legacy_agent_drafts_view",
       "breakpoints": true
+    },
+    {
+      "idx": 1002,
+      "version": "7",
+      "when": 1787732005880,
+      "tag": "1002_opposite_dark_beast",
+      "breakpoints": true
     }
   ]
 }

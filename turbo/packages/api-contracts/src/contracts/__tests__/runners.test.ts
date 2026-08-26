@@ -76,6 +76,26 @@ describe("cancellation recovery timing contract", () => {
   });
 });
 
+describe("runner claim attribution contract", () => {
+  it("accepts an optional bounded runner hostname", () => {
+    const previousRequest = runnersJobClaimContract.claim.body.parse({});
+    expect(previousRequest).not.toHaveProperty("runnerHostname");
+
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        runnerHostname: "prod-1.aws.vm3.ai",
+      }),
+    ).toMatchObject({ runnerHostname: "prod-1.aws.vm3.ai" });
+
+    for (const runnerHostname of ["", "x".repeat(256)]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({ runnerHostname })
+          .success,
+      ).toBe(false);
+    }
+  });
+});
+
 function loadRunnerClaimResponseFixture(): unknown {
   return JSON.parse(
     fs.readFileSync(
