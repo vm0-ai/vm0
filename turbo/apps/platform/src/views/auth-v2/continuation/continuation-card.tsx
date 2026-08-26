@@ -1,4 +1,4 @@
-import { Button } from "@okouai/ui";
+import { Button, cn } from "@okouai/ui";
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
@@ -10,6 +10,7 @@ import type {
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
+import { AUTH_V2_PRIMARY_ACTION_CLASS } from "../auth-v2-action-styles.ts";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
   type AuthV2ContinuationCopy,
@@ -136,7 +137,7 @@ function RecoveryContent({
     <Button
       aria-busy={restarting}
       aria-label={copy.recoveryAction}
-      className="w-full"
+      className={cn("w-full", AUTH_V2_PRIMARY_ACTION_CLASS)}
       disabled={restarting}
       onClick={() => {
         detach(
