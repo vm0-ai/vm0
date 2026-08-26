@@ -446,6 +446,7 @@
       "chat": "Chat",
       "collapse": "Comprimi la barra laterale",
       "expand": "Espandi la barra laterale",
+      "hideChatList": "Nascondi elenco chat",
       "manage": "Gestisci",
       "mobile": {
         "invite": "Invita",
@@ -469,6 +470,7 @@
         "works": "Integrazioni"
       },
       "searchConversations": "Cerca conversazioni",
+      "showChatList": "Mostra elenco chat",
       "workspaceSwitcher": {
         "create": "Crea area di lavoro",
         "creating": "Creazione…",

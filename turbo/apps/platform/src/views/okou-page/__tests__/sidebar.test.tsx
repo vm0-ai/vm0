@@ -1006,6 +1006,12 @@ describe("zero sidebar", () => {
         within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+    ).toHaveAttribute("role", "img");
+    expect(
+      within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
+    ).toHaveAttribute("role", "img");
 
     openThreadMenu("Release plan");
     click(menuItemByText("Pin chat"));
@@ -1695,7 +1701,7 @@ describe("zero sidebar", () => {
     // The chat list and pinned headers are the same control, so they must
     // carry the same resting tone. A full-strength resting tone also makes
     // the header's own group-hover class a no-op and drops the hover lift.
-    const restingTone = "text-sidebar-foreground/50";
+    const restingTone = "text-muted-foreground";
     expect(pinnedTitle).toHaveClass(restingTone);
     expect(chatTitle).toHaveClass(
       restingTone,
@@ -3323,6 +3329,73 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides only the three-column chat list and keeps search available", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    const list = screen.getByTestId("chat-list-column");
+    const hideButton = within(list).getByLabelText("Hide chat list");
+    expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+    click(hideButton);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+    });
+    expect(rail).toBeInTheDocument();
+    const showButton = within(rail).getByLabelText("Show chat list");
+    expect(showButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+    const composer = mountedComposer();
+    composer.focus();
+    const searchEvent = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(searchEvent);
+
+    expect(searchEvent.defaultPrevented).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats and messages...",
+    });
+    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Search chats and messages...",
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    const restoredComposer = mountedComposer();
+    restoredComposer.focus();
+    fireEvent.keyDown(restoredComposer, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
+      expect(
+        within(rail).queryByLabelText("Show chat list"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps the three-column chat list on one text and box inset", async () => {
     prepareDefaultAgent();
 
@@ -3356,7 +3429,14 @@ describe("zero sidebar", () => {
     // below it, which is what keeps the gap above the two section headers even.
     const pinnedLabel = within(pinnedSection).getByText("Pinned agents");
     expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
+    expect(pinnedLabel).toHaveClass("text-muted-foreground");
     expect(pinnedLabel).not.toHaveClass("pb-2");
+
+    const chatTitle = within(list).getByText("Chats with Zero");
+    expect(chatTitle).toHaveClass("text-muted-foreground");
+    expect(
+      within(list).getByRole("region", { name: "Chat threads" }),
+    ).toBeInTheDocument();
 
     // The label row supplies that bottom gap, so the grid must not stack a
     // second one under the avatars.
@@ -3387,6 +3467,7 @@ describe("zero sidebar", () => {
     });
 
     expect(unread).toBeVisible();
+    expect(unread).toHaveAttribute("role", "img");
   });
 
   it("searches chats and messages in the three-column spotlight", async () => {
@@ -3919,6 +4000,9 @@ describe("zero sidebar", () => {
     const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
     const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
+    expect(fourthAgent).toHaveAttribute("title", "Operations Agent");
+    expect(fifthAgent).toHaveAttribute("title", "Analytics Agent");
+
     expect(
       fourthAgent.compareDocumentPosition(pinAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -4312,7 +4396,8 @@ describe("zero sidebar", () => {
       within(rail).getByRole("navigation", { name: "Barra lateral" }),
     ).toBeInTheDocument();
     expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-    expect(within(rail).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    const workflowsLink = within(rail).getByLabelText("Fluxos de trabalho");
+    expect(workflowsLink).toHaveAttribute("title", "Fluxos de trabalho");
     expect(within(rail).getByText("Conectores")).toBeInTheDocument();
     expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
     expect(

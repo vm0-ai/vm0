@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Seitenleiste einklappen",
       "expand": "Seitenleiste erweitern",
+      "hideChatList": "Chatliste ausblenden",
       "manage": "Verwalten",
       "mobile": {
         "invite": "Einladen",
@@ -455,6 +456,7 @@
         "works": "Kanäle"
       },
       "searchConversations": "Gespräche suchen",
+      "showChatList": "Chatliste anzeigen",
       "workspaceSwitcher": {
         "create": "Arbeitsbereich erstellen",
         "creating": "Wird erstellt…",

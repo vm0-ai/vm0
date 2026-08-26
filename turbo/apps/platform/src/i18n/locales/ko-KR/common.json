@@ -432,6 +432,7 @@
       "chat": "채팅",
       "collapse": "사이드바 접기",
       "expand": "사이드바 펼치기",
+      "hideChatList": "채팅 목록 숨기기",
       "manage": "관리",
       "mobile": {
         "invite": "초대",
@@ -455,6 +456,7 @@
         "works": "작업"
       },
       "searchConversations": "대화 검색",
+      "showChatList": "채팅 목록 표시",
       "workspaceSwitcher": {
         "create": "워크스페이스 만들기",
         "creating": "만드는 중…",

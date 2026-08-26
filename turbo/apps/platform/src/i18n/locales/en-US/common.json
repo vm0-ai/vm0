@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar",
+      "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
         "invite": "Invite",
@@ -455,6 +456,7 @@
         "works": "Works"
       },
       "searchConversations": "Search conversations",
+      "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",
         "creating": "Creating…",
