@@ -1959,6 +1959,7 @@
       "yourComputer": "Il tuo computer"
     },
     "connectors": {
+      "accountForThread": "Account per questo thread",
       "add": "Aggiungi {{connectorName}}",
       "addConnectors": "Aggiungi connettori",
       "authorizationFailed": "{{connectorName}} connesso ma non è stato possibile autorizzarlo per {{agentName}}",
@@ -1966,7 +1967,6 @@
       "available_one": "Connettori disponibili per la connessione ({{count}})",
       "available_many": "Connettori disponibili per la connessione ({{count}})",
       "available_other": "Connettori disponibili per la connessione ({{count}})",
-      "back": "Indietro",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
       "defaultAccountFor": "{{connector}} · Account predefinito in uso: {{account}}",

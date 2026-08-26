@@ -1926,13 +1926,13 @@
       "yourComputer": "내 컴퓨터"
     },
     "connectors": {
+      "accountForThread": "이 스레드의 계정",
       "add": "{{connectorName}} 추가",
       "addConnectors": "커넥터 추가",
       "authorizationFailed": "{{connectorName}}는 연결되었으나 {{agentName}}에 대한 권한 부여에 실패했습니다",
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
-      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
       "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",

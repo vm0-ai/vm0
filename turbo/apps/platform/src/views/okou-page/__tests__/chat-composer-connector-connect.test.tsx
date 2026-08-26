@@ -471,10 +471,13 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    await user.click(within(composer).getByLabelText("Connectors"));
+    const connectorsButton = within(composer).getByLabelText("Connectors");
+    await user.click(connectorsButton);
     const defaultMode = await screen.findByLabelText(
       "GitHub · Using default account: Work",
     );
+    expect(defaultMode).toHaveClass("text-muted-foreground");
+    expect(defaultMode).not.toHaveClass("border");
     const connectorName = screen.getByText("GitHub");
     const accessLabel = connectorName.closest("label");
     if (!accessLabel?.control) {
@@ -493,6 +496,16 @@ describe("chat composer connector connection", () => {
 
     const summaryReadsBeforeSelection = summaryReads;
     await user.click(defaultMode);
+    await expect(
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    expect(screen.queryByLabelText("Back")).not.toBeInTheDocument();
+    expect(screen.getByText("GitHub")).toBeVisible();
+    expect(
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent?.trim() === "Add connectors";
+      }),
+    ).toBeVisible();
     await expect(screen.findByText("Use default")).resolves.toBeInTheDocument();
     const defaultRadio = screen.getByRole("radio", {
       name: /Use default/u,
@@ -502,19 +515,39 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(selectionWrites).toBe(1);
     });
-    await user.click(screen.getByLabelText("Back"));
+    const selectedWorkMode = await screen.findByLabelText(
+      "GitHub · Selected account: Work",
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(selectedWorkMode).toHaveClass("text-muted-foreground");
+    expect(selectedWorkMode).not.toHaveClass("border");
+
+    await user.click(selectedWorkMode);
     await expect(
-      screen.findByLabelText("GitHub · Selected account: Work"),
-    ).resolves.toBeInTheDocument();
-    await user.click(screen.getByLabelText("GitHub · Selected account: Work"));
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(selectedWorkMode).toHaveFocus();
+
+    await user.click(selectedWorkMode);
     await user.click(screen.getByRole("radio", { name: /Personal/u }));
     await waitFor(() => {
       expect(selectionWrites).toBe(2);
     });
-    await user.click(screen.getByLabelText("Back"));
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.findByLabelText("GitHub · Selected account: Personal"),
-    ).resolves.toBeInTheDocument();
+    ).resolves.toHaveClass("text-muted-foreground");
 
     await user.click(
       screen.getByLabelText("GitHub · Selected account: Personal"),
@@ -523,6 +556,13 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(selectionClears).toBe(1);
     });
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    await expect(
+      screen.findByLabelText("GitHub · Using default account: Work"),
+    ).resolves.toBeInTheDocument();
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     expect(authorizationWrites).toBe(1);
     expect(summaryReads).toBe(summaryReadsBeforeSelection);
   });
@@ -600,7 +640,10 @@ describe("chat composer connector connection", () => {
     ).toBeInTheDocument();
     expect(requestedSearches).toStrictEqual(["", "missing"]);
 
-    await user.click(screen.getByLabelText("Back"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
     expect(requestedSearches).toStrictEqual(["", "missing"]);
   });
 
