@@ -229,6 +229,30 @@ describe("run connector account inspection", () => {
     expect(output).not.toContain("default");
   });
 
+  it("treats an empty run projection as known empty without enrichment", async () => {
+    let inspectionRequests = 0;
+    writeContext([]);
+    server.use(
+      stubConnectorCatalog([]),
+      stubCustomConnectors([]),
+      http.post("http://localhost:3000/api/connector-accounts/inspect", () => {
+        inspectionRequests += 1;
+        return HttpResponse.json({ results: [] });
+      }),
+    );
+
+    await listCommand.parseAsync(["node", "cli", "--json"]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        context: "run",
+        state: "available",
+        connectors: [],
+      },
+    );
+    expect(inspectionRequests).toBe(0);
+  });
+
   it("uses one exact representation for custom HTTP and MCP targets", async () => {
     const httpConnector = customConnector();
     const mcpConnector = customMcpConnector();
