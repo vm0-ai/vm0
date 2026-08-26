@@ -31,6 +31,11 @@ export interface ConnectorAuthProviderGrantResult<
   readonly outputs: Outputs;
   /** Seconds until the granted credentials expire. */
   readonly expiresIn?: number;
+  /**
+   * Effective scopes granted for these credentials. Provider-reported scopes
+   * take precedence; an omitted response uses the effective authorization
+   * request.
+   */
   readonly scopes: readonly string[];
   readonly userInfo: ConnectorAuthProviderGrantUserInfo;
   readonly extraConnectorSecrets?: Readonly<Record<string, string>>;

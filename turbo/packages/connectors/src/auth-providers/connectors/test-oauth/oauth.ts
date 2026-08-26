@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
@@ -184,6 +185,7 @@ const tokenResponseSchema = z.object({
 async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
+  authorizationScopes: readonly string[],
   signal: AbortSignal | undefined,
 ): Promise<TokenResponse> {
   const response = await fetch(getTestOAuthTokenUrl(), {
@@ -206,11 +208,12 @@ async function postToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope?.split(" ") ?? [],
+    scopes: effectiveOAuthScopes(data.scope, authorizationScopes, " "),
   };
 }
 
 export async function exchangeTestOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
@@ -225,6 +228,7 @@ export async function exchangeTestOAuthCode(
       redirect_uri: redirectUri,
     }),
     "exchange",
+    authCodeGrant.scopes,
     undefined,
   );
 }
@@ -243,6 +247,7 @@ export async function refreshTestOAuthToken(
       refresh_token: refreshToken,
     }),
     "refresh",
+    [],
     signal,
   );
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 
@@ -103,7 +104,7 @@ export async function exchangeRedditCode(
   }
 
   const userInfo = await fetchRedditUserInfo(data.access_token);
-  const scopes = data.scope ? data.scope.split(" ") : [];
+  const scopes = effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " ");
 
   return {
     accessToken: data.access_token,

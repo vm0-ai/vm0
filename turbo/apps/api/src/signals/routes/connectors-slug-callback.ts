@@ -68,6 +68,7 @@ type CallbackIdentity = {
 
 type CompleteOAuthCallbackInput = {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly authorizationUrl: string | null;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -118,6 +119,7 @@ type ResolvedCallbackState =
       readonly authorizeAgent: boolean;
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
+      readonly authorizationUrl: string | null;
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
       readonly account: ConnectorAccountMutationIntent;
@@ -227,6 +229,7 @@ function callbackOriginForStoredState(
 
 async function exchangeTokenForConnector(args: {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly authorizationUrl: string | null;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
@@ -254,6 +257,7 @@ async function exchangeTokenForConnector(args: {
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     authClient,
+    authorizationUrl: args.authorizationUrl,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -554,6 +558,7 @@ const completeOAuthCallback$ = command(
   ): Promise<Response> => {
     const token = await exchangeTokenForConnector({
       resolvedMethod: args.resolvedMethod,
+      authorizationUrl: args.authorizationUrl,
       code: args.code,
       redirectUri: args.redirectUri,
       state: args.state,
@@ -731,6 +736,7 @@ async function resolveCallbackState(
     resolvedMethod: authMethodResult.resolvedMethod,
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
+    authorizationUrl: args.storedState.authorizationUrl,
     redirectUri: args.storedState.redirectUri,
     account: args.storedState.accountMutation,
     insertConnectionId:
@@ -1090,6 +1096,7 @@ const handleAuthCodeConnectorCallback$ = command(
         completeOAuthCallback$,
         {
           resolvedMethod: resolvedState.resolvedMethod,
+          authorizationUrl: resolvedState.authorizationUrl,
           code,
           redirectUri: resolvedState.redirectUri,
           state,

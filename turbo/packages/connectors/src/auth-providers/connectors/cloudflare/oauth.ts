@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const CLOUDFLARE_AUTHORIZATION_URL = "https://dash.cloudflare.com/oauth2/auth";
 const CLOUDFLARE_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
@@ -35,15 +36,6 @@ function basicAuthHeader(clientId: string, clientSecret: string): string {
   return `Basic ${credentials}`;
 }
 
-function parseScopes(scope: string | undefined): readonly string[] {
-  if (!scope) {
-    return [];
-  }
-  return scope.split(" ").filter((value) => {
-    return value.length > 0;
-  });
-}
-
 function cloudflareTokenRequestHeaders(
   clientId: string,
   clientSecret: string,
@@ -74,7 +66,7 @@ export function buildCloudflareAuthorizationUrl(
 }
 
 export async function exchangeCloudflareCode(
-  _authCodeGrant: ConnectorAuthCodeGrantConfig,
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
@@ -119,7 +111,7 @@ export async function exchangeCloudflareCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
     expiresIn: data.expires_in,
-    scopes: parseScopes(data.scope),
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo: await fetchCloudflareUserInfo(data.access_token),
   };
 }
