@@ -84,6 +84,8 @@ describe("auth v2 presentation", () => {
       name: "Choose an account",
     });
 
+    expect(heading).toHaveClass("outline-none");
+    expect(heading.className).not.toContain("focus:ring");
     expect(screen.getByRole("main")).toContainElement(heading);
     expect(
       screen.getByRole("region", { name: "Choose an account" }),
