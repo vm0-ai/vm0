@@ -455,6 +455,12 @@ describe("auth v2 sign-in flow", () => {
     await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
     expect(roleElement("link", "Use current sign-in")).toBeDefined();
+    const editIdentifier = await waitForRoleElement(
+      "button",
+      "Edit identifier",
+    );
+    expect(editIdentifier).toHaveClass("h-6", "w-6");
+    expect(editIdentifier).not.toHaveClass("size-4");
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
