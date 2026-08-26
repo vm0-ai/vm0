@@ -8,18 +8,20 @@ use crate::network::NetnsPoolHandle;
 /// Maximum number of leaked sandbox reports cleaned up concurrently.
 const LEAK_CLEANUP_CONCURRENCY: usize = 4;
 
-/// Maximum time to wait for leaked-resource cleanup during normal shutdown.
+/// Maximum time to wait without a completed leaked-resource cleanup during shutdown.
 ///
 /// Shutdown is the graceful path, so already-queued leak reports should drain
 /// before the pool Arcs are unwrapped. If cleanup gets stuck, fall back to
-/// aborting and let the next `runner gc` clean leftovers. This must exceed the
-/// COW destroy retry budget because leaked sandbox cleanup now owns the pooled
-/// COW device and may need a full finalizer pass before releasing netns/dirs.
-const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// aborting and let the next `runner gc` clean leftovers. This inactivity
+/// window must exceed the COW destroy retry budget because leaked sandbox
+/// cleanup owns the pooled COW device and may need a full finalizer pass before
+/// releasing netns/dirs.
+const LEAK_CLEANUP_INACTIVITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(super) struct LeakCleaner {
     tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    completed_cleanup_count_rx: tokio::sync::watch::Receiver<u64>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -30,10 +32,18 @@ impl LeakCleaner {
         // with runner GC as the final backstop if the cleaner stalls.
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-        let handle = tokio::spawn(drain_leaked_resources(rx, shutdown_rx, netns_pool));
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
+        let handle = tokio::spawn(drain_leaked_resources(
+            rx,
+            shutdown_rx,
+            completed_cleanup_count_tx,
+            netns_pool,
+        ));
         Self {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         }
     }
@@ -46,11 +56,13 @@ impl LeakCleaner {
     pub(super) fn from_parts_for_test(
         tx: tokio::sync::mpsc::UnboundedSender<LeakedResources>,
         shutdown_tx: tokio::sync::oneshot::Sender<()>,
+        completed_cleanup_count_rx: tokio::sync::watch::Receiver<u64>,
         handle: tokio::task::JoinHandle<()>,
     ) -> Self {
         Self {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         }
     }
@@ -64,22 +76,42 @@ impl LeakCleaner {
             return;
         };
 
-        tokio::select! {
-            result = &mut handle => {
-                if let Err(e) = result {
-                    warn!(error = %e, "leak cleanup task exited unexpectedly");
+        drop(self.completed_cleanup_count_rx.borrow_and_update());
+        let inactivity_timeout = tokio::time::sleep(LEAK_CLEANUP_INACTIVITY_TIMEOUT);
+        tokio::pin!(inactivity_timeout);
+        let mut progress_channel_open = true;
+
+        loop {
+            tokio::select! {
+                biased;
+                result = &mut handle => {
+                    if let Err(e) = result {
+                        warn!(error = %e, "leak cleanup task exited unexpectedly");
+                    }
+                    return;
                 }
-            }
-            () = tokio::time::sleep(LEAK_CLEANUP_SHUTDOWN_TIMEOUT) => {
-                warn!(
-                    timeout_ms = LEAK_CLEANUP_SHUTDOWN_TIMEOUT.as_millis() as u64,
-                    "timed out waiting for leak cleanup task; aborting"
-                );
-                handle.abort();
-                if let Err(e) = handle.await
-                    && !e.is_cancelled()
-                {
-                    warn!(error = %e, "leak cleanup task failed after abort");
+                progress = self.completed_cleanup_count_rx.changed(), if progress_channel_open => {
+                    if progress.is_ok() {
+                        inactivity_timeout.as_mut().reset(
+                            tokio::time::Instant::now() + LEAK_CLEANUP_INACTIVITY_TIMEOUT,
+                        );
+                    } else {
+                        progress_channel_open = false;
+                    }
+                }
+                () = &mut inactivity_timeout => {
+                    warn!(
+                        timeout_ms = LEAK_CLEANUP_INACTIVITY_TIMEOUT.as_millis() as u64,
+                        completed_cleanups = *self.completed_cleanup_count_rx.borrow(),
+                        "no leaked-resource cleanup completed before timeout; aborting task"
+                    );
+                    handle.abort();
+                    if let Err(e) = handle.await
+                        && !e.is_cancelled()
+                    {
+                        warn!(error = %e, "leak cleanup task failed after abort");
+                    }
+                    return;
                 }
             }
         }
@@ -114,20 +146,27 @@ impl Drop for LeakCleaner {
 async fn drain_leaked_resources(
     rx: tokio::sync::mpsc::UnboundedReceiver<LeakedResources>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    completed_cleanup_count_tx: tokio::sync::watch::Sender<u64>,
     netns_pool: NetnsPoolHandle,
 ) {
-    drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
-        let netns_pool = netns_pool.clone();
-        async move {
-            cleanup_leaked_resource(leaked, &netns_pool).await;
-        }
-    })
+    drain_leaked_resources_with_cleanup(
+        rx,
+        shutdown_rx,
+        completed_cleanup_count_tx,
+        move |leaked| {
+            let netns_pool = netns_pool.clone();
+            async move {
+                cleanup_leaked_resource(leaked, &netns_pool).await;
+            }
+        },
+    )
     .await;
 }
 
 async fn drain_leaked_resources_with_cleanup<C, Fut>(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<LeakedResources>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    completed_cleanup_count_tx: tokio::sync::watch::Sender<u64>,
     mut cleanup: C,
 ) where
     C: FnMut(LeakedResources) -> Fut,
@@ -149,7 +188,9 @@ async fn drain_leaked_resources_with_cleanup<C, Fut>(
                     rx.close();
                 }
             }
-            _ = cleanups.next(), if !cleanups.is_empty() => {}
+            Some(()) = cleanups.next(), if !cleanups.is_empty() => {
+                completed_cleanup_count_tx.send_modify(|count| *count += 1);
+            }
             maybe_leaked = rx.recv(),
                 if !receiver_closed && cleanups.len() < LEAK_CLEANUP_CONCURRENCY =>
             {
@@ -322,9 +363,12 @@ mod tests {
 
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
             rx,
             shutdown_rx,
+            completed_cleanup_count_tx,
             move |leaked| {
                 let cleaned = Arc::clone(&cleaned_clone);
                 async move {
@@ -363,9 +407,12 @@ mod tests {
         drop(tx);
 
         let cleanup_release_first = Arc::clone(&release_first);
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
             rx,
             shutdown_rx,
+            completed_cleanup_count_tx,
             move |leaked| {
                 let release_first = Arc::clone(&cleanup_release_first);
                 let started_tx = started_tx.clone();
@@ -434,9 +481,12 @@ mod tests {
         let cleanup_release = Arc::clone(&release);
         let cleanup_active = Arc::clone(&active);
         let cleanup_peak = Arc::clone(&peak);
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
             rx,
             shutdown_rx,
+            completed_cleanup_count_tx,
             move |leaked| {
                 let release = Arc::clone(&cleanup_release);
                 let active = Arc::clone(&cleanup_active);
@@ -497,9 +547,12 @@ mod tests {
 
         let cleanup_release = Arc::clone(&release);
         let cleanup_completed = Arc::clone(&completed);
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
             rx,
             shutdown_rx,
+            completed_cleanup_count_tx,
             move |leaked| {
                 let release = Arc::clone(&cleanup_release);
                 let completed = Arc::clone(&cleanup_completed);
@@ -550,7 +603,15 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let guard = tracing::subscriber::set_default(subscriber);
         tracing::callsite::rebuild_interest_cache();
-        drain_leaked_resources_with_cleanup(rx, shutdown_rx, |_| async {}).await;
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
+        drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            completed_cleanup_count_tx,
+            |_| async {},
+        )
+        .await;
         drop(guard);
 
         let events = captured.entries();
@@ -595,12 +656,19 @@ mod tests {
 
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
-        drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
-            let cleaned = Arc::clone(&cleaned_clone);
-            async move {
-                cleaned.lock().await.push(leaked.sandbox_id);
-            }
-        })
+        let (completed_cleanup_count_tx, _completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
+        drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            completed_cleanup_count_tx,
+            move |leaked| {
+                let cleaned = Arc::clone(&cleaned_clone);
+                async move {
+                    cleaned.lock().await.push(leaked.sandbox_id);
+                }
+            },
+        )
         .await;
 
         assert_eq!(
@@ -614,6 +682,8 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let _live_sender_clone = tx.clone();
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+        let (_completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let drained = Arc::new(AtomicBool::new(false));
         let drained_clone = Arc::clone(&drained);
         let handle = tokio::spawn(async move {
@@ -632,6 +702,7 @@ mod tests {
         let cleaner = LeakCleaner {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         };
         cleaner.shutdown().await;
@@ -640,7 +711,55 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn leak_cleaner_shutdown_aborts_after_timeout() {
+    async fn leak_cleaner_shutdown_drains_progressing_backlog_past_inactivity_timeout() {
+        const CLEANUP_DURATION: std::time::Duration = std::time::Duration::from_secs(2);
+        const CLEANUP_WAVES: usize = 16;
+
+        let report_count = LEAK_CLEANUP_CONCURRENCY * CLEANUP_WAVES;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
+        let post_cow_cleanup_count = Arc::new(AtomicUsize::new(0));
+
+        for index in 0..report_count {
+            tx.send(test_leaked_resource(&format!("leaked-{index}")))
+                .unwrap();
+        }
+
+        let cleanup_count = Arc::clone(&post_cow_cleanup_count);
+        let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            completed_cleanup_count_tx,
+            move |_| {
+                let cleanup_count = Arc::clone(&cleanup_count);
+                async move {
+                    tokio::time::sleep(CLEANUP_DURATION).await;
+                    cleanup_count.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        ));
+        let cleaner = LeakCleaner {
+            tx: Some(tx),
+            shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
+            handle: Some(handle),
+        };
+
+        let shutdown_started_at = tokio::time::Instant::now();
+        cleaner.shutdown().await;
+
+        assert!(
+            tokio::time::Instant::now().duration_since(shutdown_started_at)
+                > LEAK_CLEANUP_INACTIVITY_TIMEOUT,
+            "regression backlog must exceed the old whole-drain timeout"
+        );
+        assert_eq!(post_cow_cleanup_count.load(Ordering::SeqCst), report_count);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn leak_cleaner_shutdown_aborts_after_inactivity_timeout() {
         struct AbortFlag(Arc<AtomicBool>);
 
         impl Drop for AbortFlag {
@@ -651,6 +770,8 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let (_completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let aborted = Arc::new(AtomicBool::new(false));
         let aborted_clone = Arc::clone(&aborted);
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -662,6 +783,7 @@ mod tests {
         let cleaner = LeakCleaner {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         };
 
@@ -669,7 +791,7 @@ mod tests {
         let shutdown = cleaner.shutdown();
         tokio::pin!(shutdown);
         tokio::task::yield_now().await;
-        tokio::time::advance(LEAK_CLEANUP_SHUTDOWN_TIMEOUT).await;
+        tokio::time::advance(LEAK_CLEANUP_INACTIVITY_TIMEOUT).await;
         shutdown.await;
 
         assert!(aborted.load(Ordering::SeqCst));
@@ -683,19 +805,27 @@ mod tests {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(async move {
-            drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
-                let cleaned = Arc::clone(&cleaned_clone);
-                async move {
-                    cleaned.lock().await.push(leaked.sandbox_id);
-                }
-            })
+            drain_leaked_resources_with_cleanup(
+                rx,
+                shutdown_rx,
+                completed_cleanup_count_tx,
+                move |leaked| {
+                    let cleaned = Arc::clone(&cleaned_clone);
+                    async move {
+                        cleaned.lock().await.push(leaked.sandbox_id);
+                    }
+                },
+            )
             .await;
             done_tx.send(()).unwrap();
         });
         let cleaner = LeakCleaner {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         };
 
@@ -725,19 +855,27 @@ mod tests {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
+        let (completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let handle = tokio::spawn(async move {
-            drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
-                let cleaned = Arc::clone(&cleaned_clone);
-                async move {
-                    cleaned.lock().await.push(leaked.sandbox_id);
-                }
-            })
+            drain_leaked_resources_with_cleanup(
+                rx,
+                shutdown_rx,
+                completed_cleanup_count_tx,
+                move |leaked| {
+                    let cleaned = Arc::clone(&cleaned_clone);
+                    async move {
+                        cleaned.lock().await.push(leaked.sandbox_id);
+                    }
+                },
+            )
             .await;
             done_tx.send(()).unwrap();
         });
         let cleaner = LeakCleaner {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         };
 
@@ -751,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn leak_cleaner_shutdown_timeout_covers_cow_destroy_retry_budget() {
+    fn leak_cleaner_inactivity_timeout_covers_cow_destroy_retry_budget() {
         let retry_policy = cow_destroy_retry_policy();
         let retry_budget = retry_policy
             .delay
@@ -759,8 +897,8 @@ mod tests {
             .expect("destroy retry budget should fit in Duration");
 
         assert!(
-            LEAK_CLEANUP_SHUTDOWN_TIMEOUT > retry_budget,
-            "leak cleaner shutdown timeout must allow queued COW finalizers to finish"
+            LEAK_CLEANUP_INACTIVITY_TIMEOUT > retry_budget,
+            "leak cleaner inactivity timeout must allow one COW finalizer to finish"
         );
     }
 
@@ -776,6 +914,8 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let (_completed_cleanup_count_tx, completed_cleanup_count_rx) =
+            tokio::sync::watch::channel(0);
         let aborted = Arc::new(AtomicBool::new(false));
         let aborted_clone = Arc::clone(&aborted);
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -787,6 +927,7 @@ mod tests {
         let mut cleaner = LeakCleaner {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
+            completed_cleanup_count_rx,
             handle: Some(handle),
         };
 
