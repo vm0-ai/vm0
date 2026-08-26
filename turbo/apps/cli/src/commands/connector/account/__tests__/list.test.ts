@@ -108,6 +108,11 @@ describe("okou connector account list command", () => {
           externalId: "",
           externalUsername: "",
         }),
+        connectorAccount({
+          id: "55555555-5555-4555-8555-555555555555",
+          displayName: "same-user",
+          externalUsername: "same-user",
+        }),
       ]),
     );
 
@@ -119,6 +124,7 @@ describe("okou connector account list command", () => {
     expect(output).toContain("Work (work@example.com)");
     expect(output).toContain("@octocat");
     expect(output).toContain("Account #44444444");
+    expect(output).not.toContain("same-user (@same-user)");
     expect(output).toContain("reconnect-required");
     expect(output).toContain(FIRST_CONNECTION_ID);
     expect(output).toContain(SECOND_CONNECTION_ID);

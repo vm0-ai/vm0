@@ -36,8 +36,14 @@ export function connectorAccountCliInventoryLabel(
   account: ConnectorAccountCliLabelInput,
 ): string {
   const label = connectorAccountCliLabel(account);
+  const rawIdentity = connectorAccountExternalIdentity(account);
   const identity = connectorAccountCliExternalIdentity(account);
-  if (account.displayName && identity && identity !== account.displayName) {
+  if (
+    account.displayName &&
+    rawIdentity &&
+    rawIdentity !== account.displayName &&
+    identity !== account.displayName
+  ) {
     return `${label} (${identity})`;
   }
   return label;
