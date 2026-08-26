@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Add a bright, subtle tint to the sidebar and workspace background.",
+          "description": "Add a bright, subtle tint to the workspace background.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Adicione um tom luminoso e sutil à barra lateral e ao fundo da área de trabalho.",
+          "description": "Adicione um tom luminoso e sutil ao fundo da área de trabalho.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

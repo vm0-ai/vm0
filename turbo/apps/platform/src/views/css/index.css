@@ -466,71 +466,48 @@ body {
 [data-color-theme="golden-hour"] {
   --zero-color-theme-anchor: #f7a102;
   --zero-color-theme-companion: #f4e33c;
-  --zero-color-theme-ring: 39.1 73.6% 52.5%;
 }
 
 [data-color-theme="citrus-spark"] {
   --zero-color-theme-anchor: #f4e33c;
   --zero-color-theme-companion: #b5d329;
-  --zero-color-theme-ring: 65.4 58.7% 40.8%;
 }
 
 [data-color-theme="berry-blush"] {
   --zero-color-theme-anchor: #e24e4a;
   --zero-color-theme-companion: #e4abc8;
-  --zero-color-theme-ring: 351 39.7% 57.1%;
 }
 
 [data-color-theme="cotton-sky"] {
   --zero-color-theme-anchor: #e4abc8;
   --zero-color-theme-companion: #b5d4e5;
-  --zero-color-theme-ring: 319.6 20.7% 56.5%;
 }
 
 [data-color-theme="blue-horizon"] {
   --zero-color-theme-anchor: #3758a1;
   --zero-color-theme-companion: #b5d4e5;
-  --zero-color-theme-ring: 221.3 35.4% 55.7%;
 }
 
 [data-color-theme="daydream"] {
   --zero-color-theme-anchor: #b5d4e5;
   --zero-color-theme-companion: #e4abc8;
-  --zero-color-theme-ring: 205.1 19.8% 57.5%;
 }
 
 [data-color-theme="deep-lagoon"] {
   --zero-color-theme-anchor: #017562;
   --zero-color-theme-companion: #3758a1;
-  --zero-color-theme-ring: 171.8 47.1% 33.3%;
 }
 
 [data-color-theme="limelight"] {
   --zero-color-theme-anchor: #b5d329;
   --zero-color-theme-companion: #f4e33c;
-  --zero-color-theme-ring: 74.2 53.8% 41.6%;
 }
 
-/* The active palette is deliberately scoped to shell ambience and the picker.
+/* The active palette is deliberately scoped to workspace ambience and the picker.
    Global semantic tokens stay untouched so cards, composers, dialogs, inputs,
-   borders, rings, and component interaction states retain their original
-   design-system colors. */
+   sidebars, borders, rings, and component interaction states retain their
+   original design-system colors. */
 :root[data-gradient-color-themes][data-color-theme] {
-  --zero-color-theme-sidebar: color-mix(
-    in srgb,
-    hsl(var(--gray-0)) 90%,
-    color-mix(
-        in srgb,
-        var(--zero-color-theme-anchor) 72%,
-        var(--zero-color-theme-companion)
-      )
-      10%
-  );
-  --zero-color-theme-sidebar-border: color-mix(
-    in srgb,
-    hsl(var(--gray-200)) 90%,
-    var(--zero-color-theme-anchor)
-  );
   --zero-color-theme-selected: color-mix(
     in srgb,
     #ffffff 78%,
@@ -547,21 +524,6 @@ body {
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --zero-color-theme-sidebar: color-mix(
-    in srgb,
-    hsl(240 5% 8%) 90%,
-    color-mix(
-        in srgb,
-        var(--zero-color-theme-anchor) 72%,
-        var(--zero-color-theme-companion)
-      )
-      10%
-  );
-  --zero-color-theme-sidebar-border: color-mix(
-    in srgb,
-    hsl(var(--gray-200)) 90%,
-    var(--zero-color-theme-anchor)
-  );
   --zero-color-theme-selected: color-mix(
     in srgb,
     hsl(var(--card)) 82%,
@@ -758,17 +720,9 @@ body {
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
 }
-.zero-app[data-gradient-color-themes] .zero-nav {
-  --color-sidebar: var(--zero-color-theme-sidebar);
-  --color-sidebar-border: var(--zero-color-theme-sidebar-border);
-  --state-layer: var(--zero-color-theme-ring);
-}
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
   --color-sidebar-primary: #ffffff;
-}
-:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] .zero-nav {
-  --color-sidebar: var(--zero-color-theme-sidebar);
 }
 
 /* Morandi outline buttons */

@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Ajoutez une teinte lumineuse et subtile à la barre latérale et à l’arrière-plan de l’espace de travail.",
+          "description": "Ajoutez une teinte lumineuse et subtile à l’arrière-plan de l’espace de travail.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

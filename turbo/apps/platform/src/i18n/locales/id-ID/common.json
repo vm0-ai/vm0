@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Tambahkan warna cerah dan lembut ke bilah samping dan latar ruang kerja.",
+          "description": "Tambahkan warna cerah dan lembut ke latar ruang kerja.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

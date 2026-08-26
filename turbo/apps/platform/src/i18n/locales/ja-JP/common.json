@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "サイドバーとワークスペースの背景に明るく淡い色合いを加えます。",
+          "description": "ワークスペースの背景に明るく淡い色合いを加えます。",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

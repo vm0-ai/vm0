@@ -5034,7 +5034,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Verleihen Sie der Seitenleiste und dem Arbeitsbereich einen hellen, dezenten Farbton.",
+          "description": "Verleihen Sie dem Hintergrund des Arbeitsbereichs einen hellen, dezenten Farbton.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

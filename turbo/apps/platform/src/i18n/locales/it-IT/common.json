@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Aggiungi una tonalità luminosa e delicata alla barra laterale e allo sfondo dell'area di lavoro.",
+          "description": "Aggiungi una tonalità luminosa e delicata allo sfondo dell'area di lavoro.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",
