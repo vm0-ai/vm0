@@ -250,6 +250,7 @@ def _auth_url_rewrite_token_meta() -> dict[str, object]:
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
 
@@ -601,7 +602,10 @@ async def test_unexpected_request_exception_releases_tracking(
             reports=0,
             flush_request_id="during-auth-failure",
         )
-        return {"headers": _UnexpectedAuthHeaders({"Authorization": "Bearer resolved-token"})}
+        return {
+            "headers": _UnexpectedAuthHeaders({"Authorization": "Bearer resolved-token"}),
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
+        }
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
