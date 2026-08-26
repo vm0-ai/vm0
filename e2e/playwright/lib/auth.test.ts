@@ -6,6 +6,7 @@ import { chromium } from "@playwright/test";
 
 import {
   getCurrentClerkSessionToken,
+  signInWithLoadedClerkTestingHelper,
   type ClerkSessionTokenCache,
   withLoadedClerkTestingPage,
 } from "./auth";
@@ -14,6 +15,7 @@ type ClerkFixtureMode =
   | "absent"
   | "incomplete"
   | "loaded"
+  | "loaded-email-code"
   | "loaded-without-token"
   | "recover";
 
@@ -216,6 +218,50 @@ test("keeps Clerk session tokens current across repeated observers", async (cont
   }
 });
 
+test("signs testing emails in through Clerk's email-code strategy", async () => {
+  const browser = await chromium.launch();
+  try {
+    await withClerkFixture("loaded-email-code", async (fixture) => {
+      await withLoadedClerkTestingPage(
+        browser,
+        {
+          appUrl: fixture.appUrl,
+          contextOptions: {},
+        },
+        async (page) => {
+          const token = await signInWithLoadedClerkTestingHelper(
+            page,
+            "fixture+clerk_test@example.com",
+            fixture.appUrl,
+            { preserveAppPage: true },
+          );
+          const signInState = await page.evaluate(() => {
+            const fixtureWindow = window as unknown as {
+              __clerkEmailCodeState: {
+                attemptedCode: string | null;
+                identifier: string | null;
+                preparedEmailAddressId: string | null;
+                sessionId: string | null;
+              };
+            };
+            return fixtureWindow.__clerkEmailCodeState;
+          });
+
+          assert.equal(token, "fixture-token-1");
+          assert.deepEqual(signInState, {
+            attemptedCode: "424242",
+            identifier: "fixture+clerk_test@example.com",
+            preparedEmailAddressId: "email_fixture",
+            sessionId: "session_fixture",
+          });
+        },
+      );
+    });
+  } finally {
+    await browser.close();
+  }
+});
+
 async function withClerkFixture<Result>(
   mode: ClerkFixtureMode,
   use: (fixture: ClerkFixture) => Promise<Result>,
@@ -273,18 +319,62 @@ function clerkFixtureDocument(
   mode: ClerkFixtureMode,
   documentRequest: number,
 ): string {
-  if (mode === "loaded" || mode === "loaded-without-token") {
+  if (
+    mode === "loaded" ||
+    mode === "loaded-email-code" ||
+    mode === "loaded-without-token"
+  ) {
     const tokenResult =
       mode === "loaded-without-token"
         ? "null"
         : "`fixture-token-${++tokenRequests}`";
+    const sessionFixture =
+      mode === "loaded-email-code"
+        ? "null"
+        : `{ getToken: async () => ${tokenResult} }`;
+    const emailCodeFixture =
+      mode === "loaded-email-code"
+        ? `
+  window.__clerkEmailCodeState = {
+    attemptedCode: null,
+    identifier: null,
+    preparedEmailAddressId: null,
+    sessionId: null,
+  };
+  const signIn = {
+    create: async ({ identifier }) => {
+      window.__clerkEmailCodeState.identifier = identifier;
+      return {
+        supportedFirstFactors: [
+          { strategy: "email_code", emailAddressId: "email_fixture" },
+        ],
+      };
+    },
+    prepareFirstFactor: async ({ emailAddressId }) => {
+      window.__clerkEmailCodeState.preparedEmailAddressId = emailAddressId;
+    },
+    attemptFirstFactor: async ({ code }) => {
+      window.__clerkEmailCodeState.attemptedCode = code;
+      return { status: "complete", createdSessionId: "session_fixture" };
+    },
+  };
+  const setActive = async ({ session }) => {
+    window.__clerkEmailCodeState.sessionId = session;
+    window.Clerk.session = { getToken: async () => ${tokenResult} };
+    window.Clerk.user = { id: "user_fixture" };
+  };`
+        : "";
     return `<!doctype html>
 <script>
   let tokenRequests = 0;
+  ${emailCodeFixture}
   window.Clerk = {
+    client: ${mode === "loaded-email-code" ? "{ signIn }" : "undefined"},
     loaded: true,
     organization: { id: "org_fixture" },
-    session: { getToken: async () => ${tokenResult} },
+    session: ${sessionFixture},
+    user: null,
+    setActive: ${mode === "loaded-email-code" ? "setActive" : "undefined"},
   };
 </script>`;
   }
