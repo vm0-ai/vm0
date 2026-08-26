@@ -5025,6 +5025,20 @@
         "sectionTitle": "계정 및 보안"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "작업 공간 배경에 밝고 은은한 그라데이션을 더합니다.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "컬러 테마"
+        },
         "description": "인터페이스 모양을 선택하세요.",
         "sectionTitle": "외관",
         "theme": {

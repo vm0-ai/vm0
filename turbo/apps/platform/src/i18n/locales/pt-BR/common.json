@@ -5091,6 +5091,20 @@
         "sectionTitle": "Conta e segurança"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Adicione um gradiente luminoso e sutil ao fundo da área de trabalho.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema de cores"
+        },
         "description": "Escolha a aparência da interface.",
         "sectionTitle": "Aparência",
         "theme": {

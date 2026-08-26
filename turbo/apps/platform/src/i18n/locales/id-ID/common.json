@@ -5025,6 +5025,20 @@
         "sectionTitle": "Akun & Keamanan"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Tambahkan gradasi cerah dan lembut ke latar ruang kerja.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema warna"
+        },
         "description": "Pilih tampilan antarmuka.",
         "sectionTitle": "Tampilan",
         "theme": {

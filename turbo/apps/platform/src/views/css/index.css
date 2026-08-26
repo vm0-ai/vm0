@@ -460,6 +460,64 @@ body {
   }
 }
 
+/* Palette colors are kept as the exact source values. Each named theme pairs
+   one anchor with one companion; the same pair drives the picker swatch and
+   the low-concentration workspace ambience below. */
+[data-color-theme="golden-hour"] {
+  --zero-color-theme-anchor: #f7a102;
+  --zero-color-theme-companion: #f4e33c;
+}
+
+[data-color-theme="citrus-spark"] {
+  --zero-color-theme-anchor: #f4e33c;
+  --zero-color-theme-companion: #b5d329;
+}
+
+[data-color-theme="berry-blush"] {
+  --zero-color-theme-anchor: #e24e4a;
+  --zero-color-theme-companion: #e4abc8;
+}
+
+[data-color-theme="cotton-sky"] {
+  --zero-color-theme-anchor: #e4abc8;
+  --zero-color-theme-companion: #b5d4e5;
+}
+
+[data-color-theme="blue-horizon"] {
+  --zero-color-theme-anchor: #3758a1;
+  --zero-color-theme-companion: #b5d4e5;
+}
+
+[data-color-theme="daydream"] {
+  --zero-color-theme-anchor: #b5d4e5;
+  --zero-color-theme-companion: #e4abc8;
+}
+
+[data-color-theme="deep-lagoon"] {
+  --zero-color-theme-anchor: #017562;
+  --zero-color-theme-companion: #3758a1;
+}
+
+[data-color-theme="limelight"] {
+  --zero-color-theme-anchor: #b5d329;
+  --zero-color-theme-companion: #f4e33c;
+}
+
+.zero-color-theme-swatch {
+  background-color: var(--zero-color-theme-anchor);
+  background-image: linear-gradient(
+    135deg,
+    var(--zero-color-theme-anchor) 0%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor),
+        var(--zero-color-theme-companion)
+      )
+      52%,
+    var(--zero-color-theme-companion) 100%
+  );
+}
+
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 1.25rem;
@@ -1381,6 +1439,56 @@ details > summary {
     transparent 48%
   );
   background-size: 100% 100%;
+}
+
+.zero-app[data-gradient-color-themes] .zero-workspace-bg::before {
+  background-color: color-mix(
+    in srgb,
+    #ffffff 94.5%,
+    var(--zero-color-theme-anchor)
+  );
+  background-image:
+    radial-gradient(
+      105% 95% at -8% -12%,
+      color-mix(in srgb, #ffffff 76%, var(--zero-color-theme-anchor)) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      95% 90% at 108% 112%,
+      color-mix(in srgb, #ffffff 66%, var(--zero-color-theme-companion)) 0%,
+      transparent 62%
+    );
+}
+
+:where([data-theme="dark"])
+  .zero-app[data-gradient-color-themes]
+  .zero-workspace-bg::before {
+  background-color: color-mix(
+    in srgb,
+    hsl(var(--background)) 92%,
+    var(--zero-color-theme-anchor)
+  );
+  background-image:
+    radial-gradient(
+      105% 95% at -8% -12%,
+      color-mix(
+          in srgb,
+          hsl(var(--background)) 82%,
+          var(--zero-color-theme-anchor)
+        )
+        0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      95% 90% at 108% 112%,
+      color-mix(
+          in srgb,
+          hsl(var(--background)) 78%,
+          var(--zero-color-theme-companion)
+        )
+        0%,
+      transparent 62%
+    );
 }
 
 /* --- Tiptap Instructions Editor ---------------------------------------- */

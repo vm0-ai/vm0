@@ -5025,6 +5025,20 @@
         "sectionTitle": "アカウントとセキュリティ"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "ワークスペースの背景に明るく淡いグラデーションを加えます。",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "カラーテーマ"
+        },
         "description": "インターフェイスの外観を選択します。",
         "sectionTitle": "外観",
         "theme": {

@@ -418,6 +418,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.GradientColorThemes]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Let people choose a palette-derived ambient gradient for the workspace background.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ConnectorDiscovery]: {
     maintainer: "ethan@vm0.ai",
     description:

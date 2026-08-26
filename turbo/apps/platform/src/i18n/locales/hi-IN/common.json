@@ -5033,6 +5033,20 @@
         "sectionTitle": "खाता एवं सुरक्षा"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "वर्कस्पेस की पृष्ठभूमि में चमकदार और हल्का ग्रेडिएंट जोड़ें.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "कलर थीम"
+        },
         "description": "चुनें कि इंटरफ़ेस कैसा दिखेगा.",
         "sectionTitle": "उपस्थिति",
         "theme": {
