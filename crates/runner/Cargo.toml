@@ -33,7 +33,7 @@ tracing-subscriber = { workspace = true }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
-rustix = { workspace = true, features = ["process"] }
+rustix = { workspace = true, features = ["process", "time"] }
 hex = { workspace = true }
 idna = { workspace = true }
 libc = { workspace = true }
