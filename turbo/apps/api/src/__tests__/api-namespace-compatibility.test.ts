@@ -19,15 +19,30 @@ import { getApiTestMocks } from "./mocks";
 
 const CANONICAL_PREFIX = "/api/okou";
 const LEGACY_PREFIX = "/api/zero";
+const API_BACKEND_URL_ALIAS_RESOLUTION_EVENT =
+  "api_backend_url_alias_resolution";
+const API_BACKEND_URL_LOG_CONTEXT = "ApiBackendUrl";
 const MACHINE_SECRET_ALIAS_RESOLUTION_EVENT =
   "billing_machine_secret_alias_resolution";
 const MACHINE_SECRET_LOG_CONTEXT = "api:zero:billing-redeem-code";
+const legacyApiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
+if (!legacyApiBackendUrl) {
+  throw new Error("Expected the API test backend URL fixture");
+}
 const legacyMachineSecret = optionalEnv("VM0_MACHINE_SECRET_KEY");
 if (!legacyMachineSecret) {
   throw new Error("Expected the API test machine secret fixture");
 }
 
 const apiTestMocks = getApiTestMocks();
+const apiBackendUrlInitializationInfoCalls =
+  apiTestMocks.axiomLogging.info.mock.calls.filter(([message]) => {
+    return message === API_BACKEND_URL_ALIAS_RESOLUTION_EVENT;
+  });
+const apiBackendUrlInitializationWarnCalls =
+  apiTestMocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+    return message === API_BACKEND_URL_ALIAS_RESOLUTION_EVENT;
+  });
 const machineSecretInitializationInfoCalls =
   apiTestMocks.axiomLogging.info.mock.calls.filter(([message]) => {
     return message === MACHINE_SECRET_ALIAS_RESOLUTION_EVENT;
@@ -152,7 +167,25 @@ function brandedPath(neutralPath: string): string {
 }
 
 describe("API route bundle initialization", () => {
-  it("reports the machine secret source without changing the redeem route", () => {
+  it("reports fixed alias sources without changing the redeem route", () => {
+    expect(apiBackendUrlInitializationInfoCalls).toStrictEqual([
+      [
+        API_BACKEND_URL_ALIAS_RESOLUTION_EVENT,
+        {
+          [EVENT]: { source: "api" },
+          canonicalKey: "OKOU_API_BACKEND_URL",
+          legacyKey: "VM0_API_BACKEND_URL",
+          state: "legacy-only",
+          context: API_BACKEND_URL_LOG_CONTEXT,
+        },
+      ],
+    ]);
+    expect(apiBackendUrlInitializationWarnCalls).toStrictEqual([]);
+    expectValueFree(
+      JSON.stringify(apiBackendUrlInitializationInfoCalls),
+      legacyApiBackendUrl,
+    );
+
     expect(machineSecretInitializationInfoCalls).toStrictEqual([
       [
         MACHINE_SECRET_ALIAS_RESOLUTION_EVENT,

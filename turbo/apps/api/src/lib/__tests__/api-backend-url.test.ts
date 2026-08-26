@@ -4,7 +4,10 @@ import { EVENT } from "@axiomhq/logging";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../__tests__/test-context";
-import { apiBackendUrl } from "../api-backend-url";
+import {
+  apiBackendUrl,
+  reportApiBackendUrlAliasSourceAtProcessInitialization,
+} from "../api-backend-url";
 import { mockEnv } from "../env";
 import { getOAuthApiOrigin } from "../oauth-origin";
 
@@ -24,35 +27,45 @@ type ApiBackendUrlAliasState =
 
 interface ApiBackendUrlAliasFixture {
   readonly state: ApiBackendUrlAliasState;
-  readonly canonical: string | undefined;
-  readonly legacy: string | undefined;
+  readonly initializationCanonical: string | undefined;
+  readonly initializationLegacy: string | undefined;
+  readonly consumerCanonical: string | undefined;
+  readonly consumerLegacy: string | undefined;
   readonly expected: string | undefined;
 }
 
 const API_BACKEND_URL_ALIAS_FIXTURES: readonly ApiBackendUrlAliasFixture[] = [
   {
     state: "absent",
-    canonical: undefined,
-    legacy: undefined,
+    initializationCanonical: undefined,
+    initializationLegacy: undefined,
+    consumerCanonical: undefined,
+    consumerLegacy: undefined,
     expected: undefined,
   },
   {
     state: "canonical-only",
-    canonical: "https://canonical-only.example.test",
-    legacy: undefined,
-    expected: "https://canonical-only.example.test",
+    initializationCanonical: "https://initial-canonical-only.example.test/path",
+    initializationLegacy: undefined,
+    consumerCanonical: "https://consumer-canonical-only.example.test/path",
+    consumerLegacy: undefined,
+    expected: "https://consumer-canonical-only.example.test/path",
   },
   {
     state: "legacy-only",
-    canonical: undefined,
-    legacy: "https://legacy-only.example.test",
-    expected: "https://legacy-only.example.test",
+    initializationCanonical: undefined,
+    initializationLegacy: "https://initial-legacy-only.example.test/path",
+    consumerCanonical: undefined,
+    consumerLegacy: "https://consumer-legacy-only.example.test/path",
+    expected: "https://consumer-legacy-only.example.test/path",
   },
   {
     state: "equal-dual",
-    canonical: "https://equal-dual.example.test",
-    legacy: "https://equal-dual.example.test",
-    expected: "https://equal-dual.example.test",
+    initializationCanonical: "https://initial-equal-dual.example.test/path",
+    initializationLegacy: "https://initial-equal-dual.example.test/path",
+    consumerCanonical: "https://consumer-equal-dual.example.test/path",
+    consumerLegacy: "https://consumer-equal-dual.example.test/path",
+    expected: "https://consumer-equal-dual.example.test/path",
   },
 ];
 
@@ -89,11 +102,22 @@ function expectValueFree(diagnostics: string, values: readonly string[]): void {
 }
 
 describe("API backend URL aliases", () => {
-  it("resolves the non-conflicting matrix with one value-free event per state", () => {
+  it("observes then resolves every non-conflicting state without retaining values", () => {
     for (const fixture of API_BACKEND_URL_ALIAS_FIXTURES) {
-      configureAliases(fixture.canonical, fixture.legacy);
+      configureAliases(
+        fixture.initializationCanonical,
+        fixture.initializationLegacy,
+      );
       const logCount = context.mocks.axiomLogging.info.mock.calls.length;
 
+      expect(
+        reportApiBackendUrlAliasSourceAtProcessInitialization(),
+      ).toBeUndefined();
+      expect(
+        reportApiBackendUrlAliasSourceAtProcessInitialization(),
+      ).toBeUndefined();
+
+      configureAliases(fixture.consumerCanonical, fixture.consumerLegacy);
       expect(apiBackendUrl()).toBe(fixture.expected);
       expect(apiBackendUrl()).toBe(fixture.expected);
 
@@ -103,7 +127,12 @@ describe("API backend URL aliases", () => {
       ]);
       expectValueFree(
         JSON.stringify(calls),
-        [fixture.canonical, fixture.legacy].filter((value): value is string => {
+        [
+          fixture.initializationCanonical,
+          fixture.initializationLegacy,
+          fixture.consumerCanonical,
+          fixture.consumerLegacy,
+        ].filter((value): value is string => {
           return value !== undefined;
         }),
       );
@@ -113,11 +142,26 @@ describe("API backend URL aliases", () => {
   });
 
   it("fails closed on conflicting aliases with bounded value-free diagnostics", () => {
-    const canonical = "https://canonical-url-must-not-leak.example.test";
-    const legacy = "https://legacy-url-must-not-leak.example.test";
+    const initializationCanonical =
+      "https://initial-canonical-conflict-must-not-leak.example.test/path";
+    const initializationLegacy =
+      "https://initial-legacy-conflict-must-not-leak.example.test/path";
+    const consumerCanonical =
+      "https://consumer-canonical-conflict-must-not-leak.example.test/path";
+    const consumerLegacy =
+      "https://consumer-legacy-conflict-must-not-leak.example.test/path";
     const expectedMessage =
       "API backend URL aliases conflict: canonicalKey=OKOU_API_BACKEND_URL legacyKey=VM0_API_BACKEND_URL state=conflicting-dual";
-    configureAliases(canonical, legacy);
+    configureAliases(initializationCanonical, initializationLegacy);
+
+    expect(
+      reportApiBackendUrlAliasSourceAtProcessInitialization(),
+    ).toBeUndefined();
+    expect(
+      reportApiBackendUrlAliasSourceAtProcessInitialization(),
+    ).toBeUndefined();
+
+    configureAliases(consumerCanonical, consumerLegacy);
 
     expect(() => {
       apiBackendUrl();
@@ -136,8 +180,12 @@ describe("API backend URL aliases", () => {
       error: expectedMessage,
       logs: context.mocks.axiomLogging.warn.mock.calls,
     });
-    expect(diagnostics).not.toContain(canonical);
-    expect(diagnostics).not.toContain(legacy);
+    expectValueFree(diagnostics, [
+      initializationCanonical,
+      initializationLegacy,
+      consumerCanonical,
+      consumerLegacy,
+    ]);
     expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
     expect(context.mocks.axiomLogging.info).not.toHaveBeenCalled();
   });

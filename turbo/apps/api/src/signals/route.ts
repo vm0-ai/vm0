@@ -1,3 +1,4 @@
+import { reportApiBackendUrlAliasSourceAtProcessInitialization } from "../lib/api-backend-url";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
@@ -200,6 +201,7 @@ import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
 
 reportMachineSecretAliasSourceAtProcessInitialization();
+reportApiBackendUrlAliasSourceAtProcessInitialization();
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
