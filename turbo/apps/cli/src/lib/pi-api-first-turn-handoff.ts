@@ -237,6 +237,10 @@ function validatedSandboxEventSequenceStart(args: {
   readonly config: PiApiFirstTurnConfig;
   readonly manifest: PiApiFirstTurnManifest;
 }): number {
+  // API-written manifests and commit-addressed CLIs overlap across queued runs
+  // and the two-hour runner drain. Remove v1 after #29618 is live on every Pi
+  // runner, pre-v2 work has drained, and no retained rollback API emits v1;
+  // tracked by #29612.
   const manifestSequenceStart =
     args.manifest.schemaVersion === 1
       ? 1
