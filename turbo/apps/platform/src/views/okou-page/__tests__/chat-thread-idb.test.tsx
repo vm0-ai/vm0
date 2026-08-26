@@ -395,7 +395,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     expect(snapshotRequests).toBeGreaterThan(completedSnapshotRequests);
   });
 
-  it("renders from cached thread metadata without waiting for remote sync", async () => {
+  it("keeps cached thread shell behind the app skeleton during initial event sync", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     let metadataRequests = 0;
@@ -430,9 +430,8 @@ describe("okou chat thread IndexedDB fallback", () => {
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+    expect(screen.getByTestId("app-skeleton")).not.toHaveAttribute(
       "aria-hidden",
-      "true",
     );
     expect(releaseRemoteEvents.settled()).toBeFalsy();
     expect(metadataRequests).toBe(0);
@@ -695,6 +694,8 @@ describe("okou chat thread IndexedDB fallback", () => {
     setupChatPage();
     await snapshotBodyRequested.promise;
 
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
     await waitFor(() => {
       expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
@@ -708,6 +709,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
     expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
     expect(emptyThread.wasShown()).toBeFalsy();
     expect(uncoveredLoadingGap).toBeFalsy();
