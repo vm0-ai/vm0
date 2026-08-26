@@ -252,6 +252,14 @@ impl HttpClient {
         )
     }
 
+    /// Returns whether backend API/webhook configuration is present.
+    ///
+    /// This reports API capability, not generic HTTP transport availability.
+    /// [`Self::new`] returns `false` here while still providing a transport for
+    /// presigned uploads. [`Self::for_config`] also returns `false` when its API
+    /// token is empty, but that API-disabled client has no transport. Presigned
+    /// uploads require only the transport, while backend API operations require
+    /// API configuration.
     pub fn has_api(&self) -> bool {
         self.api.is_some()
     }
