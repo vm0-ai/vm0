@@ -462,7 +462,7 @@ async fn server_error_during_handshake() {
     mock_token_endpoint(&http, "testKey.testId");
 
     let ws_port = ws.port;
-    tokio::spawn(async move {
+    let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_raw().await.unwrap();
         let error_msg = ProtocolMessage {
             action: action::ERROR,
@@ -481,8 +481,15 @@ async fn server_error_during_handshake() {
     });
 
     let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
+    join_server_task(server_task, "pre-CONNECTED ERROR server")
+        .await
+        .unwrap();
+
     match result {
-        Err(ably_subscriber::Error::Protocol { .. }) => {}
+        Err(ably_subscriber::Error::Protocol { code, message }) => {
+            assert_eq!(code, error_code::FAILED);
+            assert_eq!(message, "Unauthorized");
+        }
         Err(other) => panic!("expected Protocol error, got {other:?}"),
         Ok(_) => panic!("expected error, got Ok"),
     }
