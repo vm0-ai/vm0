@@ -5619,11 +5619,13 @@ function normalizeImportedTemplateTitle(value: string): string {
  * the field gains lines rather than a scrollbar. Enter still submits and
  * whitespace folds on the way out, so the value stays the single line it models.
  *
- * The check then keeps its column at every height but only paints once the
- * draft differs from the saved name. A check that is lit from the moment the
- * panel opens reads as a state badge rather than an action, and it charges the
- * title 38px it never earns; reserving the column keeps the title from
- * reflowing the moment the first character is typed.
+ * The check then keeps its column at every height but not its ink. Lit from
+ * the moment the panel opens it reads as a state badge rather than an action,
+ * so it waits for a reason to exist: pointing at the control, entering it, or
+ * a draft that differs from the saved name. Hover and focus have to count
+ * because the check is now the only thing that says the name is editable —
+ * a hairline border alone reads as decoration. A dirty draft pins it on, so
+ * the way back to the check is never to go find the field again.
  */
 function ImportedPresentationTemplateRenameControl({
   title,
@@ -5701,7 +5703,7 @@ function ImportedPresentationTemplateRenameControl({
               size="icon-sm"
               disabled={updating}
               aria-label={label}
-              className="mt-1 shrink-0 group-data-[rename-dirty=false]:invisible"
+              className="invisible mt-1 shrink-0 group-focus-within:visible group-hover:visible group-data-[rename-dirty=true]:visible"
             >
               {updating ? <Loader2 className="animate-spin" /> : <Check />}
             </Button>
