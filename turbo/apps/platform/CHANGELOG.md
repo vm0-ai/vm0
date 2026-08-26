@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.803.0](https://github.com/vm0-ai/vm0/compare/app-v0.802.0...app-v0.803.0) (2026-08-26)
+
+
+### Features
+
+* **activity:** display persisted runner attribution ([#29640](https://github.com/vm0-ai/vm0/issues/29640)) ([9006f5f](https://github.com/vm0-ai/vm0/commit/9006f5fde43f6563d1d0cfc7914319a287536a85))
+
 ## [0.802.0](https://github.com/vm0-ai/vm0/compare/app-v0.801.1...app-v0.802.0) (2026-08-26)
 
 
