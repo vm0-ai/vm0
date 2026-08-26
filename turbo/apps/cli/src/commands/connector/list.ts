@@ -12,14 +12,63 @@ import {
   isConnectorDiscoveryAuthorized,
   renderConnectorDiscoveryConnectedAsCell,
 } from "./discovery";
+import {
+  isRunBoundConnectorContext,
+  resolveRunConnectorAccountView,
+  runConnectorAccountUnavailableMessage,
+  type RunConnectorAccountEntry,
+} from "./run-account-context";
+
+function runAccountCell(connector: RunConnectorAccountEntry): string {
+  if (connector.account.state === "available") {
+    return `${connector.account.label} (${connector.account.connectionId})`;
+  }
+  if (connector.account.state === "metadata-unavailable") {
+    return `${connector.account.connectionId} (metadata unavailable or deleted)`;
+  }
+  return "(unavailable for this run)";
+}
+
+async function printRunConnectorList(json: boolean): Promise<void> {
+  const view = await resolveRunConnectorAccountView();
+  if (json) {
+    console.log(JSON.stringify(view, null, 2));
+    return;
+  }
+  if (view.state === "unavailable") {
+    console.log(runConnectorAccountUnavailableMessage(view.reason));
+    return;
+  }
+  const slugWidth = Math.max(
+    4,
+    ...view.connectors.map((connector) => {
+      return connector.slug.length;
+    }),
+  );
+  console.log(
+    chalk.dim(
+      ["SLUG".padEnd(slugWidth), "ACCOUNT USED BY THIS RUN"].join("  "),
+    ),
+  );
+  for (const connector of view.connectors) {
+    console.log(
+      [connector.slug.padEnd(slugWidth), runAccountCell(connector)].join("  "),
+    );
+  }
+}
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all connectors and their status")
   .option("--agent <id>", "Show per-agent authorization column")
+  .option("--json", "Output connector status as JSON")
   .action(
-    withErrorHandler(async (options: { agent?: string }) => {
+    withErrorHandler(async (options: { agent?: string; json?: boolean }) => {
+      if (isRunBoundConnectorContext()) {
+        await printRunConnectorList(options.json ?? false);
+        return;
+      }
       const [{ connectors }, customConnectors, agentCtx] = await Promise.all([
         listConnectorCatalogStatus(),
         listCustomConnectors(),
@@ -29,6 +78,45 @@ export const listCommand = new Command()
         connectors,
         customConnectors,
       );
+
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              context: "current",
+              connectors: discoveredConnectors.map((connector) => {
+                return connector.kind === "catalog"
+                  ? {
+                      kind: "builtin",
+                      slug: connector.slug,
+                      label: connector.label,
+                      connectionStatus:
+                        connector.catalogConnector.connectionStatus,
+                      connection: connector.catalogConnector.connection,
+                      authorized: agentCtx
+                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
+                        : null,
+                    }
+                  : {
+                      kind: "custom",
+                      id: connector.customConnector.id,
+                      slug: connector.slug,
+                      label: connector.label,
+                      connected: connector.customConnector.connected,
+                      missingRequiredFields:
+                        connector.customConnector.missingRequiredFields,
+                      authorized: agentCtx
+                        ? isConnectorDiscoveryAuthorized(connector, agentCtx)
+                        : null,
+                    };
+              }),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
 
       const connectorSlugs = discoveredConnectors.map((connector) => {
         return connector.slug;

@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 import {
+  connectorAccountTargetKey,
   connectorAccountsContract,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -16,6 +17,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   connectorAccountDeletionImpact,
   getConnectorAccount,
+  listConnectorAccountsByIds,
   listConnectorAccountsForTarget,
   listConnectorAccountSummaries,
   renameConnectorAccount,
@@ -45,6 +47,56 @@ function targetFromQuery(
     ? { kind: "builtin", connectorSlug: query.connectorSlug }
     : { kind: "custom", customConnectorId: query.customConnectorId };
 }
+
+const inspectInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(connectorAccountsEnabled$))) {
+    return notFound("Resource not found");
+  }
+  const body = await get(bodyResultOf(connectorAccountsContract.inspect));
+  if (!body.ok) {
+    return body.response;
+  }
+  const accounts = await listConnectorAccountsByIds(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    connectionIds: body.data.selections.map((selection) => {
+      return selection.connectionId;
+    }),
+  });
+  const accountsById = new Map(
+    accounts.map((account) => {
+      return [account.id, account];
+    }),
+  );
+  return {
+    status: 200 as const,
+    body: {
+      results: body.data.selections.map((selection) => {
+        const account = accountsById.get(selection.connectionId);
+        if (
+          !account ||
+          connectorAccountTargetKey(account.target) !==
+            connectorAccountTargetKey(selection.target)
+        ) {
+          return { kind: "unavailable" as const, ...selection };
+        }
+        return {
+          kind: "available" as const,
+          connectionId: account.id,
+          target: account.target,
+          authMethod: account.authMethod,
+          displayName: account.displayName,
+          externalId: account.externalId,
+          externalUsername: account.externalUsername,
+          externalEmail: account.externalEmail,
+          connectionStatus: account.connectionStatus,
+          reconnectReason: account.reconnectReason,
+        };
+      }),
+    },
+  };
+});
 
 const summariesInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -423,6 +475,10 @@ const writeAuth = {
 } as const;
 
 export const connectorAccountRoutes: readonly RouteEntry[] = [
+  {
+    route: connectorAccountsContract.inspect,
+    handler: authRoute(readAuth, inspectInner$),
+  },
   {
     route: connectorAccountsContract.summaries,
     handler: authRoute(readAuth, summariesInner$),
