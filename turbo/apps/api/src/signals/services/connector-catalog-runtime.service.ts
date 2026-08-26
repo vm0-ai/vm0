@@ -1066,7 +1066,7 @@ function clearRuntimeSelectionInFlight(
 export async function loadConnectorRuntimeSelection(
   db: ReadonlyDb,
   options: {
-    readonly timing: ApiDispatchTimingCollector;
+    readonly timing?: ApiDispatchTimingCollector;
     readonly requestedConnectorSlugs: readonly ConnectorSlug[];
     readonly metadataConnectorSlugs?: readonly ConnectorSlug[];
   },

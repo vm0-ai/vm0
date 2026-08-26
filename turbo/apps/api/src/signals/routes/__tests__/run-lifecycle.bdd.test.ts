@@ -60,12 +60,14 @@ import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
   clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
+  corruptApiTestConnectorCatalogActiveSnapshotPayload,
   corruptApiTestConnectorCatalogRuntimeProjectionDigest,
   corruptApiTestConnectorCatalogRuntimeProjectionPayload,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   installApiTestConnectorCatalog,
+  mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
@@ -9087,6 +9089,78 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       { targets: [larkTarget] },
     );
     expect(exactRuntimeWithSibling).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("uses exact runtime projections and authoritative fallback for builtin sync", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connected = await connectors.connectManualGrant(
+      actor,
+      "lark",
+      "api-token",
+      {
+        appId: "lark-projection-app-id",
+        appSecret: "lark-projection-app-secret",
+      },
+    );
+    await api.enableAgentConnectors(actor, agentId, ["lark"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "refresh lark through exact runtime projections",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const larkTarget = claim.connectorRuntimeTargets.find((target) => {
+      return target.kind === "builtin" && target.connectorSlug === "lark";
+    });
+    if (!larkTarget || larkTarget.kind !== "builtin") {
+      throw new Error("Expected the lark runtime target");
+    }
+    expect(larkTarget.sourceId).toBe(connected.id);
+
+    onTestFinished(async () => {
+      mockApiTestConnectorProviderConfiguration();
+      await installApiTestConnectorCatalog();
+    });
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-sync-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
+    await corruptApiTestConnectorCatalogActiveSnapshotPayload();
+
+    const [projectedRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [larkTarget],
+    });
+    expect(projectedRuntime).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-sync-fallback-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("lark");
+
+    const [fallbackRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [larkTarget],
+    });
+    expect(fallbackRuntime).toMatchObject({
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "available",
     });
