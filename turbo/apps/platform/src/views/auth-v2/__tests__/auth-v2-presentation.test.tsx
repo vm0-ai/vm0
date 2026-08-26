@@ -147,7 +147,7 @@ describe("auth v2 presentation", () => {
     const continueButton = buttonByText("Continue");
     expect(continueButton).toHaveClass(
       "bg-[#d04301]",
-      "text-white",
+      "text-[#ffffff]",
       "hover:bg-[#bb3c01]",
       "active:bg-[#af3801]",
     );
