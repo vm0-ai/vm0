@@ -152,11 +152,16 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     assert_eq!(command["item"]["type"], "command_execution");
     assert_eq!(command["item"]["status"], "completed");
     assert_eq!(command["item"]["exit_code"], 0);
-    assert!(command["item"]["command"].as_str().is_some_and(
-        |text| text.starts_with("command-head-")
+    assert!(command["item"]["command"].as_str().is_some_and(|text| {
+        text.starts_with("command-head-***-")
             && text.ends_with("-command-tail")
             && text.contains(DELIVERY_MARKER)
-    ));
+    }));
+    assert!(
+        !command["item"]["command"]
+            .as_str()
+            .is_some_and(|text| text.contains("guest-tool-exec") || text.contains("vm0.command"))
+    );
     assert!(
         command["item"]["aggregated_output"]
             .as_str()

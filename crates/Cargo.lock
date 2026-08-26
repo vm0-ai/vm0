@@ -1301,6 +1301,7 @@ dependencies = [
 name = "guest-contracts"
 version = "0.11.22"
 dependencies = [
+ "base64 0.23.1",
  "chrono",
  "libc",
  "process-control-ipc",
@@ -1390,7 +1391,6 @@ dependencies = [
  "process-control-ipc",
  "serde",
  "serde_json",
- "shell-quote",
  "tempfile",
 ]
 
