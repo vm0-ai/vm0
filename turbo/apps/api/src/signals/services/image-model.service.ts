@@ -1,17 +1,11 @@
 /**
  * Resolves the built-in image model default snapshotted onto a run.
  *
- * Image model selection is dormant while its feature switch is disabled. Once
- * enabled, the chain is thread pin, then member default, then the catalog
- * default. The run row owns the result so later preference changes cannot
- * affect an in-flight run.
+ * The chain is thread pin, then member default, then the catalog default. The
+ * run row owns the result so later preference changes cannot affect an
+ * in-flight run.
  */
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   DEFAULT_IMAGE_MODEL,
   type ImageModel,
