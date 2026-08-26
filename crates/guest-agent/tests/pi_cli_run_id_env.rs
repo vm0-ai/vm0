@@ -62,6 +62,7 @@ test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 test -n "${PI_FINAL_ASSISTANT_EVENT_PATH:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'
 IFS= read -r state_command
 case "$state_command" in
   *'"type":"get_state"'*) ;;
@@ -119,7 +120,7 @@ fi
                 prompt: "verify canonical Pi run identity".to_string(),
                 append_system_prompt: "Your name is Okou.".to_string(),
                 pi_launch_config:
-                    r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#
+                    r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":4}}"#
                         .to_string(),
                 pi_model_config: "{}".to_string(),
                 pi_session_id: "11111111-1111-4111-8111-111111111111".to_string(),
@@ -164,7 +165,7 @@ fi
     .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
-    assert_eq!(result.last_event_sequence, Some(12));
+    assert_eq!(result.last_event_sequence, Some(15));
     assert_eq!(
         result.claude_result.map(|summary| summary.status),
         Some(guest_agent::cli::ClaudeResultStatus::Success)
@@ -173,6 +174,8 @@ fi
     for request in server.requests()? {
         assert_eq!(request.path, "/api/webhooks/agent/events");
         assert_eq!(request.authorization.as_deref(), Some("Bearer test-token"));
+        assert!(!request.body.contains("vm0_pi_api_first_turn_boundary"));
+        assert!(!request.body.contains("sandboxEventSequenceStart"));
         let body: Value = serde_json::from_str(&request.body)?;
         delivered_events.extend(
             body.get("events")
@@ -194,7 +197,7 @@ fi
             .iter()
             .map(|event| event["sequenceNumber"].as_u64())
             .collect::<Vec<_>>(),
-        (1..13).map(Some).collect::<Vec<_>>()
+        (4..16).map(Some).collect::<Vec<_>>()
     );
     assert!(
         delivered_events
@@ -375,6 +378,10 @@ fi
     assert_eq!(payload["schemaVersion"], 1);
     assert_eq!(payload["appendSystemPrompt"], "Your name is Okou.");
     assert_eq!(payload["launchConfig"]["schemaVersion"], 2);
+    let agent_log =
+        std::fs::read_to_string(guest_contracts::runtime_paths::agent_log_file(&runtime_dir))?;
+    assert!(!agent_log.contains("vm0_pi_api_first_turn_boundary"));
+    assert!(!agent_log.contains("sandboxEventSequenceStart"));
     assert_eq!(
         std::fs::metadata(&payload_path)?.permissions().mode() & 0o777,
         0o600

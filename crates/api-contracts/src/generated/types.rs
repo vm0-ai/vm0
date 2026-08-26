@@ -64,7 +64,7 @@ pub mod runners {
             /// Checkpoint used as the base Pi session.
             pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
             /// First sandbox event sequence number for the resumed session.
-            pub sandbox_event_sequence_start: i64,
+            pub sandbox_event_sequence_start: u64,
         }
 
         /// API-owned launch configuration forwarded to Pi in the sandbox.

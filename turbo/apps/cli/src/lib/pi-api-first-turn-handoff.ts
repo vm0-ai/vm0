@@ -24,6 +24,7 @@ type PiApiFirstTurnHandoffErrorCode =
   | "PI_HANDOFF_H1_WRITE_FAILED"
   | "PI_HANDOFF_MANIFEST_INVALID"
   | "PI_HANDOFF_MANIFEST_TIMEOUT"
+  | "PI_HANDOFF_SEQUENCE_MISMATCH"
   | "PI_HANDOFF_SESSION_MISMATCH";
 
 class PiApiFirstTurnHandoffError extends Error {
@@ -42,6 +43,7 @@ class PiApiFirstTurnHandoffError extends Error {
 
 interface PiApiFirstTurnHandoff {
   readonly sessionFile: string;
+  readonly sandboxEventSequenceStart: number;
 }
 
 export interface HandoffRuntime {
@@ -231,6 +233,23 @@ function validateManifestIdentity(args: {
   }
 }
 
+function validatedSandboxEventSequenceStart(args: {
+  readonly config: PiApiFirstTurnConfig;
+  readonly manifest: PiApiFirstTurnManifest;
+}): number {
+  const manifestSequenceStart =
+    args.manifest.schemaVersion === 1
+      ? 1
+      : args.manifest.sandboxEventSequenceStart;
+  if (manifestSequenceStart !== args.config.sandboxEventSequenceStart) {
+    throw new PiApiFirstTurnHandoffError(
+      "PI_HANDOFF_SEQUENCE_MISMATCH",
+      "Pi API first-turn manifest boundary does not match the launch",
+    );
+  }
+  return manifestSequenceStart;
+}
+
 async function restoreSession(args: {
   readonly config: PiApiFirstTurnConfig;
   readonly manifest: PiApiFirstTurnManifest;
@@ -339,6 +358,10 @@ export async function resolvePiApiFirstTurnHandoff(args: {
 }): Promise<PiApiFirstTurnHandoff> {
   const runtime = args.runtime ?? defaultRuntime;
   const manifest = await pollManifest(args.config, runtime);
+  const sandboxEventSequenceStart = validatedSandboxEventSequenceStart({
+    config: args.config,
+    manifest,
+  });
   return {
     sessionFile: await restoreSession({
       config: args.config,
@@ -347,5 +370,6 @@ export async function resolvePiApiFirstTurnHandoff(args: {
       sessionDir: args.sessionDir,
       sessionId: args.sessionId,
     }),
+    sandboxEventSequenceStart,
   };
 }
