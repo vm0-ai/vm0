@@ -25,6 +25,7 @@ import {
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
+import { renderedIdentityEditPresentation } from "../../__tests__/auth-v2-button-style-assertions.ts";
 
 const context = testContext();
 
@@ -459,8 +460,17 @@ describe("auth v2 sign-in flow", () => {
       "button",
       "Edit identifier",
     );
-    expect(editIdentifier).toHaveClass("h-6", "w-6");
-    expect(editIdentifier).not.toHaveClass("size-4");
+    await expect(
+      renderedIdentityEditPresentation(editIdentifier, context.signal),
+    ).resolves.toStrictEqual({
+      borderRadius: "8px",
+      color: "rgb(100 110 120)",
+      height: "calc(4px * 6)",
+      iconHeight: "calc(4px * 4)",
+      iconWidth: "calc(4px * 4)",
+      rowMinHeight: "calc(4px * 6)",
+      width: "calc(4px * 6)",
+    });
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
