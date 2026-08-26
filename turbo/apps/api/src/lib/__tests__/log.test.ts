@@ -114,6 +114,20 @@ function debugAliasEvidence(state: string): Readonly<Record<string, unknown>> {
   };
 }
 
+function expectValueFree(diagnostics: string, values: readonly string[]): void {
+  for (const value of values) {
+    const forbiddenDerivatives = [
+      value,
+      String(value.length),
+      createHash("sha256").update(value).digest("hex"),
+      JSON.stringify(value),
+    ];
+    for (const derivative of forbiddenDerivatives) {
+      expect(diagnostics).not.toContain(derivative);
+    }
+  }
+}
+
 beforeEach(() => {
   __resetForTest();
   axiomLogging.flush.mockResolvedValue(undefined);
@@ -124,14 +138,22 @@ describe("debug environment aliases", () => {
     "resolves $description with bounded source evidence",
     ({ canonical, legacy, state, expectedLevel }) => {
       configureDebugAliases(canonical, legacy);
-      const debugLogCount = axiomLogging.debug.mock.calls.length;
+      const infoLogCount = axiomLogging.info.mock.calls.length;
 
       expect(logger("debug-matrix-target").level).toBe(expectedLevel);
       expect(logger("another-logger").level).toBe("info");
 
-      expect(axiomLogging.debug.mock.calls.slice(debugLogCount)).toStrictEqual([
+      const calls = axiomLogging.info.mock.calls.slice(infoLogCount);
+      expect(calls).toStrictEqual([
         [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence(state)],
       ]);
+      expectValueFree(
+        JSON.stringify(calls),
+        [canonical, legacy].filter((value): value is string => {
+          return Boolean(value);
+        }),
+      );
+      expect(axiomLogging.debug).not.toHaveBeenCalled();
       expect(axiomLogging.warn).not.toHaveBeenCalled();
     },
   );
@@ -153,24 +175,13 @@ describe("debug environment aliases", () => {
       [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("conflicting-dual")],
     ]);
     expect(axiomLogging.debug).not.toHaveBeenCalled();
+    expect(axiomLogging.info).not.toHaveBeenCalled();
 
     const diagnostics = JSON.stringify({
       error: DEBUG_ALIAS_CONFLICT_ERROR,
       logs: axiomLogging.warn.mock.calls,
     });
-    const forbiddenDerivatives = [
-      canonical,
-      legacy,
-      String(canonical.length),
-      String(legacy.length),
-      createHash("sha256").update(canonical).digest("hex"),
-      createHash("sha256").update(legacy).digest("hex"),
-      JSON.stringify(canonical),
-      JSON.stringify(legacy),
-    ];
-    for (const derivative of forbiddenDerivatives) {
-      expect(diagnostics).not.toContain(derivative);
-    }
+    expectValueFree(diagnostics, [canonical, legacy]);
   });
 
   it.each([
@@ -223,7 +234,7 @@ describe("debug environment aliases", () => {
 
   it("keeps configuration and logger levels cached until the existing reset", () => {
     configureDebugAliases("CachedLogger", undefined);
-    const debugLogCount = axiomLogging.debug.mock.calls.length;
+    const infoLogCount = axiomLogging.info.mock.calls.length;
 
     const cached = logger("CachedLogger");
     expect(cached.level).toBe("debug");
@@ -232,14 +243,14 @@ describe("debug environment aliases", () => {
     expect(logger("CachedLogger")).toBe(cached);
     expect(logger("CachedLogger").level).toBe("debug");
     expect(logger("AfterResetLogger").level).toBe("info");
-    expect(axiomLogging.debug.mock.calls.slice(debugLogCount)).toStrictEqual([
+    expect(axiomLogging.info.mock.calls.slice(infoLogCount)).toStrictEqual([
       [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
     ]);
 
     __resetForTest();
 
     expect(logger("AfterResetLogger").level).toBe("debug");
-    expect(axiomLogging.debug.mock.calls.slice(debugLogCount)).toStrictEqual([
+    expect(axiomLogging.info.mock.calls.slice(infoLogCount)).toStrictEqual([
       [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
       [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
     ]);

@@ -63,6 +63,13 @@ interface Logger {
   level: Level;
 }
 
+type RetainedAliasResolutionEvent =
+  | "api_backend_url_alias_resolution"
+  | "web_url_alias_resolution"
+  | "debug_environment_alias_resolution"
+  | "billing_machine_secret_alias_resolution"
+  | "stripe_preview_job_ref_alias_resolution";
+
 class LoggerRegistry {
   private readonly store = new Map<string, Logger>();
 
@@ -96,7 +103,7 @@ function parseDebugPatterns(value: string | undefined): readonly string[] {
 
 function reportDebugAliasResolution(state: DebugAliasState): void {
   logToAxiom(
-    state === "conflicting-dual" ? Level.Warn : Level.Debug,
+    state === "conflicting-dual" ? Level.Warn : Level.Info,
     DEBUG_ALIAS_LOG_CONTEXT,
     [
       DEBUG_ALIAS_RESOLUTION_EVENT,
@@ -427,6 +434,14 @@ export function logger(name: string): Logger {
   const loggerInstance = createLogger(name);
   registry.set(name, loggerInstance);
   return loggerInstance;
+}
+
+export function logAliasResolutionInfo(
+  loggerInstance: Pick<Logger, "info">,
+  event: RetainedAliasResolutionEvent,
+  fields: Readonly<Record<string, string>>,
+): void {
+  loggerInstance.info(event, fields);
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
