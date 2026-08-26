@@ -8,6 +8,7 @@ import type {
 } from "../../provider-flow-types";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { reportedOAuthScopes } from "../../oauth/scope";
 
 const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
@@ -212,6 +213,7 @@ export async function refreshBase44Token(
     accessToken: requireAccessToken(data, "refresh"),
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, /\s+/),
   };
 }
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { reportedOAuthScopes } from "../../oauth/scope";
 
 const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
 
@@ -25,6 +26,7 @@ interface AsanaRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 /**
@@ -186,6 +188,7 @@ export async function refreshAsanaToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
     })
     .parse(await response.json());
@@ -202,5 +205,6 @@ export async function refreshAsanaToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }

@@ -326,6 +326,7 @@ describe("PlayStation external-code provider", () => {
         idToken: jwtPayload({ sub: "psn-account-123" }),
       },
       expiresIn: 1800,
+      scopes: ["psn:mobile.v2.core", "psn:clientapp"],
     });
 
     expect(captured.tokenRequestBody?.get("grant_type")).toBe("refresh_token");

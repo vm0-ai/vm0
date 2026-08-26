@@ -355,6 +355,7 @@ async function persistConnectorRefresh(
     readonly inputs: Readonly<Record<string, string>>;
     readonly orgId: string;
     readonly outputs: Readonly<Record<string, string | undefined>>;
+    readonly scopes?: readonly string[];
     readonly userId: string;
     readonly expiresIn: number | undefined;
   },
@@ -444,6 +445,9 @@ async function persistConnectorRefresh(
     await tx
       .update(connectors)
       .set({
+        ...(args.scopes === undefined
+          ? {}
+          : { oauthGrantedScopes: JSON.stringify(args.scopes) }),
         tokenExpiresAt,
         storageVersion: args.connection.runtimeMethod.method.storage.version,
         needsReconnect: false,
@@ -699,6 +703,9 @@ export async function refreshConnectorCredentialAccess(
           outputs: refreshed.value.outputs,
           userId: args.userId,
           expiresIn: refreshed.value.expiresIn,
+          ...(refreshed.value.scopes === undefined
+            ? {}
+            : { scopes: refreshed.value.scopes }),
           ...(args.featureSwitchContext === undefined
             ? {}
             : { featureSwitchContext: args.featureSwitchContext }),

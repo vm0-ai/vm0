@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
-import { effectiveOAuthScopes } from "../../oauth/scope";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const AUTHORIZATION_URL = "https://app.cal.com/auth/oauth2/authorize";
 const TOKEN_URL = "https://api.cal.com/v2/auth/oauth2/token";
@@ -118,5 +118,6 @@ export async function refreshCalComToken(
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? null,
     expiresIn: token.expires_in,
+    scopes: reportedOAuthScopes(token.scope, /[ ,]+/),
   };
 }

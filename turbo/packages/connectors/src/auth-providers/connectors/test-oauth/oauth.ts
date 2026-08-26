@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
-import { effectiveOAuthScopes } from "../../oauth/scope";
+import { reportedOAuthScopes } from "../../oauth/scope";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
@@ -26,6 +26,10 @@ interface TokenResponse {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
+}
+
+interface GrantTokenResponse extends Omit<TokenResponse, "scopes"> {
   scopes: string[];
 }
 
@@ -185,7 +189,6 @@ const tokenResponseSchema = z.object({
 async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
-  authorizationScopes: readonly string[],
   signal: AbortSignal | undefined,
 ): Promise<TokenResponse> {
   const response = await fetch(getTestOAuthTokenUrl(), {
@@ -208,7 +211,7 @@ async function postToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: effectiveOAuthScopes(data.scope, authorizationScopes, " "),
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 
@@ -218,8 +221,8 @@ export async function exchangeTestOAuthCode(
   clientSecret: string,
   code: string,
   redirectUri: string,
-): Promise<TokenResponse> {
-  return postToken(
+): Promise<GrantTokenResponse> {
+  const token = await postToken(
     new URLSearchParams({
       grant_type: "authorization_code",
       client_id: clientId,
@@ -228,9 +231,12 @@ export async function exchangeTestOAuthCode(
       redirect_uri: redirectUri,
     }),
     "exchange",
-    authCodeGrant.scopes,
     undefined,
   );
+  return {
+    ...token,
+    scopes: token.scopes ?? [...authCodeGrant.scopes],
+  };
 }
 
 export async function refreshTestOAuthToken(
@@ -247,7 +253,6 @@ export async function refreshTestOAuthToken(
       refresh_token: refreshToken,
     }),
     "refresh",
-    [],
     signal,
   );
 }

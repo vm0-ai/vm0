@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
 
 import type { ConnectorAuthMethodRuntimeConfig } from "../../connector-config";
-import { exchangeConnectorAuthCodeWithMethod } from "../connector-auth";
+import {
+  exchangeConnectorAuthCodeWithMethod,
+  refreshConnectorAuthProviderAccessTokenWithMethod,
+} from "../connector-auth";
 import { server } from "./test-server";
 
 const AUTH_CLIENT = {
@@ -88,6 +91,21 @@ async function exchangeWithAuthorizationUrl(
   });
 }
 
+async function refreshWithReportedScope(reportedScope?: string) {
+  vi.stubEnv("VM0_API_BACKEND_URL", "https://provider.example");
+  mockTestOAuthProvider(reportedScope);
+  return await refreshConnectorAuthProviderAccessTokenWithMethod(
+    {
+      connectorSlug: "test-oauth",
+      authMethodId: "oauth",
+      method: authMethod(["catalog-changed"]),
+      authClient: AUTH_CLIENT,
+      inputs: { refreshToken: "refresh-token" },
+    },
+    new AbortController().signal,
+  );
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
@@ -139,5 +157,25 @@ describe("effective OAuth scopes", () => {
     );
 
     expect(result.scopes).toEqual(["catalog-changed"]);
+  });
+});
+
+describe("reported OAuth refresh scopes", () => {
+  it("preserves a reported refresh grant", async () => {
+    const result = await refreshWithReportedScope("read provider-added");
+
+    expect(result.scopes).toEqual(["read", "provider-added"]);
+  });
+
+  it("preserves an explicitly reported empty refresh grant", async () => {
+    const result = await refreshWithReportedScope("");
+
+    expect(result.scopes).toEqual([]);
+  });
+
+  it("omits refresh scope metadata when the provider omits scope", async () => {
+    const result = await refreshWithReportedScope();
+
+    expect(result).not.toHaveProperty("scopes");
   });
 });

@@ -302,6 +302,9 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
           access_token: `access-token-${tokenRequests}`,
           expires_in: 1800,
           id_token: `id-token-${tokenRequests}`,
+          ...(tokenRequests === 1
+            ? { scope: "openid user user.birthday" }
+            : {}),
           token_type: "Bearer",
         });
       }),
@@ -353,6 +356,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
         }),
       },
       expiresIn: 1800,
+      scopes: ["openid", "user", "user.birthday"],
     });
     expect(catalogHeaders?.get("authorization")).toBe("Bearer id-token-1");
     expect(catalogHeaders?.get("x-moon-app-language")).toBe("fr");

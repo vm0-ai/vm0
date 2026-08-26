@@ -431,5 +431,6 @@ export async function refreshSlockToken(
     accessToken,
     refreshToken: data.refreshToken ?? null,
     expiresIn: accessTokenExpiresIn(accessToken),
+    scopes: null,
   };
 }

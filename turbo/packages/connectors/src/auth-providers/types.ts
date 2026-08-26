@@ -158,6 +158,7 @@ type ConnectorRefreshAuthClientArgs<
 export interface ConnectorAuthProviderRefreshResultBase {
   readonly outputs: Readonly<Record<string, string | undefined>>;
   readonly expiresIn?: number;
+  readonly scopes?: readonly string[];
 }
 
 export interface ConnectorAuthProviderRefreshResult<
