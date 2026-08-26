@@ -673,7 +673,7 @@ function ChatThreads({
 
   if (threadCount === 0) {
     return (
-      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+      <p className="px-2 py-2 text-xs text-muted-foreground leading-relaxed">
         {unreadOnly
           ? t(($) => {
               return $.chat.sidebar.noUnread;

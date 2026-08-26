@@ -3435,6 +3435,9 @@ describe("zero sidebar", () => {
     const chatTitle = within(list).getByText("Chats with Zero");
     expect(chatTitle).toHaveClass("text-muted-foreground");
     expect(
+      within(list).getByText("Start a conversation and it'll show up here"),
+    ).toHaveClass("text-muted-foreground");
+    expect(
       within(list).getByRole("region", { name: "Chat threads" }),
     ).toBeInTheDocument();
 
