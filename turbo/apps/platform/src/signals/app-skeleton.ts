@@ -229,3 +229,9 @@ export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
   set(captureFirstSkeletonHide$);
   set(captureBootstrapPhaseTiming$);
 });
+
+export const hideAppSkeletonOnContentReadyRef$ = onRef(
+  command(({ set }, _element: HTMLSpanElement, signal: AbortSignal) => {
+    set(hideAppSkeleton$, signal);
+  }),
+);

@@ -18,6 +18,7 @@ import { equalArrays } from "../../lib/equality.ts";
 import { useTranslation } from "react-i18next";
 import { formatChatTimestamp } from "../../i18n/format.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
 import {
   runUsagePopoverOpenRunId$,
   setRunUsagePopoverOpenRunId$,
@@ -2829,6 +2830,21 @@ function HeaderAutomationSidebar({
 // SessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
+function ChatThreadAppSkeletonHandoff({
+  thread,
+}: {
+  thread: ChatPanelSignals;
+}) {
+  const initialEventsReady = useGet(thread.initialEventsReady$);
+  const hideAppSkeletonOnContentReadyRef = useSet(
+    hideAppSkeletonOnContentReadyRef$,
+  );
+  if (!initialEventsReady) {
+    return null;
+  }
+  return <span ref={hideAppSkeletonOnContentReadyRef} hidden />;
+}
+
 function ChatThread({
   isMain,
   thread,
@@ -2852,6 +2868,7 @@ function ChatThread({
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
+      {isMain ? <ChatThreadAppSkeletonHandoff thread={thread} /> : null}
     </section>
   );
 }
