@@ -21,6 +21,7 @@ const storedOAuthStateSelection = Object.freeze({
   authorizeAgent: connectorOauthStates.authorizeAgent,
   redirectUri: connectorOauthStates.redirectUri,
   authorizationUrl: connectorOauthStates.authorizationUrl,
+  oauthRequestedScopes: connectorOauthStates.oauthRequestedScopes,
   codeVerifier: connectorOauthStates.codeVerifier,
   oauthContext: connectorOauthStates.oauthContext,
   accountMutation: storedConnectorAccountMutationSelection(

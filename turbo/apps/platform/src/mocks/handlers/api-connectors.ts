@@ -42,6 +42,7 @@ import {
 
 let mockConnectors: ConnectorResponse[] = [];
 const mockConnectorAccountDisplayNames = new Map<string, string | null>();
+const mockConnectorRequestedScopes = new Map<string, readonly string[]>();
 type MockOauthDeviceAuthSessionStartResponse = Omit<
   Partial<ConnectorOauthDeviceAuthSessionStartResponse>,
   "verificationUriComplete"
@@ -149,13 +150,26 @@ function defaultExternalCodeSessionStartResponse(
   };
 }
 
-export function setMockConnectors(connectors: ConnectorResponse[]): void {
+export function setMockConnectors(
+  connectors: ConnectorResponse[],
+  requestedScopesByConnectionId?: ReadonlyMap<string, readonly string[]>,
+): void {
   mockConnectors = connectors;
+  mockConnectorRequestedScopes.clear();
+  for (const connector of connectors) {
+    storeMockConnectorRequestedScopes(
+      connector,
+      requestedScopesByConnectionId?.get(connector.id) ??
+        connector.oauthScopes ??
+        [],
+    );
+  }
 }
 
 export function resetMockConnectors(): void {
   mockConnectors = [];
   mockConnectorAccountDisplayNames.clear();
+  mockConnectorRequestedScopes.clear();
   resetMockOauthDeviceAuth();
 }
 
@@ -208,12 +222,35 @@ function findMockAccount(
 }
 
 function upsertMockConnector(connector: ConnectorResponse): void {
+  for (const existing of mockConnectors) {
+    if (existing.slug === connector.slug) {
+      mockConnectorRequestedScopes.delete(existing.id);
+    }
+  }
   mockConnectors = [
     ...mockConnectors.filter((c) => {
       return c.slug !== connector.slug;
     }),
     connector,
   ];
+  storeMockConnectorRequestedScopes(connector);
+}
+
+function storeMockConnectorRequestedScopes(
+  connector: ConnectorResponse,
+  requestedScopes?: readonly string[],
+): void {
+  const definition = testConnectorCatalogDefinitions.find((candidate) => {
+    return candidate.connectorSlug === connector.slug;
+  });
+  const method = definition?.authMethods.find((candidate) => {
+    return candidate.detail.id === connector.authMethod;
+  });
+  if (method) {
+    mockConnectorRequestedScopes.set(connector.id, [
+      ...(requestedScopes ?? method.requestedScopes),
+    ]);
+  }
 }
 
 function resetMockOauthDeviceAuth(): void {
@@ -270,22 +307,22 @@ function mockConnectorAuthMethodSupportsRefresh(
   );
 }
 
-function mockConnectorHasRequiredScopes(
+function mockConnectorHasRequestedScopes(
   definition: TestConnectorCatalogDefinition,
   connector: ConnectorResponse,
 ): boolean {
   const method = definition.authMethods.find((candidate) => {
     return candidate.detail.id === connector.authMethod;
   });
-  if (!method || method.requiredScopes.length === 0) {
+  if (!method || method.requestedScopes.length === 0) {
     return true;
   }
-  const storedScopes = connector.oauthScopes;
+  const storedScopes = mockConnectorRequestedScopes.get(connector.id);
   if (!storedScopes) {
     return false;
   }
   const storedScopeSet = new Set(storedScopes);
-  return method.requiredScopes.every((scope) => {
+  return method.requestedScopes.every((scope) => {
     return storedScopeSet.has(scope);
   });
 }
@@ -297,7 +334,7 @@ function mockConnectorCatalogStatusItem(
 ): PublicConnectorCatalogStatusItem {
   const scopeMismatch =
     connector !== null &&
-    !mockConnectorHasRequiredScopes(definition, connector);
+    !mockConnectorHasRequestedScopes(definition, connector);
   let connectionStatus: PublicConnectorCatalogConnectionStatus =
     "not-connected";
   if (connector !== null) {
@@ -572,6 +609,7 @@ export const apiConnectorsHandlers = [
       return connector.id !== params.connectionId;
     });
     mockConnectorAccountDisplayNames.delete(params.connectionId);
+    mockConnectorRequestedScopes.delete(params.connectionId);
     return respond(200, {
       deletedConnectionId: params.connectionId,
       resolvedSelectionCount: 0,
@@ -602,6 +640,7 @@ export const apiConnectorsHandlers = [
       mockConnectors = mockConnectors.filter((c) => {
         return c.slug !== connectorSlug;
       });
+      mockConnectorRequestedScopes.delete(existing.id);
       return respond(204);
     },
   ),

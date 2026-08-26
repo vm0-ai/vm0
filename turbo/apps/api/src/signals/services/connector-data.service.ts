@@ -67,6 +67,7 @@ import {
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
 import { normalizeManualGrantSubmittedValuesWithMethod } from "./connector-catalog-form-fields.service";
+import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 import {
   isConnectorCatalogUnavailableError,
   searchConnectorCatalog,
@@ -223,6 +224,7 @@ interface ConnectorTokenOutputRequirements {
 interface ConnectorWithRuntimeMethod {
   readonly response: ConnectorResponse;
   readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly oauthRequestedScopes: readonly string[] | null;
 }
 
 type PendingConnectorTokenRevoke = {
@@ -292,7 +294,7 @@ function storedConnectorRowToResponse(
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
-    oauthScopes: parseOauthScopes(row.oauthScopes),
+    oauthScopes: parseOauthScopes(row.oauthGrantedScopes ?? row.oauthScopes),
     connectionStatus,
     reconnectReason: !storageCompatible
       ? null
@@ -331,6 +333,7 @@ function storedConnectorRowWithRuntimeMethod(args: {
   return {
     response: storedConnectorRowToResponse(args.row, runtimeMethod, args.now),
     runtimeMethod,
+    oauthRequestedScopes: parseOauthScopes(args.row.oauthScopes),
   };
 }
 
@@ -511,11 +514,16 @@ async function encryptManualGrantSecrets(
   return encryptedSecrets;
 }
 
-export function connectorList(args: {
+interface ConnectorListState {
+  readonly response: ConnectorListResponse;
+  readonly catalogConnections: readonly ConnectorCatalogConnection[];
+}
+
+function connectorListState(args: {
   readonly orgId: string;
   readonly userId: string;
-}): Computed<Promise<ConnectorListResponse>> {
-  return computed(async (get): Promise<ConnectorListResponse> => {
+}): Computed<Promise<ConnectorListState>> {
+  return computed(async (get): Promise<ConnectorListState> => {
     const db = get(db$);
     const storedRowsPromise = db
       .select({
@@ -530,6 +538,7 @@ export function connectorList(args: {
         externalUsername: connectors.externalUsername,
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
+        oauthGrantedScopes: connectors.oauthGrantedScopes,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
         storageVersion: connectors.storageVersion,
@@ -567,12 +576,40 @@ export function connectorList(args: {
       connectorProvidedBindingsForStoredConnectors(storedConnectors);
 
     return {
-      connectors: storedConnectors.map((connector) => {
-        return connector.response;
+      response: {
+        connectors: storedConnectors.map((connector) => {
+          return connector.response;
+        }),
+        connectorProvidedBindings,
+      },
+      catalogConnections: storedConnectors.map((connector) => {
+        return {
+          response: connector.response,
+          oauthRequestedScopes: connector.oauthRequestedScopes,
+        };
       }),
-      connectorProvidedBindings,
     };
   });
+}
+
+export function connectorList(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Computed<Promise<ConnectorListResponse>> {
+  return computed(async (get): Promise<ConnectorListResponse> => {
+    return (await get(connectorListState(args))).response;
+  });
+}
+
+export function connectorCatalogConnectionList(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Computed<Promise<readonly ConnectorCatalogConnection[]>> {
+  return computed(
+    async (get): Promise<readonly ConnectorCatalogConnection[]> => {
+      return (await get(connectorListState(args))).catalogConnections;
+    },
+  );
 }
 
 function connectorProvidedBindingsForStoredConnectors(
@@ -637,6 +674,7 @@ function storedConnectorBySlug(args: {
         externalUsername: connectors.externalUsername,
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
+        oauthGrantedScopes: connectors.oauthGrantedScopes,
         needsReconnect: connectors.needsReconnect,
         reconnectReason: connectors.reconnectReason,
         storageVersion: connectors.storageVersion,
@@ -1918,7 +1956,8 @@ async function commitConnectorTokenConnection(
     readonly connectorTokenState: PreparedConnectorTokenState;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly userInfo: ExternalUserInfo;
-    readonly oauthScopes: readonly string[];
+    readonly oauthRequestedScopes: readonly string[];
+    readonly oauthGrantedScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
     readonly account?: ConnectorAccountMutationIntent;
     readonly insertConnectionId?: string;
@@ -2006,7 +2045,8 @@ async function commitConnectorTokenConnection(
           externalId: args.userInfo.id,
           externalUsername: args.userInfo.username,
           externalEmail: args.userInfo.email,
-          oauthScopes: args.oauthScopes,
+          oauthRequestedScopes: args.oauthRequestedScopes,
+          oauthGrantedScopes: args.oauthGrantedScopes,
         },
       },
       resolution: resolution.mutation,
@@ -2046,7 +2086,8 @@ export const upsertConnectorTokenConnection$ = command(
       readonly snapshot: ConnectorRuntimeSnapshot;
       readonly outputs: ConnectorTokenOutputValues;
       readonly userInfo: ExternalUserInfo;
-      readonly oauthScopes: readonly string[];
+      readonly oauthRequestedScopes: readonly string[];
+      readonly oauthGrantedScopes: readonly string[];
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
       readonly account?: ConnectorAccountMutationIntent;
@@ -2112,7 +2153,8 @@ export const upsertConnectorTokenConnection$ = command(
           connectorTokenState,
           featureSwitchContext,
           userInfo: args.userInfo,
-          oauthScopes: args.oauthScopes,
+          oauthRequestedScopes: args.oauthRequestedScopes,
+          oauthGrantedScopes: args.oauthGrantedScopes,
           tokenExpiresAt,
           account: args.account,
           insertConnectionId: args.insertConnectionId,
@@ -2167,7 +2209,7 @@ export function connectorScopeDiff(args: {
       ? null
       : connectorAuthMethodScopeDiff(
           connector.runtimeMethod.method,
-          connector.response.oauthScopes,
+          connector.oauthRequestedScopes,
         );
   });
 }

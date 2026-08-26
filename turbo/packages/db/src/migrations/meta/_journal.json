@@ -1380,6 +1380,20 @@
       "when": 1787742799829,
       "tag": "1004_workflow_compatibility_views",
       "breakpoints": true
+    },
+    {
+      "idx": 1005,
+      "version": "7",
+      "when": 1787742799830,
+      "tag": "1005_gorgeous_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 1006,
+      "version": "7",
+      "when": 1787742799831,
+      "tag": "1006_bridge_builtin_oauth_granted_scopes",
+      "breakpoints": true
     }
   ]
 }

@@ -43,6 +43,7 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     accountMutation: jsonb("account_mutation")
       .$type<StoredConnectorAccountMutation>()
       .notNull(),
+    oauthRequestedScopes: text("oauth_requested_scopes"),
     userCode: varchar("user_code", { length: 255 }).notNull(),
     verificationUri: text("verification_uri").notNull(),
     verificationUriComplete: text("verification_uri_complete"),

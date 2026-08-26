@@ -90,6 +90,7 @@ import {
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
@@ -127,6 +128,7 @@ const context = testContext();
 const zeroMocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
+const githubApi = createGithubBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
@@ -562,7 +564,9 @@ function steamPrivateAuthMethod(args?: {
   };
 }
 
-function awsPrivateAuthMethod(): JsonRecord {
+function awsPrivateAuthMethod(
+  scopes: readonly string[] = ["openid"],
+): JsonRecord {
   const refreshTokenName = "CATALOG_AWS_LOGIN_REFRESH_TOKEN";
   const dpopKeyName = "CATALOG_AWS_LOGIN_DPOP_KEY";
   const accessKeyIdName = "CATALOG_AWS_ACCESS_KEY_ID";
@@ -590,7 +594,7 @@ function awsPrivateAuthMethod(): JsonRecord {
     },
     grant: {
       kind: "external-code",
-      scopes: ["openid"],
+      scopes: [...scopes],
       outputs: {
         refreshToken: `$secrets.${refreshTokenName}`,
         dpopKey: `$secrets.${dpopKeyName}`,
@@ -866,6 +870,41 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
       refreshableSecrets: [accessTokenName],
     },
     revoke: { kind: "none" },
+  };
+}
+
+function githubPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
+  const accessTokenName = "CATALOG_GITHUB_ACCESS_TOKEN";
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "GH_OAUTH_CLIENT_ID",
+      clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+    },
+    storage: {
+      version: 1,
+      secrets: [accessTokenName],
+      variables: [],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: [...scopes],
+      callbackOrigin: "web",
+      outputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
+    access: {
+      kind: "static",
+      envBindings: {
+        GH_TOKEN: `$secrets.${accessTokenName}`,
+        GITHUB_TOKEN: `$secrets.${accessTokenName}`,
+      },
+    },
+    revoke: {
+      kind: "token-revoke",
+      inputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
   };
 }
 
@@ -3868,8 +3907,27 @@ describe("connector catalog valid lifecycle", () => {
     onTestFinished(async () => {
       await cleanupConnector();
     });
-    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-code-scope-change",
+      connectorSlug: "aws",
+      label: "Catalog AWS",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "cli",
+          grantKind: "external-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          awsPrivateAuthMethod(["openid", "future_scope"]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release, changedScopes], changedScopes));
+    await syncCatalog();
+    const callsBeforeCompletion = context.mocks.s3.send.mock.calls.length;
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -3880,6 +3938,14 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "cli",
       externalId: "123456789012",
       oauthScopes: ["openid"],
+    });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "aws"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: ["openid", "future_scope"],
+      storedScopes: ["openid"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -3899,7 +3965,7 @@ describe("connector catalog valid lifecycle", () => {
         "CATALOG_AWS_SESSION_TOKEN",
       ]),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeCompletion);
   });
 
   it("rejects new auth-code actions for an authored-hidden external method", async () => {
@@ -4591,7 +4657,7 @@ describe("connector catalog valid lifecycle", () => {
     ]);
   });
 
-  it("derives connected scope and refresh status from the accepted release", async () => {
+  it("preserves the authorization-start scope snapshot across catalog updates", async () => {
     mockDatadogConnectorOAuth();
     configureSource();
     const matching = buildRelease({
@@ -4627,6 +4693,29 @@ describe("connector catalog valid lifecycle", () => {
     if (!state) {
       throw new Error("Expected Datadog authorization state");
     }
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-scope-change",
+      connectorSlug: "datadog",
+      label: "Datadog",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "oauth",
+          grantKind: "auth-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          datadogPrivateAuthMethod([
+            "dashboards_read",
+            "logs_read_index_data",
+            "future_scope",
+          ]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+    await syncCatalog();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
     });
@@ -4661,12 +4750,12 @@ describe("connector catalog valid lifecycle", () => {
       context,
       routes: connectorCatalogRoutes,
     })(connectorCatalogContract);
-    const connected = await accept(catalogClient.status({ headers }), [200]);
-    expect(connected.body.connectors[0]).toMatchObject({
+    const mismatched = await accept(catalogClient.status({ headers }), [200]);
+    expect(mismatched.body.connectors[0]).toMatchObject({
       slug: "datadog",
       connected: true,
-      connectionStatus: "connected",
-      scopeMismatch: false,
+      connectionStatus: "scope-mismatch",
+      scopeMismatch: true,
       authMethodSupportsRefresh: true,
       tokenExpiresAt: expect.any(String),
       singleAuthCodeAuthMethodId: "oauth",
@@ -4677,41 +4766,116 @@ describe("connector catalog valid lifecycle", () => {
         reconnectReason: null,
       },
     });
-    expect(connected.body.connectors[0]?.connection).not.toHaveProperty(
+    expect(mismatched.body.connectors[0]?.connection).not.toHaveProperty(
       "oauthScopes",
     );
+    await expect(
+      connectorsApi.readScopeDiff(actor, "datadog"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: [
+        "dashboards_read",
+        "logs_read_index_data",
+        "future_scope",
+      ],
+      storedScopes: ["dashboards_read", "logs_read_index_data"],
+    });
+  });
 
-    const changedScopes = buildRelease({
-      version: "2026-07-15.external-scope-change",
-      connectorSlug: "datadog",
-      label: "Datadog",
+  it("preserves the GitHub app setup scope snapshot across catalog updates", async () => {
+    configureSource();
+    const requestedScopes = ["repo", "project", "workflow"];
+    const matching = buildRelease({
+      version: "2026-07-15.github-app-setup-start",
+      connectorSlug: "github",
+      label: "GitHub",
       mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "oauth",
-          grantKind: "auth-code",
-        });
-        setArtifactAuthMethods(artifact, [method]);
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
       },
       mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
-          datadogPrivateAuthMethod([
-            "dashboards_read",
-            "logs_read_index_data",
-            "future_scope",
-          ]),
+          githubPrivateAuthMethod(requestedScopes),
         ]);
       },
     });
-    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+    const changedScopes = buildRelease({
+      version: "2026-07-15.github-app-setup-scope-change",
+      connectorSlug: "github",
+      label: "GitHub",
+      mutateCatalog: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          githubPrivateAuthMethod([...requestedScopes, "future_scope"]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([matching], matching));
     await syncCatalog();
-    const mismatched = await accept(catalogClient.status({ headers }), [200]);
-    expect(mismatched.body.connectors[0]).toMatchObject({
-      slug: "datadog",
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "GitHub setup scope snapshot",
+    });
+    const installed = await githubApi.installGithubApp(actor, agent.agentId, {
+      oauthCode: {
+        code: `github-scope-snapshot-${randomUUID()}`,
+        githubUserId: newGithubUserId(),
+      },
+      beforeCallback: async () => {
+        serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+        await syncCatalog();
+      },
+    });
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const catalogClient = setupApp({
+      context,
+      routes: connectorCatalogRoutes,
+    })(connectorCatalogContract);
+    const status = await accept(
+      catalogClient.status({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.connectors[0]).toMatchObject({
+      slug: "github",
       connected: true,
       connectionStatus: "scope-mismatch",
       scopeMismatch: true,
-      authMethodSupportsRefresh: true,
     });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "github"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: [...requestedScopes, "future_scope"],
+      storedScopes: requestedScopes,
+    });
+
+    const parsedState: unknown = JSON.parse(installed.state);
+    if (!isJsonRecord(parsedState)) {
+      throw new Error("Expected GitHub app setup state to be an object");
+    }
+    const tampered = await githubApi.requestSetupCallback(
+      new URLSearchParams({
+        installation_id: installed.remoteInstallationId,
+        setup_action: "install",
+        state: JSON.stringify({
+          ...parsedState,
+          oauthRequestedScopes: [...requestedScopes, "tampered_scope"],
+        }),
+      }).toString(),
+    );
+    expect(tampered.location).toContain("Invalid%20state%20signature");
   });
 
   it("fails closed without accepted catalog state", async () => {

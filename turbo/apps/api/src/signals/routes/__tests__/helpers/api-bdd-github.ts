@@ -435,6 +435,7 @@ export function createGithubBddApi(context: TestContext) {
           readonly githubUserId: string;
           readonly login?: string;
         };
+        readonly beforeCallback?: () => Promise<void>;
         readonly targetType?: string;
         readonly targetLogin?: string;
       } = {},
@@ -489,6 +490,7 @@ export function createGithubBddApi(context: TestContext) {
           login: options.oauthCode.login,
         });
       }
+      await options.beforeCallback?.();
 
       const callbackQuery = new URLSearchParams({
         installation_id: remoteInstallationId,

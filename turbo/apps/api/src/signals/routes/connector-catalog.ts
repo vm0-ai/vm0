@@ -19,7 +19,7 @@ import {
   listPublicConnectorCatalog,
   listPublicConnectorCatalogStatus,
 } from "../services/connector-catalog-reader.service";
-import { connectorList } from "../services/connector-data.service";
+import { connectorCatalogConnectionList } from "../services/connector-data.service";
 import { notFound, providerUnavailable } from "../../lib/error";
 import { settle } from "../utils";
 
@@ -117,7 +117,7 @@ const listConnectorCatalogStatusInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -133,7 +133,7 @@ const listConnectorCatalogStatusInner$ = command(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         publicBrand: context.publicBrand,
       }),
       signal,
@@ -158,7 +158,7 @@ const discoverConnectorCatalogInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -174,7 +174,7 @@ const discoverConnectorCatalogInner$ = command(
       discoverPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         keyword: query.keyword,
         publicBrand: context.publicBrand,
       }),
@@ -209,7 +209,7 @@ const getConnectorCatalogInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -227,7 +227,7 @@ const getConnectorCatalogInner$ = command(
         db: context.db,
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         publicBrand: context.publicBrand,
       }),
       signal,

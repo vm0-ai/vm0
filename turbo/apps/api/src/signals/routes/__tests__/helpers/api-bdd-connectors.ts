@@ -375,7 +375,7 @@ interface TestOAuthAuthCodeProviderOptions {
   readonly refreshToken?: string | null;
   readonly expiresIn?: number;
   readonly omitExpiresIn?: boolean;
-  readonly scope?: string;
+  readonly scope?: string | null;
   readonly tokenError?: boolean;
   readonly userinfoError?: boolean;
   readonly userId?: string;
@@ -391,7 +391,7 @@ interface TestOAuthAuthCodeProviderRecorder {
  * Provider boundary for the test-oauth auth-code connector. The connector's
  * exchange/userinfo URLs resolve from process.env to http://localhost:3000,
  * matching the device-auth fixtures above. refreshToken null/omitted leaves
- * refresh_token out of the token response.
+ * refresh_token out of the token response, and scope null leaves scope out.
  */
 export function mockTestOAuthAuthCodeProvider(
   options: TestOAuthAuthCodeProviderOptions = {},
@@ -418,7 +418,7 @@ export function mockTestOAuthAuthCodeProvider(
           ? {}
           : { expires_in: options.expiresIn ?? 3600 }),
         token_type: "Bearer",
-        scope: options.scope ?? "read",
+        ...(options.scope === null ? {} : { scope: options.scope ?? "read" }),
       });
     }),
     http.get(TEST_OAUTH_USERINFO_URL, () => {

@@ -24,6 +24,7 @@ import {
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
 } from "../services/connector-action-resolver.service";
+import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
 import {
   buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
@@ -102,6 +103,27 @@ async function resolveGithubOauthMethodForNewAction(
   return resolved.ok ? resolved : null;
 }
 
+async function githubAppInstallRequestedScopes(
+  resolver: Promise<ConnectorActionResolver>,
+  signal: AbortSignal,
+): Promise<readonly string[] | undefined> {
+  const result = await settle(
+    (async () => {
+      return await resolveGithubOauthMethodForNewAction(await resolver);
+    })(),
+    signal,
+  );
+  if (!result.ok) {
+    if (isConnectorCatalogUnavailableError(result.error)) {
+      return undefined;
+    }
+    throw result.error;
+  }
+  return result.value
+    ? connectorGrantScopes(result.value.method.grant)
+    : undefined;
+}
+
 const writeGithubConnectorConnection$ = command(
   async (
     { set },
@@ -115,7 +137,8 @@ const writeGithubConnectorConnection$ = command(
         readonly username: string | null;
         readonly email: string | null;
       };
-      readonly oauthScopes: readonly string[];
+      readonly oauthRequestedScopes: readonly string[];
+      readonly oauthGrantedScopes: readonly string[];
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
@@ -129,7 +152,8 @@ const writeGithubConnectorConnection$ = command(
         snapshot: args.method.snapshot,
         outputs: args.outputs,
         userInfo: args.userInfo,
-        oauthScopes: args.oauthScopes,
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        oauthGrantedScopes: args.oauthGrantedScopes,
         extraConnectorSecrets: args.extraConnectorSecrets,
       },
       signal,
@@ -435,7 +459,13 @@ const connectGithubUserAfterSetup$ = command(
           args.state.publicBrand,
         );
       }
-      const authCodeGrant = resolvedMethod.method.grant;
+      const oauthRequestedScopes =
+        args.state.oauthRequestedScopes ??
+        connectorGrantScopes(resolvedMethod.method.grant);
+      const authCodeGrant = {
+        ...resolvedMethod.method.grant,
+        scopes: [...oauthRequestedScopes],
+      };
       const tokenResult = await settle(
         (async () => {
           const { accessToken, scopes } = await exchangeGitHubCode(
@@ -478,10 +508,8 @@ const connectGithubUserAfterSetup$ = command(
           method: resolvedMethod,
           outputs: { accessToken },
           userInfo,
-          oauthScopes:
-            scopes.length > 0
-              ? scopes
-              : connectorGrantScopes(resolvedMethod.method.grant),
+          oauthRequestedScopes,
+          oauthGrantedScopes: scopes,
         },
         signal,
       );
@@ -707,6 +735,14 @@ const installGithubOauth$ = command(
       }
     }
 
+    const oauthRequestedScopes =
+      userId && githubAppUserOauthCredentials()
+        ? await githubAppInstallRequestedScopes(
+            get(connectorActionResolver()),
+            signal,
+          )
+        : undefined;
+    signal.throwIfAborted();
     const installUrl = await buildGithubAppInstallUrl({
       appSlug,
       userId,
@@ -714,6 +750,7 @@ const installGithubOauth$ = command(
       composeId: query.composeId,
       origin,
       publicBrand,
+      oauthRequestedScopes,
       secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
     });
     signal.throwIfAborted();
