@@ -11274,6 +11274,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
               : "custom-oauth-force-rotated-refresh-token",
           token_type: "Bearer",
           expires_in: 3600,
+          ...(attempt === 1 ? { scope: "read refreshed" } : {}),
         });
       },
     });
@@ -11281,6 +11282,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
@@ -11468,6 +11472,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       connected: true,
       missingRequiredFields: [],
     });
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toMatchObject([{ oauthScopes: ["read", "refreshed"] }]);
 
     const currentResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11539,6 +11546,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
       expectedBasicAuthorization,
     ]);
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toMatchObject([{ oauthScopes: ["read", "refreshed"] }]);
 
     const failedRefresh = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
