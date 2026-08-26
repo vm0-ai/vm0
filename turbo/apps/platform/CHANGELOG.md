@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.800.2](https://github.com/vm0-ai/vm0/compare/app-v0.800.1...app-v0.800.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **auth:** restore identity edit button sizing ([#29552](https://github.com/vm0-ai/vm0/issues/29552)) ([40fc587](https://github.com/vm0-ai/vm0/commit/40fc5872d9404be553625f3a4077de93d9a0f645))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.372.0
+    * @okouai/core bumped to 8.595.2
+
+## [0.800.1](https://github.com/vm0-ai/vm0/compare/app-v0.800.0...app-v0.800.1) (2026-08-26)
+
+
+### Refactoring
+
+* remove home growth entry feature switch ([#29579](https://github.com/vm0-ai/vm0/issues/29579)) ([a6e7c72](https://github.com/vm0-ai/vm0/commit/a6e7c72715914cfe0bb4a4e780eac3c0c0285d47))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.595.1
+
+## [0.800.0](https://github.com/vm0-ai/vm0/compare/app-v0.799.4...app-v0.800.0) (2026-08-26)
+
+
+### Features
+
+* add gradient color themes ([#29449](https://github.com/vm0-ai/vm0/issues/29449)) ([5ce77fb](https://github.com/vm0-ai/vm0/commit/5ce77fbbd64f2bf6ebf991587aab295f2a67155e))
+
+
+### Bug Fixes
+
+* **auth:** remove heading focus ring ([#29550](https://github.com/vm0-ai/vm0/issues/29550)) ([bff5e44](https://github.com/vm0-ai/vm0/commit/bff5e444a121069a37a31d5195c7bf7dcf3bfd0a))
+* **billing:** read concurrency price from stripe ([#29359](https://github.com/vm0-ai/vm0/issues/29359)) ([aac0e75](https://github.com/vm0-ai/vm0/commit/aac0e7537423f201225b8960839e6e0e8b33d4d6))
+* **platform:** add missing icon tooltips ([#29556](https://github.com/vm0-ai/vm0/issues/29556)) ([bddc882](https://github.com/vm0-ai/vm0/commit/bddc8827d4ef8a0feaa12cc73cc105eabf6b1f7f))
+* **platform:** stabilize connector row alignment ([#29584](https://github.com/vm0-ai/vm0/issues/29584)) ([309a88b](https://github.com/vm0-ai/vm0/commit/309a88bbbd610b051355a58dc22b20484bae5db0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+    * @okouai/ui bumped to 1.0.1
+
 ## [0.799.4](https://github.com/vm0-ai/vm0/compare/app-v0.799.3...app-v0.799.4) (2026-08-26)
 
 

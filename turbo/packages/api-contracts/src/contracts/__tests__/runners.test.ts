@@ -15,6 +15,8 @@ import {
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
   jobSchema,
+  piApiFirstTurnConfigSchema,
+  piApiFirstTurnManifestSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -32,6 +34,7 @@ import {
   storedResumeSessionSchema,
 } from "../runners";
 import { runRunnerContract } from "../run-routes";
+import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
@@ -237,6 +240,7 @@ describe("runner claim response contract", () => {
 });
 
 describe("Pi sandbox execution contract", () => {
+  const piSessionId = "22222222-2222-4222-8222-222222222222";
   const storedContext = {
     storageMounts: [],
     connectorRuntimeTargets: [],
@@ -247,7 +251,7 @@ describe("Pi sandbox execution contract", () => {
     cliAgentType: "pi",
   };
   const piStoredContext = {
-    piSessionId: "22222222-2222-4222-8222-222222222222",
+    piSessionId,
     piLaunchConfig: {
       schemaVersion: 2 as const,
       apiFirstTurn: {
@@ -257,7 +261,7 @@ describe("Pi sandbox execution contract", () => {
         sessionUrl: "https://storage.example/session.jsonl",
         deadlineAt: 2_000_000_000_000,
         baseSession: {
-          sessionId: "22222222-2222-4222-8222-222222222222",
+          sessionId: piSessionId,
           sha256: null,
         },
         sandboxEventSequenceStart: 1 as const,
@@ -287,6 +291,83 @@ describe("Pi sandbox execution contract", () => {
       reason: "noReuseKey" as const,
     },
   };
+
+  const handoffSession = {
+    sessionId: piSessionId,
+    sha256: "b".repeat(64),
+    rawSize: 1024,
+  };
+
+  it("accepts manifest v1 as the implicit start-at-1 contract", () => {
+    const manifest = piApiFirstTurnManifestSchema.parse({
+      schemaVersion: 1,
+      outcome: "handoff",
+      baseSession: { sessionId: piSessionId, sha256: null },
+      session: handoffSession,
+    });
+
+    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest).not.toHaveProperty("sandboxEventSequenceStart");
+    expect(
+      piApiFirstTurnManifestSchema.safeParse({
+        ...manifest,
+        sandboxEventSequenceStart: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a future manifest and launch config with the same dynamic boundary", () => {
+    const sandboxEventSequenceStart = 4;
+    const manifest = piApiFirstTurnManifestSchema.parse({
+      schemaVersion: 2,
+      outcome: "handoff",
+      baseSession: { sessionId: piSessionId, sha256: null },
+      session: handoffSession,
+      sandboxEventSequenceStart,
+    });
+    const config = piApiFirstTurnConfigSchema.parse({
+      ...piStoredContext.piLaunchConfig.apiFirstTurn,
+      sandboxEventSequenceStart,
+    });
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 2,
+      sandboxEventSequenceStart,
+    });
+    expect(config.sandboxEventSequenceStart).toBe(sandboxEventSequenceStart);
+  });
+
+  it.each([0, -1, 1.5, MAX_EVENT_SEQUENCE_NUMBER + 1])(
+    "rejects invalid dynamic boundary %s in both manifest and launch config",
+    (sandboxEventSequenceStart) => {
+      expect(
+        piApiFirstTurnManifestSchema.safeParse({
+          schemaVersion: 2,
+          outcome: "handoff",
+          baseSession: { sessionId: piSessionId, sha256: null },
+          session: handoffSession,
+          sandboxEventSequenceStart,
+        }).success,
+      ).toBe(false);
+      expect(
+        piApiFirstTurnConfigSchema.safeParse({
+          ...piStoredContext.piLaunchConfig.apiFirstTurn,
+          sandboxEventSequenceStart,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("rejects a future manifest without its dynamic boundary", () => {
+    expect(
+      piApiFirstTurnManifestSchema.safeParse({
+        schemaVersion: 2,
+        outcome: "handoff",
+        baseSession: { sessionId: piSessionId, sha256: null },
+        session: handoffSession,
+      }).success,
+    ).toBe(false);
+  });
 
   it("preserves the Chat Thread session across stored and Runner-facing contexts", () => {
     const stored = storedExecutionContextSchema.parse({

@@ -96,6 +96,7 @@ import {
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { i18n } from "../../../../i18n/index.ts";
+import { IconTooltipButton } from "../../../components/icon-tooltip.tsx";
 
 interface ConnectorPermission {
   name: string;
@@ -1515,7 +1516,7 @@ function LoadedPermissionsDrawerContent({
               className="pl-9 pr-9"
             />
             {search && (
-              <button
+              <IconTooltipButton
                 type="button"
                 onClick={() => {
                   handleSearchChange("");
@@ -1526,7 +1527,7 @@ function LoadedPermissionsDrawerContent({
                 })}
               >
                 <X size={13} />
-              </button>
+              </IconTooltipButton>
             )}
           </div>
           {!groups && !searchActive && (

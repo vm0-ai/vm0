@@ -21,6 +21,7 @@ async fn missing_pi_tool_result_error_status_terminates_projection()
         &npx,
         r#"#!/bin/sh
 set -eu
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":1}'
 IFS= read -r state_command
 case "$state_command" in
   *'"type":"get_state"'*) ;;

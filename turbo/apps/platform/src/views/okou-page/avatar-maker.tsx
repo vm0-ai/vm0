@@ -42,6 +42,7 @@ import {
   avatarMakerSaving$,
   setAvatarMakerSaving$,
 } from "../../signals/okou-page/settings/avatar-maker.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function getSparkleColors() {
   return ["#ed4e01", "#E0B376", "#E26C9E", "#45A7A8", "#E0BB3C", "#FF990A"];
@@ -313,7 +314,7 @@ function StepNavigator() {
       </div>
 
       <div className="flex items-center gap-2">
-        <button
+        <IconTooltipButton
           type="button"
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
@@ -325,7 +326,7 @@ function StepNavigator() {
           })}
         >
           <ChevronLeft size={14} />
-        </button>
+        </IconTooltipButton>
         <p
           className="min-w-[3rem] text-center text-xs font-semibold text-foreground"
           key={step}
@@ -333,7 +334,7 @@ function StepNavigator() {
         >
           {stepLabels[step]}
         </p>
-        <button
+        <IconTooltipButton
           type="button"
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
@@ -345,7 +346,7 @@ function StepNavigator() {
           })}
         >
           <ChevronRight size={14} />
-        </button>
+        </IconTooltipButton>
       </div>
     </>
   );

@@ -1603,6 +1603,7 @@ function TelegramMoreActions({
     <Popover>
       <PopoverTrigger asChild>
         <Button
+          showTooltip
           type="button"
           disabled={disabled}
           variant="quiet"

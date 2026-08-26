@@ -29,6 +29,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+  RUNNER_HOSTNAME_MAX_LENGTH,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -350,6 +351,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum API admission hold after public user cancellation when recovery completion is lost.",
       "The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_HOSTNAME_MAX_LENGTH",
+    value: rustU64(RUNNER_HOSTNAME_MAX_LENGTH),
+    rustDoc: [
+      "Maximum configured runner hostname length accepted by the runner-facing API.",
+      "Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.",
     ],
   },
   {

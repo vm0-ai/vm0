@@ -13,6 +13,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Button,
   Skeleton,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
@@ -581,10 +582,10 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.pinAgent;
             })}
-            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
+            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} />
+              <Plus size={18} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -623,19 +624,22 @@ export function PinnedAgentListSection({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   openAgentListDialog();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="relative z-10 shrink-0"
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}
               >
-                <Plus className="opacity-50" size={15} />
-              </button>
+                <Plus size={18} />
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
               <p className="text-xs">

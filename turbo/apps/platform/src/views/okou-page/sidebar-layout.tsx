@@ -107,6 +107,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
 
   return (
     <Button
+      showTooltip
       type="button"
       onClick={() => {
         reloadArtifacts();
@@ -172,6 +173,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   }
   return (
     <Button
+      showTooltip
       type="button"
       onClick={() => {
         detach(
@@ -271,6 +273,7 @@ function MobileTopBar() {
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <MobileSharingOverlayLeaf />
       <Button
+        showTooltip
         type="button"
         onClick={() => {
           setExpanded(true);

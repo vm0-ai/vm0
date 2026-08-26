@@ -69,10 +69,6 @@ import { openArtifact$ } from "../../signals/artifacts-page/artifact-catalog-sig
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
-const chatHeaderIconStyle = {
-  color: "var(--color-muted-foreground)",
-  opacity: 0.7,
-} as const;
 
 type ManageNavId = "agents" | "artifacts" | "connectors" | "workflows";
 
@@ -710,10 +706,10 @@ function ThreeColumnChatListToggle({
           aria-keyshortcuts="Meta+B Control+B"
           variant="quiet"
           size="icon-sm"
+          iconSize="md"
         >
           <PanelLeftClose
-            style={chatHeaderIconStyle}
-            size={17}
+            size={18}
             className={cn(
               "transition-transform duration-200",
               hidden && "rotate-180",
@@ -887,8 +883,9 @@ function ChatListColumn() {
                 aria-keyshortcuts="Meta+K Control+K"
                 variant="quiet"
                 size="icon-sm"
+                iconSize="md"
               >
-                <Search style={chatHeaderIconStyle} size={17} />
+                <Search size={18} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -907,8 +904,9 @@ function ChatListColumn() {
                 aria-label={newChatLabel}
                 variant="quiet"
                 size="icon-sm"
+                iconSize="md"
               >
-                <Edit style={chatHeaderIconStyle} size={17} />
+                <Edit size={18} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

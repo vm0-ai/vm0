@@ -545,6 +545,7 @@ const dispatchTerminalCompleteSideEffects$ = command(
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             apiStartTime: input.apiStartTime,
+            goalSchedulerOrigin: "terminal_callback_fallback",
           },
           signal,
         ),

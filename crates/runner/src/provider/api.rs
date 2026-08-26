@@ -61,6 +61,8 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
     runner_identity: &'a RunnerProcessIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_hostname: Option<&'a str>,
     telemetry: ClaimRequestTelemetry,
 }
 
@@ -241,6 +243,7 @@ enum DiscoveryWakeup {
 pub struct ApiProvider {
     api: ApiClient,
     runner_identity: RunnerProcessIdentity,
+    runner_hostname: Option<String>,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -268,6 +271,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 
 pub struct ApiProviderConfig {
     pub(crate) runner_identity: RunnerProcessIdentity,
+    pub(crate) runner_hostname: Option<String>,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -284,6 +288,7 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_identity,
+            runner_hostname,
             group,
             supported_profiles,
         } = config;
@@ -304,6 +309,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             runner_identity,
+            runner_hostname,
             group,
             supported_profiles,
             poll_wakeups,
@@ -640,7 +646,14 @@ impl JobProvider for ApiProvider {
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         let claim_request_started_at = Instant::now();
-        let claim_result = self.api.claim(&candidate, &self.runner_identity).await;
+        let claim_result = self
+            .api
+            .claim(
+                &candidate,
+                &self.runner_identity,
+                self.runner_hostname.as_deref(),
+            )
+            .await;
         let claim_request_elapsed = claim_request_started_at.elapsed();
         match claim_result {
             Ok(Some(SuccessfulClaimResponse {
@@ -1054,9 +1067,10 @@ impl ApiClient {
         &self,
         candidate: &JobCandidate,
         runner_identity: &RunnerProcessIdentity,
+        runner_hostname: Option<&str>,
     ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate, runner_identity);
+        let body = claim_request_body(candidate, runner_identity, runner_hostname);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1103,7 +1117,7 @@ impl ApiClient {
         let runner_identity =
             RunnerProcessIdentity::new("550e8400-e29b-41d4-a716-446655440000".parse().unwrap(), 7)
                 .unwrap();
-        self.claim(candidate, &runner_identity).await
+        self.claim(candidate, &runner_identity, None).await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
     async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
@@ -1259,6 +1273,7 @@ impl ApiClient {
 fn claim_request_body<'a>(
     candidate: &JobCandidate,
     runner_identity: &'a RunnerProcessIdentity,
+    runner_hostname: Option<&'a str>,
 ) -> ClaimRequestBody<'a> {
     let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
@@ -1288,6 +1303,7 @@ fn claim_request_body<'a>(
 
     ClaimRequestBody {
         runner_identity,
+        runner_hostname,
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1606,7 +1622,7 @@ mod tests {
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> serde_json::Value {
         let runner_identity = test_runner_identity();
-        serde_json::to_value(claim_request_body(candidate, &runner_identity)).unwrap()
+        serde_json::to_value(claim_request_body(candidate, &runner_identity, None)).unwrap()
     }
 
     #[test]
@@ -1928,6 +1944,7 @@ mod tests {
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_identity: test_runner_identity(),
+            runner_hostname: None,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -2191,6 +2208,7 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        assert!(body.get("runnerHostname").is_none());
         assert!(body["telemetry"].get("runnerPreference").is_none());
         assert!(
             body["telemetry"]
@@ -2203,6 +2221,15 @@ mod tests {
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
+
+        let runner_identity = test_runner_identity();
+        let attributed = serde_json::to_value(claim_request_body(
+            &candidate,
+            &runner_identity,
+            Some("prod-1.aws.vm3.ai"),
+        ))
+        .unwrap();
+        assert_eq!(attributed["runnerHostname"], "prod-1.aws.vm3.ai");
     }
 
     #[test]
@@ -4182,7 +4209,8 @@ mod tests {
                             "runnerIdentity": {
                                 "runnerId": TEST_RUNNER_ID,
                                 "heartbeatGeneration": TEST_HEARTBEAT_GENERATION,
-                            }
+                            },
+                            "runnerHostname": "prod-1.aws.vm3.ai",
                         })
                         .to_string(),
                     );
@@ -4195,11 +4223,14 @@ mod tests {
                 }));
             })
             .await;
-        let provider = api_provider_for_test(
+        let mut provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
         );
+        Arc::get_mut(&mut provider)
+            .expect("fresh test provider should not be shared")
+            .runner_hostname = Some("prod-1.aws.vm3.ai".to_string());
 
         let claimed = provider
             .claim(JobCandidate::new(

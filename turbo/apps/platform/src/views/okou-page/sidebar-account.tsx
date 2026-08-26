@@ -224,9 +224,11 @@ function renderAccountTrigger(
   if (collapsed) {
     return (
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon"
+        aria-label={display.name}
         className="shrink-0 p-0"
       >
         <UserAvatar

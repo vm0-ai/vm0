@@ -13,6 +13,7 @@ import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "./connector-catalog";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
+import { eventSequenceNumberSchema } from "./runs";
 
 const c = initContract();
 
@@ -780,26 +781,46 @@ export const piResourceSnapshotSchema = z
   .strict()
   .readonly();
 
-export const piApiFirstTurnManifestSchema = z
+const piApiFirstTurnSessionSchema = z
+  .object({
+    sessionId: z.uuid(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    rawSize: z
+      .number()
+      .int()
+      .positive()
+      .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+  })
+  .strict()
+  .readonly();
+
+const piSandboxEventSequenceStartSchema = eventSequenceNumberSchema.min(1);
+
+export const piApiFirstTurnManifestV1Schema = z
   .object({
     schemaVersion: z.literal(1),
     outcome: z.literal("handoff"),
     baseSession: piSessionCheckpointSchema,
-    session: z
-      .object({
-        sessionId: z.uuid(),
-        sha256: z.string().regex(/^[a-f0-9]{64}$/),
-        rawSize: z
-          .number()
-          .int()
-          .positive()
-          .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
-      })
-      .strict()
-      .readonly(),
+    session: piApiFirstTurnSessionSchema,
   })
   .strict()
   .readonly();
+
+export const piApiFirstTurnManifestV2Schema = z
+  .object({
+    schemaVersion: z.literal(2),
+    outcome: z.literal("handoff"),
+    baseSession: piSessionCheckpointSchema,
+    session: piApiFirstTurnSessionSchema,
+    sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnManifestSchema = z.discriminatedUnion(
+  "schemaVersion",
+  [piApiFirstTurnManifestV1Schema, piApiFirstTurnManifestV2Schema],
+);
 
 export const piApiFirstTurnConfigSchema = z
   .object({
@@ -809,7 +830,7 @@ export const piApiFirstTurnConfigSchema = z
     sessionUrl: z.url(),
     deadlineAt: z.number().int().positive(),
     baseSession: piSessionCheckpointSchema,
-    sandboxEventSequenceStart: z.literal(1),
+    sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
   })
   .strict()
   .readonly();
