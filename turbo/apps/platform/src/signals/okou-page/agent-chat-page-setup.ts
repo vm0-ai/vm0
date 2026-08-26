@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { AgentChatPage } from "../../views/okou-page/agent-chat-page.tsx";
+import { AgentChatValidationPage } from "../../views/okou-page/agent-chat-validation-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
@@ -36,33 +37,21 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(AgentChatPage), "sidebar");
+    const agentId = get(currentAgentId$);
+
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
+    set(updatePage$, createElement(AgentChatValidationPage));
     set(
       updateDocumentTitle$,
       i18n.t(($) => {
         return $.chat.documentTitle;
       }),
     );
-    set(reloadTagline$);
-
-    set(resetChatPageModelSelection$);
-
-    // Read agent ID from URL immediately (synchronous) and update sidebar
-    // highlight early so the UI responds without waiting for async data.
-    const agentId = get(currentAgentId$);
-    let agentDraft: EnsuredAgentDraft | undefined;
-    if (agentId) {
-      set(setChatAgentId$, agentId);
-      agentDraft = set(ensureAgentDraft$, agentId);
-      set(setAgentComposerContext$, { agentId, agentDraft });
-      set(setTalkDraft$, agentDraft.draft);
-    }
 
     await set(hideAppSkeleton$, signal);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
 
     if (!agentId) {
       throw new Error("Chat page requires an active agent, but none found");
@@ -87,6 +76,14 @@ export const setupAgentChatPage$ = command(
       });
       return;
     }
+
+    set(setChatAgentId$, agentId);
+    const agentDraft: EnsuredAgentDraft = set(ensureAgentDraft$, agentId);
+    set(setAgentComposerContext$, { agentId, agentDraft });
+    set(setTalkDraft$, agentDraft.draft);
+    set(reloadTagline$);
+    set(resetChatPageModelSelection$);
+    set(updatePage$, createElement(AgentChatPage), "sidebar");
 
     set(rememberLastUsedAgentId$, agentId);
     set(

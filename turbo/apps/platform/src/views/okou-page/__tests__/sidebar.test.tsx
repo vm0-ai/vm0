@@ -2028,10 +2028,10 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    const sidebar = await waitFor(() => {
+    const initialSidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
     });
-    click(within(sidebar).getByLabelText("Open a conversation"));
+    click(within(initialSidebar).getByLabelText("Open a conversation"));
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
@@ -2076,7 +2076,9 @@ describe("zero sidebar", () => {
           "Open agent menu",
         ),
       ).toBeInTheDocument();
-      expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
+      expect(
+        within(initialSidebar).getByText("Research Agent"),
+      ).toBeInTheDocument();
     });
 
     openAgentRowMenu(dialog, "Research Agent");
@@ -2084,7 +2086,7 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        within(sidebar).queryByText("Research Agent"),
+        within(initialSidebar).queryByText("Research Agent"),
       ).not.toBeInTheDocument();
     });
 
@@ -2097,7 +2099,9 @@ describe("zero sidebar", () => {
           "Open agent menu",
         ),
       ).toBeInTheDocument();
-      expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
+      expect(
+        within(initialSidebar).getByText("Research Agent"),
+      ).toBeInTheDocument();
     });
 
     click(within(dialog).getByRole("option", { name: /Research Agent/ }));
@@ -2107,10 +2111,12 @@ describe("zero sidebar", () => {
         screen.queryByRole("dialog", { name: "Talk to" }),
       ).not.toBeInTheDocument();
       expect(
-        within(sidebar).getByText("Chats with Research Agent"),
+        within(sidebar()).getByText("Chats with Research Agent"),
       ).toBeInTheDocument();
-      expect(within(sidebar).getByText("Research kickoff")).toBeInTheDocument();
-      expect(within(sidebar).queryByText("New chat")).not.toBeInTheDocument();
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).queryByText("New chat")).not.toBeInTheDocument();
     });
 
     expect(createRequests).toBe(0);
