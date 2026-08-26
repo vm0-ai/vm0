@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.799.0](https://github.com/vm0-ai/vm0/compare/app-v0.798.0...app-v0.799.0) (2026-08-26)
+
+
+### Features
+
+* **onboarding:** open product templates directly ([#29431](https://github.com/vm0-ai/vm0/issues/29431)) ([ba25155](https://github.com/vm0-ai/vm0/commit/ba25155074c853890ef2f9a822bfaef9eb2df81c))
+
+
+### Bug Fixes
+
+* improve three-column sidebar usability ([#29448](https://github.com/vm0-ai/vm0/issues/29448)) ([8194a3b](https://github.com/vm0-ai/vm0/commit/8194a3b6e94588c1dae2f2f21889fd6b31819273))
+* **platform:** isolate connector popover row actions ([#29460](https://github.com/vm0-ai/vm0/issues/29460)) ([84264e3](https://github.com/vm0-ai/vm0/commit/84264e3e708f6187692577ed7825694850dc57c6))
+* **platform:** preview effective connector account names ([#29477](https://github.com/vm0-ai/vm0/issues/29477)) ([4b0c630](https://github.com/vm0-ai/vm0/commit/4b0c63079a943e675a4517235f533a64ce9470d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.1
+    * @okouai/core bumped to 8.594.1
+
 ## [0.798.0](https://github.com/vm0-ai/vm0/compare/app-v0.797.0...app-v0.798.0) (2026-08-26)
 
 

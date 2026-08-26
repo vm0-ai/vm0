@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.494.1](https://github.com/vm0-ai/vm0/compare/api-v1.494.0...api-v1.494.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **connectors:** persist custom oauth granted scopes ([#29474](https://github.com/vm0-ai/vm0/issues/29474)) ([28122f9](https://github.com/vm0-ai/vm0/commit/28122f968195ddac30f111a830ec1b2f9a47f6a5))
+
+
+### Refactoring
+
+* **api:** cut over connector projections to v2 storage ([#29473](https://github.com/vm0-ai/vm0/issues/29473)) ([95c0b84](https://github.com/vm0-ai/vm0/commit/95c0b8462be902d9e1809f7e3e1a23060ed62b46))
+* **api:** retain alias source telemetry ([#29478](https://github.com/vm0-ai/vm0/issues/29478)) ([a085202](https://github.com/vm0-ai/vm0/commit/a085202d38d9f92f517e5cbd586512cf196a6ab3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.1
+    * @okouai/core bumped to 8.594.1
+    * @okouai/db bumped to 1.224.7
+
 ## [1.494.0](https://github.com/vm0-ai/vm0/compare/api-v1.493.0...api-v1.494.0) (2026-08-26)
 
 

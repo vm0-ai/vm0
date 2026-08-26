@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.2...guest-mock-codex-v0.9.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent:** preserve original shell commands in tool events ([#29475](https://github.com/vm0-ai/vm0/issues/29475)) ([238051b](https://github.com/vm0-ai/vm0/commit/238051b2011fbd6d790c34b81e4f476d9a107830))
+
 ## [0.9.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.1...guest-mock-codex-v0.9.2) (2026-08-25)
 
 ## [0.9.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.0...guest-mock-codex-v0.9.1) (2026-08-25)

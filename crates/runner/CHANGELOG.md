@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.173.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.9...runner-rs-v0.173.10) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
 ## [0.173.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.8...runner-rs-v0.173.9) (2026-08-26)
 
 
