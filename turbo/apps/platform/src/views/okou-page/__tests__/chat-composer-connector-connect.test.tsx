@@ -359,6 +359,11 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByLabelText("Remove GitHub"),
     ).resolves.toBeInTheDocument();
+    const accessLabel = screen.getByText("GitHub").closest("label");
+    if (!accessLabel?.control) {
+      throw new Error("Expected the GitHub label to target its access switch");
+    }
+    expect(accessLabel.previousElementSibling).toBeNull();
     expect(screen.queryByLabelText(/GitHub ·/u)).not.toBeInTheDocument();
   });
 

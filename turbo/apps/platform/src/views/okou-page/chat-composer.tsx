@@ -8787,6 +8787,11 @@ function ConnectorsPopoverButton({
                             );
                           }
                           const connector = item.connector;
+                          const accountAction = accountModeButton(item);
+                          const showPermissionAction =
+                            Boolean(agentId) &&
+                            connector.authorized &&
+                            connector.permissionSummary.hasPermissions;
                           return (
                             <ComposerConnectorAccessRow
                               key={connector.slug}
@@ -8798,11 +8803,9 @@ function ConnectorsPopoverButton({
                               }
                               connectorLabel={connector.label}
                               actions={
-                                <>
-                                  {agentId &&
-                                    connector.authorized &&
-                                    connector.permissionSummary
-                                      .hasPermissions && (
+                                showPermissionAction || accountAction ? (
+                                  <>
+                                    {showPermissionAction ? (
                                       <Button
                                         type="button"
                                         onClick={() => {
@@ -8824,9 +8827,10 @@ function ConnectorsPopoverButton({
                                       >
                                         <SlidersHorizontal size={15} />
                                       </Button>
-                                    )}
-                                  {accountModeButton(item)}
-                                </>
+                                    ) : null}
+                                    {accountAction}
+                                  </>
+                                ) : null
                               }
                               checked={connector.authorized}
                               onCheckedChange={onDomEventFn(async (checked) => {
