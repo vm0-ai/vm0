@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadMetadataContract,
   chatThreadsContract,
@@ -11,31 +11,44 @@ import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { threadMeta } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { navigateToChat$ } from "../../../signals/okou-page/nav.ts";
-import type { ChatThreadMetadataShortcutOutcome } from "../../../lib/posthog.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
-const metadataShortcutCapture = vi.hoisted(() => {
+type PostHogCapture = (
+  eventName: string,
+  properties?: Record<string, unknown>,
+) => void;
+type PostHogIdentify = (
+  distinctId: string,
+  properties?: Record<string, unknown>,
+) => void;
+type PostHogInit = (key: string, options?: Record<string, unknown>) => void;
+type PostHogRegister = (properties: Record<string, unknown>) => void;
+type PostHogReset = () => void;
+type PostHogUnregister = (property: string) => void;
+
+const { apiOriginMarker, posthog } = vi.hoisted(() => {
+  vi.stubEnv("VITE_POSTHOG_KEY", "phc_chat_thread_metadata_readiness_test");
+  window.location.href = "https://app.vm0.ai/";
+  const apiOriginMarker = document.createElement("meta");
+  apiOriginMarker.name = "vm0-api-origin";
+  apiOriginMarker.content = "https://api.vm0.ai";
+  document.head.append(apiOriginMarker);
   return {
-    onCapture: undefined as
-      | ((outcome: ChatThreadMetadataShortcutOutcome) => void)
-      | undefined,
+    apiOriginMarker,
+    posthog: {
+      capture: vi.fn<PostHogCapture>(),
+      identify: vi.fn<PostHogIdentify>(),
+      init: vi.fn<PostHogInit>(),
+      register: vi.fn<PostHogRegister>(),
+      reset: vi.fn<PostHogReset>(),
+      unregister: vi.fn<PostHogUnregister>(),
+    },
   };
 });
 
-vi.mock("../../../lib/posthog.ts", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../lib/posthog.ts")>();
-  const { command } = await import("ccstate");
-  return {
-    ...actual,
-    captureChatThreadMetadataShortcut$: command(
-      (_, outcome: ChatThreadMetadataShortcutOutcome): void => {
-        metadataShortcutCapture.onCapture?.(outcome);
-      },
-    ),
-  };
+vi.mock("posthog-js", () => {
+  return { posthog };
 });
 
 const context = testContext();
@@ -48,7 +61,11 @@ const SECOND_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const THIRD_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
 beforeEach(() => {
-  metadataShortcutCapture.onCapture = undefined;
+  posthog.capture.mockReset();
+});
+
+afterAll(() => {
+  apiOriginMarker.remove();
 });
 
 function prepareAgent(): void {
@@ -511,41 +528,66 @@ describe("chat thread metadata readiness", () => {
   });
 
   it("does not retain metadata when navigation aborts after cold resolution", async () => {
+    const firstMetadataRequested = context.mocks.deferred<void>();
+    const releaseFirstMetadata = context.mocks.deferred<void>();
     const secondMetadataRequested = context.mocks.deferred<void>();
     let firstThreadRequestCount = 0;
-    context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
-      if (params.id === THREAD_ID) {
-        firstThreadRequestCount += 1;
-        if (firstThreadRequestCount === 1) {
-          return respond(200, shellMetadata(THREAD_ID, "Stale resolved route"));
+    context.mocks.api(
+      chatThreadMetadataContract.get,
+      async ({ params, respond }) => {
+        if (params.id === THREAD_ID) {
+          firstThreadRequestCount += 1;
+          if (firstThreadRequestCount === 1) {
+            firstMetadataRequested.resolve();
+            await releaseFirstMetadata.promise;
+            return respond(
+              200,
+              shellMetadata(THREAD_ID, "Stale resolved route"),
+            );
+          }
+          secondMetadataRequested.resolve();
+          return respond(404, {
+            error: {
+              code: "CHAT_THREAD_NOT_FOUND",
+              message: "Chat thread not found",
+            },
+          });
         }
-        secondMetadataRequested.resolve();
-        return respond(404, {
-          error: {
-            code: "CHAT_THREAD_NOT_FOUND",
-            message: "Chat thread not found",
-          },
-        });
-      }
-      return respond(200, shellMetadata(OTHER_THREAD_ID, "Current route"));
-    });
+        return respond(200, shellMetadata(OTHER_THREAD_ID, "Current route"));
+      },
+    );
     context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
       return never();
     });
-    metadataShortcutCapture.onCapture = (outcome) => {
-      if (outcome !== "hit") {
-        return;
-      }
-      metadataShortcutCapture.onCapture = undefined;
-      context.store.set(navigateToChat$, OTHER_THREAD_ID);
-    };
 
     setupChatPage();
+    await firstMetadataRequested.promise;
+    const agentsLink = await waitFor(() => {
+      const link = document.querySelector('a[href="/agents"]');
+      expect(link).not.toBeNull();
+      return link as HTMLElement;
+    });
+    let navigated = false;
+    posthog.capture.mockImplementation((eventName, properties) => {
+      if (
+        !navigated &&
+        eventName === "chat_thread_metadata_shortcut" &&
+        properties?.outcome === "hit"
+      ) {
+        navigated = true;
+        agentsLink.click();
+      }
+    });
 
-    await expectActiveThread(OTHER_THREAD_ID, "Current route");
-    expect(context.store.get(threadMeta(THREAD_ID))).toBeNull();
+    releaseFirstMetadata.resolve();
 
-    context.store.set(navigateToChat$, THREAD_ID);
+    await waitFor(() => {
+      expect(navigated).toBeTruthy();
+      expect(document.title).toBe("Agents | VM0");
+    });
+    expect(screen.queryByText("Stale resolved route")).not.toBeInTheDocument();
+
+    window.history.back();
 
     await secondMetadataRequested.promise;
     expect(firstThreadRequestCount).toBe(2);
