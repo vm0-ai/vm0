@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.796.0](https://github.com/vm0-ai/vm0/compare/app-v0.795.1...app-v0.796.0) (2026-08-25)
+
+
+### Features
+
+* add per-thread connector account picker ([#29337](https://github.com/vm0-ai/vm0/issues/29337)) ([8434768](https://github.com/vm0-ai/vm0/commit/843476856beade4376249579dac0ce96d2df1dc5))
+* render tool activity in the chat timeline ([#29388](https://github.com/vm0-ai/vm0/issues/29388)) ([8081ab7](https://github.com/vm0-ai/vm0/commit/8081ab7590a584ef394347a884b31fa254def2c7))
+
+
+### Bug Fixes
+
+* **auth:** match device verification notice ([#29391](https://github.com/vm0-ai/vm0/issues/29391)) ([958a8ef](https://github.com/vm0-ai/vm0/commit/958a8ef14998930f4c3da3dbdffde5071fbab767))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#29405](https://github.com/vm0-ai/vm0/issues/29405)) ([d86c760](https://github.com/vm0-ai/vm0/commit/d86c760015662e5272734aa0e0172836be75c1b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.367.0
+    * @okouai/connectors bumped to 1.210.1
+    * @okouai/core bumped to 8.591.1
+
 ## [0.795.1](https://github.com/vm0-ai/vm0/compare/app-v0.795.0...app-v0.795.1) (2026-08-25)
 
 
