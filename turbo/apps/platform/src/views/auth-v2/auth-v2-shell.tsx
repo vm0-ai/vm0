@@ -6,22 +6,12 @@ import {
   CardHeader,
 } from "@okouai/ui";
 import { useSet } from "ccstate-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
 
 const AUTH_V2_TITLE_ID = "auth-v2-title";
 const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
-
-function authV2PageActionSemantics(): CSSProperties &
-  Record<`--${string}`, string> {
-  return {
-    "--color-primary": "var(--color-foreground)",
-    "--color-primary-foreground": "var(--color-background)",
-    "--color-primary-hover": "var(--color-foreground-hover)",
-    "--color-primary-pressed": "var(--color-foreground-pressed)",
-  };
-}
 
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
@@ -47,17 +37,13 @@ export function AuthV2Shell({
   const focusHeading = useSet(focusAuthV2HeadingRef$);
 
   return (
-    <div
-      className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4"
-      style={authV2PageActionSemantics()}
-    >
+    <div className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4">
       <Card
         aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}
         className="relative w-full rounded-[12px] border-border p-0 shadow-none"
         data-testid="app-auth-v2"
         role="region"
-        style={authV2PageActionSemantics()}
       >
         <div className="flex flex-col gap-8 px-10 py-8">
           <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">

@@ -1,5 +1,7 @@
-import { Button } from "@okouai/ui";
+import { Button, cn } from "@okouai/ui";
 import { Loader2 } from "lucide-react";
+
+import { AUTH_V2_PRIMARY_ACTION_CLASS } from "./auth-v2-action-styles.ts";
 
 export function AuthV2ActionGlyph() {
   return (
@@ -36,7 +38,7 @@ export function AuthV2SubmitButton({
     <Button
       aria-busy={busy}
       aria-label={label}
-      className="w-full text-[13px]"
+      className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
       disabled={disabled}
       type="submit"
     >
