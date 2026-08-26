@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.800.2](https://github.com/vm0-ai/vm0/compare/app-v0.800.1...app-v0.800.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **auth:** restore identity edit button sizing ([#29552](https://github.com/vm0-ai/vm0/issues/29552)) ([40fc587](https://github.com/vm0-ai/vm0/commit/40fc5872d9404be553625f3a4077de93d9a0f645))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.372.0
+    * @okouai/core bumped to 8.595.2
+
 ## [0.800.1](https://github.com/vm0-ai/vm0/compare/app-v0.800.0...app-v0.800.1) (2026-08-26)
 
 
