@@ -541,9 +541,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 

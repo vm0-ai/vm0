@@ -559,7 +559,6 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
       path: `/agents/${AGENT_ID}/chat`,
     });
 

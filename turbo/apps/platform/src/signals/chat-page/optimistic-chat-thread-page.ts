@@ -43,7 +43,6 @@ import {
   featureSwitch$,
   imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
-  videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
@@ -577,8 +576,7 @@ const sendNewThreadMessage$ = command(
     const imageModel = get(imageModelSelectionEnabled$)
       ? request.imageModel
       : undefined;
-    const videoModelEnabled = get(videoModelSelectionEnabled$);
-    const videoModel = videoModelEnabled ? request.videoModel : undefined;
+    const videoModel = request.videoModel;
     const { annotatedUserMessage, optimisticUserMessage } =
       annotatedMessagesForNewThread(
         request,
@@ -649,7 +647,7 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      videoRunOptions: videoModelEnabled ? request.videoRunOptions : undefined,
+      videoRunOptions: request.videoRunOptions,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {

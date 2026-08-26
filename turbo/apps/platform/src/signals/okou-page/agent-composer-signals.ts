@@ -14,7 +14,6 @@ import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
 import {
   featureSwitch$,
   imageModelSelectionEnabled$,
-  videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import {
   updateUserModelPreference$,
@@ -96,9 +95,6 @@ const setVideoModel$ = command(
     videoModel: VideoModel | null,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (!get(videoModelSelectionEnabled$)) {
-      return;
-    }
     set(setChatPageVideoModelSelection$, videoModel);
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
@@ -207,16 +203,13 @@ function createAgentSubmitMessage(
       }
       const access = get(newThreadComputerAccess$);
       const imageModelEnabled = get(imageModelSelectionEnabled$);
-      const videoModelEnabled = get(videoModelSelectionEnabled$);
       const [hosts, imageModelPin, videoModelPin, connectorPreference] =
         await Promise.all([
           get(computerUseHosts$),
           imageModelEnabled
             ? get(chatPageImageModelPin$)
             : Promise.resolve(null),
-          videoModelEnabled
-            ? get(chatPageVideoModelPin$)
-            : Promise.resolve(null),
+          get(chatPageVideoModelPin$),
           get(connector.accounts.preferenceState$),
         ]);
       signal.throwIfAborted();

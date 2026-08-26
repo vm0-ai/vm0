@@ -943,46 +943,9 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("leaves media models unpinned while neither picker is enabled", async () => {
+  it("pins the video model while the image picker is disabled", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: false,
-      [FeatureSwitchKey.ImageModelSelection]: false,
-    });
-    await setMemberMediaDefaults(fixture);
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-
-    const response = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          title: "No media pickers enabled",
-          model: OTHER_WORKSPACE_MODEL,
-        },
-      }),
-      [201],
-    );
-
-    // A member who cannot reach either picker has no choice worth freezing, so
-    // the thread keeps following the live defaults. A written pin would also
-    // outlive a revert of this behavior.
-    await expect(
-      readCreatedThreadEvent(response.body.id, token),
-    ).resolves.toMatchObject({
-      selectedVideoModel: null,
-      selectedImageModel: null,
-    });
-  });
-
-  it("pins each media model whose picker is enabled", async () => {
-    const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
       [FeatureSwitchKey.ImageModelSelection]: false,
     });
     await setMemberMediaDefaults(fixture);
@@ -1004,8 +967,8 @@ describe("POST /api/zero/chat-threads", () => {
       [201],
     );
 
-    // Each switch gates its own pin: the video default freezes, the image one
-    // stays null while its own switch is off.
+    // The video default always freezes; the image one stays null while its own
+    // switch is off.
     await expect(
       readCreatedThreadEvent(response.body.id, token),
     ).resolves.toMatchObject({
@@ -1017,7 +980,6 @@ describe("POST /api/zero/chat-threads", () => {
   it("pins the member media defaults when the request omits them", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
       [FeatureSwitchKey.ImageModelSelection]: true,
     });
     await setMemberMediaDefaults(fixture);

@@ -434,7 +434,6 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
    * Carried whole so thread creation can resolve its media pins without
@@ -1061,10 +1060,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.LatestPresentationTemplates,
       context,
     ),
-    videoModelSelectionEnabled: isFeatureEnabled(
-      FeatureSwitchKey.VideoModelSelection,
-      context,
-    ),
     presentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplates,
       context,
@@ -1101,11 +1096,7 @@ function resolveSelectedTemplateContext(
         featureSwitches.presentationTemplatesEnabled,
       mountedUserPresentationTemplateIds,
     }),
-    // Gated with the composer control that produces it, so a client that keeps
-    // sending the field after the switch is turned off stops being honoured.
-    videoRunOptions: featureSwitches.videoModelSelectionEnabled
-      ? (runtimeBody.runOptions?.video ?? null)
-      : null,
+    videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
 
