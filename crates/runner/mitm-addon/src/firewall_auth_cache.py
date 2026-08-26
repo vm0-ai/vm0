@@ -66,6 +66,7 @@ class FirewallAuthStateSnapshotForTests:
     """Copied auth cache state exposed to tests without leaking private storage."""
 
     has_cached_headers: bool
+    has_in_flight_fetch: bool
     headers: dict[str, str] = field(default_factory=dict)
     resolved_secrets: list[str] = field(default_factory=list)
     base: str | None = None
@@ -284,6 +285,7 @@ def auth_state_snapshot_for_tests(
     if cache is None:
         return FirewallAuthStateSnapshotForTests(
             has_cached_headers=False,
+            has_in_flight_fetch=state.in_flight is not None,
             force_refresh_pending=state.force_refresh_pending,
             last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
         )
@@ -291,6 +293,7 @@ def auth_state_snapshot_for_tests(
     payload = cache.payload
     return FirewallAuthStateSnapshotForTests(
         has_cached_headers=True,
+        has_in_flight_fetch=state.in_flight is not None,
         headers=dict(payload.headers),
         resolved_secrets=list(payload.resolved_secrets),
         base=payload.base,
@@ -434,24 +437,32 @@ async def get_firewall_headers(
         fetch_task = state.in_flight
         created_fetch = fetch_task is None
         if fetch_task is None:
+            force_refresh = state.force_refresh_pending
+            force_refresh_started_at = time.monotonic() if force_refresh else None
             _reserve_firewall_auth_fetch()
 
-            # Consume the marker before creating the task so only this shared
-            # operation can trigger the refresh. Recording before the fetch
-            # preserves the intentional failed-refresh cooldown semantics.
-            force_refresh = state.force_refresh_pending
+            fetch_coroutine = _fetch_and_cache_firewall_headers(
+                state,
+                request,
+                force_refresh=force_refresh,
+            )
+            try:
+                fetch_task = asyncio.create_task(fetch_coroutine)
+            except BaseException:
+                fetch_coroutine.close()
+                _release_firewall_auth_fetch()
+                raise
+
+            state.in_flight = fetch_task
+
+            # Task selection and publication contain no await, so consuming
+            # the marker here is still atomic with choosing this shared fetch.
+            # Recording before the task runs preserves the intentional
+            # failed-refresh cooldown once task ownership has transferred.
             state.force_refresh_pending = False
             if force_refresh:
-                state.last_force_refresh_monotonic_at = time.monotonic()
+                state.last_force_refresh_monotonic_at = force_refresh_started_at
 
-            fetch_task = asyncio.create_task(
-                _fetch_and_cache_firewall_headers(
-                    state,
-                    request,
-                    force_refresh=force_refresh,
-                )
-            )
-            state.in_flight = fetch_task
             fetch_task.add_done_callback(_observe_fetch_task_exception)
 
         result = await asyncio.shield(fetch_task)
