@@ -755,6 +755,68 @@ function RunnerOutcomeRow({
   );
 }
 
+function RunnerAttributionRow({
+  title,
+  value,
+}: {
+  readonly title: string;
+  readonly value: string;
+}) {
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm font-mono text-muted-foreground break-all">
+        {value}
+      </p>
+    </section>
+  );
+}
+
+interface RunnerAttribution {
+  readonly runnerHostname: string | null;
+  readonly runnerVersion: string | null;
+  readonly runnerId: string | null;
+  readonly runnerHeartbeatGeneration: number | null;
+}
+
+function RunnerAttributionRows({
+  runner,
+  missing,
+}: {
+  readonly runner: RunnerAttribution | null;
+  readonly missing: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <RunnerAttributionRow
+        title={t(($) => {
+          return $.activity.detail.runner.hostname;
+        })}
+        value={runner?.runnerHostname ?? missing}
+      />
+      <RunnerAttributionRow
+        title={t(($) => {
+          return $.activity.detail.runner.version;
+        })}
+        value={runner?.runnerVersion ?? missing}
+      />
+      <RunnerAttributionRow
+        title={t(($) => {
+          return $.activity.detail.runner.runnerId;
+        })}
+        value={runner?.runnerId ?? missing}
+      />
+      <RunnerAttributionRow
+        title={t(($) => {
+          return $.activity.detail.runner.generation;
+        })}
+        value={runner?.runnerHeartbeatGeneration?.toString() ?? missing}
+      />
+    </>
+  );
+}
+
 function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
   const runnerLoadable = useLastLoadable(activityRunner$);
@@ -877,6 +939,7 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
 
   return (
     <div className="flex flex-col gap-6 pb-8">
+      <RunnerAttributionRows runner={runner} missing={missing} />
       <section>
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t(($) => {
