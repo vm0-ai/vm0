@@ -314,12 +314,13 @@ const listChatThreadDraftsInner$ = computed(async (get) => {
 });
 
 const listChatThreadUnreadsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.unreads));
 
   const unreads = await get(
     chatThreadUnreads({
       userId: auth.userId,
+      orgId: auth.orgId,
       agentId: query.agentId,
     }),
   );
@@ -417,7 +418,14 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadsContract.unreads,
-    handler: authRoute({}, listChatThreadUnreadsInner$),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
+      listChatThreadUnreadsInner$,
+    ),
   },
   {
     route: chatThreadByIdContract.get,
