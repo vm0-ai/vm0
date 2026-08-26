@@ -3663,14 +3663,6 @@ describe("zero sidebar", () => {
                   createdAt: "2026-03-10T00:06:00.000Z",
                   updatedAt: "2026-03-10T00:06:00.000Z",
                 },
-                {
-                  id: "a0000000-0000-4000-a000-000000000002",
-                  kind: "file",
-                  title: "budget.csv",
-                  thumbnail: null,
-                  createdAt: "2026-03-10T00:07:00.000Z",
-                  updatedAt: "2026-03-10T00:07:00.000Z",
-                },
               ]
             : [],
         nextCursor: null,
@@ -3723,7 +3715,6 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
       expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
       expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
-      expect(within(dialog).queryByText("budget.csv")).not.toBeInTheDocument();
     });
     const artifactThumbnail = within(dialog).getByTestId(
       "spotlight-artifact-thumbnail",

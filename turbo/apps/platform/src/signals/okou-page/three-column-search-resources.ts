@@ -74,15 +74,9 @@ export const threeColumnArtifactSearchResults$ = computed(
     );
     return {
       query,
-      // An older API may ignore the additive keyword parameter during rollout.
-      // Filtering the response keeps mixed frontend/API versions correct.
-      artifacts: result.body.artifacts
-        .filter((artifact) => {
-          return artifact.title.toLowerCase().includes(query);
-        })
-        .map((artifact) => {
-          return { ...artifact, thumbnailLoad: createImageLoadSignals() };
-        }),
+      artifacts: result.body.artifacts.map((artifact) => {
+        return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+      }),
     };
   },
 );

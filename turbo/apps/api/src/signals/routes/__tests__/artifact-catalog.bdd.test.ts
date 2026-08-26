@@ -971,7 +971,7 @@ describe("GET /api/artifacts/catalog", () => {
     ).toStrictEqual([site]);
   }, 180_000);
 
-  it("searches artifact titles before applying the page limit", async () => {
+  it("searches artifact titles literally before applying the page limit", async () => {
     const owner = await catalogActor("Artifact catalog search owner");
     await uploadFile({
       owner,
@@ -1000,6 +1000,10 @@ describe("GET /api/artifacts/catalog", () => {
       ],
       nextCursor: null,
     });
+
+    await expect(
+      chat.listArtifactCatalog(owner.actor, { keyword: "%" }),
+    ).resolves.toStrictEqual({ artifacts: [], nextCursor: null });
   }, 180_000);
 
   it("walks the whole catalog through the cursor without repeats or gaps", async () => {
