@@ -4,8 +4,6 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorCatalogCompatibilityReason } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 
-import type { JsonValue } from "./shared";
-
 export interface ConnectorCatalogCompatibilityFilteredAuthMethod {
   readonly connectorSlug: ConnectorSlug;
   readonly authMethodId: ConnectorAuthMethodId;
@@ -15,5 +13,3 @@ export interface ConnectorCatalogCompatibilityFilteredAuthMethod {
 export interface ConnectorCatalogCompatibilityEvaluationPayload {
   readonly filteredAuthMethods: readonly ConnectorCatalogCompatibilityFilteredAuthMethod[];
 }
-
-export type ConnectorCatalogRuntimeProjection = JsonValue;
