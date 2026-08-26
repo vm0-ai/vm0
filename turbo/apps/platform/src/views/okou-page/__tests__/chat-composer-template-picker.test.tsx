@@ -3791,10 +3791,12 @@ describe("chat composer templates", () => {
     if (!(secondaryCard instanceof HTMLElement)) {
       throw new Error("Secondary template card not found");
     }
+    // Opening the picker refreshes the catalog, but the card reuses the deck
+    // resource the background preload already loaded.
     await waitFor(() => {
       expect(catalogRequestCount).toBe(2);
-      expect(primaryDetailRequestCount).toBe(2);
     });
+    expect(primaryDetailRequestCount).toBe(1);
     expect(within(card).getByRole("img")).toHaveAttribute("loading", "eager");
     expect(within(card).getByRole("img")).toHaveAttribute(
       "fetchpriority",
@@ -3840,8 +3842,10 @@ describe("chat composer templates", () => {
         "https://example.com/prefetch-primary-page-1.png",
       );
     });
+    // Hovering a card reads the slides from the same deck resource, so it
+    // never refetches what the preload already holds.
     expect(catalogRequestCount).toBe(2);
-    expect(primaryDetailRequestCount).toBe(3);
+    expect(primaryDetailRequestCount).toBe(1);
     expect(secondaryDetailRequestCount).toBe(0);
 
     // A metadata-only refresh must not reset the independent signed-detail URL
@@ -3851,8 +3855,8 @@ describe("chat composer templates", () => {
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
       expect(catalogRequestCount).toBe(3);
-      expect(primaryDetailRequestCount).toBe(4);
     });
+    expect(primaryDetailRequestCount).toBe(1);
     // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
     // overlap with the API's 15-minute expiry. Opening is also a non-blocking
     // catch-up point for a suspended tab whose timer did not run.
@@ -3883,9 +3887,9 @@ describe("chat composer templates", () => {
     releaseRefreshCatalog.resolve();
     await refreshedPrimaryDetailRequested.promise;
     await waitFor(() => {
-      // Catalog reconciliation recreates the preload resource. The separate
-      // detail-version renewal is observed on the next card hover below.
-      expect(primaryDetailRequestCount).toBe(5);
+      // Renewing the signed URLs reloads the shared deck resource exactly once
+      // for every surface that reads it.
+      expect(primaryDetailRequestCount).toBe(2);
     });
     const refreshedPreviewButton = within(refreshingCard).getByLabelText(
       "Preview Primary draft deck at current slide",
@@ -3915,11 +3919,6 @@ describe("chat composer templates", () => {
     });
     const detailRequestsBeforeRenewedHover = primaryDetailRequestCount;
     fireEvent.mouseEnter(refreshedPreview);
-    await waitFor(() => {
-      expect(primaryDetailRequestCount).toBeGreaterThan(
-        detailRequestsBeforeRenewedHover,
-      );
-    });
     fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
     await loadImportedTemplateImage(
       refreshedPreview,
@@ -3931,7 +3930,9 @@ describe("chat composer templates", () => {
       "https://example.com/renewed-primary-page-100.png",
     );
     expect(catalogRequestCount).toBe(4);
-    expect(primaryDetailRequestCount).toBeGreaterThan(3);
+    // Hovering the renewed card still serves its slides from the renewed deck
+    // resource without asking for it again.
+    expect(primaryDetailRequestCount).toBe(detailRequestsBeforeRenewedHover);
     expect(secondaryDetailRequestCount).toBe(0);
   });
 
