@@ -900,14 +900,15 @@
           window.setTimeout(loadMarketingScripts, 0);
         }
 
-        // Keep vendor work outside the first-content critical path, with a
-        // bounded fallback for bootstraps that never reach real app content.
+        // Keep vendor work outside the first-content critical path. The
+        // 30-second guard exceeds the observed mobile P90 startup window and
+        // still bounds bootstraps that never reach real app content.
         window.addEventListener(
           "vm0:app-first-content-visible",
           scheduleMarketingScripts,
           { once: true },
         );
-        window.setTimeout(scheduleMarketingScripts, 5000);
+        window.setTimeout(scheduleMarketingScripts, 30000);
       })();
     </script>
     <script>

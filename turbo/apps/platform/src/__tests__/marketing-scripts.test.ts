@@ -9,7 +9,7 @@ const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
 const LINKEDIN_SCRIPT_URL =
   "https://snap.licdn.com/li.lms-analytics/insight.min.js";
-const MARKETING_FALLBACK_DELAY_MS = 5000;
+const MARKETING_FALLBACK_DELAY_MS = 30_000;
 
 type LinkedInTracker = ((first: unknown, second: unknown) => void) & {
   q: [unknown, unknown][];
@@ -172,10 +172,11 @@ describe("platform marketing scripts", () => {
     expect(harness.marketingWindow.lintrk?.q).toStrictEqual([]);
   });
 
-  it("uses the bounded fallback when app content never becomes ready", () => {
+  it("waits 30 seconds before falling back when content never becomes ready", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
 
     expect(harness.fallbackDelay).toBe(MARKETING_FALLBACK_DELAY_MS);
+    expect(harness.requestedScriptUrls).toStrictEqual([]);
     harness.runFallback();
     harness.flushIdleCallbacks();
 
