@@ -371,8 +371,22 @@ describe("okou connector account list command", () => {
 
   it("lists available inventory inside a run without changing its meaning", async () => {
     vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+    vi.stubEnv("OKOU_TOKEN", "agent-token");
     server.use(
-      stubAccounts([connectorAccount({ displayName: "Available account" })]),
+      http.get(
+        "http://localhost:3000/api/connector-accounts/connections",
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer agent-token",
+          );
+          return HttpResponse.json({
+            connections: [
+              connectorAccount({ displayName: "Available account" }),
+            ],
+            nextCursor: null,
+          });
+        },
+      ),
     );
 
     await listConnectorAccountsCommand.parseAsync(["node", "okou", "github"]);
