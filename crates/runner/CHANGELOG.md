@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.176.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.0...runner-rs-v0.176.1) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.176.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.1...runner-rs-v0.176.0) (2026-08-26)
 
 

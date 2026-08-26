@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.82.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.81.0...guest-agent-v0.82.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** materialize chat tool activity ([#29665](https://github.com/vm0-ai/vm0/issues/29665)) ([8467582](https://github.com/vm0-ai/vm0/commit/8467582c87e631932861b04cc519278527e482e3))
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.81.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.80.0...guest-agent-v0.81.0) (2026-08-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.114](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.113...vsock-guest-v0.19.114) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.19.113](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.112...vsock-guest-v0.19.113) (2026-08-26)
 
 ## [0.19.112](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.111...vsock-guest-v0.19.112) (2026-08-26)
