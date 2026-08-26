@@ -1233,6 +1233,7 @@ function ArtifactImageNavigationControls({
     <>
       {navigation.onPrevious && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -1251,6 +1252,7 @@ function ArtifactImageNavigationControls({
       )}
       {navigation.onNext && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {

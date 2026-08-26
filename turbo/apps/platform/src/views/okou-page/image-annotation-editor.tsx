@@ -262,6 +262,7 @@ function ZoomControls() {
   return (
     <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-1 shadow-sm">
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-xs"
@@ -282,6 +283,7 @@ function ZoomControls() {
         {Math.round(zoom * 100)}%
       </button>
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-xs"
@@ -403,6 +405,7 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
           className="h-8 flex-1 text-sm"
         />
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon-sm"
@@ -489,6 +492,7 @@ function EditorHeader({ filename }: { filename: string }) {
         </TooltipContent>
       </Tooltip>
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon-sm"

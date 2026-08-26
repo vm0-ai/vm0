@@ -261,6 +261,7 @@ function ApiAuthenticationFields({
         </div>
         {removable && (
           <Button
+            showTooltip
             type="button"
             variant="ghost"
             size="icon"
@@ -608,6 +609,7 @@ function OAuth2AuthenticationFields({
           </p>
         </div>
         <Button
+          showTooltip
           type="button"
           variant="ghost"
           size="icon"

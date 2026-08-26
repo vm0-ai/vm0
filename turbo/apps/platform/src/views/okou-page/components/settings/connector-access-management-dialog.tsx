@@ -65,6 +65,7 @@ import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import { CustomConnectorPermissionsDrawer } from "./custom-connector-permissions-drawer.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 import { i18n } from "../../../../i18n/index.ts";
+import { IconTooltipButton } from "../../../components/icon-tooltip.tsx";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorSlug: ConnectorSlug;
@@ -122,7 +123,7 @@ function ConnectorAccessSearch({
         className="pl-9 pr-9"
       />
       {value && (
-        <button
+        <IconTooltipButton
           type="button"
           onClick={() => {
             onChange("");
@@ -133,7 +134,7 @@ function ConnectorAccessSearch({
           })}
         >
           <X size={13} />
-        </button>
+        </IconTooltipButton>
       )}
     </div>
   );

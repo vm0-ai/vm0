@@ -389,6 +389,7 @@ function ConcurrencyQuantityControl({
         </span>
         <div className="flex h-9 items-center rounded-lg border border-border/70 bg-background">
           <Button
+            showTooltip
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.decreaseQuantity;
@@ -439,6 +440,7 @@ function ConcurrencyQuantityControl({
             }}
           />
           <Button
+            showTooltip
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.increaseQuantity;

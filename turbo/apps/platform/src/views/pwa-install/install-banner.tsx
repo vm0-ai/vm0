@@ -55,6 +55,7 @@ export function InstallBanner() {
         })}
       </Button>
       <Button
+        showTooltip
         type="button"
         onClick={() => {
           dismiss();

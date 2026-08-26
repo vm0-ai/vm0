@@ -46,6 +46,7 @@ import {
 } from "./onboarding-shell.tsx";
 import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const CATEGORY_ICONS: Readonly<
   Record<OnboardingWorkflowCategoryId, LucideIcon>
@@ -221,7 +222,7 @@ function WorkflowCard({
       </span>
       <span className="relative z-10 flex items-center gap-3">
         <WorkflowConnectorPills connectorSlugs={workflow.connectorSlugs} />
-        <button
+        <IconTooltipButton
           type="button"
           className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:bg-gray-50 hover:text-primary dark:hover:bg-gray-50/10"
           aria-label={t(($) => {
@@ -230,7 +231,7 @@ function WorkflowCard({
           onClick={onPreview}
         >
           <ScanEye size={16} aria-hidden="true" />
-        </button>
+        </IconTooltipButton>
       </span>
       {selected ? (
         <CircleCheckBig

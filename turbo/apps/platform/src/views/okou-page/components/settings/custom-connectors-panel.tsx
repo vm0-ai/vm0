@@ -362,6 +362,7 @@ function CustomConnectorActions({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             variant="ghost"
             size="icon"
             className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"

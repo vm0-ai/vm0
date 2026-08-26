@@ -168,6 +168,7 @@ function SlackCardActions({
         <Popover>
           <PopoverTrigger asChild>
             <Button
+              showTooltip
               type="button"
               variant="quiet"
               size="icon-xs"
@@ -464,6 +465,7 @@ function TeamsCardActions({
         <Popover>
           <PopoverTrigger asChild>
             <Button
+              showTooltip
               type="button"
               variant="quiet"
               size="icon-xs"

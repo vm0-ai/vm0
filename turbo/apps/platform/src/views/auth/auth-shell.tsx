@@ -41,6 +41,7 @@ export function AuthShell({
       <div className="pointer-events-none absolute -right-40 -bottom-40 h-96 w-96 rounded-full bg-[#FFE7A2]/15 blur-3xl" />
 
       <Button
+        showTooltip
         type="button"
         variant="outline"
         size="icon-sm"
