@@ -341,15 +341,15 @@ def resolve_firewall_entries(
     or absent connector identities remain unclassified.
 
     Optional entry `sourceId` values must be UUID strings and are copied to the
-    resolved firewall and each dictionary API entry. An inline `customConnectorId`
-    must also be a UUID string and is copied to the resolved firewall and each
-    dictionary API entry. The registry-owned runtime marker is consumed by request
-    matching: a registered custom candidate can shadow a registered builtin
-    candidate when they match the same base. Auth resolution carries the
-    propagated connector and source identities into its request context. If
-    resolution raises `FirewallEntryResolutionError`, the registry loader records
-    the affected sandbox as `invalid_firewalls` instead of accepting partially
-    classified runtime ownership.
+    resolved firewall and each dictionary API entry. An optional inline
+    `customConnectorId` must also be a UUID string and is copied to the resolved
+    firewall and each dictionary API entry. The registry-owned runtime marker is
+    consumed by request matching: a registered custom candidate can shadow a
+    registered builtin candidate when they match the same base. Auth resolution
+    carries the propagated connector and source identities into the auth request
+    context. If resolution raises `FirewallEntryResolutionError`, the registry
+    loader records the affected sandbox as `invalid_firewalls` instead of
+    accepting partially classified runtime ownership.
 
     Builtin names absent from a valid current catalog are omitted and returned
     in `omitted_builtin_names`. Raises `FirewallEntryResolutionError` for an
