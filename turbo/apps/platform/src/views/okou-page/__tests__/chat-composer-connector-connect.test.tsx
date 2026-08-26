@@ -274,6 +274,61 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("keeps permissioned connector row height stable while toggling access", async () => {
+    const user = userEvent.setup({ delay: null });
+    let authorizationWrites = 0;
+    let enabledConnectorSlugs = ["axiom"];
+    mockThread();
+    mockConnectors([{ connectorSlug: "axiom", authMethod: "api-token" }]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs });
+    });
+    context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
+      expect(body).toStrictEqual({
+        enabledConnectorSlugs: ["axiom"],
+        operation: "remove",
+      });
+      authorizationWrites += 1;
+      enabledConnectorSlugs = [];
+      return respond(200, { enabledConnectorSlugs });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    const connectorName = await screen.findByText("Axiom");
+    const accessLabel = connectorName.closest("label");
+    if (!accessLabel?.control) {
+      throw new Error("Expected the Axiom label to target its access switch");
+    }
+    expect(accessLabel.parentElement).toHaveClass("h-10");
+    expect(
+      screen.getByLabelText("Configure Axiom permissions").closest("label"),
+    ).toBeNull();
+
+    await user.click(connectorName);
+
+    await waitFor(() => {
+      expect(authorizationWrites).toBe(1);
+    });
+    const disconnectedAccess = await screen.findByLabelText("Add Axiom");
+    expect(disconnectedAccess.closest("label")?.parentElement).toHaveClass(
+      "h-10",
+    );
+    expect(
+      screen.queryByLabelText("Configure Axiom permissions"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /Axiom permissions/u }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps one-account connector rows unchanged", async () => {
     const user = userEvent.setup({ delay: null });
     const account = githubAccount(
@@ -314,6 +369,11 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByLabelText("Remove GitHub"),
     ).resolves.toBeInTheDocument();
+    const accessLabel = screen.getByText("GitHub").closest("label");
+    if (!accessLabel?.control) {
+      throw new Error("Expected the GitHub label to target its access switch");
+    }
+    expect(accessLabel.previousElementSibling).toBeNull();
     expect(screen.queryByLabelText(/GitHub ·/u)).not.toBeInTheDocument();
   });
 
@@ -421,12 +481,41 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    await user.click(within(composer).getByLabelText("Connectors"));
+    const connectorsButton = within(composer).getByLabelText("Connectors");
+    await user.click(connectorsButton);
     const defaultMode = await screen.findByLabelText(
       "GitHub · Using default account: Work",
     );
+    expect(defaultMode).toHaveClass("text-muted-foreground");
+    expect(defaultMode).not.toHaveClass("border");
+    const connectorName = screen.getByText("GitHub");
+    const accessLabel = connectorName.closest("label");
+    if (!accessLabel?.control) {
+      throw new Error("Expected the GitHub label to target its access switch");
+    }
+    expect(defaultMode.closest("label")).toBeNull();
+    expect(
+      defaultMode.compareDocumentPosition(accessLabel.control) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await user.click(connectorName);
+    await waitFor(() => {
+      expect(authorizationWrites).toBe(1);
+    });
+    expect(screen.queryByText("Use default")).not.toBeInTheDocument();
+
     const summaryReadsBeforeSelection = summaryReads;
     await user.click(defaultMode);
+    await expect(
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    expect(screen.queryByLabelText("Back")).not.toBeInTheDocument();
+    expect(screen.getByText("GitHub")).toBeVisible();
+    expect(
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent?.trim() === "Add connectors";
+      }),
+    ).toBeVisible();
     await expect(screen.findByText("Use default")).resolves.toBeInTheDocument();
     const defaultRadio = screen.getByRole("radio", {
       name: /Use default/u,
@@ -436,19 +525,39 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(selectionWrites).toBe(1);
     });
-    await user.click(screen.getByLabelText("Back"));
+    const selectedWorkMode = await screen.findByLabelText(
+      "GitHub · Selected account: Work",
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(selectedWorkMode).toHaveClass("text-muted-foreground");
+    expect(selectedWorkMode).not.toHaveClass("border");
+
+    await user.click(selectedWorkMode);
     await expect(
-      screen.findByLabelText("GitHub · Selected account: Work"),
-    ).resolves.toBeInTheDocument();
-    await user.click(screen.getByLabelText("GitHub · Selected account: Work"));
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(selectedWorkMode).toHaveFocus();
+
+    await user.click(selectedWorkMode);
     await user.click(screen.getByRole("radio", { name: /Personal/u }));
     await waitFor(() => {
       expect(selectionWrites).toBe(2);
     });
-    await user.click(screen.getByLabelText("Back"));
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.findByLabelText("GitHub · Selected account: Personal"),
-    ).resolves.toBeInTheDocument();
+    ).resolves.toHaveClass("text-muted-foreground");
 
     await user.click(
       screen.getByLabelText("GitHub · Selected account: Personal"),
@@ -457,7 +566,14 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(selectionClears).toBe(1);
     });
-    expect(authorizationWrites).toBe(0);
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    await expect(
+      screen.findByLabelText("GitHub · Using default account: Work"),
+    ).resolves.toBeInTheDocument();
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(authorizationWrites).toBe(1);
     expect(summaryReads).toBe(summaryReadsBeforeSelection);
   });
 
@@ -534,7 +650,10 @@ describe("chat composer connector connection", () => {
     ).toBeInTheDocument();
     expect(requestedSearches).toStrictEqual(["", "missing"]);
 
-    await user.click(screen.getByLabelText("Back"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
     expect(requestedSearches).toStrictEqual(["", "missing"]);
   });
 

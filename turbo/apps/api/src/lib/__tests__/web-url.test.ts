@@ -126,12 +126,12 @@ describe("web URL aliases", () => {
   it("resolves the non-conflicting matrix with one value-free event per state", () => {
     for (const fixture of WEB_URL_ALIAS_FIXTURES) {
       configureAliases(fixture.canonical, fixture.legacy);
-      const logCount = context.mocks.axiomLogging.debug.mock.calls.length;
+      const logCount = context.mocks.axiomLogging.info.mock.calls.length;
 
       expect(webUrl()).toBe(fixture.expected);
       expect(webUrl()).toBe(fixture.expected);
 
-      const calls = context.mocks.axiomLogging.debug.mock.calls.slice(logCount);
+      const calls = context.mocks.axiomLogging.info.mock.calls.slice(logCount);
       expect(calls).toStrictEqual([
         [WEB_URL_ALIAS_RESOLUTION_EVENT, aliasEvidence(fixture.state)],
       ]);
@@ -142,6 +142,7 @@ describe("web URL aliases", () => {
         }),
       );
     }
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
     expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 
@@ -161,6 +162,7 @@ describe("web URL aliases", () => {
       [WEB_URL_ALIAS_RESOLUTION_EVENT, aliasEvidence("absent")],
     ]);
     expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalled();
   });
 
   it("fails before OAuth origin normalization on byte-unequal aliases", () => {
@@ -182,6 +184,7 @@ describe("web URL aliases", () => {
       [WEB_URL_ALIAS_RESOLUTION_EVENT, aliasEvidence("conflicting-dual")],
     ]);
     expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalled();
     expectValueFree(
       JSON.stringify({
         error: WEB_URL_CONFLICT_ERROR,

@@ -8,7 +8,6 @@ import {
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -31,7 +30,6 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
@@ -541,7 +539,6 @@ async function seedImageFixture(options: {
 async function seedImageRun(
   fixture: ImageFixture,
   options: {
-    readonly imageModelSelectionEnabled: boolean;
     readonly selectedImageModel: string | null;
   },
 ): Promise<{ readonly runId: string }> {
@@ -561,9 +558,6 @@ async function seedImageRun(
     context.signal,
   );
   await setRunImageModelFixture(runId, options.selectedImageModel);
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.ImageModelSelection]: options.imageModelSelectionEnabled,
-  });
   return { runId };
 }
 
@@ -696,7 +690,6 @@ describe("POST /api/image-io/generate", () => {
       configured: QWEN_IMAGE_PRICING,
     });
     const { runId } = await seedImageRun(fixture, {
-      imageModelSelectionEnabled: true,
       selectedImageModel: "fal-ai/qwen-image",
     });
 
@@ -736,7 +729,6 @@ describe("POST /api/image-io/generate", () => {
       configured: [...GPT_IMAGE_1_PRICING, ...QWEN_IMAGE_PRICING],
     });
     const { runId } = await seedImageRun(fixture, {
-      imageModelSelectionEnabled: true,
       selectedImageModel: "fal-ai/qwen-image",
     });
     let gptCalls = 0;
@@ -829,7 +821,7 @@ describe("POST /api/image-io/generate", () => {
     expect(qwenCalls).toBe(0);
   });
 
-  it("keeps the global default for disabled, null, old, and session paths", async () => {
+  it("keeps the global default for null, old, and session paths", async () => {
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
     });
@@ -849,17 +841,10 @@ describe("POST /api/image-io/generate", () => {
 
     const runCases = [
       {
-        imageModelSelectionEnabled: false,
-        selectedImageModel: "fal-ai/qwen-image",
-        prompt: "disabled switch",
-      },
-      {
-        imageModelSelectionEnabled: true,
         selectedImageModel: null,
         prompt: "null snapshot",
       },
       {
-        imageModelSelectionEnabled: true,
         selectedImageModel: "fal-ai/retired-image-model",
         prompt: "old snapshot",
       },
@@ -881,9 +866,6 @@ describe("POST /api/image-io/generate", () => {
     }
 
     const sessionFixture = await seedImageFixture({});
-    await updateFeatureSwitchesForUser(context, sessionFixture, {
-      [FeatureSwitchKey.ImageModelSelection]: true,
-    });
     mocks.clerk.session(sessionFixture.userId, sessionFixture.orgId);
     const sessionResponse = await app.request("/api/image-io/generate", {
       method: "POST",
@@ -892,7 +874,7 @@ describe("POST /api/image-io/generate", () => {
     });
     expect(sessionResponse.status).toBe(202);
 
-    expect(gptCalls).toBe(4);
+    expect(gptCalls).toBe(3);
     expect(qwenCalls).toBe(0);
   });
 

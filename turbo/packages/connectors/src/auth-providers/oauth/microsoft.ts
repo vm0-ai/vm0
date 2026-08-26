@@ -2,6 +2,7 @@ import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-
 import { z } from "zod";
 
 import { throwOAuthError } from "./error";
+import { effectiveOAuthScopes } from "./scope";
 
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
@@ -114,7 +115,7 @@ export async function exchangeMicrosoftOAuthCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

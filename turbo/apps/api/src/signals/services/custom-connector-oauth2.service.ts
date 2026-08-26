@@ -97,6 +97,7 @@ const oauthTokenResponseSchema = z.object({
   id_token: z.string().min(1).nullable().optional(),
   token_type: z.string().min(1).optional(),
   expires_in: z.union([z.number(), z.string()]).optional(),
+  scope: z.string().trim().min(1).optional(),
 });
 
 const oauthTokenErrorResponseSchema = z.object({
@@ -109,6 +110,7 @@ export interface OAuthTokenResult {
   readonly refreshToken: string | null;
   readonly idToken: string | null;
   readonly expiresAt: Date | null;
+  readonly scopes: readonly string[] | null;
 }
 
 interface OAuthClientCredentials {
@@ -262,6 +264,32 @@ function hasHttpHeaderControlCharacter(value: string): boolean {
   return false;
 }
 
+function oauthScopeTokens(scope: string): readonly string[] {
+  return scope.split(/\s+/u);
+}
+
+function customConnectorOAuth2AuthorizationScopes(
+  authorizationUrl: string | null,
+): readonly string[] {
+  if (!authorizationUrl) {
+    throw new Error("Custom connector OAuth state has no authorization URL");
+  }
+  const scope = new URL(authorizationUrl).searchParams.get("scope");
+  return scope ? oauthScopeTokens(scope) : [];
+}
+
+export function customConnectorOAuth2EffectiveInitialToken(
+  token: OAuthTokenResult,
+  authorizationUrl: string | null,
+): OAuthTokenResult {
+  return token.scopes === null
+    ? {
+        ...token,
+        scopes: customConnectorOAuth2AuthorizationScopes(authorizationUrl),
+      }
+    : token;
+}
+
 function tokenResult(response: PublicHttpsResponse): OAuthTokenResult {
   if (response.status < 200 || response.status >= 300) {
     const parsed = oauthTokenErrorResponseSchema.safeParse(
@@ -292,6 +320,10 @@ function tokenResult(response: PublicHttpsResponse): OAuthTokenResult {
       expiresIn === null
         ? null
         : new Date(nowDate().getTime() + expiresIn * 1000),
+    scopes:
+      parsed.data.scope === undefined
+        ? null
+        : oauthScopeTokens(parsed.data.scope),
   };
 }
 
@@ -346,6 +378,7 @@ function feishuOAuthTokenResult(token: {
     refreshToken: token.refreshToken,
     idToken: null,
     expiresAt: new Date(nowDate().getTime() + token.expiresInSeconds * 1000),
+    scopes: null,
   };
 }
 
@@ -761,6 +794,9 @@ async function replaceConnectionTokens(args: {
       tokenExpiresAt: args.token.expiresAt,
       needsReconnect: false,
       reconnectReason: null,
+      ...(args.token.scopes === null
+        ? {}
+        : { oauthScopes: JSON.stringify(args.token.scopes) }),
       updatedAt: nowDate(),
     })
     .where(
@@ -876,6 +912,7 @@ export async function storeCustomConnectorOAuth2Connection(
         target: {
           kind: "custom",
           customConnectorId: args.connectorId,
+          oauthScopes: args.token.scopes,
         },
         resolution: resolution.mutation,
         insertConnectionId: args.insertConnectionId,

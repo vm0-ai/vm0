@@ -1106,16 +1106,19 @@ export function ConnectorsPage() {
     };
   };
 
-  const finishExplicitAccountAdd = (
+  const finishExplicitAccountAdd = async (
     connector: PlatformConnectorCatalogStatusItem,
     connectionId: string | null,
-  ) => {
-    finishAccountConnection({
-      target: { kind: "builtin", connectorSlug: connector.slug },
-      connectionId,
-      connectorLabel: connector.label,
-      mode: { kind: "add" },
-    });
+  ): Promise<void> => {
+    await finishAccountConnection(
+      {
+        target: { kind: "builtin", connectorSlug: connector.slug },
+        connectionId,
+        connectorLabel: connector.label,
+        mode: { kind: "add" },
+      },
+      signal,
+    );
   };
 
   const accountConnectHandlers = (
@@ -1137,7 +1140,7 @@ export function ConnectorsPage() {
           signal,
         );
         if (result) {
-          finishExplicitAccountAdd(connector, result.connectionId);
+          await finishExplicitAccountAdd(connector, result.connectionId);
         }
         return result;
       },
@@ -1154,7 +1157,7 @@ export function ConnectorsPage() {
           signal,
         );
         if (result) {
-          finishExplicitAccountAdd(connector, result.connectionId);
+          await finishExplicitAccountAdd(connector, result.connectionId);
         }
         return result;
       },
@@ -1320,16 +1323,19 @@ export function ConnectorsPage() {
           onClose={() => {
             closeAccountConnect();
           }}
-          onSuccess={(connectionId) => {
-            finishAccountConnection({
-              target: {
-                kind: "builtin",
-                connectorSlug: accountConnect.connector.slug,
+          onSuccess={async (connectionId) => {
+            await finishAccountConnection(
+              {
+                target: {
+                  kind: "builtin",
+                  connectorSlug: accountConnect.connector.slug,
+                },
+                connectionId,
+                connectorLabel: accountConnect.connector.label,
+                mode: accountConnect.mode,
               },
-              connectionId,
-              connectorLabel: accountConnect.connector.label,
-              mode: accountConnect.mode,
-            });
+              signal,
+            );
           }}
         />
       )}

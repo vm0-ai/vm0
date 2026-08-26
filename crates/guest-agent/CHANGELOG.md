@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.79.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.5...guest-agent-v0.79.6) (2026-08-26)
+
+## [0.79.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.4...guest-agent-v0.79.5) (2026-08-26)
+
+
+### Documentation
+
+* **guest-agent:** clarify has_api capability semantics ([#29498](https://github.com/vm0-ai/vm0/issues/29498)) ([db74bdb](https://github.com/vm0-ai/vm0/commit/db74bdb81d8716f016bd9050c3aec39852a24c93))
+
+
+### Performance Improvements
+
+* **guest-agent:** reject oversized plain histories before reading ([#29494](https://github.com/vm0-ai/vm0/issues/29494)) ([207cc95](https://github.com/vm0-ai/vm0/commit/207cc95ad45f5216667264d8998ed48e0f8969e4))
+
+## [0.79.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.3...guest-agent-v0.79.4) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent:** preserve original shell commands in tool events ([#29475](https://github.com/vm0-ai/vm0/issues/29475)) ([238051b](https://github.com/vm0-ai/vm0/commit/238051b2011fbd6d790c34b81e4f476d9a107830))
+
 ## [0.79.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.2...guest-agent-v0.79.3) (2026-08-26)
 
 ## [0.79.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.1...guest-agent-v0.79.2) (2026-08-25)

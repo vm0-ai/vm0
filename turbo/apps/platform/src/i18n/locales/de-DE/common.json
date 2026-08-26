@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Seitenleiste einklappen",
       "expand": "Seitenleiste erweitern",
+      "hideChatList": "Chatliste ausblenden",
       "manage": "Verwalten",
       "mobile": {
         "invite": "Einladen",
@@ -455,6 +456,7 @@
         "works": "Kanäle"
       },
       "searchConversations": "Gespräche suchen",
+      "showChatList": "Chatliste anzeigen",
       "workspaceSwitcher": {
         "create": "Arbeitsbereich erstellen",
         "creating": "Wird erstellt…",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
-        "crop": "Zuschneiden",
-        "highlight": "Hervorheben",
         "pen": "Zeichnen",
         "redact": "Schwärzen",
-        "select": "Auswählen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -1930,13 +1929,13 @@
       "yourComputer": "Ihr Computer"
     },
     "connectors": {
+      "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",
       "addConnectors": "Integrationen hinzufügen",
       "authorizationFailed": "{{connectorName}} verbunden, konnte aber nicht für {{agentName}} autorisiert werden",
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
-      "back": "Zurück",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
       "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",
@@ -2420,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Arbeitskonto"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Anwenden",
@@ -3418,7 +3416,7 @@
         },
         "slack": {
           "description": "Chatten Sie mit Ihrem KI-Teammitglied in Ihrem Workspace",
-          "title": "Slack verwenden"
+          "title": "Mit Okou in Slack chatten"
         },
         "video": {
           "description": "Verwandeln Sie Ihre Ideen in Videos",

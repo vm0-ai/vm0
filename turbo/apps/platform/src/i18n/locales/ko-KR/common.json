@@ -432,6 +432,7 @@
       "chat": "채팅",
       "collapse": "사이드바 접기",
       "expand": "사이드바 펼치기",
+      "hideChatList": "채팅 목록 숨기기",
       "manage": "관리",
       "mobile": {
         "invite": "초대",
@@ -455,6 +456,7 @@
         "works": "작업"
       },
       "searchConversations": "대화 검색",
+      "showChatList": "채팅 목록 표시",
       "workspaceSwitcher": {
         "create": "워크스페이스 만들기",
         "creating": "만드는 중…",
@@ -502,11 +504,8 @@
       "tools": {
         "arrow": "화살표",
         "box": "사각형",
-        "crop": "자르기",
-        "highlight": "강조",
         "pen": "그리기",
         "redact": "가리기",
-        "select": "선택",
         "text": "텍스트"
       },
       "undo": "실행 취소"
@@ -1927,13 +1926,13 @@
       "yourComputer": "내 컴퓨터"
     },
     "connectors": {
+      "accountForThread": "이 스레드의 계정",
       "add": "{{connectorName}} 추가",
       "addConnectors": "커넥터 추가",
       "authorizationFailed": "{{connectorName}}는 연결되었으나 {{agentName}}에 대한 권한 부여에 실패했습니다",
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
-      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
       "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",
@@ -2412,8 +2411,7 @@
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}}개에 주의 필요",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "업무용 계정"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "적용",
@@ -3410,7 +3408,7 @@
         },
         "slack": {
           "description": "워크스페이스에서 AI 팀원과 채팅하세요",
-          "title": "Slack 사용"
+          "title": "Slack에서 Okou와 채팅"
         },
         "video": {
           "description": "아이디어를 비디오로 전환",

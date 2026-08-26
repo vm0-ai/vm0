@@ -184,6 +184,7 @@ async fn kill_current_target(
         is_orphan,
         control,
         move || async move { rediscover_same_sandbox_process(&rediscovery_target).await },
+        |pid, runner_pids| async move { process::is_orphan(pid, &runner_pids).await },
         process::discover_all_with_status,
     )
     .await
@@ -192,6 +193,8 @@ async fn kill_current_target(
 async fn kill_current_target_with_orphan_fallback<
     Rediscover,
     RediscoverFuture,
+    IsOrphan,
+    IsOrphanFuture,
     Discover,
     DiscoverFuture,
 >(
@@ -199,12 +202,15 @@ async fn kill_current_target_with_orphan_fallback<
     is_orphan: bool,
     control: &dyn SandboxControl,
     rediscover: Rediscover,
+    classify_orphan: IsOrphan,
     discover: Discover,
 ) -> KillOutcome
 where
     Rediscover: FnOnce() -> RediscoverFuture,
     RediscoverFuture:
         std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
+    IsOrphan: FnOnce(u32, Vec<u32>) -> IsOrphanFuture,
+    IsOrphanFuture: std::future::Future<Output = bool>,
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
 {
@@ -212,8 +218,15 @@ where
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
         Err(error) => {
-            retry_as_orphan_if_owner_disappeared(&current, error, is_orphan, rediscover, discover)
-                .await
+            retry_as_orphan_if_owner_disappeared(
+                &current,
+                error,
+                is_orphan,
+                rediscover,
+                classify_orphan,
+                discover,
+            )
+            .await
         }
     }
 }
@@ -221,6 +234,8 @@ where
 async fn retry_as_orphan_if_owner_disappeared<
     Rediscover,
     RediscoverFuture,
+    IsOrphan,
+    IsOrphanFuture,
     Discover,
     DiscoverFuture,
 >(
@@ -228,12 +243,15 @@ async fn retry_as_orphan_if_owner_disappeared<
     owner_error: SandboxControlError,
     was_orphan: bool,
     rediscover: Rediscover,
+    classify_orphan: IsOrphan,
     discover: Discover,
 ) -> KillOutcome
 where
     Rediscover: FnOnce() -> RediscoverFuture,
     RediscoverFuture:
         std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
+    IsOrphan: FnOnce(u32, Vec<u32>) -> IsOrphanFuture,
+    IsOrphanFuture: std::future::Future<Output = bool>,
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
 {
@@ -254,14 +272,18 @@ where
             return KillOutcome::RefusedTargetChanged(error.to_string());
         }
     };
-    if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
+    let ResolvedKillTarget {
+        target: refreshed,
+        runner_pids,
+    } = refreshed;
+    if !classify_orphan(refreshed.pid, runner_pids).await {
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
     }
     if should_refuse_orphan_fallback(expected.run_id.as_deref()) {
         return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
     }
 
-    KillOutcome::from(orphan::terminate(&refreshed.target).await)
+    KillOutcome::from(orphan::terminate(&refreshed).await)
 }
 
 async fn finish_kill_outcome(
@@ -462,6 +484,7 @@ async fn confirm() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::path::Path;
 
     use sandbox::SandboxControlTarget;
@@ -562,6 +585,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_target_refuses_orphan_fallback_when_rediscovery_fails() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
+        let mut current = make_target(u32::MAX - 2_000, "sbox-123");
+        current.run_id = Some("run-full-id".into());
+        let classification_called = Cell::new(false);
+        let discovery_called = Cell::new(false);
+
+        let outcome = kill_current_target_with_orphan_fallback(
+            current,
+            false,
+            &control,
+            || {
+                std::future::ready(Err(RediscoverTargetError::Resolve(
+                    "sandbox disappeared".into(),
+                )))
+            },
+            |_, _| {
+                classification_called.set(true);
+                std::future::ready(true)
+            },
+            || {
+                discovery_called.set(true);
+                std::future::ready(empty_process_discovery(true))
+            },
+        )
+        .await;
+
+        match outcome {
+            KillOutcome::RefusedTargetChanged(reason) => {
+                assert_eq!(reason, RUN_ORPHAN_FALLBACK_REFUSAL)
+            }
+            other => panic!("expected run-scoped fallback refusal, got {other:?}"),
+        }
+        assert!(!classification_called.get());
+        assert!(!discovery_called.get());
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::run("run-full-id", "sbox-123")]
+        );
+    }
+
+    #[tokio::test]
+    async fn run_target_refuses_orphan_fallback_after_orphan_rediscovery() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
+        let mut current = make_target(u32::MAX - 2_000, "sbox-123");
+        current.run_id = Some("run-full-id".into());
+        let refreshed = ResolvedKillTarget {
+            target: current.clone(),
+            runner_pids: vec![],
+        };
+
+        let outcome = kill_current_target_with_orphan_fallback(
+            current,
+            false,
+            &control,
+            || std::future::ready(Ok(refreshed)),
+            |_, _| std::future::ready(true),
+            || std::future::ready(empty_process_discovery(true)),
+        )
+        .await;
+
+        match outcome {
+            KillOutcome::RefusedTargetChanged(reason) => {
+                assert_eq!(reason, RUN_ORPHAN_FALLBACK_REFUSAL)
+            }
+            other => panic!("expected run-scoped fallback refusal, got {other:?}"),
+        }
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::run("run-full-id", "sbox-123")]
+        );
+    }
+
+    #[tokio::test]
     async fn orphan_target_uses_current_reresolved_identity() {
         let control = MockSandboxControl::new("/tmp/test");
         control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
@@ -576,6 +675,7 @@ mod tests {
                     "sandbox disappeared".into(),
                 )))
             },
+            |_, _| std::future::ready(true),
             || std::future::ready(empty_process_discovery(true)),
         )
         .await;
@@ -601,6 +701,7 @@ mod tests {
                     "sandbox disappeared".into(),
                 )))
             },
+            |_, _| std::future::ready(true),
             || std::future::ready(empty_process_discovery(false)),
         )
         .await;

@@ -1,5 +1,63 @@
 # Changelog
 
+## [8.594.3](https://github.com/vm0-ai/vm0/compare/core-v8.594.2...core-v8.594.3) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+
+## [8.594.2](https://github.com/vm0-ai/vm0/compare/core-v8.594.1...core-v8.594.2) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.2
+
+## [8.594.1](https://github.com/vm0-ai/vm0/compare/core-v8.594.0...core-v8.594.1) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.1
+
+## [8.594.0](https://github.com/vm0-ai/vm0/compare/core-v8.593.0...core-v8.594.0) (2026-08-26)
+
+
+### Features
+
+* enable the latest website templates for everyone ([#29446](https://github.com/vm0-ai/vm0/issues/29446)) ([6e911fa](https://github.com/vm0-ai/vm0/commit/6e911fa281806db6af98c6d3d59abbbc2e17f3f3))
+
+
+### Refactoring
+
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
+## [8.593.0](https://github.com/vm0-ai/vm0/compare/core-v8.592.1...core-v8.593.0) (2026-08-26)
+
+
+### Features
+
+* scaffold intro-video templates ([#29370](https://github.com/vm0-ai/vm0/issues/29370)) ([8c5da7c](https://github.com/vm0-ai/vm0/commit/8c5da7c4ca03434810c4d401e1b6f11a9cac305e))
+
+
+### Bug Fixes
+
+* keep the deck import message to the request itself ([#29441](https://github.com/vm0-ai/vm0/issues/29441)) ([c60e01b](https://github.com/vm0-ai/vm0/commit/c60e01bc7a5bdbf1dd5bed0812ba3ed51b02aad3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.0
+
 ## [8.592.1](https://github.com/vm0-ai/vm0/compare/core-v8.592.0...core-v8.592.1) (2026-08-26)
 
 

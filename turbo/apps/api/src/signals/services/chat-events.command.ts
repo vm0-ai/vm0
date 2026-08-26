@@ -80,7 +80,7 @@ import {
   resolvePersistedChatThreadModel,
   type PersistedChatThreadModelResolutionPath,
 } from "./chat-thread-model.service";
-import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import {
   revokeChatEvent,
@@ -435,11 +435,10 @@ interface NormalSendFeatureSwitches {
   readonly introVideoTemplatesEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
-   * Carried whole so thread creation can resolve its media pins without
-   * reloading the switches this request already read.
+   * Carried whole so downstream checks can read it without reloading the
+   * switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly builtInModelProviderFallbackEnabled: boolean;
@@ -1066,10 +1065,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.LatestPresentationTemplates,
       context,
     ),
-    videoModelSelectionEnabled: isFeatureEnabled(
-      FeatureSwitchKey.VideoModelSelection,
-      context,
-    ),
     presentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplates,
       context,
@@ -1107,11 +1102,7 @@ function resolveSelectedTemplateContext(
         featureSwitches.presentationTemplatesEnabled,
       mountedUserPresentationTemplateIds,
     }),
-    // Gated with the composer control that produces it, so a client that keeps
-    // sending the field after the switch is turned off stops being honoured.
-    videoRunOptions: featureSwitches.videoModelSelectionEnabled
-      ? (runtimeBody.runOptions?.video ?? null)
-      : null,
+    videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
 
@@ -1435,14 +1426,12 @@ async function createChatThread(
     readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
     readonly codexServiceTier: CodexServiceTier | null;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
-    const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+    const mediaModels = await loadNewChatThreadMediaModels(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      featureSwitchContext: args.featureSwitchContext,
     });
     const pinColumns = chatThreadModelPinColumns(args.pin);
     if (args.clientThreadId) {
@@ -1594,7 +1583,6 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
@@ -1611,7 +1599,6 @@ async function resolveThread(params: {
       pin: params.initialPin,
       codexServiceTier:
         params.explicitRunConfiguration.codexServiceTier ?? null,
-      featureSwitchContext: params.featureSwitchContext,
     });
     if ("status" in thread) {
       return thread;
@@ -2402,7 +2389,6 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        featureSwitchContext: featureSwitches.featureSwitchContext,
         builtInModelProviderFallbackEnabled:
           featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,

@@ -1,10 +1,11 @@
 import { performance } from "node:perf_hooks";
 
 import { now } from "../../lib/time";
-import type {
-  ApiDispatchTimingActionType,
-  ApiDispatchTimingCollector,
-  ApiDispatchTimingDimensions,
+import {
+  measureApiDispatchTiming,
+  type ApiDispatchTimingActionType,
+  type ApiDispatchTimingCollector,
+  type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import type {
   ConnectorCatalogRuntimeProjectionFallbackReason,
@@ -26,7 +27,6 @@ type ConnectorRuntimeProjectionCacheOutcome =
 type ConnectorRuntimeSelectionSource = "projection" | "full_fallback";
 type ConnectorRuntimeProjectionReadiness =
   | "ready"
-  | "schema_unavailable"
   | "not_ready"
   | "unsupported"
   | "compatibility_not_ready"
@@ -161,7 +161,6 @@ function projectionReadiness(
   fallbackReason: ConnectorCatalogRuntimeProjectionFallbackReason | undefined,
 ): ConnectorRuntimeProjectionReadiness {
   switch (fallbackReason) {
-    case "schema_unavailable":
     case "not_ready":
     case "unsupported":
     case "compatibility_not_ready":
@@ -201,7 +200,7 @@ export class ConnectorCatalogLoadTiming {
   private materializedConnectorCount: number | undefined;
 
   constructor(
-    private readonly collector: ApiDispatchTimingCollector,
+    private readonly collector: ApiDispatchTimingCollector | undefined,
     private readonly requestedConnectorCount: number | undefined,
     private readonly metadataConnectorCount: number | undefined = undefined,
   ) {}
@@ -264,19 +263,38 @@ export class ConnectorCatalogLoadTiming {
     actionType: ApiDispatchTimingActionType,
     operation: () => T | Promise<T>,
   ): Promise<T> {
-    return await this.collector.measure(actionType, "nested", operation);
+    return await measureApiDispatchTiming(
+      this.collector,
+      actionType,
+      "nested",
+      operation,
+    );
   }
 
   measureSync<T>(
     actionType: ApiDispatchTimingActionType,
     operation: () => T,
   ): T {
+    if (!this.collector) {
+      return operation();
+    }
     return this.collector.measureSync(actionType, "nested", operation);
   }
 
   measureProjectionRowValidation<T>(
     operation: (timing: ConnectorCatalogRuntimeProjectionValidationTiming) => T,
   ): T {
+    const collector = this.collector;
+    if (!collector) {
+      return operation({
+        measureParse<T>(phaseOperation: () => T): T {
+          return phaseOperation();
+        },
+        measureDigest<T>(phaseOperation: () => T): T {
+          return phaseOperation();
+        },
+      });
+    }
     let parseDurationMs = 0;
     let digestDurationMs = 0;
     const measurePhase = <T>(
@@ -313,13 +331,13 @@ export class ConnectorCatalogLoadTiming {
         // Validation short-circuits per requested connector. Accumulate its
         // interleaved phases instead of reordering work or logging per row.
         const finishedAt = now();
-        this.collector.recordDuration(
+        collector.recordDuration(
           "api_dispatch_connector_catalog_parse_projection_rows",
           "nested",
           parseDurationMs,
           finishedAt,
         );
-        this.collector.recordDuration(
+        collector.recordDuration(
           "api_dispatch_connector_catalog_verify_projection_row_digests",
           "nested",
           digestDurationMs,
@@ -334,7 +352,8 @@ export class ConnectorCatalogLoadTiming {
   }
 
   async measureComplete<T>(operation: () => T | Promise<T>): Promise<T> {
-    return await this.collector.measure(
+    return await measureApiDispatchTiming(
+      this.collector,
       "api_dispatch_connector_catalog_load_runtime_snapshot",
       "nested",
       operation,

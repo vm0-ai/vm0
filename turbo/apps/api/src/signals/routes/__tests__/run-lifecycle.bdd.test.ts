@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
+import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
@@ -60,18 +61,19 @@ import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
   clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
+  corruptApiTestConnectorCatalogActiveSnapshotPayload,
   corruptApiTestConnectorCatalogRuntimeProjectionDigest,
   corruptApiTestConnectorCatalogRuntimeProjectionPayload,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   installApiTestConnectorCatalog,
+  mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
-  setApiTestConnectorCatalogRuntimeProjectionLegacy,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -574,6 +576,12 @@ const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
   "sandboxToken",
   "presigned_url",
   "response_body",
+] as const;
+const RUNNER_ATTRIBUTION_DIMENSION_KEYS = [
+  "runner_id",
+  "runner_heartbeat_generation",
+  "runner_hostname",
+  "runner_version",
 ] as const;
 
 function modelProviderPlaceholder(
@@ -2790,12 +2798,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     },
     {
-      payloadState: "missing",
-      createPayload: (): null => {
-        return null;
-      },
-    },
-    {
       payloadState: "oversized",
       createPayload: (): Buffer => {
         return Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1);
@@ -2803,7 +2805,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     },
   ] satisfies readonly {
     readonly payloadState: string;
-    readonly createPayload: () => Buffer | null;
+    readonly createPayload: () => Buffer;
   }[])(
     "falls back when an attested projection payload is $payloadState",
     async ({ payloadState, createPayload }) => {
@@ -2849,45 +2851,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, run.runId, [200]);
     },
   );
-
-  it("keeps legacy projections readable during mixed-version rollout", async () => {
-    const api = createRunsApi(context);
-    mockEnv(
-      "R2_USER_STORAGES_BUCKET_NAME",
-      `test-run-lifecycle-legacy-runtime-projection-${randomUUID()}`,
-    );
-    await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-legacy-runtime-projection-${randomUUID()}`,
-      runtimeProjection: true,
-    });
-    await setApiTestConnectorCatalogRuntimeProjectionLegacy();
-    const { actor, agentId } = await entitledRunActor();
-    const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
-        agentId,
-        prompt: "legacy runtime projection",
-      }),
-      connectorScope: {
-        allowedConnectorSlugs: ["x"],
-        allowedCustomConnectorIds: [],
-      },
-    });
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectProjectionRowReadActionCounts(timingEvents, 1);
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_connector_catalog_load_runtime_snapshot",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        connector_catalog_runtime_selection_source: "projection",
-        connector_catalog_projection_cache_outcome: "miss",
-        connector_catalog_projection_readiness: "ready",
-      }),
-    );
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
 
   it("falls back when projection validation authority is stale", async () => {
     const api = createRunsApi(context);
@@ -4492,19 +4455,35 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
 
-    const identities = [
-      { runnerId: randomUUID(), heartbeatGeneration: 11 },
-      { runnerId: randomUUID(), heartbeatGeneration: 12 },
+    const candidates = [
+      {
+        runnerIdentity: { runnerId: randomUUID(), heartbeatGeneration: 11 },
+        runnerHostname: "prod-1.aws.vm3.ai",
+        runnerVersion: "1.494.11",
+      },
+      {
+        runnerIdentity: { runnerId: randomUUID(), heartbeatGeneration: 12 },
+        runnerHostname: "prod-2.aws.vm3.ai",
+        runnerVersion: "1.494.12",
+      },
     ];
     const claims = await Promise.all(
-      identities.map(async (runnerIdentity) => {
+      candidates.map(async (candidate) => {
         return {
-          runnerIdentity,
+          candidate,
           response: await api.requestClaimRunnerJob(
             true,
             run.runId,
             [200, 404],
-            { runnerIdentity },
+            {
+              runnerIdentity: candidate.runnerIdentity,
+              runnerHostname: candidate.runnerHostname,
+              telemetry: {
+                directCandidateNotificationToEnqueueMs: 2,
+                pollHttpRequestMs: 3,
+              },
+            },
+            { [CLIENT_VERSION_HEADER]: candidate.runnerVersion },
           ),
         };
       }),
@@ -4525,12 +4504,79 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected one winning runner claim");
     }
     await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
-      runner_id: winningClaim.runnerIdentity.runnerId,
-      heartbeat_generation: winningClaim.runnerIdentity.heartbeatGeneration,
+      runner_id: winningClaim.candidate.runnerIdentity.runnerId,
+      heartbeat_generation:
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
+    });
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: winningClaim.candidate.runnerHostname,
+      runnerVersion: winningClaim.candidate.runnerVersion,
+      runnerId: winningClaim.candidate.runnerIdentity.runnerId,
+      runnerHeartbeatGeneration:
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
     });
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
+    await flushWaitUntilForTest();
+    const attributionDimensions = {
+      runner_id: winningClaim.candidate.runnerIdentity.runnerId,
+      runner_heartbeat_generation: String(
+        winningClaim.candidate.runnerIdentity.heartbeatGeneration,
+      ),
+      runner_hostname: winningClaim.candidate.runnerHostname,
+      runner_version: winningClaim.candidate.runnerVersion,
+    };
+    expect(
+      singleSandboxOperationEvent(
+        sandboxOperationEventsForRun(run.runId),
+        "claim_request_to_running",
+      ),
+    ).toStrictEqual(expect.objectContaining(attributionDimensions));
+    const preClaimTimingEvents = [
+      "direct_candidate_notification_to_enqueue",
+      "runner_poll_http_request",
+    ].map((actionType) => {
+      return singleSandboxOperationEvent(
+        sandboxOperationEventsForRun(run.runId),
+        actionType,
+      );
+    });
+    expect(
+      preClaimTimingEvents.some((event) => {
+        return RUNNER_ATTRIBUTION_DIMENSION_KEYS.some((key) => {
+          return Object.hasOwn(event, key);
+        });
+      }),
+    ).toBeFalsy();
+    const claimRouteTimingEvents = claimRouteTimingEventsForRun(run.runId);
+    const nestedClaimRouteTimingEvents = claimRouteTimingEvents.filter(
+      (event) => {
+        return event.span_kind === "nested";
+      },
+    );
+    expect(nestedClaimRouteTimingEvents.length).toBeGreaterThan(0);
+    expect(
+      nestedClaimRouteTimingEvents.every((event) => {
+        return Object.entries(attributionDimensions).every(([key, value]) => {
+          return event[key] === value;
+        });
+      }),
+    ).toBeTruthy();
+    expect(
+      claimRouteTimingEvents
+        .filter((event) => {
+          return event.span_kind !== "nested";
+        })
+        .some((event) => {
+          return RUNNER_ATTRIBUTION_DIMENSION_KEYS.some((key) => {
+            return Object.hasOwn(event, key);
+          });
+        }),
+    ).toBeFalsy();
     for (const actionType of CLAIM_ROUTE_PARENT_TIMING_ACTION_TYPES) {
       expect(
         singleSandboxOperationEvent(
@@ -4571,7 +4617,64 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     await api.claimRunnerJob(run.runId);
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: expect.any(String),
+      runnerHeartbeatGeneration: 1,
+    });
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects malformed runner attribution before the claim transition", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const hostnameRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject an oversized runner hostname",
+      modelProvider: "anthropic-api-key",
+    });
+    const invalidHostname = await api.requestRawClaimRunnerJob(
+      true,
+      hostnameRun.runId,
+      [400],
+      {
+        runnerIdentity: {
+          runnerId: randomUUID(),
+          heartbeatGeneration: 1,
+        },
+        runnerHostname: "x".repeat(256),
+      },
+    );
+    expectApiError(invalidHostname.body);
+    await expect(api.readRun(actor, hostnameRun.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    const versionRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject an oversized runner version",
+      modelProvider: "anthropic-api-key",
+    });
+    const invalidVersion = await api.requestClaimRunnerJob(
+      true,
+      versionRun.runId,
+      [400],
+      {},
+      { [CLIENT_VERSION_HEADER]: "x".repeat(129) },
+    );
+    expectApiError(invalidVersion.body);
+    await expect(api.readRun(actor, versionRun.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    await api.claimRunnerJob(hostnameRun.runId);
+    await api.claimRunnerJob(versionRun.runId);
+    await api.requestCancelRun(actor, hostnameRun.runId, [200]);
+    await api.requestCancelRun(actor, versionRun.runId, [200]);
   });
 
   it("does not trust claim identity from a PAT-authenticated runner", async () => {
@@ -4593,13 +4696,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runnerId: randomUUID(),
           heartbeatGeneration: 13,
         },
+        runnerHostname: "untrusted.aws.vm3.ai",
       },
+      { [CLIENT_VERSION_HEADER]: "9.9.9" },
     );
 
     expect(claim.status).toBe(200);
     await expect(readRunClaimOwner(context, run.runId)).resolves.toStrictEqual({
       runner_id: null,
       heartbeat_generation: null,
+    });
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -9142,6 +9256,78 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("uses exact runtime projections and authoritative fallback for builtin sync", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connected = await connectors.connectManualGrant(
+      actor,
+      "lark",
+      "api-token",
+      {
+        appId: "lark-projection-app-id",
+        appSecret: "lark-projection-app-secret",
+      },
+    );
+    await api.enableAgentConnectors(actor, agentId, ["lark"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "refresh lark through exact runtime projections",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const larkTarget = claim.connectorRuntimeTargets.find((target) => {
+      return target.kind === "builtin" && target.connectorSlug === "lark";
+    });
+    if (!larkTarget || larkTarget.kind !== "builtin") {
+      throw new Error("Expected the lark runtime target");
+    }
+    expect(larkTarget.sourceId).toBe(connected.id);
+
+    onTestFinished(async () => {
+      mockApiTestConnectorProviderConfiguration();
+      await installApiTestConnectorCatalog();
+    });
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-sync-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
+    await corruptApiTestConnectorCatalogActiveSnapshotPayload();
+
+    const [projectedRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [larkTarget],
+    });
+    expect(projectedRuntime).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-sync-fallback-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("lark");
+
+    const [fallbackRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [larkTarget],
+    });
+    expect(fallbackRuntime).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("emits lazy platform-secret metadata without snapshotting platform secrets", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -11274,6 +11460,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
               : "custom-oauth-force-rotated-refresh-token",
           token_type: "Bearer",
           expires_in: 3600,
+          ...(attempt === 1 ? { scope: "read refreshed" } : {}),
         });
       },
     });
@@ -11281,6 +11468,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
@@ -11468,6 +11658,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       connected: true,
       missingRequiredFields: [],
     });
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toMatchObject([{ oauthScopes: ["read", "refreshed"] }]);
 
     const currentResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11539,6 +11732,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
       expectedBasicAuthorization,
     ]);
+    await expect(
+      connectors.listCustomConnectorAccounts(actor, custom.id),
+    ).resolves.toMatchObject([{ oauthScopes: ["read", "refreshed"] }]);
 
     const failedRefresh = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -13740,29 +13936,29 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
         `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
       );
       expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-        "previous",
+        "latest",
       );
       await api.requestCancelRun(actor, r2Run.runId, [200]);
     },
   );
 
-  it("pins the latest Website template release into opted-in run contexts", async () => {
+  it("pins the pre-cutover Website release into opted-out run contexts", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.LatestWebsiteTemplates]: true,
+      [FeatureSwitchKey.LatestWebsiteTemplates]: false,
     });
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "use the latest Website template release",
+      prompt: "use the pre-cutover Website template release",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-      "latest",
+      "previous",
     );
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -14097,7 +14293,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.environment?.OKOU_TOKEN,
       CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "latest",
     });
     for (const [key, value] of Object.entries(
       claim.platformEnvironment ?? {},
@@ -17239,6 +17435,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "lockBusy",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: expect.any(String),
+      runnerHeartbeatGeneration: 1,
     });
 
     const telemetry = await webhooks.requestAgentTelemetry(
@@ -17360,6 +17560,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "cacheMiss",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
   });
 
@@ -17396,6 +17600,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: "diskPressure",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
 
     await webhooks.requestAgentComplete(

@@ -107,9 +107,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -144,9 +142,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -158,7 +154,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);

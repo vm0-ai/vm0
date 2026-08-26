@@ -2823,6 +2823,7 @@ async function persistCustomConnectorValues(
     target: {
       kind: "custom",
       customConnectorId: args.request.connectorId,
+      oauthScopes: null,
     },
   };
   let connectedAccountId: string;

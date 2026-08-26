@@ -429,6 +429,37 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     #         response_headers_truncated, response_body, response_body_encoding,
     #         response_body_truncated
 
+    Capture is an opt-in persistent-log boundary. Header values are redacted by
+    default; only constrained protocol metadata is preserved: normalized
+    allowlisted ``content-type`` media types (with parameters removed), valid
+    ``accept-encoding`` and ``content-encoding`` codings, decimal
+    ``content-length``, and valid IMF-fixdate ``date`` values. Unsafe,
+    malformed, or overlong values are represented as ``***``. Header names
+    must be HTTP field-name-shaped and at most 256 characters; invalid or
+    overlong names are represented as ``[redacted-header-name]``. Only the
+    first case-insensitive occurrence of each captured name is retained.
+
+    Each serialized header map is a prefix bounded to 512 fields and 32 KiB of
+    raw name/value bytes. ``*_headers_truncated`` means that this serialized
+    prefix did not contain every header field; it does not describe body
+    capture. Body dependency headers are inspected separately with the same
+    field and byte budgets, so unrelated header overflow cannot hide a later
+    ``content-type`` or ``content-encoding`` field. Multiple ``content-type``
+    values are ambiguous, while repeated ``content-encoding`` fields are folded
+    and validated. Malformed, unsafe, or over-budget dependency metadata fails
+    body capture closed.
+
+    Bodies are bounded by ``BODY_CAPTURE_LIMIT`` (currently 64 KiB) after
+    decoding. Empty bodies have no body or encoding field. Text-like bodies are
+    emitted as UTF-8 when valid, or as base64 when invalid bytes must be
+    preserved. Non-text bodies, failed decoding, and invalid body dependencies
+    omit the body and use ``binary`` when a non-empty body was observed.
+    ``*_body_truncated`` records incomplete, suppressed, stream-truncated, or
+    body-size-limited capture and is independent of whether a body string is
+    emitted. A terminal incomplete UTF-8 sequence caused by the size limit is
+    removed so the bounded prefix can remain UTF-8; other invalid prefixes use
+    base64.
+
     Request bodies prefer request streaming metadata when requestheaders()
     installed a safe capped stream before mitmproxy buffered the body.
 

@@ -24,6 +24,16 @@ class UsageEvent(TypedDict):
 
 
 class ModelUsageObservation(TypedDict):
+    """Model-provider token observation accepted by the usage buffer.
+
+    ``idempotencyKey`` identifies the source observation and ``model`` identifies
+    the model resource. The buffer validates and independently accumulates the
+    four token quantities—``inputTokens``, ``outputTokens``,
+    ``cacheReadInputTokens``, and ``cacheCreationInputTokens``—within the exact
+    ``MAX_USAGE_QUANTITY`` bound. The source-preserving buffer keeps the original
+    vector and key instead of aggregating them.
+    """
+
     idempotencyKey: str
     model: str
     inputTokens: int

@@ -97,9 +97,9 @@ from auth import (
 )
 from body_limits import STREAM_BUFFER_LIMIT
 from firewall_auth_cache import (
+    FirewallAuthCacheEntryIdentity,
     FirewallAuthCacheKey,
-    clear_cached_firewall_headers,
-    request_force_refresh,
+    invalidate_cached_firewall_headers,
 )
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from logging_utils import (
@@ -130,6 +130,7 @@ _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
     metadata_keys.FIREWALL_BASE,
     metadata_keys.FIREWALL_API_ID,
     metadata_keys.FIREWALL_AUTH_CACHE_KEY,
+    metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY,
     metadata_keys.FIREWALL_NAME,
     metadata_keys.FIREWALL_PERMISSION,
     metadata_keys.FIREWALL_RULE_MATCH,
@@ -1463,7 +1464,16 @@ async def request(flow: http.HTTPFlow) -> None:
             return
 
         _unhandled_request_classification(classification)
-    except (asyncio.CancelledError, Exception):
+    except (asyncio.CancelledError, Exception) as error:
+        if isinstance(error, Exception) and flow.response is None and flow.error is None:
+            flow.response = http_local_responses.make_local_json_response(
+                flow,
+                500,
+                {
+                    "error": "request_processing_failed",
+                    "message": "Request processing failed",
+                },
+            )
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
@@ -1869,9 +1879,11 @@ def _finish_response_handling(
         and flow_metadata.firewall_base(flow.metadata)
     ):
         cache_key = flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY)
-        if isinstance(cache_key, FirewallAuthCacheKey):
-            clear_cached_firewall_headers(cache_key)
-            request_force_refresh(cache_key)
+        cache_entry_identity = flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY)
+        if isinstance(cache_key, FirewallAuthCacheKey) and isinstance(
+            cache_entry_identity, FirewallAuthCacheEntryIdentity
+        ):
+            invalidate_cached_firewall_headers(cache_key, cache_entry_identity)
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:

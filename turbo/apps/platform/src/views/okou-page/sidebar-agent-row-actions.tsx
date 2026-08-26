@@ -26,6 +26,7 @@ export function AgentUnreadIndicator() {
 
   return (
     <span
+      role="img"
       aria-label={t(($) => {
         return $.status.unread;
       })}

@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { logger } from "./log";
+import { logAliasResolutionInfo, logger } from "./log";
 import { singleton } from "./singleton";
 
 const CANONICAL_WEB_URL_KEY = "OKOU_WEB_URL";
@@ -38,16 +38,16 @@ function reportResolution(state: WebUrlAliasState): void {
     log.warn(WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
     return;
   }
-  log.debug(WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
+  logAliasResolutionInfo(log, WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
 }
 
 // This API-process compatibility boundary retains VM0_WEB_URL while the
-// deployment action, local API template, and Turbo pass-through remain
-// legacy-only. Under #28914, remove the legacy input only after an exact
-// release containing this reader reached every supported API runtime, the
-// supported rollback target can start after writer cutover, and value-free
-// telemetry reports zero legacy-only and equal-dual resolutions through that
-// rollback window. Refresh stale Worker PR #25722 before the writer cutover.
+// deployment action, local API template, and Turbo pass-through emit
+// byte-equal aliases. Under #28914, remove the legacy input only after every
+// supported writer is canonical-only, old-only rollback targets are retired,
+// and value-free telemetry reports zero legacy-only and equal-dual resolutions
+// through that rollback window. Refresh stale Worker PR #25722 before that
+// cutover.
 export function webUrl(): string {
   const canonical = env(CANONICAL_WEB_URL_KEY);
   const legacy = env(LEGACY_WEB_URL_KEY);

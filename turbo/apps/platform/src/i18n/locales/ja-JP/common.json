@@ -432,6 +432,7 @@
       "chat": "チャット",
       "collapse": "サイドバーを折りたたむ",
       "expand": "サイドバーを展開する",
+      "hideChatList": "チャットリストを非表示",
       "manage": "管理",
       "mobile": {
         "invite": "招待する",
@@ -455,6 +456,7 @@
         "works": "連携先"
       },
       "searchConversations": "会話を検索する",
+      "showChatList": "チャットリストを表示",
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",
         "creating": "作成中…",
@@ -502,11 +504,8 @@
       "tools": {
         "arrow": "矢印",
         "box": "矩形",
-        "crop": "切り抜き",
-        "highlight": "ハイライト",
         "pen": "手描き",
         "redact": "塗りつぶし",
-        "select": "選択",
         "text": "テキスト"
       },
       "undo": "元に戻す"
@@ -1927,13 +1926,13 @@
       "yourComputer": "あなたのコンピュータ"
     },
     "connectors": {
+      "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
       "addConnectors": "コネクタの追加",
       "authorizationFailed": "{{connectorName}} は接続されましたが、{{agentName}} に対して認証できませんでした",
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
-      "back": "戻る",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
       "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
@@ -2412,8 +2411,7 @@
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "仕事用アカウント"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "申し込む",
@@ -3410,7 +3408,7 @@
         },
         "slack": {
           "description": "ワークスペースでAIチームメイトとチャット",
-          "title": "Slackを使う"
+          "title": "SlackでOkouとチャット"
         },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",

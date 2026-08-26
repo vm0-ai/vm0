@@ -446,6 +446,7 @@
       "chat": "Chat",
       "collapse": "Réduire la barre latérale",
       "expand": "Développer la barre latérale",
+      "hideChatList": "Masquer la liste des chats",
       "manage": "Gérer",
       "mobile": {
         "invite": "Inviter",
@@ -469,6 +470,7 @@
         "works": "Travail"
       },
       "searchConversations": "Rechercher des conversations",
+      "showChatList": "Afficher la liste des chats",
       "workspaceSwitcher": {
         "create": "Créer un espace de travail",
         "creating": "Création…",
@@ -518,11 +520,8 @@
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",
-        "crop": "Rogner",
-        "highlight": "Surligner",
         "pen": "Dessiner",
         "redact": "Masquer",
-        "select": "Sélectionner",
         "text": "Texte"
       },
       "undo": "Annuler"
@@ -1960,6 +1959,7 @@
       "yourComputer": "Votre ordinateur"
     },
     "connectors": {
+      "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
       "addConnectors": "Ajouter des connecteurs",
       "authorizationFailed": "{{connectorName}} connecté mais n'a pas pu être autorisé pour {{agentName}}",
@@ -1967,7 +1967,6 @@
       "available_one": "Connecteurs disponibles à connecter ({{count}})",
       "available_many": "Connecteurs disponibles à connecter ({{count}})",
       "available_other": "Connecteurs disponibles à connecter ({{count}})",
-      "back": "Retour",
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
       "defaultAccountFor": "{{connector}} · Compte par défaut utilisé : {{account}}",
@@ -2468,8 +2467,7 @@
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Compte professionnel"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Appliquer",
@@ -3469,7 +3467,7 @@
         },
         "slack": {
           "description": "Discutez avec votre coéquipier IA dans votre espace de travail",
-          "title": "Utiliser Slack"
+          "title": "Discuter avec Okou sur Slack"
         },
         "video": {
           "description": "Transformez vos idées en vidéo",

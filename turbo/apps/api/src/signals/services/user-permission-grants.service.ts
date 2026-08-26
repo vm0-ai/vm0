@@ -34,9 +34,12 @@ import {
 } from "./firewall-network-policy.service";
 import {
   loadConnectorRuntimeSnapshot,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
-import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
+import type {
+  ConnectorServerFirewallCatalog,
+  ConnectorServerFirewallMetadataCatalog,
+} from "./connector-server-firewall-catalog.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
 import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "./connector-catalog-artifacts/artifacts";
@@ -280,7 +283,7 @@ function resolvedConnectorFirewallPolicies(
 }
 
 export function networkPolicyRefreshConnectorSlugs(
-  catalog: ConnectorServerFirewallCatalog,
+  catalog: ConnectorServerFirewallMetadataCatalog,
   connectorSlugs: readonly string[],
 ): string[] {
   return [
@@ -296,7 +299,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   connectorSlugs: readonly string[],
-  preloadedSnapshot?: ConnectorRuntimeSnapshot,
+  preloadedSnapshot?: ConnectorRuntimeSelection,
   checkedAt: Date = nowDate(),
 ): Promise<readonly ActiveNetworkPolicyRefresh[]> {
   if (connectorSlugs.length === 0) {

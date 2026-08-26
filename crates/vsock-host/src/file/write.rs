@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{fmt, io};
 
+use guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE;
 use shell_quote::quote_shell_arg;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES_RESULT};
 
@@ -701,7 +702,7 @@ impl VsockHost {
             .acquire_shared_many(files.iter().map(|file| file.path))
             .await;
         let _file_write_guard = self.shared.file_write_gate.lock().await;
-        let timeout = Duration::from_secs(300);
+        let timeout = WRITE_FILE_REQUEST_DEADLINE;
         let resp = normal_request_on_shared_with_write_observer_frame_builder(
             &self.shared,
             WRITE_FILES_TERMINAL_MSG_TYPES,
@@ -746,7 +747,7 @@ impl VsockHost {
         validate_write_file_chunk_request(request)?;
 
         let _file_write_guard = self.shared.file_write_gate.lock().await;
-        let timeout = Duration::from_secs(300);
+        let timeout = WRITE_FILE_REQUEST_DEADLINE;
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
                 normal_request_on_shared_with_write_observer_frame_builder(

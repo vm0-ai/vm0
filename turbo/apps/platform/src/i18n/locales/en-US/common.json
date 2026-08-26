@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar",
+      "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
         "invite": "Invite",
@@ -452,9 +453,10 @@
       "rail": {
         "new": "New",
         "workflows": "Workflows",
-        "works": "Works"
+        "works": "Channels"
       },
       "searchConversations": "Search conversations",
+      "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",
         "creating": "Creating…",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "Arrow",
         "box": "Box",
-        "crop": "Crop",
-        "highlight": "Highlight",
         "pen": "Draw",
         "redact": "Redact",
-        "select": "Select",
         "text": "Text"
       },
       "undo": "Undo"
@@ -1930,13 +1929,13 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
+      "accountForThread": "Account for this thread",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
-      "back": "Back",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
       "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
@@ -2412,8 +2411,7 @@
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
       "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Work account"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Apply",
@@ -3410,7 +3408,7 @@
         },
         "slack": {
           "description": "Chat with your AI teammate in your workspace",
-          "title": "Use Slack"
+          "title": "Chat with Okou in Slack"
         },
         "video": {
           "description": "Turn your ideas into video",

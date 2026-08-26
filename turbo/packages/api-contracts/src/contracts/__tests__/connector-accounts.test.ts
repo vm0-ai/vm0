@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
   connectorAccountsContract,
   connectorAccountDisplayNameSchema,
   connectorAccountListQuerySchema,
@@ -144,6 +145,33 @@ describe("connector account contracts", () => {
       connectionId,
       target: { kind: "custom", customConnectorId },
     });
+  });
+
+  it("bounds exact account inspection batches", () => {
+    const selection = {
+      connectionId,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+    };
+    expect(
+      connectorAccountsContract.inspect.body.safeParse({
+        selections: Array.from(
+          { length: CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS },
+          () => {
+            return selection;
+          },
+        ),
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorAccountsContract.inspect.body.safeParse({
+        selections: Array.from(
+          { length: CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS + 1 },
+          () => {
+            return selection;
+          },
+        ),
+      }).success,
+    ).toBe(false);
   });
 
   it("requires batched selected account details on thread selection reads", () => {

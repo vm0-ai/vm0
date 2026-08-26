@@ -26,7 +26,6 @@ import {
   videoRunOptionsPatch,
   videoRunOptionsText,
 } from "../../signals/okou-page/video-run-options.ts";
-import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
 
 /**
  * Groups the settings so the pane reads as blocks rather than a run of loose
@@ -437,16 +436,10 @@ export function ComposerVideoOptionsChip({
 }: {
   readonly signals: ComposerSignals;
 }) {
-  const enabled = useGet(videoModelSelectionEnabled$);
   const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
   const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const videoModelSignals = signals.videoModel;
-  if (
-    !enabled ||
-    !desktopLayout ||
-    mediaModelCategory !== "video" ||
-    !videoModelSignals
-  ) {
+  if (!desktopLayout || mediaModelCategory !== "video" || !videoModelSignals) {
     return null;
   }
   return (

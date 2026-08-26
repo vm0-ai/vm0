@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.799.3](https://github.com/vm0-ai/vm0/compare/app-v0.799.2...app-v0.799.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **platform:** keep connector row height stable ([#29502](https://github.com/vm0-ai/vm0/issues/29502)) ([e67a40c](https://github.com/vm0-ai/vm0/commit/e67a40c22f7e4a0df671fe315aba00e4bfdac2a3))
+* **platform:** keep thread account selection in a menu ([#29526](https://github.com/vm0-ai/vm0/issues/29526)) ([f3b0840](https://github.com/vm0-ai/vm0/commit/f3b0840afc628c01cae5c81a260f7a0b0355b3f7))
+* **platform:** preview the real shape while drawing and widen the keyboard ([#29505](https://github.com/vm0-ai/vm0/issues/29505)) ([ae7fef8](https://github.com/vm0-ai/vm0/commit/ae7fef885b83f59c9c974dbf4d07b5db5934cef1))
+* **platform:** share uploaded template resources ([#29506](https://github.com/vm0-ai/vm0/issues/29506)) ([1ec4a25](https://github.com/vm0-ai/vm0/commit/1ec4a250ac4aa5a33a302f65863da2c421cb3d8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+
+## [0.799.2](https://github.com/vm0-ai/vm0/compare/app-v0.799.1...app-v0.799.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* wrap long imported template names instead of clipping them ([#29458](https://github.com/vm0-ai/vm0/issues/29458)) ([e36cf3c](https://github.com/vm0-ai/vm0/commit/e36cf3c3aac2aa0344e1fa1c9fd76a8ade4e5355))
+
+## [0.799.1](https://github.com/vm0-ai/vm0/compare/app-v0.799.0...app-v0.799.1) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.2
+    * @okouai/connectors bumped to 1.210.2
+    * @okouai/core bumped to 8.594.2
+
+## [0.799.0](https://github.com/vm0-ai/vm0/compare/app-v0.798.0...app-v0.799.0) (2026-08-26)
+
+
+### Features
+
+* **onboarding:** open product templates directly ([#29431](https://github.com/vm0-ai/vm0/issues/29431)) ([ba25155](https://github.com/vm0-ai/vm0/commit/ba25155074c853890ef2f9a822bfaef9eb2df81c))
+
+
+### Bug Fixes
+
+* improve three-column sidebar usability ([#29448](https://github.com/vm0-ai/vm0/issues/29448)) ([8194a3b](https://github.com/vm0-ai/vm0/commit/8194a3b6e94588c1dae2f2f21889fd6b31819273))
+* **platform:** isolate connector popover row actions ([#29460](https://github.com/vm0-ai/vm0/issues/29460)) ([84264e3](https://github.com/vm0-ai/vm0/commit/84264e3e708f6187692577ed7825694850dc57c6))
+* **platform:** preview effective connector account names ([#29477](https://github.com/vm0-ai/vm0/issues/29477)) ([4b0c630](https://github.com/vm0-ai/vm0/commit/4b0c63079a943e675a4517235f533a64ce9470d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.1
+    * @okouai/core bumped to 8.594.1
+
+## [0.798.0](https://github.com/vm0-ai/vm0/compare/app-v0.797.0...app-v0.798.0) (2026-08-26)
+
+
+### Features
+
+* **platform:** edit annotation marks directly and drop the modal tools ([#29453](https://github.com/vm0-ai/vm0/issues/29453)) ([cd65c4a](https://github.com/vm0-ai/vm0/commit/cd65c4ad2322126cee65ecfcad84246c7a2dfab3))
+
+
+### Bug Fixes
+
+* **platform:** unify dialog corner radius ([#29432](https://github.com/vm0-ai/vm0/issues/29432)) ([8837247](https://github.com/vm0-ai/vm0/commit/88372474837072be7b1be00c02d866c47a35e4f8))
+
+
+### Refactoring
+
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.594.0
+
+## [0.797.0](https://github.com/vm0-ai/vm0/compare/app-v0.796.2...app-v0.797.0) (2026-08-26)
+
+
+### Features
+
+* **chat:** make tool activity copy lifecycle-aware ([#29434](https://github.com/vm0-ai/vm0/issues/29434)) ([bec654e](https://github.com/vm0-ai/vm0/commit/bec654e4597cbbe2b4a1776cd9fc439a19e66489))
+* scaffold intro-video templates ([#29370](https://github.com/vm0-ai/vm0/issues/29370)) ([8c5da7c](https://github.com/vm0-ai/vm0/commit/8c5da7c4ca03434810c4d401e1b6f11a9cac305e))
+
+
+### Bug Fixes
+
+* keep the deck import message to the request itself ([#29441](https://github.com/vm0-ai/vm0/issues/29441)) ([c60e01b](https://github.com/vm0-ai/vm0/commit/c60e01bc7a5bdbf1dd5bed0812ba3ed51b02aad3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.0
+    * @okouai/core bumped to 8.593.0
+
 ## [0.796.2](https://github.com/vm0-ai/vm0/compare/app-v0.796.1...app-v0.796.2) (2026-08-26)
 
 

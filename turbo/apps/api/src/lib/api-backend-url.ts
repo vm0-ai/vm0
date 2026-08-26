@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { logger } from "./log";
+import { logAliasResolutionInfo, logger } from "./log";
 import { singleton } from "./singleton";
 
 const CANONICAL_API_BACKEND_URL_KEY = "OKOU_API_BACKEND_URL";
@@ -35,7 +35,7 @@ function reportResolution(state: ApiBackendUrlAliasState): void {
     log.warn(API_BACKEND_URL_ALIAS_RESOLUTION_EVENT, fields);
     return;
   }
-  log.debug(API_BACKEND_URL_ALIAS_RESOLUTION_EVENT, fields);
+  logAliasResolutionInfo(log, API_BACKEND_URL_ALIAS_RESOLUTION_EVENT, fields);
 }
 
 // This API-process compatibility boundary retains VM0_API_BACKEND_URL while

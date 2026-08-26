@@ -19,6 +19,11 @@ import {
   sandboxReuseResultSchema,
   workspaceReuseResultSchema,
 } from "./webhooks";
+import {
+  runnerHeartbeatGenerationSchema,
+  runnerHostnameSchema,
+  runnerVersionSchema,
+} from "./runners";
 
 /**
  * Zero run request schema — subset of unified schema.
@@ -268,6 +273,12 @@ export const runNetworkLogsContract = c.router({
 const runRunnerResponseSchema = z.object({
   sandboxReuseResult: sandboxReuseResultSchema.nullable(),
   workspaceReuseResult: workspaceReuseResultSchema.nullable().optional(),
+  runnerHostname: runnerHostnameSchema.nullable().optional(),
+  runnerVersion: runnerVersionSchema.nullable().optional(),
+  runnerId: z.uuid().nullable().optional(),
+  runnerHeartbeatGeneration: runnerHeartbeatGenerationSchema
+    .nullable()
+    .optional(),
 });
 
 export const runRunnerContract = c.router({

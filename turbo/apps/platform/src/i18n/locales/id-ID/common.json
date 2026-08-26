@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Ciutkan sidebar",
       "expand": "Perluas sidebar",
+      "hideChatList": "Sembunyikan daftar chat",
       "manage": "Kelola",
       "mobile": {
         "invite": "Undang",
@@ -455,6 +456,7 @@
         "works": "Bekerja"
       },
       "searchConversations": "Cari percakapan",
+      "showChatList": "Tampilkan daftar chat",
       "workspaceSwitcher": {
         "create": "Buat ruang kerja",
         "creating": "Membuat…",
@@ -502,11 +504,8 @@
       "tools": {
         "arrow": "Panah",
         "box": "Kotak",
-        "crop": "Pangkas",
-        "highlight": "Sorot",
         "pen": "Gambar",
         "redact": "Sensor",
-        "select": "Pilih",
         "text": "Teks"
       },
       "undo": "Urungkan"
@@ -1927,13 +1926,13 @@
       "yourComputer": "Komputer Anda"
     },
     "connectors": {
+      "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
       "addConnectors": "Tambahkan konektor",
       "authorizationFailed": "{{connectorName}} terhubung tetapi tidak dapat diotorisasi untuk {{agentName}}",
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
-      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
       "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
@@ -2412,8 +2411,7 @@
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Akun kerja"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Terapkan",
@@ -3410,7 +3408,7 @@
         },
         "slack": {
           "description": "Chat dengan rekan tim AI Anda di ruang kerja",
-          "title": "Gunakan Slack"
+          "title": "Chat dengan Okou di Slack"
         },
         "video": {
           "description": "Ubah ide Anda menjadi video",

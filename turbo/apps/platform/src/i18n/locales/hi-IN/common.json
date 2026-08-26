@@ -432,6 +432,7 @@
       "chat": "चैट",
       "collapse": "साइडबार को संक्षिप्त करें",
       "expand": "साइडबार का विस्तार करें",
+      "hideChatList": "चैट सूची छिपाएं",
       "manage": "प्रबंधित करें",
       "mobile": {
         "invite": "आमंत्रित करें",
@@ -455,6 +456,7 @@
         "works": "काम करता है"
       },
       "searchConversations": "वार्तालाप खोजें",
+      "showChatList": "चैट सूची दिखाएं",
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
         "creating": "बनाया जा रहा है...",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "तीर",
         "box": "बॉक्स",
-        "crop": "काटें",
-        "highlight": "हाइलाइट",
         "pen": "बनाएँ",
         "redact": "छिपाएँ",
-        "select": "चुनें",
         "text": "टेक्स्ट"
       },
       "undo": "पूर्ववत करें"
@@ -1930,13 +1929,13 @@
       "yourComputer": "आपका कंप्यूटर"
     },
     "connectors": {
+      "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
       "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
-      "back": "वापस",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
       "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
@@ -2420,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "कार्य खाता"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "आवेदन करना",
@@ -3418,7 +3416,7 @@
         },
         "slack": {
           "description": "अपने कार्यक्षेत्र में अपने AI टीममेट के साथ चैट करें",
-          "title": "Slack का उपयोग करें"
+          "title": "Slack में Okou से चैट करें"
         },
         "video": {
           "description": "अपने विचारों को वीडियो में बदलें",

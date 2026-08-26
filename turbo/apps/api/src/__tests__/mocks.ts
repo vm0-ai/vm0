@@ -20,6 +20,13 @@ type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 interface AxiomClientOptions {
   readonly onError?: (error: Error) => void;
+  readonly token?: string;
+}
+interface AxiomSdkClientMock {
+  readonly options: AxiomClientOptions;
+  readonly flush: AsyncMock;
+  readonly ingest: UnknownMock;
+  readonly query: AsyncMock;
 }
 interface BrowserUseCdpCommand {
   readonly id: number;
@@ -51,6 +58,7 @@ export interface ApiTestMocks {
   };
   readonly axiom: {
     readonly clientError: Mock<(error: Error) => void>;
+    readonly clients: AxiomSdkClientMock[];
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
     readonly query: AsyncMock;
@@ -274,6 +282,7 @@ export interface ApiTestMocks {
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
     clientError: vi.fn<(error: Error) => void>(),
+    clients: [],
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -1121,11 +1130,20 @@ vi.mock("@axiomhq/js", () => {
       apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
         options.onError?.(error);
       });
-      return {
-        flush: apiTestMocks.axiom.flush,
-        ingest: apiTestMocks.axiom.sdkIngest,
-        query: apiTestMocks.axiom.query,
+      const client: AxiomSdkClientMock = {
+        options,
+        flush: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.flush(...args);
+        }),
+        ingest: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.sdkIngest(...args);
+        }),
+        query: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.query(...args);
+        }),
       };
+      apiTestMocks.axiom.clients.push(client);
+      return client;
     }),
   };
 });
@@ -1163,6 +1181,7 @@ export function resetApiTestMocks(): void {
     token: "test-ably-token",
   });
   apiTestMocks.axiom.clientError.mockReset();
+  apiTestMocks.axiom.clients.splice(0);
   apiTestMocks.axiom.flush.mockReset();
   apiTestMocks.axiom.ingest.mockReset();
   apiTestMocks.axiom.ingest.mockReturnValue(true);

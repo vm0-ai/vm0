@@ -1266,8 +1266,8 @@ export function ThreeColumnSearchDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="zero-app w-[calc(100vw-2rem)] gap-0 rounded-[var(--zero-composer-radius)] sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
-      commandClassName="gap-0 rounded-[var(--zero-composer-radius)]"
+      className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
+      commandClassName="gap-0"
       commandProps={{ shouldFilter: false, loop: true }}
     >
       <DialogHeader className="sr-only">

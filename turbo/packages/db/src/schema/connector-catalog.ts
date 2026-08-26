@@ -14,10 +14,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type {
-  ConnectorCatalogCompatibilityEvaluationPayload,
-  ConnectorCatalogRuntimeProjection,
-} from "@okouai/db/jsonb-contracts/connector-catalog";
+import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -254,7 +251,7 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
     catalogValidationBackendVersion: varchar(
       "catalog_validation_backend_version",
       { length: 64 },
-    ),
+    ).notNull(),
     catalogValidationBuildCommitSha: varchar(
       "catalog_validation_build_commit_sha",
       { length: 40 },
@@ -278,8 +275,8 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
         sql`${table.schemaVersion} > 0`,
       ),
       check(
-        "connector_catalog_projection_sets_version_positive",
-        sql`${table.projectionVersion} > 0`,
+        "connector_catalog_projection_sets_version_supported",
+        sql`${table.projectionVersion} = 2`,
       ),
       check(
         "connector_catalog_projection_sets_count_positive",
@@ -291,17 +288,11 @@ export const connectorCatalogRuntimeProjectionSets = pgTable(
       ),
       check(
         "connector_catalog_projection_sets_validator_complete",
-        sql`(
-          ${table.catalogValidationBackendVersion} IS NULL
-          AND ${table.catalogValidationBuildCommitSha} IS NULL
-        ) OR (
-          ${table.catalogValidationBackendVersion} IS NOT NULL
-          AND ${table.catalogValidationBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+        sql`${table.catalogValidationBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
           AND (
             ${table.catalogValidationBuildCommitSha} IS NULL
             OR ${table.catalogValidationBuildCommitSha} ~ '^[a-f0-9]{40}$'
-          )
-        )`,
+          )`,
       ),
     ];
   },
@@ -313,10 +304,7 @@ export const connectorCatalogRuntimeProjections = pgTable(
     projectionSetId: uuid("projection_set_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     connectorDigest: varchar("connector_digest", { length: 71 }).notNull(),
-    connector: jsonb("connector")
-      .$type<ConnectorCatalogRuntimeProjection>()
-      .notNull(),
-    connectorPayload: byteaColumn("connector_payload"),
+    connectorPayload: byteaColumn("connector_payload").notNull(),
   },
   (table) => {
     return [

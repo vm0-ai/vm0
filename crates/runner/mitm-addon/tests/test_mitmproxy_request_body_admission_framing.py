@@ -164,6 +164,7 @@ async def test_http2_headers_only_sigv4_request_uses_zero_byte_admission(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     get_headers = AsyncMock(return_value=token_meta)
 
@@ -270,6 +271,7 @@ async def test_headers_only_auth_base_request_without_length_is_forwarded(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
     with (

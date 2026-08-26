@@ -43,19 +43,19 @@ async function createRelationHarness(
   });
   const adminDb = drizzle(adminPool);
   const schemaName = `agent_draft_${target}_${randomUUID().replaceAll("-", "")}`;
-  const draftRelation = qualifiedName(schemaName, "zero_agent_drafts");
+  const draftRelation = qualifiedName(schemaName, "agent_drafts");
 
   await adminDb.execute(sql`CREATE SCHEMA ${sql.identifier(schemaName)}`);
   if (target === "physical") {
     await adminDb.execute(sql`
       CREATE TABLE ${draftRelation}
-      (LIKE "public"."zero_agent_drafts" INCLUDING ALL)
+      (LIKE "public"."agent_drafts" INCLUDING ALL)
     `);
   } else {
     const backingRelation = qualifiedName(schemaName, "agent_drafts_backing");
     await adminDb.execute(sql`
       CREATE TABLE ${backingRelation}
-      (LIKE "public"."zero_agent_drafts" INCLUDING ALL)
+      (LIKE "public"."agent_drafts" INCLUDING ALL)
     `);
     await adminDb.execute(sql`
       CREATE VIEW ${draftRelation} AS

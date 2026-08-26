@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.174.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.12...runner-rs-v0.174.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Documentation
+
+* **python:** document network-log capture sanitization contract ([#29520](https://github.com/vm0-ai/vm0/issues/29520)) ([d045922](https://github.com/vm0-ai/vm0/commit/d04592238dab57c39fcaf70e946234c482b6bb71))
+
+
+### Performance Improvements
+
+* **runner:** bound axiom textual fields before queueing ([#29522](https://github.com/vm0-ai/vm0/issues/29522)) ([65cc652](https://github.com/vm0-ai/vm0/commit/65cc65243f9d49f689e51ee7ccc61dfabdd6dfb6))
+
+## [0.173.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.11...runner-rs-v0.173.12) (2026-08-26)
+
+
+### Bug Fixes
+
+* **runner:** reconcile cache watches past irrelevant entries ([#29499](https://github.com/vm0-ai/vm0/issues/29499)) ([403a2a5](https://github.com/vm0-ai/vm0/commit/403a2a5a93ff7ecfce40b202389d092759921d0b))
+* **runner:** reject stale host oom evidence ([#29501](https://github.com/vm0-ai/vm0/issues/29501)) ([1110a2b](https://github.com/vm0-ai/vm0/commit/1110a2b176a46bd56deb3fd7b8a7cdd7ce811756))
+
+
+### Documentation
+
+* **python:** document connector runtime ownership resolution ([#29493](https://github.com/vm0-ai/vm0/issues/29493)) ([99356a9](https://github.com/vm0-ai/vm0/commit/99356a975a9a90da28eec2af3d74beea1979cb0d))
+* **python:** document state-file validation boundaries ([#29500](https://github.com/vm0-ai/vm0/issues/29500)) ([ff03706](https://github.com/vm0-ai/vm0/commit/ff03706effb990006f8aebaf699d8b36e2465383))
+
+## [0.173.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.10...runner-rs-v0.173.11) (2026-08-26)
+
+
+### Performance Improvements
+
+* scope connector runtime refresh catalog loads ([#29471](https://github.com/vm0-ai/vm0/issues/29471)) ([d8ebf8a](https://github.com/vm0-ai/vm0/commit/d8ebf8a06a25ced82d02bfed54baf230ff17e72c))
+
+## [0.173.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.9...runner-rs-v0.173.10) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
+## [0.173.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.8...runner-rs-v0.173.9) (2026-08-26)
+
+
+### Bug Fixes
+
+* **python:** fail closed on request hook exceptions ([#29452](https://github.com/vm0-ai/vm0/issues/29452)) ([efe7776](https://github.com/vm0-ai/vm0/commit/efe77769fac19ae1296c4f83a6050c6196e5c90f))
+* **runner:** increase default rootfs headroom ([#29445](https://github.com/vm0-ai/vm0/issues/29445)) ([10d3864](https://github.com/vm0-ai/vm0/commit/10d38642697e25f45ede5b024d778d20af5f19d8))
+
+
+### Documentation
+
+* **python:** document model-observation buffer semantics ([#29426](https://github.com/vm0-ai/vm0/issues/29426)) ([fea30c2](https://github.com/vm0-ai/vm0/commit/fea30c27192abef62cfff0a8978a690e15424760))
+
+
+### Performance Improvements
+
+* **runner:** stop commands on semantic stdout overflow ([#29450](https://github.com/vm0-ai/vm0/issues/29450)) ([e15ed04](https://github.com/vm0-ai/vm0/commit/e15ed04ea1cb274a9c63eacc526895db4d838318))
+
 ## [0.173.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.7...runner-rs-v0.173.8) (2026-08-26)
 
 

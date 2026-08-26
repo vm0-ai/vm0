@@ -236,6 +236,7 @@ runs:
         fi
 
         if [[ -n "$api_backend_url" ]]; then
+          add_env OKOU_API_BACKEND_URL "$api_backend_url"
           add_env VM0_API_BACKEND_URL "$api_backend_url"
         fi
         if [[ "$INPUT_APP" == "api" ]]; then
@@ -245,6 +246,7 @@ runs:
           fi
           add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env FINICITY_WEBHOOK_BASE_URL "$api_backend_url"
+          add_env OKOU_WEB_URL "$web_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
           add_env CLI_PKG_URL "$INPUT_CLI_PKG_URL"

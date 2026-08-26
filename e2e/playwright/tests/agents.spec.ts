@@ -189,6 +189,50 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
+test("onboarding workflow preview uses the shared dialog radius", async ({
+  page,
+}) => {
+  await page.route("**/api/onboarding/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Onboarding status returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        needsOnboarding: true,
+        onboardingComplete: false,
+      },
+    });
+  });
+  await page.route("**/api/connector-catalog/status", async (route) => {
+    await route.fulfill({ json: { connectors: [] } });
+  });
+
+  const workflowUrl = new URL("/onboarding/workflow-run", appUrl);
+  workflowUrl.searchParams.set("choice", "workflow");
+  workflowUrl.searchParams.set("category", "marketing");
+  workflowUrl.searchParams.set("workflow", "track-keyword-ranks-ahrefs");
+  await page.goto(workflowUrl.toString());
+
+  await expect(
+    page.getByRole("heading", { name: "Review your workflow draft" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Preview workflow details" }).click();
+
+  const preview = page.getByRole("dialog", {
+    name: "Audit a website's technical SEO",
+  });
+  await expect(preview).toBeVisible();
+  expect(
+    await preview.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
+});
+
 test("three-column rail and unread indicators preserve their visual hierarchy", async ({
   page,
 }) => {
@@ -294,6 +338,26 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   ]);
   expect(Number.parseFloat(threadUnreadStyle.width)).toBeGreaterThan(0);
   expect(agentUnreadStyle).toStrictEqual(threadUnreadStyle);
+
+  await page.getByLabel("Search conversations").click();
+  const searchDialog = page.getByRole("dialog", {
+    name: "Search chats and messages...",
+  });
+  await expect(searchDialog).toBeVisible();
+  expect(
+    await searchDialog.evaluate((element) => {
+      const command = element.querySelector("[cmdk-root]");
+      if (!(command instanceof HTMLElement)) {
+        throw new Error("Search command surface is not rendered");
+      }
+      return {
+        command: getComputedStyle(command).borderRadius,
+        dialog: getComputedStyle(element).borderRadius,
+      };
+    }),
+  ).toStrictEqual({ command: "14px", dialog: "14px" });
+  await page.keyboard.press("Escape");
+  await expect(searchDialog).toBeHidden();
 
   await expect
     .poll(async () => {

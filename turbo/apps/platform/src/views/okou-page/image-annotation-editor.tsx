@@ -3,10 +3,10 @@ import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
-  Crop,
-  Highlighter,
-  MousePointer2,
+  EyeOff,
+  Minus,
   Pencil,
+  Plus,
   Redo2,
   Square,
   Trash2,
@@ -30,12 +30,14 @@ import {
   annotationCanRedo$,
   annotationCanUndo$,
   annotationDraft$,
+  annotationDrag$,
   annotationInk$,
   annotationSelectedMarkId$,
   annotationSessionTarget$,
   annotationStroke$,
   annotationSurface$,
   annotationTool$,
+  annotationZoom$,
   bindAnnotationSurface$,
   closeAnnotationEditor$,
   commitAnnotation$,
@@ -43,12 +45,16 @@ import {
   removeAnnotationMark$,
   removeSelectedAnnotationMark$,
   selectAnnotationMark$,
-  setAnnotationCrop$,
   setAnnotationInk$,
   setAnnotationMarkNote$,
   setAnnotationStroke$,
+  setAnnotationDrag$,
   setAnnotationTool$,
+  moveAnnotationMarkRect$,
+  resetAnnotationZoom$,
   undoAnnotation$,
+  zoomAnnotation$,
+  type AnnotationDrag,
   type AnnotationInk,
   type AnnotationPoint,
   type AnnotationStroke,
@@ -59,14 +65,11 @@ import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import { markInk, MarkShape } from "./image-annotation-marks.tsx";
 
 const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
-  { tool: "select", icon: MousePointer2 },
   { tool: "box", icon: Square },
   { tool: "arrow", icon: ArrowUpRight },
   { tool: "pen", icon: Pencil },
   { tool: "text", icon: Type },
-  { tool: "highlight", icon: Highlighter },
-  { tool: "redact", icon: Trash2 },
-  { tool: "crop", icon: Crop },
+  { tool: "redact", icon: EyeOff },
 ];
 
 /**
@@ -75,6 +78,15 @@ const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
  * is impossible to see and impossible to select in order to delete.
  */
 const MIN_DRAG = 0.005;
+
+/** One letter per tool, matching the first letter of each label. */
+const TOOL_SHORTCUTS: Readonly<Record<string, AnnotationTool | undefined>> = {
+  b: "box",
+  a: "arrow",
+  d: "pen",
+  t: "text",
+  r: "redact",
+};
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -96,17 +108,15 @@ function percent(value: number): string {
 function buildMark(
   stroke: AnnotationStroke,
   ink: AnnotationInk,
+  previewId?: string,
 ): ImageAnnotationMark | null {
-  const id = crypto.randomUUID();
+  const id = previewId ?? crypto.randomUUID();
   const rect = rectFrom(stroke.from, stroke.to);
   const dragged = rect.width > MIN_DRAG || rect.height > MIN_DRAG;
 
   switch (stroke.tool) {
     case "box": {
       return dragged ? { id, shape: "box", rect, ink } : null;
-    }
-    case "highlight": {
-      return dragged ? { id, shape: "highlight", rect } : null;
     }
     case "redact": {
       return dragged ? { id, shape: "redact", rect } : null;
@@ -123,9 +133,6 @@ function buildMark(
     }
     case "text": {
       return { id, shape: "text", at: stroke.from, text: "", ink };
-    }
-    case "crop": {
-      return null;
     }
   }
 }
@@ -162,11 +169,6 @@ function useToolLabel(): (tool: AnnotationTool) => string {
   const { t } = useTranslation();
   return (tool: AnnotationTool): string => {
     switch (tool) {
-      case "select": {
-        return t(($) => {
-          return $.artifacts.annotation.tools.select;
-        });
-      }
       case "box": {
         return t(($) => {
           return $.artifacts.annotation.tools.box;
@@ -187,19 +189,9 @@ function useToolLabel(): (tool: AnnotationTool) => string {
           return $.artifacts.annotation.tools.text;
         });
       }
-      case "highlight": {
-        return t(($) => {
-          return $.artifacts.annotation.tools.highlight;
-        });
-      }
       case "redact": {
         return t(($) => {
           return $.artifacts.annotation.tools.redact;
-        });
-      }
-      case "crop": {
-        return t(($) => {
-          return $.artifacts.annotation.tools.crop;
         });
       }
     }
@@ -233,14 +225,21 @@ function InkSwatches() {
                   onClick={() => {
                     setInk(candidate);
                   }}
+                  className={cn(active && "bg-state-selected")}
                 >
                   <span
-                    style={{ background: candidate }}
+                    style={{
+                      background: candidate,
+                      // The ring is the ink itself, held off the swatch by the
+                      // toolbar colour, so the selected colour is announced by
+                      // the colour rather than by two pixels of extra diameter.
+                      boxShadow: active
+                        ? `0 0 0 2px hsl(var(--background)), 0 0 0 4px ${candidate}`
+                        : "none",
+                    }}
                     className={cn(
                       "rounded-full transition-all",
-                      active
-                        ? "h-[18px] w-[18px] ring-2 ring-card ring-offset-2"
-                        : "h-4 w-4",
+                      active ? "h-3.5 w-3.5" : "h-4 w-4",
                     )}
                   />
                 </Button>
@@ -250,6 +249,51 @@ function InkSwatches() {
           </Tooltip>
         );
       })}
+    </div>
+  );
+}
+
+function ZoomControls() {
+  const { t } = useTranslation();
+  const zoom = useGet(annotationZoom$);
+  const zoomBy = useSet(zoomAnnotation$);
+  const resetZoom = useSet(resetAnnotationZoom$);
+
+  return (
+    <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-1 shadow-sm">
+      <Button
+        type="button"
+        variant="quiet"
+        size="icon-xs"
+        onClick={() => {
+          zoomBy(-1);
+        }}
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
+      >
+        <Minus size={14} />
+      </Button>
+      <button
+        type="button"
+        onClick={resetZoom}
+        className="min-w-10 rounded-md px-1 text-center text-xs font-medium tabular-nums text-foreground transition-colors hover:bg-state-hover"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <Button
+        type="button"
+        variant="quiet"
+        size="icon-xs"
+        onClick={() => {
+          zoomBy(1);
+        }}
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
+      >
+        <Plus size={14} />
+      </Button>
     </div>
   );
 }
@@ -276,7 +320,8 @@ function ToolPill() {
                     setTool(candidate);
                   }}
                   className={cn(
-                    tool === candidate && "bg-foreground text-background",
+                    tool === candidate &&
+                      "bg-state-selected text-foreground hover:bg-state-selected-hover",
                   )}
                 >
                   <Icon size={16} />
@@ -303,6 +348,7 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
   const { t } = useTranslation();
   const setNote = useSet(setAnnotationMarkNote$);
   const removeMark = useSet(removeAnnotationMark$);
+  const deselect = useSet(selectAnnotationMark$);
   const anchor = markAnchor(mark);
 
   return (
@@ -326,10 +372,24 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
           className="h-2.5 w-2.5 shrink-0 rounded-full"
         />
         <Input
-          autoFocus
+          // Only text marks take the caret. Focusing the field for every mark
+          // is what made Delete land in the input instead of removing the mark.
+          autoFocus={mark.shape === "text"}
           value={noteOf(mark)}
           onChange={(event) => {
             setNote(mark.id, event.target.value);
+          }}
+          onKeyDown={(event) => {
+            // Backspace edits the text. Once the field is empty the next press
+            // dismisses the note — deleting the mark from here would be a
+            // surprise, so that stays on the bin button alone.
+            if (
+              (event.key === "Backspace" || event.key === "Delete") &&
+              noteOf(mark).length === 0
+            ) {
+              event.preventDefault();
+              deselect(null);
+            }
           }}
           placeholder={
             mark.shape === "text"
@@ -470,9 +530,19 @@ function EditorFooter() {
   );
 }
 
-/** Delete and Backspace remove the selected mark, unless a field has focus. */
-function DeleteKeyBinding() {
+/**
+ * The editor's keyboard surface. Every binding steps aside while a field has
+ * focus, so typing a note never triggers a shortcut.
+ */
+function KeyboardShortcuts() {
   const removeSelected = useSet(removeSelectedAnnotationMark$);
+  const selectMark = useSet(selectAnnotationMark$);
+  const setTool = useSet(setAnnotationTool$);
+  const undo = useSet(undoAnnotation$);
+  const redo = useSet(redoAnnotation$);
+  const close = useSet(closeAnnotationEditor$);
+  const commit = useSet(commitAnnotation$);
+  const selectedId = useGet(annotationSelectedMarkId$);
   let cleanup: (() => void) | null = null;
 
   return (
@@ -484,19 +554,53 @@ function DeleteKeyBinding() {
           return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-          if (event.key !== "Delete" && event.key !== "Backspace") {
-            return;
-          }
           const active = document.activeElement;
-          if (
+          const typing =
             active instanceof HTMLInputElement ||
             active instanceof HTMLTextAreaElement ||
-            (active instanceof HTMLElement && active.isContentEditable)
+            (active instanceof HTMLElement && active.isContentEditable);
+
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key.toLowerCase() === "z"
           ) {
+            event.preventDefault();
+            if (event.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
             return;
           }
-          event.preventDefault();
-          removeSelected();
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            commit();
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            // Escape backs out one layer at a time: the selection first, the
+            // editor only once nothing is selected.
+            if (selectedId) {
+              selectMark(null);
+            } else {
+              close();
+            }
+            return;
+          }
+          if (typing) {
+            return;
+          }
+          if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault();
+            removeSelected();
+            return;
+          }
+          const shortcut = TOOL_SHORTCUTS[event.key.toLowerCase()];
+          if (shortcut) {
+            event.preventDefault();
+            setTool(shortcut);
+          }
         };
         document.addEventListener("keydown", onKeyDown, true);
         cleanup = () => {
@@ -509,21 +613,56 @@ function DeleteKeyBinding() {
 }
 
 interface StrokeHandlers {
+  beginDrag: (drag: AnnotationDrag) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    moveRect: (
+      id: string,
+      rect: { x: number; y: number; width: number; height: number },
+    ) => void,
+  ) => void;
   onPointerUp: () => void;
+}
+
+function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
+  const dx = point.x - drag.origin.x;
+  const dy = point.y - drag.origin.y;
+  const start = drag.startRect;
+
+  if (drag.mode === "move") {
+    return {
+      x: clamp01(start.x + dx),
+      y: clamp01(start.y + dy),
+      width: start.width,
+      height: start.height,
+    };
+  }
+
+  const left = drag.corner === "tl" || drag.corner === "bl";
+  const top = drag.corner === "tl" || drag.corner === "tr";
+  const x1 = left ? start.x + dx : start.x;
+  const y1 = top ? start.y + dy : start.y;
+  const x2 = left ? start.x + start.width : start.x + start.width + dx;
+  const y2 = top ? start.y + start.height : start.y + start.height + dy;
+  return {
+    x: clamp01(Math.min(x1, x2)),
+    y: clamp01(Math.min(y1, y2)),
+    width: Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1),
+  };
 }
 
 function useStrokeHandlers(): StrokeHandlers {
   const tool = useGet(annotationTool$);
   const ink = useGet(annotationInk$);
   const stroke = useGet(annotationStroke$);
+  const drag = useGet(annotationDrag$);
   const surface = useGet(annotationSurface$);
   const setStroke = useSet(setAnnotationStroke$);
+  const setDrag = useSet(setAnnotationDrag$);
   const addMark = useSet(addAnnotationMark$);
   const selectMark = useSet(selectAnnotationMark$);
-  const setTool = useSet(setAnnotationTool$);
-  const setCrop = useSet(setAnnotationCrop$);
 
   const pointAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surface?.getBoundingClientRect();
@@ -537,24 +676,28 @@ function useStrokeHandlers(): StrokeHandlers {
   };
 
   return {
+    beginDrag: setDrag,
     onPointerDown: (event) => {
-      if (tool === "select") {
-        selectMark(null);
-        return;
-      }
       const point = pointAt(event);
       if (!point) {
         return;
       }
+      // Starting a stroke on bare canvas also clears the selection, so the
+      // handles and note of the previous mark do not linger over a new one.
+      selectMark(null);
       event.currentTarget.setPointerCapture(event.pointerId);
       setStroke({ tool, from: point, to: point, points: [point] });
     },
-    onPointerMove: (event) => {
-      if (!stroke) {
-        return;
-      }
+    onPointerMove: (event, moveRect) => {
       const point = pointAt(event);
       if (!point) {
+        return;
+      }
+      if (drag) {
+        moveRect(drag.markId, draggedRect(drag, point));
+        return;
+      }
+      if (!stroke) {
         return;
       }
       setStroke({
@@ -565,112 +708,215 @@ function useStrokeHandlers(): StrokeHandlers {
       });
     },
     onPointerUp: () => {
-      if (!stroke) {
+      if (drag) {
+        setDrag(null);
         return;
       }
-      if (stroke.tool === "crop") {
-        const rect = rectFrom(stroke.from, stroke.to);
-        if (rect.width > MIN_DRAG && rect.height > MIN_DRAG) {
-          setCrop(rect);
-        }
-        setStroke(null);
+      if (!stroke) {
         return;
       }
       const mark = buildMark(stroke, ink);
       if (mark) {
         // Adding selects the mark, so its note opens straight away — a shape
-        // and the sentence explaining it are one gesture. The tool stays put so
-        // several boxes in a row do not need the tool re-picked each time; only
-        // text hands over to select, because it has nothing until it is typed.
+        // and the sentence explaining it are one gesture. The tool stays put,
+        // so several boxes in a row do not need it re-picked.
         addMark(mark);
-        if (mark.shape === "text") {
-          setTool("select");
-        }
       }
       setStroke(null);
     },
   };
 }
 
+const RESIZE_CORNERS = ["tl", "tr", "bl", "br"] as const;
+
+type ResizeCorner = (typeof RESIZE_CORNERS)[number];
+
+function rectOf(mark: ImageAnnotationMark) {
+  if (
+    mark.shape === "box" ||
+    mark.shape === "redact" ||
+    mark.shape === "highlight"
+  ) {
+    return mark.rect;
+  }
+  if (mark.shape === "text") {
+    return { x: mark.at.x, y: mark.at.y, width: 0, height: 0 };
+  }
+  return null;
+}
+
+function cornerCursor(corner: ResizeCorner): string {
+  return corner === "tl" || corner === "br"
+    ? "cursor-nwse-resize"
+    : "cursor-nesw-resize";
+}
+
+/**
+ * Handles only appear for marks that have a rectangle. A freehand stroke or an
+ * arrow can still be selected and deleted; resizing them would mean editing
+ * every point, which is not what a handle promises.
+ */
+function ResizeHandles({
+  mark,
+  onGrab,
+}: {
+  mark: ImageAnnotationMark;
+  onGrab: (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void;
+}) {
+  const rect = rectOf(mark);
+  if (!rect || rect.width === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {RESIZE_CORNERS.map((corner) => {
+        const x =
+          corner === "tl" || corner === "bl" ? rect.x : rect.x + rect.width;
+        const y =
+          corner === "tl" || corner === "tr" ? rect.y : rect.y + rect.height;
+        return (
+          <span
+            key={corner}
+            role="presentation"
+            onPointerDown={(event) => {
+              onGrab(corner, event);
+            }}
+            style={{ left: percent(x), top: percent(y) }}
+            className={cn(
+              "absolute -ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-sm border border-border bg-background shadow-sm",
+              cornerCursor(corner),
+            )}
+            data-testid={`annotation-handle-${corner}`}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function EditorStage({ filename, url }: { filename: string; url: string }) {
   const annotation = useGet(annotationDraft$);
-  const tool = useGet(annotationTool$);
   const ink = useGet(annotationInk$);
   const stroke = useGet(annotationStroke$);
+  const zoom = useGet(annotationZoom$);
+  const surface = useGet(annotationSurface$);
   const selectedId = useGet(annotationSelectedMarkId$);
   const selectMark = useSet(selectAnnotationMark$);
-  const setTool = useSet(setAnnotationTool$);
   const bindSurface = useSet(bindAnnotationSurface$);
+  const moveRect = useSet(moveAnnotationMarkRect$);
   const handlers = useStrokeHandlers();
 
-  const preview =
-    stroke && stroke.tool !== "pen" ? rectFrom(stroke.from, stroke.to) : null;
+  const box = surface?.getBoundingClientRect();
+  const aspect = box && box.height > 0 ? box.width / box.height : 1;
+  // Previewing through the same renderer is what makes a drag show the arrow or
+  // the freehand line it is about to become, rather than a dashed rectangle
+  // standing in for every tool.
+  const preview = stroke ? buildMark(stroke, ink, "annotation-preview") : null;
   const selectedMark = annotation.marks.find((mark) => {
     return mark.id === selectedId;
   });
 
+  const grabHandle = (
+    corner: ResizeCorner,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    // The handle sits on the drawing surface, so without this the grab also
+    // starts a new stroke underneath the mark being resized.
+    event.stopPropagation();
+    if (!selectedMark) {
+      return;
+    }
+    const rect = rectOf(selectedMark);
+    const bounds = surface?.getBoundingClientRect();
+    if (!rect || !bounds || bounds.width === 0) {
+      return;
+    }
+    handlers.beginDrag({
+      markId: selectedMark.id,
+      mode: "resize",
+      corner,
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      startRect: rect,
+    });
+  };
+
+  const grabMark = (
+    mark: ImageAnnotationMark,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    selectMark(mark.id);
+    const rect = rectOf(mark);
+    const bounds = surface?.getBoundingClientRect();
+    if (!rect || !bounds || bounds.width === 0) {
+      return;
+    }
+    handlers.beginDrag({
+      markId: mark.id,
+      mode: "move",
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      startRect: rect,
+    });
+  };
+
   return (
-    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/30 p-5">
+    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-5">
       <div
         ref={bindSurface}
         onPointerDown={handlers.onPointerDown}
-        onPointerMove={handlers.onPointerMove}
+        onPointerMove={(event) => {
+          handlers.onPointerMove(event, moveRect);
+        }}
         onPointerUp={handlers.onPointerUp}
-        style={{ touchAction: "none" }}
-        className={cn(
-          "relative max-h-full max-w-full select-none",
-          tool === "select" ? "cursor-default" : "cursor-crosshair",
-        )}
+        style={{ touchAction: "none", width: `${zoom * 100}%` }}
+        className="relative max-w-none shrink-0 cursor-crosshair select-none"
         data-testid="image-annotation-surface"
       >
         <img
           src={url}
           alt={filename}
           draggable={false}
-          className="block max-h-[min(560px,70vh)] max-w-full rounded-lg object-contain"
+          className="block w-full rounded-lg object-contain"
         />
-        {annotation.crop && (
-          <div
-            style={{
-              left: percent(annotation.crop.x),
-              top: percent(annotation.crop.y),
-              width: percent(annotation.crop.width),
-              height: percent(annotation.crop.height),
-              outline: `2px solid ${ink}`,
-            }}
-            className="pointer-events-none absolute rounded-sm shadow-[0_0_0_9999px_hsl(var(--overlay)/0.55)]"
-          />
-        )}
         {annotation.marks.map((mark, index) => {
           return (
             <MarkShape
               key={mark.id}
               mark={mark}
               ordinal={index + 1}
+              aspect={aspect}
               selected={mark.id === selectedId}
               onSelect={() => {
                 selectMark(mark.id);
-                setTool("select");
+              }}
+              onGrab={(event) => {
+                grabMark(mark, event);
               }}
             />
           );
         })}
+        {selectedMark && (
+          <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
+        )}
         {selectedMark && selectedMark.shape !== "redact" && (
           <MarkNotePopover mark={selectedMark} />
         )}
         {preview && (
-          <div
-            style={{
-              left: percent(preview.x),
-              top: percent(preview.y),
-              width: percent(preview.width),
-              height: percent(preview.height),
-              border: `2.5px dashed ${ink}`,
-            }}
-            className="pointer-events-none absolute rounded"
+          <MarkShape
+            mark={preview}
+            ordinal={annotation.marks.length + 1}
+            aspect={aspect}
           />
         )}
       </div>
+      <ZoomControls />
       <ToolPill />
     </div>
   );
@@ -704,8 +950,11 @@ function AnnotationSurface({ target }: { target: AnnotationTarget }) {
         className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
         data-testid="image-annotation-editor"
       >
-        <DeleteKeyBinding />
-        <div className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-2xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]">
+        <KeyboardShortcuts />
+        <div
+          className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
+          data-testid="image-annotation-panel"
+        >
           <EditorHeader filename={target.filename} />
           <EditorStage filename={target.filename} url={resolvedUrl} />
           <EditorFooter />

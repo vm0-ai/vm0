@@ -15,6 +15,15 @@ shape, then aggregated by ``run_id``, ``kind``, provider/model resource id, and
 Source-preserving wrappers skip aggregation and keep the original event
 idempotency keys in the webhook payload for finalized source-level reports.
 
+``ModelUsageObservation`` is a separate payload shape from ``UsageEvent``. The
+default observation path is separated by webhook destination and aggregated by
+``run_id`` and ``model``. It sums ``inputTokens``, ``outputTokens``,
+``cacheReadInputTokens``, and ``cacheCreationInputTokens`` independently, and
+starts a new segment before any one accumulated field would exceed the exact
+``MAX_USAGE_QUANTITY`` bound. The source-preserving observation wrapper skips
+that aggregation and retains each accepted observation's vector and original
+idempotency key.
+
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
 calls. Flush summaries include the conventional trigger labels captured by
 ``UsageFlushTrigger``. Most summaries are ``usage_event_buffer_flush`` proxy-log
@@ -113,7 +122,22 @@ def buffer_model_usage_observations(
     *,
     accepted_source_keys: set[str] | None = None,
 ) -> int:
-    """Buffer observations and optionally collect accepted source payload keys."""
+    """Buffer model observations and return the number admitted.
+
+    Each observation must have a nonnegative integer value within the exact
+    ``MAX_USAGE_QUANTITY`` bound for all four token fields before its source
+    idempotency key is recorded. Source keys already retained by the process
+    local admission history are skipped. The return value counts observations
+    admitted after those checks, not raw inputs or delivered webhook events.
+    When provided, ``accepted_source_keys`` is populated only with keys admitted
+    by this call.
+
+    The default output aggregates accepted observations by ``run_id`` and
+    ``model``, summing each token field independently into safe segments. A
+    threshold flush may be performed before this function returns when buffer
+    bounds are reached; that flush does not mean final webhook delivery has
+    completed.
+    """
     return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,
@@ -162,7 +186,20 @@ def buffer_source_model_usage_observations(
     *,
     accepted_source_keys: set[str] | None = None,
 ) -> int:
-    """Buffer source observations and optionally collect accepted payload keys."""
+    """Buffer model observations while preserving source identity.
+
+    The same four-field quantity validation and process-local source-key
+    deduplication as ``buffer_model_usage_observations`` apply. The return value
+    counts only observations admitted after validation and deduplication, and
+    ``accepted_source_keys`` (when provided) receives only keys admitted by this
+    call. Invalid and duplicate observations are not included.
+
+    Accepted observations are not aggregated: their original token vector and
+    ``idempotencyKey`` are retained in the source-level webhook payload. A
+    threshold flush may be performed before this function returns when buffer
+    bounds are reached; that flush does not mean final webhook delivery has
+    completed.
+    """
     return _usage_event_buffer.buffer_model_usage_observations(
         url,
         sandbox_token,

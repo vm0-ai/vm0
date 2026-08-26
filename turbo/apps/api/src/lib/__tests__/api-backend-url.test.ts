@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { EVENT } from "@axiomhq/logging";
 import { describe, expect, it } from "vitest";
 
@@ -72,29 +74,41 @@ function aliasEvidence(state: string): Readonly<Record<string, unknown>> {
   };
 }
 
+function expectValueFree(diagnostics: string, values: readonly string[]): void {
+  for (const value of values) {
+    const forbiddenDerivatives = [
+      value,
+      String(value.length),
+      createHash("sha256").update(value).digest("hex"),
+      JSON.stringify(value),
+    ];
+    for (const derivative of forbiddenDerivatives) {
+      expect(diagnostics).not.toContain(derivative);
+    }
+  }
+}
+
 describe("API backend URL aliases", () => {
   it("resolves the non-conflicting matrix with one value-free event per state", () => {
     for (const fixture of API_BACKEND_URL_ALIAS_FIXTURES) {
       configureAliases(fixture.canonical, fixture.legacy);
-      const logCount = context.mocks.axiomLogging.debug.mock.calls.length;
+      const logCount = context.mocks.axiomLogging.info.mock.calls.length;
 
       expect(apiBackendUrl()).toBe(fixture.expected);
       expect(apiBackendUrl()).toBe(fixture.expected);
 
-      const calls = context.mocks.axiomLogging.debug.mock.calls.slice(logCount);
+      const calls = context.mocks.axiomLogging.info.mock.calls.slice(logCount);
       expect(calls).toStrictEqual([
         [API_BACKEND_URL_ALIAS_RESOLUTION_EVENT, aliasEvidence(fixture.state)],
       ]);
-      const evidence = JSON.stringify(calls);
-      const containsConfiguredValue = [fixture.canonical, fixture.legacy]
-        .filter((value): value is string => {
+      expectValueFree(
+        JSON.stringify(calls),
+        [fixture.canonical, fixture.legacy].filter((value): value is string => {
           return value !== undefined;
-        })
-        .some((value) => {
-          return evidence.includes(value);
-        });
-      expect(containsConfiguredValue).toBeFalsy();
+        }),
+      );
     }
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
     expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 
@@ -125,6 +139,7 @@ describe("API backend URL aliases", () => {
     expect(diagnostics).not.toContain(canonical);
     expect(diagnostics).not.toContain(legacy);
     expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalled();
   });
 });
 
