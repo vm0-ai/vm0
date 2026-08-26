@@ -215,6 +215,14 @@ const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
 const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+] as const;
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
@@ -231,6 +239,7 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
   "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
   "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
   "api_dispatch_pre_create_zero_web_chat_create_normal_run",
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
@@ -2138,6 +2147,9 @@ describe("CHAT-02: web chat send and client ids", () => {
       API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
+    expectNoApiDispatchActions(timingEvents, [
+      API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       ["api_dispatch_pre_create_agent_run"],
@@ -6453,6 +6465,8 @@ describe("CHAT-02: model-first provider policies", () => {
       [
         ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
         API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+        ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
+        API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
       ],
       "nested",
     );
