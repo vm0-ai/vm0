@@ -210,6 +210,59 @@ function collectNonCanonicalNumberPaths(
   }
 }
 
+function collectUndefinedPaths(
+  value: unknown,
+  path: readonly (string | number)[],
+  output: (string | number)[][],
+): void {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      collectUndefinedPaths(item, [...path, index], output);
+    }
+    return;
+  }
+  if (isJsonObject(value)) {
+    for (const [key, item] of Object.entries(value)) {
+      if (item === undefined) {
+        output.push([...path, key]);
+      } else {
+        collectUndefinedPaths(item, [...path, key], output);
+      }
+    }
+  }
+}
+
+function diagnosticContextForPath(
+  catalog: OfficialWorkflowSourceCatalog,
+  path: readonly (string | number)[],
+): {
+  readonly definitionName?: string;
+  readonly blueprintKey?: string;
+} {
+  const definitionIndex =
+    path[0] === "definitions" && typeof path[1] === "number"
+      ? path[1]
+      : undefined;
+  const definition =
+    definitionIndex === undefined
+      ? undefined
+      : catalog.definitions[definitionIndex];
+  const blueprintIndex =
+    definition?.lifecycle === "active" &&
+    path[2] === "blueprints" &&
+    typeof path[3] === "number"
+      ? path[3]
+      : undefined;
+  const blueprint =
+    definition?.lifecycle === "active" && blueprintIndex !== undefined
+      ? definition.blueprints[blueprintIndex]
+      : undefined;
+  return {
+    ...(definition === undefined ? {} : { definitionName: definition.name }),
+    ...(blueprint === undefined ? {} : { blueprintKey: blueprint.key }),
+  };
+}
+
 function filePathIsCanonical(path: string): boolean {
   if (
     path.startsWith("/") ||
@@ -290,6 +343,57 @@ function resolveTemplateValue(
     );
   }
   return value;
+}
+
+function canonicalizeSetLikeArrays(
+  value: OfficialWorkflowTemplateJsonValue,
+): OfficialWorkflowTemplateJsonValue {
+  if (Array.isArray(value)) {
+    const byCanonicalValue = new Map<
+      string,
+      OfficialWorkflowTemplateJsonValue
+    >();
+    for (const item of value) {
+      const canonicalItem = canonicalizeSetLikeArrays(item);
+      byCanonicalValue.set(canonicalJsonString(canonicalItem), canonicalItem);
+    }
+    return [...byCanonicalValue.entries()]
+      .sort(([left], [right]) => {
+        return compareStrings(left, right);
+      })
+      .map(([, item]) => {
+        return item;
+      });
+  }
+  if (isJsonObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => {
+        return [
+          key,
+          canonicalizeSetLikeArrays(item as OfficialWorkflowTemplateJsonValue),
+        ];
+      }),
+    );
+  }
+  return value;
+}
+
+function canonicalizeBlueprintDesiredState(
+  blueprint: SourceBlueprint,
+): SourceBlueprint["desiredState"] {
+  if (
+    blueprint.desiredState.kind !== "event" ||
+    blueprint.desiredState.eventConfig === undefined
+  ) {
+    return blueprint.desiredState;
+  }
+  // Every array in the currently supported event-create configurations is a
+  // set-like filter. Keep its identity order- and duplicate-independent; a
+  // future ordered event field must add an explicit scoped exception here.
+  return {
+    ...blueprint.desiredState,
+    eventConfig: canonicalizeSetLikeArrays(blueprint.desiredState.eventConfig),
+  };
 }
 
 function collectParameterReferences(
@@ -391,15 +495,16 @@ function canonicalizeBlueprint(
   const parameters = [...blueprint.parameters].sort((left, right) => {
     return compareStrings(left.key, right.key);
   });
+  const desiredState = canonicalizeBlueprintDesiredState(blueprint);
   const fingerprint = officialWorkflowFingerprint({
     parameters,
-    desiredState: blueprint.desiredState,
+    desiredState,
     runtime: blueprint.runtime,
   });
   return {
     key: blueprint.key,
     parameters,
-    desiredState: blueprint.desiredState,
+    desiredState,
     runtime: blueprint.runtime,
     fingerprint,
   };
@@ -557,12 +662,17 @@ function validateBlueprintDesiredState(
     blueprint.desiredState as OfficialWorkflowTemplateJsonValue,
     parameters,
   );
-  const structurallyValid =
-    isJsonObject(desiredState) &&
-    workflowAutomationCreateRequestSchema.safeParse({
-      ...desiredState,
-      enabled: true,
-    }).success;
+  let structurallyValid = false;
+  if (isJsonObject(desiredState)) {
+    const { autonomyBudget: _autonomyBudget, ...createDesiredState } =
+      desiredState;
+    const createRequest = { ...createDesiredState, enabled: true };
+    const parsed =
+      workflowAutomationCreateRequestSchema.safeParse(createRequest);
+    structurallyValid =
+      parsed.success &&
+      canonicalJsonString(parsed.data) === canonicalJsonString(createRequest);
+  }
   if (!structurallyValid || !scheduleConfigurationIsValid(desiredState)) {
     args.diagnostics.push(
       diagnostic("invalid-blueprint-configuration", path, args.context),
@@ -592,6 +702,10 @@ function validateDefinitionBlueprints(
 ): void {
   const blueprintKeys = new Set<string>();
   for (const [blueprintIndex, blueprint] of definition.blueprints.entries()) {
+    const canonicalBlueprint = {
+      ...blueprint,
+      desiredState: canonicalizeBlueprintDesiredState(blueprint),
+    };
     const context = {
       definitionName: definition.name,
       blueprintKey: blueprint.key,
@@ -606,13 +720,13 @@ function validateDefinitionBlueprints(
       );
     }
     blueprintKeys.add(blueprint.key);
-    const parameters = validateBlueprintParameters(blueprint, {
+    const parameters = validateBlueprintParameters(canonicalBlueprint, {
       definitionIndex,
       blueprintIndex,
       context,
       diagnostics,
     });
-    validateBlueprintDesiredState(blueprint, parameters, {
+    validateBlueprintDesiredState(canonicalBlueprint, parameters, {
       definitionIndex,
       blueprintIndex,
       context,
@@ -689,23 +803,31 @@ export function validateOfficialWorkflowCatalog(
     return { kind: "invalid", diagnostics: structuralDiagnostics };
   }
   const parsed = officialWorkflowSourceCatalogSchema.parse(candidate);
+  const undefinedPaths: (string | number)[][] = [];
+  collectUndefinedPaths(candidate, [], undefinedPaths);
+  if (undefinedPaths.length > 0) {
+    return {
+      kind: "invalid",
+      diagnostics: undefinedPaths.map((path) => {
+        return diagnostic(
+          "non-canonical-value",
+          path,
+          diagnosticContextForPath(parsed, path),
+        );
+      }),
+    };
+  }
   const diagnostics: OfficialWorkflowCatalogDiagnostic[] = [];
   const nonCanonicalPaths: (string | number)[][] = [];
   collectNonCanonicalStringPaths(parsed, [], nonCanonicalPaths);
   collectNonCanonicalNumberPaths(parsed, [], nonCanonicalPaths);
   diagnostics.push(
     ...nonCanonicalPaths.map((path) => {
-      const definitionIndex =
-        path[0] === "definitions" && typeof path[1] === "number"
-          ? path[1]
-          : undefined;
-      const definitionName =
-        definitionIndex === undefined
-          ? undefined
-          : parsed.definitions[definitionIndex]?.name;
-      return definitionName === undefined
-        ? diagnostic("non-canonical-value", path)
-        : diagnostic("non-canonical-value", path, { definitionName });
+      return diagnostic(
+        "non-canonical-value",
+        path,
+        diagnosticContextForPath(parsed, path),
+      );
     }),
   );
 

@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
+import { createDeferredPromise } from "../../utils";
 import { createCronOfficialWorkflowCatalogRoutes } from "../cron-official-workflow-catalog";
 import { testOfficialWorkflowCatalogStateRoutes } from "../test-official-workflow-catalog-state";
 
@@ -83,6 +84,51 @@ function loopBlueprint(key: string): OfficialWorkflowBlueprint {
     desiredState: {
       kind: "schedule",
       schedule: { type: "loop", intervalSeconds: 3600 },
+    },
+    runtime: {},
+  };
+}
+
+function calendarBlueprint(
+  key: string,
+  calendarId: string | undefined,
+): OfficialWorkflowBlueprint {
+  return {
+    key,
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      ...(calendarId === undefined
+        ? {}
+        : {
+            eventConfig: {
+              provider: "google-calendar",
+              event: "event_created",
+              calendarId,
+            },
+          }),
+    },
+    runtime: {},
+  };
+}
+
+function chatRunFinishedBlueprint(
+  key: string,
+  runStatuses: readonly ("completed" | "failed" | "cancelled")[],
+): OfficialWorkflowBlueprint {
+  return {
+    key,
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "chat-run-finished",
+      eventConfig: {
+        provider: "chat",
+        event: "run_finished",
+        chatThreadId: "00000000-0000-4000-8000-000000000001",
+        runStatuses: [...runStatuses],
+      },
     },
     runtime: {},
   };
@@ -200,6 +246,13 @@ function installVolumeS3Fixture() {
   const writes: string[] = [];
   let putAttempt = 0;
   let failingPutAttempt: number | null = null;
+  let blockedPut:
+    | {
+        readonly attempt: number;
+        readonly started: ReturnType<typeof createDeferredPromise<void>>;
+        readonly released: ReturnType<typeof createDeferredPromise<void>>;
+      }
+    | undefined;
 
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     if (command instanceof PutObjectCommand) {
@@ -212,9 +265,18 @@ function installVolumeS3Fixture() {
         failingPutAttempt = null;
         return Promise.reject(new Error("Injected external storage failure"));
       }
-      objects.set(key, s3BodyBuffer(command.input.Body));
-      writes.push(key);
-      return Promise.resolve({});
+      const storeObject = () => {
+        objects.set(key, s3BodyBuffer(command.input.Body));
+        writes.push(key);
+        return {};
+      };
+      if (blockedPut?.attempt === putAttempt) {
+        const blocked = blockedPut;
+        blockedPut = undefined;
+        blocked.started.resolve(undefined);
+        return blocked.released.promise.then(storeObject);
+      }
+      return Promise.resolve(storeObject());
     }
     if (command instanceof HeadObjectCommand) {
       const key = command.input.Key;
@@ -238,6 +300,23 @@ function installVolumeS3Fixture() {
     },
     failPutAttempt(attempt: number): void {
       failingPutAttempt = putAttempt + attempt;
+    },
+    blockNextPut(): {
+      readonly started: Promise<void>;
+      readonly release: () => void;
+    } {
+      if (blockedPut) {
+        throw new Error("An S3 put is already blocked");
+      }
+      const started = createDeferredPromise<void>(context.signal);
+      const released = createDeferredPromise<void>(context.signal);
+      blockedPut = { attempt: putAttempt + 1, started, released };
+      return {
+        started: started.promise,
+        release: () => {
+          released.resolve(undefined);
+        },
+      };
     },
   };
 }
@@ -455,6 +534,106 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(s3.writes).toStrictEqual([]);
   });
 
+  it("uses one canonical effective event configuration for identity", async () => {
+    installVolumeS3Fixture();
+    const name = `api-test-event-canonical-${TEST_SUFFIX}`;
+    const omittedCalendarDefault = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [calendarBlueprint("calendar", undefined)],
+        }),
+      ]),
+    );
+    expect(omittedCalendarDefault.body).toMatchObject({
+      outcome: "rejected",
+      releaseId: null,
+      diagnostics: [{ code: "invalid-blueprint-configuration" }],
+    });
+
+    const trimmedCalendar = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [calendarBlueprint("calendar", " primary ")],
+        }),
+      ]),
+    );
+    expect(trimmedCalendar.body).toMatchObject({
+      outcome: "rejected",
+      releaseId: null,
+      diagnostics: [{ code: "invalid-blueprint-configuration" }],
+    });
+
+    const duplicateSet = chatRunFinishedBlueprint("chat", [
+      "failed",
+      "completed",
+      "failed",
+    ]);
+    const accepted = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [calendarBlueprint("calendar", "primary"), duplicateSet],
+        }),
+      ]),
+    );
+    expect(accepted.body.outcome).toBe("accepted");
+    const initial = (await readState(name)).body.definition;
+    expect(
+      initial?.blueprints.find((blueprint) => {
+        return blueprint.key === "chat";
+      })?.desiredState,
+    ).toMatchObject({
+      eventConfig: { runStatuses: ["completed", "failed"] },
+    });
+
+    const reorderedSet = chatRunFinishedBlueprint("chat", [
+      "completed",
+      "failed",
+    ]);
+    const equivalent = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [reorderedSet, calendarBlueprint("calendar", "primary")],
+        }),
+      ]),
+    );
+    expect(equivalent.body).toMatchObject({
+      outcome: "unchanged",
+      releaseId: accepted.body.releaseId,
+    });
+
+    const changed = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [
+            calendarBlueprint("calendar", "secondary"),
+            reorderedSet,
+          ],
+        }),
+      ]),
+    );
+    expect(changed.body.outcome).toBe("accepted");
+    const revised = (await readState(name)).body.definition;
+    expect(revised?.revision).not.toBe(initial?.revision);
+    expect(
+      revised?.blueprints.find((blueprint) => {
+        return blueprint.key === "calendar";
+      })?.fingerprint,
+    ).not.toBe(
+      initial?.blueprints.find((blueprint) => {
+        return blueprint.key === "calendar";
+      })?.fingerprint,
+    );
+    expect(
+      revised?.blueprints.find((blueprint) => {
+        return blueprint.key === "chat";
+      })?.fingerprint,
+    ).toBe(
+      initial?.blueprints.find((blueprint) => {
+        return blueprint.key === "chat";
+      })?.fingerprint,
+    );
+  });
+
   it("rejects the complete invalid candidate, duplicates, and non-canonical input", async () => {
     installVolumeS3Fixture();
     const name = `api-test-validation-${TEST_SUFFIX}`;
@@ -585,6 +764,44 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       expect.objectContaining({ code: "non-canonical-value" }),
     );
 
+    const blueprintWithUndefined = scheduleBlueprint("daily");
+    const explicitUndefined = await syncCatalog({
+      schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
+      definitions: [
+        {
+          ...activeDefinition(name),
+          blueprints: [
+            {
+              ...blueprintWithUndefined,
+              desiredState: {
+                ...blueprintWithUndefined.desiredState,
+                autonomyBudget: undefined,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(explicitUndefined.body).toMatchObject({
+      outcome: "rejected",
+      releaseId: acceptedReleaseId,
+      diagnostics: [
+        {
+          code: "non-canonical-value",
+          path: [
+            "definitions",
+            0,
+            "blueprints",
+            0,
+            "desiredState",
+            "autonomyBudget",
+          ],
+          definitionName: name,
+          blueprintKey: "daily",
+        },
+      ],
+    });
+
     const state = await readState(name);
     expect(state.body.catalog?.releaseId).toBe(acceptedReleaseId);
     expect(state.body.definition?.revision).toBe(acceptedRevision);
@@ -683,6 +900,119 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
   });
 
+  it("repairs the retained exact artifact while accepting and repeating retirement", async () => {
+    const s3 = installVolumeS3Fixture();
+    const name = `api-test-retired-repair-${TEST_SUFFIX}`;
+    await syncCatalog(catalog([activeDefinition(name)]));
+    const active = (await readState(name)).body.definition;
+    const archiveKey = [...s3.objects.keys()].find((key) => {
+      return key.endsWith("/archive.tar.gz");
+    });
+    const manifestKey = [...s3.objects.keys()].find((key) => {
+      return key.endsWith("/manifest.json");
+    });
+    expect(archiveKey).toBeDefined();
+    expect(manifestKey).toBeDefined();
+    if (!archiveKey || !manifestKey) {
+      throw new Error("Expected both immutable volume objects");
+    }
+
+    s3.objects.delete(archiveKey);
+    s3.clearWrites();
+    const retirement = await syncCatalog(catalog([retiredDefinition(name)]));
+    expect(retirement.body.outcome).toBe("accepted");
+    expect(s3.objects.has(archiveKey)).toBeTruthy();
+    expect(s3.writes).toContain(archiveKey);
+    expect((await readState(name)).body.definition).toMatchObject({
+      lifecycle: "retired",
+      revision: active?.revision,
+      artifact: active?.artifact,
+    });
+
+    s3.objects.delete(manifestKey);
+    s3.clearWrites();
+    const repeatedRetirement = await syncCatalog(
+      catalog([retiredDefinition(name)]),
+    );
+    expect(repeatedRetirement.body).toMatchObject({
+      outcome: "unchanged",
+      releaseId: retirement.body.releaseId,
+      diagnostics: [],
+    });
+    expect(s3.objects.has(manifestKey)).toBeTruthy();
+    expect(s3.writes).toContain(manifestKey);
+
+    const repaired = await readState(name);
+    expect(repaired.body.definition).toMatchObject({
+      lifecycle: "retired",
+      revision: active?.revision,
+      artifact: active?.artifact,
+    });
+    expect(repaired.body.counts).toStrictEqual({
+      releases: 2,
+      revisions: 1,
+      storages: 1,
+      storageVersions: 1,
+    });
+  });
+
+  it("repairs every durable historical exact revision", async () => {
+    const s3 = installVolumeS3Fixture();
+    const name = `api-test-historical-repair-${TEST_SUFFIX}`;
+    await syncCatalog(catalog([activeDefinition(name)]));
+    const first = (await readState(name)).body.definition;
+    expect(first?.revision).toBeDefined();
+    expect(first?.artifact.storageVersion).toBeDefined();
+
+    const currentCandidate = activeDefinition(name, {
+      instruction: "Use the second durable revision.",
+    });
+    await syncCatalog(catalog([currentCandidate]));
+    const second = (await readState(name)).body.definition;
+    expect(second?.revision).not.toBe(first?.revision);
+    const firstArchiveKey = [...s3.objects.keys()].find((key) => {
+      return (
+        key.includes(`/${first?.artifact.storageVersion}/`) &&
+        key.endsWith("/archive.tar.gz")
+      );
+    });
+    expect(firstArchiveKey).toBeDefined();
+    if (!firstArchiveKey || !first?.revision || !second?.revision) {
+      throw new Error("Expected two exact revisions and the first archive");
+    }
+
+    s3.objects.delete(firstArchiveKey);
+    s3.clearWrites();
+    const repair = await syncCatalog(catalog([currentCandidate]));
+    expect(repair.body.outcome).toBe("unchanged");
+    expect(s3.objects.has(firstArchiveKey)).toBeTruthy();
+    expect(s3.writes).toContain(firstArchiveKey);
+
+    const repaired = await readState(name);
+    expect(repaired.body.definition).toMatchObject({
+      revision: second.revision,
+      artifact: second.artifact,
+    });
+    expect((await readState(name, first.revision)).body.revision).toMatchObject(
+      {
+        definition: { revision: first.revision },
+        artifact: first.artifact,
+      },
+    );
+    expect(
+      (await readState(name, second.revision)).body.revision,
+    ).toMatchObject({
+      definition: { revision: second.revision },
+      artifact: second.artifact,
+    });
+    expect(repaired.body.counts).toStrictEqual({
+      releases: 2,
+      revisions: 2,
+      storages: 1,
+      storageVersions: 2,
+    });
+  });
+
   it("rejects silent deletion and retains identity through retirement and reactivation", async () => {
     installVolumeS3Fixture();
     const name = `api-test-lifecycle-${TEST_SUFFIX}`;
@@ -771,6 +1101,49 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(left.body.releaseId).toBe(right.body.releaseId);
     expect((await readState(name)).body.counts).toStrictEqual({
       releases: 1,
+      revisions: 1,
+      storages: 1,
+      storageVersions: 1,
+    });
+  });
+
+  it("rejects a slower stale candidate after a different release activates", async () => {
+    const s3 = installVolumeS3Fixture();
+    const initial = await syncCatalog(catalog([]));
+    const name = `api-test-stale-activation-${TEST_SUFFIX}`;
+    const blocked = s3.blockNextPut();
+    const slowPromise = syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [scheduleBlueprint("daily", "0 8 * * *")],
+        }),
+      ]),
+    );
+    await blocked.started;
+    const fast = await syncCatalog(
+      catalog([
+        activeDefinition(name, {
+          blueprints: [scheduleBlueprint("daily", "30 8 * * *")],
+        }),
+      ]),
+    ).finally(blocked.release);
+    expect(fast.body.outcome).toBe("accepted");
+
+    const slow = await slowPromise;
+    expect(slow.body).toStrictEqual({
+      outcome: "rejected",
+      releaseId: fast.body.releaseId,
+      diagnostics: [{ code: "activation-conflict", path: ["catalog"] }],
+    });
+    expect(slow.body.releaseId).not.toBe(initial.body.releaseId);
+
+    const state = await readState(name);
+    expect(state.body.catalog?.releaseId).toBe(fast.body.releaseId);
+    expect(state.body.definition?.blueprints[0]?.desiredState).toMatchObject({
+      schedule: { cronExpression: "30 8 * * *" },
+    });
+    expect(state.body.counts).toStrictEqual({
+      releases: 2,
       revisions: 1,
       storages: 1,
       storageVersions: 1,

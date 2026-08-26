@@ -13,7 +13,7 @@ import {
   officialWorkflowDefinitionRevisions,
 } from "@okouai/db/schema/official-workflow-catalog";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -22,6 +22,37 @@ export const OFFICIAL_WORKFLOW_CATALOG_AUTHORITY = "official" as const;
 export interface AcceptedOfficialWorkflowCatalog {
   readonly releaseId: string;
   readonly payload: OfficialWorkflowCatalogReleasePayload;
+}
+
+interface OfficialWorkflowRevisionRow {
+  readonly definitionName: string;
+  readonly revision: string;
+  readonly payload: unknown;
+  readonly storageName: string;
+  readonly storageId: string;
+  readonly storageVersion: string;
+}
+
+function acceptedRevisionFromRow(
+  row: OfficialWorkflowRevisionRow,
+): OfficialWorkflowAcceptedRevision {
+  const definition = officialWorkflowDefinitionRevisionPayloadSchema.parse(
+    row.payload,
+  );
+  if (
+    definition.name !== row.definitionName ||
+    definition.revision !== row.revision
+  ) {
+    throw new Error("Official Workflow revision row identity is inconsistent");
+  }
+  return officialWorkflowAcceptedRevisionSchema.parse({
+    definition,
+    artifact: {
+      storageName: row.storageName,
+      storageId: row.storageId,
+      storageVersion: row.storageVersion,
+    },
+  });
 }
 
 export async function readAcceptedOfficialWorkflowCatalog(
@@ -119,15 +150,61 @@ export async function readAcceptedOfficialWorkflowRevision(
   if (!row) {
     return null;
   }
-  const definition = officialWorkflowDefinitionRevisionPayloadSchema.parse(
-    row.payload,
-  );
-  return officialWorkflowAcceptedRevisionSchema.parse({
-    definition,
-    artifact: {
-      storageName: row.storageName,
-      storageId: row.storageId,
-      storageVersion: row.storageVersion,
-    },
+  return acceptedRevisionFromRow(row);
+}
+
+export async function readAllAcceptedOfficialWorkflowRevisions(
+  db: ReadonlyDb,
+  signal: AbortSignal,
+): Promise<readonly OfficialWorkflowAcceptedRevision[]> {
+  const rows = await db
+    .select({
+      definitionName: officialWorkflowDefinitionRevisions.definitionName,
+      revision: officialWorkflowDefinitionRevisions.revision,
+      payload: officialWorkflowDefinitionRevisions.payload,
+      storageName: officialWorkflowDefinitionRevisions.storageName,
+      storageId: officialWorkflowDefinitionRevisions.storageId,
+      storageVersion: officialWorkflowDefinitionRevisions.storageVersion,
+      verifiedStorageId: storages.id,
+      verifiedStorageVersion: storageVersions.id,
+    })
+    .from(officialWorkflowDefinitionRevisions)
+    .leftJoin(
+      storages,
+      and(
+        eq(storages.id, officialWorkflowDefinitionRevisions.storageId),
+        eq(storages.name, officialWorkflowDefinitionRevisions.storageName),
+        eq(storages.orgId, SYSTEM_ORG_ID),
+        eq(storages.userId, VOLUME_ORG_USER_ID),
+      ),
+    )
+    .leftJoin(
+      storageVersions,
+      and(
+        eq(
+          storageVersions.id,
+          officialWorkflowDefinitionRevisions.storageVersion,
+        ),
+        eq(
+          storageVersions.storageId,
+          officialWorkflowDefinitionRevisions.storageId,
+        ),
+      ),
+    )
+    .orderBy(
+      asc(officialWorkflowDefinitionRevisions.definitionName),
+      asc(officialWorkflowDefinitionRevisions.revision),
+    );
+  signal.throwIfAborted();
+  return rows.map((row) => {
+    if (
+      row.verifiedStorageId !== row.storageId ||
+      row.verifiedStorageVersion !== row.storageVersion
+    ) {
+      throw new Error(
+        "Official Workflow revision artifact registration is inconsistent",
+      );
+    }
+    return acceptedRevisionFromRow(row);
   });
 }

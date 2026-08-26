@@ -26,6 +26,7 @@ import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import {
   OFFICIAL_WORKFLOW_CATALOG_AUTHORITY,
+  readAllAcceptedOfficialWorkflowRevisions,
   readAcceptedOfficialWorkflowCatalog,
   type AcceptedOfficialWorkflowCatalog,
 } from "./official-workflow-catalog-read.service";
@@ -179,12 +180,123 @@ function buildCandidateRelease(
   };
 }
 
+type DefinitionPreparationResult =
+  | {
+      readonly kind: "prepared";
+      readonly definition: PreparedOfficialWorkflowDefinition;
+    }
+  | {
+      readonly kind: "rejected";
+      readonly diagnostics: readonly OfficialWorkflowCatalogDiagnostic[];
+    };
+
+type DefinitionPreparationRejection = Extract<
+  DefinitionPreparationResult,
+  { readonly kind: "rejected" }
+>;
+
+function artifactReferencesMatch(
+  left: OfficialWorkflowArtifactReference,
+  right: OfficialWorkflowArtifactReference,
+): boolean {
+  return (
+    left.storageName === right.storageName &&
+    left.storageId === right.storageId &&
+    left.storageVersion === right.storageVersion
+  );
+}
+
+function artifactPreparationRejected(
+  definitionName: string | undefined,
+  path: readonly (string | number)[],
+): DefinitionPreparationRejection {
+  return {
+    kind: "rejected",
+    diagnostics: [
+      {
+        code: "artifact-preparation-failed",
+        path: [...path],
+        ...(definitionName === undefined ? {} : { definitionName }),
+      },
+    ],
+  };
+}
+
+function definitionRevisionKey(definitionName: string, revision: string) {
+  return `${definitionName}\0${revision}`;
+}
+
+async function prepareDefinitionArtifact(
+  prepareVolume: (
+    input: PrepareVolumeServerSideInput,
+    signal: AbortSignal,
+  ) => Promise<PreparedServerSideVolume>,
+  definition: OfficialWorkflowDefinitionRevisionPayload,
+  expectedArtifact: OfficialWorkflowArtifactReference | undefined,
+  path: readonly (string | number)[],
+  signal: AbortSignal,
+): Promise<DefinitionPreparationResult> {
+  const storageName = getOfficialWorkflowDefinitionStorageName(definition.name);
+  if (
+    expectedArtifact !== undefined &&
+    expectedArtifact.storageName !== storageName
+  ) {
+    return artifactPreparationRejected(definition.name, path);
+  }
+  const volumeResult = await settle(
+    prepareVolume(
+      {
+        orgId: SYSTEM_ORG_ID,
+        storageName,
+        files: [
+          {
+            path: "SKILL.md",
+            content: synthesizeWorkflowSkillMd({
+              name: definition.name,
+              description: definition.workflow.description,
+              instruction: definition.workflow.instruction,
+            }),
+          },
+          ...definition.workflow.files,
+          {
+            path: OFFICIAL_WORKFLOW_DEFINITION_MANIFEST_PATH,
+            content: `${canonicalJsonString(definition)}\n`,
+          },
+        ],
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!volumeResult.ok) {
+    return artifactPreparationRejected(definition.name, path);
+  }
+  const volume = volumeResult.value;
+  const artifact = {
+    storageName,
+    storageId: volume.version.storageId,
+    storageVersion: volume.version.versionId,
+  };
+  if (
+    expectedArtifact !== undefined &&
+    !artifactReferencesMatch(artifact, expectedArtifact)
+  ) {
+    return artifactPreparationRejected(definition.name, path);
+  }
+  return {
+    kind: "prepared",
+    definition: { definition, volume, artifact },
+  };
+}
+
 async function prepareDefinitions(
+  db: Db,
   prepareVolume: (
     input: PrepareVolumeServerSideInput,
     signal: AbortSignal,
   ) => Promise<PreparedServerSideVolume>,
   catalog: ValidatedOfficialWorkflowCatalog,
+  previous: AcceptedOfficialWorkflowCatalog | null,
   signal: AbortSignal,
 ): Promise<
   | {
@@ -199,67 +311,132 @@ async function prepareDefinitions(
       readonly diagnostics: readonly OfficialWorkflowCatalogDiagnostic[];
     }
 > {
-  const preparedByName = new Map<string, PreparedOfficialWorkflowDefinition>();
-  for (const sourceDefinition of catalog.source.definitions) {
-    if (sourceDefinition.lifecycle === "retired") {
-      continue;
-    }
-    const validated = catalog.activeDefinitions.get(sourceDefinition.name);
-    if (!validated) {
-      throw new OfficialWorkflowCatalogRegistrationError(sourceDefinition.name);
-    }
-    const storageName = getOfficialWorkflowDefinitionStorageName(
-      sourceDefinition.name,
-    );
-    const volumeResult = await settle(
-      prepareVolume(
-        {
-          orgId: SYSTEM_ORG_ID,
-          storageName,
-          files: [
-            {
-              path: "SKILL.md",
-              content: synthesizeWorkflowSkillMd({
-                name: sourceDefinition.name,
-                description: validated.revisionPayload.workflow.description,
-                instruction: validated.revisionPayload.workflow.instruction,
-              }),
-            },
-            ...validated.revisionPayload.workflow.files,
-            {
-              path: OFFICIAL_WORKFLOW_DEFINITION_MANIFEST_PATH,
-              content: `${canonicalJsonString(validated.revisionPayload)}\n`,
-            },
-          ],
-        },
-        signal,
-      ),
+  const historicalResult = await settle(
+    readAllAcceptedOfficialWorkflowRevisions(db, signal),
+    signal,
+  );
+  if (!historicalResult.ok) {
+    return artifactPreparationRejected(undefined, ["revisions"]);
+  }
+  const historicalByRevision = new Map<
+    string,
+    PreparedOfficialWorkflowDefinition
+  >();
+  for (const [revisionIndex, historical] of historicalResult.value.entries()) {
+    const preparation = await prepareDefinitionArtifact(
+      prepareVolume,
+      historical.definition,
+      historical.artifact,
+      ["revisions", revisionIndex],
       signal,
     );
-    if (!volumeResult.ok) {
-      return {
-        kind: "rejected",
-        diagnostics: [
-          {
-            code: "artifact-preparation-failed",
-            path: ["definitions"],
-            definitionName: sourceDefinition.name,
-          },
-        ],
-      };
+    if (preparation.kind === "rejected") {
+      return preparation;
     }
-    const volume = volumeResult.value;
-    preparedByName.set(sourceDefinition.name, {
-      definition: validated.revisionPayload,
-      volume,
-      artifact: {
-        storageName,
-        storageId: volume.version.storageId,
-        storageVersion: volume.version.versionId,
-      },
-    });
+    historicalByRevision.set(
+      definitionRevisionKey(
+        historical.definition.name,
+        historical.definition.revision,
+      ),
+      preparation.definition,
+    );
+  }
+
+  const preparedByName = new Map<string, PreparedOfficialWorkflowDefinition>();
+  const previousByName = new Map(
+    previous?.payload.definitions.map((definition) => {
+      return [definition.name, definition] as const;
+    }) ?? [],
+  );
+  for (const [
+    definitionIndex,
+    sourceDefinition,
+  ] of catalog.source.definitions.entries()) {
+    const previousDefinition = previousByName.get(sourceDefinition.name);
+    const validated = catalog.activeDefinitions.get(sourceDefinition.name);
+    const sourceRevision = validated?.revisionPayload;
+    const revision =
+      sourceDefinition.lifecycle === "active"
+        ? sourceRevision?.revision
+        : previousDefinition?.revision;
+    const historical =
+      revision === undefined
+        ? undefined
+        : historicalByRevision.get(
+            definitionRevisionKey(sourceDefinition.name, revision),
+          );
+    if (sourceDefinition.lifecycle === "retired") {
+      if (
+        !previousDefinition ||
+        !historical ||
+        !artifactReferencesMatch(
+          historical.artifact,
+          previousDefinition.artifact,
+        )
+      ) {
+        return artifactPreparationRejected(sourceDefinition.name, [
+          "definitions",
+          definitionIndex,
+        ]);
+      }
+      preparedByName.set(sourceDefinition.name, historical);
+      continue;
+    }
+    if (!sourceRevision) {
+      return artifactPreparationRejected(sourceDefinition.name, [
+        "definitions",
+        definitionIndex,
+      ]);
+    }
+    if (historical) {
+      if (
+        canonicalJsonString(historical.definition) !==
+        canonicalJsonString(sourceRevision)
+      ) {
+        return artifactPreparationRejected(sourceDefinition.name, [
+          "definitions",
+          definitionIndex,
+        ]);
+      }
+      preparedByName.set(sourceDefinition.name, historical);
+      continue;
+    }
+    const preparation = await prepareDefinitionArtifact(
+      prepareVolume,
+      sourceRevision,
+      undefined,
+      ["definitions", definitionIndex],
+      signal,
+    );
+    if (preparation.kind === "rejected") {
+      return preparation;
+    }
+    preparedByName.set(sourceDefinition.name, preparation.definition);
   }
   return { kind: "prepared", definitions: preparedByName };
+}
+
+function preparedCandidateConflict(
+  payload: OfficialWorkflowCatalogReleasePayload,
+  preparedByName: ReadonlyMap<string, PreparedOfficialWorkflowDefinition>,
+): OfficialWorkflowCatalogDiagnostic | null {
+  for (const [definitionIndex, definition] of payload.definitions.entries()) {
+    const prepared = preparedByName.get(definition.name);
+    if (
+      !prepared ||
+      prepared.definition.revision !== definition.revision ||
+      prepared.artifact.storageName !== definition.artifact.storageName ||
+      prepared.artifact.storageId !== definition.artifact.storageId ||
+      prepared.artifact.storageVersion !== definition.artifact.storageVersion
+    ) {
+      return {
+        code: "activation-conflict",
+        path: ["definitions", definitionIndex],
+        definitionName: definition.name,
+      };
+    }
+  }
+  return null;
 }
 
 async function assertPreparedStorageIdentity(
@@ -383,6 +560,7 @@ async function activateCandidate(
   db: Db,
   catalog: ValidatedOfficialWorkflowCatalog,
   preparedByName: ReadonlyMap<string, PreparedOfficialWorkflowDefinition>,
+  observedReleaseId: string | null,
   signal: AbortSignal,
 ): Promise<OfficialWorkflowCatalogSyncResponse> {
   return await db.transaction(async (tx) => {
@@ -391,16 +569,53 @@ async function activateCandidate(
     );
     signal.throwIfAborted();
     const current = await readAcceptedOfficialWorkflowCatalog(tx, signal);
+    const currentReleaseId = current?.releaseId ?? null;
+    const stale = currentReleaseId !== observedReleaseId;
     const candidate = buildCandidateRelease(catalog, current, preparedByName);
     if (candidate.kind === "invalid") {
+      if (stale) {
+        return {
+          outcome: "rejected" as const,
+          releaseId: currentReleaseId,
+          diagnostics: [
+            { code: "activation-conflict" as const, path: ["catalog"] },
+          ],
+        };
+      }
       return {
         outcome: "rejected" as const,
-        releaseId: current?.releaseId ?? null,
+        releaseId: currentReleaseId,
         diagnostics: [...candidate.diagnostics],
       };
     }
     const releaseId = officialWorkflowFingerprint(candidate.payload);
-    if (current?.releaseId === releaseId) {
+    if (stale) {
+      return currentReleaseId === releaseId
+        ? {
+            outcome: "unchanged" as const,
+            releaseId,
+            diagnostics: [],
+          }
+        : {
+            outcome: "rejected" as const,
+            releaseId: currentReleaseId,
+            diagnostics: [
+              { code: "activation-conflict" as const, path: ["catalog"] },
+            ],
+          };
+    }
+    const conflict = preparedCandidateConflict(
+      candidate.payload,
+      preparedByName,
+    );
+    if (conflict) {
+      return {
+        outcome: "rejected" as const,
+        releaseId: currentReleaseId,
+        diagnostics: [conflict],
+      };
+    }
+    if (currentReleaseId === releaseId) {
       return {
         outcome: "unchanged" as const,
         releaseId,
@@ -482,10 +697,12 @@ export function createOfficialWorkflowCatalogSyncCommand(candidate: unknown) {
         };
       }
       const preparation = await prepareDefinitions(
+        writeDb,
         async (input, prepareSignal) => {
           return await set(prepareVolumeServerSide$, input, prepareSignal);
         },
         validation.catalog,
+        current,
         signal,
       );
       if (preparation.kind === "rejected") {
@@ -500,6 +717,7 @@ export function createOfficialWorkflowCatalogSyncCommand(candidate: unknown) {
           writeDb,
           validation.catalog,
           preparation.definitions,
+          current?.releaseId ?? null,
           signal,
         ),
         signal,
