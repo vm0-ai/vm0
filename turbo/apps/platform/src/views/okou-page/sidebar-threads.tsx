@@ -20,7 +20,10 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useChatThreadsTitleLabels } from "./sidebar-shared.tsx";
+import {
+  CHAT_SIDEBAR_ICON_CLASS,
+  useChatThreadsTitleLabels,
+} from "./sidebar-shared.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -226,10 +229,9 @@ function ChatThreadMenu({
             onClick={preventChatThreadMenuNavigation}
             variant="quiet"
             size="icon-2xs"
-            iconSize="sm"
             className={`peer pointer-events-auto absolute left-1 top-1 cursor-pointer rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
-            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible`}
+            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible ${CHAT_SIDEBAR_ICON_CLASS}`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -254,11 +256,11 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <Pin size={16} className="md:hidden" />
-                      <Ellipsis size={16} className="hidden md:block" />
+                      <Pin size={17} className="md:hidden" />
+                      <Ellipsis size={17} className="hidden md:block" />
                     </>
                   ) : (
-                    <Ellipsis size={16} />
+                    <Ellipsis size={17} />
                   )}
                 </span>
               </TooltipTrigger>
@@ -346,9 +348,9 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex"
+                className={`hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex ${CHAT_SIDEBAR_ICON_CLASS}`}
               >
-                <Pin size={16} />
+                <Pin size={17} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -698,7 +700,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Ellipsis size={18} />
+          <Ellipsis size={17} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -865,8 +867,7 @@ function ChatThreadsListMenu({
             }}
             variant="quiet"
             size="icon-sm"
-            iconSize="md"
-            className="relative z-10 shrink-0"
+            className={`relative z-10 shrink-0 ${CHAT_SIDEBAR_ICON_CLASS}`}
             aria-label={t(($) => {
               return $.chat.sidebar.openListMenu;
             })}

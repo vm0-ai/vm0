@@ -59,7 +59,7 @@ import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-th
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
-import { AgentAvatarImg } from "./sidebar-shared.tsx";
+import { AgentAvatarImg, CHAT_SIDEBAR_ICON_CLASS } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog, PinAgentDialog } from "./sidebar-dialogs.tsx";
@@ -582,10 +582,10 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.pinAgent;
             })}
-            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            className={`flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${CHAT_SIDEBAR_ICON_CLASS}`}
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={18} />
+              <Plus size={17} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -632,13 +632,12 @@ export function PinnedAgentListSection({
                 }}
                 variant="quiet"
                 size="icon-sm"
-                iconSize="md"
-                className="relative z-10 shrink-0"
+                className={`relative z-10 shrink-0 ${CHAT_SIDEBAR_ICON_CLASS}`}
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}
               >
-                <Plus size={18} />
+                <Plus size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">

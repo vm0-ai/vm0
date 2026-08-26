@@ -1037,14 +1037,8 @@ describe("zero sidebar", () => {
     );
     expect(pinnedMenu.className).toContain("text-muted-foreground");
     expect(pinnedMenu.className).toContain("hover:text-foreground");
-    expect(
-      Array.from(pinnedRow.querySelectorAll("svg")).every((icon) => {
-        return (
-          !icon.classList.contains("opacity-50") &&
-          !icon.classList.contains("opacity-70")
-        );
-      }),
-    ).toBeTruthy();
+    expect(pinnedMenu.className).toContain("[&_svg]:size-[17px]");
+    expect(pinnedMenu.className).toContain("[&_svg]:opacity-70");
 
     click(within(pinnedRow).getByTestId("chat-thread-pinned-indicator"));
     click(menuItemByText("Unpin chat"));
@@ -3294,14 +3288,22 @@ describe("zero sidebar", () => {
     expect(newChatIcon.style.color).toBe("");
     expect(searchIcon.style.opacity).toBe("");
     expect(newChatIcon.style.opacity).toBe("");
-    expect(searchButton.className).toContain("[&_svg]:size-[18px]");
-    expect(newChatButton.className).toContain("[&_svg]:size-[18px]");
+    expect(searchButton.className).toContain("[&_svg]:size-[17px]");
+    expect(newChatButton.className).toContain("[&_svg]:size-[17px]");
+    expect(searchButton.className).toContain("[&_svg]:opacity-70");
+    expect(newChatButton.className).toContain("[&_svg]:opacity-70");
+    expect(searchIcon).toHaveAttribute("width", "17");
+    expect(newChatIcon).toHaveAttribute("width", "17");
     const pinnedAgents = within(list).getByTestId("pinned-agents-horizontal");
     const pinAgentButton = within(pinnedAgents).getByLabelText("Pin an agent");
     expect(pinAgentButton.className).toContain("text-muted-foreground");
     expect(pinAgentButton.className).toContain("hover:text-foreground");
-    expect(pinAgentButton.className).not.toContain("opacity-70");
-    expect(pinAgentButton.querySelector("svg")).toHaveAttribute("width", "18");
+    expect(pinAgentButton.className).toContain("[&_svg]:size-[17px]");
+    expect(pinAgentButton.className).toContain("[&_svg]:opacity-70");
+    expect(pinAgentButton.querySelector("svg")).toHaveAttribute("width", "17");
+    const listMenuButton = within(list).getByLabelText("Open chat list menu");
+    expect(listMenuButton.className).toContain("[&_svg]:size-[17px]");
+    expect(listMenuButton.className).toContain("[&_svg]:opacity-70");
   });
 
   it("hides only the three-column chat list and keeps search available", async () => {

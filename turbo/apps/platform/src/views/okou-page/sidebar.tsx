@@ -64,6 +64,7 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { CHAT_SIDEBAR_ICON_CLASS } from "./sidebar-shared.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -705,10 +706,10 @@ function ThreeColumnChatListToggle({
           aria-keyshortcuts="Meta+B Control+B"
           variant="quiet"
           size="icon-sm"
-          iconSize="md"
+          className={CHAT_SIDEBAR_ICON_CLASS}
         >
           <PanelLeftClose
-            size={18}
+            size={17}
             className={cn(
               "transition-transform duration-200",
               hidden && "rotate-180",
@@ -868,9 +869,9 @@ function ChatListColumn() {
                 aria-keyshortcuts="Meta+K Control+K"
                 variant="quiet"
                 size="icon-sm"
-                iconSize="md"
+                className={CHAT_SIDEBAR_ICON_CLASS}
               >
-                <Search size={18} />
+                <Search size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -889,9 +890,9 @@ function ChatListColumn() {
                 aria-label={newChatLabel}
                 variant="quiet"
                 size="icon-sm"
-                iconSize="md"
+                className={CHAT_SIDEBAR_ICON_CLASS}
               >
-                <Edit size={18} />
+                <Edit size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
