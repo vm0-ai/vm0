@@ -74,6 +74,7 @@ import {
 } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import {
   API_TEST_CONNECTOR_CATALOG,
@@ -5072,6 +5073,14 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
+    if (!actor.orgId) {
+      throw new Error("Expected the built-in admission actor to have an org");
+    }
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: actor.orgId,
+      model: "claude-sonnet-5",
+      defaultProviderType: "built-in",
+    });
     const vm0Prompt = "vm0-backed admission with spendable credits";
     const vm0Send = await requestSendEventRaw(actor, {
       agentId,
@@ -7286,7 +7295,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("selects a vm0 built-in model key by vendor", async () => {
+  it("selects a built-in model key from a canonical policy without switching the run writer", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
@@ -7318,6 +7327,14 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
+    if (!actor.orgId) {
+      throw new Error("Expected the built-in model actor to have an org");
+    }
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: actor.orgId,
+      model: "claude-opus-4-8",
+      defaultProviderType: "built-in",
+    });
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -7325,6 +7342,12 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "claude-opus-4-8",
     });
     runId = run.runId;
+    await expect(
+      readRunModelRuntimeRouteFixture(run.runId),
+    ).resolves.toMatchObject({
+      modelProvider: "vm0",
+      selectedModel: "claude-opus-4-8",
+    });
 
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,

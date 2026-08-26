@@ -28,6 +28,7 @@ import {
   runStatusSchema,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -2652,7 +2653,7 @@ const modelProviderFailureInner$ = command(
 
     if (
       !run ||
-      run.modelProvider !== "vm0" ||
+      !isBuiltInModelProviderType(run.modelProvider) ||
       !run.selectedModel ||
       !run.modelRuntimeProvider ||
       !run.modelRuntimeModel ||

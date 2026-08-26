@@ -1,4 +1,7 @@
-import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  isBuiltInModelProviderType,
+  type ModelProviderType,
+} from "@okouai/api-contracts/contracts/model-providers";
 import { cn } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./settings-icon-assets.ts";
 
@@ -36,7 +39,8 @@ export function ProviderIcon({
   type: ModelProviderType;
   size?: number;
 }) {
-  const icon = PROVIDER_ICONS[type];
+  const iconType = isBuiltInModelProviderType(type) ? "vm0" : type;
+  const icon = PROVIDER_ICONS[iconType];
   if (!icon) {
     return <DefaultIcon size={size} />;
   }
@@ -48,7 +52,7 @@ export function ProviderIcon({
       alt=""
       className={cn(
         "shrink-0",
-        providerIconNeedsDarkInvert(type) && "zero-icon-mono",
+        providerIconNeedsDarkInvert(iconType) && "zero-icon-mono",
       )}
     />
   );

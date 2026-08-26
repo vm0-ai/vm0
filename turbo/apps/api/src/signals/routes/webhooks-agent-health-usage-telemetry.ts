@@ -13,6 +13,7 @@ import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, isNotNull } from "drizzle-orm";
 import {
+  isBuiltInModelProviderType,
   isSupportedRunModel,
   normalizeRunModelId,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -221,7 +222,7 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
       return (
         event.kind !== MODEL_USAGE_KIND ||
         modelProviderType === null ||
-        modelProviderType === "vm0"
+        isBuiltInModelProviderType(modelProviderType)
       );
     })
     .map((event) => {

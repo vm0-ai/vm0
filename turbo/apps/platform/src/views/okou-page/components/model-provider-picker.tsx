@@ -34,6 +34,7 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isBuiltInModelProviderType,
   isCodexFastModeModel,
   isSupportedRunModel,
   type ModelProviderType,
@@ -278,7 +279,7 @@ function getModelFirstIconType(model: string): ModelProviderType | undefined {
     return getModelBrandIconType(model);
   }
   return getProvidersForModel(model).find((type) => {
-    return type !== "vm0";
+    return !isBuiltInModelProviderType(type);
   });
 }
 
@@ -534,10 +535,11 @@ function ModelFirstPolicyRowContent({
   showSelectedIndicator?: boolean;
 }) {
   const iconType = getModelFirstIconType(policy.model);
-  const builtInPriceTier =
-    policy.defaultProviderType === "vm0"
-      ? getVm0ModelPriceTier(policy.model)
-      : undefined;
+  const builtInPriceTier = isBuiltInModelProviderType(
+    policy.defaultProviderType,
+  )
+    ? getVm0ModelPriceTier(policy.model)
+    : undefined;
   const restricted = !modelPolicyAllowedForPlan(policy, modelCapabilities);
   return (
     <span className="flex w-full min-w-0 items-center gap-2">

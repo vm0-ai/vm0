@@ -6,6 +6,7 @@ import {
   type ChatEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
@@ -176,7 +177,10 @@ import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./browser.service";
-import type { ModelFirstPin } from "./model-selection.service";
+import {
+  modelProviderWriteTypeForLaunch,
+  type ModelFirstPin,
+} from "./model-selection.service";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
@@ -1007,7 +1011,11 @@ function buildQueuedCreateAgentRunArgs(
       prompt: input.prompt,
       agentId: input.agentId,
       ...(input.effectiveModelProvider
-        ? { modelProvider: input.effectiveModelProvider }
+        ? {
+            modelProvider: modelProviderWriteTypeForLaunch(
+              input.effectiveModelProvider,
+            ),
+          }
         : {}),
       ...(input.realAgentInPreview ? { realAgentInPreview: true } : {}),
       ...additionalVolumesForRun(input.presentationTemplateVolumes),
@@ -2669,14 +2677,17 @@ async function resolveQueuedMessageModelRoute(args: {
     modelContext.providerAdmission.effectiveModelProvider;
   const selectedModel = modelContext.pin.selectedModel;
   const builtInModelRuntimeRoute =
-    effectiveModelProvider === "vm0" && selectedModel
+    isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
           args.db,
           selectedModel,
           args.fallbackEnabled,
         )
       : undefined;
-  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
+  if (
+    isBuiltInModelProviderType(effectiveModelProvider) &&
+    !builtInModelRuntimeRoute
+  ) {
     return {
       error: {
         code: args.fallbackEnabled

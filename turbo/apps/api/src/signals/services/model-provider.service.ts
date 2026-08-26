@@ -13,6 +13,7 @@ import {
   modelProviderTypeSchema,
   type ModelProviderFramework,
   type ModelProviderType,
+  type ModelProviderWriteType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { modelProviders as modelProvidersTable } from "@okouai/db/schema/model-provider";
@@ -375,7 +376,7 @@ function toModelProviderInfoFromRow(args: {
  * Returns BadRequestResponse so the route handler emits 400 without throwing.
  */
 function assertVm0OrgOnly(
-  type: ModelProviderType,
+  type: ModelProviderWriteType,
   userId: string,
 ): BadRequestResponse | null {
   if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
@@ -387,7 +388,7 @@ function assertVm0OrgOnly(
 }
 
 function validateSingleSecretProviderRequest(args: {
-  readonly type: ModelProviderType;
+  readonly type: ModelProviderWriteType;
   readonly secret: string;
 }): BadRequestResponse | { readonly secretName: string } {
   const secretName = getSecretNameForType(args.type);
@@ -421,7 +422,7 @@ interface EncryptedMultiAuthSecret {
 type MultiAuthInsertValues = typeof modelProvidersTable.$inferInsert;
 
 function buildMultiAuthInsertValues(args: {
-  type: ModelProviderType;
+  type: ModelProviderWriteType;
   userId: string;
   authMethod: string;
   selectedModel: string | undefined;
@@ -514,7 +515,7 @@ async function cleanupOldAuthMethodSecrets(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ModelProviderType;
+    readonly type: ModelProviderWriteType;
     readonly oldAuthMethod: string;
     readonly newSecretNames: readonly string[];
   },
@@ -576,7 +577,7 @@ export const upsertUserModelProvider$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ModelProviderType;
+      readonly type: ModelProviderWriteType;
       readonly secret: string;
       readonly selectedModel?: string;
       readonly metadata?: ModelProviderMetadata;
@@ -701,7 +702,7 @@ export const upsertUserModelProvider$ = command(
 
 async function encryptMultiAuthSecrets(
   args: {
-    readonly type: ModelProviderType;
+    readonly type: ModelProviderWriteType;
     readonly authMethod: string;
     readonly secretValues: Record<string, string>;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -749,7 +750,7 @@ async function persistMultiAuthModelProvider(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ModelProviderType;
+    readonly type: ModelProviderWriteType;
     readonly authMethod: string;
     readonly selectedModel?: string;
     readonly metadata?: ModelProviderMetadata;
@@ -853,7 +854,7 @@ async function persistMultiAuthModelProvider(
  * Command body stays under the per-function lint ceiling.
  */
 function validateMultiAuthUpsertInput(args: {
-  readonly type: ModelProviderType;
+  readonly type: ModelProviderWriteType;
   readonly authMethod: string;
   readonly secretValues: Record<string, string>;
 }): BadRequestResponse | null {
@@ -903,7 +904,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ModelProviderType;
+      readonly type: ModelProviderWriteType;
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
@@ -973,7 +974,7 @@ export const upsertOrgModelProvider$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly type: ModelProviderType;
+      readonly type: ModelProviderWriteType;
       readonly secret: string;
       readonly selectedModel?: string;
       readonly metadata?: ModelProviderMetadata;
@@ -1000,7 +1001,7 @@ export const upsertOrgMultiAuthModelProvider$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly type: ModelProviderType;
+      readonly type: ModelProviderWriteType;
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
@@ -1029,7 +1030,7 @@ export const upsertOrgNoSecretModelProvider$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly type: ModelProviderType;
+      readonly type: ModelProviderWriteType;
       readonly selectedModel?: string;
     },
     signal: AbortSignal,

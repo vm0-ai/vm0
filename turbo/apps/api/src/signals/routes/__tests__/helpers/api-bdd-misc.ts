@@ -7,10 +7,11 @@ import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
-import type {
-  ModelProviderType,
-  OrgModelPoliciesResponse,
-  UpsertModelProviderRequest,
+import {
+  isBuiltInModelProviderType,
+  type ModelProviderType,
+  type OrgModelPoliciesResponse,
+  type UpsertModelProviderRequest,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   workflowsCollectionContract,
@@ -588,7 +589,11 @@ export function createMiscRoutesApi(context: TestContext) {
               return {
                 model: policy.model,
                 isDefault: policy.isDefault,
-                defaultProviderType: policy.defaultProviderType,
+                defaultProviderType: isBuiltInModelProviderType(
+                  policy.defaultProviderType,
+                )
+                  ? "vm0"
+                  : policy.defaultProviderType,
                 credentialScope: policy.credentialScope,
                 modelProviderId: policy.modelProviderId,
               };

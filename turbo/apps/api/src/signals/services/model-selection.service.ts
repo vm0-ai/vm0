@@ -2,12 +2,14 @@ import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
   isCodexFastModeModel,
+  isBuiltInModelProviderType,
   isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   isModelSupportedByProvider,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
+  type ModelProviderWriteType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
@@ -40,6 +42,13 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 const ORG_SENTINEL_USER_ID = "__org__";
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+
+export function modelProviderWriteTypeForLaunch(
+  type: string,
+): ModelProviderWriteType {
+  const providerType = modelProviderTypeSchema.parse(type);
+  return isBuiltInModelProviderType(providerType) ? "vm0" : providerType;
+}
 
 export interface ModelFirstPin {
   readonly modelProviderId: string | null;
@@ -128,7 +137,10 @@ function modelProviderAllowedForOrgPlan(args: {
   readonly capabilities: Pick<OrgPlanCapabilities, "supportByok">;
   readonly modelProviderType: string | null | undefined;
 }): boolean {
-  return args.capabilities.supportByok || args.modelProviderType === "vm0";
+  return (
+    args.capabilities.supportByok ||
+    isBuiltInModelProviderType(args.modelProviderType)
+  );
 }
 
 function parseModelProviderCredentialScope(
@@ -204,7 +216,7 @@ function isLegacyPolicyRouteShapeValid(params: {
   if (isOAuthMemberProviderType(params.providerType)) {
     return false;
   }
-  return params.providerType === "vm0"
+  return isBuiltInModelProviderType(params.providerType)
     ? params.modelProviderId === null
     : params.modelProviderId !== null;
 }
@@ -214,7 +226,8 @@ function getLegacyOrgProviderId(params: {
   readonly providerType: ModelProviderType;
   readonly modelProviderId: string | null;
 }): string | null {
-  return params.credentialScope === "org" && params.providerType !== "vm0"
+  return params.credentialScope === "org" &&
+    !isBuiltInModelProviderType(params.providerType)
     ? params.modelProviderId
     : null;
 }
@@ -520,7 +533,7 @@ export async function resolveModelSelectionPin(params: {
       return insufficientCredits();
     }
     if (
-      provider.type === "vm0" &&
+      isBuiltInModelProviderType(provider.type) &&
       !isSupportedRunModel(modelSelection.selectedModel)
     ) {
       return badRequestMessage("Invalid model selection");
@@ -633,7 +646,8 @@ export async function resolveModelFirstProviderAdmission(params: {
   const knownProvider = parsedProvider.success ? parsedProvider.data : null;
   const cliAgentType = knownProvider
     ? getFrameworkForType(
-        knownProvider === "vm0" && isSupportedRunModel(selectedModel)
+        isBuiltInModelProviderType(knownProvider) &&
+          isSupportedRunModel(selectedModel)
           ? getVm0ConcreteProviderType(selectedModel)
           : knownProvider,
       )

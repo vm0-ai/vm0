@@ -2,15 +2,15 @@ import { z } from "zod";
 import { timestampQueryNumberSchema } from "./base";
 import { firewallPoliciesSchema } from "@okouai/connectors/firewall-types";
 import {
-  modelProviderTypeSchema,
-  type ModelProviderType,
+  modelProviderWriteTypeSchema,
+  type ModelProviderWriteType,
 } from "./model-providers";
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
-export type DirectRunModelProviderType = Exclude<ModelProviderType, "vm0">;
+export type DirectRunModelProviderType = Exclude<ModelProviderWriteType, "vm0">;
 
-const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
+const directRunModelProviderTypeSchema = modelProviderWriteTypeSchema.refine(
   (type) => {
     return type !== "vm0";
   },

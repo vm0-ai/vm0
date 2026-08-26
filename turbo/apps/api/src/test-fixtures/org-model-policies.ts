@@ -1,0 +1,29 @@
+import type {
+  ModelProviderType,
+  SupportedRunModel,
+} from "@okouai/api-contracts/contracts/model-providers";
+import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { and, eq } from "drizzle-orm";
+
+import { db } from "../lib/db";
+
+/** Simulate a persisted provider discriminator written by a later release. */
+export async function setOrgModelPolicyProviderTypeFixture(args: {
+  readonly orgId: string;
+  readonly model: SupportedRunModel;
+  readonly defaultProviderType: ModelProviderType;
+}): Promise<void> {
+  const updated = await db()
+    .update(orgModelPolicies)
+    .set({ defaultProviderType: args.defaultProviderType })
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, args.orgId),
+        eq(orgModelPolicies.model, args.model),
+      ),
+    )
+    .returning({ id: orgModelPolicies.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one org model policy provider to update");
+  }
+}

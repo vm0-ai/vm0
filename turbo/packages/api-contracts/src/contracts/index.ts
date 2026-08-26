@@ -477,6 +477,7 @@ export {
 } from "./variables";
 export {
   modelProviderTypeSchema,
+  modelProviderWriteTypeSchema,
   modelProviderFrameworkSchema,
   modelProviderResponseSchema,
   modelProviderListResponseSchema,
@@ -517,6 +518,7 @@ export {
   getVm0ModelPriceTier,
   // Selectable provider filtering
   getSelectableProviderTypes,
+  isBuiltInModelProviderType,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,
@@ -524,6 +526,8 @@ export {
   getSecretsForAuthMethod,
   getSecretNamesForAuthMethod,
   type ModelProviderType,
+  type ModelProviderWriteType,
+  type BuiltInModelProviderType,
   type ModelProviderFramework,
   type ModelProviderEnvBindings,
   type ModelProviderResponse,

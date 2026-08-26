@@ -8,6 +8,7 @@ import {
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
+  getModelProviderPresentationLabel,
   getVm0VisibleModels,
   normalizeVm0ModelId,
   getModelImageInputSupport,
@@ -33,8 +34,14 @@ import {
   getModelProviderCodexCatalogForModel,
   getSecretsForAuthMethod,
   isLimitedFree1RestrictedRunModel,
+  isBuiltInModelProviderType,
   modelProviderCredentialScopeSchema,
+  modelProviderResponseSchema,
+  orgModelPolicySchema,
   supportedRunModelSchema,
+  modelProviderWriteTypeSchema,
+  upsertModelProviderRequestSchema,
+  updateOrgModelPolicySchema,
   updateOrgModelPoliciesRequestSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   VM0_MODEL_TO_PROVIDER,
@@ -49,6 +56,7 @@ import {
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
   type ModelProviderType,
+  type ModelProviderWriteType,
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
 import { getModelProviderTypeForSurfaceProtocol } from "../model-provider-gateways";
@@ -1575,5 +1583,129 @@ describe("custom model gateway provider types", () => {
         "vercel-ai-gateway-codex",
       ),
     ).toBe(false);
+  });
+});
+
+describe("built-in provider discriminator compatibility", () => {
+  const aliases = ["vm0", "built-in"] as const;
+
+  it("recognizes exactly the two built-in aliases", () => {
+    for (const alias of aliases) {
+      expect(isBuiltInModelProviderType(alias)).toBe(true);
+    }
+    for (const other of ["anthropic-api-key", "VM0", "", null, undefined]) {
+      expect(isBuiltInModelProviderType(other)).toBe(false);
+    }
+  });
+
+  it("accepts and preserves both aliases in read and response contracts", () => {
+    for (const alias of aliases) {
+      expect(modelProviderTypeSchema.parse(alias)).toBe(alias);
+      expect(
+        modelProviderResponseSchema.parse({
+          id: "11111111-1111-4111-8111-111111111111",
+          type: alias,
+          framework: "claude-code",
+          secretName: null,
+          authMethod: null,
+          secretNames: null,
+          isDefault: true,
+          selectedModel: null,
+          createdAt: "2026-08-26T00:00:00.000Z",
+          updatedAt: "2026-08-26T00:00:00.000Z",
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        }).type,
+      ).toBe(alias);
+      expect(
+        orgModelPolicySchema.parse({
+          id: "22222222-2222-4222-8222-222222222222",
+          model: "gpt-5.6-sol",
+          modelLabel: "GPT 5.6 Sol",
+          isDefault: true,
+          defaultProviderType: alias,
+          credentialScope: "org",
+          modelProviderId: null,
+          routeStatus: "valid",
+          routeStatusReason: null,
+          createdAt: "2026-08-26T00:00:00.000Z",
+          updatedAt: "2026-08-26T00:00:00.000Z",
+        }).defaultProviderType,
+      ).toBe(alias);
+    }
+    expect(modelProviderTypeSchema.safeParse("unknown-provider").success).toBe(
+      false,
+    );
+  });
+
+  it("keeps the temporary write fence legacy-only", () => {
+    expect(modelProviderWriteTypeSchema.safeParse("vm0").success).toBe(true);
+    expect(modelProviderWriteTypeSchema.safeParse("built-in").success).toBe(
+      false,
+    );
+    expect(
+      upsertModelProviderRequestSchema.safeParse({ type: "vm0" }).success,
+    ).toBe(true);
+    expect(
+      upsertModelProviderRequestSchema.safeParse({ type: "built-in" }).success,
+    ).toBe(false);
+
+    const policy = {
+      model: "gpt-5.6-sol",
+      isDefault: true,
+      credentialScope: "org",
+      modelProviderId: null,
+    } as const;
+    expect(
+      updateOrgModelPolicySchema.safeParse({
+        ...policy,
+        defaultProviderType: "vm0",
+      }).success,
+    ).toBe(true);
+    expect(
+      updateOrgModelPolicySchema.safeParse({
+        ...policy,
+        defaultProviderType: "built-in",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("shares built-in behavior without duplicating selectable providers", () => {
+    expect(MODEL_PROVIDER_TYPES["built-in"]).toBe(MODEL_PROVIDER_TYPES.vm0);
+    expect(getFrameworkForType("built-in")).toBe(getFrameworkForType("vm0"));
+    expect(getModelProviderPresentationLabel("built-in")).toBe(
+      getModelProviderPresentationLabel("vm0"),
+    );
+    expect(isModelSupportedByProvider("gpt-5.6-sol", "built-in")).toBe(
+      isModelSupportedByProvider("gpt-5.6-sol", "vm0"),
+    );
+    expect(getProviderRuntimeModel("built-in", "gpt-5.6-sol")).toBe(
+      getProviderRuntimeModel("vm0", "gpt-5.6-sol"),
+    );
+    expect(getSecretNameForType("built-in")).toBeUndefined();
+    expect(getModelProviderFirewall("anthropic-api-key")).toBeDefined();
+    expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("vm0");
+    expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("built-in");
+
+    const selectable = getSelectableProviderTypes();
+    expect(
+      selectable.filter((type) => {
+        return type === "vm0";
+      }),
+    ).toHaveLength(1);
+    expect(selectable).not.toContain("built-in");
+    expect(getProvidersForModel("gpt-5.6-sol")).toContain("vm0");
+    expect(getProvidersForModel("gpt-5.6-sol")).not.toContain("built-in");
+  });
+
+  it("keeps default policy seeds on the legacy writer value", () => {
+    expect(
+      getDefaultOrgModelPolicySeed().every((policy) => {
+        return policy.defaultProviderType === "vm0";
+      }),
+    ).toBe(true);
+
+    const writeType: ModelProviderWriteType = "vm0";
+    expect(writeType).toBe("vm0");
   });
 });

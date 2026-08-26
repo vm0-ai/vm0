@@ -46,6 +46,7 @@ import {
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isBuiltInModelProviderType,
   type ModelProviderResponse,
   type ModelProviderType,
   type OrgModelPolicy,
@@ -113,7 +114,7 @@ function isOAuthMemberType(type: ModelProviderType): boolean {
 }
 
 function isByokProviderType(type: ModelProviderType): boolean {
-  return type !== "vm0" && !isOAuthMemberType(type);
+  return !isBuiltInModelProviderType(type) && !isOAuthMemberType(type);
 }
 
 function isAddableBuiltInModel(model: SupportedRunModel): boolean {
@@ -178,7 +179,9 @@ function toUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
     model: policy.model,
     isDefault: policy.isDefault,
-    defaultProviderType: policy.defaultProviderType,
+    defaultProviderType: isBuiltInModelProviderType(policy.defaultProviderType)
+      ? "vm0"
+      : policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
     modelProviderSurfaceId: policy.modelProviderSurfaceId,
@@ -478,7 +481,7 @@ function getPolicyRouteSummary(
   connections: ModelProviderConnectionResponse[],
   builtInLabel: string,
 ): { label: string; iconType: ModelProviderType } {
-  if (policy.defaultProviderType === "vm0") {
+  if (isBuiltInModelProviderType(policy.defaultProviderType)) {
     return {
       label: builtInLabel,
       iconType: "vm0",
@@ -644,10 +647,11 @@ function PolicyRow({
     }),
   );
   const modelIconType = getModelIconType(policy.model);
-  const builtInPriceTier =
-    policy.defaultProviderType === "vm0"
-      ? getVm0ModelPriceTier(policy.model)
-      : undefined;
+  const builtInPriceTier = isBuiltInModelProviderType(
+    policy.defaultProviderType,
+  )
+    ? getVm0ModelPriceTier(policy.model)
+    : undefined;
 
   return (
     <div
@@ -1006,7 +1010,9 @@ function buildPolicyUpdate(params: {
   if (params.routeKind === "oauth") {
     return {
       ...base,
-      defaultProviderType: params.providerType,
+      defaultProviderType: isBuiltInModelProviderType(params.providerType)
+        ? "vm0"
+        : params.providerType,
       credentialScope: "member",
       modelProviderId: null,
       modelProviderSurfaceId: null,
@@ -1019,7 +1025,9 @@ function buildPolicyUpdate(params: {
     }
     return {
       ...base,
-      defaultProviderType: params.providerType,
+      defaultProviderType: isBuiltInModelProviderType(params.providerType)
+        ? "vm0"
+        : params.providerType,
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: params.surfaceId,
@@ -1032,7 +1040,9 @@ function buildPolicyUpdate(params: {
 
   return {
     ...base,
-    defaultProviderType: params.provider.type,
+    defaultProviderType: isBuiltInModelProviderType(params.provider.type)
+      ? "vm0"
+      : params.provider.type,
     credentialScope: "org",
     modelProviderId: params.provider.id,
     modelProviderSurfaceId: null,
@@ -1510,7 +1520,9 @@ function ModelPolicyRouteDialog({
         submitInlineApiKeyRoute(
           {
             model: selectedModel,
-            providerType: selectedProviderType,
+            providerType: isBuiltInModelProviderType(selectedProviderType)
+              ? "vm0"
+              : selectedProviderType,
             apiKey: sanitizeTokenInput(apiKeyValue),
           },
           pageSignal,

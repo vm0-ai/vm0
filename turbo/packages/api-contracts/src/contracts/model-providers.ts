@@ -10,9 +10,12 @@ import {
 } from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
+  MODEL_PROVIDER_WRITE_TYPE_IDS,
+  isBuiltInModelProviderType,
   type ModelProviderFramework,
   type ModelProviderType,
 } from "./model-provider-types";
+export { isBuiltInModelProviderType } from "./model-provider-types";
 export {
   getModelProviderFirewall,
   getModelProviderPiChatCompletionsUrl,
@@ -20,8 +23,10 @@ export {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
 export type {
+  BuiltInModelProviderType,
   ModelProviderFramework,
   ModelProviderType,
+  ModelProviderWriteType,
 } from "./model-provider-types";
 
 const deepseekV4FlashCatalogModel = DEEPSEEK_V4_FLASH_MODEL_CATALOG.models[0];
@@ -513,6 +518,13 @@ export function getVm0VisibleModels(): string[] {
  * - Legacy providers: use `secretName` for single secret
  * - Multi-auth providers: use `authMethods` for multiple auth options with different secrets
  */
+const BUILT_IN_MODEL_PROVIDER_CONFIG = {
+  framework: "claude-code" as const,
+  label: "Built-in model",
+  models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
+  defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+};
+
 export const MODEL_PROVIDER_TYPES = {
   "claude-code-oauth-token": {
     framework: "claude-code" as const,
@@ -880,12 +892,8 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "codex" as const,
     label: "Custom Gateway (OpenAI Responses)",
   },
-  vm0: {
-    framework: "claude-code" as const,
-    label: "Built-in model",
-    models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
-    defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  },
+  vm0: BUILT_IN_MODEL_PROVIDER_CONFIG,
+  "built-in": BUILT_IN_MODEL_PROVIDER_CONFIG,
 } as const satisfies Record<ModelProviderType, unknown>;
 
 export function getModelProviderPresentationLabel(
@@ -1018,7 +1026,9 @@ export function isModelSupportedByProvider(
   model: string,
   type: ModelProviderType,
 ): boolean {
-  return getProvidersForModel(model).includes(type);
+  return getProvidersForModel(model).includes(
+    isBuiltInModelProviderType(type) ? "vm0" : type,
+  );
 }
 
 export function getProviderRuntimeModel(
@@ -1029,7 +1039,7 @@ export function getProviderRuntimeModel(
   if (!isSupportedRunModel(canonical)) {
     return model;
   }
-  if (type === "vm0") {
+  if (isBuiltInModelProviderType(type)) {
     return vm0PrimaryCandidate(canonical).apiModel ?? canonical;
   }
   return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
@@ -1061,12 +1071,15 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return !HIDDEN_PROVIDER_TYPES.has(type);
+      return type !== "built-in" && !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
 }
 
 export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
+export const modelProviderWriteTypeSchema = z.enum(
+  MODEL_PROVIDER_WRITE_TYPE_IDS,
+);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
@@ -1435,7 +1448,7 @@ export type ModelProviderListResponse = z.infer<
  * Multi-auth providers use `authMethod` + `secrets` (map)
  */
 export const upsertModelProviderRequestSchema = z.object({
-  type: modelProviderTypeSchema,
+  type: modelProviderWriteTypeSchema,
   secret: z.string().min(1).optional(), // Legacy single secret
   authMethod: z.string().optional(), // For multi-auth providers
   secrets: z.record(z.string(), z.string()).optional(), // For multi-auth providers
@@ -1488,7 +1501,7 @@ export type OrgModelPolicy = z.infer<typeof orgModelPolicySchema>;
 export const updateOrgModelPolicySchema = z.object({
   model: supportedRunModelSchema,
   isDefault: z.boolean(),
-  defaultProviderType: modelProviderTypeSchema,
+  defaultProviderType: modelProviderWriteTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
   modelProviderSurfaceId: z.uuid().nullable().optional(),

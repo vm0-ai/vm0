@@ -6,6 +6,7 @@ import {
   networkLogEntrySchema,
   unifiedRunRequestSchema,
 } from "../runs";
+import { runCreateBodySchema } from "../run-routes";
 
 describe("get run response contract", () => {
   it("parses the current Run response", () => {
@@ -70,6 +71,33 @@ describe("unified run request contract", () => {
       unifiedRunRequestSchema.safeParse({
         checkpointId: "11111111-1111-4111-8111-111111111111",
         prompt: "resume from checkpoint",
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each(["vm0", "built-in"])(
+    "rejects the %s built-in alias for direct runs",
+    (modelProviderType) => {
+      expect(
+        unifiedRunRequestSchema.safeParse({
+          prompt: "run directly",
+          modelProviderType,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("keeps the internal Zero run provider request legacy-only", () => {
+    expect(
+      runCreateBodySchema.safeParse({
+        prompt: "run through Zero",
+        modelProvider: "vm0",
+      }).success,
+    ).toBe(true);
+    expect(
+      runCreateBodySchema.safeParse({
+        prompt: "run through Zero",
+        modelProvider: "built-in",
       }).success,
     ).toBe(false);
   });

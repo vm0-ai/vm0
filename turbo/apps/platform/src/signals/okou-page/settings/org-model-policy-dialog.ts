@@ -1,10 +1,12 @@
 import { command, computed, state } from "ccstate";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
-  OrgModelPolicy,
-  SupportedRunModel,
-  UpdateOrgModelPolicy,
+import {
+  isBuiltInModelProviderType,
+  type ModelProviderResponse,
+  type ModelProviderType,
+  type ModelProviderWriteType,
+  type OrgModelPolicy,
+  type SupportedRunModel,
+  type UpdateOrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { createOrgModelProvider$ } from "../../external/org-model-providers.ts";
 import {
@@ -73,7 +75,7 @@ function getPolicyRouteKind(policy: OrgModelPolicy): ModelPolicyRouteKind {
   if (policy.modelProviderSurfaceId) {
     return "gateway";
   }
-  if (policy.defaultProviderType === "vm0") {
+  if (isBuiltInModelProviderType(policy.defaultProviderType)) {
     return "built-in";
   }
   if (isOAuthMemberType(policy.defaultProviderType)) {
@@ -86,7 +88,9 @@ function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
     model: policy.model,
     isDefault: policy.isDefault,
-    defaultProviderType: policy.defaultProviderType,
+    defaultProviderType: isBuiltInModelProviderType(policy.defaultProviderType)
+      ? "vm0"
+      : policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
     modelProviderSurfaceId: policy.modelProviderSurfaceId,
@@ -99,6 +103,11 @@ function applyProviderRouteToPolicies(
   provider: ModelProviderResponse,
 ): UpdateOrgModelPolicy[] {
   let found = false;
+  const providerType: ModelProviderWriteType = isBuiltInModelProviderType(
+    provider.type,
+  )
+    ? "vm0"
+    : provider.type;
   const updates = policies.map((policy) => {
     const update = toOrgModelPolicyUpdate(policy);
     if (policy.model !== model) {
@@ -107,7 +116,7 @@ function applyProviderRouteToPolicies(
     found = true;
     return {
       ...update,
-      defaultProviderType: provider.type,
+      defaultProviderType: providerType,
       credentialScope: "org" as const,
       modelProviderId: provider.id,
       modelProviderSurfaceId: null,
@@ -118,7 +127,7 @@ function applyProviderRouteToPolicies(
     updates.push({
       model,
       isDefault: updates.length === 0,
-      defaultProviderType: provider.type,
+      defaultProviderType: providerType,
       credentialScope: "org",
       modelProviderId: provider.id,
       modelProviderSurfaceId: null,
@@ -156,8 +165,9 @@ export const openEditModelPolicyDialog$ = command(
       mode: "edit",
       model: policy.model,
       routeKind,
-      providerType:
-        routeKind === "built-in" ? null : policy.defaultProviderType,
+      providerType: isBuiltInModelProviderType(policy.defaultProviderType)
+        ? null
+        : policy.defaultProviderType,
       surfaceId: policy.modelProviderSurfaceId ?? null,
     });
     set(internalModelPolicyApiKey$, "");
@@ -184,7 +194,7 @@ export const submitModelPolicyApiKeyRoute$ = command(
     { set },
     params: {
       model: SupportedRunModel;
-      providerType: ModelProviderType;
+      providerType: ModelProviderWriteType;
       apiKey: string;
     },
     signal: AbortSignal,

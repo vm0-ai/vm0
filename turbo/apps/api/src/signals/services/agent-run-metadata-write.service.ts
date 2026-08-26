@@ -1,3 +1,4 @@
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import type { SQL } from "drizzle-orm";
 
@@ -67,7 +68,9 @@ export function normalizeRunMetadata(
     autonomyBudget: input.autonomyBudget ?? 10,
     workflowAutomationId: input.workflowAutomationId ?? null,
     goalId: input.goalId ?? null,
-    modelProvider: input.modelProvider ?? null,
+    modelProvider: isBuiltInModelProviderType(input.modelProvider)
+      ? "vm0"
+      : (input.modelProvider ?? null),
     modelProviderId: input.modelProviderId ?? null,
     modelProviderCredentialScope: input.modelProviderCredentialScope ?? null,
     selectedModel: input.selectedModel ?? null,
