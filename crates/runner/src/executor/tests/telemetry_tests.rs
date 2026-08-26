@@ -19,8 +19,8 @@ use super::super::telemetry::{
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, FinalizingHandoffOutcome, NewSandboxDispatch,
     RunnerPreSpawnConcurrency, RunnerPreSpawnOperationTiming, RunnerPreSpawnTiming,
-    SessionHistoryRestorePlan, execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
-    execute_job_with_prepared_notifier,
+    SandboxReuseDisposition, SandboxReuseRejection, SessionHistoryRestorePlan, execute_job,
+    execute_job_reuse, execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
 };
 use super::support::{
     context_with_env, default_params, make_reusable_idle_sandbox, minimal_context,
@@ -156,10 +156,14 @@ fn assert_action_outcome(
 
 fn assert_action_bounded_outcome(telemetry: &JobTelemetry, action: &str, expected_outcome: &str) {
     let operations = telemetry.pending_ops_with_outcome_snapshot();
-    let operation = operations
-        .iter()
-        .find(|operation| operation.0 == action)
+    let mut matching = operations.iter().filter(|operation| operation.0 == action);
+    let operation = matching
+        .next()
         .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {operations:?}"));
+    assert!(
+        matching.next().is_none(),
+        "expected one telemetry action {action}, got: {operations:?}"
+    );
     assert!(!operation.1, "{action} success flag");
     assert_eq!(operation.2.as_deref(), Some(expected_outcome));
     assert_eq!(operation.3, None, "{action} reason");
@@ -1292,6 +1296,10 @@ async fn assert_reused_private_write_timeout_telemetry(
 
     assert!(outcome.failure.is_some());
     assert!(outcome.sandbox.is_some());
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    );
     assert_action_bounded_outcome(&telemetry, expected_action, expected_outcome);
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_process_calls().is_empty());
