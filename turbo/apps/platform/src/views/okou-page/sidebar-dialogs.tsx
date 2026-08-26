@@ -24,11 +24,9 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { r2ImageTransformUrl } from "@okouai/core";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
-import type {
-  ArtifactCatalogKind,
-  ArtifactSummary,
-} from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   Button,
@@ -87,7 +85,9 @@ import { AgentRowSideActions } from "./sidebar-agent-row-actions.tsx";
 import {
   threeColumnArtifactSearchResults$,
   threeColumnWorkflowSearchResults$,
+  type ThreeColumnArtifactSearchItem,
 } from "../../signals/okou-page/three-column-search-resources.ts";
+import { ArtifactThumbnailImage } from "./artifact-thumbnail.tsx";
 
 interface AgentDialogItem {
   readonly id: string;
@@ -1010,6 +1010,7 @@ function SpotlightMessageCommandItem({
 
 const SPOTLIGHT_RESOURCE_ICON_CLASS =
   "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground";
+const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
 
 function SpotlightWorkflowCommandItem({
   workflow,
@@ -1104,9 +1105,35 @@ function SpotlightArtifactKindIcon({
       <File size={16} />
     );
   return (
-    <span className={SPOTLIGHT_RESOURCE_ICON_CLASS} aria-hidden="true">
+    <span
+      className={SPOTLIGHT_RESOURCE_ICON_CLASS}
+      aria-hidden="true"
+      data-testid={`spotlight-artifact-kind-icon-${kind}`}
+    >
       {icon}
     </span>
+  );
+}
+
+function SpotlightArtifactThumbnail({
+  artifact,
+}: {
+  readonly artifact: ThreeColumnArtifactSearchItem;
+}) {
+  if (!artifact.thumbnail) {
+    return <SpotlightArtifactKindIcon kind={artifact.kind} />;
+  }
+  return (
+    <ArtifactThumbnailImage
+      src={r2ImageTransformUrl(artifact.thumbnail.url, {
+        width: SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX,
+        fit: "scale-down",
+      })}
+      load={artifact.thumbnailLoad}
+      className="h-8 w-8 shrink-0 rounded-lg bg-gray-50 object-cover"
+      fallback={<SpotlightArtifactKindIcon kind={artifact.kind} />}
+      testId="spotlight-artifact-thumbnail"
+    />
   );
 }
 
@@ -1114,7 +1141,7 @@ function SpotlightArtifactCommandItem({
   artifact,
   onSelect,
 }: {
-  readonly artifact: ArtifactSummary;
+  readonly artifact: ThreeColumnArtifactSearchItem;
   readonly onSelect: () => void;
 }) {
   return (
@@ -1123,7 +1150,7 @@ function SpotlightArtifactCommandItem({
       onSelect={onSelect}
       className={SPOTLIGHT_ROW_CLASS}
     >
-      <SpotlightArtifactKindIcon kind={artifact.kind} />
+      <SpotlightArtifactThumbnail artifact={artifact} />
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate text-sm text-foreground">
           {artifact.title}
@@ -1286,7 +1313,7 @@ interface SpotlightSearchResultsProps {
   readonly threads: readonly AgentListDialogChatThread[];
   readonly messages: readonly ChatSearchResult[];
   readonly workflows: readonly WorkflowSummary[];
-  readonly artifacts: readonly ArtifactSummary[];
+  readonly artifacts: readonly ThreeColumnArtifactSearchItem[];
   readonly threadMap: ReadonlyMap<string, AgentListDialogChatThread>;
   readonly activeThreadIds: ReadonlySet<string> | undefined;
   readonly unreadThreadIds: ReadonlySet<string> | undefined;

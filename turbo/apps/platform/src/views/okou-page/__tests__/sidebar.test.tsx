@@ -3648,7 +3648,9 @@ describe("zero sidebar", () => {
                   id: ARTIFACT_ID,
                   kind: "video",
                   title: "launch-demo.mp4",
-                  thumbnail: null,
+                  thumbnail: {
+                    url: "https://cdn.vm0.io/artifacts/test/launch-demo.webp",
+                  },
                   createdAt: "2026-03-10T00:06:00.000Z",
                   updatedAt: "2026-03-10T00:06:00.000Z",
                 },
@@ -3713,6 +3715,20 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
       expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
       expect(within(dialog).queryByText("budget.csv")).not.toBeInTheDocument();
+    });
+    const artifactThumbnail = within(dialog).getByTestId(
+      "spotlight-artifact-thumbnail",
+    );
+    expect(artifactThumbnail).toHaveAttribute(
+      "src",
+      "https://cdn.vm0.io/cdn-cgi/image/width=64,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/launch-demo.webp",
+    );
+    fireEvent.error(artifactThumbnail);
+    await waitFor(() => {
+      expect(artifactThumbnail).toHaveClass("hidden");
+      expect(
+        within(dialog).getByTestId("spotlight-artifact-kind-icon-video"),
+      ).toBeInTheDocument();
     });
 
     click(buttonByText("Workflows", dialog));

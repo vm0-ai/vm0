@@ -7,6 +7,10 @@ import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows"
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 import { allVisibleWorkflows$ } from "../workflows-page/workflows-signals.ts";
 import { chatListQuery$ } from "./sidebar-state.ts";
 
@@ -17,9 +21,13 @@ interface ThreeColumnWorkflowSearchResult {
   readonly workflows: readonly WorkflowSummary[];
 }
 
+export type ThreeColumnArtifactSearchItem = ArtifactSummary & {
+  readonly thumbnailLoad: ImageLoadSignals;
+};
+
 interface ThreeColumnArtifactSearchResult {
   readonly query: string;
-  readonly artifacts: readonly ArtifactSummary[];
+  readonly artifacts: readonly ThreeColumnArtifactSearchItem[];
 }
 
 function workflowMatchesQuery(
@@ -68,9 +76,13 @@ export const threeColumnArtifactSearchResults$ = computed(
       query,
       // An older API may ignore the additive keyword parameter during rollout.
       // Filtering the response keeps mixed frontend/API versions correct.
-      artifacts: result.body.artifacts.filter((artifact) => {
-        return artifact.title.toLowerCase().includes(query);
-      }),
+      artifacts: result.body.artifacts
+        .filter((artifact) => {
+          return artifact.title.toLowerCase().includes(query);
+        })
+        .map((artifact) => {
+          return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+        }),
     };
   },
 );
