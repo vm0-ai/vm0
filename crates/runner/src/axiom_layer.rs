@@ -147,11 +147,12 @@ impl AxiomGuard {
 /// Initialize the Axiom layer. Returns `None` when required env is missing —
 /// caller should install a `None` layer in that case (no-op). Production
 /// entry point; always targets `DEFAULT_AXIOM_URL`.
-pub(crate) fn init() -> Option<(AxiomLayer, AxiomGuard)> {
+pub(crate) fn init(runner_hostname: Option<String>) -> Option<(AxiomLayer, AxiomGuard)> {
     init_from_env_values(
         DEFAULT_AXIOM_URL,
         std::env::var(AXIOM_TOKEN_ENV).ok(),
         std::env::var(AXIOM_SUFFIX_ENV).ok(),
+        runner_hostname,
     )
 }
 
@@ -159,20 +160,31 @@ fn init_from_env_values(
     base_url: &str,
     token: Option<String>,
     suffix: Option<String>,
+    runner_hostname: Option<String>,
 ) -> Option<(AxiomLayer, AxiomGuard)> {
     let token = token.filter(|s| !s.is_empty())?;
     let suffix = suffix.filter(|s| !s.is_empty())?;
-    init_with_base_url(base_url, &token, &suffix)
+    init_with_base_url_and_hostname(base_url, &token, &suffix, runner_hostname)
 }
 
 /// Core init with an explicit base URL. Exists so module tests can point
 /// at an `httpmock` server without leaking an `AXIOM_URL` override into the
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
+#[cfg(test)]
 fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
+) -> Option<(AxiomLayer, AxiomGuard)> {
+    init_with_base_url_and_hostname(base_url, token, suffix, None)
+}
+
+fn init_with_base_url_and_hostname(
+    base_url: &str,
+    token: &str,
+    suffix: &str,
+    runner_hostname: Option<String>,
 ) -> Option<(AxiomLayer, AxiomGuard)> {
     // Shared dataset with TS: turbo/apps/web/src/lib/shared/axiom/datasets.ts
     // DATASETS.WEB_LOGS. APL queries filter by `service == "runner"`.
@@ -198,6 +210,7 @@ fn init_with_base_url(
         AxiomLayer {
             tx: tx.clone(),
             dropped: AtomicU64::new(0),
+            runner_hostname,
         },
         AxiomGuard {
             tx,
@@ -209,6 +222,7 @@ fn init_with_base_url(
 pub(crate) struct AxiomLayer {
     tx: mpsc::Sender<Msg>,
     dropped: AtomicU64,
+    runner_hostname: Option<String>,
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
@@ -252,7 +266,10 @@ where
             return;
         };
 
-        permit.send(Msg::Event(serialize_event(event)));
+        permit.send(Msg::Event(serialize_event(
+            event,
+            self.runner_hostname.as_deref(),
+        )));
     }
 }
 
@@ -331,7 +348,7 @@ async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<V
 /// `turbo/apps/web/src/lib/shared/logger.ts`: flat top-level `_time`, `level`
 /// (lowercase), `message`, `context`, plus any user-supplied fields —
 /// augmented with a Rust-only `service` discriminator.
-fn serialize_event(event: &Event<'_>) -> Value {
+fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
     struct V(Map<String, Value>);
     impl Visit for V {
         fn record_str(&mut self, f: &Field, v: &str) {
@@ -410,6 +427,16 @@ fn serialize_event(event: &Event<'_>) -> Value {
     );
     out.insert("context".into(), Value::String(meta.target().into()));
     out.insert("service".into(), Value::String(SERVICE_NAME.into()));
+    if let Some(runner_hostname) = runner_hostname {
+        out.insert(
+            "runner_hostname".into(),
+            Value::String(runner_hostname.to_string()),
+        );
+    }
+    out.insert(
+        "runner_version".into(),
+        Value::String(env!("CARGO_PKG_VERSION").into()),
+    );
     Value::Object(out)
 }
 

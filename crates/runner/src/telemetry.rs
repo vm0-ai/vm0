@@ -28,6 +28,7 @@ const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 
 /// Timeout for telemetry HTTP requests (shorter than default API timeout).
 const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
+const RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Effective resource path once the guest process has spawned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -87,6 +88,7 @@ pub struct JobTelemetry {
     run_id: RunId,
     sandbox_token: String,
     runner_name: String,
+    runner_hostname: Option<String>,
     runner_pre_spawn_attribution: Option<RunnerPreSpawnAttribution>,
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
@@ -120,6 +122,9 @@ struct SandboxOp {
 struct TelemetryPayload {
     run_id: String,
     runner_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_hostname: Option<String>,
+    runner_version: &'static str,
     sandbox_operations: Vec<SandboxOp>,
 }
 
@@ -132,12 +137,14 @@ impl JobTelemetry {
         run_id: RunId,
         sandbox_token: String,
         runner_name: String,
+        runner_hostname: Option<String>,
     ) -> Self {
         Self {
             http,
             run_id,
             sandbox_token,
             runner_name,
+            runner_hostname,
             runner_pre_spawn_attribution: None,
             pending_ops: Vec::new(),
             oldest_pending: None,
@@ -249,6 +256,7 @@ impl JobTelemetry {
             run_id: self.run_id,
             sandbox_token: self.sandbox_token.clone(),
             runner_name: self.runner_name.clone(),
+            runner_hostname: self.runner_hostname.clone(),
         }
     }
 
@@ -298,9 +306,17 @@ impl JobTelemetry {
         let in_flight_flushes = std::mem::take(&mut self.in_flight_flushes);
         let run_id = self.run_id;
         let runner_name = self.runner_name.clone();
+        let runner_hostname = self.runner_hostname.clone();
 
         tokio::join!(
-            send_telemetry(&self.http, run_id, &self.sandbox_token, runner_name, ops,),
+            send_telemetry(
+                &self.http,
+                run_id,
+                &self.sandbox_token,
+                runner_name,
+                runner_hostname,
+                ops,
+            ),
             drain_in_flight_flushes(run_id, in_flight_flushes),
         );
     }
@@ -400,9 +416,18 @@ impl JobTelemetry {
         let run_id = self.run_id;
         let sandbox_token = self.sandbox_token.clone();
         let runner_name = self.runner_name.clone();
+        let runner_hostname = self.runner_hostname.clone();
 
         let handle = tokio::spawn(async move {
-            send_telemetry(&http, run_id, &sandbox_token, runner_name, ops).await;
+            send_telemetry(
+                &http,
+                run_id,
+                &sandbox_token,
+                runner_name,
+                runner_hostname,
+                ops,
+            )
+            .await;
         });
         self.in_flight_flushes.push(handle);
     }
@@ -414,6 +439,7 @@ pub(crate) struct SandboxOpReporter {
     run_id: RunId,
     sandbox_token: String,
     runner_name: String,
+    runner_hostname: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -460,6 +486,7 @@ impl SandboxOpReporter {
             self.run_id,
             &self.sandbox_token,
             self.runner_name.clone(),
+            self.runner_hostname.clone(),
             ops,
         )
         .await;
@@ -540,6 +567,7 @@ async fn send_telemetry(
     run_id: RunId,
     sandbox_token: &str,
     runner_name: String,
+    runner_hostname: Option<String>,
     ops: Vec<SandboxOp>,
 ) {
     if ops.is_empty() {
@@ -549,6 +577,8 @@ async fn send_telemetry(
     let payload = TelemetryPayload {
         run_id: run_id.to_string(),
         runner_name,
+        runner_hostname,
+        runner_version: RUNNER_VERSION,
         sandbox_operations: ops,
     };
 
@@ -637,6 +667,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         telemetry.record_bounded_outcome(
             "storage_cache_fresh_delivery_scan_groups",
@@ -681,6 +712,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         telemetry.record_with_outcome(
             "runner_host_physical_park_balloon_settle",
@@ -701,6 +733,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         telemetry.start_runner_pre_spawn_attribution(RunnerPreSpawnAttribution::new(
             RunnerPreSpawnConcurrencyBucket::ThreeToFour,
@@ -737,6 +770,8 @@ mod tests {
         let payload = TelemetryPayload {
             run_id: "abc-123".to_string(),
             runner_name: "test-runner".to_string(),
+            runner_hostname: None,
+            runner_version: RUNNER_VERSION,
             sandbox_operations: vec![SandboxOp {
                 ts: "2026-01-15T10:00:00+00:00".to_string(),
                 action_type: "test".to_string(),
@@ -757,6 +792,7 @@ mod tests {
             serde_json::json!({
                 "runId": "abc-123",
                 "runnerName": "test-runner",
+                "runnerVersion": RUNNER_VERSION,
                 "sandboxOperations": [{
                     "ts": "2026-01-15T10:00:00+00:00",
                     "action_type": "test",
@@ -778,10 +814,12 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_payload_includes_required_runner_name() {
+    fn telemetry_payload_includes_canonical_attribution_and_legacy_name() {
         let payload = TelemetryPayload {
             run_id: "abc-123".to_string(),
             runner_name: "v0.168.14".to_string(),
+            runner_hostname: Some("prod-1.aws.vm3.ai".to_string()),
+            runner_version: RUNNER_VERSION,
             sandbox_operations: vec![],
         };
 
@@ -790,6 +828,8 @@ mod tests {
             serde_json::json!({
                 "runId": "abc-123",
                 "runnerName": "v0.168.14",
+                "runnerHostname": "prod-1.aws.vm3.ai",
+                "runnerVersion": RUNNER_VERSION,
                 "sandboxOperations": [],
             })
         );
@@ -803,6 +843,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         assert!(telemetry.pending_ops.is_empty());
         assert!(telemetry.oldest_pending.is_none());
@@ -817,6 +858,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
 
         telemetry.record("sandbox_create", Duration::from_millis(500), true, None);
@@ -846,6 +888,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         let metadata = session_history_metadata()
             .with_cache_probe(SessionHistoryCacheProbeMetadata::new(false, true))
@@ -882,6 +925,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
 
         telemetry.record("huge_op", Duration::MAX, true, None);
@@ -898,6 +942,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
 
         telemetry.record("op1", Duration::from_millis(10), true, None);
@@ -918,7 +963,9 @@ mod tests {
                     .path("/api/webhooks/agent/telemetry")
                     .body_includes(r#""ts":"2026-08-11T10:20:30.456Z""#)
                     .body_includes(r#""action_type":"concurrent_operation""#)
-                    .body_includes(r#""runnerName":"v0.168.14""#);
+                    .body_includes(r#""runnerName":"v0.168.14""#)
+                    .body_includes(r#""runnerHostname":"prod-1.aws.vm3.ai""#)
+                    .body_includes(format!(r#""runnerVersion":"{RUNNER_VERSION}""#));
                 then.status(200)
                     .header("content-type", "application/json")
                     .body(r#"{"success":true,"id":"ok"}"#);
@@ -929,6 +976,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "v0.168.14".to_string(),
+            Some("prod-1.aws.vm3.ai".to_string()),
         );
         let completed_at = DateTime::parse_from_rfc3339("2026-08-11T10:20:30.456Z")
             .unwrap()
@@ -954,6 +1002,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
 
         telemetry.record("op1", Duration::from_millis(10), true, None);
@@ -995,6 +1044,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "v0.168.14".to_string(),
+            Some("prod-1.aws.vm3.ai".to_string()),
         );
 
         telemetry.record("op1", Duration::from_millis(10), true, None);
@@ -1014,6 +1064,8 @@ mod tests {
         assert!(request.contains(r#""action_type":"op1""#));
         assert!(request.contains(r#""action_type":"op2""#));
         assert!(request.contains(r#""runnerName":"v0.168.14""#));
+        assert!(request.contains(r#""runnerHostname":"prod-1.aws.vm3.ai""#));
+        assert!(request.contains(&format!(r#""runnerVersion":"{RUNNER_VERSION}""#)));
 
         let mut flush = Box::pin(telemetry.flush());
         assert!(
@@ -1042,6 +1094,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
+            None,
         );
         let reporter = telemetry.reporter();
 
@@ -1082,6 +1135,7 @@ mod tests {
             RunId::nil(),
             "tok".to_string(),
             "v0.168.14".to_string(),
+            Some("prod-1.aws.vm3.ai".to_string()),
         );
         telemetry
             .reporter()
@@ -1096,5 +1150,7 @@ mod tests {
         let requests = server.assert_finished_with_requests().await;
         let request = &requests[0];
         assert!(request.contains(r#""runnerName":"v0.168.14"#));
+        assert!(request.contains(r#""runnerHostname":"prod-1.aws.vm3.ai""#));
+        assert!(request.contains(&format!(r#""runnerVersion":"{RUNNER_VERSION}""#)));
     }
 }
