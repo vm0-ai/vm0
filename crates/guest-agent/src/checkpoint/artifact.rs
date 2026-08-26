@@ -396,6 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_missing_mount_fails_before_storage_api_calls() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -578,6 +579,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_explicit_fail_policy_missing_mount_fails() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -621,6 +623,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_later_missing_mount_fails_before_any_storage_api_calls() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -676,6 +679,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_pipelines_overlap_and_preserve_result_order() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let dir = tempfile::tempdir().unwrap();
         let workspace_mount = dir.path().join("workspace");
         let memory_mount = dir.path().join("memory");
@@ -737,6 +741,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_preserve_policy_missing_mount_preserves_parent_version() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -788,6 +793,7 @@ mod tests {
 
     #[tokio::test]
     async fn artifact_snapshot_policy_still_fails_on_non_not_found_root_error() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
