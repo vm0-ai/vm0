@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.173.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.7...runner-rs-v0.173.8) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.173.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.6...runner-rs-v0.173.7) (2026-08-25)
 
 ## [0.173.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.5...runner-rs-v0.173.6) (2026-08-25)

@@ -267,6 +267,13 @@ impl Sandbox for ObservedStartSandbox {
         self.inner.apply_storage_manifest(request).await
     }
 
+    async fn restore_guest_state(
+        &self,
+        request: &sandbox::GuestStateRestoreRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.restore_guest_state(request).await
+    }
+
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         self.inner.read_file(path, max_bytes).await
     }

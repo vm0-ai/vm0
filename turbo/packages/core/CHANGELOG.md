@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.592.1](https://github.com/vm0-ai/vm0/compare/core-v8.592.0...core-v8.592.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* enable presentation templates for staff org ([#29418](https://github.com/vm0-ai/vm0/issues/29418)) ([6f4bf0a](https://github.com/vm0-ai/vm0/commit/6f4bf0a580cb4aac469075f575bf1405ae6b4e9f))
+
+## [8.592.0](https://github.com/vm0-ai/vm0/compare/core-v8.591.1...core-v8.592.0) (2026-08-26)
+
+
+### Features
+
+* pin HyperFrames authoring source ([#29366](https://github.com/vm0-ai/vm0/issues/29366)) ([ea0a806](https://github.com/vm0-ai/vm0/commit/ea0a806fa2e79622e470da9be77d2e04cb059299))
+
 ## [8.591.1](https://github.com/vm0-ai/vm0/compare/core-v8.591.0...core-v8.591.1) (2026-08-25)
 
 

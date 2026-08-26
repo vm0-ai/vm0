@@ -322,6 +322,7 @@ runs:
         add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
         add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env OKOU_DEBUG "*"
           add_env VM0_DEBUG "*"
         fi
         add_var CLAUDE_CODE_VERSION_URL CLAUDE_CODE_VERSION_URL

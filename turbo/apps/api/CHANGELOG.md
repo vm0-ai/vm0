@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.492.2](https://github.com/vm0-ai/vm0/compare/api-v1.492.1...api-v1.492.2) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write debug logging aliases ([#29421](https://github.com/vm0-ai/vm0/issues/29421)) ([3de9f7f](https://github.com/vm0-ai/vm0/commit/3de9f7fafe2567f2993864fdda2760e0760134ba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.592.1
+    * @okouai/db bumped to 1.224.4
+
+## [1.492.1](https://github.com/vm0-ai/vm0/compare/api-v1.492.0...api-v1.492.1) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.592.0
+    * @okouai/db bumped to 1.224.3
+
 ## [1.492.0](https://github.com/vm0-ai/vm0/compare/api-v1.491.0...api-v1.492.0) (2026-08-25)
 
 

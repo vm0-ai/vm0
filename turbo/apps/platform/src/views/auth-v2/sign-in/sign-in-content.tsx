@@ -14,6 +14,10 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import {
+  AUTH_V2_LINK_ACTION_CLASS,
+  AUTH_V2_PRIMARY_ACTION_CLASS,
+} from "../auth-v2-action-styles.ts";
 import { AuthV2Divider } from "../auth-v2-divider.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
 import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
@@ -429,7 +433,7 @@ function ChooseSessionStep({
         })}
       </div>
       <Button
-        className="w-full"
+        className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
         disabled={selectionLoadable.state === "loading"}
         type="button"
         variant="ghost"
@@ -541,7 +545,10 @@ function ChooseFactorStep({
         })}
       </div>
       <Button
-        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        className={cn(
+          "mx-auto h-auto w-fit p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         disabled={selectLoadable.state === "loading"}
         type="button"
         variant="link"
@@ -589,7 +596,10 @@ function PasswordStep({
           labelAction={
             resetFactor ? (
               <Button
-                className="h-auto p-0 text-[13px] leading-[17px]"
+                className={cn(
+                  "h-auto p-0 text-[13px] leading-[17px]",
+                  AUTH_V2_LINK_ACTION_CLASS,
+                )}
                 disabled={submitting}
                 type="button"
                 variant="link"
@@ -607,7 +617,10 @@ function PasswordStep({
         <AuthV2SubmitButton busy={submitting} label={copy.continue} />
       </form>
       <Button
-        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        className={cn(
+          "mx-auto h-auto w-fit p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         disabled={submitting}
         type="button"
         variant="link"
@@ -661,7 +674,7 @@ function PasswordRecoveryStep({
         <Button
           aria-busy={selectingFactorId === resetFactor.id}
           aria-label={copy.passwordResetMethod}
-          className="w-full text-[13px]"
+          className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
           disabled={selecting}
           type="button"
           onClick={() => {
@@ -750,7 +763,10 @@ function PasswordRecoveryStep({
           </div>
         ) : null}
         <Button
-          className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+          className={cn(
+            "mx-auto h-auto w-fit p-0 text-sm leading-5",
+            AUTH_V2_LINK_ACTION_CLASS,
+          )}
           disabled={selecting}
           type="button"
           variant="link"
@@ -767,14 +783,20 @@ function HelpStep({ copy, signals }: SignInStepProps) {
   const back = useSet(signals.backFromHelp$);
   return (
     <div className="flex flex-col gap-4">
-      <Button className="w-full text-[13px]" asChild>
+      <Button
+        className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
+        asChild
+      >
         <a href={copy.supportEmailHref}>
           {copy.emailSupport}
           <AuthV2ActionGlyph />
         </a>
       </Button>
       <Button
-        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        className={cn(
+          "mx-auto h-auto w-fit p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         type="button"
         variant="link"
         onClick={back}
@@ -874,6 +896,7 @@ function CodeStep({
               expired
                 ? "w-full"
                 : "mx-auto h-auto w-fit p-0 text-[13px] leading-[17px]",
+              AUTH_V2_LINK_ACTION_CLASS,
             )}
             disabled={operationPending || (coolingDown && !expired)}
             type="button"
@@ -922,7 +945,10 @@ function CodeStepBottomAction({
   if (factorKind === "email-code") {
     return (
       <Button
-        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        className={cn(
+          "mx-auto h-auto w-fit p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         disabled={disabled}
         type="button"
         variant="link"
@@ -937,7 +963,10 @@ function CodeStepBottomAction({
   }
   return (
     <Button
-      className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+      className={cn(
+        "mx-auto h-auto w-fit p-0 text-sm leading-5",
+        AUTH_V2_LINK_ACTION_CLASS,
+      )}
       disabled={disabled}
       type="button"
       variant="link"
@@ -1019,7 +1048,10 @@ function NewPasswordStep({ copy, signals }: SignInStepProps) {
         </div>
       </form>
       <Button
-        className="mx-auto h-auto w-fit p-0 text-sm leading-5"
+        className={cn(
+          "mx-auto h-auto w-fit p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         disabled={submitting}
         type="button"
         variant="link"
@@ -1065,11 +1097,11 @@ function TransferStep({
   const restart = useSet(signals.restart$);
   return (
     <div className="space-y-3">
-      <Button className="w-full" asChild>
+      <Button className={cn("w-full", AUTH_V2_PRIMARY_ACTION_CLASS)} asChild>
         <SignUpLink signUpHref={signUpHref}>{copy.signUp}</SignUpLink>
       </Button>
       <Button
-        className="w-full"
+        className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
         type="button"
         variant="ghost"
         onClick={restart}
@@ -1160,7 +1192,10 @@ export function SignInSwitch({
     <p className="text-center text-sm text-muted-foreground">
       {copy.noAccount}{" "}
       <SignUpLink
-        className="font-medium text-foreground underline underline-offset-4"
+        className={cn(
+          "font-medium underline underline-offset-4",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         signUpHref={signUpHref}
       >
         {copy.signUp}
@@ -1175,7 +1210,10 @@ export function SignInMethodsHelpFooter({ copy, signals }: SignInStepProps) {
     <p className="text-center text-sm text-muted-foreground">
       {copy.methodsHelpPrompt}{" "}
       <Button
-        className="h-auto p-0 font-medium text-foreground underline underline-offset-4"
+        className={cn(
+          "h-auto p-0 font-medium underline underline-offset-4",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         type="button"
         variant="link"
         onClick={showHelp}

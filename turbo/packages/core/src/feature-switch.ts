@@ -295,6 +295,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LatestWebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",

@@ -30,6 +30,10 @@ export {
   type VideoTemplateItem,
 } from "./video-template-items";
 export {
+  HYPERFRAMES_AUTHORING_SOURCE,
+  HYPERFRAMES_RUNTIME,
+} from "./hyperframes-source";
+export {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,

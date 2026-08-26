@@ -414,6 +414,27 @@ unless bootstrap_steps.any? do |step|
   end
   raise "runner bootstrap must download the token artifact"
 end
+connector_accounts_step = bootstrap_steps.find do |step|
+  step["name"] == "Enable runner connector account coverage"
+end
+raise "missing runner connector account bootstrap" unless connector_accounts_step
+connector_accounts_script = connector_accounts_step.fetch("run")
+unless connector_accounts_step.fetch("shell") == "bash" &&
+    connector_accounts_script.include?('/api/feature-switches') &&
+    connector_accounts_script.include?(
+      '{"switches":{"connectorAccounts":true}}',
+    ) &&
+    connector_accounts_script.include?(
+      '.effectiveSwitches.connectorAccounts == true',
+    )
+  raise "runner connector account bootstrap must enable and verify the public feature switch"
+end
+unless connector_accounts_step.dig(
+    "env",
+    "VERCEL_AUTOMATION_BYPASS_SECRET",
+  ) == "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "runner connector account bootstrap must receive the preview bypass secret"
+end
 model_defaults_step = bootstrap_steps.find do |step|
   step["name"] == "Reset runner model defaults"
 end

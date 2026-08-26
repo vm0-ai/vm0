@@ -6,6 +6,7 @@ import type { AuthV2SignUpSignals } from "../../../signals/auth-v2/sign-up-flow.
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { Link } from "../../router/link.tsx";
+import { AUTH_V2_LINK_ACTION_CLASS } from "../auth-v2-action-styles.ts";
 import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import { SignUpCardContent, SignUpSwitch } from "./sign-up-content.tsx";
@@ -46,7 +47,12 @@ export function AuthV2SignUpCard({
       focusKey={focusKey}
       footer={
         <div className="flex justify-center">
-          <Button asChild size="sm" variant="link">
+          <Button
+            asChild
+            className={AUTH_V2_LINK_ACTION_CLASS}
+            size="sm"
+            variant="link"
+          >
             <Link
               options={{
                 hash: location.hash,

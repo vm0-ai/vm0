@@ -6,8 +6,9 @@ use ::sandbox::*;
 use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
-    CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, StartProcessCall,
-    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall, ProcessCancelCall,
+    ProcessControlCall, StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall,
+    WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -40,6 +41,12 @@ pub(crate) struct ExecOverrideState {
     pub(crate) calls: Mutex<Vec<ExecCall>>,
     /// Recorded fixed storage-manifest calls across all attached sandboxes.
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    /// Recorded fixed guest-state restore calls across all attached sandboxes.
+    pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
+    /// FIFO results for fixed guest-state restore operations.
+    pub(crate) guest_state_restore_results: Mutex<VecDeque<Result<ExecResult>>>,
+    /// Wakes tests after a guest-state restore call is recorded.
+    pub(crate) guest_state_restore_call_notify: tokio::sync::Notify,
     /// Wakes tests after an exec call is recorded.
     pub(crate) call_notify: tokio::sync::Notify,
     /// Optional gate entered after every exec call is recorded but before its
@@ -460,6 +467,54 @@ impl MockSandboxOverrides {
             .storage_manifest_calls
             .lock_ignoring_poison()
             .clone()
+    }
+
+    /// Queue a result for the next fixed guest-state restore operation.
+    pub fn push_guest_state_restore_result(&self, result: Result<ExecResult>) {
+        self.exec
+            .guest_state_restore_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return fixed guest-state restore calls across all attached sandboxes.
+    pub fn guest_state_restore_calls(&self) -> Vec<GuestStateRestoreCall> {
+        self.exec
+            .guest_state_restore_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Wait until at least `expected` guest-state restore calls are recorded.
+    pub async fn wait_guest_state_restore_call_count(
+        &self,
+        expected: usize,
+        timeout: Duration,
+    ) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.exec.guest_state_restore_call_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self
+                .exec
+                .guest_state_restore_calls
+                .lock_ignoring_poison()
+                .len()
+                >= expected
+            {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
     }
 
     /// Wait until at least `expected` exec calls have been recorded.

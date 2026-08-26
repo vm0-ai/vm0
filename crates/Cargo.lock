@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.79.2"
+version = "0.79.3"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.191"
+version = "0.16.192"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1364,9 +1364,10 @@ dependencies = [
 
 [[package]]
 name = "guest-reseed"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -1395,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.92"
+version = "0.1.93"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2597,7 +2598,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.173.7"
+version = "0.173.8"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2790,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.51"
+version = "0.19.52"
 dependencies = [
  "async-trait",
  "serde",
@@ -2802,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.248"
+version = "0.37.249"
 dependencies = [
  "async-trait",
  "clap",
@@ -2833,7 +2834,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.33"
+version = "0.9.34"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3736,7 +3737,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.110"
+version = "0.19.111"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3748,7 +3749,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.94"
+version = "0.17.95"
 dependencies = [
  "nix",
  "sandbox",
@@ -3763,14 +3764,14 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.36"
+version = "0.18.37"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vsock-test"
-version = "0.9.241"
+version = "0.9.242"
 dependencies = [
  "guest-write-file",
  "libc",

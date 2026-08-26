@@ -17,6 +17,10 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import {
+  AUTH_V2_LINK_ACTION_CLASS,
+  AUTH_V2_PRIMARY_ACTION_CLASS,
+} from "../auth-v2-action-styles.ts";
 import { AuthV2Divider } from "../auth-v2-divider.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
 import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
@@ -210,7 +214,10 @@ function LegalConsentText({
     if (href) {
       content.push(
         <a
-          className="font-medium underline underline-offset-4"
+          className={cn(
+            "font-medium underline underline-offset-4",
+            AUTH_V2_LINK_ACTION_CLASS,
+          )}
           href={href}
           key={`${token}-${index}`}
           rel="noreferrer"
@@ -655,6 +662,7 @@ function EmailCodeStep({
           className={cn(
             "w-full text-[13px]",
             !prepareFailed && !expired && "h-auto p-0 leading-[17px]",
+            AUTH_V2_LINK_ACTION_CLASS,
           )}
           disabled={operationPending || (coolingDown && !expired)}
           type="button"
@@ -717,7 +725,7 @@ function RestartAction({
     <Button
       aria-busy={restarting}
       aria-label={copy.restart}
-      className="w-full"
+      className={cn("w-full", variant === "ghost" && AUTH_V2_LINK_ACTION_CLASS)}
       disabled={restarting}
       type="button"
       variant={variant}
@@ -741,7 +749,7 @@ function RestartAction({
 function TransferStep({ copy, signInHref, signals }: SignUpStepProps) {
   return (
     <div className="space-y-3">
-      <Button className="w-full" asChild>
+      <Button className={cn("w-full", AUTH_V2_PRIMARY_ACTION_CLASS)} asChild>
         <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
       </Button>
       <RestartAction
@@ -763,7 +771,11 @@ function UnknownStep({ copy, signInHref, signals }: SignUpStepProps) {
         signals={signals}
         variant="outline"
       />
-      <Button className="w-full" asChild variant="ghost">
+      <Button
+        className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
+        asChild
+        variant="ghost"
+      >
         <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
       </Button>
     </div>
@@ -823,7 +835,10 @@ export function SignUpSwitch({
     <p className="text-center text-sm text-muted-foreground">
       {copy.alreadyHaveAccount}{" "}
       <SignInLink
-        className="font-medium text-foreground underline underline-offset-4"
+        className={cn(
+          "font-medium underline underline-offset-4",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
         signInHref={signInHref}
       >
         {copy.signIn}
