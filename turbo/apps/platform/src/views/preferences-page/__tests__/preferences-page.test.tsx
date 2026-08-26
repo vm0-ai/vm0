@@ -103,9 +103,13 @@ describe("preferences page", () => {
     expect(
       document.querySelector(".zero-app[data-gradient-color-themes]"),
     ).not.toBeInTheDocument();
+    expect(document.documentElement).not.toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).not.toHaveAttribute("data-color-theme");
   });
 
-  it("selects a palette-derived workspace gradient", async () => {
+  it("selects a palette-derived interface theme", async () => {
     context.mocks.data.userPreferences(createMockPreferences());
 
     detachedSetupPage({
@@ -121,12 +125,23 @@ describe("preferences page", () => {
     const app = document.querySelector(".zero-app");
     expect(app).toHaveAttribute("data-gradient-color-themes");
     expect(app).toHaveAttribute("data-color-theme", "blue-horizon");
+    expect(document.documentElement).toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).toHaveAttribute(
+      "data-color-theme",
+      "blue-horizon",
+    );
     expect(blueHorizon).toHaveAttribute("aria-pressed", "true");
 
     click(getButtonByText("Golden hour"));
 
     await waitFor(() => {
       expect(app).toHaveAttribute("data-color-theme", "golden-hour");
+      expect(document.documentElement).toHaveAttribute(
+        "data-color-theme",
+        "golden-hour",
+      );
       expect(getButtonByText("Golden hour")).toHaveAttribute(
         "aria-pressed",
         "true",

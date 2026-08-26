@@ -466,41 +466,117 @@ body {
 [data-color-theme="golden-hour"] {
   --zero-color-theme-anchor: #f7a102;
   --zero-color-theme-companion: #f4e33c;
+  --zero-color-theme-hue: 38.9;
+  --zero-color-theme-ring: 39.1 73.6% 52.5%;
 }
 
 [data-color-theme="citrus-spark"] {
   --zero-color-theme-anchor: #f4e33c;
   --zero-color-theme-companion: #b5d329;
+  --zero-color-theme-hue: 54.5;
+  --zero-color-theme-ring: 65.4 58.7% 40.8%;
 }
 
 [data-color-theme="berry-blush"] {
   --zero-color-theme-anchor: #e24e4a;
   --zero-color-theme-companion: #e4abc8;
+  --zero-color-theme-hue: 1.6;
+  --zero-color-theme-ring: 351 39.7% 57.1%;
 }
 
 [data-color-theme="cotton-sky"] {
   --zero-color-theme-anchor: #e4abc8;
   --zero-color-theme-companion: #b5d4e5;
+  --zero-color-theme-hue: 329.5;
+  --zero-color-theme-ring: 319.6 20.7% 56.5%;
 }
 
 [data-color-theme="blue-horizon"] {
   --zero-color-theme-anchor: #3758a1;
   --zero-color-theme-companion: #b5d4e5;
+  --zero-color-theme-hue: 221.3;
+  --zero-color-theme-ring: 221.3 35.4% 55.7%;
 }
 
 [data-color-theme="daydream"] {
   --zero-color-theme-anchor: #b5d4e5;
   --zero-color-theme-companion: #e4abc8;
+  --zero-color-theme-hue: 201.3;
+  --zero-color-theme-ring: 205.1 19.8% 57.5%;
 }
 
 [data-color-theme="deep-lagoon"] {
   --zero-color-theme-anchor: #017562;
   --zero-color-theme-companion: #3758a1;
+  --zero-color-theme-hue: 170.2;
+  --zero-color-theme-ring: 171.8 47.1% 33.3%;
 }
 
 [data-color-theme="limelight"] {
   --zero-color-theme-anchor: #b5d329;
   --zero-color-theme-companion: #f4e33c;
+  --zero-color-theme-hue: 70.6;
+  --zero-color-theme-ring: 74.2 53.8% 41.6%;
+}
+
+/* Full-system color themes share one lightness ladder and only rotate its
+   hue. This keeps dark source colors such as blue and teal from making the
+   interface heavier than yellow or pink themes. Foreground, destructive,
+   success, and brand-primary colors intentionally remain unchanged. The
+   document-level selector also reaches dialog and popover portals. */
+:root[data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 45.5% 95.7%;
+  --gray-50: var(--zero-color-theme-hue) 50% 92.9%;
+  --gray-100: var(--zero-color-theme-hue) 38.5% 92.4%;
+  --gray-200: var(--zero-color-theme-hue) 31.8% 91.4%;
+  --gray-300: var(--zero-color-theme-hue) 33.3% 89.4%;
+  --gray-400: var(--zero-color-theme-hue) 35.4% 87.3%;
+  --gray-500: var(--zero-color-theme-hue) 40.9% 74.1%;
+
+  --divider: var(--gray-300);
+  --background: var(--zero-color-theme-hue) 100% 98.4%;
+  --card: var(--zero-color-theme-hue) 100% 99%;
+  --popover: var(--card);
+  --secondary: var(--zero-color-theme-hue) 87.5% 96.9%;
+  --muted: var(--gray-100);
+  --accent: var(--zero-color-theme-hue) 94.4% 92.9%;
+  --border: var(--gray-400);
+  --input: var(--card);
+  --ring: var(--zero-color-theme-ring);
+  --sidebar: var(--gray-0);
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-ring);
+  --segment-selected: var(--card);
+  --zero-color-theme-selected: var(--zero-color-theme-hue) 91% 86.9%;
+}
+
+:root:is(
+    .dark,
+    [data-theme="dark"]
+  )[data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 7.3% 8%;
+  --gray-50: var(--zero-color-theme-hue) 10.3% 11.4%;
+  --gray-100: var(--zero-color-theme-hue) 10.6% 16.7%;
+  --gray-200: var(--zero-color-theme-hue) 8.6% 20.6%;
+  --gray-300: var(--zero-color-theme-hue) 10.2% 24.9%;
+  --gray-400: var(--zero-color-theme-hue) 7.6% 31%;
+  --gray-500: var(--zero-color-theme-hue) 9% 37.1%;
+
+  --divider: var(--gray-300);
+  --background: var(--gray-50);
+  --card: var(--zero-color-theme-hue) 5.1% 15.3%;
+  --popover: var(--gray-100);
+  --secondary: var(--gray-200);
+  --muted: var(--gray-200);
+  --accent: var(--zero-color-theme-hue) 15.2% 25.9%;
+  --border: var(--gray-400);
+  --input: var(--gray-200);
+  --ring: var(--zero-color-theme-ring);
+  --sidebar: var(--gray-100);
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-ring);
+  --segment-selected: var(--gray-500);
+  --zero-color-theme-selected: var(--zero-color-theme-hue) 15.2% 25.9%;
 }
 
 .zero-color-theme-swatch {
@@ -534,6 +610,17 @@ body {
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
    shape in black instead. The border step carries the state either way. */
 :where([data-theme="dark"]) .zero-app {
+  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+}
+
+.zero-app[data-gradient-color-themes] {
+  --zero-card-shadow:
+    0 2px 12px hsl(var(--state-layer) / 0.04),
+    0 0 0 0.5px hsl(var(--state-layer) / 0.02);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.08);
+}
+
+:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] {
   --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
@@ -687,9 +774,15 @@ body {
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
 }
+.zero-app[data-gradient-color-themes] .zero-nav {
+  --color-sidebar-border: hsl(var(--gray-400));
+}
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
   --color-sidebar-primary: #ffffff;
+}
+:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] .zero-nav {
+  --color-sidebar: hsl(var(--sidebar));
 }
 
 /* Morandi outline buttons */
@@ -1442,20 +1535,16 @@ details > summary {
 }
 
 .zero-app[data-gradient-color-themes] .zero-workspace-bg::before {
-  background-color: color-mix(
-    in srgb,
-    #ffffff 94.5%,
-    var(--zero-color-theme-anchor)
-  );
+  background-color: hsl(var(--background));
   background-image:
     radial-gradient(
       105% 95% at -8% -12%,
-      color-mix(in srgb, #ffffff 76%, var(--zero-color-theme-anchor)) 0%,
+      color-mix(in srgb, #ffffff 88%, var(--zero-color-theme-anchor)) 0%,
       transparent 60%
     ),
     radial-gradient(
       95% 90% at 108% 112%,
-      color-mix(in srgb, #ffffff 66%, var(--zero-color-theme-companion)) 0%,
+      color-mix(in srgb, #ffffff 92%, var(--zero-color-theme-companion)) 0%,
       transparent 62%
     );
 }
@@ -1463,17 +1552,13 @@ details > summary {
 :where([data-theme="dark"])
   .zero-app[data-gradient-color-themes]
   .zero-workspace-bg::before {
-  background-color: color-mix(
-    in srgb,
-    hsl(var(--background)) 92%,
-    var(--zero-color-theme-anchor)
-  );
+  background-color: hsl(var(--background));
   background-image:
     radial-gradient(
       105% 95% at -8% -12%,
       color-mix(
           in srgb,
-          hsl(var(--background)) 82%,
+          hsl(var(--background)) 92%,
           var(--zero-color-theme-anchor)
         )
         0%,
@@ -1483,7 +1568,7 @@ details > summary {
       95% 90% at 108% 112%,
       color-mix(
           in srgb,
-          hsl(var(--background)) 78%,
+          hsl(var(--background)) 94%,
           var(--zero-color-theme-companion)
         )
         0%,

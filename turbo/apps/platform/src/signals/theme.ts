@@ -96,6 +96,26 @@ export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
 });
 
 /**
+ * Keep palette theme attributes on the document while a themed app shell is
+ * mounted. Document scope lets portaled dialogs and popovers inherit the same
+ * semantic tokens as the app shell.
+ */
+export function applyColorThemeDocumentAttributes(
+  enabled: boolean,
+  colorTheme: ColorTheme,
+) {
+  const root = document.documentElement;
+
+  if (enabled) {
+    root.dataset.gradientColorThemes = "";
+    root.dataset.colorTheme = colorTheme;
+  } else {
+    delete root.dataset.gradientColorThemes;
+    delete root.dataset.colorTheme;
+  }
+}
+
+/**
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ get, set }) => {

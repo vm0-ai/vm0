@@ -47,7 +47,10 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
-import { colorTheme$ } from "../../signals/theme.ts";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -340,6 +343,12 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
 
   return (
     <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}

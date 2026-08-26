@@ -13,7 +13,10 @@ import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subsc
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { colorTheme$ } from "../../signals/theme.ts";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleAccountAction$);
@@ -25,6 +28,12 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
 
   return (
     <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}

@@ -114,8 +114,8 @@ export function ColorThemeSettings() {
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-lg border border-[0.7px] bg-background/80 p-2 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 selected
-                  ? "border-foreground/70 shadow-[0_0_0_1px_hsl(var(--foreground)/0.12)]"
-                  : "border-border hover:border-muted-foreground/60 hover:bg-background",
+                  ? "border-[hsl(var(--gray-500))] bg-[hsl(var(--zero-color-theme-selected))] shadow-[0_0_0_1px_hsl(var(--ring)/0.12)]"
+                  : "border-border hover:border-[hsl(var(--gray-500))] hover:bg-accent",
               )}
             >
               <span
