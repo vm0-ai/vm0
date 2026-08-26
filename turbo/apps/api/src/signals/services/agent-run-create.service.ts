@@ -297,8 +297,7 @@ import {
 } from "./chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
-import { resolveImageModelForRun } from "./image-model.service";
-import { resolveVideoModelForRun } from "./video-model.service";
+import { resolveMediaModelsForRun } from "./run-media-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -8138,7 +8137,7 @@ interface PreparedRunContext {
   /** Captured once and persisted; later event writers must not re-resolve it. */
   readonly chatToolActivityEnabled: boolean;
   readonly imageRecognitionAvailable: boolean;
-  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  /** Snapshotted onto the run row; see `resolveMediaModelsForRun`. */
   readonly selectedVideoModel: string;
   /** Resolved once at run start and used as the run's built-in image default. */
   readonly selectedImageModel: ImageModel | null;
@@ -9290,20 +9289,13 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
-      const selectedVideoModel = await resolveVideoModelForRun({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-      });
-      signal.throwIfAborted();
-
-      const selectedImageModel = await resolveImageModelForRun({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-      });
+      const { selectedVideoModel, selectedImageModel } =
+        await resolveMediaModelsForRun({
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          chatThreadId: args.chatThreadId,
+        });
       signal.throwIfAborted();
 
       const outputMetadata = await timing.measure(

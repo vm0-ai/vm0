@@ -13644,6 +13644,62 @@ async function videoModelSelectionActor(): Promise<{
   return { actor, agentId, orgId };
 }
 
+describe("CHAT-02: run media model snapshot precedence", () => {
+  it("resolves video and image fallback independently", async () => {
+    const { actor, agentId } = await videoModelSelectionActor();
+    await chat.updateUserModelPreference(
+      actor,
+      null,
+      "gpt-image-2",
+      "MiniMax-H3",
+    );
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run for mixed media model precedence",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    await chat.updateThreadVideoModel(
+      actor,
+      anchor.threadId,
+      "fal-ai/veo3.1/fast",
+    );
+    await chat.updateThreadImageModel(actor, anchor.threadId, null);
+    const imageFallback = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "thread video with member image fallback",
+    });
+    await expect(readRunVideoModelFixture(imageFallback.runId)).resolves.toBe(
+      "fal-ai/veo3.1/fast",
+    );
+    await expect(
+      readRunImageModelSnapshotFixture(imageFallback.runId),
+    ).resolves.toBe("gpt-image-2");
+    await cancelChatRun(actor, imageFallback.runId);
+
+    await chat.updateThreadVideoModel(actor, anchor.threadId, null);
+    await chat.updateThreadImageModel(
+      actor,
+      anchor.threadId,
+      "fal-ai/qwen-image",
+    );
+    const videoFallback = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "member video fallback with thread image",
+    });
+    await expect(readRunVideoModelFixture(videoFallback.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await expect(
+      readRunImageModelSnapshotFixture(videoFallback.runId),
+    ).resolves.toBe("fal-ai/qwen-image");
+    await cancelChatRun(actor, videoFallback.runId);
+  }, 90_000);
+});
+
 describe("CHAT-02: run video model snapshot", () => {
   it("pins a thread at creation and resolves later runs through that pin", async () => {
     const { actor, agentId, orgId } = await videoModelSelectionActor();

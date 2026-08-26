@@ -5,8 +5,7 @@
  * model: once, at creation. An unpinned thread re-reads the member default on
  * every run, so changing that default later would retarget threads the user
  * had already started. Threads created before this pin existed still hold null
- * and keep falling through the member default in video-model.service and
- * image-model.service.
+ * and keep falling through the member default in run-media-model.service.
  */
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
