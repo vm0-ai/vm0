@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.291.0](https://github.com/vm0-ai/vm0/compare/cli-v9.290.0...cli-v9.291.0) (2026-08-26)
+
+
+### Features
+
+* **chat:** expose unread threads to workflows ([#29566](https://github.com/vm0-ai/vm0/issues/29566)) ([0592465](https://github.com/vm0-ai/vm0/commit/05924657c5a154e45c5df69b08be268daa6b3a0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+
 ## [9.290.0](https://github.com/vm0-ai/vm0/compare/cli-v9.289.3...cli-v9.290.0) (2026-08-26)
 
 
