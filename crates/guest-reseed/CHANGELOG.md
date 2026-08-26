@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.6...guest-reseed-v0.3.7) (2026-08-26)
+
+
+### Bug Fixes
+
+* **runner:** report unavailable best-effort timezones ([#29568](https://github.com/vm0-ai/vm0/issues/29568)) ([db27c70](https://github.com/vm0-ai/vm0/commit/db27c7048a1146dcaf02d363f86d5da7833df543))
+
 ## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.5...guest-reseed-v0.3.6) (2026-08-26)
 
 

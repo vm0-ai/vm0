@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { and, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { agents } from "@okouai/db/schema/agent";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -23,16 +24,18 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [thread] = await writeDb
     .select({
       lastReadAt: chatThreads.lastReadAt,
-      agentId: chatThreads.agentId,
+      agentId: agents.id,
+      orgId: agents.orgId,
     })
     .from(chatThreads)
+    .innerJoin(agents, eq(agents.id, chatThreads.agentId))
     .where(
       and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
     )
     .limit(1);
   signal.throwIfAborted();
 
-  if (!thread?.agentId) {
+  if (!thread) {
     return notFound("Chat thread not found");
   }
   const agentId = thread.agentId;
@@ -41,6 +44,7 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     const unreads = await get(
       chatThreadUnreads({
         userId: auth.userId,
+        orgId: thread.orgId,
         agentId: agentId,
       }),
     );

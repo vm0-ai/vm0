@@ -487,10 +487,15 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
+    async claimRunnerJob(
+      runId: string,
+      body: RunnerJobClaimRequest = {},
+      extraHeaders?: Readonly<Record<string, string>>,
+    ) {
       const response = await accept(
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
+          ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
           body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
@@ -684,10 +689,12 @@ export function createRunsApi(context: TestContext) {
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(runnersJobClaimContract).claim({
           headers: authorization === undefined ? {} : { authorization },
+          ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
           body,
         }),
@@ -700,10 +707,12 @@ export function createRunsApi(context: TestContext) {
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: unknown,
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(runnersJobClaimContract).claim({
           headers: authorization === undefined ? {} : { authorization },
+          ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
           body: body as RunnerJobClaimRequest,
         }),
@@ -1251,10 +1260,12 @@ export function createRunsApi(context: TestContext) {
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: RunnerJobClaimRequest = {},
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
+          ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
           body: { runnerIdentity: defaultRunnerIdentity, ...body },
         }),
@@ -1267,10 +1278,12 @@ export function createRunsApi(context: TestContext) {
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: unknown,
+      extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
         runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
+          ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
           body: body as RunnerJobClaimRequest,
         }),

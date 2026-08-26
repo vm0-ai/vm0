@@ -319,6 +319,7 @@ export function chatThreadDetail(args: {
  */
 export function chatThreadUnreads(args: {
   readonly userId: string;
+  readonly orgId: string;
   readonly agentId: string;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
@@ -330,10 +331,12 @@ export function chatThreadUnreads(args: {
         unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
+          eq(agents.orgId, args.orgId),
           eq(chatThreads.agentId, args.agentId),
           or(
             isNull(chatThreads.lastReadAt),

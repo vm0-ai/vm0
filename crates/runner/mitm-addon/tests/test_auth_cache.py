@@ -75,6 +75,10 @@ class TestFirewallHeaderCache:
         cache_hit_flags = [result["cache_hit"] for result in results]
         assert sum(flag is False for flag in cache_hit_flags) == 1
         assert sum(flag is True for flag in cache_hit_flags) == 2
+        assert all(
+            result["cache_entry_identity"] is results[0]["cache_entry_identity"]
+            for result in results
+        )
         assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer token"}
 
     async def test_cancelled_force_refresh_leader_keeps_shared_fetch(self, mitm_ctx):

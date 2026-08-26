@@ -88,6 +88,14 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.builtInModelKeyId.notNull).toBe(false);
     expect(agentRuns.builtInModelKeyId.hasDefault).toBe(false);
     expect(agentRuns.builtInModelKeyId.name).toBe("built_in_model_key_id");
+    expect(agentRuns.runnerHostname.name).toBe("runner_hostname");
+    expect(agentRuns.runnerHostname.getSQLType()).toBe("varchar(255)");
+    expect(agentRuns.runnerHostname.notNull).toBe(false);
+    expect(agentRuns.runnerHostname.hasDefault).toBe(false);
+    expect(agentRuns.runnerVersion.name).toBe("runner_version");
+    expect(agentRuns.runnerVersion.getSQLType()).toBe("varchar(128)");
+    expect(agentRuns.runnerVersion.notNull).toBe(false);
+    expect(agentRuns.runnerVersion.hasDefault).toBe(false);
     for (const column of [
       agentRuns.selectedImageModel,
       chatThreadEvents.selectedImageModel,
