@@ -2107,10 +2107,14 @@ describe("chat composer models", () => {
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
-      expect(billingRequestCount).toBeGreaterThanOrEqual(2);
+      expect(billingRequestCount).toBeGreaterThanOrEqual(1);
       expect(
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("billing:changed");
+    await waitFor(() => {
+      expect(billingRequestCount).toBeGreaterThanOrEqual(2);
     });
     await user.click(await findComposerModel("Claude Fable 5"));
     await expect(

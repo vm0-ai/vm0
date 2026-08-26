@@ -537,6 +537,7 @@ function PolicyActionsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon-sm"

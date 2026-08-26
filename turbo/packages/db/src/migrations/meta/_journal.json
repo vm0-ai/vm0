@@ -1366,6 +1366,20 @@
       "when": 1787732005880,
       "tag": "1002_opposite_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 1003,
+      "version": "7",
+      "when": 1787734359079,
+      "tag": "1003_rich_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1004,
+      "version": "7",
+      "when": 1787742799829,
+      "tag": "1004_workflow_compatibility_views",
+      "breakpoints": true
     }
   ]
 }

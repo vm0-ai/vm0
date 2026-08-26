@@ -40,6 +40,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+  RUNNER_HOSTNAME_MAX_LENGTH,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -128,6 +129,11 @@ const connectorRuntimeSyncRunTerminalErrorCodeDoc = [
 const runnerPollExcludedRunIdsMaxDoc = [
   "Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.",
   "Rust runners use this shared contract value to bound local cooldown state and poll request size.",
+] as const;
+
+const runnerHostnameMaxLengthDoc = [
+  "Maximum configured runner hostname length accepted by the runner-facing API.",
+  "Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.",
 ] as const;
 const sessionHistoryEncodingGzipDoc = [
   "Wire and blob metadata value for gzip-compressed resume session history.",
@@ -293,6 +299,12 @@ const expectedBindings = [
     rustConstName: "CANCELLATION_RECOVERY_STALE_AFTER_MS",
     value: rustU64(CANCELLATION_RECOVERY_STALE_AFTER_MS),
     rustDoc: cancellationRecoveryStaleAfterMsDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_HOSTNAME_MAX_LENGTH",
+    value: rustU64(RUNNER_HOSTNAME_MAX_LENGTH),
+    rustDoc: runnerHostnameMaxLengthDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -578,6 +590,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = ${CANCELLATION_RECOVERY_STALE_AFTER_MS};`,
+    );
+    expect(firstRender).toContain(
+      `pub const RUNNER_HOSTNAME_MAX_LENGTH: u64 = ${RUNNER_HOSTNAME_MAX_LENGTH};`,
     );
     expect(firstRender).toContain(
       `pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = ${RUNNER_POLL_EXCLUDED_RUN_IDS_MAX};`,

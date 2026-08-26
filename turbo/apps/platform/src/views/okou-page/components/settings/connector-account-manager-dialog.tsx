@@ -104,6 +104,7 @@ function AccountActions({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon"

@@ -38,6 +38,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { ChatComposer } from "./chat-composer.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function ForwardContent({ text }: { readonly text: string }) {
   const { t } = useTranslation();
@@ -280,7 +281,7 @@ export function ChatForwardDialog({
         <DialogHeader className="min-w-0 px-5 pb-3 pt-5">
           <div className="flex min-w-0 items-center gap-2 pr-8">
             {target ? (
-              <button
+              <IconTooltipButton
                 type="button"
                 onClick={() => {
                   onComposerStateChange(null);
@@ -291,7 +292,7 @@ export function ChatForwardDialog({
                 })}
               >
                 <ArrowLeft size={16} />
-              </button>
+              </IconTooltipButton>
             ) : null}
             <DialogTitle className="min-w-0 flex-1 overflow-hidden text-base font-semibold">
               {target ? (

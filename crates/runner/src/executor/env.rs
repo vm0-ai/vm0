@@ -185,8 +185,8 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
     if slot.deadline_at <= 0 {
         return Err("Pi API first-turn deadlineAt must be positive".to_string());
     }
-    if slot.sandbox_event_sequence_start != 1 {
-        return Err("Pi Sandbox event sequence must start at 1".to_string());
+    if !(1..=i32::MAX as u64).contains(&slot.sandbox_event_sequence_start) {
+        return Err("Pi Sandbox event sequence start must be between 1 and 2147483647".to_string());
     }
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());

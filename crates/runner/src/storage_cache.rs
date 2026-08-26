@@ -3400,6 +3400,7 @@ mod tests {
             RunId::nil(),
             "test-token".to_string(),
             "test-runner".to_string(),
+            None,
         )
     }
 

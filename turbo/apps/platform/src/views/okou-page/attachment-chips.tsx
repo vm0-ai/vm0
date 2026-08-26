@@ -93,6 +93,7 @@ import {
 } from "./zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -232,6 +233,7 @@ function DialogIconButton({
 }) {
   return (
     <Button
+      showTooltip
       type="button"
       onClick={onClick}
       variant="quiet"
@@ -529,6 +531,7 @@ function ArtifactDialogImageNavigationControls({
     <>
       {navigation.onPrevious && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -547,6 +550,7 @@ function ArtifactDialogImageNavigationControls({
       )}
       {navigation.onNext && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -1284,6 +1288,7 @@ function ArtifactPreviewDialogActions({
     <div className="flex shrink-0 items-center gap-1">
       {annotationTarget && (
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon-sm"
@@ -1844,7 +1849,7 @@ function AttachmentChip({
           <Loader2 size={10} className="animate-spin text-muted-foreground" />
         </span>
       )}
-      <button
+      <IconTooltipButton
         type="button"
         onClick={onRemove}
         className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
@@ -1869,7 +1874,7 @@ function AttachmentChip({
         }
       >
         <X size={9} />
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }

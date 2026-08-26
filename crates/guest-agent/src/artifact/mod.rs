@@ -215,14 +215,14 @@ pub(crate) async fn create_snapshot(
         // Validate the local manifest inputs before committing the existing
         // version as HEAD, since this branch does not build an archive.
         validate_dedup_snapshot(request.mount_path, Arc::clone(&request.files)).await?;
-        commit_existing_snapshot(http, &request, &version_id).await?;
+        commit_snapshot_step(http, &request, &version_id, None).await?;
         return Ok(SnapshotResult { version_id });
     }
 
     let uploads = extract_uploads(prep.uploads)?;
     let archive = create_archive_bundle(request.mount_path, Arc::clone(&request.files)).await?;
     upload_archive_bundle(http, &uploads, &archive).await?;
-    commit_uploaded_snapshot(http, &request, &version_id).await?;
+    commit_snapshot_step(http, &request, &version_id, Some(request.message)).await?;
 
     let short_id = version_id.get(..8).unwrap_or(&version_id);
     log_info!(LOG_TAG, "Direct upload snapshot created: {short_id}");
@@ -316,12 +316,15 @@ async fn validate_dedup_snapshot(
     Ok(())
 }
 
-async fn commit_existing_snapshot(
+async fn commit_snapshot_step(
     http: &HttpClient,
     request: &SnapshotRequest<'_>,
     version_id: &str,
+    message: Option<&str>,
 ) -> Result<(), AgentError> {
-    let commit_success = commit_snapshot(
+    log_info!(LOG_TAG, "Calling commit endpoint...");
+    let commit_start = std::time::Instant::now();
+    let result = match commit_snapshot(
         http,
         CommitSnapshotRequest {
             run_id: request.run_id,
@@ -329,15 +332,23 @@ async fn commit_existing_snapshot(
             version_id,
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
-            message: None,
+            message,
         },
-        "Failed to parse dedup commit response",
+        "Failed to parse commit response",
     )
-    .await?;
-    if !commit_success {
-        return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
-    }
-    Ok(())
+    .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(AgentError::Checkpoint("Commit failed".into())),
+        Err(error) => Err(error),
+    };
+    record_sandbox_op(
+        "artifact_commit_api",
+        commit_start.elapsed(),
+        result.is_ok(),
+        None,
+    );
+    result
 }
 
 fn extract_uploads(uploads: Option<PreparedUploads>) -> Result<PreparedUploads, AgentError> {
@@ -450,43 +461,6 @@ async fn upload_archive_bundle(
         return Err(e);
     }
     record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), true, None);
-    Ok(())
-}
-
-async fn commit_uploaded_snapshot(
-    http: &HttpClient,
-    request: &SnapshotRequest<'_>,
-    version_id: &str,
-) -> Result<(), AgentError> {
-    log_info!(LOG_TAG, "Calling commit endpoint...");
-    let commit_start = std::time::Instant::now();
-    let commit_success = match commit_snapshot(
-        http,
-        CommitSnapshotRequest {
-            run_id: request.run_id,
-            storage_id: request.storage_id,
-            version_id,
-            parent_version_id: request.parent_version_id,
-            files: request.files.as_ref(),
-            message: Some(request.message),
-        },
-        "Failed to parse commit response",
-    )
-    .await
-    {
-        Ok(success) => success,
-        Err(e) => {
-            record_sandbox_op("artifact_commit_api", commit_start.elapsed(), false, None);
-            return Err(e);
-        }
-    };
-
-    if !commit_success {
-        record_sandbox_op("artifact_commit_api", commit_start.elapsed(), false, None);
-        return Err(AgentError::Checkpoint("Commit failed".into()));
-    }
-
-    record_sandbox_op("artifact_commit_api", commit_start.elapsed(), true, None);
     Ok(())
 }
 
@@ -761,6 +735,10 @@ mod tests {
         disable_system_log();
         let server = &*SNAPSHOT_MOCK_SERVER;
 
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
@@ -821,6 +799,10 @@ mod tests {
         assert_eq!(result.version_id, "v-existing");
         prepare.assert_calls(1);
         commit.assert_calls(1);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![true]
+        );
         prepare.delete_async().await;
         commit.delete_async().await;
 
@@ -868,6 +850,10 @@ mod tests {
         );
         prepare.assert_calls(1);
         commit.assert_calls(0);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![true]
+        );
         prepare.delete_async().await;
         commit.delete_async().await;
         Ok(())
@@ -878,6 +864,10 @@ mod tests {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -962,6 +952,10 @@ mod tests {
         archive_upload.assert_calls(1);
         manifest_upload.assert_calls(1);
         commit.assert_calls(1);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![true]
+        );
         prepare.delete_async().await;
         archive_upload.delete_async().await;
         manifest_upload.delete_async().await;
@@ -1167,6 +1161,10 @@ mod tests {
         disable_system_log();
         let server = MockServer::start();
 
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
@@ -1226,6 +1224,7 @@ mod tests {
             then.status(200).json_body(serde_json::json!({
                 "success": false,
                 "versionId": "v-uploaded-failed-commit",
+                "storageName": "storage-upload",
                 "size": total_size,
                 "fileCount": expected_files.len(),
             }));
@@ -1253,6 +1252,10 @@ mod tests {
         archive_upload.assert_calls(1);
         manifest_upload.assert_calls(1);
         commit.assert_calls(1);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![false]
+        );
         prepare.delete_async().await;
         archive_upload.delete_async().await;
         manifest_upload.delete_async().await;
@@ -1265,6 +1268,10 @@ mod tests {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         disable_system_log();
         let server = MockServer::start();
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1318,9 +1325,86 @@ mod tests {
         let Err(err) = result else {
             panic!("create_snapshot unexpectedly succeeded");
         };
-        assert!(err.to_string().contains("Failed to update HEAD"));
+        assert!(err.to_string().contains("Commit failed"));
         prepare.assert_calls(1);
         commit.assert_calls(1);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![false]
+        );
+        prepare.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dedup_snapshot_records_commit_http_failure() -> Result<(), AgentError> {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        disable_system_log();
+        let server = MockServer::start();
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-dedup-http-failed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-dedup-http-failed-commit",
+                "existing": true
+            }));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit")
+                .json_body(serde_json::json!({
+                    "runId": "run-dedup-http-failed-commit",
+                    "storageId": SNAPSHOT_STORAGE_ID,
+                    "versionId": "v-dedup-http-failed-commit",
+                    "parentVersionId": "parent-v1",
+                    "files": expected_files,
+                }));
+            then.status(400);
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_id: SNAPSHOT_STORAGE_ID,
+                run_id: "run-dedup-http-failed-commit",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(AgentError::HttpStatus { status, .. }) = result else {
+            panic!("expected commit HTTP status error");
+        };
+        assert_eq!(status, 400);
+        prepare.assert_calls(1);
+        commit.assert_calls(1);
+        assert_eq!(
+            sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
+            vec![false]
+        );
         prepare.delete_async().await;
         commit.delete_async().await;
         Ok(())

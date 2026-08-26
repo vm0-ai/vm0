@@ -14,6 +14,7 @@ import {
   cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
+  cronOfficialWorkflowCatalogContract,
   cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
   cronRenewGmailWatchesContract,
@@ -119,6 +120,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronConnectorCatalogContract.sync.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronOfficialWorkflowCatalogContract.sync.path,
     schedule: "* * * * *",
   },
   {

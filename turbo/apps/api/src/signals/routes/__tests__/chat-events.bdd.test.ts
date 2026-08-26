@@ -5058,6 +5058,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const manifest = JSON.parse(
       checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
     ) as {
+      readonly schemaVersion?: unknown;
       readonly outcome?: unknown;
       readonly baseSession?: unknown;
       readonly session?: {
@@ -5065,8 +5066,10 @@ describe("CHAT-02: model-first provider policies", () => {
         readonly sha256?: unknown;
         readonly rawSize?: unknown;
       };
+      readonly sandboxEventSequenceStart?: unknown;
     };
     expect(manifest).toMatchObject({
+      schemaVersion: 1,
       outcome: "handoff",
       baseSession: { sessionId: run.threadId, sha256: null },
       session: {
@@ -5075,6 +5078,7 @@ describe("CHAT-02: model-first provider policies", () => {
         rawSize: expect.any(Number),
       },
     });
+    expect(manifest).not.toHaveProperty("sandboxEventSequenceStart");
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);

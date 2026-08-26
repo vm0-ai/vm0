@@ -17,11 +17,19 @@ import { resolveThreadMeta$ } from "./chat-thread-event-sourcing.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
+  recordBootstrapThreadMetadataTiming$,
 } from "../../lib/posthog.ts";
 
 const setupResolvedLeftThread$ = command(
   async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
-    const meta = await set(resolveThreadMeta$, threadId, signal);
+    const resolution = await set(resolveThreadMeta$, threadId, signal);
+    signal.throwIfAborted();
+    set(recordBootstrapThreadMetadataTiming$, {
+      localDurationMs: resolution.localDurationMs,
+      remoteDurationMs: resolution.remoteDurationMs,
+      source: resolution.source,
+    });
+    const { meta } = resolution;
     if (meta) {
       await set(setupLeftThread$, meta, signal);
       return;
@@ -32,7 +40,8 @@ const setupResolvedLeftThread$ = command(
 
 const setupResolvedRightThread$ = command(
   async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
-    const meta = await set(resolveThreadMeta$, threadId, signal);
+    const { meta } = await set(resolveThreadMeta$, threadId, signal);
+    signal.throwIfAborted();
     if (meta) {
       await set(setupRightThread$, meta, signal);
       return;

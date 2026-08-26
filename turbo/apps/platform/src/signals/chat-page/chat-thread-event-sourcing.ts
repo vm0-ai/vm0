@@ -110,13 +110,20 @@ interface BootstrapThreadMetaEntry {
   readonly owner: object;
 }
 
-type ThreadMetaResolution =
+type ColdThreadMetaResolution =
   | { readonly source: "event-stream"; readonly meta: ThreadMeta | null }
   | { readonly source: "metadata"; readonly meta: ThreadMeta };
 
 type RemoteThreadMetaAttempt =
-  | Extract<ThreadMetaResolution, { readonly source: "metadata" }>
+  | Extract<ColdThreadMetaResolution, { readonly source: "metadata" }>
   | { readonly source: "metadata-unavailable" };
+
+interface ResolvedThreadMeta {
+  readonly localDurationMs?: number;
+  readonly meta: ThreadMeta | null;
+  readonly remoteDurationMs?: number;
+  readonly source: "local" | "memory" | "not_found" | "remote";
+}
 
 interface RemoteThreadMetaResponse {
   readonly meta: ThreadMeta | null;
@@ -816,7 +823,7 @@ const lookupEventStreamThreadMeta$ = command(
     meta$: Computed<ThreadMeta | null>,
     sync: Promise<void>,
     signal: AbortSignal,
-  ): Promise<ThreadMetaResolution> => {
+  ): Promise<ColdThreadMetaResolution> => {
     await waitForSharedWork(sync, signal);
     signal.throwIfAborted();
     return { source: "event-stream", meta: get(meta$) };
@@ -847,8 +854,8 @@ const attemptRemoteThreadMeta$ = command(
 
 async function resolveThreadMetaAttempts(
   metadata: Promise<RemoteThreadMetaAttempt>,
-  eventStream: Promise<ThreadMetaResolution>,
-): Promise<ThreadMetaResolution> {
+  eventStream: Promise<ColdThreadMetaResolution>,
+): Promise<ColdThreadMetaResolution> {
   const first = await Promise.race([metadata, eventStream]);
   return first.source === "metadata-unavailable" ? eventStream : first;
 }
@@ -860,7 +867,7 @@ const resolveColdThreadMeta$ = command(
     meta$: Computed<ThreadMeta | null>,
     canonicalSync: Promise<void>,
     signal: AbortSignal,
-  ): Promise<ThreadMetaResolution> => {
+  ): Promise<ColdThreadMetaResolution> => {
     const controller = createChildAbortController(signal);
     const metadata = set(attemptRemoteThreadMeta$, threadId, controller.signal);
     const eventStream = set(
@@ -885,20 +892,23 @@ export const resolveThreadMeta$ = command(
     { get, set },
     threadId: string,
     signal: AbortSignal,
-  ): Promise<ThreadMeta | null> => {
+  ): Promise<ResolvedThreadMeta> => {
     const meta$ = threadMeta(threadId);
     let meta = get(meta$);
     if (meta) {
-      return meta;
+      return { meta, source: "memory" };
     }
 
+    const localStartedAt = performance.now();
     await waitForSharedWork(get(initialLocalChatThreadEventsLoaded$), signal);
     signal.throwIfAborted();
+    const localDurationMs = Math.round(performance.now() - localStartedAt);
     meta = get(meta$);
     if (meta) {
-      return meta;
+      return { localDurationMs, meta, source: "local" };
     }
 
+    const remoteStartedAt = performance.now();
     const initialRemoteSync = get(initialRemoteChatThreadEventsSyncedDeferred$);
     const foregroundReady = get(foregroundReady$);
     const foregroundSyncBarrier = get(chatThreadEventSyncBarrier$);
@@ -913,7 +923,12 @@ export const resolveThreadMeta$ = command(
       signal.throwIfAborted();
       meta = get(meta$);
       if (meta) {
-        return meta;
+        return {
+          localDurationMs,
+          meta,
+          remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
+          source: "remote",
+        };
       }
     }
 
@@ -938,10 +953,21 @@ export const resolveThreadMeta$ = command(
         signal,
       );
       if (!registered) {
-        return get(canonicalThreadMetaMap$).get(threadId) ?? null;
+        meta = get(canonicalThreadMetaMap$).get(threadId) ?? null;
+        return {
+          localDurationMs,
+          meta,
+          remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
+          source: meta ? "remote" : "not_found",
+        };
       }
     }
-    return resolution.meta;
+    return {
+      localDurationMs,
+      meta: resolution.meta,
+      remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
+      source: resolution.meta ? "remote" : "not_found",
+    };
   },
 );
 

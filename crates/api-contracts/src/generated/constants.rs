@@ -131,6 +131,10 @@ pub mod runners {
     /// The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.
     pub const RUNNER_CANCELLATION_RECOVERY_GRACE_MS: u64 = 90000;
 
+    /// Maximum configured runner hostname length accepted by the runner-facing API.
+    /// Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.
+    pub const RUNNER_HOSTNAME_MAX_LENGTH: u64 = 255;
+
     /// Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.
     /// Rust runners use this shared contract value to bound local cooldown state and poll request size.
     pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = 128;
