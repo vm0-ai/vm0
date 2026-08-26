@@ -46,6 +46,7 @@ class TestAuthBaseUrlRewriteSuccess:
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -142,6 +143,7 @@ class TestAuthBaseUrlRewriteSuccess:
             "headers": {"Authorization": "Bearer real"},
             "resolved_secrets": ["TOKEN"],
             "cache_hit": False,
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
