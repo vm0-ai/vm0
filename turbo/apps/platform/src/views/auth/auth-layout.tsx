@@ -258,6 +258,40 @@ button[class*="socialButtonsBlockButton"] img,
   color: hsl(var(--primary) / 0.9) !important;
 }
 
+/* The discoverable passkey action is rendered by Clerk as a footer link even
+   though it is a peer of the other sign-in methods. Match the standard outline
+   button without changing other footer or recovery links. */
+.cl-footerAction__usePasskey {
+  width: 100% !important;
+}
+
+.cl-footerActionLink__usePasskey {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 36px !important;
+  border-width: 0.7px !important;
+  border-style: solid !important;
+  border-color: hsl(var(--gray-400)) !important;
+  border-radius: 0.5rem !important;
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  transition: background-color 0.2s !important;
+}
+
+.cl-footerActionLink__usePasskey:hover {
+  background-color: var(--color-state-hover) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-footerActionLink__usePasskey:active {
+  background-color: var(--color-state-pressed) !important;
+}
+
 /* OTP/Verification Code Input Boxes - Match cli-auth style */
 .cl-otpCodeFieldInput {
   height: 36px !important;

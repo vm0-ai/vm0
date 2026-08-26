@@ -19,7 +19,8 @@ use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
 use super::super::agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart};
 use super::super::env::{
-    guest_run_payload_file_path, guest_user_env_file_path, prepare_run_payload_for_run,
+    guest_connector_account_context_file_path, guest_run_payload_file_path,
+    guest_user_env_file_path, prepare_run_payload_for_run,
 };
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,

@@ -78,12 +78,15 @@ export const agentRuns = pgTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
-    // Immutable winning official claim identity. Null covers historical,
-    // rollout-omitting, and non-official claims.
+    // Immutable winning official claim attribution. ID/generation is the
+    // authority; hostname/version are diagnostic snapshots. Null covers
+    // historical, rollout-omitting, and non-official claims.
     runnerId: uuid("runner_id"),
     runnerHeartbeatGeneration: bigint("runner_heartbeat_generation", {
       mode: "number",
     }),
+    runnerHostname: varchar("runner_hostname", { length: 255 }),
+    runnerVersion: varchar("runner_version", { length: 128 }),
     activeInputEnabled: boolean("active_input_enabled")
       .default(false)
       .notNull(),

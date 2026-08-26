@@ -2024,7 +2024,7 @@
       "agents": "Agenti",
       "back": "Indietro",
       "content": "Contenuto",
-      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "description": "Invia il contenuto selezionato a un agente o a una chat per continuare a lavorarci.",
       "noResults": "Nessun agente o chat trovato",
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",

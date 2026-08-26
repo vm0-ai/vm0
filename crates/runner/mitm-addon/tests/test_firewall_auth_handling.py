@@ -164,6 +164,7 @@ def _token_meta(
         "refreshed_connectors": list(refreshed_connectors or []),
         "refreshed_secrets": list(refreshed_secrets or []),
         "cache_hit": cache_hit,
+        "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
     }
 
 
@@ -825,6 +826,49 @@ class TestHandleFirewallRequest:
         assert flow.response.status_code == 502
         assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
         assert "Authorization" not in flow.request.headers
+
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
+    @pytest.mark.parametrize(
+        "cache_entry_identity",
+        [pytest.param(None, id="missing"), pytest.param(object(), id="malformed")],
+    )
+    async def test_invalid_cache_entry_identity_fails_closed_in_both_phases(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
+        cache_entry_identity: object | None,
+    ):
+        flow = _firewall_flow(real_flow)
+        flow.metadata["preexisting"] = "keep"
+        original_metadata = dict(flow.metadata)
+        api_entry = _api_entry()
+        sandbox_info = _sandbox_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(headers={"Authorization": "Bearer token"})
+        if cache_entry_identity is None:
+            token_meta.pop("cache_entry_identity")
+        else:
+            token_meta["cache_entry_identity"] = cache_entry_identity
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, sandbox_info)
+
+        if hook_phase == "requestheaders":
+            assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+            assert flow.response is None
+            assert flow.metadata == original_metadata
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
+        assert metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY not in flow.metadata
 
     @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_missing_resolved_aws_sigv4_fails_closed_in_both_phases(
@@ -1594,6 +1638,7 @@ class TestHandleFirewallRequest:
                         "refreshed_connectors": [],
                         "refreshed_secrets": [],
                         "cache_hit": False,
+                        "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
                     }
                 ),
             ),

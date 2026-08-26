@@ -5,6 +5,8 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnerHostnameSchema,
+  runnerVersionSchema,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   sessionHistorySizeBucketSchema,
@@ -908,6 +910,8 @@ export const webhookTelemetryContract = c.router({
     body: z.object({
       runId: z.string().min(1, "runId is required"),
       runnerName: telemetryRunnerNameSchema.optional(),
+      runnerHostname: runnerHostnameSchema.optional(),
+      runnerVersion: runnerVersionSchema.optional(),
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogEntrySchema).optional(),

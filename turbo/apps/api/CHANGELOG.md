@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.495.0](https://github.com/vm0-ai/vm0/compare/api-v1.494.3...api-v1.495.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Performance Improvements
+
+* **api:** collapse media model snapshot reads ([#29525](https://github.com/vm0-ai/vm0/issues/29525)) ([5e286d5](https://github.com/vm0-ai/vm0/commit/5e286d54a7b006d82dbc51012234fd32e3d10993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+    * @okouai/db bumped to 1.224.10
+
 ## [1.494.3](https://github.com/vm0-ai/vm0/compare/api-v1.494.2...api-v1.494.3) (2026-08-26)
 
 

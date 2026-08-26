@@ -40,7 +40,7 @@ def set_cached_headers(
     base: str | None = None,
     query: dict[str, str] | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
-) -> None:
+) -> auth_cache.FirewallAuthCacheEntryIdentity:
     auth_cache.seed_cached_headers_for_tests(
         cache_key,
         headers=headers,
@@ -50,6 +50,10 @@ def set_cached_headers(
         query=query,
         aws_sigv4=aws_sigv4,
     )
+    snapshot = auth_cache.auth_state_snapshot_for_tests(cache_key)
+    assert snapshot is not None
+    assert snapshot.cache_entry_identity is not None
+    return snapshot.cache_entry_identity
 
 
 def auth_state_snapshot(

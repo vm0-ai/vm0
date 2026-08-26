@@ -64,13 +64,23 @@ interface SandboxOperationDimensionInput {
   readonly session_history_download_source?: string;
 }
 
+interface SandboxRunnerDimensionInput {
+  readonly runnerName?: string;
+  readonly runnerHostname?: string;
+  readonly runnerVersion?: string;
+}
+
 function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
-  runnerName?: string,
+  runner: SandboxRunnerDimensionInput,
 ): Record<string, string> {
   return {
     source: "sandbox",
-    ...(runnerName ? { runner_name: runnerName } : {}),
+    ...(runner.runnerName ? { runner_name: runner.runnerName } : {}),
+    ...(runner.runnerHostname
+      ? { runner_hostname: runner.runnerHostname }
+      : {}),
+    ...(runner.runnerVersion ? { runner_version: runner.runnerVersion } : {}),
     ...(op.error ? { error: op.error } : {}),
     ...(op.outcome ? { outcome: op.outcome } : {}),
     ...(op.reason ? { reason: op.reason } : {}),
@@ -430,7 +440,11 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         success: op.success,
         runId: body.runId,
         timestamp: op.ts,
-        dimensions: sandboxOperationDimensions(op, body.runnerName),
+        dimensions: sandboxOperationDimensions(op, {
+          runnerName: body.runnerName,
+          runnerHostname: body.runnerHostname,
+          runnerVersion: body.runnerVersion,
+        }),
       });
     }
   }

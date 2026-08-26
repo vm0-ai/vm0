@@ -1219,6 +1219,7 @@ export const chatThreadsContract = c.router({
     responses: {
       200: chatThreadUnreadsSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread.",
