@@ -675,6 +675,11 @@ describe("workflow skill storage presigned URL cache", () => {
           refreshed: expect.any(Number),
           pruned: expect.any(Number),
         }),
+        presentationTemplatePreview: expect.objectContaining({
+          due: expect.any(Number),
+          refreshed: expect.any(Number),
+          pruned: expect.any(Number),
+        }),
       });
 
       const rowsAfterFirstTick = await readCacheRowsByObjectKeyPrefix(prefix);

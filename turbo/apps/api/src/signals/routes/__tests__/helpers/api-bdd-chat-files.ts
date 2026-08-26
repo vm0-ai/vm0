@@ -1177,6 +1177,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly cursor?: string;
         readonly kind?: ArtifactCatalogKind;
         readonly chatThreadId?: string;
+        readonly keyword?: string;
       } = {},
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];

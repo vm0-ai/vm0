@@ -64,6 +64,8 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { openArtifact$ } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
+
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
@@ -803,6 +805,8 @@ function ThreeColumnSearchDialogContainer() {
   const open = useGet(threeColumnSearchOpen$);
   const onOpenChange = useSet(setThreeColumnSearchOpen$);
   const navigate = useSet(detachedNavigateTo$);
+  const openArtifact = useSet(openArtifact$);
+  const rootSignal = useGet(rootSignal$);
 
   if (!open) {
     return null;
@@ -817,6 +821,18 @@ function ThreeColumnSearchDialogContainer() {
           pathParams: { threadId },
         });
       }}
+      onSelectWorkflow={(workflowId) => {
+        navigate("/workflows/:workflowId", {
+          pathParams: { workflowId },
+        });
+      }}
+      onSelectArtifact={(artifactId) => {
+        detach(
+          openArtifact(artifactId, rootSignal),
+          Reason.DomCallback,
+          "open artifact from workspace search",
+        );
+      }}
     />
   );
 }
@@ -829,7 +845,7 @@ function ChatListColumn() {
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
   const { t } = useTranslation();
   const searchLabel = t(($) => {
-    return $.appShell.sidebar.searchConversations;
+    return $.appShell.sidebar.searchWorkspace;
   });
   const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {

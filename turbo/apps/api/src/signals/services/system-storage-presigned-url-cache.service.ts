@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { PRESENTATION_TEMPLATE_URL_TTL_SECONDS } from "@okouai/api-contracts/contracts/presentation-templates";
 import { systemStoragePresignedUrlCache } from "@okouai/db/schema/system-storage-presigned-url-cache";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, eq, gte, inArray, like, lte, sql } from "drizzle-orm";
@@ -13,7 +14,14 @@ import { nowDate, timestampWithoutTimeZone } from "../../lib/time";
 type StoragePresignedUrlCacheScope =
   | "system_storage"
   | "workflow_skill_storage"
-  | "readonly_storage";
+  | "readonly_storage"
+  | "presentation_template_preview";
+
+interface StoragePresignedUrlCachePolicy {
+  readonly hardSafetyWindowSeconds: number;
+  readonly refreshBaseSeconds: number;
+  readonly refreshJitterSeconds: number;
+}
 
 export const SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
 const SYSTEM_STORAGE_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS = 15 * 60;
@@ -34,6 +42,14 @@ export const READ_ONLY_STORAGE_PRESIGNED_URL_TTL_SECONDS = 60 * 60;
 const READ_ONLY_STORAGE_PRESIGNED_URL_CACHE_POLICY = "readonly-storage-url-v1";
 export const READ_ONLY_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 128;
 export const READ_ONLY_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 256;
+const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_CACHE_POLICY =
+  "presentation-template-preview-url-v1";
+const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS = 60;
+const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_BASE_SECONDS = 3 * 60;
+const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_JITTER_SECONDS =
+  3 * 60;
+export const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_LIMIT = 256;
+export const PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_PRUNE_LIMIT = 512;
 const deletedCacheRowSchema = z.object({ cacheKey: z.string() });
 
 type StoragePresignedUrlCacheStatus =
@@ -72,6 +88,14 @@ export interface ReadOnlyStoragePresignedUrlRequest {
   readonly publicEndpoint: boolean;
 }
 
+export interface PresentationTemplatePreviewPresignedUrlRequest {
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly storageVersionId: string;
+  readonly resolvedOrgId: string;
+  readonly publicEndpoint: boolean;
+}
+
 interface StoragePresignedUrlRequest {
   readonly scope: StoragePresignedUrlCacheScope;
   readonly bucket: string;
@@ -84,6 +108,7 @@ interface StoragePresignedUrlRequest {
 export interface StoragePresignedUrlResult {
   readonly cacheKey: string;
   readonly url: string;
+  readonly expiresAt: Date;
   readonly status: StoragePresignedUrlCacheStatus;
 }
 
@@ -156,6 +181,24 @@ export function readOnlyStoragePresignedUrlCacheKey(
     .digest("hex");
 }
 
+export function presentationTemplatePreviewPresignedUrlCacheKey(
+  request: PresentationTemplatePreviewPresignedUrlRequest,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_CACHE_POLICY,
+        request.bucket,
+        request.objectKey,
+        request.storageVersionId,
+        request.resolvedOrgId,
+        request.publicEndpoint ? "public" : "private",
+        PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+      ]),
+    )
+    .digest("hex");
+}
+
 function systemStorageRequest(
   request: SystemStoragePresignedUrlRequest,
 ): StoragePresignedUrlRequest {
@@ -195,28 +238,63 @@ function readOnlyStorageRequest(
   };
 }
 
+function presentationTemplatePreviewRequest(
+  request: PresentationTemplatePreviewPresignedUrlRequest,
+): StoragePresignedUrlRequest {
+  return {
+    scope: "presentation_template_preview",
+    bucket: request.bucket,
+    objectKey: request.objectKey,
+    storageVersionId: request.storageVersionId,
+    resolvedOrgId: request.resolvedOrgId,
+    publicEndpoint: request.publicEndpoint,
+  };
+}
+
 function expirationFromIssuedAt(issuedAt: Date, ttlSeconds: number): Date {
   return new Date(issuedAt.getTime() + ttlSeconds * 1000);
 }
 
-function refreshAfterForCacheKey(cacheKey: string, expiresAt: Date): Date {
+function storagePresignedUrlCachePolicy(
+  scope: StoragePresignedUrlCacheScope,
+): StoragePresignedUrlCachePolicy {
+  if (scope === "presentation_template_preview") {
+    return {
+      hardSafetyWindowSeconds:
+        PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS,
+      refreshBaseSeconds:
+        PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_BASE_SECONDS,
+      refreshJitterSeconds:
+        PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_JITTER_SECONDS,
+    };
+  }
+  return {
+    hardSafetyWindowSeconds:
+      SYSTEM_STORAGE_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS,
+    refreshBaseSeconds: SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_BASE_SECONDS,
+    refreshJitterSeconds: SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_JITTER_SECONDS,
+  };
+}
+
+function refreshAfterForCacheKey(
+  cacheKey: string,
+  expiresAt: Date,
+  policy: StoragePresignedUrlCachePolicy,
+): Date {
   const hashPrefix = createHash("sha256")
     .update(cacheKey)
     .digest("hex")
     .slice(0, 8);
-  const jitter =
-    Number.parseInt(hashPrefix, 16) %
-    SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_JITTER_SECONDS;
-  const refreshOffsetSeconds =
-    SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_BASE_SECONDS + jitter;
+  const jitter = Number.parseInt(hashPrefix, 16) % policy.refreshJitterSeconds;
+  const refreshOffsetSeconds = policy.refreshBaseSeconds + jitter;
   return new Date(expiresAt.getTime() - refreshOffsetSeconds * 1000);
 }
 
-function hardSafetyCutoff(issuedAt: Date): Date {
-  return new Date(
-    issuedAt.getTime() +
-      SYSTEM_STORAGE_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS * 1000,
-  );
+function hardSafetyCutoff(
+  issuedAt: Date,
+  policy: StoragePresignedUrlCachePolicy,
+): Date {
+  return new Date(issuedAt.getTime() + policy.hardSafetyWindowSeconds * 1000);
 }
 
 function touchCutoff(issuedAt: Date): Date {
@@ -255,7 +333,8 @@ function storagePresignedUrlCacheScope(
   if (
     value === "system_storage" ||
     value === "workflow_skill_storage" ||
-    value === "readonly_storage"
+    value === "readonly_storage" ||
+    value === "presentation_template_preview"
   ) {
     return value;
   }
@@ -280,6 +359,7 @@ function signCacheValue(args: {
       ),
     );
     const expiresAt = expirationFromIssuedAt(args.issuedAt, args.ttlSeconds);
+    const policy = storagePresignedUrlCachePolicy(args.request.scope);
     return {
       cacheKey: args.cacheKey,
       scope: args.request.scope,
@@ -291,7 +371,7 @@ function signCacheValue(args: {
       ttlSeconds: args.ttlSeconds,
       presignedUrl,
       expiresAt,
-      refreshAfter: refreshAfterForCacheKey(args.cacheKey, expiresAt),
+      refreshAfter: refreshAfterForCacheKey(args.cacheKey, expiresAt, policy),
       lastRequestedAt: args.lastRequestedAt,
       updatedAt: args.issuedAt,
     };
@@ -499,7 +579,10 @@ function resolveStoragePresignedUrls<TRequest>(args: {
       }),
     );
     const issuedAt = nowDate();
-    const safetyCutoff = hardSafetyCutoff(issuedAt);
+    const safetyCutoff = hardSafetyCutoff(
+      issuedAt,
+      storagePresignedUrlCachePolicy(args.scope),
+    );
     const results = new Map<string, StoragePresignedUrlResult>();
     const cacheKeysToTouch: string[] = [];
     const needsFresh: {
@@ -520,6 +603,7 @@ function resolveStoragePresignedUrls<TRequest>(args: {
         results.set(cacheKey, {
           cacheKey,
           url: row.presignedUrl,
+          expiresAt: row.expiresAt,
           status: row.refreshAfter <= issuedAt ? "stale_reuse" : "hit",
         });
         continue;
@@ -559,6 +643,7 @@ function resolveStoragePresignedUrls<TRequest>(args: {
       results.set(entry.cacheKey, {
         cacheKey: entry.cacheKey,
         url: value.presignedUrl,
+        expiresAt: value.expiresAt,
         status: entry.status,
       });
     }
@@ -776,6 +861,50 @@ export const refreshDueReadOnlyStoragePresignedUrls$ = command(
         limit: args.limit ?? READ_ONLY_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
         pruneLimit:
           args.pruneLimit ?? READ_ONLY_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+      },
+      signal,
+    );
+  },
+);
+
+export function resolvePresentationTemplatePreviewPresignedUrls(args: {
+  readonly db: Db;
+  readonly requests: readonly PresentationTemplatePreviewPresignedUrlRequest[];
+}): Computed<Promise<ReadonlyMap<string, StoragePresignedUrlResult>>> {
+  return resolveStoragePresignedUrls({
+    ...args,
+    scope: "presentation_template_preview",
+    ttlSeconds: PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+    cacheKey: presentationTemplatePreviewPresignedUrlCacheKey,
+    normalize: presentationTemplatePreviewRequest,
+  });
+}
+
+export const refreshDuePresentationTemplatePreviewPresignedUrls$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly limit?: number;
+      readonly pruneLimit?: number;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly due: number;
+    readonly refreshed: number;
+    readonly pruned: number;
+  }> => {
+    return await set(
+      refreshDueStoragePresignedUrls$,
+      {
+        db: args.db,
+        scope: "presentation_template_preview",
+        limit:
+          args.limit ??
+          PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_REFRESH_LIMIT,
+        pruneLimit:
+          args.pruneLimit ??
+          PRESENTATION_TEMPLATE_PREVIEW_PRESIGNED_URL_PRUNE_LIMIT,
       },
       signal,
     );

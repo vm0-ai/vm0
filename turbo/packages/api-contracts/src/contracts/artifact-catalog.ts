@@ -115,6 +115,7 @@ export interface ArtifactCatalogListQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly keyword?: string;
 }
 
 export interface ArtifactCatalogListClientQuery {
@@ -122,6 +123,7 @@ export interface ArtifactCatalogListClientQuery {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly keyword?: string;
 }
 
 export interface ArtifactIdPathParams {
@@ -223,6 +225,7 @@ const artifactCatalogListQuerySchema = z.object({
   cursor: z.string().optional(),
   kind: artifactKindSchema.optional(),
   chatThreadId: z.string().uuid().optional(),
+  keyword: z.string().trim().min(1).max(256).optional(),
 });
 
 const artifactCatalogListResponseSchema = z.object({

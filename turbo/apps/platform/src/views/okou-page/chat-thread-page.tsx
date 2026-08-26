@@ -144,7 +144,6 @@ import {
 } from "../../lib/posthog.ts";
 import { getCreditUsageDisplayName } from "../../lib/credit-usage-display.ts";
 import {
-  AttachmentLightbox,
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
@@ -177,7 +176,6 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
-  lightboxUrl$ as attachmentLightboxUrl$,
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/okou-page/attachment-chips.ts";
@@ -2926,7 +2924,6 @@ export function ChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftPane = useGet(currentLeftPane$);
   const rightPane = useGet(currentRightPane$);
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
       <ChatThreadSidebarShell
@@ -2949,7 +2946,6 @@ export function ChatThreadPage() {
       >
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
-      {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
     </>
   );

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.498.0](https://github.com/vm0-ai/vm0/compare/api-v1.497.0...api-v1.498.0) (2026-08-26)
+
+
+### Features
+
+* **platform:** search workflows and artifacts from spotlight ([#29580](https://github.com/vm0-ai/vm0/issues/29580)) ([2f71dbf](https://github.com/vm0-ai/vm0/commit/2f71dbf326daf4727d66cd2f3ef44ce679cd85da))
+
+
+### Refactoring
+
+* **api:** write canonical web url only ([#29650](https://github.com/vm0-ai/vm0/issues/29650)) ([13abb18](https://github.com/vm0-ai/vm0/commit/13abb18f674933b9d13988d2f9ed75ebac5e720a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.373.0
+    * @okouai/core bumped to 8.595.3
+    * @okouai/db bumped to 1.225.4
+
 ## [1.497.0](https://github.com/vm0-ai/vm0/compare/api-v1.496.2...api-v1.497.0) (2026-08-26)
 
 

@@ -620,13 +620,15 @@
     "resultCount_other": "{{count}} risultati",
     "searchAgents": "Cerca agenti...",
     "searchAgentsAndChats": "Cerca agenti e chat...",
-    "searchChatsAndMessages": "Cerca chat e messaggi...",
     "searching": "Ricerca in corso...",
+    "searchWorkspace": "Cerca chat, messaggi, flussi di lavoro e artefatti...",
     "sections": {
+      "artifacts": "Artefatti",
       "chats": "Chat",
       "lead": "Principale",
       "messages": "Messaggi",
-      "others": "Altri"
+      "others": "Altri",
+      "workflows": "Flussi di lavoro"
     },
     "talkTo": "Parla con",
     "unpin": "Rimuovi dalla barra laterale",

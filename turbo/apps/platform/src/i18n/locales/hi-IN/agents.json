@@ -619,13 +619,15 @@
     "resultCount_other": "{{count}} परिणाम",
     "searchAgents": "खोज एजेंट...",
     "searchAgentsAndChats": "खोज एजेंट और चैट...",
-    "searchChatsAndMessages": "चैट और संदेश खोजें...",
     "searching": "खोज जारी है...",
+    "searchWorkspace": "चैट, संदेश, वर्कफ़्लो और आर्टिफ़ैक्ट खोजें...",
     "sections": {
+      "artifacts": "आर्टिफ़ैक्ट्स",
       "chats": "चैट",
       "lead": "लीड",
       "messages": "संदेश",
-      "others": "अन्य"
+      "others": "अन्य",
+      "workflows": "वर्कफ़्लो"
     },
     "talkTo": "से बात",
     "unpin": "अनपिन",

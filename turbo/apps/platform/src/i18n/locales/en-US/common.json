@@ -455,7 +455,7 @@
         "workflows": "Workflows",
         "works": "Channels"
       },
-      "searchConversations": "Search conversations",
+      "searchWorkspace": "Search workspace",
       "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",

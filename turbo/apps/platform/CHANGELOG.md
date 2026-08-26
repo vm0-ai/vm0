@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.801.0](https://github.com/vm0-ai/vm0/compare/app-v0.800.2...app-v0.801.0) (2026-08-26)
+
+
+### Features
+
+* **platform:** search workflows and artifacts from spotlight ([#29580](https://github.com/vm0-ai/vm0/issues/29580)) ([2f71dbf](https://github.com/vm0-ai/vm0/commit/2f71dbf326daf4727d66cd2f3ef44ce679cd85da))
+
+
+### Performance Improvements
+
+* **platform:** add bootstrap phase telemetry ([#29583](https://github.com/vm0-ai/vm0/issues/29583)) ([1b3afc3](https://github.com/vm0-ai/vm0/commit/1b3afc3b5f1882461f1d2154cddce8ca57209b5e))
+* **platform:** avoid serialized home agent validation ([#29599](https://github.com/vm0-ai/vm0/issues/29599)) ([8c5719c](https://github.com/vm0-ai/vm0/commit/8c5719c271c6274406c0e93de804c96b5e703ae2))
+* **platform:** defer marketing scripts until first content ([#29581](https://github.com/vm0-ai/vm0/issues/29581)) ([3ce0ab4](https://github.com/vm0-ai/vm0/commit/3ce0ab480ea0844f221c27d3c9a75b80d233143b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.373.0
+    * @okouai/core bumped to 8.595.3
+
 ## [0.800.2](https://github.com/vm0-ai/vm0/compare/app-v0.800.1...app-v0.800.2) (2026-08-26)
 
 
