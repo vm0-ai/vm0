@@ -1,9 +1,9 @@
 import { onboardingStatusContract } from "@okouai/api-contracts/contracts/onboarding";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -54,24 +54,28 @@ const UNVALIDATED_AGENT_CASES = [
   },
 ] as const;
 
-function teamAgent(id: string, displayName: string): TeamComposeItem {
+function agentResponse(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
+    ownerId: "user_mock",
     displayName,
     description: null,
     sound: null,
     avatarUrl: null,
-    updatedAt: "2026-08-26T00:00:00.000Z",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
   };
 }
 
-function deferTeamResponse(team: TeamComposeItem[]) {
+function deferAgentsResponse(agents: AgentResponse[]) {
   const started = context.mocks.deferred<void>();
   const release = context.mocks.deferred<void>();
-  context.mocks.api(teamContract.list, async ({ respond }) => {
+  context.mocks.api(agentsMainContract.list, async ({ respond }) => {
     started.resolve(undefined);
     await release.promise;
-    return respond(200, team);
+    return respond(200, agents);
   });
   return { release, started };
 }
@@ -112,7 +116,7 @@ function setupCandidateHomeRoute(
 
 function blockUnexpectedTeamRequests(): () => number {
   let requestCount = 0;
-  context.mocks.api(teamContract.list, ({ never }) => {
+  context.mocks.api(agentsMainContract.list, ({ never }) => {
     requestCount += 1;
     return never();
   });
@@ -132,13 +136,13 @@ function installBootstrapSkeleton(): HTMLDivElement {
 }
 
 describe("home route", () => {
-  it("routes a first-time user to the default agent before the team list resolves", async () => {
+  it("routes a first-time user to the default agent before the agents list resolves", async () => {
     context.store.set(clearLastUsedAgentId$);
     context.mocks.data.onboardingStatus({
       defaultAgentId: DEFAULT_AGENT_ID,
     });
-    const team = deferTeamResponse([
-      teamAgent(DEFAULT_AGENT_ID, "Default agent"),
+    const team = deferAgentsResponse([
+      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
     ]);
 
     detachedSetupPage({ context, path: "/" });
@@ -161,9 +165,9 @@ describe("home route", () => {
   it("shows a returning user's persisted agent route before team validation resolves", async () => {
     context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
     const bootstrapSkeleton = installBootstrapSkeleton();
-    const team = deferTeamResponse([
-      teamAgent(DEFAULT_AGENT_ID, "Default agent"),
-      teamAgent(RETURNING_AGENT_ID, "Returning agent"),
+    const team = deferAgentsResponse([
+      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
+      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
     ]);
 
     detachedSetupPage({ context, path: "/" });
@@ -189,8 +193,8 @@ describe("home route", () => {
     context.mocks.data.onboardingStatus({
       defaultAgentId: DEFAULT_AGENT_ID,
     });
-    const team = deferTeamResponse([
-      teamAgent(DEFAULT_AGENT_ID, "Default agent"),
+    const team = deferAgentsResponse([
+      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
     ]);
 
     detachedSetupPage({ context, path: "/" });
@@ -211,8 +215,8 @@ describe("home route", () => {
         defaultAgentId: candidate.recoveryAgentId,
       });
       const draftLoads = recordAgentDraftLoads();
-      const team = deferTeamResponse([
-        teamAgent(candidate.recoveryAgentId, candidate.recoveryAgentName),
+      const team = deferAgentsResponse([
+        agentResponse(candidate.recoveryAgentId, candidate.recoveryAgentName),
       ]);
 
       setupCandidateHomeRoute(candidate);
@@ -295,8 +299,8 @@ describe("home route", () => {
 
   it("does not resume agent validation after navigation is aborted", async () => {
     const draftLoads = recordAgentDraftLoads();
-    const team = deferTeamResponse([
-      teamAgent(RETURNING_AGENT_ID, "Returning agent"),
+    const team = deferAgentsResponse([
+      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
     ]);
     const setupPromise = setupPage({
       context,

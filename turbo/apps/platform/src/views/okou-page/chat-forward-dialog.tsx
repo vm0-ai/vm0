@@ -91,7 +91,7 @@ function ForwardTargetPicker({
   const matchingAgents = rankAgentListDialogAgents(
     [
       ...(defaultAgentId
-        ? [{ id: defaultAgentId, displayName: defaultAgentName }]
+        ? [{ agentId: defaultAgentId, displayName: defaultAgentName }]
         : []),
       ...subagents,
     ],
@@ -123,18 +123,18 @@ function ForwardTargetPicker({
             }
           >
             {matchingAgents.map((agent) => {
-              const title = agent.displayName ?? agent.id;
+              const title = agent.displayName ?? agent.agentId;
               return (
                 <CommandItem
-                  key={`agent-${agent.id}`}
-                  value={`agent-${agent.id}`}
+                  key={`agent-${agent.agentId}`}
+                  value={`agent-${agent.agentId}`}
                   onSelect={() => {
-                    onSelect({ kind: "agent", id: agent.id, title });
+                    onSelect({ kind: "agent", id: agent.agentId, title });
                   }}
                   className="px-1 py-2"
                 >
                   <ForwardTargetContent
-                    target={{ kind: "agent", id: agent.id, title }}
+                    target={{ kind: "agent", id: agent.agentId, title }}
                   />
                 </CommandItem>
               );

@@ -114,16 +114,15 @@ function setupChatPage(): void {
 }
 
 function prepareDefaultAgent(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: idbUserId(),
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
 }

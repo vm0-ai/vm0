@@ -20,7 +20,11 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import {
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
@@ -28,11 +32,6 @@ import {
   workflowsDetailContract,
   type WorkflowDetailResponse,
 } from "@okouai/api-contracts/contracts/workflows";
-import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
-
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
@@ -97,54 +96,59 @@ interface SidebarThread {
 }
 
 function prepareDefaultAgent(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
 }
 
-function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
-  const team: TeamComposeItem[] = [
+function prepareAgents(targetContext = context): AgentResponse[] {
+  const agents: AgentResponse[] = [
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
     {
-      id: RESEARCH_AGENT_ID,
+      agentId: RESEARCH_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Research Agent",
       description: null,
       sound: null,
       avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
     {
-      id: SUPPORT_AGENT_ID,
+      agentId: SUPPORT_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Support Agent",
       description: null,
       sound: null,
       avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ];
-  targetContext.mocks.data.team(team);
+  targetContext.mocks.data.agents(agents);
   targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
@@ -164,19 +168,22 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
       visibility: "public",
     });
   });
-  return team;
+  return agents;
 }
 
 const OVERFLOW_PINNED_AGENTS = [
   {
-    id: "c0000000-0000-4000-a000-000000000004",
+    agentId: "c0000000-0000-4000-a000-000000000004",
     displayName: "Operations Agent",
   },
   {
-    id: "c0000000-0000-4000-a000-000000000005",
+    agentId: "c0000000-0000-4000-a000-000000000005",
     displayName: "Analytics Agent",
   },
-  { id: "c0000000-0000-4000-a000-000000000006", displayName: "Billing Agent" },
+  {
+    agentId: "c0000000-0000-4000-a000-000000000006",
+    displayName: "Billing Agent",
+  },
 ] as const;
 
 /**
@@ -184,13 +191,13 @@ const OVERFLOW_PINNED_AGENTS = [
  * five-column row and puts cards on both sides of the Pin button.
  */
 function prepareOverflowingPinnedAgents(targetContext = context): string[] {
-  const team = prepareAgentTeam(targetContext);
-  targetContext.mocks.data.team([
-    ...team,
+  const agents = prepareAgents(targetContext);
+  targetContext.mocks.data.agents([
+    ...agents,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
-        ...team[1]!,
-        id: agent.id,
+        ...agents[1]!,
+        agentId: agent.agentId,
         displayName: agent.displayName,
       };
     }),
@@ -199,7 +206,7 @@ function prepareOverflowingPinnedAgents(targetContext = context): string[] {
     RESEARCH_AGENT_ID,
     SUPPORT_AGENT_ID,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
-      return agent.id;
+      return agent.agentId;
     }),
   ];
 }
@@ -1647,7 +1654,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
@@ -1926,10 +1933,10 @@ describe("zero sidebar", () => {
   });
 
   it("shows cached agents when opening the conversation picker", async () => {
-    const team = prepareAgentTeam();
+    const team = prepareAgents();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
-    context.mocks.api(teamContract.list, async ({ respond }) => {
+    context.mocks.api(agentsMainContract.list, async ({ respond }) => {
       if (initialTeamServed) {
         await releaseRefresh.promise;
       }
@@ -1956,7 +1963,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps pinned agents in team order without the three-column nav", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     // Reverse of the team order, so preference order and team order disagree.
     context.mocks.data.userPreferences({
       pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
@@ -1992,7 +1999,7 @@ describe("zero sidebar", () => {
   });
 
   it("lists pinned agents in pinned order under the three-column nav", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
     });
@@ -2023,7 +2030,7 @@ describe("zero sidebar", () => {
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     let createRequests = 0;
     const researchThread = createThread(
       RESEARCH_THREAD_ID,
@@ -2149,7 +2156,7 @@ describe("zero sidebar", () => {
   ])(
     "closes the $label mobile sidebar after selecting a pinned agent",
     async ({ threeColumnNav }) => {
-      prepareAgentTeam();
+      prepareAgents();
       context.mocks.data.userPreferences({
         pinnedAgentIds: [RESEARCH_AGENT_ID],
       });
@@ -2216,7 +2223,7 @@ describe("zero sidebar", () => {
   );
 
   it("opens the agent picker from the global shortcut", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2236,7 +2243,7 @@ describe("zero sidebar", () => {
   });
 
   it("shows chat thread title results in the conversation picker", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
     const researchThread = createThread(
       RESEARCH_THREAD_ID,
@@ -2323,57 +2330,52 @@ describe("zero sidebar", () => {
   });
 
   it("unifies local thread titles with indexed message matches", async () => {
-    prepareAgentTeam();
-    context.mocks.data.team([
+    prepareAgents();
+    context.mocks.data.agents([
       {
-        id: AGENT_ID,
+        agentId: AGENT_ID,
         ownerId: "test-user-123",
         displayName: "Zero",
         description: null,
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: RESEARCH_AGENT_ID,
+        agentId: RESEARCH_AGENT_ID,
         ownerId: "test-user-123",
         displayName: "Deploy alpha",
         description: null,
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: SUPPORT_AGENT_ID,
+        agentId: SUPPORT_AGENT_ID,
         ownerId: "test-user-123",
         displayName: "Planning deploy",
         description: null,
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: "c0000000-0000-4000-a000-000000000004",
+        agentId: "c0000000-0000-4000-a000-000000000004",
         ownerId: "test-user-123",
         displayName: "Deploy beta",
         description: null,
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
       {
-        id: "c0000000-0000-4000-a000-000000000005",
+        agentId: "c0000000-0000-4000-a000-000000000005",
         ownerId: "test-user-123",
         displayName: "Deploy gamma",
         description: null,
         sound: null,
         avatarUrl: null,
         visibility: "public",
-        updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
     const deployThread = createThread(RESEARCH_THREAD_ID, "Deployment notes", {
@@ -2484,7 +2486,7 @@ describe("zero sidebar", () => {
   });
 
   it("opens the agent picker from the global shortcut while composer is focused", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({
       context,
@@ -2514,7 +2516,7 @@ describe("zero sidebar", () => {
   });
 
   it("opens three-column conversation search with mod+k from the composer", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({
       context,
@@ -2544,7 +2546,7 @@ describe("zero sidebar", () => {
   });
 
   it("leaves mod+k to the browser without three-column navigation", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2569,7 +2571,7 @@ describe("zero sidebar", () => {
   });
 
   it("moves to the next pinned agent chat from the composer", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -2597,7 +2599,7 @@ describe("zero sidebar", () => {
   });
 
   it("moves to an unread unpinned agent shown in the sidebar", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
@@ -2631,7 +2633,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps the chat list owner without carrying rows across agent scopes", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -2722,7 +2724,7 @@ describe("zero sidebar", () => {
   });
 
   it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -2784,7 +2786,7 @@ describe("zero sidebar", () => {
   });
 
   it("opens shortcut help from the agent chat page when composer is not focused", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2801,7 +2803,7 @@ describe("zero sidebar", () => {
   });
 
   it("ignores global shortcuts while a dialog is open", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2824,7 +2826,7 @@ describe("zero sidebar", () => {
   });
 
   it("selects an agent from the picker with arrow keys and enter", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2866,7 +2868,7 @@ describe("zero sidebar", () => {
   });
 
   it("shows agent unread indicators and dropdown actions", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
@@ -2990,7 +2992,7 @@ describe("zero sidebar", () => {
   });
 
   it("marks all pinned agent chats read from the agent menu", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
@@ -3041,7 +3043,7 @@ describe("zero sidebar", () => {
   });
 
   it("marks all default agent chats read from the default agent menu", async () => {
-    prepareAgentTeam();
+    prepareAgents();
 
     let hasUnread = true;
     const markedAgentIds: string[] = [];
@@ -3120,7 +3122,7 @@ describe("zero sidebar", () => {
   });
 
   it("localizes agent navigation and the conversation dialog in Brazilian Portuguese", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
@@ -3439,7 +3441,7 @@ describe("zero sidebar", () => {
   });
 
   it("searches chats and messages in the three-column spotlight", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     mockSidebarThreadStory([
       createThread(RESEARCH_THREAD_ID, "Deployment notes", {
         agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
@@ -3553,7 +3555,7 @@ describe("zero sidebar", () => {
   });
 
   it("searches workflows and artifacts in the three-column spotlight", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     mockSidebarThreadStory([
       createThread(RESEARCH_THREAD_ID, "Launch notes", {
         agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
@@ -3755,7 +3757,7 @@ describe("zero sidebar", () => {
 
   it("ages spotlight rows and illustrates the empty result set", async () => {
     mockNow(context.signal);
-    prepareAgentTeam();
+    prepareAgents();
     mockSidebarThreadStory([
       createThread(RESEARCH_THREAD_ID, "Minutes old", {
         sortAt: isoFromNowMs(-5 * 60 * 1000),
@@ -3837,7 +3839,7 @@ describe("zero sidebar", () => {
   });
 
   it("opens horizontal pinned agent actions from context interactions", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -4195,7 +4197,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps the pin dialog open and confirms a row pin", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
 
     setupSidebarPage({
@@ -4241,7 +4243,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps the pin dialog open and confirms an unpin", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -4278,7 +4280,7 @@ describe("zero sidebar", () => {
   });
 
   it("keeps the pin dialog open after its row action pins an agent", async () => {
-    prepareAgentTeam();
+    prepareAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds: [] });
 
     setupSidebarPage({
@@ -4563,9 +4565,9 @@ describe("zero sidebar", () => {
     expect(savedPinnedOrders).toStrictEqual([
       [
         RESEARCH_AGENT_ID,
-        OVERFLOW_PINNED_AGENTS[0].id,
-        OVERFLOW_PINNED_AGENTS[1].id,
-        OVERFLOW_PINNED_AGENTS[2].id,
+        OVERFLOW_PINNED_AGENTS[0].agentId,
+        OVERFLOW_PINNED_AGENTS[1].agentId,
+        OVERFLOW_PINNED_AGENTS[2].agentId,
         SUPPORT_AGENT_ID,
       ],
     ]);

@@ -16,10 +16,12 @@ import {
   type WorkflowSummary,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import {
+  agentsByIdContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -663,16 +665,18 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
   };
 }
 
-function agent(id: string, displayName: string): TeamComposeItem {
+function agent(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: CURRENT_USER_ID,
     displayName,
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    updatedAt: "2026-06-01T00:00:00Z",
   };
 }
 
@@ -696,7 +700,7 @@ function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
 }
 
 function mockAgentPageApis(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     agent(AGENT_ID, "Research Bot"),
     agent(OTHER_AGENT_ID, "Support Bot"),
   ]);

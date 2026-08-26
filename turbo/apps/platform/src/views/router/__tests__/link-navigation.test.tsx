@@ -21,14 +21,13 @@ beforeEach(async () => {
 });
 
 function mockAPIs(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: "c0000000-0000-4000-a000-000000000001",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       description: null,
       sound: null,
       avatarUrl: null,
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
 }

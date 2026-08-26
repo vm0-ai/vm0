@@ -38,7 +38,7 @@ import {
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
@@ -205,20 +205,22 @@ function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
   );
 }
 
-function teamAgent(
+function listAgent(
   id: string,
   displayName: string,
   avatarUrl: string | null = null,
-): TeamComposeItem {
+): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: "test-user-123",
     displayName,
     description: null,
     sound: null,
     avatarUrl,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    updatedAt: "2024-01-01T00:00:00Z",
   };
 }
 
@@ -588,8 +590,8 @@ function mockCustomConnectorStory(): {
 
 function setupConnectorStatusFilterPage(path = "/connectors"): void {
   mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-  context.mocks.data.team([
-    teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
   ]);
   context.mocks.api(userConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledConnectorSlugs: ["github"] });
@@ -867,7 +869,7 @@ describe("connectors page", () => {
         reconnectReason: "authorization_expired_or_revoked",
       },
     ]);
-    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    context.mocks.data.agents([listAgent(researchAgentId, "Research Agent")]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
@@ -2492,7 +2494,9 @@ describe("connectors page", () => {
   it("filters connectors by agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.data.agents([
+      listAgent(agentId, "Research Agent", "preset:0"),
+    ]);
     context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
         enabledConnectorSlugs: params.id === agentId ? ["github"] : [],
@@ -2629,9 +2633,9 @@ describe("connectors page", () => {
       [supportAgentId, []],
     ]);
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research Agent"),
-      teamAgent(supportAgentId, "Support Agent"),
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research Agent"),
+      listAgent(supportAgentId, "Support Agent"),
     ]);
     context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -2696,9 +2700,9 @@ describe("connectors page", () => {
     const activeAgentId = "c0000000-0000-4000-a000-000000000001";
     const staleAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([
-      teamAgent(activeAgentId, "Research Agent"),
-      teamAgent(staleAgentId, "Deleted Agent"),
+    context.mocks.data.agents([
+      listAgent(activeAgentId, "Research Agent"),
+      listAgent(staleAgentId, "Deleted Agent"),
     ]);
     context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       if (params.id === staleAgentId) {
@@ -2734,9 +2738,9 @@ describe("connectors page", () => {
     const activeAgentId = "c0000000-0000-4000-a000-000000000001";
     const staleAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([
-      teamAgent(activeAgentId, "Research Agent"),
-      teamAgent(staleAgentId, "Deleted Agent"),
+    context.mocks.data.agents([
+      listAgent(activeAgentId, "Research Agent"),
+      listAgent(staleAgentId, "Deleted Agent"),
     ]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
@@ -2788,11 +2792,11 @@ describe("connectors page", () => {
     );
 
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([
-      teamAgent(agentIds[0], "Research", "preset:0"),
-      teamAgent(agentIds[1], "Support", "preset:1"),
-      teamAgent(agentIds[2], "Growth"),
-      teamAgent(agentIds[3], "Ops", "preset:3"),
+    context.mocks.data.agents([
+      listAgent(agentIds[0], "Research", "preset:0"),
+      listAgent(agentIds[1], "Support", "preset:1"),
+      listAgent(agentIds[2], "Growth"),
+      listAgent(agentIds[3], "Ops", "preset:3"),
     ]);
     context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -2829,7 +2833,9 @@ describe("connectors page", () => {
   it("shows an add-access affordance when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.data.agents([
+      listAgent(agentId, "Research Agent", "preset:0"),
+    ]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
@@ -2866,7 +2872,7 @@ describe("connectors page", () => {
         externalUsername: "demo-cloud",
       },
     ]);
-    context.mocks.data.team([teamAgent(mediaAgentId, "Media Agent")]);
+    context.mocks.data.agents([listAgent(mediaAgentId, "Media Agent")]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: ["cloudinary"],
@@ -3305,9 +3311,9 @@ describe("connectors page", () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     let listedConnectors = mockConnectors([]);
-    context.mocks.data.team([
-      teamAgent(defaultAgentId, "Zero"),
-      teamAgent(researchAgentId, "Research Agent"),
+    context.mocks.data.agents([
+      listAgent(defaultAgentId, "Zero"),
+      listAgent(researchAgentId, "Research Agent"),
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -3459,9 +3465,9 @@ describe("connectors page", () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
-    context.mocks.data.team([
-      teamAgent(defaultAgentId, "Zero"),
-      teamAgent(researchAgentId, "Research Agent"),
+    context.mocks.data.agents([
+      listAgent(defaultAgentId, "Zero"),
+      listAgent(researchAgentId, "Research Agent"),
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -4336,9 +4342,9 @@ describe("connectors page", () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
-    context.mocks.data.team([
-      teamAgent(defaultAgentId, "Zero"),
-      teamAgent(researchAgentId, "Research Agent"),
+    context.mocks.data.agents([
+      listAgent(defaultAgentId, "Zero"),
+      listAgent(researchAgentId, "Research Agent"),
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -4640,7 +4646,7 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([]);
+    context.mocks.data.agents([]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
@@ -4708,9 +4714,9 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research"),
-      teamAgent(supportAgentId, "Support"),
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
     ]);
     let agentAccessReads = 0;
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
@@ -4772,9 +4778,9 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research"),
-      teamAgent(supportAgentId, "Support"),
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
     ]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
@@ -4975,7 +4981,7 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
+    context.mocks.data.agents([listAgent(researchAgentId, "Research")]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
@@ -5099,7 +5105,7 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([]);
+    context.mocks.data.agents([]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
@@ -5183,7 +5189,7 @@ describe("connectors page", () => {
         name: "Test Org",
         role: "admin",
       });
-      context.mocks.data.team([teamAgent(agentId, "Research")]);
+      context.mocks.data.agents([listAgent(agentId, "Research")]);
       context.mocks.api(customConnectorsContract.list, ({ respond }) => {
         return respond(200, { connectors: [connector] });
       });
@@ -5257,9 +5263,9 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research"),
-      teamAgent(supportAgentId, "Support"),
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
     ]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: connector ? [connector] : [] });
@@ -5561,7 +5567,7 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([]);
+    context.mocks.data.agents([]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
@@ -5738,9 +5744,9 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([
-      teamAgent(researchAgentId, "Research"),
-      teamAgent(supportAgentId, "Support"),
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
     ]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
@@ -5926,7 +5932,7 @@ describe("connectors page", () => {
       role: "admin",
     });
     context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
+    context.mocks.data.agents([listAgent(researchAgentId, "Research")]);
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
@@ -6043,9 +6049,9 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([
-      teamAgent(defaultAgentId, "Zero"),
-      teamAgent(researchAgentId, "Research"),
+    context.mocks.data.agents([
+      listAgent(defaultAgentId, "Zero"),
+      listAgent(researchAgentId, "Research"),
     ]);
     const createdBodies: CreateCustomConnectorBody[] = [];
     const updatedBodies: UpdateCustomConnectorBody[] = [];
@@ -6860,10 +6866,10 @@ describe("connectors page", () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000051";
     const supportAgentId = "c0000000-0000-4000-a000-000000000052";
     const story = mockCustomConnectorStory();
-    context.mocks.data.team([
-      teamAgent(defaultAgentId, "Zero"),
-      teamAgent(researchAgentId, "Research"),
-      teamAgent(supportAgentId, "Support"),
+    context.mocks.data.agents([
+      listAgent(defaultAgentId, "Zero"),
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
     ]);
 
     detachedSetupPage({

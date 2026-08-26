@@ -65,7 +65,7 @@ export const setupAgentChatPage$ = command(
     const agents = await get(agents$);
     signal.throwIfAborted();
     const agent = agents.find((candidate) => {
-      return candidate.id === agentId;
+      return candidate.agentId === agentId;
     });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);

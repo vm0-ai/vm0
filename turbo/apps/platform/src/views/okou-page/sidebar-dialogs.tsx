@@ -91,12 +91,12 @@ import {
 import { ArtifactThumbnailImage } from "./artifact-thumbnail.tsx";
 
 interface AgentDialogItem {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName?: string | null;
 }
 
 function agentDialogLabel(agent: AgentDialogItem): string {
-  return agent.displayName ?? agent.id;
+  return agent.displayName ?? agent.agentId;
 }
 
 export function agentDialogMatchesQuery(
@@ -104,7 +104,7 @@ export function agentDialogMatchesQuery(
   trimmedQuery: string,
 ): boolean {
   return (
-    agent.id.toLowerCase().includes(trimmedQuery) ||
+    agent.agentId.toLowerCase().includes(trimmedQuery) ||
     (agent.displayName ?? "").toLowerCase().includes(trimmedQuery)
   );
 }
@@ -197,7 +197,7 @@ export function AgentDialogAgentButton({
     >
       {avatar ?? (
         <AgentAvatarImg
-          name={agent.id}
+          name={agent.agentId}
           alt={label}
           className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
@@ -289,7 +289,7 @@ function AgentCommandAgentContent({
     <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
       {avatar ?? (
         <AgentAvatarImg
-          name={agent.id}
+          name={agent.agentId}
           alt={label}
           className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
@@ -347,7 +347,7 @@ function agentsInRenderOrder(
 ): SubagentInfo[] {
   const agentById = new Map(
     subagents.map((agent) => {
-      return [agent.id, agent];
+      return [agent.agentId, agent];
     }),
   );
   return renderOrder
@@ -488,7 +488,7 @@ function PinnedAgentCommandItem({
 
   return (
     <CommandItem
-      value={agent.id}
+      value={agent.agentId}
       onSelect={onChat}
       className="group w-full gap-2 px-1 py-2"
     >
@@ -544,7 +544,7 @@ function LeadAgentCommandSection({
         className="group w-full gap-2 px-1 py-2"
       >
         <AgentCommandAgentContent
-          agent={{ id: "lead", displayName }}
+          agent={{ agentId: "lead", displayName }}
           avatar={
             <AvatarFromUrl
               avatarUrl={avatarUrl}
@@ -593,16 +593,16 @@ function PinnedAgentsCommandSection({
       {agents.map((agent) => {
         return (
           <PinnedAgentCommandItem
-            key={agent.id}
+            key={agent.agentId}
             agent={agent}
             onUnpin={() => {
-              return onTogglePin(agent.id);
+              return onTogglePin(agent.agentId);
             }}
             onChat={() => {
-              return onChat(agent.id);
+              return onChat(agent.agentId);
             }}
             disabled={disabled}
-            hasUnread={setHasId(unreadAgentIds, agent.id)}
+            hasUnread={setHasId(unreadAgentIds, agent.agentId)}
           />
         );
       })}
@@ -638,17 +638,17 @@ function UnpinnedAgentsCommandSection({
       {agents.map((agent) => {
         return (
           <CommandItem
-            key={agent.id}
-            value={agent.id}
+            key={agent.agentId}
+            value={agent.agentId}
             onSelect={() => {
-              return onChat(agent.id);
+              return onChat(agent.agentId);
             }}
             className="group w-full gap-2 px-1 py-2"
           >
             <AgentCommandAgentContent agent={agent} />
             <AgentCommandSideActions>
               <AgentRowSideActions
-                hasUnread={setHasId(unreadAgentIds, agent.id)}
+                hasUnread={setHasId(unreadAgentIds, agent.agentId)}
                 action={{
                   label: t(($) => {
                     return $.sidebar.pin;
@@ -656,7 +656,7 @@ function UnpinnedAgentsCommandSection({
                   disabled,
                   icon: <Pin size={16} />,
                   onSelect: () => {
-                    return onTogglePin(agent.id);
+                    return onTogglePin(agent.agentId);
                   },
                 }}
               />
@@ -740,7 +740,7 @@ function ChatThreadCommandSectionContainer({
 
 interface UnifiedAgentSearchItem extends AgentDialogItem {
   readonly kind: "agent";
-  readonly agentId: string | null;
+  readonly targetAgentId: string | null;
   readonly isLead: boolean;
 }
 
@@ -1719,13 +1719,13 @@ function UnifiedAgentCommandItem({
   readonly onTogglePin: (agentId: string) => void;
 }) {
   const { t } = useTranslation("agents");
-  const agentId = item.agentId;
+  const agentId = item.targetAgentId;
   const pinned = agentId ? pinnedIdSet.has(agentId) : false;
   return (
     <CommandItem
-      value={`agent-${item.agentId ?? "lead"}`}
+      value={`agent-${item.targetAgentId ?? "lead"}`}
       onSelect={() => {
-        return onChat(item.agentId);
+        return onChat(item.targetAgentId);
       }}
       className="group w-full gap-2 px-1 py-2"
     >
@@ -1750,7 +1750,10 @@ function UnifiedAgentCommandItem({
       />
       <AgentCommandSideActions>
         <AgentRowSideActions
-          hasUnread={setHasId(unreadAgentIds, item.agentId ?? defaultAgentId)}
+          hasUnread={setHasId(
+            unreadAgentIds,
+            item.targetAgentId ?? defaultAgentId,
+          )}
           action={
             agentId
               ? {
@@ -1807,23 +1810,26 @@ function AgentListDialogUnifiedSearch({
     equalityFn: equalSets,
   });
   const orderedSubagents = [...subagents].sort((left, right) => {
-    return Number(pinnedIdSet.has(right.id)) - Number(pinnedIdSet.has(left.id));
+    return (
+      Number(pinnedIdSet.has(right.agentId)) -
+      Number(pinnedIdSet.has(left.agentId))
+    );
   });
   const agentMatches = rankAgentListDialogAgents<UnifiedAgentSearchItem>(
     [
       {
         kind: "agent",
-        id: "lead",
+        agentId: defaultAgentId ?? "lead",
         displayName,
-        agentId: null,
+        targetAgentId: null,
         isLead: true,
       },
       ...orderedSubagents.map((agent) => {
         return {
           kind: "agent" as const,
-          id: agent.id,
+          agentId: agent.agentId,
           displayName: agent.displayName,
-          agentId: agent.id,
+          targetAgentId: agent.agentId,
           isLead: false,
         };
       }),
@@ -1871,7 +1877,7 @@ function AgentListDialogUnifiedSearch({
         if (item.kind === "agent") {
           return (
             <UnifiedAgentCommandItem
-              key={`agent-${item.agentId ?? "lead"}`}
+              key={`agent-${item.targetAgentId ?? "lead"}`}
               item={item}
               avatarUrl={avatarUrl}
               defaultAgentId={defaultAgentId}
@@ -1973,7 +1979,7 @@ export function AgentListDialog({
   const pinned = agentsInRenderOrder(subagents, pinnedRenderOrder);
 
   const unpinned = subagents.filter((a) => {
-    return !pinnedIdSet.has(a.id);
+    return !pinnedIdSet.has(a.agentId);
   });
 
   const trimmedQuery = query.trim().toLowerCase();
@@ -2108,22 +2114,22 @@ export function PinAgentDialog({
   const trimmedQuery = query.trim().toLowerCase();
   const matches = filterAgentDialogItems(subagents, trimmedQuery);
   const pinnable = matches.filter((agent) => {
-    return !pinnedIdSet.has(agent.id);
+    return !pinnedIdSet.has(agent.agentId);
   });
   const matchedIds = new Set(
     matches.map((agent) => {
-      return agent.id;
+      return agent.agentId;
     }),
   );
   const alreadyPinned = agentsInRenderOrder(
     subagents,
     pinnedRenderOrder,
   ).filter((agent) => {
-    return matchedIds.has(agent.id);
+    return matchedIds.has(agent.agentId);
   });
 
   const saveAgentPinned = async (agent: SubagentInfo, pinned: boolean) => {
-    await onSetAgentPinned(agent.id, pinned);
+    await onSetAgentPinned(agent.agentId, pinned);
     toast.success(
       pinned
         ? t(
@@ -2203,8 +2209,8 @@ export function PinAgentDialog({
             {pinnable.map((agent) => {
               return (
                 <CommandItem
-                  key={agent.id}
-                  value={agent.id}
+                  key={agent.agentId}
+                  value={agent.agentId}
                   disabled={saving}
                   onSelect={() => {
                     return setAgentPinned(agent, true);
@@ -2235,8 +2241,8 @@ export function PinAgentDialog({
             {alreadyPinned.map((agent) => {
               return (
                 <CommandItem
-                  key={agent.id}
-                  value={agent.id}
+                  key={agent.agentId}
+                  value={agent.agentId}
                   disabled={saving}
                   onSelect={() => {
                     return setAgentPinned(agent, false);

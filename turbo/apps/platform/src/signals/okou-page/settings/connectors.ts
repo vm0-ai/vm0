@@ -468,7 +468,7 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
     effectiveFilter.kind === "agent"
       ? new Set(
           (await get(connectorAgentAuthorizations$)).find((row) => {
-            return row.agent.id === effectiveFilter.agentId;
+            return row.agent.agentId === effectiveFilter.agentId;
           })?.enabledConnectorSlugs ?? [],
         )
       : null;
@@ -828,7 +828,7 @@ const authorizeConnectorForVisibleAgents$ = command(
         visibleSubagents.map(async (agent) => {
           await accept(
             client.update({
-              params: { id: agent.id },
+              params: { id: agent.agentId },
               body: {
                 enabledConnectorSlugs: [connectorSlug],
                 operation: "add",

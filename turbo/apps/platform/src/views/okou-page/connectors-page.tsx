@@ -20,7 +20,7 @@ import type {
   PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
@@ -473,14 +473,14 @@ function ConnectorFilterDropdown({
   onChange,
 }: {
   readonly value: ConnectorsConnectionFilter;
-  readonly agents: readonly TeamComposeItem[];
+  readonly agents: readonly AgentResponse[];
   readonly onChange: (value: ConnectorsConnectionFilter) => void;
 }) {
   const { t } = useTranslation();
   const activeAgent =
     value.kind === "agent"
       ? agents.find((agent) => {
-          return agent.id === value.agentId;
+          return agent.agentId === value.agentId;
         })
       : undefined;
   const triggerLabel =
@@ -573,10 +573,12 @@ function ConnectorFilterDropdown({
             {agents.map((agent) => {
               return (
                 <ConnectorFilterOption
-                  key={agent.id}
-                  active={value.kind === "agent" && value.agentId === agent.id}
+                  key={agent.agentId}
+                  active={
+                    value.kind === "agent" && value.agentId === agent.agentId
+                  }
                   onSelect={() => {
-                    onChange({ kind: "agent", agentId: agent.id });
+                    onChange({ kind: "agent", agentId: agent.agentId });
                   }}
                 >
                   <AvatarFromUrl
@@ -612,7 +614,7 @@ function ConnectorsToolbarActions({
   readonly setSearch: (value: string) => void;
   readonly showAccessManagement: boolean;
   readonly connectionFilter: ConnectorsConnectionFilter;
-  readonly agents: readonly TeamComposeItem[];
+  readonly agents: readonly AgentResponse[];
   readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
   readonly isAdmin: boolean;
   readonly onCreateCustom: () => void;
@@ -722,7 +724,7 @@ function ConnectorCategoryGroupSection({
   );
 }
 
-function connectorAgentName(agent: TeamComposeItem): string {
+function connectorAgentName(agent: AgentResponse): string {
   return (
     agent.displayName ??
     i18n.t(($) => {

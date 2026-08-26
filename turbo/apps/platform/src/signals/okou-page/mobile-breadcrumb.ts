@@ -50,7 +50,7 @@ const teamDetailBreadcrumb$ = computed(
     if (agentId) {
       const agentsList = await get(agents$);
       const agent = agentsList.find((a) => {
-        return a.id === agentId;
+        return a.agentId === agentId;
       });
       if (agent) {
         return {
@@ -127,7 +127,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
     if (subagentId) {
       const agentsList = await get(agents$);
       const subagent = agentsList.find((a) => {
-        return a.id === subagentId;
+        return a.agentId === subagentId;
       });
       return {
         section: subagent?.displayName ?? displayName ?? assistantName,

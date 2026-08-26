@@ -20,7 +20,7 @@ import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -89,7 +89,7 @@ export const customConnectors$ = computed(
 );
 
 export interface CustomConnectorAgentAuthorization {
-  readonly agent: TeamComposeItem;
+  readonly agent: AgentResponse;
   readonly access: AgentCustomConnectorGrants;
 }
 
@@ -106,7 +106,7 @@ export const customConnectorAgentAuthorizations$ = computed(
     const rows = await Promise.all(
       allAgents.map(async (agent) => {
         const result = await accept(
-          client.get({ params: { id: agent.id } }),
+          client.get({ params: { id: agent.agentId } }),
           [200, 404],
         );
         return result.status === 404 ? null : { agent, access: result.body };
@@ -119,9 +119,9 @@ export const customConnectorAgentAuthorizations$ = computed(
 );
 
 export const customConnectorAuthorizedAgentsById$ = computed(
-  async (get): Promise<ReadonlyMap<string, readonly TeamComposeItem[]>> => {
+  async (get): Promise<ReadonlyMap<string, readonly AgentResponse[]>> => {
     const rows = await get(customConnectorAgentAuthorizations$);
-    const agentsByConnectorId = new Map<string, TeamComposeItem[]>();
+    const agentsByConnectorId = new Map<string, AgentResponse[]>();
     for (const row of rows) {
       for (const grant of row.access.grants) {
         const authorizedAgents =
@@ -223,7 +223,7 @@ const authorizeCustomConnectorForTarget$ = command(
       args.target.kind === "agent"
         ? [args.target.agentId]
         : (await get(agents$)).map((agent) => {
-            return agent.id;
+            return agent.agentId;
           });
     signal.throwIfAborted();
     const client = get(apiClient$)(agentCustomConnectorsContract);

@@ -40,7 +40,7 @@ const navigateToNewChat$ = command(
 );
 
 function adjacentPinnedAgentId(
-  pinnedAgents: readonly { readonly id: string }[],
+  pinnedAgents: readonly { readonly agentId: string }[],
   currentAgentId: string | null,
   direction: PinnedAgentShortcutDirection,
 ): string | null {
@@ -49,18 +49,18 @@ function adjacentPinnedAgentId(
   }
   const currentIndex = currentAgentId
     ? pinnedAgents.findIndex((agent) => {
-        return agent.id === currentAgentId;
+        return agent.agentId === currentAgentId;
       })
     : -1;
   if (currentIndex === -1) {
     return direction === "next"
-      ? pinnedAgents[0]!.id
-      : pinnedAgents[pinnedAgents.length - 1]!.id;
+      ? pinnedAgents[0]!.agentId
+      : pinnedAgents[pinnedAgents.length - 1]!.agentId;
   }
   const offset = direction === "next" ? 1 : -1;
   return pinnedAgents[
     (currentIndex + offset + pinnedAgents.length) % pinnedAgents.length
-  ]!.id;
+  ]!.agentId;
 }
 
 const firstChatThreadIdForAgent$ = command(

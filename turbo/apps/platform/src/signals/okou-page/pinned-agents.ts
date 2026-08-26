@@ -47,10 +47,10 @@ export const pinnedAgentRenderOrder$ = computed(async (get) => {
   const pinnedIds = new Set(ids);
   return (await get(sortedAgents$))
     .filter((a) => {
-      return pinnedIds.has(a.id);
+      return pinnedIds.has(a.agentId);
     })
     .map((a) => {
-      return a.id;
+      return a.agentId;
     });
 });
 
@@ -60,7 +60,7 @@ export const pinnedAgents$ = computed(async (get) => {
   const list = await get(sortedAgents$);
   const agentById = new Map(
     list.map((a) => {
-      return [a.id, a];
+      return [a.agentId, a];
     }),
   );
   return order
@@ -77,11 +77,13 @@ export const displayedPinnedAgents$ = computed(async (get) => {
   const unreadAgentIds = await get(unreadAgentIds$);
   const pinnedAgentIds = new Set(
     pinnedAgents.map((agent) => {
-      return agent.id;
+      return agent.agentId;
     }),
   );
   const unreadOnlyAgents = (await get(subagents$)).filter((agent) => {
-    return unreadAgentIds.has(agent.id) && !pinnedAgentIds.has(agent.id);
+    return (
+      unreadAgentIds.has(agent.agentId) && !pinnedAgentIds.has(agent.agentId)
+    );
   });
   return [...pinnedAgents, ...unreadOnlyAgents];
 });

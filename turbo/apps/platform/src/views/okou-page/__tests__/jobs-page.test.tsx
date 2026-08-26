@@ -12,32 +12,31 @@ import {
   agentInstructionsContract,
   agentsByIdContract,
   agentsMainContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import {
-  type TeamComposeItem,
-  teamContract,
-} from "@okouai/api-contracts/contracts/team";
 
 const context = testContext();
 
-function createDefaultAgent(): TeamComposeItem {
+function createDefaultAgent(): AgentResponse {
   return {
-    id: "c0000000-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
     ownerId: "test-user-123",
     displayName: "Zero",
     description: null,
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    updatedAt: "2024-01-01T00:00:00Z",
   };
 }
 
-function mockAgentsPage(team: TeamComposeItem[]): void {
-  context.mocks.data.team(team);
+function mockAgentsPage(agents: AgentResponse[]): void {
+  context.mocks.data.agents(agents);
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
-    const agent = team.find((item) => {
-      return item.id === params.id;
+    const agent = agents.find((item) => {
+      return item.agentId === params.id;
     });
     if (!agent) {
       return respond(404, {
@@ -45,8 +44,8 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       });
     }
     return respond(200, {
-      agentId: agent.id,
-      ownerId: agent.ownerId ?? "test-user-123",
+      agentId: agent.agentId,
+      ownerId: agent.ownerId,
       description: agent.description,
       displayName: agent.displayName,
       sound: agent.sound,
@@ -54,7 +53,7 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       modelProviderId: null,
       selectedModel: null,
       preferPersonalProvider: false,
-      visibility: agent.visibility ?? "public",
+      visibility: agent.visibility,
     });
   });
 }
@@ -131,14 +130,16 @@ function mockAgentDetailStory(): string {
   mockAgentsPage([
     createDefaultAgent(),
     {
-      id: agentId,
+      agentId,
       ownerId: "test-user-123",
       displayName: "Research Agent",
       description: "Finds launch risks",
       sound: "professional",
       avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
-      updatedAt: "2026-03-10T00:00:00Z",
     },
   ]);
   context.mocks.data.userPreferences({ timezone: "UTC" });
@@ -156,24 +157,28 @@ describe("zero jobs page", () => {
     mockAgentsPage([
       createDefaultAgent(),
       {
-        id: "a0000000-0000-4000-a000-000000000101",
+        agentId: "a0000000-0000-4000-a000-000000000101",
         ownerId: "test-user-123",
         displayName: "Research Agent",
         description: "Finds and summarizes information",
         sound: null,
         avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: "public",
-        updatedAt: "2024-01-02T00:00:00Z",
       },
       {
-        id: "a0000000-0000-4000-a000-000000000102",
+        agentId: "a0000000-0000-4000-a000-000000000102",
         ownerId: "test-user-123",
         displayName: null,
         description: "Writes content based on research",
         sound: null,
         avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: "private",
-        updatedAt: "2024-01-03T00:00:00Z",
       },
     ]);
     detachedSetupPage({
@@ -204,14 +209,14 @@ describe("zero jobs page", () => {
   });
 
   it("creates public and private agents, customizes avatars, supports Enter submit, cancel, and card navigation", async () => {
-    let team: TeamComposeItem[] = [createDefaultAgent()];
-    mockAgentsPage(team);
-    context.mocks.api(teamContract.list, ({ respond }) => {
-      return respond(200, team);
+    let agents: AgentResponse[] = [createDefaultAgent()];
+    mockAgentsPage(agents);
+    context.mocks.api(agentsMainContract.list, ({ respond }) => {
+      return respond(200, agents);
     });
     context.mocks.api(agentsMainContract.create, ({ body, respond }) => {
-      const agent: TeamComposeItem = {
-        id:
+      const agent: AgentResponse = {
+        agentId:
           body.visibility === "private"
             ? "a0000000-0000-4000-a000-000000000202"
             : "a0000000-0000-4000-a000-000000000201",
@@ -220,12 +225,14 @@ describe("zero jobs page", () => {
         description: null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: body.visibility ?? "public",
-        updatedAt: "2026-03-10T00:00:00Z",
       };
-      team = [...team, agent];
+      agents = [...agents, agent];
       return respond(201, {
-        agentId: agent.id,
+        agentId: agent.agentId,
         ownerId: "test-user-123",
         description: null,
         displayName: agent.displayName,
@@ -234,14 +241,14 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility ?? "public",
+        visibility: agent.visibility,
       });
     });
     context.mocks.api(
       agentInstructionsContract.update,
       ({ params, respond }) => {
-        const agent = team.find((item) => {
-          return item.id === params.id;
+        const agent = agents.find((item) => {
+          return item.agentId === params.id;
         });
         return respond(200, {
           agentId: params.id,
@@ -377,41 +384,45 @@ describe("zero jobs page", () => {
 
   it("localizes agent listing, creation, and management in Brazilian Portuguese", async () => {
     const researchAgentId = "a0000000-0000-4000-a000-000000000401";
-    let team: TeamComposeItem[] = [
+    let agents: AgentResponse[] = [
       createDefaultAgent(),
       {
-        id: researchAgentId,
+        agentId: researchAgentId,
         ownerId: "test-user-123",
         displayName: "Research Agent",
         description: "Finds launch risks",
         sound: "professional",
         avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: "public",
-        updatedAt: "2026-03-10T00:00:00Z",
       },
     ];
-    mockAgentsPage(team);
+    mockAgentsPage(agents);
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    context.mocks.api(teamContract.list, ({ respond }) => {
-      return respond(200, team);
+    context.mocks.api(agentsMainContract.list, ({ respond }) => {
+      return respond(200, agents);
     });
     context.mocks.api(agentsMainContract.create, ({ body, respond }) => {
-      const agent: TeamComposeItem = {
-        id: "a0000000-0000-4000-a000-000000000402",
+      const agent: AgentResponse = {
+        agentId: "a0000000-0000-4000-a000-000000000402",
         ownerId: "test-user-123",
         displayName: body.displayName ?? null,
         description: null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: body.visibility ?? "public",
-        updatedAt: "2026-03-10T00:00:00Z",
       };
-      team = [...team, agent];
+      agents = [...agents, agent];
       return respond(201, {
-        agentId: agent.id,
+        agentId: agent.agentId,
         ownerId: "test-user-123",
         description: agent.description,
         displayName: agent.displayName,
@@ -420,14 +431,14 @@ describe("zero jobs page", () => {
         modelProviderId: null,
         selectedModel: null,
         preferPersonalProvider: false,
-        visibility: agent.visibility ?? "public",
+        visibility: agent.visibility,
       });
     });
     context.mocks.api(
       agentInstructionsContract.update,
       ({ params, respond }) => {
-        const agent = team.find((item) => {
-          return item.id === params.id;
+        const agent = agents.find((item) => {
+          return item.agentId === params.id;
         });
         return respond(200, {
           agentId: params.id,

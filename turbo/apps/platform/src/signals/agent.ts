@@ -8,9 +8,9 @@
 import { command, computed, type Computed, state } from "ccstate";
 import {
   agentsByIdContract,
+  agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { onboardingStatus$ } from "./okou-page/onboarding.ts";
@@ -106,10 +106,10 @@ export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
 
 const internalReloadAgents$ = state(0);
 
-/** All agents in the user's org (from /api/team). */
+/** All visible agents in the user's active organization. */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
-  const apiClient = get(apiClient$)(teamContract);
+  const apiClient = get(apiClient$)(agentsMainContract);
   const result = await accept(apiClient.list(), [200]);
   return result.body;
 });
@@ -130,10 +130,10 @@ export const sortedAgents$ = computed(async (get) => {
   const defaultId = await get(defaultAgentId$);
   return [
     ...agents.filter((a) => {
-      return a.id === defaultId;
+      return a.agentId === defaultId;
     }),
     ...agents.filter((a) => {
-      return a.id !== defaultId;
+      return a.agentId !== defaultId;
     }),
   ];
 });
@@ -150,7 +150,7 @@ export const subagents$ = computed(async (get) => {
   const all = await get(agents$);
   const defaultId = await get(defaultAgentId$);
   return all.filter((a) => {
-    return a.id !== defaultId;
+    return a.agentId !== defaultId;
   });
 });
 
@@ -159,7 +159,7 @@ export const subagents$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export interface SubagentInfo {
-  id: string;
+  agentId: string;
   displayName?: string | null;
 }
 

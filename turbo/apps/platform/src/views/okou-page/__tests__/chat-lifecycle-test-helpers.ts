@@ -558,14 +558,13 @@ export function mockServerQueuedThreadStories(): void {
     };
   });
 
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       displayName: null,
       description: null,
       sound: null,
       avatarUrl: null,
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {

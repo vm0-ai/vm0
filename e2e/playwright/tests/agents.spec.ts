@@ -5,15 +5,15 @@ import { deriveAppUrl } from "../playwright.config";
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const pinnedAgentStory = [
   {
-    id: "c0000000-0000-4000-a000-000000000701",
+    agentId: "c0000000-0000-4000-a000-000000000701",
     displayName: "Research Agent",
   },
   {
-    id: "c0000000-0000-4000-a000-000000000702",
+    agentId: "c0000000-0000-4000-a000-000000000702",
     displayName: "Support Agent",
   },
   {
-    id: "c0000000-0000-4000-a000-000000000703",
+    agentId: "c0000000-0000-4000-a000-000000000703",
     displayName: "Operations Agent",
   },
 ] as const;
@@ -52,17 +52,17 @@ async function mockPinnedAgentGrid(
     });
   });
 
-  await page.route("**/api/team", async (route) => {
+  await page.route("**/api/agents", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!Array.isArray(body) || !body.every(isRecord)) {
-      throw new Error("Team returned an unexpected response");
+      throw new Error("Agents returned an unexpected response");
     }
     const defaultAgent = body.find((agent) => {
-      return agent.id === defaultAgentId;
+      return agent.agentId === defaultAgentId;
     });
     if (!defaultAgent) {
-      throw new Error("Default agent is missing from the team response");
+      throw new Error("Default agent is missing from the agents response");
     }
     await route.fulfill({
       response,
@@ -94,7 +94,7 @@ async function mockPinnedAgentGrid(
       json: {
         ...body,
         pinnedAgentIds: pinnedAgents.map((agent) => {
-          return agent.id;
+          return agent.agentId;
         }),
       },
     });
@@ -274,7 +274,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     ...[
       "/api/feature-switches",
       "/api/onboarding/status",
-      "/api/team",
+      "/api/agents",
       "/api/user-preferences",
       "/api/chat-threads/snapshot",
       "/api/indicators",

@@ -46,17 +46,17 @@ export function createComposerChatThreadSuggestions(
     const allAgents = await get(agents$);
     const agentAvatarUrls = new Map(
       allAgents.map((agent) => {
-        return [agent.id, agent.avatarUrl] as const;
+        return [agent.agentId, agent.avatarUrl] as const;
       }),
     );
     const agentSuggestions: ComposerAgentSuggestion[] = [];
     for (const agent of allAgents) {
-      const name = agent.displayName ?? agent.id;
-      if (agent.id === agentId || !name.toLowerCase().includes(query)) {
+      const name = agent.displayName ?? agent.agentId;
+      if (agent.agentId === agentId || !name.toLowerCase().includes(query)) {
         continue;
       }
       agentSuggestions.push({
-        id: agent.id,
+        id: agent.agentId,
         name,
         avatarUrl: agent.avatarUrl,
       });

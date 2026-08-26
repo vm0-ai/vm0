@@ -24,26 +24,24 @@ async function waitForResearchAgentPage(): Promise<void> {
 }
 
 function prepareAgentInstructions(content: string | null): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: "c0000000-0000-4000-a000-000000000001",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       ownerId: "test-user-123",
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Research Agent",
       description: "A helpful agent",
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
   context.mocks.api(agentsByIdContract.get, ({ respond }) => {
