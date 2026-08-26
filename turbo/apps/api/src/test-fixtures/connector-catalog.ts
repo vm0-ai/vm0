@@ -494,6 +494,33 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
   });
 }
 
+export async function corruptApiTestConnectorCatalogActiveSnapshotPayload(): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const updated = await db
+    .update(connectorCatalogActiveSnapshot)
+    .set({ catalogGzip: Buffer.from("invalid-gzip", "utf8") })
+    .where(
+      and(
+        eq(connectorCatalogActiveSnapshot.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogActiveSnapshot.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogDigest,
+          identity.catalogDigest,
+        ),
+      ),
+    )
+    .returning({ sourceId: connectorCatalogActiveSnapshot.sourceId });
+  requireSingleCatalogMutation(updated, "active snapshot payload corruption");
+}
+
 export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
