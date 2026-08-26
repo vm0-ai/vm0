@@ -176,12 +176,12 @@ interface CurrentAutomationEventWatchAutomation extends AutomationEventWatchAuto
   readonly enabled: boolean;
 }
 
-export interface GoogleFormsEventWatchPreparation {
+interface GoogleFormsEventWatchPreparation {
   readonly automationId: string;
   readonly seedCursor: string;
 }
 
-export type AutomationEventWatchReconfigurationResult =
+type AutomationEventWatchReconfigurationResult =
   | { readonly kind: "ok" }
   | { readonly kind: "bad-request"; readonly message: string };
 

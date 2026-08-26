@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectsCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { cronOfficialWorkflowCatalogContract } from "@okouai/api-contracts/contracts/cron";
 import {
   OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
@@ -33,6 +38,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
@@ -363,6 +369,7 @@ function missingS3Object(key: string): Error {
 
 function installCatalogStorageFixture(): void {
   const objects = new Map<string, Buffer>();
+  const fallback = context.mocks.s3.send.getMockImplementation();
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     if (command instanceof PutObjectCommand) {
       const key = command.input.Key;
@@ -382,7 +389,32 @@ function installCatalogStorageFixture(): void {
         ? Promise.resolve({ ContentLength: body.length })
         : Promise.reject(missingS3Object(key));
     }
-    return Promise.resolve({});
+    if (command instanceof ListObjectsV2Command) {
+      const prefix = command.input.Prefix ?? "";
+      return Promise.resolve({
+        Contents: [...objects.entries()].flatMap(([Key, body]) => {
+          return Key.startsWith(prefix)
+            ? [{ Key, Size: body.length, LastModified: new Date(0) }]
+            : [];
+        }),
+      });
+    }
+    if (command instanceof DeleteObjectsCommand) {
+      for (const object of command.input.Delete?.Objects ?? []) {
+        if (object.Key) {
+          objects.delete(object.Key);
+        }
+      }
+      return Promise.resolve({});
+    }
+    if (!fallback) {
+      return Promise.reject(
+        new Error(
+          `Unexpected S3 command in Official Workflow storage fixture: ${command?.constructor.name ?? "unknown"}`,
+        ),
+      );
+    }
+    return fallback(command);
   });
 }
 
@@ -406,6 +438,7 @@ beforeEach(async () => {
     "R2_USER_STORAGES_BUCKET_NAME",
     `official-workflow-installation-test-${randomUUID()}`,
   );
+  await installApiTestConnectorCatalog();
   await cleanupCatalog();
 });
 
@@ -441,6 +474,7 @@ describe.sequential("Official Workflow installations", () => {
     }
     const { agentId } = await workflowBdd.createAgent(actor);
     onTestFinished(async () => {
+      installCatalogStorageFixture();
       await bdd.deleteAgent(actor, agentId);
       await cleanupCatalog();
     });
@@ -466,6 +500,7 @@ describe.sequential("Official Workflow installations", () => {
       { visibility: "private" },
     );
     onTestFinished(async () => {
+      installCatalogStorageFixture();
       await bdd.deleteAgent(sharedAgentOwner, publicAgentId);
       await bdd.deleteAgent(sharedAgentOwner, privateAgentId);
     });
@@ -753,6 +788,9 @@ describe.sequential("Official Workflow installations", () => {
       },
       automation: { official: { reconciliationStatus: "current" } },
     });
+    if (!dailyAutomation) {
+      throw new Error("Expected Official Workflow automation");
+    }
     expect(dailyAutomation).toMatchObject({
       kind: "schedule",
       enabled: true,
@@ -765,16 +803,14 @@ describe.sequential("Official Workflow installations", () => {
         blueprintKey: "daily",
         reconciliationStatus: "current",
         intendedEnabled: true,
-        parameterBindings: [
+        parameterBindings: expect.arrayContaining([
           { key: "time-zone", value: "Asia/Shanghai" },
           { key: "cron-expression", value: "0 7 * * *" },
           { key: "include-weekends", value: true },
-        ],
+        ]),
       },
     });
-    if (!dailyAutomation) {
-      throw new Error("Expected Official Workflow automation");
-    }
+    expect(dailyAutomation.official?.parameterBindings).toHaveLength(3);
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
     ).resolves.toMatchObject({ autonomyBudget: 4, enabled: true });
@@ -808,6 +844,7 @@ describe.sequential("Official Workflow installations", () => {
     let secondAgentDeleted = false;
     onTestFinished(async () => {
       if (!secondAgentDeleted) {
+        installCatalogStorageFixture();
         await bdd.deleteAgent(actor, secondAgentId);
       }
     });
@@ -834,6 +871,7 @@ describe.sequential("Official Workflow installations", () => {
     let ordinaryAgentDeleted = false;
     onTestFinished(async () => {
       if (!ordinaryAgentDeleted) {
+        installCatalogStorageFixture();
         await bdd.deleteAgent(actor, ordinaryAgentId);
       }
     });
@@ -1208,6 +1246,7 @@ describe.sequential("Official Workflow installations", () => {
     const actor = setup.actor;
     const { agentId } = await workflowBdd.createAgent(actor);
     onTestFinished(async () => {
+      installCatalogStorageFixture();
       await bdd.deleteAgent(actor, agentId);
       await cleanupCatalog();
     });
@@ -1484,6 +1523,7 @@ describe.sequential("Official Workflow installations", () => {
     let agentDeleted = false;
     onTestFinished(async () => {
       if (!agentDeleted) {
+        installCatalogStorageFixture();
         await bdd.deleteAgent(actor, agentId);
       }
       await cleanupCatalog();

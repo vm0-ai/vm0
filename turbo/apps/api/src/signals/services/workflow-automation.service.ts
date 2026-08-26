@@ -2892,7 +2892,7 @@ export type OfficialAutomationEventPreparationResult =
     }
   | AutomationActionFailure;
 
-export interface PrepareOfficialAutomationReconfigurationInput {
+interface PrepareOfficialAutomationReconfigurationInput {
   readonly automationId: string;
   readonly input: CreateAutomationInput;
   readonly publicBrand: PublicBrand;

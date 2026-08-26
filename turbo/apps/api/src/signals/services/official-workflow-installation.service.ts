@@ -60,7 +60,7 @@ type OfficialWorkflowFailure =
 export type OfficialWorkflowInstallResult =
   | { readonly kind: "ok"; readonly workflowId: string }
   | OfficialWorkflowFailure;
-export type OfficialWorkflowReconfigureResult = OfficialWorkflowInstallResult;
+type OfficialWorkflowReconfigureResult = OfficialWorkflowInstallResult;
 
 interface ConfigurableAgent {
   readonly id: string;
@@ -893,10 +893,7 @@ export const installOfficialWorkflow$ = command(
   },
 );
 
-export async function loadOfficialAutomationRows(
-  db: ReadonlyDb,
-  workflowId: string,
-) {
+async function loadOfficialAutomationRows(db: ReadonlyDb, workflowId: string) {
   return await db
     .select()
     .from(workflowAutomations)

@@ -94,7 +94,7 @@ describe("workflow schema physical identity", () => {
           "idx_zero_workflows_private_owner_agent_name_unique",
           "idx_zero_workflows_public_agent_name_unique",
         ],
-        checks: [],
+        checks: ["zero_workflows_official_installation_check"],
       },
       workflowUserAutomationThreads: {
         indexes: [
@@ -107,11 +107,13 @@ describe("workflow schema physical identity", () => {
       workflowAutomations: {
         indexes: [
           "idx_zero_workflow_automations_next_run",
+          "idx_zero_workflow_automations_official_blueprint_unique",
           "idx_zero_workflow_automations_org",
           "idx_zero_workflow_automations_workflow",
         ],
         checks: [
           "zero_workflow_automations_autonomy_budget_check",
+          "zero_workflow_automations_official_binding_check",
           "zero_workflow_automations_schedule_config_check",
         ],
       },
