@@ -1942,6 +1942,7 @@
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
+      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
       "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",

@@ -505,12 +505,31 @@ describe("chat composer connector connection", () => {
     });
     expect(screen.queryByText("Use default")).not.toBeInTheDocument();
 
-    const summaryReadsBeforeSelection = summaryReads;
     await user.click(defaultMode);
     await expect(
       screen.findByText("Account for this thread"),
     ).resolves.toBeVisible();
-    expect(screen.queryByLabelText("Back")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Back"));
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(defaultMode);
+    await expect(
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    await user.click(document.body);
+    await waitFor(() => {
+      expect(screen.queryByText("Account for this thread")).toBeNull();
+    });
+    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(defaultMode);
+    await expect(
+      screen.findByText("Account for this thread"),
+    ).resolves.toBeVisible();
+    const summaryReadsBeforeSelection = summaryReads;
     expect(screen.getByText("GitHub")).toBeVisible();
     expect(
       queryAllByRoleFast("button").find((button) => {
@@ -576,6 +595,11 @@ describe("chat composer connector connection", () => {
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     expect(authorizationWrites).toBe(1);
     expect(summaryReads).toBe(summaryReadsBeforeSelection);
+
+    await user.click(document.body);
+    await waitFor(() => {
+      expect(connectorsButton).toHaveAttribute("aria-expanded", "false");
+    });
   });
 
   it("keeps the selected account visible when search has no matches", async () => {

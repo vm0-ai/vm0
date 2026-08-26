@@ -1945,6 +1945,7 @@
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
+      "back": "Back",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
       "defaultAccountFor": "{{connector}} · Using default account: {{account}}",

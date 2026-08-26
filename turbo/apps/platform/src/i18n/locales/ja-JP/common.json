@@ -1942,6 +1942,7 @@
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
+      "back": "戻る",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
       "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",

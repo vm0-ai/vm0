@@ -34,6 +34,7 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowUp,
   Bolt,
   Check,
@@ -8471,10 +8472,23 @@ function ComposerConnectorAccountMenuContent({
 
   return (
     <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
-        {t(($) => {
-          return $.chat.connectors.accountForThread;
-        })}
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 px-2 text-sm font-medium text-foreground">
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-xs"
+          aria-label={t(($) => {
+            return $.chat.connectors.back;
+          })}
+          onClick={closeMenu}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+        </Button>
+        <span className="min-w-0 flex-1 truncate">
+          {t(($) => {
+            return $.chat.connectors.accountForThread;
+          })}
+        </span>
       </div>
       {showSearch ? (
         <div className="shrink-0 border-b border-border/50 px-3 py-2">
@@ -8635,6 +8649,7 @@ function ConnectorsPopoverButton({
   const accountSummariesLoadable = useLastLoadable(
     signals.connector.accounts.summaryByTarget$,
   );
+  const accountMenuOpen = useGet(signals.connector.accounts.menuOpen$);
   const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
   const search = connectorUi.popoverSearch;
@@ -8739,7 +8754,20 @@ function ConnectorsPopoverButton({
   };
 
   return (
-    <Popover onOpenChange={handleOpenChange}>
+    <Popover
+      onOpenChange={(open, eventDetails) => {
+        if (
+          !open &&
+          accountMenuOpen &&
+          eventDetails.reason === "outside-press"
+        ) {
+          eventDetails.cancel();
+          closeAccountMenu();
+          return;
+        }
+        handleOpenChange(open);
+      }}
+    >
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <PopoverTrigger asChild>
