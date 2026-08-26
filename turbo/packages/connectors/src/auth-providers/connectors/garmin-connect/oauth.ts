@@ -128,7 +128,6 @@ export async function exchangeGarminConnectCode(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
-      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
