@@ -70,31 +70,6 @@ const EXPECTED_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
     "52f5f9670b3d0fba697635d35784bc021a2150f1c84cc73af87c6fd049ed8234",
 };
 
-const EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
-  "black-slabs":
-    "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
-  "blueprint-grid":
-    "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
-  "coastal-hotel":
-    "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
-  "dot-matrix":
-    "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-  "frame-stack":
-    "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
-  "frosted-scatter":
-    "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
-  "gallery-wall":
-    "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
-  "glass-bloom":
-    "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
-  "serif-stack":
-    "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
-  "sticker-pop":
-    "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
-  "warm-cards":
-    "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
-};
-
 const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
   "black-slabs":
     "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
@@ -291,34 +266,6 @@ describe("website template items", () => {
         return template.id.endsWith("-v2");
       }),
     ).toBe(false);
-  });
-
-  it("resolves every pre-cutover stable SHA for the disabled rollout", () => {
-    for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      expect(
-        findWebsiteTemplatePackage(item.templateId, "previous"),
-      ).toMatchObject({
-        templateId: item.templateId,
-        resourceId: item.resourceId,
-        source: {
-          archive: {
-            type: "tar.gz",
-            sha256: EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256[item.slug],
-          },
-        },
-      });
-      expect(
-        findWebsiteTemplateResource(item.resourceId, "previous"),
-      ).toMatchObject({
-        id: item.resourceId,
-        source: {
-          archive: {
-            type: "tar.gz",
-            sha256: EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256[item.slug],
-          },
-        },
-      });
-    }
   });
 
   it("keeps built-in R2 website packages out of the unscoped generic template list", () => {
