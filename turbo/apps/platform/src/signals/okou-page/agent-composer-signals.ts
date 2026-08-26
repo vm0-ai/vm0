@@ -11,9 +11,7 @@ import {
   sendNewThreadWithoutNavigation$,
 } from "../chat-page/optimistic-chat-thread-page.ts";
 import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
-import {
-  featureSwitch$,
-} from "../external/feature-switch.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   updateUserModelPreference$,
   userModelPreference$,
