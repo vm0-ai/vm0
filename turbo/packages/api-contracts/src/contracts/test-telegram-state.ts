@@ -42,7 +42,6 @@ export const testTelegramStateActionBodySchema = z
       "seed-org-credits",
       "get-selected-model",
       "seed-pending-user-link",
-      "redrive-legacy-chat-callback",
       "update-run-callback",
       "update-run",
       "get-run",

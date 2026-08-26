@@ -14,9 +14,7 @@ import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
-  dispatchLegacyGitHubChatCallbackWithoutPublicBrandFixture,
   enqueueGitHubChatEventFixture,
-  setChatCallbackGitHubDeliveryFixture,
   setGitHubInstallationAppIdentityFixture,
 } from "../../../test-fixtures/chat-events";
 import { verifyOkouToken } from "../../auth/tokens";
@@ -949,89 +947,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       /https:\/\/app\.okou\.ai\/activities\/[0-9a-f-]+/u,
     );
     expect(postedComments[0]).not.toContain("https://app.vm0.ai/activities/");
-  });
-
-  it("delivers a pre-brand nested GitHub callback with installation metadata", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    const { actor, agentId, workflowId } = await setupFixture();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped GitHub callback actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.OkouDebug]: true },
-    );
-    const installed = await gh.installGithubApp(actor, agentId);
-    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
-    await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: githubPullRequestMergedAutomationBody(),
-      }),
-      [201],
-    );
-    const response = await postGithubWebhook({
-      event: "pull_request",
-      deliveryId: `delivery-${randomUUID()}`,
-      rawBody: githubPullRequestPayload({
-        action: "closed",
-        merged: true,
-        installationId: installed.remoteInstallationId,
-      }),
-    });
-    expect(response).toStrictEqual({ status: 200, text: "OK" });
-    await flushWaitUntilForTest();
-    await runsApi.heartbeatRunner();
-    const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
-    const runId = listedRuns.runs[0]?.id;
-    if (!runId || listedRuns.runs.length !== 1) {
-      throw new Error("Expected one GitHub callback run");
-    }
-    await runsApi.claimRunnerJob(runId);
-    await setChatCallbackGitHubDeliveryFixture({
-      runId,
-      remoteInstallationId: installed.remoteInstallationId,
-      repo: "vm0-ai/vm0",
-      subjectNumber: 82_001,
-      subjectKind: "issue",
-      agentId,
-    });
-
-    const postedComments: string[] = [];
-    server.use(
-      http.post(
-        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-        async ({ request }) => {
-          const body = (await request.json()) as Record<string, unknown>;
-          if (typeof body.body === "string") {
-            postedComments.push(body.body);
-          }
-          return HttpResponse.json({ id: 1 });
-        },
-      ),
-    );
-    await dispatchLegacyGitHubChatCallbackWithoutPublicBrandFixture(
-      {
-        runId,
-        remoteInstallationId: installed.remoteInstallationId,
-        repo: "vm0-ai/vm0",
-        subjectNumber: 82_001,
-        subjectKind: "issue",
-        agentId,
-        messageContent: "Historical nested GitHub callback",
-      },
-      context.signal,
-    );
-
-    expect(postedComments).toHaveLength(1);
-    expect(postedComments[0]).toContain(
-      `https://app.okou.ai/activities/${runId}`,
-    );
-    expect(postedComments[0]).not.toContain(
-      `https://app.vm0.ai/activities/${runId}`,
-    );
   });
 
   it("validates pull request review actions before dispatching", async () => {

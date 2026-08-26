@@ -163,7 +163,6 @@ async function loadGitHubChatDeliveryContext(
   const [installation] = await args.db
     .select({
       installationId: githubInstallations.installationId,
-      publicBrand: githubInstallations.publicBrand,
     })
     .from(githubChatThreadRoutes)
     .innerJoin(
@@ -188,10 +187,7 @@ async function loadGitHubChatDeliveryContext(
     run: runContext,
     messageContent: event.content,
     installation: installation?.installationId
-      ? {
-          ghInstallationId: installation.installationId,
-          publicBrand: installation.publicBrand,
-        }
+      ? { ghInstallationId: installation.installationId }
       : undefined,
   };
 }
@@ -319,8 +315,7 @@ async function deliverClaimedGitHubChatCallback(
       run: context.run,
       target: context.payload,
       messageContent: context.messageContent,
-      publicBrand:
-        context.payload.publicBrand ?? context.installation.publicBrand,
+      publicBrand: context.payload.publicBrand,
     },
     signal,
   );

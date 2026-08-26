@@ -66,7 +66,6 @@ import { visibleChatEventCondition } from "../signals/services/chat-event-shared
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
-import { dispatchGitHubChatDeliveryOnce } from "../signals/services/internal-github-chat-run-callback.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -1556,86 +1555,6 @@ export async function setGitHubInstallationAppIdentityFixture(args: {
   if (installations.length !== 1) {
     throw new Error("Expected one GitHub installation identity to update");
   }
-}
-
-/**
- * Reproduce and dispatch the nested GitHub callback shape persisted before
- * publicBrand existed. The observable boundary is the provider comment POST.
- */
-export async function dispatchLegacyGitHubChatCallbackWithoutPublicBrandFixture(
-  args: {
-    readonly runId: string;
-    readonly remoteInstallationId: string;
-    readonly repo: string;
-    readonly subjectNumber: number;
-    readonly subjectKind: "issue" | "pull_request";
-    readonly agentId: string;
-    readonly messageContent: string;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  const callbackId = await db().transaction(async (tx) => {
-    const [run] = await tx
-      .select({ chatThreadId: agentRuns.chatThreadId })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, args.runId))
-      .limit(1);
-    if (!run?.chatThreadId) {
-      throw new Error("Expected one thread-bound GitHub run");
-    }
-    const [installation] = await tx
-      .select({ id: githubInstallations.id })
-      .from(githubInstallations)
-      .where(eq(githubInstallations.installationId, args.remoteInstallationId))
-      .limit(1);
-    if (!installation) {
-      throw new Error("Expected one GitHub installation");
-    }
-    const [sourceCallback] = await tx
-      .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
-      .from(agentRunCallbacks)
-      .where(
-        and(
-          eq(agentRunCallbacks.runId, args.runId),
-          eq(agentRunCallbacks.internalKind, "chat"),
-        ),
-      )
-      .limit(1);
-    if (!sourceCallback) {
-      throw new Error("Expected one canonical chat callback");
-    }
-    const event = await insertChatEvent(tx, {
-      chatThreadId: run.chatThreadId,
-      eventType: "output.message",
-      content: args.messageContent,
-      runId: args.runId,
-    });
-    if (!event) {
-      throw new Error("Expected one GitHub callback output event");
-    }
-    const [callback] = await tx
-      .insert(agentRunCallbacks)
-      .values({
-        runId: args.runId,
-        internalKind: "github:chat",
-        encryptedSecret: sourceCallback.encryptedSecret,
-        payload: {
-          installationId: installation.id,
-          repo: args.repo,
-          subjectNumber: args.subjectNumber,
-          subjectKind: args.subjectKind,
-          agentId: args.agentId,
-          chatEventId: event.id,
-        },
-      })
-      .returning({ id: agentRunCallbacks.id });
-    if (!callback) {
-      throw new Error("Expected one legacy GitHub delivery callback");
-    }
-    return callback.id;
-  });
-
-  await dispatchGitHubChatDeliveryOnce(db(), callbackId, "completed", signal);
 }
 
 async function transitiveBlockedWaiterCount(

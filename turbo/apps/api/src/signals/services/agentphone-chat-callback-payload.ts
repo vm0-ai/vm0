@@ -22,9 +22,5 @@ export type AgentPhoneDeliveryTarget = z.infer<
 export const agentphoneChatCallbackPayloadSchema =
   agentphoneDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
-    // API/backend persisted-callback rollout compatibility: mixed versions have
-    // overlapped for up to about 102 minutes, and an old API omitted this field.
-    // Remove with #27750 after old/rollback APIs are gone and every pre-rollout
-    // AgentPhone delivery callback has drained.
-    publicBrand: publicBrandSchema.optional(),
+    publicBrand: publicBrandSchema,
   });
