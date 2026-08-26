@@ -450,7 +450,10 @@ function templateAttachmentType(template: GenerationTemplateRequest): string {
 
 function templateCategory(template: GenerationTemplateRequest): string {
   const type = templateAttachmentType(template);
-  return type === "presentation" ? "slides" : type;
+  if (type === "presentation") {
+    return "slides";
+  }
+  return type === "intro-video" ? "video" : type;
 }
 
 function templatePreviewImageUrl(

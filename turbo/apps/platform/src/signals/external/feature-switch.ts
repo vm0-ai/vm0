@@ -55,6 +55,10 @@ export const videoModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
 });
 
+export const introVideoTemplatesEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.IntroVideoTemplates] ?? false;
+});
+
 export const imageModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ImageModelSelection] ?? false;
 });

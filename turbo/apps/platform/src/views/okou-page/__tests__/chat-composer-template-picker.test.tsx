@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -525,6 +526,70 @@ describe("chat composer templates", () => {
     expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
       type: "video",
       selection: { stylePresetId: template.id },
+    });
+  });
+
+  it("keeps the intro-video placeholder out of the picker while switched off", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideoTemplates]: false,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(tabByText("Video"));
+    expect(
+      screen.queryByLabelText(`Select video template ${template.title}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("selects Interview as a switched-on intro-video template", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideoTemplates]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(tabByText("Video"));
+    const select = await screen.findByLabelText(
+      `Select video template ${template.title}`,
+    );
+    expect(
+      select.closest("[class*='aspect-']")?.querySelector("video"),
+    ).toBeNull();
+    await user.click(select);
+    const chip = await waitFor(() => {
+      const found = document.querySelector("[data-composer-inline-template]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(chip).toHaveTextContent(template.title);
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
+        type: "intro-video",
+        selection: { templateId: template.id },
+      });
     });
   });
 
