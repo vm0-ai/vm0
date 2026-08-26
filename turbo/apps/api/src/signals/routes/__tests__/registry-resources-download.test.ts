@@ -128,17 +128,17 @@ describe("registry resource download", () => {
   it("downloads the presentation reverse-template guide through the route", async () => {
     const id = "skill:presentation-reverse-template";
     const sha256 =
-      "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5";
+      "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11";
     const versionId =
-      "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988";
+      "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7";
     const s3Key = "registry-fixture/presentation-reverse-template/version";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
       storageName: `registry-resource@${id}`,
       versionId,
       s3Key,
-      size: 270_821,
-      archiveSize: 82_804,
-      fileCount: 17,
+      size: 30_489,
+      archiveSize: 10_004,
+      fileCount: 3,
     });
     onTestFinished(fixture.cleanup);
 
@@ -159,8 +159,8 @@ describe("registry resource download", () => {
       id,
       sha256,
       versionId,
-      fileCount: 17,
-      size: 270_821,
+      fileCount: 3,
+      size: 30_489,
     });
     const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
     expect(signedCommand).toMatchObject({
@@ -169,6 +169,33 @@ describe("registry resource download", () => {
         Key: `${s3Key}/archive.tar.gz`,
       },
     });
+  });
+
+  it("still serves the pre-refactor reverse-template digest a drained run context asks for", () => {
+    const id = "skill:presentation-reverse-template";
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        id,
+        "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+        "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11",
+      ),
+    ).toStrictEqual({
+      storageName: `registry-resource@${id}`,
+      versionId:
+        "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
+      sha256:
+        "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+    });
+  });
+
+  it("rejects a reverse-template digest that was never published", () => {
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        "skill:presentation-reverse-template",
+        "0".repeat(64),
+        "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11",
+      ),
+    ).toBeUndefined();
   });
 
   it("downloads current and previous website template archives", async () => {
