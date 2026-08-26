@@ -66,7 +66,10 @@ test("primary and link actions retain accessible brand colors in both themes", a
   await openAuthV2(page, "/v2/sign-up");
 
   const root = authV2Root(page);
-  const continueButton = root.getByRole("button", { name: "Continue" });
+  const continueButton = root.getByRole("button", {
+    exact: true,
+    name: "Continue",
+  });
   const currentSignUpLink = page.getByRole("link", {
     name: "Use current sign-up",
   });
