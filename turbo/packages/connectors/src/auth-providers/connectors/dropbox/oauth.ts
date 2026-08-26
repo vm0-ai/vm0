@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const DROPBOX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
 
@@ -107,7 +108,7 @@ export async function exchangeDropboxCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

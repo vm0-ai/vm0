@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const STRIPE_TOKEN_URL = "https://connect.stripe.com/oauth/token";
 
@@ -108,7 +109,7 @@ export async function exchangeStripeCode(
     accessToken: data.access_token,
     livemode: data.livemode,
     refreshToken: data.refresh_token ?? null,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

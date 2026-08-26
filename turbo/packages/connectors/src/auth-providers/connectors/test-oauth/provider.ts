@@ -3,6 +3,7 @@ import type {
   AuthCodeGrantProvider,
   RefreshTokenAccessProvider,
 } from "../../types";
+import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import {
   buildTestOAuthAuthorizationUrl,
   exchangeTestOAuthCode,
@@ -52,12 +53,14 @@ interface TestOAuthTokenExchange {
 }
 
 async function exchangeTestOauthToken(args: {
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   readonly clientId: string;
   readonly clientSecret: string;
   readonly code: string;
   readonly redirectUri: string;
 }): Promise<TestOAuthTokenExchange> {
   const token = await exchangeTestOAuthCode(
+    args.authCodeGrant,
     args.clientId,
     args.clientSecret,
     args.code,
@@ -74,6 +77,7 @@ async function exchangeTestOauthToken(args: {
 }
 
 async function exchangeTestOauthGrant(args: {
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   readonly clientId: string;
   readonly clientSecret: string;
   readonly code: string;
@@ -93,6 +97,7 @@ async function exchangeTestOauthGrant(args: {
 }
 
 async function exchangeTestOauthApiGrant(args: {
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   readonly clientId: string;
   readonly clientSecret: string;
   readonly code: string;
@@ -126,6 +131,7 @@ function createTestOauthGrant(): AuthCodeGrantProvider<"test-oauth", "oauth"> {
     exchangeCode: async (exchangeArgs) => {
       const { clientId, clientSecret } = exchangeArgs.authClient;
       return await exchangeTestOauthGrant({
+        authCodeGrant: exchangeArgs.authCodeGrant,
         clientId,
         clientSecret,
         code: exchangeArgs.code,
@@ -150,6 +156,7 @@ function createTestOauthApiGrant(): AuthCodeGrantProvider<"test-oauth", "api"> {
     exchangeCode: async (exchangeArgs) => {
       const { clientId, clientSecret } = exchangeArgs.authClient;
       return await exchangeTestOauthApiGrant({
+        authCodeGrant: exchangeArgs.authCodeGrant,
         clientId,
         clientSecret,
         code: exchangeArgs.code,

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "./error";
+import { effectiveOAuthScopes } from "./scope";
 
 type GoogleOAuthConnectorSlug =
   | "gmail"
@@ -127,7 +128,7 @@ export async function exchangeGoogleOAuthCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

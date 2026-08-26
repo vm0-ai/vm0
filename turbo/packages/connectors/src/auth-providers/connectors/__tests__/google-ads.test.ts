@@ -71,7 +71,7 @@ describe("connector/providers/google-ads", () => {
           refresh_token: "google-ads-refresh-token",
           expires_in: 3600,
           scope:
-            "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/datamanager https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/adwords provider-supplemental",
         });
       });
       const userInfoHandler = http.get(USER_INFO_URL, () => {
@@ -102,8 +102,7 @@ describe("connector/providers/google-ads", () => {
         expiresIn: 3600,
         scopes: [
           "https://www.googleapis.com/auth/adwords",
-          "https://www.googleapis.com/auth/datamanager",
-          "https://www.googleapis.com/auth/userinfo.email",
+          "provider-supplemental",
         ],
         userInfo: {
           id: "google-user-123",

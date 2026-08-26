@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
 
@@ -205,7 +206,7 @@ export async function exchangeCanvaCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

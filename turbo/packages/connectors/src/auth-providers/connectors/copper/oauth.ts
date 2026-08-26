@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const AUTHORIZATION_URL = "https://app.copper.com/oauth/authorize";
 const TOKEN_URL = "https://app.copper.com/oauth/token";
@@ -60,7 +61,7 @@ export async function exchangeCopperCode(args: {
     .parse(await accountResponse.json());
   return {
     accessToken: token.access_token,
-    scopes: token.scope ? token.scope.split(" ") : args.grant.scopes,
+    scopes: effectiveOAuthScopes(token.scope, args.grant.scopes, " "),
     userInfo: {
       id: String(account.id),
       username: account.name ?? null,

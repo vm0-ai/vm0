@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
 
@@ -107,7 +108,7 @@ export async function exchangeLinearCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(",") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, ","),
     userInfo,
   };
 }

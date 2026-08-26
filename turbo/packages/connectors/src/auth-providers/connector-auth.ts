@@ -38,6 +38,7 @@ import {
   type OAuthDeviceAuthStartResult,
 } from "./provider-flow-types";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
+import { authorizationScopesFromUrl } from "./oauth/scope";
 import {
   CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS,
   type ConnectorAuthProviderAuthMethodId,
@@ -1286,6 +1287,7 @@ export async function buildConnectorOpenIdAuthAuthorizationUrlWithMethod(
 export async function exchangeConnectorAuthCodeWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly authClient: ConnectorAuthClient;
+    readonly authorizationUrl: string | null;
     readonly code: string;
     readonly redirectUri: string;
     readonly state: string | undefined;
@@ -1308,7 +1310,14 @@ export async function exchangeConnectorAuthCodeWithMethod(
     Promise<ConnectorAuthProviderGrantResult>
   >(provider.exchangeCode, {
     authClient: args.authClient,
-    authCodeGrant: args.method.grant,
+    authCodeGrant: {
+      ...args.method.grant,
+      scopes: [
+        ...((args.authorizationUrl
+          ? authorizationScopesFromUrl(args.authorizationUrl)
+          : undefined) ?? args.method.grant.scopes),
+      ],
+    },
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
