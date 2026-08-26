@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { AgentChatPage } from "../../views/okou-page/agent-chat-page.tsx";
-import { AgentChatValidationPage } from "../../views/okou-page/agent-chat-validation-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
@@ -43,7 +42,17 @@ export const setupAgentChatPage$ = command(
       return;
     }
 
-    set(updatePage$, createElement(AgentChatValidationPage));
+    if (!agentId) {
+      throw new Error("Chat page requires an active agent, but none found");
+    }
+
+    set(setChatAgentId$, agentId);
+    const agentDraft: EnsuredAgentDraft = set(ensureAgentDraft$, agentId);
+    set(setAgentComposerContext$, { agentId, agentDraft });
+    set(setTalkDraft$, agentDraft.draft);
+    set(reloadTagline$);
+    set(resetChatPageModelSelection$);
+    set(updatePage$, createElement(AgentChatPage), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {
@@ -52,10 +61,6 @@ export const setupAgentChatPage$ = command(
     );
 
     await set(hideAppSkeleton$, signal);
-
-    if (!agentId) {
-      throw new Error("Chat page requires an active agent, but none found");
-    }
 
     const agents = await get(agents$);
     signal.throwIfAborted();
@@ -76,14 +81,6 @@ export const setupAgentChatPage$ = command(
       });
       return;
     }
-
-    set(setChatAgentId$, agentId);
-    const agentDraft: EnsuredAgentDraft = set(ensureAgentDraft$, agentId);
-    set(setAgentComposerContext$, { agentId, agentDraft });
-    set(setTalkDraft$, agentDraft.draft);
-    set(reloadTagline$);
-    set(resetChatPageModelSelection$);
-    set(updatePage$, createElement(AgentChatPage), "sidebar");
 
     set(rememberLastUsedAgentId$, agentId);
     set(
