@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.23](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.22...guest-contracts-v0.11.23) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent:** preserve original shell commands in tool events ([#29475](https://github.com/vm0-ai/vm0/issues/29475)) ([238051b](https://github.com/vm0-ai/vm0/commit/238051b2011fbd6d790c34b81e4f476d9a107830))
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
 ## [0.11.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.21...guest-contracts-v0.11.22) (2026-08-25)
 
 

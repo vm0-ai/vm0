@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.96](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.95...vsock-host-v0.17.96) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
 ## [0.17.95](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.94...vsock-host-v0.17.95) (2026-08-26)
 
 
