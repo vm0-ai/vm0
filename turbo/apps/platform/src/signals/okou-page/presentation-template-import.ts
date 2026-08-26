@@ -1,6 +1,5 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
 
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
@@ -19,17 +18,17 @@ export const PRESENTATION_TEMPLATE_IMPORT_ACCEPT = ".pptx,.ppt,.pdf";
 /**
  * The message the deck is sent with.
  *
- * Opens as a plain sentence on purpose: importing a template is not a special
+ * One plain sentence on purpose: importing a template is not a special
  * protocol, it is a chat message with a file attached, and the user should be
- * able to read what was asked on their behalf in the thread they land in. The
- * pointer to the guide follows, because the guide is not a mounted skill the
- * run would otherwise find.
+ * able to read what was asked on their behalf in the thread they land in.
+ *
+ * How to reach the guide is deliberately absent. The agent tools prompt
+ * already carries it behind the same feature switch that offers this import,
+ * so repeating it here only spends the user's own message on instructions
+ * addressed to the run.
  */
 function presentationTemplateImportPrompt(): string {
-  return [
-    "Analyse this deck and save its visual language as a reusable presentation template.",
-    presentationTemplateSkillInstruction(),
-  ].join("\n\n");
+  return "Analyse this deck and save its visual language as a reusable presentation template.";
 }
 
 export const presentationTemplateImportEnabled$ = computed((get) => {
