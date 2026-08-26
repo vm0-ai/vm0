@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.173.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.11...runner-rs-v0.173.12) (2026-08-26)
+
+
+### Bug Fixes
+
+* **runner:** reconcile cache watches past irrelevant entries ([#29499](https://github.com/vm0-ai/vm0/issues/29499)) ([403a2a5](https://github.com/vm0-ai/vm0/commit/403a2a5a93ff7ecfce40b202389d092759921d0b))
+* **runner:** reject stale host oom evidence ([#29501](https://github.com/vm0-ai/vm0/issues/29501)) ([1110a2b](https://github.com/vm0-ai/vm0/commit/1110a2b176a46bd56deb3fd7b8a7cdd7ce811756))
+
+
+### Documentation
+
+* **python:** document connector runtime ownership resolution ([#29493](https://github.com/vm0-ai/vm0/issues/29493)) ([99356a9](https://github.com/vm0-ai/vm0/commit/99356a975a9a90da28eec2af3d74beea1979cb0d))
+* **python:** document state-file validation boundaries ([#29500](https://github.com/vm0-ai/vm0/issues/29500)) ([ff03706](https://github.com/vm0-ai/vm0/commit/ff03706effb990006f8aebaf699d8b36e2465383))
+
 ## [0.173.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.10...runner-rs-v0.173.11) (2026-08-26)
 
 

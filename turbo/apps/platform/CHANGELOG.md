@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.799.2](https://github.com/vm0-ai/vm0/compare/app-v0.799.1...app-v0.799.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* wrap long imported template names instead of clipping them ([#29458](https://github.com/vm0-ai/vm0/issues/29458)) ([e36cf3c](https://github.com/vm0-ai/vm0/commit/e36cf3c3aac2aa0344e1fa1c9fd76a8ade4e5355))
+
 ## [0.799.1](https://github.com/vm0-ai/vm0/compare/app-v0.799.0...app-v0.799.1) (2026-08-26)
 
 

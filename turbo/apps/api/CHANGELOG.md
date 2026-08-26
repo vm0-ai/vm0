@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.494.3](https://github.com/vm0-ai/vm0/compare/api-v1.494.2...api-v1.494.3) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write api backend url aliases ([#29513](https://github.com/vm0-ai/vm0/issues/29513)) ([c9d9947](https://github.com/vm0-ai/vm0/commit/c9d99475e62f32633034af21c739cf39f6e1cb2d)), closes [#29495](https://github.com/vm0-ai/vm0/issues/29495) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **api:** make workflow dedupe writes view-safe ([#29503](https://github.com/vm0-ai/vm0/issues/29503)) ([5954906](https://github.com/vm0-ai/vm0/commit/5954906bf61d374ebe4029453a2ace7ce16870e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.224.9
+
 ## [1.494.2](https://github.com/vm0-ai/vm0/compare/api-v1.494.1...api-v1.494.2) (2026-08-26)
 
 
