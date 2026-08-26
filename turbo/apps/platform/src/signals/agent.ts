@@ -92,7 +92,12 @@ export const currentAgent$ = computed((get) => {
 
 const lastUsedAgentId$ = computed((get) => {
   const value = get(lastUsedAgentIdRaw$);
-  return typeof value === "string" && value.length > 0 ? value : null;
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const parsed = agentsByIdContract.get.pathParams.safeParse({ id: value });
+  return parsed.success ? parsed.data.id : null;
 });
 
 export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
@@ -111,19 +116,14 @@ export const agents$ = computed(async (get) => {
 
 export const homeAgentId$ = computed(async (get) => {
   const lastUsedAgentId = get(lastUsedAgentId$);
-  if (!lastUsedAgentId) {
-    return await get(defaultAgentId$);
-  }
-
-  const agents = await get(agents$);
-  if (
-    agents.some((agent) => {
-      return agent.id === lastUsedAgentId;
-    })
-  ) {
+  if (lastUsedAgentId) {
     return lastUsedAgentId;
   }
 
+  // The agent chat route renders a non-interactive shell, validates the
+  // candidate against the current org's team, and only then activates its
+  // draft and composer. Avoid repeating that validation while the home
+  // route's full-screen skeleton is still visible.
   return await get(defaultAgentId$);
 });
 
