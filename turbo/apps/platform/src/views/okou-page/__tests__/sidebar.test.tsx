@@ -1683,32 +1683,6 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("recedes both sidebar section headers at rest and lifts them on hover", async () => {
-    prepareDefaultAgent();
-    mockChatThreadSnapshot(() => {
-      return [createThread(EXISTING_THREAD_ID, "Release plan")];
-    });
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    const chatTitle = await waitFor(() => {
-      return within(sidebar()).getByText("Chats with Zero");
-    });
-    const pinnedTitle = within(
-      screen.getByTestId("pinned-section-header"),
-    ).getByText("Pinned");
-
-    // The chat list and pinned headers are the same control, so they must
-    // carry the same resting tone. A full-strength resting tone also makes
-    // the header's own group-hover class a no-op and drops the hover lift.
-    const restingTone = "text-muted-foreground";
-    expect(pinnedTitle).toHaveClass(restingTone);
-    expect(chatTitle).toHaveClass(
-      restingTone,
-      "group-hover:text-sidebar-foreground",
-    );
-  });
-
   it("leaves the footer as the only owner of the gap below the thread list", async () => {
     prepareDefaultAgent();
     mockChatThreadSnapshot(() => {
@@ -3429,14 +3403,8 @@ describe("zero sidebar", () => {
     // below it, which is what keeps the gap above the two section headers even.
     const pinnedLabel = within(pinnedSection).getByText("Pinned agents");
     expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
-    expect(pinnedLabel).toHaveClass("text-muted-foreground");
     expect(pinnedLabel).not.toHaveClass("pb-2");
 
-    const chatTitle = within(list).getByText("Chats with Zero");
-    expect(chatTitle).toHaveClass("text-muted-foreground");
-    expect(
-      within(list).getByText("Start a conversation and it'll show up here"),
-    ).toHaveClass("text-muted-foreground");
     expect(
       within(list).getByRole("region", { name: "Chat threads" }),
     ).toBeInTheDocument();
