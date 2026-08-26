@@ -44,15 +44,13 @@ export const REDACT_FILL = "#525B68";
 export const STROKE_HALO_OUTER = "rgba(20, 23, 29, 0.30)";
 export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
 
-export type AnnotationTool =
-  | "select"
-  | "box"
-  | "arrow"
-  | "pen"
-  | "text"
-  | "highlight"
-  | "redact"
-  | "crop";
+/**
+ * `highlight` and `crop` were dropped, and `select` with them: a mark is
+ * clicked directly, so a mode for "not drawing" has nothing left to do. The
+ * *shapes* stay in the contract — a draft saved before this change can still
+ * carry a highlight or a crop, and it has to keep rendering.
+ */
+export type AnnotationTool = "box" | "arrow" | "pen" | "text" | "redact";
 
 function emptyAnnotation(): ImageAnnotation {
   return { marks: [] };
@@ -186,6 +184,27 @@ export interface AnnotationPoint {
   readonly y: number;
 }
 
+/**
+ * A mark being moved or resized. Drawing produces a new mark; this edits one
+ * that already exists, so it carries the mark it started from and the pointer
+ * offset at grab time — without the offset a drag snaps the mark's corner to
+ * the cursor on the first move.
+ */
+export interface AnnotationDrag {
+  readonly markId: string;
+  readonly mode: "move" | "resize";
+  readonly corner?: "tl" | "tr" | "bl" | "br";
+  readonly origin: AnnotationPoint;
+  readonly startRect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+const internalDrag$ = state<AnnotationDrag | null>(null);
+const internalZoom$ = state(1);
 const internalStroke$ = state<AnnotationStroke | null>(null);
 const internalSurface$ = state<HTMLElement | null>(null);
 
@@ -195,6 +214,33 @@ export const annotationStroke$ = computed((get) => {
 
 export const annotationSurface$ = computed((get) => {
   return get(internalSurface$);
+});
+
+export const annotationDrag$ = computed((get) => {
+  return get(internalDrag$);
+});
+
+export const annotationZoom$ = computed((get) => {
+  return get(internalZoom$);
+});
+
+export const setAnnotationDrag$ = command(
+  ({ set }, drag: AnnotationDrag | null) => {
+    set(internalDrag$, drag);
+  },
+);
+
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+
+export const zoomAnnotation$ = command(({ get, set }, direction: 1 | -1) => {
+  const next = get(internalZoom$) + direction * ZOOM_STEP;
+  set(internalZoom$, Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)));
+});
+
+export const resetAnnotationZoom$ = command(({ set }) => {
+  set(internalZoom$, ZOOM_MIN);
 });
 
 export const setAnnotationStroke$ = command(
@@ -262,6 +308,7 @@ export const openAnnotationEditor$ = command(
       future: [],
     });
     set(internalTool$, "box");
+    set(internalZoom$, 1);
     set(internalInk$, DEFAULT_ANNOTATION_INK);
     set(internalSelectedMarkId$, null);
   },
@@ -271,13 +318,15 @@ export const closeAnnotationEditor$ = command(({ set }) => {
   set(internalSession$, null);
   set(internalSelectedMarkId$, null);
   set(internalStroke$, null);
+  set(internalDrag$, null);
+  set(internalZoom$, 1);
 });
 
 export const setAnnotationTool$ = command(({ set }, tool: AnnotationTool) => {
   set(internalTool$, tool);
-  if (tool !== "select") {
-    set(internalSelectedMarkId$, null);
-  }
+  // Picking a drawing tool is a statement about the next mark, not the one
+  // currently selected, so the selection drops with its handles.
+  set(internalSelectedMarkId$, null);
 });
 
 export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
@@ -361,6 +410,36 @@ export const removeSelectedAnnotationMark$ = command(({ get, set }) => {
   set(removeAnnotationMark$, id);
 });
 
+export const moveAnnotationMarkRect$ = command(
+  (
+    { set },
+    id: string,
+    rect: { x: number; y: number; width: number; height: number },
+  ) => {
+    set(pushAnnotation$, (current) => {
+      return {
+        ...current,
+        marks: current.marks.map((mark) => {
+          if (mark.id !== id) {
+            return mark;
+          }
+          if (
+            mark.shape === "box" ||
+            mark.shape === "redact" ||
+            mark.shape === "highlight"
+          ) {
+            return { ...mark, rect };
+          }
+          if (mark.shape === "text") {
+            return { ...mark, at: { x: rect.x, y: rect.y } };
+          }
+          return mark;
+        }),
+      };
+    });
+  },
+);
+
 export const setAnnotationMarkNote$ = command(
   ({ set }, id: string, note: string) => {
     set(pushAnnotation$, (current) => {
@@ -376,16 +455,6 @@ export const setAnnotationMarkNote$ = command(
           return { ...mark, note };
         }),
       };
-    });
-  },
-);
-
-export const setAnnotationCrop$ = command(
-  ({ set }, crop: ImageAnnotation["crop"]) => {
-    set(pushAnnotation$, (current) => {
-      return crop === undefined
-        ? { marks: current.marks }
-        : { ...current, crop };
     });
   },
 );

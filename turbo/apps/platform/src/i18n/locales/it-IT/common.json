@@ -518,11 +518,8 @@
       "tools": {
         "arrow": "Freccia",
         "box": "Rettangolo",
-        "crop": "Ritaglia",
-        "highlight": "Evidenzia",
         "pen": "Disegna",
         "redact": "Oscura",
-        "select": "Seleziona",
         "text": "Testo"
       },
       "undo": "Annulla"

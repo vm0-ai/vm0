@@ -268,6 +268,31 @@ describe("composer image annotation", () => {
     });
   });
 
+  it("selects a mark by clicking it and offers resize handles", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    const chip = await screen.findByLabelText(
+      "Open image preview for billing-page.png",
+    );
+    await user.click(chip);
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    // There is no select mode any more: the mark itself is the handle.
+    expect(screen.queryByLabelText("Select")).toBeNull();
+
+    await user.click(screen.getByTestId("annotation-mark-1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-handle-tl")).toBeInTheDocument();
+      expect(screen.getByTestId("annotation-handle-br")).toBeInTheDocument();
+    });
+  });
+
   it("keeps an opened-but-untouched image unannotated", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);

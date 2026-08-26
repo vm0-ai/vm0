@@ -502,11 +502,8 @@
       "tools": {
         "arrow": "Panah",
         "box": "Kotak",
-        "crop": "Pangkas",
-        "highlight": "Sorot",
         "pen": "Gambar",
         "redact": "Sensor",
-        "select": "Pilih",
         "text": "Teks"
       },
       "undo": "Urungkan"
