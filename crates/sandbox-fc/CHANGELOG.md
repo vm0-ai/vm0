@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.249](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.248...sandbox-fc-v0.37.249) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.37.248](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.247...sandbox-fc-v0.37.248) (2026-08-25)
 
 ## [0.37.247](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.246...sandbox-fc-v0.37.247) (2026-08-25)
