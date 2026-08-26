@@ -25,6 +25,7 @@ import {
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
+import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -1572,17 +1573,18 @@ describe("auth v2 sign-in flow", () => {
       name: "Sign out of all other devices",
     });
     expect(signOutOtherDevices).toBeChecked();
-    expect(signOutOtherDevices).toHaveClass(
-      "h-4",
-      "w-4",
-      "rounded-md",
-      "border-border",
-      "bg-input",
-    );
-    expect(signOutOtherDevices).not.toHaveClass(
-      "rounded-[3px]",
-      "border-foreground/50",
-    );
+    await expect(
+      renderedCheckboxPresentation(signOutOtherDevices, context.signal),
+    ).resolves.toStrictEqual({
+      backgroundColor: "rgb(70 80 90)",
+      borderColor: "rgb(70 80 90)",
+      borderRadius: "6px",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      flexShrink: "0",
+      height: "calc(4px * 4)",
+      width: "calc(4px * 4)",
+    });
     expect(
       screen.getByRole("region", { name: "Set new password" }),
     ).not.toHaveAttribute("aria-describedby");

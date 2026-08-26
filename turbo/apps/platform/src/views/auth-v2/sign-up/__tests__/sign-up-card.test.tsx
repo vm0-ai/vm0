@@ -25,6 +25,7 @@ import {
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
+import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -198,17 +199,18 @@ describe("auth v2 sign-up flow", () => {
     expect(roleElement("link", "Use current sign-up")).toBeDefined();
     const legalConsent = screen.getByRole("checkbox");
     expect(legalConsent).toBeVisible();
-    expect(legalConsent).toHaveClass(
-      "h-4",
-      "w-4",
-      "rounded-md",
-      "border-border",
-      "bg-input",
-    );
-    expect(legalConsent).not.toHaveClass(
-      "rounded-[3px]",
-      "border-foreground/50",
-    );
+    await expect(
+      renderedCheckboxPresentation(legalConsent, context.signal),
+    ).resolves.toStrictEqual({
+      backgroundColor: "rgb(40 50 60)",
+      borderColor: "rgb(10 20 30)",
+      borderRadius: "6px",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      flexShrink: "0",
+      height: "calc(4px * 4)",
+      width: "calc(4px * 4)",
+    });
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",
