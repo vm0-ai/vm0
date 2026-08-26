@@ -41,7 +41,6 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
-  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
@@ -574,9 +573,7 @@ const sendNewThreadMessage$ = command(
     const features = get(featureSwitch$);
     // Pin only an explicit per-thread pick; an unpinned (null) thread follows
     // the member's live default, so changing the default later updates it.
-    const imageModel = get(imageModelSelectionEnabled$)
-      ? request.imageModel
-      : undefined;
+    const imageModel = request.imageModel;
     const videoModelEnabled = get(videoModelSelectionEnabled$);
     const videoModel = videoModelEnabled ? request.videoModel : undefined;
     const { annotatedUserMessage, optimisticUserMessage } =

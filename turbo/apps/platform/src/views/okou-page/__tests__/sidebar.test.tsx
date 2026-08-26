@@ -3728,7 +3728,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -3787,7 +3786,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 

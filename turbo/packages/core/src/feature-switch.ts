@@ -289,12 +289,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Let the chat composer model picker pin the video model a chat thread generates with.",
     enabled: true,
   },
-  [FeatureSwitchKey.ImageModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker choose the default built-in image model for a chat thread.",
-    enabled: true,
-  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:

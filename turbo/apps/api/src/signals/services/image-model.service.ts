@@ -63,17 +63,7 @@ export async function resolveImageModelForRun(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string | undefined;
-  readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<ImageModel | null> {
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.ImageModelSelection,
-      args.featureSwitchContext,
-    )
-  ) {
-    return null;
-  }
-
+}): Promise<ImageModel> {
   if (args.chatThreadId !== undefined) {
     const threadPin = await threadImageModel(args.db, args.chatThreadId);
     if (threadPin !== null) {

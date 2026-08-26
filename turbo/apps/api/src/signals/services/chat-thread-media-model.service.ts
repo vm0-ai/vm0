@@ -79,8 +79,9 @@ async function memberMediaModels(
 }
 
 /**
- * Member default, then catalog default, for each picker that is switched on.
- * For callers that already resolved this request's feature switches.
+ * Member default, then catalog default, for the image picker and for the video
+ * picker when it is switched on. For callers that already resolved this
+ * request's feature switches.
  */
 export async function resolveNewChatThreadMediaModels(
   db: Pick<ReadonlyDb, "select">,
@@ -94,22 +95,12 @@ export async function resolveNewChatThreadMediaModels(
     FeatureSwitchKey.VideoModelSelection,
     args.featureSwitchContext,
   );
-  const imageEnabled = isFeatureEnabled(
-    FeatureSwitchKey.ImageModelSelection,
-    args.featureSwitchContext,
-  );
-  if (!videoEnabled && !imageEnabled) {
-    return { selectedVideoModel: null, selectedImageModel: null };
-  }
-
   const member = await memberMediaModels(db, args);
   return {
     selectedVideoModel: videoEnabled
       ? catalogedVideoModel(member.selectedVideoModel)
       : null,
-    selectedImageModel: imageEnabled
-      ? catalogedImageModel(member.selectedImageModel)
-      : null,
+    selectedImageModel: catalogedImageModel(member.selectedImageModel),
   };
 }
 
