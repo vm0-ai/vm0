@@ -47,6 +47,10 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -332,10 +336,23 @@ function SettingsDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const colorTheme = useGet(colorTheme$);
+  const gradientColorThemesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
   const { t } = useTranslation();
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background">
+    <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
+      className="zero-app zero-viewport-shell flex w-full bg-background"
+      data-gradient-color-themes={gradientColorThemesEnabled || undefined}
+      data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
+    >
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <ConcurrencyConfirmDialog />

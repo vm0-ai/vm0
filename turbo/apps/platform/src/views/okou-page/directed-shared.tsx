@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
 import {
   closeSettingsModal$,
@@ -11,14 +12,32 @@ import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purc
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleAccountAction$);
   const dialogOpen = useGet(settingsDialogOpen$);
   const closeSettingsModal = useSet(closeSettingsModal$);
+  const colorTheme = useGet(colorTheme$);
+  const gradientColorThemesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background">
+    <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
+      className="zero-app zero-viewport-shell flex w-full bg-background"
+      data-gradient-color-themes={gradientColorThemesEnabled || undefined}
+      data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
+    >
       <SettingsDialog
         open={dialogOpen}
         onOpenChange={(open) => {

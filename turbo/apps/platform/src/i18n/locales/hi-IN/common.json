@@ -5031,6 +5031,20 @@
         "sectionTitle": "खाता एवं सुरक्षा"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "हर इंटरफ़ेस परत में एक चमकदार और हल्का रंग पैलेट लागू करें।",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "कलर थीम"
+        },
         "description": "चुनें कि इंटरफ़ेस कैसा दिखेगा.",
         "sectionTitle": "उपस्थिति",
         "theme": {

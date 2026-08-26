@@ -37,6 +37,7 @@ import {
 } from "../../signals/okou-page/settings/preferences-page.ts";
 import { BuildInfoBlock } from "./components/settings/build-info-block.tsx";
 import { LanguageSettings } from "./components/settings/language-settings.tsx";
+import { ColorThemeSettings } from "./components/settings/color-theme-settings.tsx";
 
 function AppearanceSettings() {
   const { t } = useTranslation();
@@ -342,6 +343,7 @@ export function PreferencesPage() {
               {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
+                  <ColorThemeSettings />
                   <LanguageSettings />
                   <SendModeSettings />
                 </div>
