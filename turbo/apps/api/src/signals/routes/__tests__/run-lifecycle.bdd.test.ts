@@ -13740,29 +13740,29 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
         `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
       );
       expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-        "previous",
+        "latest",
       );
       await api.requestCancelRun(actor, r2Run.runId, [200]);
     },
   );
 
-  it("pins the latest Website template release into opted-in run contexts", async () => {
+  it("pins the pre-cutover Website release into opted-out run contexts", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.LatestWebsiteTemplates]: true,
+      [FeatureSwitchKey.LatestWebsiteTemplates]: false,
     });
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "use the latest Website template release",
+      prompt: "use the pre-cutover Website template release",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-      "latest",
+      "previous",
     );
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -14097,7 +14097,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.environment?.OKOU_TOKEN,
       CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "latest",
     });
     for (const [key, value] of Object.entries(
       claim.platformEnvironment ?? {},
