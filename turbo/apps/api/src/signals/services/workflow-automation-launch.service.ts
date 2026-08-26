@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
@@ -19,7 +20,10 @@ import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
 } from "./chat-run-event.service";
-import type { ModelFirstPin } from "./model-selection.service";
+import {
+  modelProviderWriteTypeForLaunch,
+  type ModelFirstPin,
+} from "./model-selection.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -72,6 +76,12 @@ interface InternalRunCallbackInput {
   readonly internalKind: InternalRunCallbackKind;
   readonly secret: string;
   readonly payload: unknown;
+}
+
+function workflowModelProviderBody(modelProvider: string | null | undefined) {
+  return modelProvider
+    ? { modelProvider: modelProviderWriteTypeForLaunch(modelProvider) }
+    : {};
 }
 
 type ModelContext =
@@ -317,15 +327,14 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled =
-    effectiveModelProvider === "vm0"
-      ? isFeatureEnabled(
-          FeatureSwitchKey.BuiltInModelProviderFallback,
-          await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
-        )
-      : false;
+  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
+    ? isFeatureEnabled(
+        FeatureSwitchKey.BuiltInModelProviderFallback,
+        await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
+      )
+    : false;
   const builtInModelRuntimeRoute =
-    effectiveModelProvider === "vm0" && selectedModel
+    isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
           args.db,
           selectedModel,
@@ -333,7 +342,10 @@ async function resolveModelContext(
         )
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
+  if (
+    isBuiltInModelProviderType(effectiveModelProvider) &&
+    !builtInModelRuntimeRoute
+  ) {
     return {
       ok: false,
       failure: {
@@ -663,9 +675,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         body: {
           prompt: runInput.prompt,
           agentId,
-          ...(effectiveModelProvider
-            ? { modelProvider: effectiveModelProvider }
-            : {}),
+          ...workflowModelProviderBody(effectiveModelProvider),
         },
         apiStartTime: args.apiStartTime,
         publicBrand: args.publicBrand,

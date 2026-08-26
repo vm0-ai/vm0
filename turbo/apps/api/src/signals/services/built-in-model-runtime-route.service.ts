@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
   getVm0BuiltInModelRouteCandidates,
+  isBuiltInModelProviderType,
   type BuiltInModelRouteProviderType,
   type BuiltInModelRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -184,13 +185,14 @@ export function hasIncompatibleBuiltInModelRuntimeRoute(args: {
   readonly next: ModelRuntimeSessionRoute;
 }): boolean {
   if (
-    args.previous.modelProvider !== "vm0" &&
-    args.next.modelProvider !== "vm0"
+    !isBuiltInModelProviderType(args.previous.modelProvider) &&
+    !isBuiltInModelProviderType(args.next.modelProvider)
   ) {
     return false;
   }
   return (
-    args.previous.modelProvider !== args.next.modelProvider ||
+    isBuiltInModelProviderType(args.previous.modelProvider) !==
+      isBuiltInModelProviderType(args.next.modelProvider) ||
     args.previous.modelRuntimeProvider !== args.next.modelRuntimeProvider ||
     args.previous.modelRuntimeModel !== args.next.modelRuntimeModel
   );

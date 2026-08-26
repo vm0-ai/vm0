@@ -14,6 +14,7 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
 import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
+import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import {
   createActiveGoalQueueEventFixture,
   drainChatThreadQueueFixture,
@@ -524,6 +525,11 @@ describe("workflow queue", () => {
         modelProviderId: null,
       },
     ]);
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: scenario.orgId,
+      model: "claude-sonnet-5",
+      defaultProviderType: "built-in",
+    });
     const goal = await createActiveGoalQueueEventFixture({
       threadId: automation.threadId,
       orgId: scenario.orgId,
@@ -572,6 +578,11 @@ describe("workflow queue", () => {
         modelProviderId: null,
       },
     ]);
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: scenario.orgId,
+      model: "claude-sonnet-5",
+      defaultProviderType: "built-in",
+    });
 
     const response = await withBuiltInModelRuntimeRouteUnavailableForTest(
       "claude-sonnet-5",

@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -27,7 +28,10 @@ import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import type { ModelFirstPin } from "./model-selection.service";
+import {
+  modelProviderWriteTypeForLaunch,
+  type ModelFirstPin,
+} from "./model-selection.service";
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import {
   resolveBuiltInModelRuntimeRoute,
@@ -173,7 +177,11 @@ function buildQueueFirstGoalRunInput(args: {
       prompt,
       agentId: normalizedGoal.agentId,
       ...(effectiveModelProvider
-        ? { modelProvider: effectiveModelProvider }
+        ? {
+            modelProvider: modelProviderWriteTypeForLaunch(
+              effectiveModelProvider,
+            ),
+          }
         : {}),
     },
     apiStartTime: args.apiStartTime,
@@ -262,19 +270,18 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled =
-    effectiveModelProvider === "vm0"
-      ? isFeatureEnabled(
-          FeatureSwitchKey.BuiltInModelProviderFallback,
-          await loadUserFeatureSwitchContext(
-            args.db,
-            args.goal.orgId,
-            args.goal.userId,
-          ),
-        )
-      : false;
+  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
+    ? isFeatureEnabled(
+        FeatureSwitchKey.BuiltInModelProviderFallback,
+        await loadUserFeatureSwitchContext(
+          args.db,
+          args.goal.orgId,
+          args.goal.userId,
+        ),
+      )
+    : false;
   const builtInModelRuntimeRoute =
-    effectiveModelProvider === "vm0" && selectedModel
+    isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
           args.db,
           selectedModel,
@@ -282,7 +289,10 @@ async function resolveModelContext(
         )
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
+  if (
+    isBuiltInModelProviderType(effectiveModelProvider) &&
+    !builtInModelRuntimeRoute
+  ) {
     return {
       ok: false,
       failure: {

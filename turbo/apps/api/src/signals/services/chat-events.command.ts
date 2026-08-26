@@ -11,7 +11,10 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  isBuiltInModelProviderType,
+  type SupportedRunModel,
+} from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -70,6 +73,7 @@ import { generateAndPersistInitialThinkingMessage } from "./chat-initial-thinkin
 import {
   isCodexFastServiceTierSupported,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
+  modelProviderWriteTypeForLaunch,
   type ModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
@@ -940,7 +944,9 @@ async function withBuiltInModelRuntimeRoute(
 ): Promise<ResolvedRunConfiguration | NormalSendFailure> {
   if (
     configuration.providerAdmission.error ||
-    configuration.providerAdmission.effectiveModelProvider !== "vm0"
+    !isBuiltInModelProviderType(
+      configuration.providerAdmission.effectiveModelProvider,
+    )
   ) {
     return configuration;
   }
@@ -3215,7 +3221,11 @@ function buildCreateAgentRunArgs(params: {
       prompt: prepared.body.agentPrompt,
       agentId: args.body.agentId,
       ...(providerAdmission.effectiveModelProvider
-        ? { modelProvider: providerAdmission.effectiveModelProvider }
+        ? {
+            modelProvider: modelProviderWriteTypeForLaunch(
+              providerAdmission.effectiveModelProvider,
+            ),
+          }
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
       ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),

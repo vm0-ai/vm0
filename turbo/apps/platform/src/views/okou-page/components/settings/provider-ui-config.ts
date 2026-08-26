@@ -1,6 +1,7 @@
 import {
   MODEL_PROVIDER_TYPES,
   getVm0ModelPriceTier,
+  isBuiltInModelProviderType,
   type ModelProviderType,
   type SupportedRunModel,
   type ModelPriceTier,
@@ -11,12 +12,12 @@ import { i18n } from "../../../../i18n/index.ts";
  * Get the display label for a provider type (UI override or core fallback)
  */
 export function getUILabel(type: ModelProviderType): string {
+  if (isBuiltInModelProviderType(type)) {
+    return i18n.t(($) => {
+      return $.settings.models.picker.builtInModel;
+    });
+  }
   switch (type) {
-    case "vm0": {
-      return i18n.t(($) => {
-        return $.settings.models.picker.builtInModel;
-      });
-    }
     case "claude-code-oauth-token": {
       return i18n.t(($) => {
         return $.settings.models.picker.providerLabels.claudeCodeOauth;

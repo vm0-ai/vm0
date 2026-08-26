@@ -12,6 +12,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
 import {
   deleteVm0BuiltInCandidateCooldownFixture,
   resolveVm0BuiltInModelRouteFixture,
@@ -642,6 +643,34 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         upstream_model: primary.upstream_model,
       });
     });
+  });
+
+  it("records failure cooldowns for the canonical built-in discriminator", async () => {
+    const claimed = await createClaimedVm0Run();
+    await setRunModelProviderFixture({
+      runId: claimed.runId,
+      modelProvider: "built-in",
+    });
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+
+    await expect(
+      runs.reportRunnerModelProviderFailure(claimed.runId, {
+        failureKind: "rate_limit",
+        retryAfterSeconds: 60,
+      }),
+    ).resolves.toStrictEqual({ outcome: "recorded" });
   });
 
   it("monotonically extends concurrent bounded reports from receipt time", async () => {

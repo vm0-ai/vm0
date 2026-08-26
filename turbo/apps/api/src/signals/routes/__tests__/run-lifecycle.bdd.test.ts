@@ -80,6 +80,7 @@ import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
+  setRunModelProviderFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
@@ -5131,7 +5132,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("isolates direct VM0 continuation by its persisted runtime route", async () => {
+  it("reuses built-in continuation across provider aliases and isolates runtime changes", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const selectedModel = await seedVm0BuiltInDefaultModelKey();
@@ -5171,6 +5172,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await setRunModelProviderFixture({
+      runId: first.runId,
+      modelProvider: "built-in",
+    });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
       group: runnerGroup,
@@ -16692,7 +16697,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 });
 
 describe("BILL-02: usage reads for an entitled organization with runs", () => {
-  it("prices model usage from the server pricing table", async () => {
+  it("prices canonical built-in model usage from the server pricing table", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -16720,6 +16725,10 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
       agentId,
       prompt: "generate server-priced model usage",
       modelProvider: "vm0",
+    });
+    await setRunModelProviderFixture({
+      runId: run.runId,
+      modelProvider: "built-in",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);

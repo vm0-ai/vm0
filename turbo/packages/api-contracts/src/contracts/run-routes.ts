@@ -15,6 +15,7 @@ import {
   networkLogsResponseSchema,
   createLogPaginationQuerySchema,
 } from "./runs";
+import { modelProviderWriteTypeSchema } from "./model-providers";
 import {
   sandboxReuseResultSchema,
   workspaceReuseResultSchema,
@@ -45,7 +46,7 @@ export const runCreateBodySchema = unifiedRunRequestSchema
     permissionPolicies: true,
   })
   .extend({
-    modelProvider: z.string().optional(),
+    modelProvider: modelProviderWriteTypeSchema.optional(),
   });
 
 const c = initContract();

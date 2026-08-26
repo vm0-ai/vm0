@@ -40,6 +40,7 @@ import {
   getSecretsForAuthMethod,
   getVm0ConcreteProviderType,
   hasAuthMethods,
+  isBuiltInModelProviderType,
   isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
@@ -1337,7 +1338,7 @@ function frameworkForProviderSelection(
   providerType: ModelProviderType,
   selectedModel: string | null | undefined,
 ): SupportedFramework | null {
-  if (providerType !== "vm0") {
+  if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
   const vm0Model = selectedModel ?? MODEL_PROVIDER_TYPES.vm0.defaultModel;
@@ -2634,7 +2635,7 @@ async function resolveCandidateModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
   row: ResolvableModelProviderEnvironmentRow,
 ): Promise<ResolvedModelProviderEnvironment | null> {
-  if (row.type === "vm0") {
+  if (isBuiltInModelProviderType(row.type)) {
     const selectedModel =
       args.selectedModelOverride ??
       row.selectedModel ??
@@ -2709,7 +2710,7 @@ async function resolveModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
-  if (args.modelProviderType === "vm0") {
+  if (isBuiltInModelProviderType(args.modelProviderType)) {
     const provider = await vm0ModelProviderEnvironment(
       db,
       args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
@@ -6674,10 +6675,9 @@ function billableFirewallsForPermissions(args: {
   const firewallNames = firewalls.map((firewall) => {
     return firewall.kind === "builtin" ? firewall.name : firewall.firewall.name;
   });
-  const modelFirewalls =
-    args.modelProvider?.type === "vm0"
-      ? firewallNames.filter(isModelProviderFirewallName)
-      : [];
+  const modelFirewalls = isBuiltInModelProviderType(args.modelProvider?.type)
+    ? firewallNames.filter(isModelProviderFirewallName)
+    : [];
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
@@ -6729,7 +6729,7 @@ function validateModelUsageProviderInvariant(args: {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: SupportedRunModel | undefined;
 }): CreateRunErrorResult | null {
-  if (args.modelProvider?.type !== "vm0") {
+  if (!isBuiltInModelProviderType(args.modelProvider?.type)) {
     return null;
   }
   if (!args.billableFirewalls.some(isModelProviderFirewallName)) {
@@ -7633,7 +7633,7 @@ async function activatePreparedLaunchUsageAllowance(args: {
   readonly commit: CommitPreparedLaunchArgs;
   readonly run: RunRecord;
 }): Promise<void> {
-  if (args.commit.context.modelProvider?.type === "vm0") {
+  if (isBuiltInModelProviderType(args.commit.context.modelProvider?.type)) {
     await args.commit.timing.measure(
       "api_dispatch_activate_usage_allowance_windows",
       "nested",
@@ -8194,7 +8194,9 @@ async function resolveRunModelProvider(
     args.modelProviderId !== undefined ||
     args.modelProviderCredentialScope !== undefined;
   const shouldResolveModelProvider =
-    hasProviderOverride || !hasFrameworkKey || args.modelProviderType === "vm0";
+    hasProviderOverride ||
+    !hasFrameworkKey ||
+    isBuiltInModelProviderType(args.modelProviderType);
   const modelProvider = shouldResolveModelProvider
     ? await resolveModelProviderEnvironment(db, {
         orgId: args.orgId,
@@ -8214,7 +8216,10 @@ async function resolveRunModelProvider(
     return modelProvider;
   }
 
-  if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
+  if (
+    args.enforceVm0Credits &&
+    isBuiltInModelProviderType(args.modelProviderType)
+  ) {
     const creditGate =
       (await checkOrgCreditsForRunAdmission({
         db,
@@ -9864,7 +9869,7 @@ export const completeAgentRun$ = command(
             selectedModel,
             enforceVm0Credits:
               args.enforceVm0Credits === true &&
-              context.modelProvider?.type === "vm0",
+              isBuiltInModelProviderType(context.modelProvider?.type),
             timing,
           },
           signal,
