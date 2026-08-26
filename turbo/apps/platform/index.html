@@ -900,10 +900,10 @@
           window.setTimeout(loadMarketingScripts, 0);
         }
 
-        // Optimize loading performance: attribution scripts can wait until
-        // the app skeleton is visible, with a fallback for failed bootstraps.
+        // Keep vendor work outside the first-content critical path, with a
+        // bounded fallback for bootstraps that never reach real app content.
         window.addEventListener(
-          "vm0:app-skeleton-visible",
+          "vm0:app-first-content-visible",
           scheduleMarketingScripts,
           { once: true },
         );

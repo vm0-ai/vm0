@@ -7,6 +7,9 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
   "vm0AppSkeletonVisibleEventQueued";
+const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
+const APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY =
+  "vm0AppFirstContentVisibleEventDispatched";
 
 const context = testContext();
 
@@ -40,6 +43,42 @@ describe("app skeleton", () => {
       expect(eventCount).toBe(1);
     });
     expect(skeletonMountedAtDispatch).toBeTruthy();
+  });
+
+  it("dispatches one first-content event after the ready page commits", async () => {
+    delete document.documentElement.dataset[
+      APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+    ];
+    context.signal.addEventListener("abort", () => {
+      delete document.documentElement.dataset[
+        APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+      ];
+    });
+
+    let eventCount = 0;
+    let contentMountedAtDispatch = false;
+    let skeletonHiddenAtDispatch = false;
+    window.addEventListener(
+      APP_FIRST_CONTENT_VISIBLE_EVENT,
+      () => {
+        eventCount += 1;
+        contentMountedAtDispatch =
+          document.querySelector('a[href^="mailto:"]') !== null;
+        skeletonHiddenAtDispatch =
+          document
+            .querySelector('[data-testid="app-skeleton"]')
+            ?.getAttribute("aria-hidden") === "true";
+      },
+      { signal: context.signal },
+    );
+
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(eventCount).toBe(1);
+    });
+    expect(contentMountedAtDispatch).toBeTruthy();
+    expect(skeletonHiddenAtDispatch).toBeTruthy();
   });
 
   it("removes the inline loading surface after the page is ready", async () => {
