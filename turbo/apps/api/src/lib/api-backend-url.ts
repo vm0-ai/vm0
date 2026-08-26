@@ -67,11 +67,11 @@ export function reportApiBackendUrlAliasSourceAtProcessInitialization(): void {
 }
 
 // This API-process compatibility boundary retains VM0_API_BACKEND_URL while
-// repository, deployment, preview, and local writers remain legacy-only.
+// repository-owned deployment, preview, and local writers emit canonical-only.
 // Under #28914, remove the legacy input only after an exact release containing
-// this reader reached every supported API runtime, the supported rollback
-// target can start after writer cutover, and value-free telemetry reports zero
-// legacy-only and equal-dual resolutions through that rollback window.
+// this writer cutover reached every supported API runtime, value-free telemetry
+// reports zero legacy-only and equal-dual resolutions through the supported
+// window, and refreshed rollback evidence supports that later contraction.
 export function apiBackendUrl(): string | undefined {
   const resolution = resolveApiBackendUrl();
   reportResolution(resolution.state);
