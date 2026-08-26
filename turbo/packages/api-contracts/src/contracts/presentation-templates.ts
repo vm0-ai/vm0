@@ -50,14 +50,13 @@ const presentationTemplateSummarySchema = z.object({
 
 const presentationTemplateCatalogEntrySchema =
   presentationTemplateSummarySchema.extend({
-    /** Optional while an older API deployment can still answer this request. */
-    previewAssets: z.array(presentationTemplatePreviewAssetSchema).optional(),
+    previewAssets: z.array(presentationTemplatePreviewAssetSchema),
   });
 
 const presentationTemplateDetailSchema =
   presentationTemplateSummarySchema.extend({
     pageUrls: z.array(z.string().url()),
-    previewAssets: z.array(presentationTemplatePreviewAssetSchema).optional(),
+    previewAssets: z.array(presentationTemplatePreviewAssetSchema),
   });
 
 const resolvePresentationTemplatePreviewUrlsBodySchema = z.object({

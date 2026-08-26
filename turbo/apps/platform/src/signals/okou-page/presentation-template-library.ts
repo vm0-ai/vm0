@@ -35,16 +35,11 @@ const importedPresentationTemplateDeletedIds$ = computed((get) => {
   return get(deletedPresentationTemplateIds$);
 });
 const PRESENTATION_TEMPLATE_PREVIEW_URL_SAFETY_MS = 45 * 1000;
-const LEGACY_PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS =
+const PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS =
   (PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000 * 2) / 3;
 
-interface ImportedPresentationTemplateCatalogEntry extends PresentationTemplateCatalogEntry {
-  /** Present only when compatibility with an older API required a detail GET. */
-  readonly pageUrls?: readonly string[];
-}
-
 interface ImportedPresentationTemplateCatalog {
-  readonly templates: readonly ImportedPresentationTemplateCatalogEntry[];
+  readonly templates: readonly PresentationTemplateCatalogEntry[];
   readonly loadedAtMs: number;
 }
 
@@ -70,37 +65,7 @@ const importedPresentationTemplateCatalog$ = computed(
     get(presentationTemplatesVersion$);
     const client = get(apiClient$)(presentationTemplatesContract);
     const result = await accept(client.list(), [200]);
-    const templates = await Promise.all(
-      result.body.map(
-        async (
-          template,
-        ): Promise<ImportedPresentationTemplateCatalogEntry | null> => {
-          if (template.previewAssets !== undefined) {
-            return template;
-          }
-          // Remove after the previous API version can no longer serve a newly
-          // loaded frontend. The fallback is background-only, so opening the
-          // picker or its detail view never initiates this request.
-          const detail = await accept(
-            client.get({ params: { templateId: template.id } }),
-            [200, 404],
-          );
-          return detail.status === 404
-            ? null
-            : {
-                ...template,
-                pageUrls: detail.body.pageUrls,
-                previewAssets: detail.body.previewAssets,
-              };
-        },
-      ),
-    );
-    return {
-      templates: templates.flatMap((template) => {
-        return template === null ? [] : [template];
-      }),
-      loadedAtMs: now(),
-    };
+    return { templates: result.body, loadedAtMs: now() };
   },
 );
 
@@ -223,43 +188,30 @@ async function resolvePresentationTemplatePreviewAssets(
   });
 }
 
-type CachedImportedPresentationTemplateDetail =
-  | {
-      readonly kind: "preview-assets";
-      readonly previewAssetIds: readonly string[];
-    }
-  | {
-      readonly kind: "legacy-page-urls";
-      readonly pageUrls: readonly string[];
-    };
-
 interface ImportedPresentationTemplateCache {
-  readonly detailByTemplateId: Map<
-    string,
-    CachedImportedPresentationTemplateDetail
-  >;
+  readonly previewAssetIdsByTemplateId: Map<string, readonly string[]>;
   readonly previewUrlByAssetId: Map<string, PresentationTemplatePreviewAsset>;
 }
 
-export function evictImportedPresentationTemplateCache(
+function evictImportedPresentationTemplateCache(
   cache: ImportedPresentationTemplateCache,
   templateId: string,
 ): void {
-  const removedDetail = cache.detailByTemplateId.get(templateId);
-  cache.detailByTemplateId.delete(templateId);
-  if (removedDetail?.kind !== "preview-assets") {
+  const removedPreviewAssetIds =
+    cache.previewAssetIdsByTemplateId.get(templateId);
+  cache.previewAssetIdsByTemplateId.delete(templateId);
+  if (removedPreviewAssetIds === undefined) {
     return;
   }
-  const retainedPreviewAssetIds = new Set(
-    [...cache.detailByTemplateId.values()].flatMap((detail) => {
-      return detail.kind === "preview-assets" ? detail.previewAssetIds : [];
-    }),
-  );
-  for (const previewAssetId of removedDetail.previewAssetIds) {
-    if (!retainedPreviewAssetIds.has(previewAssetId)) {
-      cache.previewUrlByAssetId.delete(previewAssetId);
-    }
+  for (const previewAssetId of removedPreviewAssetIds) {
+    cache.previewUrlByAssetId.delete(previewAssetId);
   }
+}
+
+function referencedPresentationTemplatePreviewAssetIds(
+  cache: ImportedPresentationTemplateCache,
+): ReadonlySet<string> {
+  return new Set([...cache.previewAssetIdsByTemplateId.values()].flat());
 }
 
 function mergePresentationTemplatePreviewAsset(
@@ -292,67 +244,43 @@ function cachedPresentationTemplatePreviewAsset(
 
 function synchronizeImportedPresentationTemplateCache(
   cache: ImportedPresentationTemplateCache,
-  templates: readonly ImportedPresentationTemplateCatalogEntry[],
+  templates: readonly PresentationTemplateCatalogEntry[],
 ): readonly PresentationTemplateDetail[] {
   const templateIds = new Set(
     templates.map((template) => {
       return template.id;
     }),
   );
-  for (const cachedTemplateId of cache.detailByTemplateId.keys()) {
+  for (const cachedTemplateId of cache.previewAssetIdsByTemplateId.keys()) {
     if (!templateIds.has(cachedTemplateId)) {
-      cache.detailByTemplateId.delete(cachedTemplateId);
+      evictImportedPresentationTemplateCache(cache, cachedTemplateId);
     }
   }
   for (const template of templates) {
-    if (template.previewAssets !== undefined) {
-      for (const asset of template.previewAssets) {
-        mergePresentationTemplatePreviewAsset(cache, asset);
+    const previewAssetIds = template.previewAssets.map((asset) => {
+      return asset.previewAssetId;
+    });
+    const nextPreviewAssetIds = new Set(previewAssetIds);
+    for (const previousPreviewAssetId of cache.previewAssetIdsByTemplateId.get(
+      template.id,
+    ) ?? []) {
+      if (!nextPreviewAssetIds.has(previousPreviewAssetId)) {
+        cache.previewUrlByAssetId.delete(previousPreviewAssetId);
       }
-      cache.detailByTemplateId.set(template.id, {
-        kind: "preview-assets",
-        previewAssetIds: template.previewAssets.map((asset) => {
-          return asset.previewAssetId;
-        }),
-      });
-      continue;
     }
-    const cachedDetail = cache.detailByTemplateId.get(template.id);
-    if (
-      cachedDetail?.kind !== "preview-assets" &&
-      template.pageUrls !== undefined
-    ) {
-      cache.detailByTemplateId.set(template.id, {
-        kind: "legacy-page-urls",
-        pageUrls: template.pageUrls,
-      });
+    for (const asset of template.previewAssets) {
+      mergePresentationTemplatePreviewAsset(cache, asset);
     }
-  }
-  const retainedPreviewAssetIds = new Set(
-    [...cache.detailByTemplateId.values()].flatMap((detail) => {
-      return detail.kind === "preview-assets" ? detail.previewAssetIds : [];
-    }),
-  );
-  for (const previewAssetId of cache.previewUrlByAssetId.keys()) {
-    if (!retainedPreviewAssetIds.has(previewAssetId)) {
-      cache.previewUrlByAssetId.delete(previewAssetId);
-    }
+    cache.previewAssetIdsByTemplateId.set(template.id, previewAssetIds);
   }
   return templates.map((template) => {
-    const cachedDetail = cache.detailByTemplateId.get(template.id);
-    if (cachedDetail === undefined) {
+    const previewAssetIds = cache.previewAssetIdsByTemplateId.get(template.id);
+    if (previewAssetIds === undefined) {
       throw new Error(
         `Presentation template detail is not cached: ${template.id}`,
       );
     }
-    if (cachedDetail.kind === "legacy-page-urls") {
-      return {
-        ...template,
-        coverUrl: cachedDetail.pageUrls[0] ?? template.coverUrl,
-        pageUrls: [...cachedDetail.pageUrls],
-      };
-    }
-    const previewAssets = cachedDetail.previewAssetIds.map((previewAssetId) => {
+    const previewAssets = previewAssetIds.map((previewAssetId) => {
       return cachedPresentationTemplatePreviewAsset(cache, previewAssetId);
     });
     return {
@@ -509,7 +437,7 @@ function presentationTemplatePreviewRefreshDelayMs(
     return Math.max(
       0,
       catalogLoadedAtMs +
-        LEGACY_PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
+        PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS -
         requestedAt,
     );
   }
@@ -528,12 +456,12 @@ function createImportedPresentationTemplateUrlRefreshSignals(
 ) {
   const refreshImportedPresentationTemplateUrlsIfExpiring$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const catalog = await get(catalog$);
-      signal.throwIfAborted();
       if (cache.previewUrlByAssetId.size === 0) {
+        const catalog = await get(catalog$);
+        signal.throwIfAborted();
         if (
           now() - catalog.loadedAtMs >=
-          LEGACY_PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS
+          PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS
         ) {
           await set(refreshAndReconcilePresentationTemplates$, signal);
         }
@@ -565,7 +493,12 @@ function createImportedPresentationTemplateUrlRefreshSignals(
         await set(refreshAndReconcilePresentationTemplates$, signal);
         return;
       }
+      const referencedPreviewAssetIds =
+        referencedPresentationTemplatePreviewAssetIds(cache);
       const updated = assets
+        .filter((asset) => {
+          return referencedPreviewAssetIds.has(asset.previewAssetId);
+        })
         .map((asset) => {
           return mergePresentationTemplatePreviewAsset(cache, asset);
         })
@@ -586,12 +519,15 @@ function createImportedPresentationTemplateUrlRefreshSignals(
       ): Promise<void> => {
         await setLoop(
           async (loopSignal) => {
-            const catalog = await get(catalog$);
+            const catalogLoadedAtMs =
+              cache.previewUrlByAssetId.size === 0
+                ? (await get(catalog$)).loadedAtMs
+                : now();
             loopSignal.throwIfAborted();
             await delay(
               presentationTemplatePreviewRefreshDelayMs(
                 cache,
-                catalog.loadedAtMs,
+                catalogLoadedAtMs,
               ),
               { signal: loopSignal },
             );
@@ -675,7 +611,7 @@ function createUpdateImportedPresentationTemplate$(
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
 export function createImportedPresentationTemplateSignals() {
   const cache: ImportedPresentationTemplateCache = {
-    detailByTemplateId: new Map(),
+    previewAssetIdsByTemplateId: new Map(),
     previewUrlByAssetId: new Map(),
   };
   const internalPreviewUrlsVersion$ = state(0);

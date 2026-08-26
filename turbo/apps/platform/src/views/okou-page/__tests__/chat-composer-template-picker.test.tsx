@@ -16,7 +16,10 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   presentationTemplatesContract,
+  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+  type PresentationTemplateCatalogEntry,
   type PresentationTemplateDetail,
+  type PresentationTemplatePreviewAsset,
   type PresentationTemplateSummary,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 import {
@@ -34,6 +37,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
+import { now } from "../../../lib/time.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -162,11 +166,50 @@ function controlImportedTemplateImageDecodes(
   };
 }
 
+type TestPresentationTemplateDetail = Omit<
+  PresentationTemplateDetail,
+  "previewAssets"
+> & {
+  readonly previewAssets?: readonly PresentationTemplatePreviewAsset[];
+};
+
+function presentationTemplateDetail(
+  template: TestPresentationTemplateDetail,
+): PresentationTemplateDetail {
+  return {
+    ...template,
+    previewAssets:
+      template.previewAssets === undefined
+        ? template.pageUrls.map((url, index) => {
+            return {
+              previewAssetId: `ptp:${template.id}:test-${index.toString()}`,
+              url,
+              expiresAt: new Date(
+                now() + PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000,
+              ).toISOString(),
+            };
+          })
+        : [...template.previewAssets],
+  };
+}
+
 function presentationTemplateSummary(
-  template: PresentationTemplateDetail,
+  template: TestPresentationTemplateDetail,
 ): PresentationTemplateSummary {
-  const { pageUrls: _pageUrls, ...summary } = template;
+  const {
+    pageUrls: _pageUrls,
+    previewAssets: _previewAssets,
+    ...summary
+  } = template;
   return summary;
+}
+
+function presentationTemplateCatalogEntry(
+  template: TestPresentationTemplateDetail,
+): PresentationTemplateCatalogEntry {
+  const { pageUrls: _pageUrls, ...entry } =
+    presentationTemplateDetail(template);
+  return entry;
 }
 
 function createAvatarFirstPage() {
@@ -3976,13 +4019,13 @@ describe("chat composer templates", () => {
       updatedAt: "2026-08-25T03:00:00.000Z",
     };
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
-      return respond(200, [presentationTemplateSummary(template)]);
+      return respond(200, [presentationTemplateCatalogEntry(template)]);
     });
     context.mocks.api(
       presentationTemplatesContract.get,
       ({ params, respond }) => {
         expect(params.templateId).toBe(templateId);
-        return respond(200, template);
+        return respond(200, presentationTemplateDetail(template));
       },
     );
 
@@ -4329,7 +4372,7 @@ describe("chat composer templates", () => {
   it("keeps loaded uploaded slides mounted while visibility metadata refreshes", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
-    let template: PresentationTemplateDetail = {
+    let template = presentationTemplateDetail({
       id: "ea583da0-6e8c-4ca4-9cb9-3a898c8d1850",
       title: "Stable preview deck",
       sourceFilename: "stable-preview-deck.pptx",
@@ -4344,13 +4387,13 @@ describe("chat composer templates", () => {
       ],
       createdAt: "2026-08-21T02:41:59.522Z",
       updatedAt: "2026-08-21T02:41:59.522Z",
-    };
+    });
     let listRequestCount = 0;
     let detailRequestCount = 0;
     let updateRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
       listRequestCount += 1;
-      return respond(200, [presentationTemplateSummary(template)]);
+      return respond(200, [presentationTemplateCatalogEntry(template)]);
     });
     context.mocks.api(
       presentationTemplatesContract.get,
@@ -4417,7 +4460,7 @@ describe("chat composer templates", () => {
     }
     const detailRequestCountBeforeUpdate = detailRequestCount;
     const listRequestCountBeforeUpdate = listRequestCount;
-    expect(detailRequestCountBeforeUpdate).toBe(1);
+    expect(detailRequestCountBeforeUpdate).toBe(0);
 
     const changeVisibilityButton = queryAllByRoleFast("button").find(
       (candidate) => {
@@ -4463,42 +4506,74 @@ describe("chat composer templates", () => {
 
   it("keeps remaining uploaded cards mounted while delete refresh is pending", async () => {
     const user = userEvent.setup({ delay: null });
+    const requestedAt = new Date("2026-08-21T02:41:59.522Z").getTime();
+    const expiringAt = new Date(requestedAt + 30 * 1000).toISOString();
+    const renewedAt = new Date(requestedAt + 15 * 60 * 1000).toISOString();
+    mockNow(context.signal, requestedAt);
     mockChatLifecycle(context, { threadId: THREAD_ID });
-    const deletedTemplate: PresentationTemplateDetail = {
-      id: "e3b3a9c6-cad5-49d1-bdd3-ab4083501462",
+    const deletedTemplateId = "e3b3a9c6-cad5-49d1-bdd3-ab4083501462";
+    const deletedPageUrls = [
+      "https://example.com/delete-this-deck-cover.png",
+      "https://example.com/delete-this-deck-page-2.png",
+    ];
+    const deletedPreviewAssets = deletedPageUrls.map((url, index) => {
+      return {
+        previewAssetId: `ptp:${deletedTemplateId}:page-${index.toString()}`,
+        url,
+        expiresAt: expiringAt,
+      };
+    });
+    const deletedTemplate = presentationTemplateDetail({
+      id: deletedTemplateId,
       title: "Delete this deck",
       sourceFilename: "delete-this-deck.pptx",
-      coverUrl: "https://example.com/delete-this-deck-cover.png",
+      coverUrl: deletedPageUrls[0] ?? null,
       pageCount: 2,
       visibility: "private",
       canManage: true,
-      pageUrls: [
-        "https://example.com/delete-this-deck-cover.png",
-        "https://example.com/delete-this-deck-page-2.png",
-      ],
+      pageUrls: deletedPageUrls,
+      previewAssets: deletedPreviewAssets,
       createdAt: "2026-08-21T02:41:59.522Z",
       updatedAt: "2026-08-21T02:41:59.522Z",
-    };
-    const remainingTemplate: PresentationTemplateDetail = {
-      id: "ba5e76aa-4082-47a8-9fb8-57e63857bba8",
+    });
+    const remainingTemplateId = "ba5e76aa-4082-47a8-9fb8-57e63857bba8";
+    const remainingPageUrls = [
+      "https://example.com/keep-this-deck-cover.png",
+      "https://example.com/keep-this-deck-page-2.png",
+    ];
+    const remainingPreviewAssets = remainingPageUrls.map((url, index) => {
+      return {
+        previewAssetId: `ptp:${remainingTemplateId}:page-${index.toString()}`,
+        url,
+        expiresAt: expiringAt,
+      };
+    });
+    const remainingTemplate = presentationTemplateDetail({
+      id: remainingTemplateId,
       title: "Keep this deck",
       sourceFilename: "keep-this-deck.pptx",
-      coverUrl: "https://example.com/keep-this-deck-cover.png",
+      coverUrl: remainingPageUrls[0] ?? null,
       pageCount: 2,
       visibility: "private",
       canManage: true,
-      pageUrls: [
-        "https://example.com/keep-this-deck-cover.png",
-        "https://example.com/keep-this-deck-page-2.png",
-      ],
+      pageUrls: remainingPageUrls,
+      previewAssets: remainingPreviewAssets,
       createdAt: "2026-08-21T02:42:59.522Z",
       updatedAt: "2026-08-21T02:42:59.522Z",
-    };
+    });
     let catalog = [deletedTemplate, remainingTemplate];
     let holdCatalogRefresh = false;
     let catalogRequestCount = 0;
     const deleteRefreshRequested = context.mocks.deferred<void>();
     const releaseDeleteRefresh = context.mocks.deferred<void>();
+    const firstPreviewResolveRequested = context.mocks.deferred<void>();
+    const releaseFirstPreviewResolve = context.mocks.deferred<void>();
+    const previewResolveRequests: string[][] = [];
+    const previewAssetsById = new Map(
+      [...deletedPreviewAssets, ...remainingPreviewAssets].map((asset) => {
+        return [asset.previewAssetId, asset] as const;
+      }),
+    );
     context.mocks.api(
       presentationTemplatesContract.list,
       async ({ respond }) => {
@@ -4507,7 +4582,25 @@ describe("chat composer templates", () => {
           deleteRefreshRequested.resolve();
           await releaseDeleteRefresh.promise;
         }
-        return respond(200, catalog.map(presentationTemplateSummary));
+        return respond(200, catalog.map(presentationTemplateCatalogEntry));
+      },
+    );
+    context.mocks.api(
+      presentationTemplatesContract.resolvePreviewUrls,
+      async ({ body, respond }) => {
+        previewResolveRequests.push([...body.previewAssetIds]);
+        if (previewResolveRequests.length === 1) {
+          firstPreviewResolveRequested.resolve();
+          await releaseFirstPreviewResolve.promise;
+        }
+        const expiresAt =
+          previewResolveRequests.length === 1 ? expiringAt : renewedAt;
+        return respond(200, {
+          assets: body.previewAssetIds.flatMap((previewAssetId) => {
+            const asset = previewAssetsById.get(previewAssetId);
+            return asset === undefined ? [] : [{ ...asset, expiresAt }];
+          }),
+        });
       },
     );
     context.mocks.api(
@@ -4545,6 +4638,7 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
+    await firstPreviewResolveRequested.promise;
     click(await screen.findByLabelText("Template"));
     await waitFor(() => {
       expect(catalogRequestCount).toBe(1);
@@ -4597,6 +4691,15 @@ describe("chat composer templates", () => {
     }
     await user.click(deleteButton);
     await deleteRefreshRequested.promise;
+    releaseFirstPreviewResolve.resolve();
+    await waitFor(() => {
+      expect(previewResolveRequests).toHaveLength(2);
+    });
+    expect(previewResolveRequests[1]).toStrictEqual(
+      remainingPreviewAssets.map((asset) => {
+        return asset.previewAssetId;
+      }),
+    );
 
     await waitFor(() => {
       expect(deletedCard).not.toBeInTheDocument();
