@@ -4228,6 +4228,139 @@ function piResponsesTextSse(text: string, sequence: number): string {
     .join("");
 }
 
+type PiResponsesSemanticBlock =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "toolCall";
+      readonly callId: string;
+      readonly name: string;
+      readonly arguments: Record<string, unknown>;
+    };
+
+function piResponsesContentSse(args: {
+  readonly blocks: readonly PiResponsesSemanticBlock[];
+  readonly sequence: number;
+  readonly includeReasoning?: boolean;
+}): string {
+  const responseId = `resp_pi_content_${args.sequence.toString()}`;
+  const output: Record<string, unknown>[] = [];
+  const events: Record<string, unknown>[] = [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+  ];
+  if (args.includeReasoning) {
+    const reasoningText = "API-first reasoning preserved for Sandbox resume";
+    const reasoningItem = {
+      type: "reasoning",
+      id: `rs_pi_content_${args.sequence.toString()}`,
+      content: [{ type: "reasoning_text", text: reasoningText }],
+      summary: [],
+    };
+    output.push(reasoningItem);
+    events.push(
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { ...reasoningItem, content: [] },
+      },
+      {
+        type: "response.reasoning_text.delta",
+        output_index: 0,
+        content_index: 0,
+        delta: reasoningText,
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: reasoningItem,
+      },
+    );
+  }
+  const outputIndexOffset = output.length;
+  for (const [blockIndex, block] of args.blocks.entries()) {
+    const outputIndex = outputIndexOffset + blockIndex;
+    if (block.type === "text") {
+      const item = {
+        type: "message",
+        id: `msg_pi_content_${args.sequence.toString()}_${blockIndex.toString()}`,
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: block.text, annotations: [] }],
+      };
+      output.push(item);
+      events.push(
+        {
+          type: "response.output_item.added",
+          output_index: outputIndex,
+          item: { ...item, status: "in_progress", content: [] },
+        },
+        {
+          type: "response.output_text.delta",
+          output_index: outputIndex,
+          content_index: 0,
+          delta: block.text,
+        },
+        { type: "response.output_item.done", output_index: outputIndex, item },
+      );
+      continue;
+    }
+    const functionArguments = JSON.stringify(block.arguments);
+    const itemId = `fc_pi_content_${args.sequence.toString()}_${blockIndex.toString()}`;
+    const item = {
+      type: "function_call",
+      id: itemId,
+      call_id: block.callId,
+      name: block.name,
+      arguments: functionArguments,
+      status: "completed",
+    };
+    output.push(item);
+    events.push(
+      {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: { ...item, arguments: "", status: "in_progress" },
+      },
+      {
+        type: "response.function_call_arguments.delta",
+        output_index: outputIndex,
+        item_id: itemId,
+        delta: functionArguments,
+      },
+      {
+        type: "response.function_call_arguments.done",
+        output_index: outputIndex,
+        item_id: itemId,
+        arguments: functionArguments,
+      },
+      { type: "response.output_item.done", output_index: outputIndex, item },
+    );
+  }
+  events.push({
+    type: "response.completed",
+    response: {
+      id: responseId,
+      object: "response",
+      status: "completed",
+      output,
+      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+    },
+  });
+  return events
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+}
+
 function piResponsesToolSse(args: {
   readonly callId: string;
   readonly name: string;
@@ -4812,6 +4945,123 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
+  it("projects complete API-first text blocks in source order and completes at N", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "pi-content-block-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const archive = latestStoredArchive();
+    const consumedAgentEvents: Record<string, unknown>[] = [];
+    server.use(
+      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
+        return new HttpResponse(archive, {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom event array");
+          }
+          consumedAgentEvents.push(
+            ...events.filter((event): event is Record<string, unknown> => {
+              return (
+                typeof event === "object" &&
+                event !== null &&
+                !Array.isArray(event)
+              );
+            }),
+          );
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+          });
+        },
+      ),
+      http.post("https://api.deepseek.com/responses", () => {
+        return new HttpResponse(
+          piResponsesContentSse({
+            blocks: [
+              { type: "text", text: "alpha" },
+              { type: "text", text: "beta" },
+              { type: "text", text: "gamma" },
+              { type: "text", text: "delta" },
+            ],
+            sequence: 1,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    mockPiCheckpointObjectStore();
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "preserve each complete API-first text block",
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(
+      consumedAgentEvents
+        .filter((event) => {
+          return event.runId === run.runId;
+        })
+        .map((event) => {
+          return {
+            sequenceNumber: event.sequenceNumber,
+            eventType: event.eventType,
+          };
+        }),
+    ).toStrictEqual([
+      { sequenceNumber: 0, eventType: "assistant" },
+      { sequenceNumber: 1, eventType: "assistant" },
+      { sequenceNumber: 2, eventType: "assistant" },
+      { sequenceNumber: 3, eventType: "assistant" },
+      { sequenceNumber: 4, eventType: "result" },
+    ]);
+    const thread = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      eventBackedContents(thread.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+          runEventId: message.runEventId,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "alpha", sequenceNumber: 0, runEventId: "event:0" },
+      { content: "beta", sequenceNumber: 1, runEventId: "event:1" },
+      { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
+      { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
+    ]);
+  }, 90_000);
+
   it.each([
     {
       failure: "resource download",
@@ -4995,7 +5245,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("publishes one H1 and hands an explicit Sandbox tool turn to H2", async () => {
+  it("publishes ordered mixed blocks and hands explicit Sandbox tool turns to H2", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -5031,12 +5281,38 @@ describe("CHAT-02: model-first provider policies", () => {
       http.post("https://api.deepseek.com/responses", () => {
         modelCalls += 1;
         return new HttpResponse(
-          piResponsesToolSse({
-            callId: "call_pi_read",
-            name: "read",
-            arguments: { path: "/home/user/workspace/handoff.txt" },
-            sequence: modelCalls,
-          }),
+          modelCalls === 1
+            ? piResponsesContentSse({
+                blocks: [
+                  { type: "text", text: "before parallel tools" },
+                  {
+                    type: "toolCall",
+                    callId: "call_pi_read",
+                    name: "read",
+                    arguments: {
+                      path: "/home/user/workspace/handoff.txt",
+                    },
+                  },
+                  {
+                    type: "toolCall",
+                    callId: "call_pi_write",
+                    name: "write",
+                    arguments: {
+                      path: "/home/user/workspace/handoff-copy.txt",
+                      content: "copied",
+                    },
+                  },
+                  { type: "text", text: "after parallel tools" },
+                ],
+                sequence: modelCalls,
+                includeReasoning: true,
+              })
+            : piResponsesToolSse({
+                callId: "call_pi_read",
+                name: "read",
+                arguments: { path: "/home/user/workspace/handoff.txt" },
+                sequence: modelCalls,
+              }),
           { headers: { "content-type": "text/event-stream" } },
         );
       }),
@@ -5069,7 +5345,7 @@ describe("CHAT-02: model-first provider policies", () => {
       readonly sandboxEventSequenceStart?: unknown;
     };
     expect(manifest).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       outcome: "handoff",
       baseSession: { sessionId: run.threadId, sha256: null },
       session: {
@@ -5077,8 +5353,26 @@ describe("CHAT-02: model-first provider policies", () => {
         sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
         rawSize: expect.any(Number),
       },
+      sandboxEventSequenceStart: 4,
     });
-    expect(manifest).not.toHaveProperty("sandboxEventSequenceStart");
+    const projected = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return eventBackedContents(messages, run.runId).length === 2;
+      },
+    );
+    expect(
+      eventBackedContents(projected.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "before parallel tools", sequenceNumber: 0 },
+      { content: "after parallel tools", sequenceNumber: 3 },
+    ]);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -5125,14 +5419,122 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ],
     });
+    expect(
+      h1Assistant?.role === "assistant"
+        ? h1Assistant.content
+            .filter((content) => {
+              return content.type !== "thinking";
+            })
+            .map((content) => {
+              return content.type === "text"
+                ? { type: content.type, text: content.text }
+                : {
+                    type: content.type,
+                    id: content.id,
+                    name: content.name,
+                  };
+            })
+        : [],
+    ).toStrictEqual([
+      { type: "text", text: "before parallel tools" },
+      {
+        type: "toolCall",
+        id: "call_pi_read|fc_pi_content_1_1",
+        name: "read",
+      },
+      {
+        type: "toolCall",
+        id: "call_pi_write|fc_pi_content_1_2",
+        name: "write",
+      },
+      { type: "text", text: "after parallel tools" },
+    ]);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "before parallel tools" }],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_pi_read|fc_pi_content_1_1",
+                  name: "read",
+                  input: { path: "/home/user/workspace/handoff.txt" },
+                },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_pi_write|fc_pi_content_1_2",
+                  name: "write",
+                  input: {
+                    path: "/home/user/workspace/handoff-copy.txt",
+                    content: "copied",
+                  },
+                },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 3,
+            message: {
+              content: [{ type: "text", text: "after parallel tools" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "before parallel tools", sequenceNumber: 0 },
+      { content: "after parallel tools", sequenceNumber: 3 },
+    ]);
     h2Session.appendMessage({
       role: "toolResult",
-      toolCallId: "call_pi_read|fc_pi_tool_1",
+      toolCallId: "call_pi_read|fc_pi_content_1_1",
       toolName: "read",
       content: [{ type: "text", text: "Sandbox tool output" }],
       details: {},
       isError: false,
       timestamp: 2,
+    });
+    h2Session.appendMessage({
+      role: "toolResult",
+      toolCallId: "call_pi_write|fc_pi_content_1_2",
+      toolName: "write",
+      content: [{ type: "text", text: "Sandbox write output" }],
+      details: {},
+      isError: false,
+      timestamp: 3,
     });
     h2Session.appendMessage({
       role: "assistant",
@@ -5149,7 +5551,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
       stopReason: "stop",
-      timestamp: 3,
+      timestamp: 4,
     });
     const h2 = h2Session.toJsonl();
     const h2Hash = createHash("sha256").update(h2).digest("hex");

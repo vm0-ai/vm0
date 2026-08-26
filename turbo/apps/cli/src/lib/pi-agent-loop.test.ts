@@ -551,7 +551,7 @@ describe("sandbox Pi agent loop", () => {
               sessionUrl: `${handoffBaseUrl}/session.jsonl`,
               deadlineAt: Date.now() + 10_000,
               baseSession: { sessionId: SESSION_ID, sha256: null },
-              sandboxEventSequenceStart: 4,
+              sandboxEventSequenceStart: 1,
             },
           },
         }),

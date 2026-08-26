@@ -372,7 +372,7 @@ async function canCommitApiTurn(
   );
 }
 
-function projectedAssistantContent(
+function projectedAssistantBlocks(
   assistant: PiApiFirstTurnResult["assistantMessage"],
 ): unknown[] {
   return assistant.content.flatMap((block): unknown[] => {
@@ -406,37 +406,40 @@ function assistantText(
     .join("\n\n");
 }
 
-function assistantEvent(
+function assistantEvents(
   runId: string,
   assistant: PiApiFirstTurnResult["assistantMessage"],
-): AgentEvent {
-  return {
-    type: "assistant",
-    sequenceNumber: 0,
-    message: {
-      id:
-        assistant.responseId ??
-        `${runId}:${assistant.timestamp}:${assistant.model}`,
-      role: "assistant",
-      content: projectedAssistantContent(assistant),
-      model: assistant.model,
-      usage: {
-        input_tokens: assistant.usage.input,
-        output_tokens: assistant.usage.output,
-        cache_read_input_tokens: assistant.usage.cacheRead,
-        cache_creation_input_tokens: assistant.usage.cacheWrite,
+): AgentEvent[] {
+  return projectedAssistantBlocks(assistant).map((block, sequenceNumber) => {
+    return {
+      type: "assistant",
+      sequenceNumber,
+      message: {
+        id:
+          assistant.responseId ??
+          `${runId}:${assistant.timestamp}:${assistant.model}`,
+        role: "assistant",
+        content: [block],
+        model: assistant.model,
+        usage: {
+          input_tokens: assistant.usage.input,
+          output_tokens: assistant.usage.output,
+          cache_read_input_tokens: assistant.usage.cacheRead,
+          cache_creation_input_tokens: assistant.usage.cacheWrite,
+        },
       },
-    },
-  };
+    };
+  });
 }
 
 function resultEvent(
   assistant: PiApiFirstTurnResult["assistantMessage"],
   startedAt: number,
+  sequenceNumber: number,
 ): AgentEvent {
   return {
     type: "result",
-    sequenceNumber: 1,
+    sequenceNumber,
     subtype: "success",
     is_error: false,
     result: assistantText(assistant),
@@ -940,6 +943,7 @@ const finalizeCompleteTurn$ = command(async function finalizeCompleteTurn(
   { set },
   args: ApiFirstTurnContext,
   prepared: PreparedApiFirstTurn,
+  lastEventSequence: number,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
   const completion = await set(
@@ -949,7 +953,7 @@ const finalizeCompleteTurn$ = command(async function finalizeCompleteTurn(
       body: {
         runId: args.activation.runId,
         exitCode: 0,
-        lastEventSequence: 1,
+        lastEventSequence,
       },
     },
     signal,
@@ -999,16 +1003,25 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
   );
   signal.throwIfAborted();
 
+  const blockEvents = assistantEvents(
+    args.activation.runId,
+    prepared.turn.assistantMessage,
+  );
+  const nextSequenceNumber = blockEvents.length;
   const events = prepared.turn.handoffRequired
-    ? [assistantEvent(args.activation.runId, prepared.turn.assistantMessage)]
+    ? blockEvents
     : [
-        assistantEvent(args.activation.runId, prepared.turn.assistantMessage),
-        resultEvent(prepared.turn.assistantMessage, prepared.startedAt),
+        ...blockEvents,
+        resultEvent(
+          prepared.turn.assistantMessage,
+          prepared.startedAt,
+          nextSequenceNumber,
+        ),
       ];
   await set(publishEvents$, { auth: prepared.auth, events }, signal);
   if (prepared.turn.handoffRequired) {
     const manifest: PiApiFirstTurnManifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       outcome: "handoff",
       baseSession: prepared.baseSession,
       session: {
@@ -1016,6 +1029,7 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
         sha256: prepared.sessionHash,
         rawSize: prepared.sessionBytes.length,
       },
+      sandboxEventSequenceStart: nextSequenceNumber,
     };
     await set(
       writeManifest$,
@@ -1026,7 +1040,13 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
   }
 
   await set(persistCompleteTurnCheckpoint$, args, prepared, signal);
-  const sideEffects = await set(finalizeCompleteTurn$, args, prepared, signal);
+  const sideEffects = await set(
+    finalizeCompleteTurn$,
+    args,
+    prepared,
+    nextSequenceNumber,
+    signal,
+  );
   stopPreparedSandbox(args.activation, "completed");
   return sideEffects;
 });

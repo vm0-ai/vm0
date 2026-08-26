@@ -174,7 +174,7 @@ describe("Pi API first-turn handoff loader", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("restores H1 with a matching future dynamic boundary", async () => {
+  it("restores H1 with the authoritative future manifest boundary", async () => {
     const sessionDir = await mkdtemp(join(tmpdir(), "pi-handoff-loader-"));
     temporaryDirectories.push(sessionDir);
     const jsonl = HANDOFF_SESSION_JSONL;
@@ -186,7 +186,7 @@ describe("Pi API first-turn handoff loader", () => {
     });
 
     const restored = await resolvePiApiFirstTurnHandoff({
-      config: config(5_000, sandboxEventSequenceStart),
+      config: config(5_000),
       sessionDir,
       sessionId: SESSION_ID,
       runtime: fixedRuntime(fetchMock as typeof fetch),
@@ -196,25 +196,15 @@ describe("Pi API first-turn handoff loader", () => {
     expect(await readFile(restored.sessionFile, "utf8")).toBe(jsonl);
   });
 
-  it.each([
-    {
-      name: "v1 manifest with a dynamic launch boundary",
-      pointer: manifest(HANDOFF_SESSION_JSONL),
-      launchBoundary: 4,
-    },
-    {
-      name: "v2 manifest with a different launch boundary",
-      pointer: manifestV2(HANDOFF_SESSION_JSONL, 4),
-      launchBoundary: 3,
-    },
-  ])("fails closed for $name", async ({ pointer, launchBoundary }) => {
+  it("fails closed for a v1 manifest with a dynamic launch boundary", async () => {
+    const pointer = manifest(HANDOFF_SESSION_JSONL);
     const fetchMock = vi.fn(async () => {
       return Response.json(pointer);
     });
 
     await expect(
       resolvePiApiFirstTurnHandoff({
-        config: config(5_000, launchBoundary),
+        config: config(5_000, 4),
         sessionDir: "/unused",
         sessionId: SESSION_ID,
         runtime: fixedRuntime(fetchMock as typeof fetch),
