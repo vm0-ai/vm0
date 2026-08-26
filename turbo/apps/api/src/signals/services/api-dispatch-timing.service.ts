@@ -338,6 +338,7 @@ export class ApiDispatchPhaseCollector {
   }
 }
 
+/** Hold shared scheduler phases until a created goal run owns their flush. */
 export class GoalSchedulerTimingCollector {
   private readonly records: GoalSchedulerTimingRecord[] = [];
   private previousBoundaryAt: number;

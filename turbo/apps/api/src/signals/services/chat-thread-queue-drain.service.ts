@@ -142,6 +142,9 @@ export const drainChatThreadQueueForThread$ = command(
         schedulerEnteredAt,
       );
     }
+    // Run-based drains close their database lookup at this common entry, so
+    // that phase also includes the command handoff. Direct drains emit the
+    // same action with zero duration to keep one fixed per-run action set.
     goalSchedulerTiming.checkpoint(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup",
       schedulerEnteredAt,
