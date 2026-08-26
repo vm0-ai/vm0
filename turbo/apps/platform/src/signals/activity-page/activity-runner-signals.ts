@@ -15,6 +15,10 @@ interface ActivityRunner {
   runner: {
     sandboxReuseResult: SandboxReuseResult | null;
     workspaceReuseResult: WorkspaceReuseResult | null;
+    runnerHostname: string | null;
+    runnerVersion: string | null;
+    runnerId: string | null;
+    runnerHeartbeatGeneration: number | null;
   };
 }
 
@@ -36,6 +40,10 @@ export const activityRunner$ = computed(async (get) => {
     runner: {
       sandboxReuseResult: result.body.sandboxReuseResult,
       workspaceReuseResult: result.body.workspaceReuseResult ?? null,
+      runnerHostname: result.body.runnerHostname ?? null,
+      runnerVersion: result.body.runnerVersion ?? null,
+      runnerId: result.body.runnerId ?? null,
+      runnerHeartbeatGeneration: result.body.runnerHeartbeatGeneration ?? null,
     },
   } satisfies ActivityRunner;
 });
