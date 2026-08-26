@@ -30,6 +30,11 @@ export interface ChatThreadSnapshot {
   readonly latestSeqId: number | null;
 }
 
+interface ChatThreadUnread {
+  readonly threadId: string;
+  readonly unreadAt: string;
+}
+
 export type ChatThreadEvent = ApiChatThreadEvent;
 
 interface ZeroChatEventSnapshotDownload {
@@ -149,6 +154,20 @@ export async function listChatThreadEvents(options: {
     return { kind: "expired" };
   }
   handleError(result, "Failed to list chat thread events");
+}
+
+export async function listChatThreadUnreads(options: {
+  agentId: string;
+}): Promise<readonly ChatThreadUnread[]> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.unreads({
+    query: { agentId: options.agentId },
+  });
+  if (result.status === 200) {
+    return result.body.unreads;
+  }
+  handleError(result, "Failed to list unread chat threads");
 }
 
 export async function createChatThread(options: {
