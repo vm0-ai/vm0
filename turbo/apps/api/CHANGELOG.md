@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.496.1](https://github.com/vm0-ai/vm0/compare/api-v1.496.0...api-v1.496.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **billing:** read concurrency price from stripe ([#29359](https://github.com/vm0-ai/vm0/issues/29359)) ([aac0e75](https://github.com/vm0-ai/vm0/commit/aac0e7537423f201225b8960839e6e0e8b33d4d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+    * @okouai/db bumped to 1.225.1
+
 ## [1.496.0](https://github.com/vm0-ai/vm0/compare/api-v1.495.0...api-v1.496.0) (2026-08-26)
 
 
