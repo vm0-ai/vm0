@@ -519,6 +519,7 @@ async fn run_start_with_home(
     })?;
     let background_fill = crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()?;
     let name = runner_config.name;
+    let hostname = runner_config.hostname;
     let group = runner_config.group;
     let cancel_tokens = RunCancellationRegistry::new();
     let local_group_dir = if args.local {
@@ -789,6 +790,7 @@ async fn run_start_with_home(
             server.token,
             ApiProviderConfig {
                 runner_identity,
+                runner_hostname: hostname.clone(),
                 group,
                 supported_profiles: profiles,
             },
@@ -806,6 +808,7 @@ async fn run_start_with_home(
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
         runner_name: name.clone(),
+        runner_hostname: hostname,
         registry: registry_handle,
         http,
         log_paths,

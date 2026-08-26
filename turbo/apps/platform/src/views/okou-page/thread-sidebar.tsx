@@ -72,6 +72,7 @@ function ThreadSidebarHeader({
     <div className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       {onBack ? (
         <Button
+          showTooltip
           type="button"
           onClick={onBack}
           aria-label={t(($) => {
@@ -88,6 +89,7 @@ function ThreadSidebarHeader({
       </span>
       {onToggleFullscreen ? (
         <Button
+          showTooltip
           type="button"
           onClick={onToggleFullscreen}
           aria-label={
@@ -108,6 +110,7 @@ function ThreadSidebarHeader({
         </Button>
       ) : null}
       <Button
+        showTooltip
         type="button"
         onClick={onClose}
         aria-label={t(

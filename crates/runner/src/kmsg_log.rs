@@ -72,13 +72,20 @@ impl KmsgHandle {
 /// network log entries. Returns a handle; call [`KmsgHandle::stop`] during
 /// shutdown so the tokio runtime can exit cleanly.
 pub fn spawn(network_log_manager: NetworkLogManager) -> std::io::Result<KmsgHandle> {
-    let child = tokio::process::Command::new("dmesg")
-        .args(["-w"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+    let mut command = tokio::process::Command::new("dmesg");
+    configure_command(&mut command);
+    let child = command.spawn()?;
 
     KmsgHandle::from_child(child, network_log_manager)
+}
+
+fn configure_command(command: &mut tokio::process::Command) {
+    command
+        .args(["-w"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    crate::parent_death::configure_parent_death_signal(command);
 }
 
 impl KmsgHandle {
@@ -271,6 +278,31 @@ mod tests {
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainContext;
     use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn command_configures_parent_death_signal() {
+        let mut command = tokio::process::Command::new("/bin/true");
+        configure_command(&mut command);
+
+        // SAFETY: `prctl(PR_GET_PDEATHSIG)` is async-signal-safe. The hook
+        // only reads the configured signal and returns fixed OS errors.
+        unsafe {
+            command.pre_exec(|| {
+                let mut signal = 0;
+                if nix::libc::prctl(nix::libc::PR_GET_PDEATHSIG, &mut signal) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if signal != nix::libc::SIGKILL {
+                    return Err(std::io::Error::from_raw_os_error(nix::libc::EPROTO));
+                }
+                Ok(())
+            });
+        }
+
+        let status = command.status().await.unwrap();
+
+        assert!(status.success());
+    }
 
     #[test]
     fn parse_udp_log_message() {

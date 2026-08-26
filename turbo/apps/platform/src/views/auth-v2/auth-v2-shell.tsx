@@ -48,7 +48,7 @@ export function AuthV2Shell({
         <div className="flex flex-col gap-8 px-10 py-8">
           <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">
             <h1
-              className="rounded-sm text-lg font-medium text-foreground outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              className="text-lg font-medium text-foreground outline-none"
               id={AUTH_V2_TITLE_ID}
               key={focusKey}
               ref={focusHeading}

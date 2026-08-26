@@ -18,6 +18,7 @@ APP_URL=https://app.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom-api.vm7.ai:8442
+OKOU_MACHINE_SECRET_KEY=op://Development/clerk/OKOU_MACHINE_SECRET_KEY
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/OKOU_MACHINE_SECRET_KEY
 
 # Required: API deploy stage tag

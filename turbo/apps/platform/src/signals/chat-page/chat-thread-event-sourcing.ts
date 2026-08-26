@@ -93,6 +93,13 @@ export interface ThreadMeta {
   readonly selectedImageModel: string | null;
 }
 
+interface ThreadMetaResolution {
+  readonly localDurationMs?: number;
+  readonly meta: ThreadMeta | null;
+  readonly remoteDurationMs?: number;
+  readonly source: "local" | "memory" | "not_found" | "remote";
+}
+
 const optimisticChatThreadEventsState$ = state<
   readonly OptimisticChatThreadEvent[]
 >([]);
@@ -667,12 +674,13 @@ export function threadMeta(threadId: string) {
 
 export function resolvedThreadMeta(threadId: string) {
   const meta$ = threadMeta(threadId);
-  return computed(async (get): Promise<ThreadMeta | null> => {
+  return computed(async (get): Promise<ThreadMetaResolution> => {
     let meta = get(meta$);
     if (meta) {
-      return meta;
+      return { meta, source: "memory" };
     }
 
+    const localStartedAt = performance.now();
     const foregroundReady = get(foregroundReady$);
     const syncBarrier = get(chatThreadEventSyncBarrier$);
     const foregroundSync =
@@ -681,22 +689,35 @@ export function resolvedThreadMeta(threadId: string) {
         : null;
 
     await get(initialLocalChatThreadEventsLoaded$);
+    const localDurationMs = Math.round(performance.now() - localStartedAt);
     meta = get(meta$);
     if (meta) {
-      return meta;
+      return { localDurationMs, meta, source: "local" };
     }
 
+    const remoteStartedAt = performance.now();
     if (foregroundSync) {
       await foregroundReady.promise;
       await foregroundSync;
       meta = get(meta$);
       if (meta) {
-        return meta;
+        return {
+          localDurationMs,
+          meta,
+          remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
+          source: "remote",
+        };
       }
     }
 
     await get(initialRemoteChatThreadEventsSynced$);
-    return get(meta$);
+    meta = get(meta$);
+    return {
+      localDurationMs,
+      meta,
+      remoteDurationMs: Math.round(performance.now() - remoteStartedAt),
+      source: meta ? "remote" : "not_found",
+    };
   });
 }
 

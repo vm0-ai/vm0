@@ -10,6 +10,8 @@ import { bootstrap$ } from "./signals/bootstrap.ts";
 import { detach, Reason, resetSignal } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
+window.__appBootstrapModuleReady = performance.now();
+
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
 const resetRootSignal$ = resetSignal();

@@ -56,7 +56,6 @@ export enum FeatureSwitchKey {
   BuiltInModelProviderFallback = "builtInModelProviderFallback",
   ChatForward = "chatForward",
   ResponsiveFollowupCards = "responsiveFollowupCards",
-  HomeGrowthEntry = "homeGrowthEntry",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
@@ -80,4 +79,5 @@ export enum FeatureSwitchKey {
   SharedChatDatabase = "sharedChatDatabase",
   ComposerImageAnnotation = "composerImageAnnotation",
   ComposerFlatFeedbackNote = "composerFlatFeedbackNote",
+  GradientColorThemes = "gradientColorThemes",
 }

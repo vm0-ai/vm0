@@ -113,7 +113,7 @@ def _metadata_collection_violations(
         ]
     if isinstance(node, ast.DictComp):
         if mode is _MetadataCollectionMode.PAIR_ITERABLE:
-            return []
+            return _metadata_pair_element_violations(path, node.key)
         return _metadata_key_expression_violations(path, node.key)
     if isinstance(node, ast.List | ast.Tuple | ast.Set):
         return _metadata_collection_sequence_violations(path, node, mode)
@@ -123,7 +123,7 @@ def _metadata_collection_violations(
         return _metadata_pair_element_violations(path, node.elt)
     if isinstance(node, ast.Call):
         return _metadata_collection_call_violations(path, node, mode)
-    if not isinstance(node, ast.Dict) or mode is _MetadataCollectionMode.PAIR_ITERABLE:
+    if not isinstance(node, ast.Dict):
         return []
     return _metadata_mapping_container_violations(path, node, mode)
 
@@ -135,6 +135,9 @@ def _metadata_mapping_container_violations(
     for key, value in zip(node.keys, node.values, strict=True):
         if key is None:
             violations.extend(_metadata_collection_violations(path, value, mode))
+            continue
+        if mode is _MetadataCollectionMode.PAIR_ITERABLE:
+            violations.extend(_metadata_pair_element_violations(path, key))
             continue
         violations.extend(_metadata_key_expression_violations(path, key))
     return violations
@@ -161,18 +164,18 @@ def _metadata_collection_call_violations(
 ) -> list[str]:
     if isinstance(node.func, ast.Attribute):
         if (
-            mode is _MetadataCollectionMode.MAPPING_INPUT
-            and isinstance(node.func.value, ast.Name)
+            isinstance(node.func.value, ast.Name)
             and node.func.value.id == "dict"
             and node.func.attr == "fromkeys"
         ):
+            keys_mode = (
+                _MetadataCollectionMode.PAIR_ITERABLE
+                if mode is _MetadataCollectionMode.PAIR_ITERABLE
+                else _MetadataCollectionMode.KEY_SEQUENCE
+            )
             violations: list[str] = []
             for keys_arg in _static_first_call_argument_nodes(node.args):
-                violations.extend(
-                    _metadata_collection_violations(
-                        path, keys_arg, _MetadataCollectionMode.KEY_SEQUENCE
-                    )
-                )
+                violations.extend(_metadata_collection_violations(path, keys_arg, keys_mode))
             return violations
         if (
             mode is not _MetadataCollectionMode.KEY_SEQUENCE
@@ -183,13 +186,13 @@ def _metadata_collection_call_violations(
             return _metadata_collection_violations(
                 path, node.func.value, _MetadataCollectionMode.MAPPING_INPUT
             )
-        if (
-            mode is _MetadataCollectionMode.KEY_SEQUENCE
-            and node.func.attr == "keys"
-            and not node.args
-            and not node.keywords
-        ):
-            return _metadata_collection_violations(path, node.func.value, mode)
+        if node.func.attr == "keys" and not node.args and not node.keywords:
+            keys_mode = (
+                _MetadataCollectionMode.KEY_SEQUENCE
+                if mode is _MetadataCollectionMode.KEY_SEQUENCE
+                else _MetadataCollectionMode.PAIR_ITERABLE
+            )
+            return _metadata_collection_violations(path, node.func.value, keys_mode)
         if node.func.attr == "copy" and not node.args and not node.keywords:
             return _metadata_collection_violations(path, node.func.value, mode)
         return []

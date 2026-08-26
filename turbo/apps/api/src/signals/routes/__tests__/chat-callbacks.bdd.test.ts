@@ -80,8 +80,17 @@ const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
 const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_goal_drain_";
+const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry",
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup",
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run",
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+  "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
   "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
   "api_dispatch_pre_create_zero_goal_drain_load_event",
   "api_dispatch_pre_create_zero_goal_drain_load_target",
@@ -854,8 +863,17 @@ function isGoalDrainWaitingTimingAction(actionType: string): boolean {
   );
 }
 
+function isGoalSchedulerTimingAction(actionType: string): boolean {
+  return (
+    actionType ===
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
+    actionType.startsWith("api_dispatch_pre_create_zero_goal_drain_scheduler_")
+  );
+}
+
 async function expectGoalDrainPreCreateTiming(args: {
   readonly runId: string;
+  readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
   readonly forbiddenValues: readonly string[];
 }): Promise<void> {
   await expect
@@ -896,17 +914,33 @@ async function expectGoalDrainPreCreateTiming(args: {
         goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
           ? "waiting"
           : "phase",
+        ...(isGoalSchedulerTimingAction(actionType)
+          ? { goal_scheduler_origin: args.schedulerOrigin }
+          : {}),
       }),
     );
     expect(event?.duration_ms).toStrictEqual(expect.any(Number));
     expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
     expect(event.goal_drain_attempt).toBe(
-      actionType ===
-        "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap"
-        ? undefined
-        : "initial",
+      isGoalSchedulerTimingAction(actionType) ? undefined : "initial",
     );
   }
+
+  const schedulerStartGap = timingEventsForAction(
+    goalDrainEvents,
+    "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  )[0];
+  if (!schedulerStartGap) {
+    throw new Error("Expected goal scheduler start gap timing");
+  }
+  const schedulerPhaseDuration = GOAL_SCHEDULER_TIMING_ACTION_TYPES.reduce(
+    (total, actionType) => {
+      const event = timingEventsForAction(goalDrainEvents, actionType)[0];
+      return total + Number(event?.duration_ms);
+    },
+    0,
+  );
+  expect(schedulerPhaseDuration).toBe(Number(schedulerStartGap.duration_ms));
 
   const entrypointGapEvents = timingEventsForAction(
     allEvents,
@@ -1860,6 +1894,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(kms.generateDataKeyCalls).toBe(1);
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
+      schedulerOrigin: "chat_callback",
       forbiddenValues: [
         goalBrief,
         goalObjective,
@@ -1948,6 +1983,18 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([
       continuation.runId,
     ]);
+    await expectGoalDrainPreCreateTiming({
+      runId: continuation.runId,
+      schedulerOrigin: "terminal_callback_fallback",
+      forbiddenValues: [
+        goalBrief,
+        actor.userId,
+        ...(actor.orgId ? [actor.orgId] : []),
+        agentId,
+        first.threadId,
+        continuation.id,
+      ],
+    });
 
     await api.requestCancelRun(actor, continuation.runId, [200]);
     await waitForRunStatus(actor, continuation.runId, "cancelled");

@@ -87,9 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/agents\/[^/]+\/draft$/.test(
-      new URL(response.url()).pathname,
-    )
+    !/^\/api\/agents\/[^/]+\/draft$/.test(new URL(response.url()).pathname)
   ) {
     return false;
   }
@@ -1072,6 +1070,23 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   );
 }
 
+async function computedIconStyle(control: Locator): Promise<{
+  readonly height: string;
+  readonly opacity: string;
+  readonly width: string;
+}> {
+  const icon = control.locator("svg").first();
+  await expect(icon).toBeVisible();
+  return icon.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: style.height,
+      opacity: style.opacity,
+      width: style.width,
+    };
+  });
+}
+
 interface ImagePreviewGeometry {
   readonly image: {
     readonly height: number;
@@ -1497,7 +1512,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   ).toBeVisible({ timeout: 90_000 });
 });
 
-test("chat composer keeps the Send button inside on narrow screens", async ({
+test("chat composer keeps standard tool icons and Send inside on narrow screens", async ({
   page,
 }) => {
   await mockComposerConnectorState(page);
@@ -1507,6 +1522,14 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 
   const composer = page.locator(".zero-composer");
   const editor = composer.getByRole("textbox", { name: "Message" });
+  const attachButton = composer.getByRole("button", {
+    name: "Attach",
+    exact: true,
+  });
+  const templateButton = composer.getByRole("button", {
+    name: "Template",
+    exact: true,
+  });
   const workflowButton = composer.getByRole("button", {
     name: "Create workflow",
   });
@@ -1545,6 +1568,18 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await expect(
     connectorsButton.locator("img:visible, svg:visible"),
   ).toHaveCount(3);
+  for (const control of [
+    attachButton,
+    templateButton,
+    workflowButton,
+    microphoneButton,
+  ]) {
+    expect(await computedIconStyle(control)).toStrictEqual({
+      height: "18px",
+      opacity: "1",
+      width: "18px",
+    });
+  }
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {

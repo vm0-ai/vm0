@@ -374,6 +374,7 @@ class TestDoneHook:
                 (
                     "usage-executor:shutdown:wait=True",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="usage-executor-shutdown",
@@ -384,6 +385,7 @@ class TestDoneHook:
                     "usage-executor:shutdown:wait=True",
                     "usage:drain",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="post-executor-usage-drain",
@@ -394,9 +396,21 @@ class TestDoneHook:
                     "usage-executor:shutdown:wait=True",
                     "usage:drain",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="auth-base-worker-shutdown",
+            ),
+            pytest.param(
+                "model-provider",
+                (
+                    "usage-executor:shutdown:wait=True",
+                    "usage:drain",
+                    "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
+                    "jsonl:shutdown",
+                ),
+                id="model-provider-reporter-shutdown",
             ),
         ],
     )
@@ -423,6 +437,11 @@ class TestDoneHook:
             if failure_point == "auth-base":
                 raise failure
 
+        def shutdown_model_provider() -> None:
+            calls.append("model-provider:shutdown")
+            if failure_point == "model-provider":
+                raise failure
+
         def shutdown_jsonl() -> None:
             calls.append("jsonl:shutdown")
 
@@ -441,6 +460,11 @@ class TestDoneHook:
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
                 side_effect=shutdown_auth_base,
+            ),
+            patch.object(
+                mitm_addon.model_provider_failure,
+                "shutdown",
+                side_effect=shutdown_model_provider,
             ),
             patch.object(mitm_addon, "shutdown_log_writer", side_effect=shutdown_jsonl),
             pytest.raises(RuntimeError) as exc_info,

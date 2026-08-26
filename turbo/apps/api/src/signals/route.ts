@@ -9,6 +9,7 @@ import { cronRetainChatEventsRoutes } from "./routes/cron-retain-chat-events";
 import { cronCompactUsageEventsRoutes } from "./routes/cron-compact-usage-events";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
+import { cronOfficialWorkflowCatalogRoutes } from "./routes/cron-official-workflow-catalog";
 import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
@@ -236,6 +237,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactUsageEventsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
+  ...cronOfficialWorkflowCatalogRoutes,
   ...cronConnectorOauthStateCleanupRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,

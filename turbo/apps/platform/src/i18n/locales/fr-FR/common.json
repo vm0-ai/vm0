@@ -1716,7 +1716,6 @@
         "inviteMember": "Inviter des humains 🤝",
         "otherChannels": "Telegram et téléphone"
       },
-      "invitePeople": "Inviter des personnes",
       "taglines": {
         "anonymous": {
           "buildSomething": "Prêt à construire quelque chose ?",
@@ -5089,6 +5088,20 @@
         "sectionTitle": "Compte et sécurité"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Appliquez une palette lumineuse et subtile à toutes les couches de l’interface.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Thème de couleur"
+        },
         "description": "Choisissez l'apparence de l'interface.",
         "sectionTitle": "Apparence",
         "theme": {

@@ -347,12 +347,26 @@ describe("assistant markdown", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
+    const renderingButton = await waitFor(() => {
+      const button = screen.getByLabelText("Expand diagram");
+      expect(button).toBeDisabled();
+      expect(
+        button.closest('[data-mermaid-status="rendering"]'),
+      ).not.toBeNull();
+      return button;
+    });
+    expect(
+      renderingButton.closest('[data-slot="tooltip-trigger"]'),
+    ).toHaveClass("icon-tooltip-trigger");
+
     // The diagram is shown by an <img>, so the SVG itself never reaches the
     // document — its markup travels behind a registry-owned blob URL.
     const diagram = await screen.findByAltText("Diagram");
     await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
       'data-testid="mermaid-svg"',
     );
+    const renderedButton = screen.getByLabelText("Expand diagram");
+    expect(renderedButton).toBeEnabled();
     expect(document.querySelector("code.language-mermaid")).toBeNull();
     // The source stays reachable next to the diagram.
     expect(screen.getByText("Diagram source")).toBeInTheDocument();

@@ -288,6 +288,7 @@ export function OrgSwitcherCompact() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          showTooltip
           type="button"
           aria-label={t(($) => {
             return $.appShell.sidebar.workspaceSwitcher.switch;

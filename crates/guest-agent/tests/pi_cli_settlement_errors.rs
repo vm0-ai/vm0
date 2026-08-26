@@ -39,6 +39,7 @@ async fn run_settlement_case(
         &npx,
         r#"#!/bin/sh
 set -eu
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":1}'
 IFS= read -r state_command
 case "$state_command" in
   *'"type":"get_state"'*) ;;

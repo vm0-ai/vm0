@@ -111,6 +111,7 @@ fn new_telemetry() -> JobTelemetry {
         RunId::nil(),
         "tok".to_string(),
         "test-runner".to_string(),
+        None,
     )
 }
 

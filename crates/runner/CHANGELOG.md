@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.176.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.1...runner-rs-v0.176.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** accept dynamic handoff sequence boundaries ([#29636](https://github.com/vm0-ai/vm0/issues/29636)) ([d52059f](https://github.com/vm0-ai/vm0/commit/d52059fb35108354d70078edd84404eae7008647))
+
+## [0.175.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.175.0...runner-rs-v0.175.1) (2026-08-26)
+
+
+### Documentation
+
+* **runner:** document bounded Axiom shutdown semantics ([#29625](https://github.com/vm0-ai/vm0/issues/29625)) ([b2f6c39](https://github.com/vm0-ai/vm0/commit/b2f6c39e19862e68f33d7b70401611cad9410ff9))
+
+## [0.175.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.1...runner-rs-v0.175.0) (2026-08-26)
+
+
+### Features
+
+* **runner:** publish canonical host attribution ([#29613](https://github.com/vm0-ai/vm0/issues/29613)) ([e023ea6](https://github.com/vm0-ai/vm0/commit/e023ea652c0812574e112ac1cdc6101bc0590022))
+
+
+### Bug Fixes
+
+* **python:** detect dict.fromkeys keys composed with zip ([#29603](https://github.com/vm0-ai/vm0/issues/29603)) ([9e51c8b](https://github.com/vm0-ai/vm0/commit/9e51c8b0b51ec095457318dcd1a572b4e022d952))
+* **python:** preserve jsonl cleanup after reporter failure ([#29601](https://github.com/vm0-ai/vm0/issues/29601)) ([69382ff](https://github.com/vm0-ai/vm0/commit/69382ff125b16d87237d438f1bad2390a65f192e))
+* **python:** roll back firewall auth task startup state ([#29604](https://github.com/vm0-ai/vm0/issues/29604)) ([d22e7db](https://github.com/vm0-ai/vm0/commit/d22e7dba65a21353200b9280b467eb765f6802fe))
+* **runner:** apply parent-death setup to kmsg monitor ([#29609](https://github.com/vm0-ai/vm0/issues/29609)) ([ddc9ea5](https://github.com/vm0-ai/vm0/commit/ddc9ea589f605fc79a40398f468632a110385395))
+
+
+### Documentation
+
+* **python:** document buffered response capture decode policy ([#29602](https://github.com/vm0-ai/vm0/issues/29602)) ([30dc571](https://github.com/vm0-ai/vm0/commit/30dc5714d7b9e7a9cef49bafe1d6d64197d65792))
+
 ## [0.174.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.0...runner-rs-v0.174.1) (2026-08-26)
 
 

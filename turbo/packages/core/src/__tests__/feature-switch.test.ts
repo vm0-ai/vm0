@@ -118,10 +118,10 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       true,
@@ -155,12 +155,26 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
+  });
+
+  it("should enable gradient color themes for Ming only", () => {
+    const mingStates = getAllFeatureStates({
+      email: "MING@VM0.AI",
+      orgId: "org_nonexistent",
+    });
+    expect(mingStates[FeatureSwitchKey.GradientColorThemes]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
   });
 
   it("should enable the composer flat feedback note for the staff org only", () => {

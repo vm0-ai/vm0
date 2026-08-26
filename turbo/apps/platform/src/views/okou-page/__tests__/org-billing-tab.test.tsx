@@ -102,6 +102,7 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
+    concurrencyUnitAmountCents: 10_000,
   };
 }
 
@@ -3443,6 +3444,7 @@ describe("organization billing settings", () => {
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: 4200,
         concurrencyPurchaseReviewAvailable: true,
       });
     });
@@ -3487,7 +3489,7 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("$500/month"),
+        within(purchaseDialog).getByText("$210/month"),
       ).toBeInTheDocument();
     });
 
@@ -3530,7 +3532,10 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeTeamBillingStatus());
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: undefined,
+      });
     });
     context.mocks.api(
       billingConcurrencyCheckoutContract.create,
@@ -3548,7 +3553,8 @@ describe("organization billing settings", () => {
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
-    click(buttonByText("Buy $100/month", purchaseDialog));
+    expect(within(purchaseDialog).getByText("—")).toBeInTheDocument();
+    click(buttonByText("Buy concurrency", purchaseDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(1);
@@ -3747,10 +3753,6 @@ describe("organization billing settings", () => {
     const decreaseQuantity = within(dialog).getByLabelText(
       "Decrease additional concurrency quantity",
     );
-    const increaseQuantity = within(dialog).getByLabelText(
-      "Increase additional concurrency quantity",
-    );
-
     expect(quantityInput).toHaveValue("1");
     expect(decreaseQuantity).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "0" } });
@@ -3758,7 +3760,9 @@ describe("organization billing settings", () => {
 
     fireEvent.change(quantityInput, { target: { value: "1000" } });
     expect(quantityInput).toHaveValue("1000");
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
     expect(within(dialog).getByText("$100,000/month")).toBeInTheDocument();
     fireEvent.change(quantityInput, { target: { value: "1001" } });
     expect(quantityInput).toHaveValue("1000");
@@ -3815,9 +3819,6 @@ describe("organization billing settings", () => {
       dialog,
     );
     const cancel = buttonByText("Cancel", dialog);
-    const decreaseQuantity = within(dialog).getByLabelText(
-      "Decrease additional concurrency quantity",
-    );
     const increaseQuantity = within(dialog).getByLabelText(
       "Increase additional concurrency quantity",
     );
@@ -3832,8 +3833,12 @@ describe("organization billing settings", () => {
     });
     expect(cancelSubscription).toBeDisabled();
     expect(cancel).toBeDisabled();
-    expect(decreaseQuantity).toBeDisabled();
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Decrease additional concurrency quantity"),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
 
     previewReady.resolve(undefined);
     await screen.findByRole("dialog", { name: "Review concurrency change" });

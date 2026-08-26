@@ -287,15 +287,11 @@ import {
   findVideoTemplateItem,
   findWebsiteTemplateItem,
 } from "../../lib/platform-template-items.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-// `Button` sizes its icons to 16px. These controls drew at 18px before they were
-// routed through `Button`, and icon sizing is owned by a separate workstream, so
-// pin the existing value here rather than change two things at once.
-const COMPOSER_CONTROL_ICON_CLASS = "[&_svg]:size-[18px]";
 
 function isHappyDomTestEnvironment(): boolean {
   return (
@@ -637,7 +633,7 @@ function ComposerStripRow({
           <span className="min-w-0 flex-1 truncate">{text}</span>
         </>
       )}
-      <button
+      <IconTooltipButton
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => {
@@ -646,7 +642,7 @@ function ComposerStripRow({
         aria-label={removeAriaLabel}
       >
         <X size={16} />
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }
@@ -1193,7 +1189,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         data-video-template-poster=""
         className="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200 peer-data-[preview-playing=true]:opacity-0"
       />
-      <button
+      <IconTooltipButton
         type="button"
         aria-label={t(
           ($) => {
@@ -1215,7 +1211,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
           <Play size={20} />
         </span>
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }
@@ -7457,9 +7453,9 @@ function TemplatePickerButton({
               type="button"
               variant="quiet"
               size="icon-sm"
+              iconSize="md"
               className={cn(
                 "shrink-0",
-                COMPOSER_CONTROL_ICON_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label={t(($) => {
@@ -7567,7 +7563,8 @@ function CreateWorkflowPromptButton({
             type="button"
             variant="quiet"
             size="icon-sm"
-            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
+            iconSize="md"
+            className="shrink-0"
             aria-label={t(($) => {
               return $.chat.composer.createWorkflow;
             })}
@@ -8974,6 +8971,7 @@ function ConnectorsPopoverButton({
                               <>
                                 {showPermissionAction ? (
                                   <Button
+                                    showTooltip
                                     type="button"
                                     onClick={() => {
                                       updateConnectorUi({
@@ -9293,9 +9291,9 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             type="button"
             variant="quiet"
             size="icon-sm"
+            iconSize="md"
             className={cn(
               "relative shrink-0",
-              COMPOSER_CONTROL_ICON_CLASS,
               (recording || starting || transcribing) &&
                 "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
@@ -9342,7 +9340,8 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
             type="button"
             variant="quiet"
             size="icon-sm"
-            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
+            iconSize="md"
+            className="shrink-0"
             aria-label={t(($) => {
               return $.chat.attachments.attach;
             })}
@@ -9695,6 +9694,7 @@ function ComposerSendButton({
   if (action === "stop") {
     return (
       <Button
+        showTooltip
         size="icon-sm"
         variant="destructive"
         className="shrink-0"
@@ -9709,6 +9709,7 @@ function ComposerSendButton({
   }
   return (
     <Button
+      showTooltip
       size="icon-sm"
       className="shrink-0"
       onClick={onActivate}

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
+import { IconTooltipButton } from "./icon-tooltip.tsx";
 
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.
@@ -46,7 +47,7 @@ export function MermaidDiagramView({
       className="mermaid-block"
       data-mermaid-status={image ? "rendered" : "rendering"}
     >
-      <button
+      <IconTooltipButton
         type="button"
         className="mermaid-diagram-expand"
         disabled={image === null}
@@ -79,7 +80,7 @@ export function MermaidDiagramView({
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}
-      </button>
+      </IconTooltipButton>
       <details className="mermaid-diagram-source">
         <summary>
           {t(($) => {

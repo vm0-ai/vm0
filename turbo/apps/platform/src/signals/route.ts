@@ -7,7 +7,11 @@ import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal, settle } from "./utils.ts";
 import { logger } from "./log.ts";
-import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
+import {
+  capturePageView,
+  markBootstrapRouteSetup$,
+  markNavigationPushState$,
+} from "../lib/posthog.ts";
 import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-conversion-milestones.ts";
@@ -112,6 +116,7 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!currentRoute) {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
+  set(markBootstrapRouteSetup$, currentRoute.path);
   L.debug("loading route", currentRoute.path);
   if (currentRoute.analytics !== false) {
     set(recordAdAttribution$, get(searchParams$));

@@ -1997,8 +1997,10 @@ def done():
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)
         finally:
-            model_provider_failure.shutdown()
-            shutdown_log_writer()
+            try:
+                model_provider_failure.shutdown()
+            finally:
+                shutdown_log_writer()
 
 
 # ============================================================================

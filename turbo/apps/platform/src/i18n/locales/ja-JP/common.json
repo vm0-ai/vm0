@@ -1690,7 +1690,6 @@
         "inviteMember": "人間を招待 🤝",
         "otherChannels": "Telegram、電話"
       },
-      "invitePeople": "人を招待する",
       "taglines": {
         "anonymous": {
           "buildSomething": "何かを構築する準備はできていますか?",
@@ -5023,6 +5022,20 @@
         "sectionTitle": "アカウントとセキュリティ"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "カラーテーマ"
+        },
         "description": "インターフェイスの外観を選択します。",
         "sectionTitle": "外観",
         "theme": {

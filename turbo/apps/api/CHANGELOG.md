@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.497.0](https://github.com/vm0-ai/vm0/compare/api-v1.496.2...api-v1.497.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** accept dynamic handoff sequence boundaries ([#29636](https://github.com/vm0-ai/vm0/issues/29636)) ([d52059f](https://github.com/vm0-ai/vm0/commit/d52059fb35108354d70078edd84404eae7008647))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.372.0
+    * @okouai/core bumped to 8.595.2
+    * @okouai/db bumped to 1.225.3
+
+## [1.496.2](https://github.com/vm0-ai/vm0/compare/api-v1.496.1...api-v1.496.2) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write machine secret environment aliases ([#29628](https://github.com/vm0-ai/vm0/issues/29628)) ([f95caaf](https://github.com/vm0-ai/vm0/commit/f95caaf85f82b90d5f612ba8dfa3ee28fa293040))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.595.1
+    * @okouai/db bumped to 1.225.2
+
+## [1.496.1](https://github.com/vm0-ai/vm0/compare/api-v1.496.0...api-v1.496.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **billing:** read concurrency price from stripe ([#29359](https://github.com/vm0-ai/vm0/issues/29359)) ([aac0e75](https://github.com/vm0-ai/vm0/commit/aac0e7537423f201225b8960839e6e0e8b33d4d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.371.0
+    * @okouai/core bumped to 8.595.0
+    * @okouai/db bumped to 1.225.1
+
 ## [1.496.0](https://github.com/vm0-ai/vm0/compare/api-v1.495.0...api-v1.496.0) (2026-08-26)
 
 

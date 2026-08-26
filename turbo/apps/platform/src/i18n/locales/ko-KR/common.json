@@ -1690,7 +1690,6 @@
         "inviteMember": "사람 초대 🤝",
         "otherChannels": "Telegram, 전화"
       },
-      "invitePeople": "사람 초대",
       "taglines": {
         "anonymous": {
           "buildSomething": "무언가 만들 준비가 되셨나요?",
@@ -5023,6 +5022,20 @@
         "sectionTitle": "계정 및 보안"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "밝고 은은한 팔레트를 인터페이스의 모든 계층에 적용합니다.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "컬러 테마"
+        },
         "description": "인터페이스 모양을 선택하세요.",
         "sectionTitle": "외관",
         "theme": {

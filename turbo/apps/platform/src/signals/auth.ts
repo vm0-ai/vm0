@@ -4,6 +4,8 @@ import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
+  markBootstrapClerkLoadCompleted,
+  markBootstrapClerkLoadStarted,
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
@@ -407,6 +409,7 @@ export const clerkInstance$ = computed(() => {
 export const clerk$ = computed(async (get) => {
   const clerkInstance = get(clerkInstance$);
   const satelliteConfig = resolveClerkSatelliteConfig();
+  markBootstrapClerkLoadStarted();
   await clerkInstance.load({
     ui,
     ...(satelliteConfig
@@ -419,6 +422,7 @@ export const clerk$ = computed(async (get) => {
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
   });
+  markBootstrapClerkLoadCompleted();
 
   return clerkInstance;
 });
