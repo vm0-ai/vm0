@@ -564,7 +564,9 @@ function steamPrivateAuthMethod(args?: {
   };
 }
 
-function awsPrivateAuthMethod(): JsonRecord {
+function awsPrivateAuthMethod(
+  scopes: readonly string[] = ["openid"],
+): JsonRecord {
   const refreshTokenName = "CATALOG_AWS_LOGIN_REFRESH_TOKEN";
   const dpopKeyName = "CATALOG_AWS_LOGIN_DPOP_KEY";
   const accessKeyIdName = "CATALOG_AWS_ACCESS_KEY_ID";
@@ -592,7 +594,7 @@ function awsPrivateAuthMethod(): JsonRecord {
     },
     grant: {
       kind: "external-code",
-      scopes: ["openid"],
+      scopes: [...scopes],
       outputs: {
         refreshToken: `$secrets.${refreshTokenName}`,
         dpopKey: `$secrets.${dpopKeyName}`,
@@ -3905,8 +3907,27 @@ describe("connector catalog valid lifecycle", () => {
     onTestFinished(async () => {
       await cleanupConnector();
     });
-    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-code-scope-change",
+      connectorSlug: "aws",
+      label: "Catalog AWS",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "cli",
+          grantKind: "external-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          awsPrivateAuthMethod(["openid", "future_scope"]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release, changedScopes], changedScopes));
+    await syncCatalog();
+    const callsBeforeCompletion = context.mocks.s3.send.mock.calls.length;
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -3917,6 +3938,14 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "cli",
       externalId: "123456789012",
       oauthScopes: ["openid"],
+    });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "aws"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: ["openid", "future_scope"],
+      storedScopes: ["openid"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -3936,7 +3965,7 @@ describe("connector catalog valid lifecycle", () => {
         "CATALOG_AWS_SESSION_TOKEN",
       ]),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeCompletion);
   });
 
   it("rejects new auth-code actions for an authored-hidden external method", async () => {

@@ -1386,6 +1386,7 @@ export async function startConnectorExternalCodeAuthorizationWithMethod(
 export async function completeConnectorExternalCodeAuthorizationWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly authClient: ConnectorAuthClient;
+    readonly authorizationScopes: readonly string[];
     readonly code: string;
     readonly providerState: string;
   },
@@ -1408,7 +1409,10 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
     provider.completeExternalCodeAuthorization,
     {
       authClient: args.authClient,
-      externalCodeGrant: args.method.grant,
+      externalCodeGrant: {
+        ...args.method.grant,
+        scopes: [...args.authorizationScopes],
+      },
       code: args.code,
       providerState: args.providerState,
     },

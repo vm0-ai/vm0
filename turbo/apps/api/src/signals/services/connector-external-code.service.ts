@@ -721,6 +721,10 @@ async function completeClaimedExternalCodeSession(
           connectorSlug: args.resolvedMethod.connectorSlug,
           authMethodId: args.resolvedMethod.authMethodId,
           method: args.resolvedMethod.method,
+          authorizationScopes: externalCodeRequestedOauthScopes(
+            args.session.oauthRequestedScopes,
+            args.resolvedMethod,
+          ),
           authClient: args.authClient,
           code: args.code,
           providerState,
