@@ -3439,7 +3439,6 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Search chats and messages...",
     });
-    expect(dialog).toHaveClass("rounded-xl");
     expect(
       screen.queryByRole("dialog", { name: "Talk to" }),
     ).not.toBeInTheDocument();

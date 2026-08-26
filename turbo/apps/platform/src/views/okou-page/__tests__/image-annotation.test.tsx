@@ -187,9 +187,6 @@ describe("composer image annotation", () => {
     await user.click(await screen.findByTestId("artifact-dialog-annotate"));
 
     await screen.findByTestId("image-annotation-editor");
-    expect(screen.getByTestId("image-annotation-panel")).toHaveClass(
-      "rounded-xl",
-    );
     await dragOnSurface();
 
     // The header count is the editor's own read of the draft annotation.

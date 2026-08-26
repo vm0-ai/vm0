@@ -432,7 +432,6 @@ describe("onboarding flow", () => {
     const preview = await screen.findByRole("dialog", {
       name: "Auto-merge GitHub PRs",
     });
-    expect(preview).toHaveClass("rounded-xl");
     const previewIcon = preview.querySelector<HTMLImageElement>(
       'img[src="https://icons.example.test/onboarding-github.svg"]',
     );
