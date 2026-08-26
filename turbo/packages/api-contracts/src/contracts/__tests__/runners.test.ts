@@ -31,6 +31,7 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+import { runRunnerContract } from "../run-routes";
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
@@ -93,6 +94,28 @@ describe("runner claim attribution contract", () => {
           .success,
       ).toBe(false);
     }
+  });
+});
+
+describe("run runner response compatibility", () => {
+  it("accepts the previous response and current explicit-null attribution", () => {
+    expect(
+      runRunnerContract.getRunner.responses[200].parse({
+        sandboxReuseResult: null,
+      }),
+    ).toStrictEqual({ sandboxReuseResult: null });
+
+    const currentResponse = {
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
+    };
+    expect(
+      runRunnerContract.getRunner.responses[200].parse(currentResponse),
+    ).toStrictEqual(currentResponse);
   });
 });
 
