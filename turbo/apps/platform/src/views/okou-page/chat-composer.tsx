@@ -35,7 +35,6 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowUp,
   Bolt,
   Check,
@@ -8170,20 +8169,32 @@ function ComposerConnectorAccessRow({
   );
 }
 
-function ComposerConnectorAccountModeButton({
+function ComposerConnectorAccountMenu({
+  signals,
+  target,
   connectorLabel,
   selectedConnection,
   defaultConnection,
   explicit,
-  onOpen,
 }: {
+  readonly signals: ComposerSignals;
+  readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
   readonly selectedConnection: ConnectorAccountConnection | undefined;
   readonly defaultConnection: ConnectorAccountConnection | null;
   readonly explicit: boolean;
-  readonly onOpen: () => void;
 }) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
+  const menuTarget = useGet(signals.connector.accounts.menuTarget$);
+  const menuOpen = useGet(signals.connector.accounts.menuOpen$);
+  const openTarget = useSet(signals.connector.accounts.openTarget$);
+  const closeMenu = useSet(signals.connector.accounts.closeMenu$);
+  const open = Boolean(
+    menuOpen &&
+    menuTarget &&
+    connectorAccountTargetKey(menuTarget) === connectorAccountTargetKey(target),
+  );
   const effectiveConnection = explicit ? selectedConnection : defaultConnection;
   const accountLabel = effectiveConnection
     ? connectorAccountEffectiveLabel(
@@ -8212,28 +8223,49 @@ function ComposerConnectorAccountModeButton({
         { connector: connectorLabel, account: accountLabel },
       );
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="quiet"
-          size="icon-2xs"
-          className={cn(
-            "shrink-0 border border-border/60",
-            explicit ? "text-foreground" : "text-muted-foreground",
-          )}
-          aria-label={accessibleLabel}
-          onClick={() => {
-            onOpen();
-          }}
-        >
-          {explicit ? <UserCheck size={14} /> : <User size={14} />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-xs">
-        {accessibleLabel}
-      </TooltipContent>
-    </Tooltip>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          openTarget(target, signal);
+        } else {
+          closeMenu();
+        }
+      }}
+    >
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-2xs"
+              className="shrink-0"
+              aria-label={accessibleLabel}
+            >
+              {explicit ? <UserCheck size={14} /> : <User size={14} />}
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {accessibleLabel}
+        </TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        side="right"
+        align="start"
+        className="w-72 p-0"
+        aria-label={t(($) => {
+          return $.chat.connectors.accountForThread;
+        })}
+      >
+        <ComposerConnectorAccountMenuContent
+          signals={signals}
+          target={target}
+          connectorLabel={connectorLabel}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -8457,16 +8489,14 @@ function ComposerConnectorAccountChoices({
   );
 }
 
-function ComposerConnectorAccountPanel({
+function ComposerConnectorAccountMenuContent({
   signals,
   target,
   connectorLabel,
-  icon,
 }: {
   readonly signals: ComposerSignals;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
-  readonly icon: ReactNode;
 }) {
   const { t } = useTranslation();
   const preferenceLoadable = useLastLoadable(
@@ -8478,7 +8508,7 @@ function ComposerConnectorAccountPanel({
   const accountsLoadable = useLoadable(signals.connector.accounts.accounts$);
   const search = useGet(signals.connector.accounts.search$);
   const savingTargetKey = useGet(signals.connector.accounts.savingTargetKey$);
-  const closePanel = useSet(signals.connector.accounts.closePanel$);
+  const closeMenu = useSet(signals.connector.accounts.closeMenu$);
   const setSearch = useSet(signals.connector.accounts.setSearch$);
   const selectAccount = useSet(signals.connector.accounts.selectAccount$);
   const clearAccountSelection = useSet(signals.connector.accounts.useDefault$);
@@ -8521,30 +8551,31 @@ function ComposerConnectorAccountPanel({
     (summary?.accountCount ?? 0) > CONNECTOR_ACCOUNT_SEARCH_THRESHOLD ||
     accountList.nextCursor !== null;
   const saving = savingTargetKey === targetKey;
+  const selectAndClose = (connection: ConnectorAccountConnection): void => {
+    detach(
+      (async () => {
+        await selectAccount(connection, signal);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+  const selectDefaultAndClose = (): void => {
+    detach(
+      (async () => {
+        await clearAccountSelection(target, signal);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-2 py-2">
-        <Button
-          type="button"
-          variant="quiet"
-          size="icon-2xs"
-          className="shrink-0 text-muted-foreground"
-          aria-label={t(($) => {
-            return $.chat.connectors.back;
-          })}
-          onClick={() => {
-            closePanel();
-          }}
-        >
-          <ArrowLeft size={15} />
-        </Button>
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {connectorLabel}
-        </span>
+    <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.chat.connectors.accountForThread;
+        })}
       </div>
       {showSearch ? (
         <div className="shrink-0 border-b border-border/50 px-3 py-2">
@@ -8578,10 +8609,10 @@ function ComposerConnectorAccountPanel({
         })}
         loadingAccountCount={summary?.accountCount ?? 0}
         onSelect={(connection) => {
-          detach(selectAccount(connection, signal), Reason.DomCallback);
+          selectAndClose(connection);
         }}
         onUseDefault={() => {
-          detach(clearAccountSelection(target, signal), Reason.DomCallback);
+          selectDefaultAndClose();
         }}
       />
       {accountList.nextCursor ? (
@@ -8631,7 +8662,6 @@ function deriveComposerConnectorPopoverState(args: {
   readonly showSearch: boolean;
   readonly permissionConnectorSlug: ConnectorSlug | null;
   readonly agentConnectors: readonly ComposerConnectorItem[];
-  readonly accountPanelTarget: ConnectorAccountTarget | null;
 }) {
   const sorted = args.sortOrder
     ? [...args.connectorItems].sort((a, b) => {
@@ -8660,60 +8690,7 @@ function deriveComposerConnectorPopoverState(args: {
         return connector.slug === args.permissionConnectorSlug;
       })
     : undefined;
-  const accountPanelTargetKey = args.accountPanelTarget
-    ? connectorAccountTargetKey(args.accountPanelTarget)
-    : null;
-  const accountPanelItem = accountPanelTargetKey
-    ? args.connectorItems.find((item) => {
-        return (
-          connectorAccountTargetKey(composerPopoverConnectorTarget(item)) ===
-          accountPanelTargetKey
-        );
-      })
-    : undefined;
-  return { visibleConnectors, permissionConnector, accountPanelItem };
-}
-
-function composerConnectorPopoverPanelClass(visible: boolean): string {
-  return cn(
-    "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
-    visible
-      ? "grid-rows-[1fr]"
-      : "invisible grid-rows-[0fr] pointer-events-none",
-  );
-}
-
-function composerConnectorPopoverContentClass(
-  hasAccountPicker: boolean,
-): string {
-  return cn(
-    "w-72 p-0",
-    hasAccountPicker
-      ? "pointer-events-none relative h-[min(25rem,var(--available-height))] overflow-visible border-0 bg-transparent"
-      : "max-h-[var(--available-height)] overflow-hidden rounded-lg",
-  );
-}
-
-function composerConnectorPopoverSurfaceClass(
-  hasAccountPicker: boolean,
-): string {
-  return hasAccountPicker
-    ? "pointer-events-auto absolute inset-x-0 bottom-0 max-h-full overflow-hidden rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-lg"
-    : "contents";
-}
-
-function composerConnectorPopoverContentStyle(
-  hasAccountPicker: boolean,
-): CSSProperties | undefined {
-  return hasAccountPicker ? { boxShadow: "none" } : undefined;
-}
-
-function composerConnectorAccountPanelVisible(
-  open: boolean,
-  target: ConnectorAccountTarget | null,
-  item: ComposerPopoverConnectorItem | undefined,
-): boolean {
-  return Boolean(open && target && item);
+  return { visibleConnectors, permissionConnector };
 }
 
 function ConnectorsPopoverButton({
@@ -8750,7 +8727,6 @@ function ConnectorsPopoverButton({
   ) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const signal = useGet(pageSignal$);
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
@@ -8760,10 +8736,7 @@ function ConnectorsPopoverButton({
   const accountSummariesLoadable = useLastLoadable(
     signals.connector.accounts.summaryByTarget$,
   );
-  const accountPanelTarget = useGet(signals.connector.accounts.panelTarget$);
-  const accountPanelOpen = useGet(signals.connector.accounts.panelOpen$);
-  const openAccountTarget = useSet(signals.connector.accounts.openTarget$);
-  const closeAccountPanel = useSet(signals.connector.accounts.closePanel$);
+  const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
   const search = connectorUi.popoverSearch;
   const sortOrder = connectorUi.popoverSortOrder;
@@ -8801,7 +8774,7 @@ function ConnectorsPopoverButton({
       return [connection.id, connection];
     }),
   );
-  const { visibleConnectors, permissionConnector, accountPanelItem } =
+  const { visibleConnectors, permissionConnector } =
     deriveComposerConnectorPopoverState({
       connectorItems,
       sortOrder,
@@ -8809,7 +8782,6 @@ function ConnectorsPopoverButton({
       showSearch,
       permissionConnectorSlug,
       agentConnectors,
-      accountPanelTarget,
     });
   const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
     if (
@@ -8837,7 +8809,9 @@ function ConnectorsPopoverButton({
     const targetKey = connectorAccountTargetKey(target);
     const selection = selectionByTarget.get(targetKey);
     return (
-      <ComposerConnectorAccountModeButton
+      <ComposerConnectorAccountMenu
+        signals={signals}
+        target={target}
         connectorLabel={
           item.kind === "builtin"
             ? item.connector.label
@@ -8850,20 +8824,9 @@ function ConnectorsPopoverButton({
             : undefined
         }
         defaultConnection={summary.defaultConnection}
-        onOpen={() => {
-          openAccountTarget(target, signal);
-        }}
       />
     );
   };
-  const hasAccountPicker = connectorItems.some((item) => {
-    return accountSummaryForItem(item) !== undefined;
-  });
-  const accountPanelVisible = composerConnectorAccountPanelVisible(
-    accountPanelOpen,
-    accountPanelTarget,
-    accountPanelItem,
-  );
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
@@ -8872,7 +8835,7 @@ function ConnectorsPopoverButton({
       openAccountsPopover();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
-      closeAccountPanel();
+      closeAccountMenu();
     }
   };
 
@@ -8911,238 +8874,188 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className={composerConnectorPopoverContentClass(hasAccountPicker)}
-        style={composerConnectorPopoverContentStyle(hasAccountPicker)}
+        className="w-72 max-h-[var(--available-height)] overflow-hidden rounded-lg p-0"
       >
-        <div className={composerConnectorPopoverSurfaceClass(hasAccountPicker)}>
-          <div
-            className={composerConnectorPopoverPanelClass(!accountPanelVisible)}
-            aria-hidden={accountPanelVisible}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="flex min-h-0 flex-col">
-                {(connectorItems.length > 0 || connectorsLoading) && (
-                  <div className="flex min-h-0 flex-col py-1">
-                    {showSearch && (
-                      <div className="px-3 py-1 border-b border-border/50">
-                        <input
-                          type="text"
-                          placeholder={t(($) => {
-                            return $.chat.connectors.find;
-                          })}
-                          value={search}
-                          onChange={(e) => {
-                            return updateConnectorUi({
-                              popoverSearch: e.target.value,
-                            });
-                          }}
-                          className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-                        />
-                      </div>
-                    )}
-                    {connectorsLoading ? (
-                      <div className="flex flex-col animate-pulse">
-                        {Array.from({ length: 3 }, (_, i) => {
-                          return (
-                            <div
-                              key={i}
-                              className="flex items-center gap-2 px-3 py-2"
-                            >
-                              <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                              <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
-                              <span className="h-3 w-6 rounded-full bg-muted/50" />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
-                        {visibleConnectors.map((item) => {
-                          if (item.kind === "custom") {
-                            const connector = item.connector;
-                            return (
-                              <ComposerConnectorAccessRow
-                                key={connector.id}
-                                icon={
-                                  <CustomConnectorIcon
-                                    id={connector.id}
-                                    displayName={connector.displayName}
-                                    size={16}
-                                  />
-                                }
-                                connectorLabel={connector.displayName}
-                                actions={accountModeButton(item)}
-                                checked={connector.authorized}
-                                onCheckedChange={onDomEventFn(
-                                  async (checked) => {
-                                    await onToggleCustom(connector.id, checked);
-                                  },
-                                )}
-                                loading={
-                                  savingCustomConnectorId === connector.id
-                                }
-                                ariaLabel={
-                                  connector.authorized
-                                    ? t(
-                                        ($) => {
-                                          return $.chat.connectors.remove;
-                                        },
-                                        {
-                                          connectorName: connector.displayName,
-                                        },
-                                      )
-                                    : t(
-                                        ($) => {
-                                          return $.chat.connectors.add;
-                                        },
-                                        {
-                                          connectorName: connector.displayName,
-                                        },
-                                      )
-                                }
-                              />
-                            );
-                          }
-                          const connector = item.connector;
-                          const accountAction = accountModeButton(item);
-                          const showPermissionAction =
-                            Boolean(agentId) &&
-                            connector.authorized &&
-                            connector.permissionSummary.hasPermissions;
-                          return (
-                            <ComposerConnectorAccessRow
-                              key={connector.slug}
-                              icon={
-                                <ConnectorIcon
-                                  icon={connector.icon}
-                                  size={16}
-                                />
-                              }
-                              connectorLabel={connector.label}
-                              actions={
-                                showPermissionAction || accountAction ? (
-                                  <>
-                                    {showPermissionAction ? (
-                                      <Button
-                                        type="button"
-                                        onClick={() => {
-                                          updateConnectorUi({
-                                            permissionConnectorSlug:
-                                              connector.slug,
-                                          });
-                                        }}
-                                        aria-label={t(
-                                          ($) => {
-                                            return $.chat.connectors
-                                              .configurePermissions;
-                                          },
-                                          { connectorName: connector.label },
-                                        )}
-                                        variant="quiet"
-                                        size="icon-2xs"
-                                        className="shrink-0"
-                                      >
-                                        <SlidersHorizontal size={15} />
-                                      </Button>
-                                    ) : null}
-                                    {accountAction}
-                                  </>
-                                ) : null
-                              }
-                              checked={connector.authorized}
-                              onCheckedChange={onDomEventFn(async (checked) => {
-                                await onToggle(connector.slug, checked);
-                              })}
-                              loading={savingConnectorSlug === connector.slug}
-                              ariaLabel={
-                                connector.authorized
-                                  ? t(
-                                      ($) => {
-                                        return $.chat.connectors.remove;
-                                      },
-                                      {
-                                        connectorName: connector.label,
-                                      },
-                                    )
-                                  : t(
-                                      ($) => {
-                                        return $.chat.connectors.add;
-                                      },
-                                      {
-                                        connectorName: connector.label,
-                                      },
-                                    )
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex min-h-0 flex-col">
+            {(connectorItems.length > 0 || connectorsLoading) && (
+              <div className="flex min-h-0 flex-col py-1">
+                {showSearch && (
+                  <div className="px-3 py-1 border-b border-border/50">
+                    <input
+                      type="text"
+                      placeholder={t(($) => {
+                        return $.chat.connectors.find;
+                      })}
+                      value={search}
+                      onChange={(e) => {
+                        return updateConnectorUi({
+                          popoverSearch: e.target.value,
+                        });
+                      }}
+                      className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                    />
                   </div>
                 )}
-                <div className="flex shrink-0 flex-col p-1">
-                  {(connectorItems.length > 0 || connectorsLoading) && (
-                    <div className="mx-2 mb-1 border-t border-border/50" />
-                  )}
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-                    onClick={() => {
-                      return onOpenAddDialog();
-                    }}
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                      <Plus size={13} />
-                    </span>
-                    {t(($) => {
-                      return $.chat.connectors.addConnectors;
+                {connectorsLoading ? (
+                  <div className="flex flex-col animate-pulse">
+                    {Array.from({ length: 3 }, (_, i) => {
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 px-3 py-2"
+                        >
+                          <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                          <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                          <span className="h-3 w-6 rounded-full bg-muted/50" />
+                        </div>
+                      );
                     })}
-                  </button>
-                </div>
-                {computerUse && (
-                  <ComputerUseConnectorMenuSection
-                    computerUse={computerUse}
-                    onOpenDownloadDialog={() => {
-                      setDownloadDialogOpen(true);
-                    }}
-                  />
+                  </div>
+                ) : (
+                  <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
+                    {visibleConnectors.map((item) => {
+                      if (item.kind === "custom") {
+                        const connector = item.connector;
+                        return (
+                          <ComposerConnectorAccessRow
+                            key={connector.id}
+                            icon={
+                              <CustomConnectorIcon
+                                id={connector.id}
+                                displayName={connector.displayName}
+                                size={16}
+                              />
+                            }
+                            connectorLabel={connector.displayName}
+                            actions={accountModeButton(item)}
+                            checked={connector.authorized}
+                            onCheckedChange={onDomEventFn(async (checked) => {
+                              await onToggleCustom(connector.id, checked);
+                            })}
+                            loading={savingCustomConnectorId === connector.id}
+                            ariaLabel={
+                              connector.authorized
+                                ? t(
+                                    ($) => {
+                                      return $.chat.connectors.remove;
+                                    },
+                                    {
+                                      connectorName: connector.displayName,
+                                    },
+                                  )
+                                : t(
+                                    ($) => {
+                                      return $.chat.connectors.add;
+                                    },
+                                    {
+                                      connectorName: connector.displayName,
+                                    },
+                                  )
+                            }
+                          />
+                        );
+                      }
+                      const connector = item.connector;
+                      const accountAction = accountModeButton(item);
+                      const showPermissionAction =
+                        Boolean(agentId) &&
+                        connector.authorized &&
+                        connector.permissionSummary.hasPermissions;
+                      return (
+                        <ComposerConnectorAccessRow
+                          key={connector.slug}
+                          icon={
+                            <ConnectorIcon icon={connector.icon} size={16} />
+                          }
+                          connectorLabel={connector.label}
+                          actions={
+                            showPermissionAction || accountAction ? (
+                              <>
+                                {showPermissionAction ? (
+                                  <Button
+                                    type="button"
+                                    onClick={() => {
+                                      updateConnectorUi({
+                                        permissionConnectorSlug: connector.slug,
+                                      });
+                                    }}
+                                    aria-label={t(
+                                      ($) => {
+                                        return $.chat.connectors
+                                          .configurePermissions;
+                                      },
+                                      { connectorName: connector.label },
+                                    )}
+                                    variant="quiet"
+                                    size="icon-2xs"
+                                    className="shrink-0"
+                                  >
+                                    <SlidersHorizontal size={15} />
+                                  </Button>
+                                ) : null}
+                                {accountAction}
+                              </>
+                            ) : null
+                          }
+                          checked={connector.authorized}
+                          onCheckedChange={onDomEventFn(async (checked) => {
+                            await onToggle(connector.slug, checked);
+                          })}
+                          loading={savingConnectorSlug === connector.slug}
+                          ariaLabel={
+                            connector.authorized
+                              ? t(
+                                  ($) => {
+                                    return $.chat.connectors.remove;
+                                  },
+                                  {
+                                    connectorName: connector.label,
+                                  },
+                                )
+                              : t(
+                                  ($) => {
+                                    return $.chat.connectors.add;
+                                  },
+                                  {
+                                    connectorName: connector.label,
+                                  },
+                                )
+                          }
+                        />
+                      );
+                    })}
+                  </div>
                 )}
               </div>
+            )}
+            <div className="flex shrink-0 flex-col p-1">
+              {(connectorItems.length > 0 || connectorsLoading) && (
+                <div className="mx-2 mb-1 border-t border-border/50" />
+              )}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+                onClick={() => {
+                  return onOpenAddDialog();
+                }}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                  <Plus size={13} />
+                </span>
+                {t(($) => {
+                  return $.chat.connectors.addConnectors;
+                })}
+              </button>
             </div>
-          </div>
-          <div
-            className={composerConnectorPopoverPanelClass(accountPanelVisible)}
-            aria-hidden={!accountPanelVisible}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="flex max-h-[min(25rem,var(--available-height))] min-h-[min(15rem,var(--available-height))] flex-col">
-                {accountPanelTarget && accountPanelItem ? (
-                  <ComposerConnectorAccountPanel
-                    signals={signals}
-                    target={accountPanelTarget}
-                    connectorLabel={
-                      accountPanelItem.kind === "builtin"
-                        ? accountPanelItem.connector.label
-                        : accountPanelItem.connector.displayName
-                    }
-                    icon={
-                      accountPanelItem.kind === "builtin" ? (
-                        <ConnectorIcon
-                          icon={accountPanelItem.connector.icon}
-                          size={16}
-                        />
-                      ) : (
-                        <CustomConnectorIcon
-                          id={accountPanelItem.connector.id}
-                          displayName={accountPanelItem.connector.displayName}
-                          size={16}
-                        />
-                      )
-                    }
-                  />
-                ) : null}
-              </div>
-            </div>
+            {computerUse && (
+              <ComputerUseConnectorMenuSection
+                computerUse={computerUse}
+                onOpenDownloadDialog={() => {
+                  setDownloadDialogOpen(true);
+                }}
+              />
+            )}
           </div>
         </div>
       </PopoverContent>

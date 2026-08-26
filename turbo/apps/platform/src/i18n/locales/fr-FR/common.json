@@ -1959,6 +1959,7 @@
       "yourComputer": "Votre ordinateur"
     },
     "connectors": {
+      "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
       "addConnectors": "Ajouter des connecteurs",
       "authorizationFailed": "{{connectorName}} connecté mais n'a pas pu être autorisé pour {{agentName}}",
@@ -1966,7 +1967,6 @@
       "available_one": "Connecteurs disponibles à connecter ({{count}})",
       "available_many": "Connecteurs disponibles à connecter ({{count}})",
       "available_other": "Connecteurs disponibles à connecter ({{count}})",
-      "back": "Retour",
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
       "defaultAccountFor": "{{connector}} · Compte par défaut utilisé : {{account}}",
