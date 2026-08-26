@@ -309,6 +309,7 @@ export async function writeConnectorConnectionMetadata(
     authMethod: args.authMethod,
     storageVersion: args.storageVersion,
     ...identityValues,
+    oauthGrantedScopes: null,
     tokenExpiresAt: args.tokenExpiresAt,
     needsReconnect: false,
     reconnectReason: null,
