@@ -2409,8 +2409,7 @@
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
       "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Work account"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Apply",

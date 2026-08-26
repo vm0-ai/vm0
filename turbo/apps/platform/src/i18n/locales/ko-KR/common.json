@@ -2409,8 +2409,7 @@
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}}개에 주의 필요",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "업무용 계정"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "적용",

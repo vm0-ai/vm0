@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import {
   connectorAccountsContract,
+  type ConnectorAccountConnection,
   type ConnectorAccountMutationIntent,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -91,6 +92,28 @@ const invalidateConnectorAccounts$ = command(({ set }, signal: AbortSignal) => {
   set(reloadConnectorAccountSummaries$);
   set(settingsConnectorAccounts.reload$, signal);
 });
+
+export const readConnectorAccount$ = command(
+  async (
+    { get },
+    args: {
+      readonly target: ConnectorAccountTarget;
+      readonly connectionId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ConnectorAccountConnection> => {
+    const result = await accept(
+      get(apiClient$)(connectorAccountsContract).connection({
+        params: { connectionId: args.connectionId },
+        query: args.target,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body;
+  },
+);
 
 export const renameConnectorAccount$ = command(
   async (

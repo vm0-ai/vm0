@@ -2409,8 +2409,7 @@
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "仕事用アカウント"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "申し込む",
