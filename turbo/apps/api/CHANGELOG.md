@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.494.0](https://github.com/vm0-ai/vm0/compare/api-v1.493.0...api-v1.494.0) (2026-08-26)
+
+
+### Features
+
+* enable the latest website templates for everyone ([#29446](https://github.com/vm0-ai/vm0/issues/29446)) ([6e911fa](https://github.com/vm0-ai/vm0/commit/6e911fa281806db6af98c6d3d59abbbc2e17f3f3))
+
+
+### Bug Fixes
+
+* **api:** attribute shared axiom sdk failures ([#29454](https://github.com/vm0-ai/vm0/issues/29454)) ([61ec6f4](https://github.com/vm0-ai/vm0/commit/61ec6f4fd459407e88e70ee780efad59e5a475ef))
+
+
+### Refactoring
+
+* **db:** switch Agent Draft physical storage ([#29451](https://github.com/vm0-ai/vm0/issues/29451)) ([0708921](https://github.com/vm0-ai/vm0/commit/0708921381efb8c470cbcd2b8b02e8a0a15ff8ef))
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.594.0
+    * @okouai/db bumped to 1.224.6
+
 ## [1.493.0](https://github.com/vm0-ai/vm0/compare/api-v1.492.2...api-v1.493.0) (2026-08-26)
 
 
