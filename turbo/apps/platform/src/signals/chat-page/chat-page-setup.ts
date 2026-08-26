@@ -13,20 +13,15 @@ import {
   setupRightThreadNotFound$,
   unloadRightThread$,
 } from "./chat-thread-panes.ts";
-import { resolvedThreadMeta } from "./chat-thread-event-sourcing.ts";
+import { resolveThreadMeta$ } from "./chat-thread-event-sourcing.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
 
 const setupResolvedLeftThread$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const meta = await get(resolvedThreadMeta(threadId));
-    signal.throwIfAborted();
+  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+    const meta = await set(resolveThreadMeta$, threadId, signal);
     if (meta) {
       await set(setupLeftThread$, meta, signal);
       return;
@@ -36,13 +31,8 @@ const setupResolvedLeftThread$ = command(
 );
 
 const setupResolvedRightThread$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const meta = await get(resolvedThreadMeta(threadId));
-    signal.throwIfAborted();
+  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+    const meta = await set(resolveThreadMeta$, threadId, signal);
     if (meta) {
       await set(setupRightThread$, meta, signal);
       return;

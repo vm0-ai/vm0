@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { chatThreadMetadataContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import { DEFAULT_IMAGE_MODEL } from "@okouai/core/image-model-catalog";
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -103,6 +105,11 @@ describe("GET /api/chat-threads/:id/metadata", () => {
       title: "Launch plan",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       serviceTier: null,
+      pinnedAt: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: DEFAULT_VIDEO_MODEL,
+      selectedImageModel: DEFAULT_IMAGE_MODEL,
     });
   });
 

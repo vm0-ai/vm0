@@ -982,6 +982,16 @@ const chatThreadMetadataSchema = z.object({
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
+  /**
+   * Optional during the additive API rollout. The app only uses the narrow
+   * response to bootstrap an interactive thread when every shell-critical
+   * field is present; otherwise it falls back to the event-sourced projection.
+   */
+  pinnedAt: z.string().nullable().optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
+  cloudBrowserEnabled: z.boolean().optional(),
+  selectedVideoModel: z.string().nullable().optional(),
+  selectedImageModel: z.string().nullable().optional(),
 });
 
 const chatThreadDraftSchema = z
@@ -1454,10 +1464,7 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
-/**
- * Narrow metadata endpoint for the current chat thread. This intentionally
- * does not expose messages or detail fields needed by the web UI.
- */
+/** Narrow shell metadata for one chat thread; messages remain separate. */
 export const chatThreadMetadataContract = c.router({
   get: {
     method: "GET",

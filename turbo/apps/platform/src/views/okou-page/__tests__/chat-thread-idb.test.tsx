@@ -4,6 +4,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
+  chatThreadMetadataContract,
   chatThreadMarkReadContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -93,6 +94,14 @@ async function primeRuntimeChatDb(): Promise<
 }
 
 function setupChatPage(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -178,9 +187,18 @@ function trackActiveAgentError(): () => boolean {
 }
 
 describe("okou chat thread IndexedDB fallback", () => {
-  it("keeps the app skeleton visible until uncached thread metadata syncs", async () => {
+  it("falls back to canonical sync when narrow metadata is incomplete", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      return respond(200, {
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Older API payload",
+        selectedModel: null,
+        serviceTier: null,
+      });
+    });
     context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
@@ -380,6 +398,16 @@ describe("okou chat thread IndexedDB fallback", () => {
   it("renders from cached thread metadata without waiting for remote sync", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
+    let metadataRequests = 0;
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      metadataRequests += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_THREAD_NOT_FOUND",
+          message: "Chat thread not found",
+        },
+      });
+    });
     const runtimeDb = await primeRuntimeChatDb();
     await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
       id: "current",
@@ -407,7 +435,73 @@ describe("okou chat thread IndexedDB fallback", () => {
       "true",
     );
     expect(releaseRemoteEvents.settled()).toBeFalsy();
+    expect(metadataRequests).toBe(0);
     expect(activeAgentErrorLogged()).toBeFalsy();
+  });
+
+  it("replaces stale cached metadata after an expired cursor rebase", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    let metadataRequests = 0;
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      metadataRequests += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_THREAD_NOT_FOUND",
+          message: "Chat thread not found",
+        },
+      });
+    });
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
+      id: "current",
+      ...currentThreadSnapshot(),
+      latestEventId: "00000000-0000-4000-8000-000000000001",
+      latestSeqId: 1,
+    });
+    const rebaseSnapshotRequested = context.mocks.deferred<void>();
+    const releaseRebaseSnapshot = context.mocks.deferred<void>();
+    let returnedExpiredCursor = false;
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      if (query.sinceSeqId === 1 && !returnedExpiredCursor) {
+        returnedExpiredCursor = true;
+        return respond(410, {
+          error: {
+            code: "CHAT_THREAD_EVENTS_EXPIRED",
+            message: "Chat thread events cursor has expired",
+          },
+        });
+      }
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+      rebaseSnapshotRequested.resolve();
+      await releaseRebaseSnapshot.promise;
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+
+    setupChatPage();
+    await rebaseSnapshotRequested.promise;
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      THREAD_TITLE,
+    );
+    expect(metadataRequests).toBe(0);
+    expect(releaseRebaseSnapshot.settled()).toBeFalsy();
+
+    releaseRebaseSnapshot.resolve();
+
+    await expect(
+      screen.findByRole("heading", { name: "Chat thread not found" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeInTheDocument();
   });
 
   it("renders IndexedDB rows without an empty state while mark-read is blocked", async () => {

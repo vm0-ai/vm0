@@ -1,8 +1,10 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import {
+  chatThreadMetadataContract,
   chatThreadsContract,
   type ChatThreadsContract,
   type ChatThreadEvent,
+  type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
@@ -22,7 +24,13 @@ import { logger } from "../log.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
-import { bestEffort, createDeferredPromise } from "../utils.ts";
+import {
+  bestEffort,
+  createChildAbortController,
+  createDeferredPromise,
+  settle,
+  withCleanup,
+} from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
 import type {
   ChatThreadEventDataKey,
@@ -93,6 +101,19 @@ export interface ThreadMeta {
   readonly selectedImageModel: string | null;
 }
 
+interface BootstrapThreadMetaEntry {
+  readonly meta: ThreadMeta;
+  readonly owner: object;
+}
+
+type ThreadMetaResolution =
+  | { readonly source: "event-stream"; readonly meta: ThreadMeta | null }
+  | { readonly source: "metadata"; readonly meta: ThreadMeta };
+
+type RemoteThreadMetaAttempt =
+  | Extract<ThreadMetaResolution, { readonly source: "metadata" }>
+  | { readonly source: "metadata-unavailable" };
+
 const optimisticChatThreadEventsState$ = state<
   readonly OptimisticChatThreadEvent[]
 >([]);
@@ -102,6 +123,46 @@ const chatThreadEventState$ = state<ChatThreadEventState>({
   latestEventId: null,
   latestSeqId: null,
 });
+const bootstrapThreadMetaState$ = state<
+  ReadonlyMap<string, BootstrapThreadMetaEntry>
+>(new Map());
+const chatThreadEventSyncVersion$ = state(0);
+
+const clearBootstrapThreadMeta$ = command(({ get, set }) => {
+  set(bootstrapThreadMetaState$, new Map());
+  set(chatThreadEventSyncVersion$, get(chatThreadEventSyncVersion$) + 1);
+});
+
+const registerBootstrapThreadMeta$ = command(
+  (
+    { get, set },
+    meta: ThreadMeta,
+    syncVersion: number,
+    signal: AbortSignal,
+  ): boolean => {
+    if (get(chatThreadEventSyncVersion$) !== syncVersion) {
+      return false;
+    }
+    const owner = {};
+    const next = new Map(get(bootstrapThreadMetaState$));
+    next.set(meta.id, { meta, owner });
+    set(bootstrapThreadMetaState$, next);
+    signal.addEventListener(
+      "abort",
+      () => {
+        const current = get(bootstrapThreadMetaState$);
+        if (current.get(meta.id)?.owner !== owner) {
+          return;
+        }
+        const remaining = new Map(current);
+        remaining.delete(meta.id);
+        set(bootstrapThreadMetaState$, remaining);
+      },
+      { once: true },
+    );
+    return true;
+  },
+);
 
 const initialLocalChatThreadEventsLoadedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
@@ -113,10 +174,6 @@ const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
 
 const initialLocalChatThreadEventsLoaded$ = computed((get) => {
   return get(initialLocalChatThreadEventsLoadedDeferred$).promise;
-});
-
-const initialRemoteChatThreadEventsSynced$ = computed((get) => {
-  return get(initialRemoteChatThreadEventsSyncedDeferred$).promise;
 });
 
 interface ChatThreadEventSyncBarrier {
@@ -408,6 +465,8 @@ const syncChatThreadEvents$ = command(
       };
     }
 
+    set(clearBootstrapThreadMeta$);
+
     if (mode === "incremental") {
       const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
       if (!synced.settled()) {
@@ -502,6 +561,7 @@ const applySharedChatThreadEventResult$ = command(
       }
       return;
     }
+    set(clearBootstrapThreadMeta$);
     const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
     if (!synced.settled()) {
       synced.resolve();
@@ -637,26 +697,34 @@ export function optimisticChatThreadCreateUnsettled(threadId: string) {
   });
 }
 
+const canonicalThreadMetaMap$ = computed((get) => {
+  const metaById = new Map<string, ThreadMeta>();
+  for (const thread of get(eventDrivenChatThreads$)) {
+    metaById.set(thread.id, {
+      id: thread.id,
+      agentId: thread.agentId,
+      title: thread.title,
+      pinnedAt: thread.pinnedAt,
+      selectedModel: thread.selectedModel,
+      serviceTier: thread.serviceTier,
+      computerUseHostId: thread.computerUseHostId,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
+      selectedVideoModel: thread.selectedVideoModel,
+      selectedImageModel: thread.selectedImageModel,
+    });
+  }
+  return metaById;
+});
+
 export const chatThreadMetaMap$ = computed((get) => {
-  return new Map<string, ThreadMeta>(
-    get(eventDrivenChatThreads$).map((thread) => {
-      return [
-        thread.id,
-        {
-          id: thread.id,
-          agentId: thread.agentId,
-          title: thread.title,
-          pinnedAt: thread.pinnedAt,
-          selectedModel: thread.selectedModel,
-          serviceTier: thread.serviceTier,
-          computerUseHostId: thread.computerUseHostId,
-          cloudBrowserEnabled: thread.cloudBrowserEnabled,
-          selectedVideoModel: thread.selectedVideoModel,
-          selectedImageModel: thread.selectedImageModel,
-        },
-      ];
-    }),
-  );
+  const metaById = new Map<string, ThreadMeta>();
+  for (const { meta } of get(bootstrapThreadMetaState$).values()) {
+    metaById.set(meta.id, meta);
+  }
+  for (const [threadId, meta] of get(canonicalThreadMetaMap$)) {
+    metaById.set(threadId, meta);
+  }
+  return metaById;
 });
 
 export function threadMeta(threadId: string) {
@@ -665,40 +733,196 @@ export function threadMeta(threadId: string) {
   });
 }
 
-export function resolvedThreadMeta(threadId: string) {
-  const meta$ = threadMeta(threadId);
-  return computed(async (get): Promise<ThreadMeta | null> => {
+function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta | null {
+  if (
+    metadata.pinnedAt === undefined ||
+    metadata.computerUseHostId === undefined ||
+    metadata.cloudBrowserEnabled === undefined ||
+    metadata.selectedVideoModel === undefined ||
+    metadata.selectedImageModel === undefined
+  ) {
+    return null;
+  }
+  return {
+    id: metadata.id,
+    agentId: metadata.agentId,
+    title: metadata.title,
+    pinnedAt: metadata.pinnedAt,
+    selectedModel: metadata.selectedModel,
+    serviceTier: metadata.serviceTier,
+    computerUseHostId: metadata.computerUseHostId,
+    cloudBrowserEnabled: metadata.cloudBrowserEnabled,
+    selectedVideoModel: metadata.selectedVideoModel,
+    selectedImageModel: metadata.selectedImageModel,
+  };
+}
+
+const fetchRemoteThreadMeta$ = command(
+  async (
+    { get },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<ThreadMeta | null> => {
+    const client = get(apiClient$)(chatThreadMetadataContract);
+    const result = await accept(
+      client.get({
+        params: { id: threadId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      signal,
+      { showErrorToast: false },
+    );
+    if (result.status === 404) {
+      return null;
+    }
+    const meta = remoteThreadMeta(result.body);
+    return meta?.id === threadId ? meta : null;
+  },
+);
+
+function waitForSharedWork<T>(
+  work: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  const waitController = createChildAbortController(signal);
+  const aborted = createDeferredPromise<never>(waitController.signal);
+  return withCleanup(Promise.race([work, aborted.promise]), () => {
+    waitController.abort(
+      new DOMException("Thread metadata wait completed", "AbortError"),
+    );
+  });
+}
+
+const lookupEventStreamThreadMeta$ = command(
+  async (
+    { get },
+    meta$: Computed<ThreadMeta | null>,
+    sync: Promise<void>,
+    signal: AbortSignal,
+  ): Promise<ThreadMetaResolution> => {
+    await waitForSharedWork(sync, signal);
+    signal.throwIfAborted();
+    return { source: "event-stream", meta: get(meta$) };
+  },
+);
+
+const attemptRemoteThreadMeta$ = command(
+  async (
+    { set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<RemoteThreadMetaAttempt> => {
+    const result = await settle(
+      set(fetchRemoteThreadMeta$, threadId, signal),
+      signal,
+    );
+    if (!result.ok || result.value === null) {
+      return { source: "metadata-unavailable" };
+    }
+    return { source: "metadata", meta: result.value };
+  },
+);
+
+async function resolveThreadMetaAttempts(
+  metadata: Promise<RemoteThreadMetaAttempt>,
+  eventStream: Promise<ThreadMetaResolution>,
+): Promise<ThreadMetaResolution> {
+  const first = await Promise.race([metadata, eventStream]);
+  return first.source === "metadata-unavailable" ? eventStream : first;
+}
+
+const resolveColdThreadMeta$ = command(
+  async (
+    { set },
+    threadId: string,
+    meta$: Computed<ThreadMeta | null>,
+    canonicalSync: Promise<void>,
+    signal: AbortSignal,
+  ): Promise<ThreadMetaResolution> => {
+    const controller = createChildAbortController(signal);
+    const metadata = set(attemptRemoteThreadMeta$, threadId, controller.signal);
+    const eventStream = set(
+      lookupEventStreamThreadMeta$,
+      meta$,
+      canonicalSync,
+      controller.signal,
+    );
+    return await withCleanup(
+      resolveThreadMetaAttempts(metadata, eventStream),
+      () => {
+        controller.abort(
+          new DOMException("Thread metadata resolved", "AbortError"),
+        );
+      },
+    );
+  },
+);
+
+export const resolveThreadMeta$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<ThreadMeta | null> => {
+    const meta$ = threadMeta(threadId);
     let meta = get(meta$);
     if (meta) {
       return meta;
     }
 
-    const foregroundReady = get(foregroundReady$);
-    const syncBarrier = get(chatThreadEventSyncBarrier$);
-    const foregroundSync =
-      foregroundReady.pending || syncBarrier.inFlight
-        ? syncBarrier.next.promise
-        : null;
-
-    await get(initialLocalChatThreadEventsLoaded$);
+    await waitForSharedWork(get(initialLocalChatThreadEventsLoaded$), signal);
+    signal.throwIfAborted();
     meta = get(meta$);
     if (meta) {
       return meta;
     }
 
+    const initialRemoteSync = get(initialRemoteChatThreadEventsSyncedDeferred$);
+    const foregroundReady = get(foregroundReady$);
+    const foregroundSyncBarrier = get(chatThreadEventSyncBarrier$);
+    const foregroundSync =
+      initialRemoteSync.settled() &&
+      (foregroundReady.pending || foregroundSyncBarrier.inFlight)
+        ? foregroundSyncBarrier.next.promise
+        : null;
     if (foregroundSync) {
-      await foregroundReady.promise;
-      await foregroundSync;
+      await waitForSharedWork(foregroundReady.promise, signal);
+      await waitForSharedWork(foregroundSync, signal);
+      signal.throwIfAborted();
       meta = get(meta$);
       if (meta) {
         return meta;
       }
     }
 
-    await get(initialRemoteChatThreadEventsSynced$);
-    return get(meta$);
-  });
-}
+    const syncBarrier = get(chatThreadEventSyncBarrier$);
+    const canonicalSync = syncBarrier.inFlight
+      ? syncBarrier.next.promise
+      : initialRemoteSync.promise;
+    const syncVersion = get(chatThreadEventSyncVersion$);
+    const resolution = await set(
+      resolveColdThreadMeta$,
+      threadId,
+      meta$,
+      canonicalSync,
+      signal,
+    );
+    if (resolution.meta && resolution.source === "metadata") {
+      const registered = set(
+        registerBootstrapThreadMeta$,
+        resolution.meta,
+        syncVersion,
+        signal,
+      );
+      if (!registered) {
+        return get(canonicalThreadMetaMap$).get(threadId) ?? null;
+      }
+    }
+    return resolution.meta;
+  },
+);
 
 /** Synchronize the active primary chat tab title after committed thread data changes. */
 const syncCurrentChatThreadDocumentTitle$ = command(
