@@ -273,6 +273,20 @@ export function captureTaskCompletedSuccessfully(): void {
   });
 }
 
+export type ChatThreadMetadataShortcutOutcome =
+  | "hit"
+  | "older-payload"
+  | "not-found"
+  | "transport-failure";
+
+export const captureChatThreadMetadataShortcut$ = command(
+  (_, outcome: ChatThreadMetadataShortcutOutcome): void => {
+    runPostHog(() => {
+      posthog.capture("chat_thread_metadata_shortcut", { outcome });
+    });
+  },
+);
+
 export function captureAuthV2DiagnosticEvent(
   properties: AuthV2DiagnosticProperties,
 ): void {

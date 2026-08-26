@@ -16,6 +16,7 @@ import {
   chatSearchContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadMetadataContract,
   chatThreadDraftContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
@@ -254,6 +255,16 @@ export const apiAgentsHandlers = [
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
       cancellationRecoveryPending: false,
+    });
+  }),
+
+  // GET /api/chat-threads/:id/metadata
+  mockApi(chatThreadMetadataContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "CHAT_THREAD_NOT_FOUND",
+        message: "Chat thread not found",
+      },
     });
   }),
 
