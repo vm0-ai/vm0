@@ -115,7 +115,7 @@ type ClerkCleanupSelection =
   | { readonly kind: "job-ref"; readonly jobRef: string }
   | {
       readonly kind: "stale";
-      readonly createdBeforeMs: number;
+      readonly ciCreatedBeforeMs: number;
       readonly stagingBrowserCreatedBeforeMs?: number;
       readonly roles: readonly ClerkTestRole[];
     };
@@ -376,13 +376,13 @@ export async function cleanupClerkTestJobRef(
 
 export async function cleanupStaleClerkTestResources(
   roles: readonly ClerkTestRole[],
-  createdBefore: Date,
+  ciCreatedBefore: Date,
   options: ClerkStaleCleanupOptions = {},
 ): Promise<ClerkCleanupResult> {
   assertCleanupRoles(roles);
-  const createdBeforeMs = createdBefore.getTime();
-  if (!Number.isFinite(createdBeforeMs)) {
-    throw new Error("Stale Clerk cleanup cutoff must be a valid date");
+  const ciCreatedBeforeMs = ciCreatedBefore.getTime();
+  if (!Number.isFinite(ciCreatedBeforeMs)) {
+    throw new Error("Stale CI cleanup cutoff must be a valid date");
   }
   const stagingBrowserCreatedBeforeMs =
     options.stagingBrowserCreatedBefore?.getTime();
@@ -397,7 +397,7 @@ export async function cleanupStaleClerkTestResources(
   return await cleanupClerkTestResources(
     {
       kind: "stale",
-      createdBeforeMs,
+      ciCreatedBeforeMs,
       ...(stagingBrowserCreatedBeforeMs === undefined
         ? {}
         : { stagingBrowserCreatedBeforeMs }),
@@ -590,7 +590,7 @@ function cleanupSelectionMatches(
       return (
         selection.roles.includes(owner.role) &&
         createdAt !== undefined &&
-        createdAt < selection.createdBeforeMs
+        createdAt < selection.ciCreatedBeforeMs
       );
   }
 }

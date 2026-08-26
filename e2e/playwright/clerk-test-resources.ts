@@ -37,7 +37,7 @@ async function main(): Promise<void> {
           `cleanup-stale requires <roles> ${STALE_CI_CLEANUP_ARGUMENT} <hours>`,
         );
       }
-      const createdBefore = staleCutoff(requiredArgument(5, "stale CI age"));
+      const ciCreatedBefore = staleCutoff(requiredArgument(5, "stale CI age"));
       if (process.argv[6] !== STALE_STAGING_BROWSER_CLEANUP_ARGUMENT) {
         throw new Error(
           `cleanup-stale requires <roles> ${STALE_CI_CLEANUP_ARGUMENT} <hours> ${STALE_STAGING_BROWSER_CLEANUP_ARGUMENT} <hours>`,
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
         requiredArgument(7, "stale staging browser age"),
       );
       assertNoExtraArguments(8);
-      result = await cleanupStaleClerkTestResources(roles, createdBefore, {
+      result = await cleanupStaleClerkTestResources(roles, ciCreatedBefore, {
         dryRun,
         stagingBrowserCreatedBefore,
       });
