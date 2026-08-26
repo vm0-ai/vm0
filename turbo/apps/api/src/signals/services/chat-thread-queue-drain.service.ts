@@ -212,15 +212,14 @@ export const drainChatThreadQueueForRun$ = command(
     input: {
       readonly runId: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
-      readonly apiStartTime?: number;
+      readonly apiStartTime: number;
       readonly goalSchedulerOrigin?: GoalSchedulerTimingOrigin;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const apiStartTime = input.apiStartTime ?? now();
     const lookupStartedAt = now();
     const goalSchedulerTiming = new GoalSchedulerTimingCollector(
-      apiStartTime,
+      input.apiStartTime,
       input.goalSchedulerOrigin ?? "run_recovery",
     );
     goalSchedulerTiming.checkpoint(
@@ -243,7 +242,7 @@ export const drainChatThreadQueueForRun$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: run.chatThreadId,
-        apiStartTime,
+        apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         goalSchedulerTiming,
       },
