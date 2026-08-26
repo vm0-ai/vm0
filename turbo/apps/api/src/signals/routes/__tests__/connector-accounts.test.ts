@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
+  connectorAccountsContract,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   connectorManualGrantContract,
   connectorsBySlugContract,
@@ -16,6 +20,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsRoutes } from "../connectors";
 import { customConnectorsRoutes } from "../custom-connectors";
@@ -23,6 +29,7 @@ import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { featureSwitchesRoutes } from "../feature-switches";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -43,6 +50,22 @@ interface Fixture {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function sandboxToken(
+  fixture: Fixture,
+  capabilities: readonly Capability[],
+): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "okou",
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: [...capabilities],
+    iat: seconds,
+    exp: seconds + 600,
+  });
 }
 
 function accountClient() {
@@ -165,11 +188,13 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
 describe("connector account lifecycle routes", () => {
   const track = createFixtureTracker<Fixture>(cleanupFixture);
 
-  async function seedFixture(): Promise<Fixture> {
+  async function seedFixture(
+    overrides: Partial<Fixture> = {},
+  ): Promise<Fixture> {
     const fixture = await track(
       Promise.resolve({
-        orgId: `org_${randomUUID()}`,
-        userId: `user_${randomUUID()}`,
+        orgId: overrides.orgId ?? `org_${randomUUID()}`,
+        userId: overrides.userId ?? `user_${randomUUID()}`,
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -193,6 +218,165 @@ describe("connector account lifecycle routes", () => {
       [404],
     );
     expect(exact.body.error.message).toBe("Resource not found");
+    const inspection = await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: { selections: [] },
+      }),
+      [404],
+    );
+    expect(inspection.body.error.message).toBe("Resource not found");
+  });
+
+  it("inspects only exact owned accounts without leaking credentials", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+    const connected = await accept(
+      connectorClient().connect({
+        headers: authHeaders(),
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Work" },
+          values: { apiKey: "sk-inspection" },
+        },
+      }),
+      [200],
+    );
+    const missingId = randomUUID();
+
+    const inspected = await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: {
+          selections: [
+            {
+              connectionId: missingId,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+            {
+              connectionId: connected.body.id,
+              target: { kind: "builtin", connectorSlug: "github" },
+            },
+            {
+              connectionId: connected.body.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(inspected.body.results).toStrictEqual([
+      {
+        kind: "unavailable",
+        connectionId: missingId,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+      {
+        kind: "unavailable",
+        connectionId: connected.body.id,
+        target: { kind: "builtin", connectorSlug: "github" },
+      },
+      {
+        kind: "available",
+        connectionId: connected.body.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+        authMethod: "api-token",
+        displayName: "Work",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        connectionStatus: "connected",
+        reconnectReason: null,
+      },
+    ]);
+  });
+
+  it("requires connector read capability for account inspection", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+    mockClerkMembership(
+      context,
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:admin",
+        email: "connector-account-inspection@example.test",
+      },
+      "org:admin",
+    );
+
+    const allowed = await accept(
+      accountClient().inspect({
+        headers: {
+          authorization: `Bearer ${sandboxToken(fixture, ["connector:read"])}`,
+        },
+        body: { selections: [] },
+      }),
+      [200],
+    );
+    expect(allowed.body).toStrictEqual({ results: [] });
+
+    const denied = await accept(
+      accountClient().inspect({
+        headers: {
+          authorization: `Bearer ${sandboxToken(fixture, [])}`,
+        },
+        body: { selections: [] },
+      }),
+      [403],
+    );
+    expect(denied.body.error.message).toBe(
+      "Missing required capability: connector:read",
+    );
+  });
+
+  it("accepts one bounded inspection batch and rejects a larger one", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+    const selection = {
+      connectionId: randomUUID(),
+      target: { kind: "builtin" as const, connectorSlug: "openai" },
+    };
+
+    const maximum = await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: {
+          selections: Array.from(
+            { length: CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS },
+            () => {
+              return selection;
+            },
+          ),
+        },
+      }),
+      [200],
+    );
+    expect(maximum.body.results).toHaveLength(
+      CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
+    );
+    expect(maximum.body.results[0]).toStrictEqual({
+      kind: "unavailable",
+      ...selection,
+    });
+
+    await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: {
+          selections: Array.from(
+            { length: CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS + 1 },
+            () => {
+              return selection;
+            },
+          ),
+        },
+      }),
+      [400],
+    );
   });
 
   it("adds siblings and manages exact default and deletion lifecycle", async () => {
@@ -758,7 +942,7 @@ describe("connector account lifecycle routes", () => {
       }),
       [200],
     );
-    const other = await seedFixture();
+    const other = await seedFixture({ orgId: owner.orgId });
     await setConnectorAccountsEnabled(other, true);
     mocks.clerk.session(other.userId, other.orgId);
 
@@ -783,6 +967,27 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
+    const inspected = await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: {
+          selections: [
+            {
+              connectionId: account.body.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    expect(inspected.body.results).toStrictEqual([
+      {
+        kind: "unavailable",
+        connectionId: account.body.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    ]);
     await accept(
       accountClient().rename({
         headers: authHeaders(),
@@ -794,6 +999,24 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
+
+    const outsider = await seedFixture();
+    await setConnectorAccountsEnabled(outsider, true);
+    const crossOrganization = await accept(
+      accountClient().inspect({
+        headers: authHeaders(),
+        body: {
+          selections: [
+            {
+              connectionId: account.body.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    expect(crossOrganization.body.results[0]?.kind).toBe("unavailable");
   });
 
   it("treats a removed built-in catalog target as absent", async () => {
@@ -994,6 +1217,41 @@ describe("connector account lifecycle routes", () => {
         kind: "custom",
         customConnectorId: definition.body.id,
       });
+
+      const inspected = await accept(
+        accountClient().inspect({
+          headers: authHeaders(),
+          body: {
+            selections: [
+              {
+                connectionId: exact.body.id,
+                target: {
+                  kind: "custom",
+                  customConnectorId: definition.body.id,
+                },
+              },
+            ],
+          },
+        }),
+        [200],
+      );
+      expect(inspected.body.results).toStrictEqual([
+        {
+          kind: "available",
+          connectionId: exact.body.id,
+          target: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+          },
+          authMethod: "manual",
+          displayName: exact.body.displayName,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        },
+      ]);
 
       const safeDisconnect = await accept(
         accountClient().disconnectSingleAccount({
