@@ -23,14 +23,27 @@ use super::support::{
     spawn_write_files,
 };
 use crate::{
-    FrameWriteObserver, WriteFileEntry,
+    FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, WriteFileEntry,
     file::test_support::{WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT},
     operation_tracker::NormalOperationReadiness,
 };
 
-// Public file APIs intentionally use a fixed 300-second request timeout. Use
+// Public file APIs use the shared production request timeout. Use
 // their shared request seam here so timeout lifecycle coverage remains fast.
 const FRAME_BUILDER_REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
+
+fn assert_request_timeout(
+    error: &io::Error,
+    expected_stage: RequestTimeoutStage,
+    expected_timeout: Duration,
+) {
+    let timeout = error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<RequestTimeoutError>())
+        .unwrap_or_else(|| panic!("expected typed request timeout, got {error:?}"));
+    assert_eq!(timeout.stage(), expected_stage);
+    assert_eq!(timeout.timeout(), expected_timeout);
+}
 
 async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
     std::future::poll_fn(|cx| {
@@ -810,6 +823,7 @@ async fn write_file_frame_builder_request_zero_timeout_does_not_send_frame() {
     .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(&err, RequestTimeoutStage::BeforeFrameWrite, Duration::ZERO);
     assert_eq!(build_count.load(Ordering::SeqCst), 0);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(pending_request_count(&host), 0);
@@ -868,6 +882,11 @@ async fn write_file_frame_builder_request_times_out_waiting_for_builder() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::BeforeFrameWrite,
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+    );
     assert_eq!(build_count.load(Ordering::SeqCst), 0);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(pending_request_count(&host), 0);
@@ -921,6 +940,11 @@ async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::FrameWrite,
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+    );
     assert!(!is_connected(&host));
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
@@ -929,6 +953,53 @@ async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
     );
     assert!(host.shared.writer.try_lock().is_ok());
     assert!(host.shared.frame_builder.try_lock().is_ok());
+}
+
+#[tokio::test]
+async fn write_private_file_missing_terminal_response_uses_shared_deadline_and_fails_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    tokio::time::pause();
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.write_private_file("/tmp/private-input.json", b"payload")
+                .await
+        })
+    };
+
+    let write = expect_write_file(&mut guest).await;
+    assert!(write.private);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    tokio::time::advance(guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE).await;
+    let error = write_task.await.unwrap().unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &error,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE,
+    );
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let later_error = host
+        .write_file("/tmp/later.txt", b"later", false)
+        .await
+        .unwrap_err();
+    assert_eq!(later_error.kind(), io::ErrorKind::ConnectionReset);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(read) => panic!("timed-out write must not be retried; read {read} bytes"),
+        Err(error) => panic!("unexpected guest read after timeout: {error}"),
+    }
 }
 
 #[tokio::test]

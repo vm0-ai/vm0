@@ -2181,6 +2181,35 @@ fn operation_error_classifies_io_timeout() {
 }
 
 #[test]
+fn operation_error_preserves_typed_request_timeout_stage() {
+    let timeout = vsock_host::RequestTimeoutError::new(
+        vsock_host::RequestTimeoutStage::AwaitingTerminalResponse,
+        Duration::from_secs(60),
+    );
+    let err = FirecrackerSandbox::operation_error(
+        SandboxOperation::WriteFile,
+        io::Error::new(io::ErrorKind::TimedOut, timeout),
+        false,
+    );
+
+    match err {
+        SandboxError::OperationTimeout {
+            operation,
+            stage,
+            timeout_ms,
+        } => {
+            assert_eq!(operation, SandboxOperation::WriteFile);
+            assert_eq!(
+                stage,
+                sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse
+            );
+            assert_eq!(timeout_ms, 60_000);
+        }
+        other => panic!("expected typed operation timeout, got {other:?}"),
+    }
+}
+
+#[test]
 fn operation_error_classifies_non_timeout_as_guest() {
     let err = FirecrackerSandbox::operation_error(
         SandboxOperation::Exec,

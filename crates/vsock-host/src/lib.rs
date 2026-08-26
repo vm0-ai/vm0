@@ -76,6 +76,7 @@ mod operation_tracker;
 #[cfg(test)]
 mod tests;
 
+use std::fmt;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
@@ -101,6 +102,59 @@ pub use exec_operation::{
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
 pub use guest_storage_manifest::GuestStorageManifestResult;
+
+/// Host-observed stage at which a request deadline expired.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequestTimeoutStage {
+    /// The request frame had not reached its write boundary.
+    BeforeFrameWrite,
+    /// The request frame write had started and may be partial.
+    FrameWrite,
+    /// The request frame completed but no terminal response arrived.
+    AwaitingTerminalResponse,
+}
+
+impl fmt::Display for RequestTimeoutStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BeforeFrameWrite => f.write_str("before frame write"),
+            Self::FrameWrite => f.write_str("during frame write"),
+            Self::AwaitingTerminalResponse => f.write_str("awaiting terminal response"),
+        }
+    }
+}
+
+/// Typed request deadline error carried inside [`io::ErrorKind::TimedOut`].
+#[derive(Debug)]
+pub struct RequestTimeoutError {
+    stage: RequestTimeoutStage,
+    timeout: Duration,
+}
+
+impl RequestTimeoutError {
+    /// Create a timeout error for an observed request stage and total budget.
+    pub const fn new(stage: RequestTimeoutStage, timeout: Duration) -> Self {
+        Self { stage, timeout }
+    }
+
+    /// Return the request stage observed when the deadline expired.
+    pub const fn stage(&self) -> RequestTimeoutStage {
+        self.stage
+    }
+
+    /// Return the configured end-to-end request timeout.
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
+    }
+}
+
+impl fmt::Display for RequestTimeoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("request timeout")
+    }
+}
+
+impl std::error::Error for RequestTimeoutError {}
 
 /// Observer called when a request frame reaches the guest-write boundary.
 ///

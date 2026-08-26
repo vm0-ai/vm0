@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -6,10 +8,10 @@ use sandbox::{
     CopyFileOptions, ExecRequest, ExecResult, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
     SandboxFactory, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
-    SandboxStartStage, StartProcessRequest,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxOperation,
+    SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
 };
-use sandbox_mock::MockSandboxFactory;
+use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
 use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_reuse_result,
@@ -21,7 +23,8 @@ use super::super::{
     execute_job_with_prepared_notifier,
 };
 use super::support::{
-    default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
+    context_with_env, default_params, make_reusable_idle_sandbox, minimal_context,
+    test_executor_config,
 };
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
@@ -149,6 +152,18 @@ fn assert_action_outcome(
         .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
     assert_eq!(op.1, success, "{action} success flag");
     assert_eq!(op.2.as_deref(), error, "{action} error");
+}
+
+fn assert_action_bounded_outcome(telemetry: &JobTelemetry, action: &str, expected_outcome: &str) {
+    let operations = telemetry.pending_ops_with_outcome_snapshot();
+    let operation = operations
+        .iter()
+        .find(|operation| operation.0 == action)
+        .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {operations:?}"));
+    assert!(!operation.1, "{action} success flag");
+    assert_eq!(operation.2.as_deref(), Some(expected_outcome));
+    assert_eq!(operation.3, None, "{action} reason");
+    assert_action_outcome(telemetry, action, false, None);
 }
 
 fn assert_action_duration(telemetry: &JobTelemetry, action: &str, duration_ms: u64) {
@@ -1235,6 +1250,79 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "workspace_drive_mount");
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec");
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
+}
+
+async fn assert_reused_private_write_timeout_telemetry(
+    context: crate::types::ExecutionContext,
+    expected_action: &str,
+    stage: SandboxOperationTimeoutStage,
+    expected_outcome: &str,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let sandbox = Box::new(MockSandbox::with_overrides(
+        "private-write-timeout",
+        Arc::clone(&overrides),
+    ));
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    overrides.push_private_write_file_result(Err(SandboxError::OperationTimeout {
+        operation: SandboxOperation::WriteFile,
+        stage,
+        timeout_ms: 60_000,
+    }));
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, telemetry) = execute_job_reuse_with_hooks(
+        idle_sandbox,
+        context,
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    assert!(outcome.failure.is_some());
+    assert!(outcome.sandbox.is_some());
+    assert_action_bounded_outcome(&telemetry, expected_action, expected_outcome);
+    assert_lacks_action(&telemetry, "runner_agent_start_process");
+    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.private_write_file_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn reused_user_env_write_timeout_records_bounded_stage_before_agent_start() {
+    let context = context_with_env(HashMap::from([(
+        "CUSTOM_ENV".to_string(),
+        "value".to_string(),
+    )]));
+
+    assert_reused_private_write_timeout_telemetry(
+        context,
+        "runner_user_env_write",
+        SandboxOperationTimeoutStage::FrameWrite,
+        "frame_write",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reused_run_payload_write_timeout_records_bounded_stage_before_agent_start() {
+    assert_reused_private_write_timeout_telemetry(
+        minimal_context(),
+        "runner_run_payload_write",
+        SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+        "await_terminal_response",
+    )
+    .await;
 }
 
 #[tokio::test]

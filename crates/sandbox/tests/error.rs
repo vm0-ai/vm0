@@ -1,6 +1,6 @@
 use sandbox::{
     SandboxError, SandboxIdleTransition, SandboxInitializationPhase, SandboxInvalidStateContext,
-    SandboxOperation, SandboxOperationReason,
+    SandboxOperation, SandboxOperationReason, SandboxOperationTimeoutStage,
 };
 
 #[test]
@@ -38,6 +38,31 @@ fn operation_error_exposes_operation_and_reason() {
             assert_eq!(message, "disk full");
         }
         other => panic!("expected operation error, got {other:?}"),
+    }
+}
+
+#[test]
+fn operation_timeout_exposes_bounded_request_context() {
+    let err = SandboxError::OperationTimeout {
+        operation: SandboxOperation::WriteFile,
+        stage: SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+        timeout_ms: 60_000,
+    };
+
+    match err {
+        SandboxError::OperationTimeout {
+            operation,
+            stage,
+            timeout_ms,
+        } => {
+            assert_eq!(operation, SandboxOperation::WriteFile);
+            assert_eq!(
+                stage,
+                SandboxOperationTimeoutStage::AwaitingTerminalResponse
+            );
+            assert_eq!(timeout_ms, 60_000);
+        }
+        other => panic!("expected operation timeout, got {other:?}"),
     }
 }
 
@@ -97,6 +122,20 @@ fn display_includes_category_and_message() {
     assert!(text.contains("wait process"), "got: {text}");
     assert!(text.contains("backend crashed"), "got: {text}");
     assert!(text.contains("firecracker process crashed"), "got: {text}");
+}
+
+#[test]
+fn operation_timeout_display_contains_only_typed_context() {
+    let err = SandboxError::OperationTimeout {
+        operation: SandboxOperation::WriteFile,
+        stage: SandboxOperationTimeoutStage::FrameWrite,
+        timeout_ms: 60_000,
+    };
+
+    assert_eq!(
+        err.to_string(),
+        "sandbox write file failed (timeout during frame write after 60000 ms)"
+    );
 }
 
 #[test]

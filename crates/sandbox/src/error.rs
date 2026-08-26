@@ -53,6 +53,17 @@ pub enum SandboxError {
         message: String,
     },
 
+    /// A running sandbox operation exhausted a typed request deadline.
+    #[error("sandbox {operation} failed (timeout {stage} after {timeout_ms} ms)")]
+    OperationTimeout {
+        /// Operation whose request timed out.
+        operation: SandboxOperation,
+        /// Host-observed request stage at timeout.
+        stage: SandboxOperationTimeoutStage,
+        /// Configured end-to-end request budget in milliseconds.
+        timeout_ms: u64,
+    },
+
     /// Parking or unparking an idle sandbox failed.
     #[error("sandbox {transition} failed: {message}")]
     IdleTransition {
@@ -143,6 +154,27 @@ pub enum SandboxOperationReason {
     Timeout,
     /// The operation failed for another reason.
     Other,
+}
+
+/// Host-observed request stage for a typed sandbox operation timeout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SandboxOperationTimeoutStage {
+    /// The request frame had not reached its write boundary.
+    BeforeFrameWrite,
+    /// The request frame write had started and may be partial.
+    FrameWrite,
+    /// The request frame completed but no terminal response arrived.
+    AwaitingTerminalResponse,
+}
+
+impl fmt::Display for SandboxOperationTimeoutStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BeforeFrameWrite => f.write_str("before frame write"),
+            Self::FrameWrite => f.write_str("during frame write"),
+            Self::AwaitingTerminalResponse => f.write_str("awaiting terminal response"),
+        }
+    }
 }
 
 impl fmt::Display for SandboxOperationReason {
