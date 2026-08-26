@@ -4759,10 +4759,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       run.runId,
       [200],
       {
-        runnerIdentity: {
-          runnerId: randomUUID(),
-          heartbeatGeneration: 13,
-        },
+        runnerIdentity,
         runnerHostname: "untrusted.aws.vm3.ai",
       },
       { [CLIENT_VERSION_HEADER]: "9.9.9" },
