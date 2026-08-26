@@ -645,7 +645,7 @@ describe("organization billing settings", () => {
     expect(buttonByText("Upgrade")).toBeInTheDocument();
   });
 
-  it("discards unsubmitted member usage after reopening settings", async () => {
+  it("discards unsubmitted usage before checkout after reopening settings", async () => {
     mockInitialUsagePackPurchase();
     const { teamPlan } = await openUsagePackPlanSelection();
     const { memberUsage } = await openTeamMemberPackages(teamPlan);
@@ -707,20 +707,16 @@ describe("organization billing settings", () => {
       }),
     ).toHaveTextContent("21,234 credits · 6% off");
     expect(resetMemberUsage).toHaveTextContent("$220/month");
-  });
-
-  it("submits member usage selections to checkout", async () => {
-    mockInitialUsagePackPurchase();
-    const { teamPlan } = await openUsagePackPlanSelection();
-    const { memberUsage, orderSummary } =
-      await openTeamMemberPackages(teamPlan);
+    const resetOrderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
     await selectMemberUsagePack(
-      memberUsage,
+      resetMemberUsage,
       "Alex Chen",
       "$50 · 54,321 credits · 8% off",
     );
     await selectMemberUsagePack(
-      memberUsage,
+      resetMemberUsage,
       "pending@example.com",
       "$100 · 109,999 credits · 9% off",
     );
@@ -738,7 +734,7 @@ describe("organization billing settings", () => {
       },
     );
 
-    click(buttonByText("Upgrade to Team", orderSummary));
+    click(buttonByText("Upgrade to Team", resetOrderSummary));
     await waitFor(() => {
       expect(window.location.href).toBe(
         "https://checkout.stripe.com/test-usage-pack",
