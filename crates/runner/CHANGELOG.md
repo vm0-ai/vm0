@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.173.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.8...runner-rs-v0.173.9) (2026-08-26)
+
+
+### Bug Fixes
+
+* **python:** fail closed on request hook exceptions ([#29452](https://github.com/vm0-ai/vm0/issues/29452)) ([efe7776](https://github.com/vm0-ai/vm0/commit/efe77769fac19ae1296c4f83a6050c6196e5c90f))
+* **runner:** increase default rootfs headroom ([#29445](https://github.com/vm0-ai/vm0/issues/29445)) ([10d3864](https://github.com/vm0-ai/vm0/commit/10d38642697e25f45ede5b024d778d20af5f19d8))
+
+
+### Documentation
+
+* **python:** document model-observation buffer semantics ([#29426](https://github.com/vm0-ai/vm0/issues/29426)) ([fea30c2](https://github.com/vm0-ai/vm0/commit/fea30c27192abef62cfff0a8978a690e15424760))
+
+
+### Performance Improvements
+
+* **runner:** stop commands on semantic stdout overflow ([#29450](https://github.com/vm0-ai/vm0/issues/29450)) ([e15ed04](https://github.com/vm0-ai/vm0/commit/e15ed04ea1cb274a9c63eacc526895db4d838318))
+
 ## [0.173.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.7...runner-rs-v0.173.8) (2026-08-26)
 
 

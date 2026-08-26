@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.594.0](https://github.com/vm0-ai/vm0/compare/core-v8.593.0...core-v8.594.0) (2026-08-26)
+
+
+### Features
+
+* enable the latest website templates for everyone ([#29446](https://github.com/vm0-ai/vm0/issues/29446)) ([6e911fa](https://github.com/vm0-ai/vm0/commit/6e911fa281806db6af98c6d3d59abbbc2e17f3f3))
+
+
+### Refactoring
+
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
 ## [8.593.0](https://github.com/vm0-ai/vm0/compare/core-v8.592.1...core-v8.593.0) (2026-08-26)
 
 

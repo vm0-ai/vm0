@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.798.0](https://github.com/vm0-ai/vm0/compare/app-v0.797.0...app-v0.798.0) (2026-08-26)
+
+
+### Features
+
+* **platform:** edit annotation marks directly and drop the modal tools ([#29453](https://github.com/vm0-ai/vm0/issues/29453)) ([cd65c4a](https://github.com/vm0-ai/vm0/commit/cd65c4ad2322126cee65ecfcad84246c7a2dfab3))
+
+
+### Bug Fixes
+
+* **platform:** unify dialog corner radius ([#29432](https://github.com/vm0-ai/vm0/issues/29432)) ([8837247](https://github.com/vm0-ai/vm0/commit/88372474837072be7b1be00c02d866c47a35e4f8))
+
+
+### Refactoring
+
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.594.0
+
 ## [0.797.0](https://github.com/vm0-ai/vm0/compare/app-v0.796.2...app-v0.797.0) (2026-08-26)
 
 
