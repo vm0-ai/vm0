@@ -7263,11 +7263,13 @@ function ComposerTemplateAttachmentSync({
   signals: ComposerSignals;
 }) {
   const picker = useComposerTemplatePicker(signals);
-  const rootSignal = useGet(rootSignal$);
   const onDraftChange = useComposerDraftChange(signals);
   const runtime = signals.template.templatePreview;
   const setLifecycleRef = useSet(
     signals.template.setTemplateAttachmentLifecycleRef$,
+  );
+  const setImportedTemplateUrlRefreshLifecycleRef = useSet(
+    signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
   );
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
@@ -7277,12 +7279,6 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
-  const refreshImportedTemplateUrls = useSet(
-    signals.template.refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
-  );
-  const importedTemplateUrlRefreshLifecycleRef = useSet(
-    signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
-  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
   const importedTemplateResources =
@@ -7323,15 +7319,12 @@ function ComposerTemplateAttachmentSync({
     setReferenceValue(readSelectedTemplate() ?? null);
     setCategory(category);
     setOpen(true);
-    if (category === "slides") {
-      detach(refreshImportedTemplateUrls(rootSignal), Reason.DomCallback);
-    }
   };
 
   return (
     <>
       <span
-        ref={importedTemplateUrlRefreshLifecycleRef}
+        ref={setImportedTemplateUrlRefreshLifecycleRef}
         aria-hidden="true"
         className="pointer-events-none absolute size-px overflow-hidden opacity-0"
       >
@@ -7407,7 +7400,6 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const rootSignal = useGet(rootSignal$);
   const open = useGet(signals.template.templatePickerOpen$);
   const skipEnterAnimation = useGet(
     signals.template.templatePickerSkipEnterAnimation$,
@@ -7419,9 +7411,6 @@ function TemplatePickerButton({
   const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
-  );
-  const refreshImportedTemplateUrls = useSet(
-    signals.template.refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
@@ -7476,12 +7465,6 @@ function TemplatePickerButton({
                 setPreviewSlug(null);
                 setReferenceValue(null);
                 setOpen(true);
-                if (selectedCategory === "slides") {
-                  detach(
-                    refreshImportedTemplateUrls(rootSignal),
-                    Reason.DomCallback,
-                  );
-                }
               }}
             >
               <SwatchBook size={18} aria-hidden="true" />

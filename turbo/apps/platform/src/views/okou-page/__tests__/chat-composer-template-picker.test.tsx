@@ -3632,10 +3632,9 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("prefetches uploaded decks before picker open and revalidates without blanking", async () => {
+  it("prefetches stable uploaded preview assets without reloading on picker open", async () => {
     const user = userEvent.setup({ delay: null });
-    const loadedAtMs = new Date("2026-08-23T03:00:00.000Z").getTime();
-    mockNow(context.signal, loadedAtMs);
+    mockNow(context.signal, new Date("2026-08-23T03:00:00.000Z").getTime());
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const primaryTemplateId = "7e4d2a91-40f8-4ea0-b685-e8653776f912";
     const secondaryTemplateId = "9f374525-03cd-4b37-bfe7-71880c8bf84c";
@@ -3645,15 +3644,12 @@ describe("chat composer templates", () => {
     const secondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
       return `https://example.com/prefetch-secondary-page-${index + 1}.png`;
     });
-    const renewedPrimaryPageUrls = Array.from({ length: 100 }, (_, index) => {
-      return `https://example.com/renewed-primary-page-${index + 1}.png`;
+    const primaryPreviewAssetIds = primaryPageUrls.map((_, index) => {
+      return `ptp:${primaryTemplateId}:primary-${index.toString().padStart(3, "0")}`;
     });
-    const renewedSecondaryPageUrls = Array.from({ length: 100 }, (_, index) => {
-      return `https://example.com/renewed-secondary-page-${index + 1}.png`;
+    const secondaryPreviewAssetIds = secondaryPageUrls.map((_, index) => {
+      return `ptp:${secondaryTemplateId}:secondary-${index.toString().padStart(3, "0")}`;
     });
-    const imageDecodes = controlImportedTemplateImageDecodes([
-      renewedPrimaryPageUrls[0]!,
-    ]);
     const primaryTemplate = {
       id: primaryTemplateId,
       title: "Primary draft deck",
@@ -3663,6 +3659,13 @@ describe("chat composer templates", () => {
       visibility: "public" as const,
       canManage: false,
       pageUrls: primaryPageUrls,
+      previewAssets: primaryPreviewAssetIds.map((previewAssetId, index) => {
+        return {
+          previewAssetId,
+          url: primaryPageUrls[index]!,
+          expiresAt: "2026-08-23T03:15:00.000Z",
+        };
+      }),
       createdAt: "2026-08-23T03:00:00.000Z",
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
@@ -3675,62 +3678,45 @@ describe("chat composer templates", () => {
       visibility: "private" as const,
       canManage: true,
       pageUrls: secondaryPageUrls,
+      previewAssets: secondaryPreviewAssetIds.map((previewAssetId, index) => {
+        return {
+          previewAssetId,
+          url: secondaryPageUrls[index]!,
+          expiresAt: "2026-08-23T03:15:00.000Z",
+        };
+      }),
       createdAt: "2026-08-23T03:00:00.000Z",
       updatedAt: "2026-08-23T03:00:00.000Z",
     };
-    const { pageUrls: _primaryPageUrls, ...primarySummary } = primaryTemplate;
-    const { pageUrls: _secondaryPageUrls, ...secondarySummary } =
+    const { pageUrls: _primaryPageUrls, ...primaryCatalogEntry } =
+      primaryTemplate;
+    const { pageUrls: _secondaryPageUrls, ...secondaryCatalogEntry } =
       secondaryTemplate;
-    const renewedPrimaryTemplate = {
-      ...primaryTemplate,
-      coverUrl: renewedPrimaryPageUrls[0] ?? null,
-      pageUrls: renewedPrimaryPageUrls,
-    };
-    const renewedSecondaryTemplate = {
-      ...secondaryTemplate,
-      coverUrl: renewedSecondaryPageUrls[0] ?? null,
-      pageUrls: renewedSecondaryPageUrls,
-    };
-    const { pageUrls: _renewedPrimaryPageUrls, ...renewedPrimarySummary } =
-      renewedPrimaryTemplate;
-    const { pageUrls: _renewedSecondaryPageUrls, ...renewedSecondarySummary } =
-      renewedSecondaryTemplate;
-    const refreshCatalogRequested = context.mocks.deferred<void>();
-    const releaseRefreshCatalog = context.mocks.deferred<void>();
-    const refreshedPrimaryDetailRequested = context.mocks.deferred<void>();
     let catalogRequestCount = 0;
     let primaryDetailRequestCount = 0;
     let secondaryDetailRequestCount = 0;
-    let serveRenewedUrls = false;
-    context.mocks.api(
-      presentationTemplatesContract.list,
-      async ({ respond }) => {
-        catalogRequestCount += 1;
-        if (catalogRequestCount > 3) {
-          refreshCatalogRequested.resolve();
-          await releaseRefreshCatalog.promise;
-          serveRenewedUrls = true;
-          return respond(200, [renewedPrimarySummary, renewedSecondarySummary]);
-        }
-        return respond(200, [primarySummary, secondarySummary]);
-      },
-    );
+    let previewUrlRequestCount = 0;
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      catalogRequestCount += 1;
+      return respond(200, [primaryCatalogEntry, secondaryCatalogEntry]);
+    });
     context.mocks.api(
       presentationTemplatesContract.get,
       ({ params, respond }) => {
         if (params.templateId === primaryTemplateId) {
           primaryDetailRequestCount += 1;
-          if (serveRenewedUrls) {
-            if (!refreshedPrimaryDetailRequested.settled()) {
-              refreshedPrimaryDetailRequested.resolve();
-            }
-            return respond(200, renewedPrimaryTemplate);
-          }
           return respond(200, primaryTemplate);
         }
         expect(params.templateId).toBe(secondaryTemplateId);
         secondaryDetailRequestCount += 1;
         return respond(200, secondaryTemplate);
+      },
+    );
+    context.mocks.api(
+      presentationTemplatesContract.resolvePreviewUrls,
+      ({ respond }) => {
+        previewUrlRequestCount += 1;
+        return respond(200, { assets: [] });
       },
     );
 
@@ -3771,8 +3757,9 @@ describe("chat composer templates", () => {
       ),
     ).not.toBeInTheDocument();
     expect(catalogRequestCount).toBe(1);
-    expect(primaryDetailRequestCount).toBe(1);
+    expect(primaryDetailRequestCount).toBe(0);
     expect(secondaryDetailRequestCount).toBe(0);
+    expect(previewUrlRequestCount).toBe(0);
 
     await user.click(screen.getByLabelText("Template"));
     const dialog = screen.getByRole("dialog");
@@ -3791,12 +3778,12 @@ describe("chat composer templates", () => {
     if (!(secondaryCard instanceof HTMLElement)) {
       throw new Error("Secondary template card not found");
     }
-    // Opening the picker refreshes the catalog, but the card reuses the deck
-    // resource the background preload already loaded.
+    const previewUrlRequestCountBeforeOpen = previewUrlRequestCount;
     await waitFor(() => {
-      expect(catalogRequestCount).toBe(2);
+      expect(catalogRequestCount).toBe(1);
+      expect(primaryDetailRequestCount).toBe(0);
     });
-    expect(primaryDetailRequestCount).toBe(1);
+    expect(previewUrlRequestCount).toBe(previewUrlRequestCountBeforeOpen);
     expect(within(card).getByRole("img")).toHaveAttribute("loading", "eager");
     expect(within(card).getByRole("img")).toHaveAttribute(
       "fetchpriority",
@@ -3842,98 +3829,115 @@ describe("chat composer templates", () => {
         "https://example.com/prefetch-primary-page-1.png",
       );
     });
-    // Hovering a card reads the slides from the same deck resource, so it
-    // never refetches what the preload already holds.
-    expect(catalogRequestCount).toBe(2);
-    expect(primaryDetailRequestCount).toBe(1);
+    expect(catalogRequestCount).toBe(1);
+    expect(primaryDetailRequestCount).toBe(0);
     expect(secondaryDetailRequestCount).toBe(0);
 
-    // A metadata-only refresh must not reset the independent signed-detail URL
-    // age, or frequent renames and visibility changes can postpone renewal
-    // until the page URLs have expired.
-    mockNow(context.signal, loadedAtMs + 5 * 60 * 1000);
+    const cardImage = within(card).getByRole("img");
+    const previewUrlRequestCountBeforeRealtime = previewUrlRequestCount;
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
-      expect(catalogRequestCount).toBe(3);
+      expect(catalogRequestCount).toBe(2);
     });
-    expect(primaryDetailRequestCount).toBe(1);
-    // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
-    // overlap with the API's 15-minute expiry. Opening is also a non-blocking
-    // catch-up point for a suspended tab whose timer did not run.
-    mockNow(context.signal, loadedAtMs + 10 * 60 * 1000 + 1);
-    click(within(dialog).getByLabelText("Close"));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Template"));
-    await refreshCatalogRequested.promise;
+    expect(previewUrlRequestCount).toBe(previewUrlRequestCountBeforeRealtime);
+    expect(primaryDetailRequestCount).toBe(0);
+    expect(secondaryDetailRequestCount).toBe(0);
+    expect(within(card).getByRole("img")).toBe(cardImage);
+    expect(cardImage).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-1.png",
+    );
+  });
 
-    const refreshingDialog = screen.getByRole("dialog");
-    const refreshingCard = await waitFor(() => {
-      const found = refreshingDialog.querySelector(
-        `[data-imported-presentation-template="${primaryTemplateId}"]`,
-      );
+  it("renews an expiring uploaded preview before the picker opens", async () => {
+    const user = userEvent.setup({ delay: null });
+    const requestedAt = new Date("2026-08-23T03:00:00.000Z").getTime();
+    mockNow(context.signal, requestedAt);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "245b3889-2835-40c4-898b-0effd621570d";
+    const previewAssetId = `ptp:${templateId}:cover`;
+    const oldUrl = "https://example.com/expiring-template-cover.png";
+    const renewedUrl = "https://example.com/renewed-template-cover.png";
+    const summary = {
+      id: templateId,
+      title: "Renewed brand deck",
+      sourceFilename: "renewed-brand-deck.pptx",
+      coverUrl: oldUrl,
+      pageCount: 1,
+      visibility: "private" as const,
+      canManage: true,
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+      previewAssets: [
+        {
+          previewAssetId,
+          url: oldUrl,
+          expiresAt: "2026-08-23T03:00:30.000Z",
+        },
+      ],
+    };
+    let catalogRequestCount = 0;
+    let detailRequestCount = 0;
+    let previewUrlRequestCount = 0;
+    let resolvedPreviewAssetIds: readonly string[] = [];
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      catalogRequestCount += 1;
+      return respond(200, [summary]);
+    });
+    context.mocks.api(presentationTemplatesContract.get, ({ respond }) => {
+      detailRequestCount += 1;
+      return respond(200, {
+        ...summary,
+        pageUrls: [oldUrl],
+      });
+    });
+    context.mocks.api(
+      presentationTemplatesContract.resolvePreviewUrls,
+      ({ body, respond }) => {
+        previewUrlRequestCount += 1;
+        resolvedPreviewAssetIds = body.previewAssetIds;
+        return respond(200, {
+          assets: [
+            {
+              previewAssetId,
+              url: renewedUrl,
+              expiresAt: "2026-08-23T03:15:00.000Z",
+            },
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(`img[src="${renewedUrl}"]`)).toBeTruthy();
+    });
+    expect(catalogRequestCount).toBe(1);
+    expect(detailRequestCount).toBe(0);
+    expect(previewUrlRequestCount).toBe(1);
+    expect(resolvedPreviewAssetIds).toStrictEqual([previewAssetId]);
+
+    await user.click(screen.getByLabelText("Template"));
+    const card = await waitFor(() => {
+      const found = screen
+        .getByRole("dialog")
+        .querySelector(`[data-imported-presentation-template="${templateId}"]`);
       if (!(found instanceof HTMLElement)) {
-        throw new Error("Refreshing template card not found");
+        throw new Error("Renewed template card not found");
       }
       return found;
     });
-    expect(within(refreshingCard).getByRole("img")).toHaveAttribute(
-      "src",
-      "https://example.com/prefetch-primary-page-1.png",
-    );
-    fireEvent.load(within(refreshingCard).getByRole("img"));
-
-    releaseRefreshCatalog.resolve();
-    await refreshedPrimaryDetailRequested.promise;
     await waitFor(() => {
-      // Renewing the signed URLs reloads the shared deck resource exactly once
-      // for every surface that reads it.
-      expect(primaryDetailRequestCount).toBe(2);
+      expect(within(card).getByRole("img")).toHaveAttribute("src", renewedUrl);
     });
-    const refreshedPreviewButton = within(refreshingCard).getByLabelText(
-      "Preview Primary draft deck at current slide",
-    );
-    const refreshedPreview = refreshedPreviewButton.parentElement;
-    if (!refreshedPreview) {
-      throw new Error("Refreshed imported template preview not found");
-    }
-    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
-      "src",
-      "https://example.com/prefetch-primary-page-1.png",
-    );
-    await imageDecodes.complete(
-      "https://example.com/renewed-primary-page-1.png",
-    );
-    await waitFor(() => {
-      expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
-        "src",
-        "https://example.com/renewed-primary-page-1.png",
-      );
-    });
-    Object.defineProperty(refreshedPreview, "getBoundingClientRect", {
-      configurable: true,
-      value: () => {
-        return new DOMRect(0, 0, 300, 160);
-      },
-    });
-    const detailRequestsBeforeRenewedHover = primaryDetailRequestCount;
-    fireEvent.mouseEnter(refreshedPreview);
-    fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
-    await loadImportedTemplateImage(
-      refreshedPreview,
-      "https://example.com/renewed-primary-page-100.png",
-    );
-
-    expect(within(refreshedPreview).getByRole("img")).toHaveAttribute(
-      "src",
-      "https://example.com/renewed-primary-page-100.png",
-    );
-    expect(catalogRequestCount).toBe(4);
-    // Hovering the renewed card still serves its slides from the renewed deck
-    // resource without asking for it again.
-    expect(primaryDetailRequestCount).toBe(detailRequestsBeforeRenewedHover);
-    expect(secondaryDetailRequestCount).toBe(0);
+    expect(catalogRequestCount).toBe(1);
+    expect(detailRequestCount).toBe(0);
+    expect(previewUrlRequestCount).toBe(1);
   });
 
   it("loads resized uploaded deck previews with bounded thumbnail priority", async () => {
@@ -4069,6 +4073,14 @@ describe("chat composer templates", () => {
       sourceFilename: "fresh-deck.pptx",
       coverUrl: "https://example.com/fresh-deck-cover.png",
       pageCount: 12,
+      previewAssets: [
+        {
+          previewAssetId:
+            "ptp:9a6d0b2f-7a8e-4c3d-9f1a-2b3c4d5e6f70:fresh-cover",
+          url: "https://example.com/fresh-deck-cover.png",
+          expiresAt: "2026-08-23T03:15:00.000Z",
+        },
+      ],
       visibility: "public" as const,
       canManage: false,
       createdAt: "2026-08-23T03:00:00.000Z",
@@ -4535,7 +4547,7 @@ describe("chat composer templates", () => {
 
     click(await screen.findByLabelText("Template"));
     await waitFor(() => {
-      expect(catalogRequestCount).toBe(2);
+      expect(catalogRequestCount).toBe(1);
     });
     const dialog = screen.getByRole("dialog");
     const deletedCard = dialog.querySelector<HTMLElement>(
@@ -4603,7 +4615,7 @@ describe("chat composer templates", () => {
 
     releaseDeleteRefresh.resolve();
     await waitFor(() => {
-      expect(catalogRequestCount).toBe(3);
+      expect(catalogRequestCount).toBe(2);
       expect(
         dialog.querySelector(
           `[data-imported-presentation-template="${deletedTemplate.id}"]`,
@@ -4623,7 +4635,7 @@ describe("chat composer templates", () => {
     catalog = [deletedTemplate, remainingTemplate];
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
-      expect(catalogRequestCount).toBe(4);
+      expect(catalogRequestCount).toBe(3);
       expect(
         dialog.querySelector(
           `[data-imported-presentation-template="${deletedTemplate.id}"]`,
