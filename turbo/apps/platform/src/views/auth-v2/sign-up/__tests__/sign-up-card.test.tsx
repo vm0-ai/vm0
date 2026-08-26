@@ -888,6 +888,7 @@ describe("auth v2 sign-up flow", () => {
     expect(legalError).toHaveTextContent(
       "Please read and accept the terms to continue",
     );
+    expect(legalError).toHaveClass("border-red-200", "bg-red-50");
     expect(document.activeElement).toBe(legalError);
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 
