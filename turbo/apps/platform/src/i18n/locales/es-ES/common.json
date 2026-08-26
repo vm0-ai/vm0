@@ -134,6 +134,7 @@
         "noSessionId": "Resultado heredado: no se conoce el motivo exacto por el que no se reutilizó el sandbox.",
         "notConfigured": "La reutilización del espacio de trabajo no estaba configurada para esta ejecución.",
         "notReused": "No reutilizado",
+        "outcomeUnavailableDescription": "No hay más detalles disponibles.",
         "poolMiss": "No se encontró un sandbox coincidente en el pool inactivo.",
         "profileMismatch": "Existe una entrada en el pool inactivo, pero su perfil no coincide.",
         "provisioning": "Aprovisionando",

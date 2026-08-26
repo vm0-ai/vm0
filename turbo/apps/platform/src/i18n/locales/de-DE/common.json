@@ -132,6 +132,7 @@
         "noSessionId": "Altes Ergebnis: Der genaue Grund, warum die Sandbox nicht wiederverwendet wurde, ist nicht verfügbar.",
         "notConfigured": "Die Wiederverwendung des Arbeitsbereichs war für diese Ausführung nicht konfiguriert.",
         "notReused": "Nicht wiederverwendet",
+        "outcomeUnavailableDescription": "Weitere Details sind nicht verfügbar.",
         "poolMiss": "Im Leerlaufpool wurde keine passende Sandbox gefunden.",
         "profileMismatch": "Ein Leerlaufpooleintrag ist vorhanden, sein Profil stimmt jedoch nicht überein.",
         "provisioning": "Wird bereitgestellt",

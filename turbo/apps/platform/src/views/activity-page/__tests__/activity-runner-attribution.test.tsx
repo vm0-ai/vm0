@@ -228,7 +228,7 @@ describe("activity runner attribution", () => {
   }[])(
     "shows $missing for $name",
     async ({ runId, status, runner, missing }) => {
-      expect.assertions(4);
+      expect.assertions(5);
       mockActivity({ runId, status, runner });
 
       setupRunnerPage(runId);
@@ -238,6 +238,11 @@ describe("activity runner attribution", () => {
       expectRunnerAttribute("Version", missing);
       expectRunnerAttribute("Runner ID", missing);
       expectRunnerAttribute("Generation", missing);
+      expect(
+        screen.getAllByRole("article").every((card) => {
+          return card.querySelector("p") !== null;
+        }),
+      ).toBeTruthy();
     },
   );
 });

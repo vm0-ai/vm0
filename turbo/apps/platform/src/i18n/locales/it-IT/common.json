@@ -134,6 +134,7 @@
         "noSessionId": "Risultato legacy: il motivo esatto per cui la sandbox non è stata riutilizzata non è disponibile.",
         "notConfigured": "Il riutilizzo dello spazio di lavoro non era configurato per questa esecuzione.",
         "notReused": "Non riutilizzato",
+        "outcomeUnavailableDescription": "Non sono disponibili ulteriori dettagli.",
         "poolMiss": "Nessun sandbox corrispondente trovato nel pool inattivo.",
         "profileMismatch": "La voce del pool inattivo esiste ma il suo profilo non corrisponde.",
         "provisioning": "Provisioning",

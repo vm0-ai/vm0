@@ -657,7 +657,7 @@ type RunnerStartupPath = "sandbox" | "workspace" | "cold" | "unknown";
 
 interface ReuseOutcomeInfo {
   readonly label: string;
-  readonly description: string | null;
+  readonly description: string;
 }
 
 function isCurrentSandboxMiss(result: SandboxReuseResult | null): boolean {
@@ -699,12 +699,16 @@ function sandboxOutcomeInfo(
   descriptions: Record<SandboxReuseResult, string>,
   labels: {
     readonly missing: string;
+    readonly missingDescription: string;
     readonly notReused: string;
     readonly reused: string;
   },
 ): ReuseOutcomeInfo {
   if (result === null) {
-    return { label: labels.missing, description: null };
+    return {
+      label: labels.missing,
+      description: labels.missingDescription,
+    };
   }
   return {
     label: result === "reused" ? labels.reused : labels.notReused,
@@ -717,12 +721,16 @@ function workspaceOutcomeInfo(
   descriptions: Record<WorkspaceReuseResult, string>,
   labels: {
     readonly missing: string;
+    readonly missingDescription: string;
     readonly notReused: string;
     readonly reused: string;
   },
 ): ReuseOutcomeInfo {
   if (result === null) {
-    return { label: labels.missing, description: null };
+    return {
+      label: labels.missing,
+      description: labels.missingDescription,
+    };
   }
   const wasReused = result === "reused" || result === "sandboxReused";
   return {
@@ -746,11 +754,9 @@ function RunnerEnvironmentCard({
           {info.label}
         </span>
       </div>
-      {info.description ? (
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {info.description}
-        </p>
-      ) : null}
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+        {info.description}
+      </p>
     </article>
   );
 }
@@ -861,6 +867,9 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const reused = t(($) => {
     return $.activity.detail.runner.reused;
   });
+  const missingDescription = t(($) => {
+    return $.activity.detail.runner.outcomeUnavailableDescription;
+  });
   const sandboxDescriptions = {
     reused: t(($) => {
       return $.activity.detail.runner.reusedDescription;
@@ -919,7 +928,7 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
       return $.activity.detail.runner.sandboxPrepareFallback;
     }),
   } satisfies Record<WorkspaceReuseResult, string>;
-  const labels = { missing, notReused, reused };
+  const labels = { missing, missingDescription, notReused, reused };
   const sandboxInfo = sandboxOutcomeInfo(
     sandboxReuse,
     sandboxDescriptions,

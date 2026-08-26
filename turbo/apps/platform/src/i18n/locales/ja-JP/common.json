@@ -132,6 +132,7 @@
         "noSessionId": "従来の結果です。サンドボックスが再利用されなかった正確な理由は確認できません。",
         "notConfigured": "この実行ではワークスペースの再利用が構成されていませんでした。",
         "notReused": "再利用されない",
+        "outcomeUnavailableDescription": "追加の詳細は利用できません。",
         "poolMiss": "アイドル状態のプールに一致するサンドボックスが見つかりません。",
         "profileMismatch": "アイドル プール エントリは存在しますが、そのプロファイルが一致しません。",
         "provisioning": "プロビジョニング中",

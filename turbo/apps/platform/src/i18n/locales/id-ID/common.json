@@ -132,6 +132,7 @@
         "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
         "notConfigured": "Penggunaan ulang workspace tidak dikonfigurasi untuk run ini.",
         "notReused": "Tidak digunakan ulang",
+        "outcomeUnavailableDescription": "Detail tambahan tidak tersedia.",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
         "provisioning": "Menyiapkan",

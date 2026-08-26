@@ -132,6 +132,7 @@
         "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
         "notConfigured": "Workspace reuse was not configured for this run.",
         "notReused": "Not reused",
+        "outcomeUnavailableDescription": "Additional details are unavailable.",
         "poolMiss": "No matching sandbox found in the idle pool.",
         "profileMismatch": "Idle pool entry exists but its profile does not match.",
         "provisioning": "Provisioning",
