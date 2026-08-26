@@ -68,14 +68,13 @@ function setupRunnerPage(runId: string): void {
   });
 }
 
-function expectRunnerValue(label: string, value: string): void {
-  const section = screen
-    .getByRole("heading", { name: label })
-    .closest("section");
-  if (!section) {
-    throw new Error(`Runner section not found: ${label}`);
+function expectRunnerAttribute(label: string, value: string): void {
+  const term = screen.getByText(label);
+  const field = term.closest("div");
+  if (!field) {
+    throw new Error(`Runner attribution field not found: ${label}`);
   }
-  expect(within(section).getByText(value)).toBeInTheDocument();
+  expect(within(field).getByText(value)).toBeInTheDocument();
 }
 
 describe("activity runner attribution", () => {
@@ -110,13 +109,77 @@ describe("activity runner attribution", () => {
 
       setupRunnerPage(runId);
 
-      await screen.findByRole("heading", { name: "Hostname" });
-      expectRunnerValue("Hostname", hostname);
-      expectRunnerValue("Version", "0.168.14");
-      expectRunnerValue("Runner ID", runnerId);
-      expectRunnerValue("Generation", generation.toString());
+      await screen.findByRole("heading", { name: "Environment" });
+      expectRunnerAttribute("Hostname", hostname);
+      expectRunnerAttribute("Version", "0.168.14");
+      expectRunnerAttribute("Runner ID", runnerId);
+      expectRunnerAttribute("Generation", generation.toString());
       expect(screen.getByText("Sandbox reuse")).toBeInTheDocument();
       expect(screen.getAllByText("Reused")).toHaveLength(2);
+    },
+  );
+
+  it.each([
+    {
+      runId: "a0000000-0000-4000-a000-000000000306",
+      sandboxReuseResult: "reused",
+      workspaceReuseResult: "sandboxReused",
+      label: "Sandbox reuse",
+      description: "The sandbox and its workspace were reused.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000307",
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "reused",
+      label: "Workspace reuse",
+      description: "A fresh sandbox restored a cached workspace.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000308",
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "cacheMiss",
+      label: "Cold start",
+      description: "A fresh sandbox and workspace were prepared.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000309",
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      label: "Unknown",
+      description: "Startup reuse details are unavailable.",
+    },
+  ] satisfies readonly {
+    runId: string;
+    sandboxReuseResult: RunRunnerResponse["sandboxReuseResult"];
+    workspaceReuseResult: RunRunnerResponse["workspaceReuseResult"];
+    label: string;
+    description: string;
+  }[])(
+    "describes the $label startup path",
+    async ({
+      runId,
+      sandboxReuseResult,
+      workspaceReuseResult,
+      label,
+      description,
+    }) => {
+      mockActivity({
+        runId,
+        status: "completed",
+        runner: { sandboxReuseResult, workspaceReuseResult },
+      });
+
+      setupRunnerPage(runId);
+
+      const startupHeading = await screen.findByRole("heading", {
+        name: "Startup",
+      });
+      const startupCard = startupHeading.closest("article");
+      if (!startupCard) {
+        throw new Error("Startup card not found");
+      }
+      expect(within(startupCard).getByText(label)).toBeInTheDocument();
+      expect(within(startupCard).getByText(description)).toBeInTheDocument();
     },
   );
 
@@ -165,18 +228,16 @@ describe("activity runner attribution", () => {
   }[])(
     "shows $missing for $name",
     async ({ runId, status, runner, missing }) => {
+      expect.assertions(4);
       mockActivity({ runId, status, runner });
 
       setupRunnerPage(runId);
 
-      await screen.findByRole("heading", { name: "Hostname" });
-      expect(
-        screen.getByRole("heading", { name: "Hostname" }),
-      ).toBeInTheDocument();
-      expectRunnerValue("Hostname", missing);
-      expectRunnerValue("Version", missing);
-      expectRunnerValue("Runner ID", missing);
-      expectRunnerValue("Generation", missing);
+      await screen.findByRole("heading", { name: "Environment" });
+      expectRunnerAttribute("Hostname", missing);
+      expectRunnerAttribute("Version", missing);
+      expectRunnerAttribute("Runner ID", missing);
+      expectRunnerAttribute("Generation", missing);
     },
   );
 });

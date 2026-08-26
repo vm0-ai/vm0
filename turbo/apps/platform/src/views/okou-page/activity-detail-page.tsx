@@ -731,7 +731,7 @@ function workspaceOutcomeInfo(
   };
 }
 
-function RunnerOutcomeRow({
+function RunnerEnvironmentCard({
   title,
   info,
 }: {
@@ -739,36 +739,42 @@ function RunnerOutcomeRow({
   readonly info: ReuseOutcomeInfo;
 }) {
   return (
-    <section>
-      <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
-      <div className="flex items-center gap-2">
+    <article className="rounded-lg border bg-card p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
         <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
           {info.label}
         </span>
-        {info.description ? (
-          <span className="text-sm text-muted-foreground">
-            {info.description}
-          </span>
-        ) : null}
       </div>
-    </section>
+      {info.description ? (
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          {info.description}
+        </p>
+      ) : null}
+    </article>
   );
 }
 
-function RunnerAttributionRow({
-  title,
+function RunnerAttributionCell({
+  label,
   value,
+  missing,
 }: {
-  readonly title: string;
-  readonly value: string;
+  readonly label: string;
+  readonly value: string | null;
+  readonly missing: string;
 }) {
   return (
-    <section>
-      <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-sm font-mono text-muted-foreground break-all">
-        {value}
-      </p>
-    </section>
+    <div className="min-w-0 border-t px-4 py-3 first:border-t-0 sm:even:border-l sm:[&:nth-child(2)]:border-t-0 lg:border-t-0 lg:border-l lg:first:border-l-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={`mt-1 break-all font-mono text-sm ${
+          value === null ? "text-muted-foreground" : "text-foreground"
+        }`}
+      >
+        {value ?? missing}
+      </dd>
+    </div>
   );
 }
 
@@ -779,7 +785,7 @@ interface RunnerAttribution {
   readonly runnerHeartbeatGeneration: number | null;
 }
 
-function RunnerAttributionRows({
+function RunnerAttributionGrid({
   runner,
   missing,
 }: {
@@ -788,32 +794,36 @@ function RunnerAttributionRows({
 }) {
   const { t } = useTranslation();
   return (
-    <>
-      <RunnerAttributionRow
-        title={t(($) => {
+    <dl className="grid grid-cols-1 overflow-hidden rounded-lg border bg-card sm:grid-cols-2 lg:grid-cols-4">
+      <RunnerAttributionCell
+        label={t(($) => {
           return $.activity.detail.runner.hostname;
         })}
-        value={runner?.runnerHostname ?? missing}
+        value={runner?.runnerHostname ?? null}
+        missing={missing}
       />
-      <RunnerAttributionRow
-        title={t(($) => {
+      <RunnerAttributionCell
+        label={t(($) => {
           return $.activity.detail.runner.version;
         })}
-        value={runner?.runnerVersion ?? missing}
+        value={runner?.runnerVersion ?? null}
+        missing={missing}
       />
-      <RunnerAttributionRow
-        title={t(($) => {
+      <RunnerAttributionCell
+        label={t(($) => {
           return $.activity.detail.runner.runnerId;
         })}
-        value={runner?.runnerId ?? missing}
+        value={runner?.runnerId ?? null}
+        missing={missing}
       />
-      <RunnerAttributionRow
-        title={t(($) => {
+      <RunnerAttributionCell
+        label={t(($) => {
           return $.activity.detail.runner.generation;
         })}
-        value={runner?.runnerHeartbeatGeneration?.toString() ?? missing}
+        value={runner?.runnerHeartbeatGeneration?.toString() ?? null}
+        missing={missing}
       />
-    </>
+    </dl>
   );
 }
 
@@ -934,34 +944,56 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
       return $.activity.detail.runner.startupUnknown;
     }),
   } satisfies Record<RunnerStartupPath, string>;
-  const startup =
-    startupLabels[runnerStartupPath(sandboxReuse, workspaceReuse)];
+  const startupDescriptions = {
+    sandbox: t(($) => {
+      return $.activity.detail.runner.startupSandboxDescription;
+    }),
+    workspace: t(($) => {
+      return $.activity.detail.runner.startupWorkspaceDescription;
+    }),
+    cold: t(($) => {
+      return $.activity.detail.runner.startupColdDescription;
+    }),
+    unknown: t(($) => {
+      return $.activity.detail.runner.startupUnknownDescription;
+    }),
+  } satisfies Record<RunnerStartupPath, string>;
+  const startupPath = runnerStartupPath(sandboxReuse, workspaceReuse);
+  const startupInfo = {
+    label: startupLabels[startupPath],
+    description: startupDescriptions[startupPath],
+  };
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      <RunnerAttributionRows runner={runner} missing={missing} />
+      <RunnerAttributionGrid runner={runner} missing={missing} />
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-2">
-          {t(($) => {
-            return $.activity.detail.runner.startup;
+        <SectionHeader
+          title={t(($) => {
+            return $.activity.detail.runner.environment;
           })}
-        </h3>
-        <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
-          {startup}
-        </span>
+        />
+        <div className="grid gap-3 lg:grid-cols-3">
+          <RunnerEnvironmentCard
+            title={t(($) => {
+              return $.activity.detail.runner.startup;
+            })}
+            info={startupInfo}
+          />
+          <RunnerEnvironmentCard
+            title={t(($) => {
+              return $.activity.detail.runner.sandbox;
+            })}
+            info={sandboxInfo}
+          />
+          <RunnerEnvironmentCard
+            title={t(($) => {
+              return $.activity.detail.runner.workspace;
+            })}
+            info={workspaceInfo}
+          />
+        </div>
       </section>
-      <RunnerOutcomeRow
-        title={t(($) => {
-          return $.activity.detail.runner.sandbox;
-        })}
-        info={sandboxInfo}
-      />
-      <RunnerOutcomeRow
-        title={t(($) => {
-          return $.activity.detail.runner.workspace;
-        })}
-        info={workspaceInfo}
-      />
     </div>
   );
 }
