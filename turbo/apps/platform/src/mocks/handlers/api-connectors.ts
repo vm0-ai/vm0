@@ -150,11 +150,19 @@ function defaultExternalCodeSessionStartResponse(
   };
 }
 
-export function setMockConnectors(connectors: ConnectorResponse[]): void {
+export function setMockConnectors(
+  connectors: ConnectorResponse[],
+  requestedScopesByConnectionId?: ReadonlyMap<string, readonly string[]>,
+): void {
   mockConnectors = connectors;
   mockConnectorRequestedScopes.clear();
   for (const connector of connectors) {
-    storeMockConnectorRequestedScopes(connector);
+    storeMockConnectorRequestedScopes(
+      connector,
+      requestedScopesByConnectionId?.get(connector.id) ??
+        connector.oauthScopes ??
+        [],
+    );
   }
 }
 
@@ -228,7 +236,10 @@ function upsertMockConnector(connector: ConnectorResponse): void {
   storeMockConnectorRequestedScopes(connector);
 }
 
-function storeMockConnectorRequestedScopes(connector: ConnectorResponse): void {
+function storeMockConnectorRequestedScopes(
+  connector: ConnectorResponse,
+  requestedScopes?: readonly string[],
+): void {
   const definition = testConnectorCatalogDefinitions.find((candidate) => {
     return candidate.connectorSlug === connector.slug;
   });
@@ -236,7 +247,9 @@ function storeMockConnectorRequestedScopes(connector: ConnectorResponse): void {
     return candidate.detail.id === connector.authMethod;
   });
   if (method) {
-    mockConnectorRequestedScopes.set(connector.id, [...method.requestedScopes]);
+    mockConnectorRequestedScopes.set(connector.id, [
+      ...(requestedScopes ?? method.requestedScopes),
+    ]);
   }
 }
 

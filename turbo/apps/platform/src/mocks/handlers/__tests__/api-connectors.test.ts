@@ -8,6 +8,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+const GOOGLE_ADS_REQUESTED_SCOPES = [
+  "https://www.googleapis.com/auth/adwords",
+  "https://www.googleapis.com/auth/datamanager",
+  "https://www.googleapis.com/auth/userinfo.email",
+] as const;
+
 function connectorCatalogClient() {
   void context.mocks;
   return context.store.get(apiClient$)(connectorCatalogContract);
@@ -29,7 +35,10 @@ describe("api connectors mock handlers", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    context.mocks.data.connectors([connector]);
+    context.mocks.data.connectors(
+      [connector],
+      new Map([[connector.id, GOOGLE_ADS_REQUESTED_SCOPES]]),
+    );
 
     const response = await accept(connectorCatalogClient().status(), [200]);
     expect(
@@ -40,6 +49,35 @@ describe("api connectors mock handlers", () => {
       connected: true,
       connectionStatus: "connected",
       scopeMismatch: false,
+    });
+  });
+
+  it("preserves seeded scope drift when no requested snapshot is provided", async () => {
+    const connector: ConnectorResponse = {
+      id: "00000000-0000-4000-8000-000000000002",
+      slug: "google-ads",
+      authMethod: "oauth",
+      externalId: "mock-google-ads-account",
+      externalUsername: "mock-google-ads",
+      externalEmail: "mock-google-ads@example.test",
+      oauthScopes: [GOOGLE_ADS_REQUESTED_SCOPES[0]],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    context.mocks.data.connectors([connector]);
+
+    const response = await accept(connectorCatalogClient().status(), [200]);
+    expect(
+      response.body.connectors.find((candidate) => {
+        return candidate.slug === connector.slug;
+      }),
+    ).toMatchObject({
+      connected: true,
+      connectionStatus: "scope-mismatch",
+      scopeMismatch: true,
     });
   });
 });
