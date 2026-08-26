@@ -295,10 +295,10 @@ end
 stale_step = stale_steps.fetch(0)
 expected_roles = "browser,playwright,paid-onboarding,runner,runner-real-codex,runner-real-claude,runner-mock-claude"
 unless stale_step.fetch("run").include?(
-    "cleanup-stale #{expected_roles} --older-than-hours 0.5",
+    "cleanup-stale #{expected_roles} --older-than-hours 0.5 --example-older-than-hours 24",
   ) && stale_step.dig("env", "CLERK_SECRET_KEY") == "${{ secrets.CLERK_SECRET_KEY }}" &&
     stale_step.dig("env", "DRY_RUN") == "${{ env.DRY_RUN }}"
-  raise "stale Clerk cleanup must use every marked role and a 30-minute cutoff"
+  raise "stale Clerk cleanup must use every marked role, a 30-minute CI cutoff, and a 24-hour example.com cutoff"
 end
 
 cleanup_sources = [

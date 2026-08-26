@@ -40,6 +40,7 @@ jobs:
           cleanup-stale
           browser,playwright,paid-onboarding,runner,runner-real-codex,runner-real-claude,runner-mock-claude
           --older-than-hours 0.5
+          --example-older-than-hours 24
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           DRY_RUN: ${{ env.DRY_RUN }}
