@@ -3766,7 +3766,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.245"
+version = "0.9.244"
 dependencies = [
  "guest-write-file",
  "libc",

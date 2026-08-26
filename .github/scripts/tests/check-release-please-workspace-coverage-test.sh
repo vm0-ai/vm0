@@ -184,4 +184,11 @@ write_json \
 expect_failure "$REPO" \
   "Release Please manifest is missing configured packages: turbo/packages/ui"
 
+setup_repo "excluded-package-in-manifest"
+write_json \
+  "${REPO}/.release-please-manifest.json" \
+  '.["native/vsock-test"] = "1.0.1"'
+expect_failure "$REPO" \
+  "Release Please manifest contains unconfigured packages: native/vsock-test"
+
 echo "check-release-please-workspace-coverage-test: ok"
