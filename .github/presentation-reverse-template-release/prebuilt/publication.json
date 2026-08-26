@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "7daba24dce1b5a8403d61fc6622fb3c238849ae8",
+    "directory": "reverse-template"
+  },
+  "resource": {
+    "id": "skill:presentation-reverse-template",
+    "slug": "reverse-template",
+    "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
+    "versionId": "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
+    "archive": {
+      "path": "reverse-template.tar.gz",
+      "sha256": "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11",
+      "byteSize": 10004
+    },
+    "totalSize": 30489,
+    "fileCount": 3,
+    "files": [
+      {
+        "path": "reverse-template/scripts/libreoffice.mjs",
+        "hash": "30009bbc46117f797e179db3a75e408618cf76c2ca0d50de1fb5ead8b5e52d6f",
+        "size": 13826
+      },
+      {
+        "path": "reverse-template/scripts/render-pages.mjs",
+        "hash": "7a13f2f81a2ede87e09e005d3200f7ed7666bd60d83684660aa80b00ee7ffa3d",
+        "size": 5691
+      },
+      {
+        "path": "reverse-template/SKILL.md",
+        "hash": "b70a895e5809819efa8526f5b3b20a930235ef84cb0c0e3fadc9290525feae76",
+        "size": 10972
+      }
+    ]
+  }
+}
