@@ -43,6 +43,8 @@ declare global {
      * the first time the app skeleton is dismissed.
      */
     __appBootstrapStart?: number;
+    /** Set when the entry module graph has finished evaluating. */
+    __appBootstrapModuleReady?: number;
   }
 }
 

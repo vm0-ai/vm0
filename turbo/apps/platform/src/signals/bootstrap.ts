@@ -98,6 +98,11 @@ import {
 } from "./connection-diagnostics.ts";
 import { checkUnifiedSettingsParam$ } from "./okou-page/settings/settings-dialog.ts";
 import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
+import {
+  initBootstrapPhaseTiming$,
+  markBootstrapLocaleInitCompleted$,
+  markBootstrapLocaleInitStarted$,
+} from "../lib/posthog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -479,9 +484,12 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 
 export const bootstrap$ = command(
   async ({ get, set }, render: () => void, signal: AbortSignal) => {
+    set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
+    set(markBootstrapLocaleInitStarted$);
     await set(initLocale$, signal);
     signal.throwIfAborted();
+    set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
     set(initBootstrapSkeleton$);
