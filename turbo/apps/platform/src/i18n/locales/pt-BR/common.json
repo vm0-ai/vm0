@@ -2024,7 +2024,7 @@
       "agents": "Agentes",
       "back": "Voltar",
       "content": "Conteúdo",
-      "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
+      "description": "Envie o conteúdo selecionado para um agente ou uma conversa e continue trabalhando nele.",
       "noResults": "Nenhum agente ou conversa foi encontrado",
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",

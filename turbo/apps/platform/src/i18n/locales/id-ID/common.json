@@ -1988,7 +1988,7 @@
       "agents": "Agen",
       "back": "Kembali",
       "content": "Konten",
-      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "description": "Kirim konten yang dipilih ke agen atau chat untuk melanjutkan pengerjaannya.",
       "noResults": "Agen atau chat tidak ditemukan",
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",

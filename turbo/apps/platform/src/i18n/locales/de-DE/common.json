@@ -1991,7 +1991,7 @@
       "agents": "Agenten",
       "back": "Zurück",
       "content": "Inhalt",
-      "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
+      "description": "Sende ausgewählte Inhalte an einen Agenten oder Chat, um daran weiterzuarbeiten.",
       "noResults": "Keine Agenten oder Chats gefunden",
       "search": "Agenten und Chats suchen...",
       "sent": "Erfolgreich weitergeleitet",

@@ -2024,7 +2024,7 @@
       "agents": "Agentes",
       "back": "Atrás",
       "content": "Contenido",
-      "description": "Reenvía el contenido seleccionado a un agente o una conversación.",
+      "description": "Envía el contenido seleccionado a un agente o una conversación para seguir trabajando en él.",
       "noResults": "No se encontraron agentes ni conversaciones",
       "search": "Buscar agentes y conversaciones...",
       "sent": "Reenviado correctamente",
