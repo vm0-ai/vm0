@@ -34,6 +34,12 @@ export {
   HYPERFRAMES_RUNTIME,
 } from "./hyperframes-source";
 export {
+  INTRO_VIDEO_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATES_ENABLED_ENV,
+  findIntroVideoTemplateItem,
+  type IntroVideoTemplateItem,
+} from "./intro-video-template-items";
+export {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
