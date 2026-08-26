@@ -13,6 +13,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatForward, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -102,7 +103,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -136,7 +136,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
