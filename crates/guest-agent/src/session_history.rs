@@ -372,15 +372,17 @@ fn read_open_codex_checkpoint_source_bounded(
 ) -> Result<SessionHistoryCheckpointSource, AgentError> {
     file.rewind()
         .map_err(|error| read_history_error(&path, error))?;
+    let source_len = file
+        .metadata()
+        .map_err(|error| read_history_error(&path, error))?
+        .len();
     if is_zstd {
-        let encoded_len = file
-            .metadata()
-            .map_err(|error| read_history_error(&path, error))?
-            .len();
-        if encoded_len <= max_bytes {
+        if source_len <= max_bytes {
             let encoded = read_zstd_encoded_session_history(file, &path, max_bytes)?;
             return Ok(SessionHistoryCheckpointSource::CodexZstd { encoded });
         }
+    } else if source_len > max_bytes {
+        return Err(session_history_exceeds_max_error(max_bytes));
     }
 
     DecodedSessionHistoryReader::open(path, file)?
@@ -1256,14 +1258,19 @@ mod tests {
     }
 
     #[test]
-    fn bounded_read_rejects_literal_history_over_limit() {
+    fn bounded_read_rejects_literal_history_over_limit_before_reading() {
         let dir = tempfile::tempdir().unwrap();
         let path = write_history_file(&dir, "history.jsonl", b"abcde");
+        let resolved = resolve_test_payload(path.to_str().unwrap()).unwrap();
+        let mut observed_file = resolved.file.try_clone().unwrap();
 
-        let err = read_session_history_from_payload_bounded(path.to_str().unwrap(), 4)
-            .expect_err("bounded literal read must reject over-limit history");
+        let err = resolved
+            .into_checkpoint_source_bounded(4)
+            .err()
+            .expect("bounded literal read must reject over-limit history");
 
         assert_over_limit(err, 4);
+        assert_eq!(observed_file.stream_position().unwrap(), 0);
     }
 
     #[test]
