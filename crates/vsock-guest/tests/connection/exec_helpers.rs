@@ -34,6 +34,7 @@ pub(super) fn send_supervised_exec_start(
         seq,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout,
             command,
             env: &[],

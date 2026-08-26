@@ -832,7 +832,7 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
         .await
         .unwrap();
 
-    let start_calls = overrides.start_process_calls();
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     assert_eq!(start_calls[0].timeout, job_supervisor_timeout());
 
@@ -1285,7 +1285,7 @@ async fn execute_inner_codex_enospc_preserves_structured_failure_and_collects_re
             .failure_kind,
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(
         overrides
             .exec_calls()

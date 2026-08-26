@@ -241,6 +241,8 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             seq = snapshot.seq,
             label = %snapshot.label_log,
             elapsed_ms = snapshot.elapsed_ms,
+            process_class = snapshot.process_class,
+            operation_kind = snapshot.operation_kind,
             "slow exec operation first output"
         );
     }

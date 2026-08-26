@@ -28,6 +28,7 @@ fn env_label_exec_start_payload() -> Vec<u8> {
 fn supervised_control_exec_start_payload() -> Vec<u8> {
     encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::None,
         command: "cmd",
         env: &[],
@@ -45,9 +46,31 @@ fn supervised_control_exec_start_payload() -> Vec<u8> {
     .unwrap()
 }
 
+fn encode_exec_start_contract(
+    role: ExecProcessRole,
+    lifecycle: ExecLifecyclePolicy,
+    control: ExecControlPolicy,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle,
+        role,
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control,
+        stdin_bytes: None,
+    })
+}
+
 fn stdin_exec_start_payload(stdin_bytes: &[u8]) -> Vec<u8> {
     encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],
@@ -80,6 +103,7 @@ fn exec_start_roundtrip_discard_policies() {
         decoded,
         DecodedExecStart {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
             command: "echo ready",
             env: Vec::new(),
@@ -200,6 +224,7 @@ fn exec_start_roundtrip_stream_policy_allows_zero_stream_limit() {
 fn exec_start_roundtrip_expected_exit_codes() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
         command: "optional-file",
         env: &[],
@@ -221,6 +246,7 @@ fn exec_start_roundtrip_expected_exit_codes() {
 fn exec_start_roundtrip_stdin_bytes() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
         command: "cat",
         env: &[],
@@ -241,6 +267,7 @@ fn exec_start_roundtrip_stdin_bytes() {
 fn exec_start_roundtrip_empty_stdin_bytes() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
         command: "cat",
         env: &[],
@@ -262,6 +289,7 @@ fn exec_start_roundtrip_max_stdin_bytes() {
     let stdin_bytes = vec![0xA5; MAX_EXEC_STDIN_BYTES];
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
         command: "cat",
         env: &[],
@@ -282,6 +310,7 @@ fn exec_start_roundtrip_max_stdin_bytes() {
 fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
+        role: ExecProcessRole::Agent,
         timeout: ExecTimeoutPolicy::None,
         command: "daemon",
         env: &[("A", "B")],
@@ -307,6 +336,7 @@ fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
 
     let decoded = decode_exec_start(&payload).unwrap();
     assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::Supervised);
+    assert_eq!(decoded.role, ExecProcessRole::Agent);
     assert_eq!(decoded.timeout, ExecTimeoutPolicy::None);
     assert!(decoded.sudo);
     assert_eq!(
@@ -316,6 +346,215 @@ fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
             sink: true,
         }
     );
+}
+
+#[test]
+fn exec_start_accepts_every_valid_process_contract() {
+    for (role, lifecycle, control) in [
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        ),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        ),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: false,
+            },
+        ),
+        (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: true,
+            },
+        ),
+    ] {
+        let timeout = match lifecycle {
+            ExecLifecyclePolicy::OneShot => ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+            ExecLifecyclePolicy::Supervised => ExecTimeoutPolicy::None,
+        };
+        let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+            lifecycle,
+            role,
+            timeout,
+            command: "cmd",
+            env: &[],
+            sudo: false,
+            label: "",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            control,
+            stdin_bytes: None,
+        })
+        .unwrap();
+        let decoded = decode_exec_start(&payload).unwrap();
+        assert_eq!(decoded.role, role);
+        assert_eq!(decoded.lifecycle, lifecycle);
+        assert_eq!(decoded.control, control);
+    }
+}
+
+#[test]
+fn exec_start_encoder_rejects_every_invalid_process_contract() {
+    for (role, lifecycle, control) in [
+        (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        ),
+        (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        ),
+        (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: false,
+            },
+        ),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: false,
+            },
+        ),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: true,
+            },
+        ),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: true,
+            },
+        ),
+    ] {
+        let error = encode_exec_start_contract(role, lifecycle, control).unwrap_err();
+        assert_invalid_payload(
+            error,
+            "exec start role, lifecycle, and control combination invalid",
+        );
+    }
+}
+
+#[test]
+fn exec_start_decoder_rejects_every_invalid_process_contract() {
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    let mut agent_one_shot_disabled = default_exec_start_payload();
+    set_byte_at(
+        &mut agent_one_shot_disabled,
+        layout.role_offset,
+        EXEC_PROCESS_ROLE_AGENT,
+    );
+
+    let workload_supervised_disabled = encode_exec_start_contract(
+        ExecProcessRole::Workload,
+        ExecLifecyclePolicy::Supervised,
+        ExecControlPolicy::Disabled,
+    )
+    .unwrap();
+    let disabled_layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    let mut agent_supervised_disabled = workload_supervised_disabled;
+    set_byte_at(
+        &mut agent_supervised_disabled,
+        disabled_layout.role_offset,
+        EXEC_PROCESS_ROLE_AGENT,
+    );
+
+    let workload_supervised_control = supervised_control_exec_start_payload();
+    let control_layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+        stdin_bytes: None,
+    });
+    let mut agent_supervised_without_sink = workload_supervised_control.clone();
+    set_byte_at(
+        &mut agent_supervised_without_sink,
+        control_layout.role_offset,
+        EXEC_PROCESS_ROLE_AGENT,
+    );
+    let mut workload_one_shot_with_control = workload_supervised_control;
+    set_byte_at(
+        &mut workload_one_shot_with_control,
+        control_layout.lifecycle_offset,
+        EXEC_LIFECYCLE_ONE_SHOT,
+    );
+
+    let agent_supervised_control = encode_exec_start_contract(
+        ExecProcessRole::Agent,
+        ExecLifecyclePolicy::Supervised,
+        ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: true,
+        },
+    )
+    .unwrap();
+    let mut workload_supervised_with_sink = agent_supervised_control.clone();
+    set_byte_at(
+        &mut workload_supervised_with_sink,
+        control_layout.role_offset,
+        EXEC_PROCESS_ROLE_WORKLOAD,
+    );
+    let mut agent_one_shot_with_sink = agent_supervised_control;
+    set_byte_at(
+        &mut agent_one_shot_with_sink,
+        control_layout.lifecycle_offset,
+        EXEC_LIFECYCLE_ONE_SHOT,
+    );
+
+    for payload in [
+        agent_one_shot_disabled,
+        agent_supervised_disabled,
+        agent_supervised_without_sink,
+        workload_one_shot_with_control,
+        workload_supervised_with_sink,
+        agent_one_shot_with_sink,
+    ] {
+        assert_invalid_payload(
+            decode_exec_start(&payload).unwrap_err(),
+            "exec start role, lifecycle, and control combination invalid",
+        );
+    }
 }
 #[test]
 fn exec_start_rejects_zero_duration_timeout() {
@@ -487,22 +726,44 @@ fn exec_start_rejects_truncated_fields() {
     assert!(matches!(
         decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT]),
         Err(ProtocolError::InvalidPayload(
+            "exec start process role truncated"
+        ))
+    ));
+    assert!(matches!(
+        decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT, EXEC_PROCESS_ROLE_WORKLOAD]),
+        Err(ProtocolError::InvalidPayload(
             "exec start timeout policy truncated"
         ))
     ));
     assert!(matches!(
-        decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT, EXEC_TIMEOUT_DURATION, 0, 0, 0]),
+        decode_exec_start(&[
+            EXEC_LIFECYCLE_ONE_SHOT,
+            EXEC_PROCESS_ROLE_WORKLOAD,
+            EXEC_TIMEOUT_DURATION,
+            0,
+            0,
+            0,
+        ]),
         Err(ProtocolError::InvalidPayload(
             "exec start timeout truncated"
         ))
     ));
     assert!(matches!(
-        decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT, EXEC_TIMEOUT_DURATION, 0, 0, 0, 1,]),
+        decode_exec_start(&[
+            EXEC_LIFECYCLE_ONE_SHOT,
+            EXEC_PROCESS_ROLE_WORKLOAD,
+            EXEC_TIMEOUT_DURATION,
+            0,
+            0,
+            0,
+            1,
+        ]),
         Err(ProtocolError::InvalidPayload("exec start flags truncated"))
     ));
     assert!(matches!(
         decode_exec_start(&[
             EXEC_LIFECYCLE_ONE_SHOT,
+            EXEC_PROCESS_ROLE_WORKLOAD,
             EXEC_TIMEOUT_DURATION,
             0,
             0,
@@ -695,6 +956,7 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
     let expected_exit_codes = vec![0; MAX_EXEC_EXPECTED_EXIT_CODES + 1];
     let err = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],
@@ -738,6 +1000,7 @@ fn exec_start_rejects_truncated_expected_exit_count() {
 fn exec_start_rejects_truncated_expected_exit_codes() {
     let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],
@@ -863,6 +1126,24 @@ fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
     ));
 
     let mut payload = default_exec_start_payload();
+    set_byte_at(&mut payload, layout.role_offset, 0xFE);
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start process role invalid"
+        ))
+    ));
+
+    let mut payload = default_exec_start_payload();
+    payload.truncate(layout.role_offset);
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start process role truncated"
+        ))
+    ));
+
+    let mut payload = default_exec_start_payload();
     set_byte_at(&mut payload, layout.timeout_policy_offset, 0xFE);
     assert!(matches!(
         decode_exec_start(&payload),
@@ -982,6 +1263,7 @@ fn exec_start_rejects_stdin_above_limit() {
     let stdin_bytes = vec![0; MAX_EXEC_STDIN_BYTES + 1];
     let err = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],

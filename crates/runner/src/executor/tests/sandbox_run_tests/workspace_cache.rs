@@ -477,10 +477,12 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     assert_eq!(overrides.create_configs().len(), 2);
     assert_eq!(overrides.destroy_call_count(), 1);
     let start_calls = overrides.start_process_calls();
-    assert_eq!(start_calls.len(), 3);
+    assert_eq!(start_calls.len(), 2);
     assert!(start_calls[0].cmd.contains("codex --version"));
     assert!(start_calls[1].cmd.contains("codex --version"));
-    assert!(!start_calls[2].cmd.contains("codex --version"));
+    let agent_calls = overrides.start_agent_process_calls();
+    assert_eq!(agent_calls.len(), 1);
+    assert!(!agent_calls[0].cmd.contains("codex --version"));
     assert_eq!(
         telemetry
             .pending_ops_snapshot()
@@ -748,6 +750,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
     );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(!expected_seed.exists());
     assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
     assert_no_telemetry_action(
@@ -1271,7 +1274,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent must not start when proxy registry registration fails"
     );
     assert!(
@@ -1399,7 +1402,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
     assert!(error.contains("workspace promotion identity mismatch"));
     assert!(!error.contains(session_id));
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent must not start after workspace promotion identity mismatch"
     );
     assert!(
@@ -1547,7 +1550,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.workspace_image.is_some());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after env validation failure"
     );
 
@@ -1602,7 +1605,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.workspace_image.is_some());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after resume session validation failure"
     );
 
@@ -1670,7 +1673,7 @@ async fn cached_reuse_invalid_resume_session_without_promotion_skips_workspace_l
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.workspace_image.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after resume session validation failure"
     );
 }

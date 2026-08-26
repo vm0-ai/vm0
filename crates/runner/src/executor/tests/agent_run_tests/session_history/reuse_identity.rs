@@ -344,7 +344,7 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     );
     assert!(result.reusable_session_identity.is_none());
     assert_eq!(overrides.exec_calls().len(), 1);
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
     assert!(overrides.process_cancel_calls().is_empty());
 }

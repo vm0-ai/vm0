@@ -436,6 +436,11 @@ impl ConnectionDispatcher {
                 };
             request.attach_exec_control(registration.guard, registration.bootstrap_endpoint);
         }
+        if let Err(error) = request.validate_control_attachment() {
+            operation_guard.release();
+            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+            return Ok(());
+        }
         start_exec_operation(
             request,
             operation_guard,

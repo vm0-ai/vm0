@@ -178,7 +178,7 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
     assert!(outcome.network_log_session.is_none());
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent must not start when proxy registry registration fails"
     );
 }
@@ -219,7 +219,7 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start an agent when proxy registration fails"
     );
 }

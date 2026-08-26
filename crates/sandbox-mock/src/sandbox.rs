@@ -358,6 +358,158 @@ impl MockSandbox {
     pub fn clear_write_file_lifecycle_gate(&self) {
         *self.write_file_gate.lock_ignoring_poison() = None;
     }
+
+    async fn start_process_with_contract(
+        &self,
+        request: &StartProcessRequest<'_>,
+        operation: SandboxOperation,
+        controlled: bool,
+    ) -> Result<GuestProcessHandle> {
+        if let Some(overrides) = &self.overrides
+            && let Some(error) = overrides
+                .process
+                .start_process_errors
+                .lock_ignoring_poison()
+                .pop_front()
+        {
+            return Err(error);
+        }
+        let (mut tx, rx) = match request.output {
+            ProcessOutputMode::Stream { queue_capacity, .. } => {
+                let (tx, rx) = tokio::sync::mpsc::channel(queue_capacity.max(1));
+                (Some(tx), Some(rx))
+            }
+            ProcessOutputMode::Buffered { .. } => (None, None),
+        };
+        if let Some(overrides) = &self.overrides {
+            let chunks = overrides
+                .process
+                .start_process_stdout_chunks
+                .lock_ignoring_poison()
+                .pop_front();
+            if let Some(chunks) = chunks {
+                let Some(sender) = tx.as_ref() else {
+                    return Err(SandboxError::Operation {
+                        operation,
+                        reason: SandboxOperationReason::Other,
+                        message: "mock stdout chunks require streaming output".to_string(),
+                    });
+                };
+                for chunk in chunks {
+                    sender
+                        .try_send(chunk)
+                        .map_err(|_| SandboxError::Operation {
+                            operation,
+                            reason: SandboxOperationReason::Other,
+                            message: "mock stdout chunks exceeded process stream capacity"
+                                .to_string(),
+                        })?;
+                }
+            }
+        }
+        if self.overrides.as_ref().is_some_and(|overrides| {
+            *overrides
+                .process
+                .keep_stdout_sender_open
+                .lock_ignoring_poison()
+        }) && let Some(tx) = tx.take()
+        {
+            *self.stdout_tx.lock_ignoring_poison() = Some(tx);
+        }
+        let process_control_supported = self.overrides.as_ref().is_none_or(|overrides| {
+            *overrides
+                .process
+                .process_control_supported
+                .lock_ignoring_poison()
+        });
+        let control = (controlled && process_control_supported).then(|| {
+            let overrides = self.overrides.clone();
+            GuestProcessControlHandle::new_with_outcome(move |message_id, payload, timeout| {
+                let overrides = overrides.clone();
+                Box::pin(async move {
+                    if let Some(overrides) = overrides {
+                        overrides
+                            .process
+                            .process_control_calls
+                            .lock_ignoring_poison()
+                            .push(ProcessControlCall {
+                                message_id: message_id.clone(),
+                                payload,
+                                timeout,
+                            });
+                        overrides.process.process_control_notify.notify_waiters();
+                        if let Some(outcome) = overrides
+                            .process
+                            .process_control_outcomes
+                            .lock_ignoring_poison()
+                            .pop_front()
+                        {
+                            return outcome;
+                        }
+                    }
+                    ProcessControlOutcome::Delivered(ProcessControlAck { message_id })
+                })
+            })
+        });
+        let process_cancel = self.overrides.as_ref().and_then(|overrides| {
+            if !*overrides
+                .process
+                .process_cancel_supported
+                .lock_ignoring_poison()
+            {
+                return None;
+            }
+            let overrides = Arc::clone(overrides);
+            Some(GuestProcessCancelHandle::new(move |timeout| {
+                Box::pin(async move {
+                    overrides
+                        .process
+                        .process_cancel_calls
+                        .lock_ignoring_poison()
+                        .push(ProcessCancelCall { timeout });
+                    overrides.process.process_cancel_notify.notify_waiters();
+                    if let Some(message) = overrides
+                        .process
+                        .process_cancel_errors
+                        .lock_ignoring_poison()
+                        .pop_front()
+                    {
+                        return Err(std::io::Error::other(message));
+                    }
+                    if *overrides
+                        .process
+                        .process_cancel_releases_wait_gate
+                        .lock_ignoring_poison()
+                    {
+                        overrides.release_wait_process_gate();
+                    }
+                    Ok(())
+                })
+            }))
+        });
+
+        let mut handle = GuestProcessHandle::new(
+            1,
+            rx,
+            control,
+            GuestProcessWaiter::new(|_timeout| {
+                Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
+            }),
+        );
+        if let Some(process_cancel) = process_cancel {
+            handle = handle.with_cancel_handle(process_cancel);
+        }
+        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .process
+                .start_process_result_cancellations
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            cancel.cancel();
+        }
+        Ok(handle)
+    }
 }
 
 fn default_exec_result() -> ExecResult {
@@ -945,8 +1097,9 @@ impl Sandbox for MockSandbox {
         if let Some(overrides) = &self.overrides {
             wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
         }
-        validate_mock_exec_env_keys(SandboxOperation::StartProcess, request.env)?;
-        request.output.validate()?;
+        let operation = SandboxOperation::StartProcess;
+        validate_mock_exec_env_keys(operation, request.env)?;
+        request.output.validate(operation)?;
         if let Some(overrides) = &self.overrides {
             overrides
                 .process
@@ -962,154 +1115,44 @@ impl Sandbox for MockSandbox {
                         .collect(),
                     sudo: request.sudo,
                     output: request.output,
-                    control: request.control,
                 });
         }
-        if let Some(overrides) = &self.overrides
-            && let Some(error) = overrides
-                .process
-                .start_process_errors
-                .lock_ignoring_poison()
-                .pop_front()
-        {
-            return Err(error);
-        }
-        let (mut tx, rx) = match request.output {
-            ProcessOutputMode::Stream { queue_capacity, .. } => {
-                let (tx, rx) = tokio::sync::mpsc::channel(queue_capacity.max(1));
-                (Some(tx), Some(rx))
-            }
-            ProcessOutputMode::Buffered { .. } => (None, None),
-        };
-        if let Some(overrides) = &self.overrides {
-            let chunks = overrides
-                .process
-                .start_process_stdout_chunks
-                .lock_ignoring_poison()
-                .pop_front();
-            if let Some(chunks) = chunks {
-                let Some(sender) = tx.as_ref() else {
-                    return Err(SandboxError::Operation {
-                        operation: SandboxOperation::StartProcess,
-                        reason: SandboxOperationReason::Other,
-                        message: "mock stdout chunks require streaming output".to_string(),
-                    });
-                };
-                for chunk in chunks {
-                    sender
-                        .try_send(chunk)
-                        .map_err(|_| SandboxError::Operation {
-                            operation: SandboxOperation::StartProcess,
-                            reason: SandboxOperationReason::Other,
-                            message: "mock stdout chunks exceeded process stream capacity"
-                                .to_string(),
-                        })?;
-                }
-            }
-        }
-        if self.overrides.as_ref().is_some_and(|overrides| {
-            *overrides
-                .process
-                .keep_stdout_sender_open
-                .lock_ignoring_poison()
-        }) && let Some(tx) = tx.take()
-        {
-            *self.stdout_tx.lock_ignoring_poison() = Some(tx);
-        }
-        let process_control_supported = self.overrides.as_ref().is_none_or(|overrides| {
-            *overrides
-                .process
-                .process_control_supported
-                .lock_ignoring_poison()
-        });
-        let control = (request.control == ProcessControlMode::Enabled && process_control_supported)
-            .then(|| {
-                let overrides = self.overrides.clone();
-                GuestProcessControlHandle::new_with_outcome(move |message_id, payload, timeout| {
-                    let overrides = overrides.clone();
-                    Box::pin(async move {
-                        if let Some(overrides) = overrides {
-                            overrides
-                                .process
-                                .process_control_calls
-                                .lock_ignoring_poison()
-                                .push(ProcessControlCall {
-                                    message_id: message_id.clone(),
-                                    payload,
-                                    timeout,
-                                });
-                            overrides.process.process_control_notify.notify_waiters();
-                            if let Some(outcome) = overrides
-                                .process
-                                .process_control_outcomes
-                                .lock_ignoring_poison()
-                                .pop_front()
-                            {
-                                return outcome;
-                            }
-                        }
-                        ProcessControlOutcome::Delivered(ProcessControlAck { message_id })
-                    })
-                })
-            });
-        let process_cancel = self.overrides.as_ref().and_then(|overrides| {
-            if !*overrides
-                .process
-                .process_cancel_supported
-                .lock_ignoring_poison()
-            {
-                return None;
-            }
-            let overrides = Arc::clone(overrides);
-            Some(GuestProcessCancelHandle::new(move |timeout| {
-                Box::pin(async move {
-                    overrides
-                        .process
-                        .process_cancel_calls
-                        .lock_ignoring_poison()
-                        .push(ProcessCancelCall { timeout });
-                    overrides.process.process_cancel_notify.notify_waiters();
-                    if let Some(message) = overrides
-                        .process
-                        .process_cancel_errors
-                        .lock_ignoring_poison()
-                        .pop_front()
-                    {
-                        return Err(std::io::Error::other(message));
-                    }
-                    if *overrides
-                        .process
-                        .process_cancel_releases_wait_gate
-                        .lock_ignoring_poison()
-                    {
-                        overrides.release_wait_process_gate();
-                    }
-                    Ok(())
-                })
-            }))
-        });
+        self.start_process_with_contract(request, operation, false)
+            .await
+    }
 
-        let mut handle = GuestProcessHandle::new(
-            1,
-            rx,
-            control,
-            GuestProcessWaiter::new(|_timeout| {
-                Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
-            }),
-        );
-        if let Some(process_cancel) = process_cancel {
-            handle = handle.with_cancel_handle(process_cancel);
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> Result<GuestAgentProcessHandle> {
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
         }
-        if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
+        let operation = SandboxOperation::StartAgentProcess;
+        validate_mock_exec_env_keys(operation, request.process.env)?;
+        request.process.output.validate(operation)?;
+        if let Some(overrides) = &self.overrides {
             overrides
                 .process
-                .start_process_result_cancellations
+                .start_agent_process_calls
                 .lock_ignoring_poison()
-                .pop_front()
-        }) {
-            cancel.cancel();
+                .push(StartProcessCall {
+                    cmd: request.process.cmd.to_string(),
+                    timeout: request.process.timeout,
+                    env: request
+                        .process
+                        .env
+                        .iter()
+                        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                        .collect(),
+                    sudo: request.process.sudo,
+                    output: request.process.output,
+                });
         }
-        Ok(handle)
+        let process = self
+            .start_process_with_contract(&request.process, operation, true)
+            .await?;
+        GuestAgentProcessHandle::try_from_process(process)
     }
 
     async fn wait_process(

@@ -6,7 +6,8 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
-    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTimeoutPolicy, MSG_EXEC_CANCEL,
+    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
+    MSG_EXEC_CANCEL,
 };
 
 use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
@@ -105,6 +106,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration {
                 timeout_ms: request.timeout_ms,
             },
@@ -137,6 +139,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
             stderr: request.stderr,
             stream_queue_capacity,
             lifecycle: ExecOperationLifecycle::OneShot,
+            role: ExecProcessRole::Workload,
             tracking,
         },
     )?;
@@ -221,6 +224,7 @@ where
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: request.role,
             timeout: request.timeout,
             command: request.command,
             env: request.env,
@@ -255,6 +259,7 @@ where
                 start_tx: Some(start_tx),
                 control_nonce,
             },
+            role: request.role,
             tracking: ExecOperationTracking::Tracked,
         },
     )?;
@@ -330,6 +335,8 @@ where
                 tracing::warn!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "supervised exec start timeout cancel write timed out"
                 );

@@ -16,8 +16,8 @@ use guest_contracts::session_history_identity::{
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, ProcessControlMode, ProcessOutputMode, Sandbox,
-    StartProcessRequest,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
+    StartAgentProcessRequest, StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
@@ -879,17 +879,10 @@ where
 
 async fn send_cooperative_user_cancellation(
     run_id: crate::ids::RunId,
-    process_control: Option<&GuestProcessControlHandle>,
+    process_control: &GuestProcessControlHandle,
     hard_cancel: &CancellationToken,
     timeout: Duration,
 ) -> bool {
-    let Some(process_control) = process_control else {
-        warn!(
-            run_id = %run_id,
-            "guest process does not support cooperative user cancellation"
-        );
-        return false;
-    };
     let message_id = format!("user-cancellation:{run_id}");
     tokio::select! {
         biased;
@@ -926,7 +919,7 @@ async fn send_cooperative_user_cancellation(
 async fn wait_for_cooperative_user_cancellation<F>(
     run_id: crate::ids::RunId,
     guest_process_pid: u32,
-    process_control: Option<&GuestProcessControlHandle>,
+    process_control: &GuestProcessControlHandle,
     process_cancel: &mut Option<GuestProcessCancelHandle>,
     hard_cancel: &CancellationToken,
     process_cancel_timeouts: ProcessCancelTimeouts,
@@ -1299,6 +1292,7 @@ impl RunControls {
 
 struct PreparedAgentProcess {
     handle: GuestProcessHandle,
+    process_control: GuestProcessControlHandle,
     agent_started_at: Instant,
     host_oom_evidence_since: super::diagnostics::HostOomEvidenceSince,
     deferred_background_fill: Option<crate::storage_cache::DeferredBackgroundFill>,
@@ -2165,19 +2159,20 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let host_oom_evidence_since = host_oom_evidence_since_now();
     let t = Instant::now();
     let handle = sandbox
-        .start_process(&StartProcessRequest {
-            cmd: &agent_cmd,
-            timeout: job_supervisor_timeout(),
-            env: &env_refs,
-            sudo: false,
-            output: ProcessOutputMode::stream_with_stderr_capture(
-                AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
-            ),
-            control: ProcessControlMode::Enabled,
+        .start_agent_process(&StartAgentProcessRequest {
+            process: StartProcessRequest {
+                cmd: &agent_cmd,
+                timeout: job_supervisor_timeout(),
+                env: &env_refs,
+                sudo: false,
+                output: ProcessOutputMode::stream_with_stderr_capture(
+                    AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
+                ),
+            },
         })
         .await;
 
-    let handle = match handle {
+    let agent_handle = match handle {
         Ok(h) => {
             let spawned_at = Instant::now();
             telemetry.record(
@@ -2206,9 +2201,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Err(e.into());
         }
     };
+    let (handle, process_control) = agent_handle.into_parts();
 
             RunnerResult::Ok(PreparedAgentProcess {
                 handle,
+                process_control,
                 agent_started_at: t,
                 host_oom_evidence_since,
                 deferred_background_fill,
@@ -2247,6 +2244,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
     let PreparedAgentProcess {
         mut handle,
+        process_control,
         agent_started_at: t,
         host_oom_evidence_since,
         deferred_background_fill,
@@ -2266,11 +2264,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // Start locally owned input and output work, then release deferred cache
     // fill now that process spawn has succeeded.
-    let process_control = handle.control_handle();
     let active_input_forwarder = super::active_input::ActiveInputForwarder::start(
         context.run_id,
         active_input_source,
-        process_control.clone(),
+        Some(process_control.clone()),
         cancel.clone(),
     );
     // Spawn background task to drain stdout chunks and write to the host stream log file.
@@ -2319,7 +2316,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     wait_for_cooperative_user_cancellation(
                         context.run_id,
                         guest_process_pid,
-                        process_control.as_ref(),
+                        &process_control,
                         &mut process_cancel,
                         &hard_cancel,
                         process_cancel_timeouts,

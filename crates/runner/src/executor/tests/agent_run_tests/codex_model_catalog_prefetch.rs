@@ -192,6 +192,7 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
         Some(EXIT_SIGKILL)
     );
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
     assert!(overrides.process_cancel_calls().is_empty());
 }
@@ -221,7 +222,8 @@ async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
 
     let result = run_task.await.unwrap().unwrap();
     assert!(result.failure.is_none());
-    let start_calls = overrides.start_process_calls();
+    assert!(overrides.start_process_calls().is_empty());
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     assert!(!start_calls[0].cmd.contains("codex --version"));
 }
@@ -501,7 +503,7 @@ async fn assert_codex_catalog_prefetch_skipped(
     .unwrap();
 
     assert!(result.failure.is_none(), "{scenario}");
-    let start_calls = overrides.start_process_calls();
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1, "{scenario}");
     assert!(
         !start_calls[0].cmd.contains("codex --version"),
@@ -671,7 +673,8 @@ async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
 
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
         loop {
-            if overrides.start_process_calls().len() == 2
+            if overrides.start_process_calls().len() == 1
+                && overrides.start_agent_process_calls().len() == 1
                 && overrides.wait_process_calls().len() == 2
             {
                 break;
@@ -689,13 +692,12 @@ async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
             .cmd
             .contains("X-VM0-Codex-Model-Catalog-Prefetch: 1")
     );
-    assert_eq!(start_calls[0].control, sandbox::ProcessControlMode::None);
     assert!(matches!(
         start_calls[0].output,
         ProcessOutputMode::Buffered { .. }
     ));
-    assert_eq!(start_calls[1].control, sandbox::ProcessControlMode::Enabled);
-    assert!(!start_calls[1].cmd.contains("codex --version"));
+    let agent_calls = overrides.start_agent_process_calls();
+    assert!(!agent_calls[0].cmd.contains("codex --version"));
 
     wait_gate.notify_waiters();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)

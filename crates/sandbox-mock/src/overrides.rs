@@ -156,6 +156,9 @@ pub(crate) struct ProcessOverrideState {
     /// Recorded start_process output modes across all sandboxes built from
     /// this override set.
     pub(crate) start_process_calls: Mutex<Vec<StartProcessCall>>,
+    /// Recorded start_agent_process calls across all sandboxes built from this
+    /// override set.
+    pub(crate) start_agent_process_calls: Mutex<Vec<StartProcessCall>>,
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
@@ -201,6 +204,7 @@ impl Default for ProcessOverrideState {
             wait_process_result_cancellations: Mutex::new(VecDeque::new()),
             wait_process_calls: Mutex::new(Vec::new()),
             start_process_calls: Mutex::new(Vec::new()),
+            start_agent_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
             keep_stdout_sender_open: Mutex::new(false),
             process_cancel_supported: Mutex::new(true),
@@ -776,6 +780,15 @@ impl MockSandboxOverrides {
     pub fn start_process_calls(&self) -> Vec<StartProcessCall> {
         self.process
             .start_process_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return recorded start-Agent-process calls across all sandboxes built
+    /// from this override set.
+    pub fn start_agent_process_calls(&self) -> Vec<StartProcessCall> {
+        self.process
+            .start_agent_process_calls
             .lock_ignoring_poison()
             .clone()
     }

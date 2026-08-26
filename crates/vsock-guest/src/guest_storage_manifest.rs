@@ -297,17 +297,20 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             );
         }
     };
-    let process_containment =
-        match ExecProcessContainment::create(seq, process_containment_mode, false) {
-            Ok(process_containment) => process_containment,
-            Err(error) => {
-                return failed_output(
-                    ExecTermination::StartFailed,
-                    started,
-                    format!("Failed to initialize storage helper process containment: {error}"),
-                );
-            }
-        };
+    let process_containment = match ExecProcessContainment::create(
+        seq,
+        process_containment_mode,
+        vsock_proto::ExecProcessRole::Workload,
+    ) {
+        Ok(process_containment) => process_containment,
+        Err(error) => {
+            return failed_output(
+                ExecTermination::StartFailed,
+                started,
+                format!("Failed to initialize storage helper process containment: {error}"),
+            );
+        }
+    };
     let mut prepared_containment = match process_containment.prepare_command() {
         Ok(prepared) => prepared,
         Err(error) => {

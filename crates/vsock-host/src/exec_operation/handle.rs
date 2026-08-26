@@ -127,6 +127,8 @@ impl ExecWaitLifecycle {
                 tracing::info!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "exec operation cancel sent"
                 );
@@ -135,6 +137,8 @@ impl ExecWaitLifecycle {
                 tracing::info!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "supervised exec operation cancel sent"
                 );
@@ -232,6 +236,8 @@ impl ExecWaitCore {
                 tracing::warn!(
                     seq = seq,
                     label = %self.diagnostic.label_log,
+                    process_class = self.diagnostic.process_class,
+                    operation_kind = self.diagnostic.operation_kind,
                     elapsed_ms = self.diagnostic.elapsed_ms(),
                     poison_connection = poison_on_timeout,
                     "exec operation wait timeout"
@@ -241,6 +247,8 @@ impl ExecWaitCore {
                 tracing::warn!(
                     seq = seq,
                     label = %self.diagnostic.label_log,
+                    process_class = self.diagnostic.process_class,
+                    operation_kind = self.diagnostic.operation_kind,
                     elapsed_ms = self.diagnostic.elapsed_ms(),
                     poison_connection = poison_on_timeout,
                     "supervised exec operation wait timeout"
@@ -463,6 +471,8 @@ impl ExecWaitCore {
                         tracing::warn!(
                             seq = seq,
                             label = %diagnostic.label_log,
+                            process_class = diagnostic.process_class,
+                            operation_kind = diagnostic.operation_kind,
                             elapsed_ms = diagnostic.elapsed_ms(),
                             "{}",
                             match lifecycle {
@@ -685,6 +695,8 @@ impl SupervisedExecCancelHandle {
             tracing::warn!(
                 seq = self.route_id.wire_seq(),
                 label = %self.diagnostic.label_log,
+                process_class = self.diagnostic.process_class,
+                operation_kind = self.diagnostic.operation_kind,
                 elapsed_ms = self.diagnostic.elapsed_ms(),
                 "supervised exec operation cancel write timed out"
             );
@@ -1025,6 +1037,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                 tracing::warn!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     error = %err,
                     "exec operation cancel on drop admission failed"
@@ -1054,6 +1068,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::info!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         "exec operation cancel sent on drop"
                     );
@@ -1062,6 +1078,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::warn!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         error = %err,
                         "exec operation cancel on drop failed"
@@ -1071,6 +1089,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::warn!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         "exec operation cancel on drop timed out"
                     );

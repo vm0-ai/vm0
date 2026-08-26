@@ -322,6 +322,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
     let start_task = tokio::spawn(async move {
         start_host
             .start_supervised_exec(SupervisedExecRequest {
+                role: vsock_proto::ExecProcessRole::Agent,
                 timeout: ExecTimeoutPolicy::Duration { timeout_ms: 60_000 },
                 command: "sleep 60",
                 env: &[],
@@ -2303,7 +2304,6 @@ async fn start_process_output_rejects_invalid_stream_configuration() {
                 env: &[],
                 sudo: false,
                 output,
-                control: ProcessControlMode::None,
             })
             .await
         {
@@ -2341,7 +2341,6 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         env: &[],
         sudo: false,
         output,
-        control: ProcessControlMode::None,
     };
 
     let start_process = sandbox.start_process(&request);
@@ -2349,6 +2348,8 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         let start = read_vsock_message(&mut guest).await;
         assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
         let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+        assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Workload);
+        assert_eq!(decoded.control, vsock_proto::ExecControlPolicy::Disabled);
         assert_eq!(
             decoded.stdout,
             ExecOutputPolicy::Stream {
@@ -2370,6 +2371,65 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
     send_exec_exit(&mut guest, exec_seq).await;
     let exit = sandbox
         .wait_process(handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        exit.termination,
+        sandbox::ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
+#[tokio::test]
+async fn start_agent_process_maps_to_agent_role_and_control_sink() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let request = StartAgentProcessRequest {
+        process: StartProcessRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
+        },
+    };
+
+    let start_agent = sandbox.start_agent_process(&request);
+    let acknowledge_start = async {
+        let start = read_vsock_message(&mut guest).await;
+        let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+        assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Agent);
+        assert!(matches!(
+            decoded.control,
+            vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
+        ));
+
+        let payload = vsock_proto::encode_exec_started(73).unwrap();
+        let response =
+            vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        start.seq
+    };
+    let (handle, exec_seq) = tokio::join!(start_agent, acknowledge_start);
+    let (process, _control) = handle.unwrap().into_parts();
+
+    let payload = vsock_proto::encode_exec_result(
+        vsock_proto::ExecTermination::Exited { exit_code: 0 },
+        1,
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        "",
+    )
+    .unwrap();
+    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
+    guest.write_all(&response).await.unwrap();
+    let exit = sandbox
+        .wait_process(process, Duration::from_secs(5))
         .await
         .unwrap();
     assert_eq!(
