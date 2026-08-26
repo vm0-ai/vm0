@@ -11,6 +11,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   customConnectorsContract,
   type CreateCustomConnectorBody,
@@ -61,10 +62,12 @@ import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
   setConnectorDefaultState,
+  setLegacyBuiltinOAuthScopes,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { customConnectorsRoutes } from "../custom-connectors";
+import { connectorCatalogRoutes } from "../connector-catalog";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -716,6 +719,47 @@ describe("CONN-02: OAuth start and callback", () => {
     });
     expectNoVisibleSecret(connected, "bdd-datadog-access-token");
     expectNoVisibleSecret(connected, "bdd-datadog-refresh-token");
+
+    await expect(
+      connectorsApi.readScopeDiff(actor, "datadog"),
+    ).resolves.toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: [
+        "dashboards_read",
+        "events_read",
+        "incident_read",
+        "logs_read_index_data",
+        "metrics_read",
+        "monitors_read",
+        "slos_read",
+      ],
+      storedScopes: [
+        "dashboards_read",
+        "events_read",
+        "incident_read",
+        "logs_read_index_data",
+        "metrics_read",
+        "monitors_read",
+        "slos_read",
+      ],
+    });
+
+    const catalog = await accept(
+      setupApp({ context, routes: connectorCatalogRoutes })(
+        connectorCatalogContract,
+      ).status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      catalog.body.connectors.find((connector) => {
+        return connector.slug === "datadog";
+      }),
+    ).toMatchObject({
+      connected: true,
+      connectionStatus: "connected",
+      scopeMismatch: false,
+    });
   });
 
   it("rejects OAuth start requests that target unsupported auth methods", async () => {
@@ -6186,6 +6230,29 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     );
     expect(supplemental).toMatchObject({
       oauthScopes: ["read", "provider-added"],
+      connectionStatus: "connected",
+    });
+
+    await expect(
+      connectorsApi.readScopeDiff(actor, "test-oauth"),
+    ).resolves.toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: ["read"],
+      storedScopes: ["read"],
+    });
+
+    await setLegacyBuiltinOAuthScopes(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorSlug: "test-oauth",
+      oauthScopes: ["read", "legacy-write"],
+    });
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "test-oauth"),
+    ).resolves.toMatchObject({
+      id: supplemental.id,
+      oauthScopes: ["read", "legacy-write"],
       connectionStatus: "connected",
     });
 

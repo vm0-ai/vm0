@@ -8,7 +8,10 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import { resolveConnectorAuthClient } from "@okouai/connectors/connector-auth-method";
+import {
+  connectorGrantScopes,
+  resolveConnectorAuthClient,
+} from "@okouai/connectors/connector-auth-method";
 import {
   exchangeConnectorAuthCodeWithMethod,
   verifyConnectorOpenIdAuthCallbackWithMethod,
@@ -42,6 +45,7 @@ import {
   connectorConnectionWriteFailureMessage,
   upsertConnectorTokenConnection$,
 } from "../services/connector-data.service";
+import { resolveOAuthRequestedScopeSnapshot } from "../services/connector-oauth-scope-snapshot.service";
 import {
   linkGithubUser,
   loadActiveGithubInstallationForOrg,
@@ -65,6 +69,7 @@ type CallbackIdentity = {
 
 type CompleteOAuthCallbackInput = {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly oauthRequestedScopes: readonly string[];
   readonly authorizationUrl: string | null;
   readonly code: string;
   readonly redirectUri: string;
@@ -82,6 +87,7 @@ type CompleteOAuthCallbackInput = {
 
 type CompleteOpenIdCallbackInput = {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly oauthRequestedScopes: readonly string[];
   readonly callbackParams: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
@@ -117,6 +123,7 @@ type ResolvedCallbackState =
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
       readonly authorizationUrl: string | null;
+      readonly oauthRequestedScopes: readonly string[];
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
       readonly account: ConnectorAccountMutationIntent;
@@ -135,6 +142,7 @@ type ResolvedOpenIdCallbackState =
       readonly authorizeAgent: boolean;
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
+      readonly oauthRequestedScopes: readonly string[];
       readonly resolvedMethod: ResolvedConnectorActionMethod;
       readonly account: ConnectorAccountMutationIntent;
       readonly insertConnectionId?: string;
@@ -155,6 +163,16 @@ type ClaimedCallbackState =
     };
 
 type ConnectorCallbackQuery = Readonly<Record<string, string | undefined>>;
+
+function callbackRequestedOauthScopes(
+  storedScopes: string | null,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): readonly string[] {
+  return resolveOAuthRequestedScopeSnapshot(
+    storedScopes,
+    connectorGrantScopes(resolvedMethod.method.grant),
+  );
+}
 
 function redirectWithError(
   origin: string,
@@ -573,7 +591,8 @@ const completeOAuthCallback$ = command(
         snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: token.scopes,
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        oauthGrantedScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
@@ -658,7 +677,8 @@ const completeOpenIdCallback$ = command(
         snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: token.scopes,
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        oauthGrantedScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
@@ -734,6 +754,10 @@ async function resolveCallbackState(
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
     authorizationUrl: args.storedState.authorizationUrl,
+    oauthRequestedScopes: callbackRequestedOauthScopes(
+      args.storedState.oauthRequestedScopes,
+      authMethodResult.resolvedMethod,
+    ),
     redirectUri: args.storedState.redirectUri,
     account: args.storedState.accountMutation,
     insertConnectionId:
@@ -790,6 +814,10 @@ async function resolveOpenIdCallbackState(
     expectedRealm: storedOpenIdRealm(
       args.storedState.oauthContext,
       args.storedState.redirectUri,
+    ),
+    oauthRequestedScopes: callbackRequestedOauthScopes(
+      args.storedState.oauthRequestedScopes,
+      authMethodResult.resolvedMethod,
     ),
     account: args.storedState.accountMutation,
     insertConnectionId:
@@ -882,6 +910,7 @@ const handleOpenIdConnectorCallback$ = command(
         completeOpenIdCallback$,
         {
           resolvedMethod: resolvedState.resolvedMethod,
+          oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           callbackParams: openIdCallbackParamsFromQuery(args.query),
           expectedReturnTo: resolvedState.expectedReturnTo,
           expectedRealm: resolvedState.expectedRealm,
@@ -1093,6 +1122,7 @@ const handleAuthCodeConnectorCallback$ = command(
         completeOAuthCallback$,
         {
           resolvedMethod: resolvedState.resolvedMethod,
+          oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           authorizationUrl: resolvedState.authorizationUrl,
           code,
           redirectUri: resolvedState.redirectUri,

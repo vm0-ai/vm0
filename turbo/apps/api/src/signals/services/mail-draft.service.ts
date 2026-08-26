@@ -269,6 +269,7 @@ async function loadMailConnections(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
+      oauthGrantedScopes: connectors.oauthGrantedScopes,
       stateRevision: sql`${connectors.updatedAt}::text`.mapWith(pgTextDecoder),
       storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
@@ -314,8 +315,9 @@ async function loadMailConnections(args: {
     }
     const { access } = accessResult;
     const runtimeMethod = access.runtimeMethod;
-    const oauthScopes = row.oauthScopes
-      ? oauthScopesSchema.parse(JSON.parse(row.oauthScopes))
+    const persistedOauthScopes = row.oauthGrantedScopes ?? row.oauthScopes;
+    const oauthScopes = persistedOauthScopes
+      ? oauthScopesSchema.parse(JSON.parse(persistedOauthScopes))
       : null;
     return [
       {

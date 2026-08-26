@@ -104,6 +104,7 @@ function accountSelection() {
     externalUsername: connectors.externalUsername,
     externalEmail: connectors.externalEmail,
     oauthScopes: connectors.oauthScopes,
+    oauthGrantedScopes: connectors.oauthGrantedScopes,
     tokenExpiresAt: connectors.tokenExpiresAt,
     needsReconnect: connectors.needsReconnect,
     reconnectReason: connectors.reconnectReason,
@@ -401,7 +402,7 @@ function builtinConnection(
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
-    oauthScopes: parseOauthScopes(row.oauthScopes),
+    oauthScopes: parseOauthScopes(row.oauthGrantedScopes ?? row.oauthScopes),
     connectionStatus,
     reconnectReason:
       !runtimeMethod || !storageCompatible

@@ -571,6 +571,31 @@ async function setConnectorState(
       };
 }
 
+async function setLegacyBuiltinOAuthScopes(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-legacy-builtin-oauth-scopes">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({ oauthScopes: JSON.stringify(body.oauth_scopes) })
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.connectorSlug, body.connector_slug),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector storage test fixture was not found" },
+      };
+}
+
 async function setConnectorDefault(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-connector-default">,
@@ -801,6 +826,9 @@ async function mutateConnectorAccountCompatibilityState(
     }
     case "set-connector-account-state": {
       return await setConnectorAccountState(db, body, signal);
+    }
+    case "set-legacy-builtin-oauth-scopes": {
+      return await setLegacyBuiltinOAuthScopes(db, body, signal);
     }
     case "seed-builtin-thread-selection": {
       return await seedBuiltinThreadSelection(db, body, signal);

@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
 import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 import {
+  connectorGrantScopes,
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
@@ -472,6 +473,9 @@ export async function buildGithubUserConnectAuthorizationUrl(
     userId: args.userId,
     orgId: args.orgId,
     redirectUri,
+    oauthRequestedScopes: JSON.stringify(
+      connectorGrantScopes(args.method.grant),
+    ),
     codeVerifier: authResult.codeVerifier,
     oauthContext: authResult.oauthContext,
     accountMutation: { intent: "single-account" },

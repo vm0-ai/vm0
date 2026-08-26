@@ -285,6 +285,24 @@ export async function setConnectorCredentialStorageState(
   });
 }
 
+export async function setLegacyBuiltinOAuthScopes(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+    readonly oauthScopes: readonly string[];
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-legacy-builtin-oauth-scopes",
+    org_id: args.orgId,
+    user_id: args.userId,
+    connector_slug: args.connectorSlug,
+    oauth_scopes: [...args.oauthScopes],
+  });
+}
+
 export async function setConnectorDefaultState(
   context: TestContext,
   args: {

@@ -19,6 +19,7 @@ export interface StoredConnectorConnectionRow {
   readonly externalUsername: string | null;
   readonly externalEmail: string | null;
   readonly oauthScopes: string | null;
+  readonly oauthGrantedScopes: string | null;
   readonly needsReconnect: boolean;
   readonly reconnectReason: string | null;
   readonly storageVersion: number;
@@ -38,7 +39,8 @@ type ConnectorConnectionTarget =
             readonly externalId: string;
             readonly externalUsername: string | null;
             readonly externalEmail: string | null;
-            readonly oauthScopes: readonly string[];
+            readonly oauthRequestedScopes: readonly string[];
+            readonly oauthGrantedScopes: readonly string[];
           };
     }
   | {
@@ -150,6 +152,7 @@ function connectorConnectionSelection() {
     externalUsername: connectors.externalUsername,
     externalEmail: connectors.externalEmail,
     oauthScopes: connectors.oauthScopes,
+    oauthGrantedScopes: connectors.oauthGrantedScopes,
     needsReconnect: connectors.needsReconnect,
     reconnectReason: connectors.reconnectReason,
     storageVersion: connectors.storageVersion,
@@ -282,7 +285,9 @@ export async function writeConnectorConnectionMetadata(
             externalId: args.target.identity.externalId,
             externalUsername: args.target.identity.externalUsername,
             externalEmail: args.target.identity.externalEmail,
-            oauthScopes: JSON.stringify(args.target.identity.oauthScopes),
+            oauthScopes: JSON.stringify(
+              args.target.identity.oauthRequestedScopes,
+            ),
           }
         : {
             externalId: null,
@@ -335,7 +340,25 @@ export async function writeConnectorConnectionMetadata(
       `Failed to write ${args.target.kind === "builtin" ? "Builtin" : "Custom"} connector connection`,
     );
   }
-  return row;
+  if (
+    args.target.kind !== "builtin" ||
+    args.target.identity.kind !== "external"
+  ) {
+    return row;
+  }
+  const [connectionWithGrant] = await db
+    .update(connectors)
+    .set({
+      oauthGrantedScopes: JSON.stringify(
+        args.target.identity.oauthGrantedScopes,
+      ),
+    })
+    .where(eq(connectors.id, row.id))
+    .returning(connectorConnectionSelection());
+  if (!connectionWithGrant) {
+    throw new Error("Failed to write built-in connector granted scopes");
+  }
+  return connectionWithGrant;
 }
 
 export async function replaceConnectorConnection(

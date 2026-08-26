@@ -60,6 +60,7 @@ import {
   CONNECTOR_DISCOVERY_LIMIT,
   FEATURED_CONNECTOR_SLUGS,
 } from "./connector-catalog-featured";
+import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 
 const log = logger("connector-catalog:reader");
 
@@ -72,7 +73,7 @@ export interface ExternalCatalogIdentity {
 }
 
 interface PrivateAuthMethodFacts {
-  readonly requiredScopes: readonly string[];
+  readonly requestedScopes: readonly string[];
   readonly supportsRefresh: boolean;
 }
 
@@ -121,7 +122,7 @@ interface ExternalCatalogConnectorReadArgs extends ExternalBrandedCatalogReadArg
 }
 
 interface ExternalCatalogConnectorStatusReadArgs extends ExternalCatalogConnectorReadArgs {
-  readonly connectors: readonly ConnectorResponse[];
+  readonly connections: readonly ConnectorCatalogConnection[];
 }
 
 interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
@@ -129,7 +130,7 @@ interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
 }
 
 interface ExternalCatalogStatusArgs extends ExternalBrandedCatalogReadArgs {
-  readonly connectors: readonly ConnectorResponse[];
+  readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
 }
 
@@ -203,7 +204,9 @@ function persistedCatalogValidationAuthority(args: {
       };
 }
 
-function requiredScopes(method: ConnectorCatalogAuthMethod): readonly string[] {
+function requestedScopes(
+  method: ConnectorCatalogAuthMethod,
+): readonly string[] {
   switch (method.grant.kind) {
     case "auth-code":
     case "device-auth":
@@ -224,7 +227,7 @@ function privateMethodFacts(
   for (const connector of artifact.connectors) {
     for (const method of connector.authMethods) {
       facts.set(authMethodKey(connector.slug, method.id), {
-        requiredScopes: [...requiredScopes(method)],
+        requestedScopes: [...requestedScopes(method)],
         supportsRefresh: method.access.kind === "refresh-token",
       });
     }
@@ -825,35 +828,50 @@ function connectionForCatalogStatus(
   };
 }
 
-function hasRequiredScopes(
-  required: readonly string[],
+function hasRequestedScopes(
+  requested: readonly string[],
   stored: readonly string[] | null,
 ): boolean {
-  if (required.length === 0) {
+  if (requested.length === 0) {
     return true;
   }
   if (!stored) {
     return false;
   }
   const storedScopes = new Set(stored);
-  return required.every((scope) => {
+  return requested.every((scope) => {
     return storedScopes.has(scope);
   });
+}
+
+function hasCatalogScopeMismatch(args: {
+  readonly connector: ConnectorResponse | null;
+  readonly facts: PrivateAuthMethodFacts | undefined;
+  readonly storedRequestedScopes: readonly string[] | null;
+}): boolean {
+  if (args.connector === null || args.facts === undefined) {
+    return false;
+  }
+  return !hasRequestedScopes(
+    args.facts.requestedScopes,
+    args.storedRequestedScopes,
+  );
 }
 
 function connectorCatalogStatusItem(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: EffectiveConnector;
-  readonly connector: ConnectorResponse | null;
+  readonly connection: ConnectorCatalogConnection | null;
   readonly publicBrand: PublicBrand;
 }): PublicConnectorCatalogStatusItem {
   const detail = connectorCatalogDetail(args.effective, args.publicBrand);
-  const effectiveMethod = args.connector
+  const response = args.connection?.response ?? null;
+  const effectiveMethod = response
     ? args.effective.authMethods.find((method) => {
-        return method.id === args.connector?.authMethod;
+        return method.id === response.authMethod;
       })
     : undefined;
-  const connector = effectiveMethod ? args.connector : null;
+  const connector = effectiveMethod ? response : null;
   const facts = effectiveMethod
     ? args.catalog.privateMethodFacts.get(
         authMethodKey(args.effective.connector.slug, effectiveMethod.id),
@@ -862,10 +880,11 @@ function connectorCatalogStatusItem(args: {
   if (effectiveMethod && !facts) {
     throw new Error("Connector catalog private method facts are missing");
   }
-  const scopeMismatch =
-    connector !== null &&
-    facts !== undefined &&
-    !hasRequiredScopes(facts.requiredScopes, connector.oauthScopes);
+  const scopeMismatch = hasCatalogScopeMismatch({
+    connector,
+    facts,
+    storedRequestedScopes: args.connection?.oauthRequestedScopes ?? null,
+  });
   let connectionStatus: PublicConnectorCatalogConnectionStatus =
     "not-connected";
   if (connector !== null) {
@@ -1014,14 +1033,14 @@ function searchEffectiveConnectors(
 
 function discoveryEffectiveConnectors(
   effective: readonly EffectiveConnector[],
-  args: Pick<ExternalCatalogDiscoveryArgs, "connectors" | "keyword">,
+  args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
 ): EffectiveConnector[] {
   if (args.keyword?.trim()) {
     return searchEffectiveConnectors(effective, args.keyword);
   }
   const connectedSlugs = new Set(
-    args.connectors.map((connector) => {
-      return connector.slug;
+    args.connections.map((connection) => {
+      return connection.response.slug;
     }),
   );
   const connected = effective.filter((entry) => {
@@ -1070,13 +1089,13 @@ export async function getExternalPublicConnectorCatalogStatus(
   if (!entry) {
     return null;
   }
-  const connector = args.connectors.find((candidate) => {
-    return candidate.slug === args.connectorSlug;
+  const connection = args.connections.find((candidate) => {
+    return candidate.response.slug === args.connectorSlug;
   });
   return connectorCatalogStatusItem({
     catalog,
     effective: entry,
-    connector: connector ?? null,
+    connection: connection ?? null,
     publicBrand: args.publicBrand,
   });
 }
@@ -1092,7 +1111,7 @@ export async function listExternalPublicConnectorCatalogStatus(
   return connectorCatalogStatusRead({
     catalog,
     effective,
-    connectors: args.connectors,
+    connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
     publicBrand: args.publicBrand,
   });
@@ -1109,7 +1128,7 @@ export async function discoverExternalPublicConnectorCatalogStatus(
   const read = connectorCatalogStatusRead({
     catalog,
     effective: discoveryEffectiveConnectors(effective, args),
-    connectors: args.connectors,
+    connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
     publicBrand: args.publicBrand,
   });
@@ -1125,20 +1144,20 @@ export async function discoverExternalPublicConnectorCatalogStatus(
 function connectorCatalogStatusRead(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: readonly EffectiveConnector[];
-  readonly connectors: readonly ConnectorResponse[];
+  readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
   readonly publicBrand: PublicBrand;
 }): ConnectorCatalogStatusRead {
-  const connectorsBySlug = new Map(
-    args.connectors.map((connector) => {
-      return [connector.slug, connector];
+  const connectionsBySlug = new Map(
+    args.connections.map((connection) => {
+      return [connection.response.slug, connection];
     }),
   );
   const connectors = args.effective.map((entry) => {
     return connectorCatalogStatusItem({
       catalog: args.catalog,
       effective: entry,
-      connector: connectorsBySlug.get(entry.connector.slug) ?? null,
+      connection: connectionsBySlug.get(entry.connector.slug) ?? null,
       publicBrand: args.publicBrand,
     });
   });

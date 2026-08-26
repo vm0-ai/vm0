@@ -115,7 +115,7 @@ const writeGithubConnectorConnection$ = command(
         readonly username: string | null;
         readonly email: string | null;
       };
-      readonly oauthScopes: readonly string[];
+      readonly oauthGrantedScopes: readonly string[];
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
@@ -129,7 +129,8 @@ const writeGithubConnectorConnection$ = command(
         snapshot: args.method.snapshot,
         outputs: args.outputs,
         userInfo: args.userInfo,
-        oauthScopes: args.oauthScopes,
+        oauthRequestedScopes: connectorGrantScopes(args.method.method.grant),
+        oauthGrantedScopes: args.oauthGrantedScopes,
         extraConnectorSecrets: args.extraConnectorSecrets,
       },
       signal,
@@ -478,7 +479,7 @@ const connectGithubUserAfterSetup$ = command(
           method: resolvedMethod,
           outputs: { accessToken },
           userInfo,
-          oauthScopes:
+          oauthGrantedScopes:
             scopes.length > 0
               ? scopes
               : connectorGrantScopes(resolvedMethod.method.grant),
