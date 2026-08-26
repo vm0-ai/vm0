@@ -345,6 +345,11 @@ describe("presentation template publish", () => {
       [200],
     );
     expect(listed.body).toHaveLength(1);
+    const catalogPreviewAssets = listed.body[0]?.previewAssets;
+    expect(catalogPreviewAssets).toHaveLength(2);
+    if (catalogPreviewAssets === undefined) {
+      throw new Error("Expected prefetched presentation preview assets");
+    }
     const detail = await accept(
       templateClient().get({
         headers: webHeaders(),
@@ -353,6 +358,35 @@ describe("presentation template publish", () => {
       [200],
     );
     expect(detail.body.pageUrls).toHaveLength(2);
+    expect(detail.body.previewAssets).toStrictEqual(catalogPreviewAssets);
+    expect(
+      catalogPreviewAssets.map((asset) => {
+        return asset.url;
+      }),
+    ).toStrictEqual(detail.body.pageUrls);
+    const previewAssetIds = catalogPreviewAssets.map((asset) => {
+      return asset.previewAssetId;
+    });
+    const firstPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds },
+      }),
+      [200],
+    );
+    const secondPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds },
+      }),
+      [200],
+    );
+    expect(firstPreviewUrls.body.assets).toHaveLength(2);
+    expect(firstPreviewUrls.body.assets[0]?.url).toBe(detail.body.pageUrls[0]);
+    expect(published.body.coverUrl).toBe(detail.body.pageUrls[0]);
+    expect(secondPreviewUrls.body.assets).toStrictEqual(
+      firstPreviewUrls.body.assets,
+    );
 
     // The guidance package is stored under a name derived from the row id.
     const storageName = getPresentationTemplateStorageName(published.body.id);
@@ -441,6 +475,11 @@ describe("presentation template publish", () => {
         title: "Workspace brand refreshed",
         visibility: "public",
         canManage: false,
+        previewAssets: expect.arrayContaining([
+          expect.objectContaining({
+            previewAssetId: expect.stringMatching(/^ptp:/),
+          }),
+        ]),
       }),
     ]);
     const detailForMember = await accept(
@@ -452,6 +491,25 @@ describe("presentation template publish", () => {
     );
     expect(detailForMember.body.pageUrls).toHaveLength(2);
     expect(detailForMember.body.canManage).toBeFalsy();
+    expect(detailForMember.body.previewAssets).toStrictEqual(
+      listedForMember.body[0]?.previewAssets,
+    );
+    const memberPreviewAssetIds = listedForMember.body[0]?.previewAssets?.map(
+      (asset) => {
+        return asset.previewAssetId;
+      },
+    );
+    if (memberPreviewAssetIds === undefined) {
+      throw new Error("Expected shared presentation preview asset ids");
+    }
+    const memberPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds: memberPreviewAssetIds },
+      }),
+      [200],
+    );
+    expect(memberPreviewUrls.body.assets).toHaveLength(2);
 
     await accept(
       templateClient().update({
@@ -496,6 +554,14 @@ describe("presentation template publish", () => {
       }),
       [404],
     );
+    const revokedPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds: memberPreviewAssetIds },
+      }),
+      [200],
+    );
+    expect(revokedPreviewUrls.body.assets).toStrictEqual([]);
   });
 
   it("deletes a template exactly once when two requests race", async () => {

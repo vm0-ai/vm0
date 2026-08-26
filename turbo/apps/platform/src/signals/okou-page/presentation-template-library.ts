@@ -1,41 +1,50 @@
 import { command, computed, state, type Computed, type State } from "ccstate";
 import { delay } from "signal-timers";
 import {
+  MAX_PRESENTATION_TEMPLATE_PAGES,
   presentationTemplatesContract,
   PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+  type PresentationTemplateCatalogEntry,
   type PresentationTemplateDetail,
+  type PresentationTemplatePreviewAsset,
   type PresentationTemplateSummary,
   type UpdatePresentationTemplateBody,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
-import { apiClient$ } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { onRef, setLoop } from "../utils.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
 
-export interface ImportedPresentationTemplateResource {
-  readonly summary: PresentationTemplateSummary;
-  readonly detail$: Computed<Promise<PresentationTemplateDetail | null>>;
-}
-
-type ImportedPresentationTemplateDetailResolver = (
+type ImportedPresentationTemplateDetailLookup = (
   templateId: string,
 ) => Computed<Promise<PresentationTemplateDetail | null>>;
+
+interface ImportedPresentationTemplateDetailResolver {
+  readonly resolve: ImportedPresentationTemplateDetailLookup;
+  readonly evict: (templateId: string) => void;
+}
 
 const presentationTemplatesVersion$ = state(0);
 const deletedPresentationTemplateIds$ = state<ReadonlySet<string>>(new Set());
 const importedPresentationTemplateDeletedIds$ = computed((get) => {
   return get(deletedPresentationTemplateIds$);
 });
-const PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS =
+const PRESENTATION_TEMPLATE_PREVIEW_URL_SAFETY_MS = 45 * 1000;
+const PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS =
   (PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000 * 2) / 3;
 
 interface ImportedPresentationTemplateCatalog {
-  readonly templates: readonly PresentationTemplateSummary[];
+  readonly templates: readonly PresentationTemplateCatalogEntry[];
+  readonly loadedAtMs: number;
+}
+
+interface CachedImportedPresentationTemplateCatalog {
+  readonly templates: readonly PresentationTemplateDetail[];
   readonly loadedAtMs: number;
 }
 
@@ -143,8 +152,170 @@ export const subscribePresentationTemplatesChanged$ = command(
   },
 );
 
-function createImportedPresentationTemplates$(
+async function resolvePresentationTemplatePreviewAssets(
+  createClient: ApiClientFactory,
+  previewAssetIds: readonly string[],
+  signal: AbortSignal,
+): Promise<readonly PresentationTemplatePreviewAsset[]> {
+  const uniquePreviewAssetIds = [...new Set(previewAssetIds)];
+  const batches: string[][] = [];
+  for (
+    let index = 0;
+    index < uniquePreviewAssetIds.length;
+    index += MAX_PRESENTATION_TEMPLATE_PAGES
+  ) {
+    batches.push(
+      uniquePreviewAssetIds.slice(
+        index,
+        index + MAX_PRESENTATION_TEMPLATE_PAGES,
+      ),
+    );
+  }
+  const client = createClient(presentationTemplatesContract);
+  const responses = await Promise.all(
+    batches.map(async (previewAssetIdBatch) => {
+      return await accept(
+        client.resolvePreviewUrls({
+          body: { previewAssetIds: previewAssetIdBatch },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+    }),
+  );
+  return responses.flatMap((response) => {
+    return response.body.assets;
+  });
+}
+
+interface ImportedPresentationTemplateCache {
+  readonly previewAssetIdsByTemplateId: Map<string, readonly string[]>;
+  readonly previewUrlByAssetId: Map<string, PresentationTemplatePreviewAsset>;
+}
+
+function evictImportedPresentationTemplateCache(
+  cache: ImportedPresentationTemplateCache,
+  templateId: string,
+): void {
+  const removedPreviewAssetIds =
+    cache.previewAssetIdsByTemplateId.get(templateId);
+  cache.previewAssetIdsByTemplateId.delete(templateId);
+  if (removedPreviewAssetIds === undefined) {
+    return;
+  }
+  for (const previewAssetId of removedPreviewAssetIds) {
+    cache.previewUrlByAssetId.delete(previewAssetId);
+  }
+}
+
+function referencedPresentationTemplatePreviewAssetIds(
+  cache: ImportedPresentationTemplateCache,
+): ReadonlySet<string> {
+  return new Set([...cache.previewAssetIdsByTemplateId.values()].flat());
+}
+
+function mergePresentationTemplatePreviewAsset(
+  cache: ImportedPresentationTemplateCache,
+  asset: PresentationTemplatePreviewAsset,
+): boolean {
+  const existing = cache.previewUrlByAssetId.get(asset.previewAssetId);
+  if (
+    existing !== undefined &&
+    Date.parse(existing.expiresAt) >= Date.parse(asset.expiresAt)
+  ) {
+    return false;
+  }
+  cache.previewUrlByAssetId.set(asset.previewAssetId, asset);
+  return true;
+}
+
+function cachedPresentationTemplatePreviewAsset(
+  cache: ImportedPresentationTemplateCache,
+  previewAssetId: string,
+): PresentationTemplatePreviewAsset {
+  const asset = cache.previewUrlByAssetId.get(previewAssetId);
+  if (asset === undefined) {
+    throw new Error(
+      `Presentation template preview is not cached: ${previewAssetId}`,
+    );
+  }
+  return asset;
+}
+
+function synchronizeImportedPresentationTemplateCache(
+  cache: ImportedPresentationTemplateCache,
+  templates: readonly PresentationTemplateCatalogEntry[],
+): readonly PresentationTemplateDetail[] {
+  const templateIds = new Set(
+    templates.map((template) => {
+      return template.id;
+    }),
+  );
+  for (const cachedTemplateId of cache.previewAssetIdsByTemplateId.keys()) {
+    if (!templateIds.has(cachedTemplateId)) {
+      evictImportedPresentationTemplateCache(cache, cachedTemplateId);
+    }
+  }
+  for (const template of templates) {
+    const previewAssetIds = template.previewAssets.map((asset) => {
+      return asset.previewAssetId;
+    });
+    const nextPreviewAssetIds = new Set(previewAssetIds);
+    for (const previousPreviewAssetId of cache.previewAssetIdsByTemplateId.get(
+      template.id,
+    ) ?? []) {
+      if (!nextPreviewAssetIds.has(previousPreviewAssetId)) {
+        cache.previewUrlByAssetId.delete(previousPreviewAssetId);
+      }
+    }
+    for (const asset of template.previewAssets) {
+      mergePresentationTemplatePreviewAsset(cache, asset);
+    }
+    cache.previewAssetIdsByTemplateId.set(template.id, previewAssetIds);
+  }
+  return templates.map((template) => {
+    const previewAssetIds = cache.previewAssetIdsByTemplateId.get(template.id);
+    if (previewAssetIds === undefined) {
+      throw new Error(
+        `Presentation template detail is not cached: ${template.id}`,
+      );
+    }
+    const previewAssets = previewAssetIds.map((previewAssetId) => {
+      return cachedPresentationTemplatePreviewAsset(cache, previewAssetId);
+    });
+    return {
+      ...template,
+      coverUrl: previewAssets[0]?.url ?? template.coverUrl,
+      pageUrls: previewAssets.map((asset) => {
+        return asset.url;
+      }),
+      previewAssets,
+    };
+  });
+}
+
+function createCachedImportedPresentationTemplateCatalog$(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
+  cache: ImportedPresentationTemplateCache,
+  previewUrlsVersion$: State<number>,
+) {
+  return computed(
+    async (get): Promise<CachedImportedPresentationTemplateCatalog> => {
+      get(previewUrlsVersion$);
+      const catalog = await get(catalog$);
+      return {
+        ...catalog,
+        templates: synchronizeImportedPresentationTemplateCache(
+          cache,
+          catalog.templates,
+        ),
+      };
+    },
+  );
+}
+
+function createImportedPresentationTemplates$(
+  catalog$: Computed<Promise<CachedImportedPresentationTemplateCatalog>>,
   deletedTemplateIds$: State<ReadonlySet<string>>,
   updatedTemplates$: State<readonly PresentationTemplateSummary[]>,
 ) {
@@ -184,52 +355,34 @@ function createImportedPresentationTemplates$(
  * module scope.
  */
 function createImportedPresentationTemplateDetailResolver(
-  detailUrlsVersion$: State<number>,
+  catalog$: Computed<Promise<CachedImportedPresentationTemplateCatalog>>,
 ): ImportedPresentationTemplateDetailResolver {
   const detailByTemplateId = new Map<
     string,
     Computed<Promise<PresentationTemplateDetail | null>>
   >();
-  return (templateId) => {
-    const existing = detailByTemplateId.get(templateId);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const detail$ = computed(
-      async (get): Promise<PresentationTemplateDetail | null> => {
-        // Catalog changes carry mutable metadata. Page URLs rotate only on the
-        // TTL lifecycle so rename and visibility updates cannot reload slides.
-        get(detailUrlsVersion$);
-        const client = get(apiClient$)(presentationTemplatesContract);
-        const result = await accept(
-          client.get({ params: { templateId } }),
-          [200, 404],
-        );
-        return result.status === 404 ? null : result.body;
-      },
-    );
-    detailByTemplateId.set(templateId, detail$);
-    return detail$;
-  };
-}
-
-function createImportedPresentationTemplateResources$(
-  importedPresentationTemplates$: Computed<
-    Promise<readonly PresentationTemplateSummary[]>
-  >,
-  resolveDetail$: ImportedPresentationTemplateDetailResolver,
-) {
-  return computed(
-    async (get): Promise<readonly ImportedPresentationTemplateResource[]> => {
-      const templates = await get(importedPresentationTemplates$);
-      return templates.map((summary) => {
-        return {
-          summary,
-          detail$: resolveDetail$(summary.id),
-        };
-      });
+  return {
+    resolve: (templateId) => {
+      const existing = detailByTemplateId.get(templateId);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const detail$ = computed(
+        async (get): Promise<PresentationTemplateDetail | null> => {
+          return (
+            (await get(catalog$)).templates.find((template) => {
+              return template.id === templateId;
+            }) ?? null
+          );
+        },
+      );
+      detailByTemplateId.set(templateId, detail$);
+      return detail$;
     },
-  );
+    evict: (templateId) => {
+      detailByTemplateId.delete(templateId);
+    },
+  };
 }
 
 interface ImportedPresentationTemplateHover {
@@ -256,65 +409,102 @@ function createImportedPresentationTemplateHoverSignals() {
   };
 }
 
-function createImportedPresentationTemplateUrlRefreshSignals(
-  catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
-  detailUrlsVersion$: State<number>,
-) {
-  const internalDetailUrlsFreshAtMs$ = state<number | null>(null);
-  const initializeImportedPresentationTemplateDetailUrlsFreshAtMs$ = command(
-    ({ get, set }, catalogLoadedAtMs: number): number => {
-      const detailUrlsFreshAtMs = get(internalDetailUrlsFreshAtMs$);
-      if (detailUrlsFreshAtMs !== null) {
-        return detailUrlsFreshAtMs;
-      }
-      set(internalDetailUrlsFreshAtMs$, catalogLoadedAtMs);
-      return catalogLoadedAtMs;
-    },
-  );
-  const refreshImportedPresentationTemplateUrlsIfStale$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const catalog = await get(catalog$);
-      signal.throwIfAborted();
-      const detailUrlsFreshAtMs = set(
-        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
-        catalog.loadedAtMs,
+function expiringPresentationTemplatePreviewAssetIds(
+  cache: ImportedPresentationTemplateCache,
+  requestedAt: number,
+): readonly string[] {
+  return [...cache.previewUrlByAssetId.values()]
+    .filter((asset) => {
+      return (
+        Date.parse(asset.expiresAt) - requestedAt <=
+        PRESENTATION_TEMPLATE_PREVIEW_URL_SAFETY_MS
       );
-      const requestedAt = now();
-      if (
-        requestedAt - detailUrlsFreshAtMs <
-        PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS
-      ) {
+    })
+    .map((asset) => {
+      return asset.previewAssetId;
+    });
+}
+
+function presentationTemplatePreviewRefreshDelayMs(
+  cache: ImportedPresentationTemplateCache,
+  catalogLoadedAtMs: number,
+): number {
+  const requestedAt = now();
+  const expirations = [...cache.previewUrlByAssetId.values()].map((asset) => {
+    return Date.parse(asset.expiresAt);
+  });
+  if (expirations.length === 0) {
+    return Math.max(
+      0,
+      catalogLoadedAtMs +
+        PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS -
+        requestedAt,
+    );
+  }
+  return Math.max(
+    0,
+    Math.min(...expirations) -
+      PRESENTATION_TEMPLATE_PREVIEW_URL_SAFETY_MS -
+      requestedAt,
+  );
+}
+
+function createImportedPresentationTemplateUrlRefreshSignals(
+  catalog$: Computed<Promise<CachedImportedPresentationTemplateCatalog>>,
+  cache: ImportedPresentationTemplateCache,
+  previewUrlsVersion$: State<number>,
+) {
+  const refreshImportedPresentationTemplateUrlsIfExpiring$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (cache.previewUrlByAssetId.size === 0) {
+        const catalog = await get(catalog$);
+        signal.throwIfAborted();
+        if (
+          now() - catalog.loadedAtMs >=
+          PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS
+        ) {
+          await set(refreshAndReconcilePresentationTemplates$, signal);
+        }
         return;
       }
-      set(internalDetailUrlsFreshAtMs$, requestedAt);
-      await set(refreshAndReconcilePresentationTemplates$, signal);
-      set(detailUrlsVersion$, (version) => {
-        return version + 1;
-      });
-    },
-  );
-  const refreshImportedPresentationTemplateUrlsAfterPickerOpen$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      // Let the picker mount the last resolved catalog before catch-up makes
-      // the catalog pending, so a suspended tab still opens without a blank
-      // first frame.
-      await delay(0, { signal });
-      const catalog = await get(catalog$);
-      signal.throwIfAborted();
-      const detailUrlsFreshAtMs = set(
-        initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
-        catalog.loadedAtMs,
+      const previewAssetIds = expiringPresentationTemplatePreviewAssetIds(
+        cache,
+        now(),
       );
-      const requestedAt = now();
-      const refreshDetailUrls =
-        requestedAt - detailUrlsFreshAtMs >=
-        PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS;
-      if (refreshDetailUrls) {
-        set(internalDetailUrlsFreshAtMs$, requestedAt);
+      if (previewAssetIds.length === 0) {
+        return;
       }
-      await set(refreshAndReconcilePresentationTemplates$, signal);
-      if (refreshDetailUrls) {
-        set(detailUrlsVersion$, (version) => {
+      const assets = await resolvePresentationTemplatePreviewAssets(
+        get(apiClient$),
+        previewAssetIds,
+        signal,
+      );
+      signal.throwIfAborted();
+      const resolvedPreviewAssetIds = new Set(
+        assets.map((asset) => {
+          return asset.previewAssetId;
+        }),
+      );
+      if (
+        previewAssetIds.some((previewAssetId) => {
+          return !resolvedPreviewAssetIds.has(previewAssetId);
+        })
+      ) {
+        await set(refreshAndReconcilePresentationTemplates$, signal);
+        return;
+      }
+      const referencedPreviewAssetIds =
+        referencedPresentationTemplatePreviewAssetIds(cache);
+      const updated = assets
+        .filter((asset) => {
+          return referencedPreviewAssetIds.has(asset.previewAssetId);
+        })
+        .map((asset) => {
+          return mergePresentationTemplatePreviewAsset(cache, asset);
+        })
+        .includes(true);
+      if (updated) {
+        set(previewUrlsVersion$, (version) => {
           return version + 1;
         });
       }
@@ -329,22 +519,20 @@ function createImportedPresentationTemplateUrlRefreshSignals(
       ): Promise<void> => {
         await setLoop(
           async (loopSignal) => {
-            const catalog = await get(catalog$);
+            const catalogLoadedAtMs =
+              cache.previewUrlByAssetId.size === 0
+                ? (await get(catalog$)).loadedAtMs
+                : now();
             loopSignal.throwIfAborted();
-            const detailUrlsFreshAtMs = set(
-              initializeImportedPresentationTemplateDetailUrlsFreshAtMs$,
-              catalog.loadedAtMs,
-            );
             await delay(
-              Math.max(
-                0,
-                PRESENTATION_TEMPLATE_URL_REFRESH_AGE_MS -
-                  (now() - detailUrlsFreshAtMs),
+              presentationTemplatePreviewRefreshDelayMs(
+                cache,
+                catalogLoadedAtMs,
               ),
               { signal: loopSignal },
             );
             await set(
-              refreshImportedPresentationTemplateUrlsIfStale$,
+              refreshImportedPresentationTemplateUrlsIfExpiring$,
               loopSignal,
             );
             return false;
@@ -356,14 +544,11 @@ function createImportedPresentationTemplateUrlRefreshSignals(
       },
     ),
   );
-  return {
-    refreshImportedPresentationTemplateUrlsAfterPickerOpen$,
-    importedPresentationTemplateUrlRefreshLifecycleRef$,
-  };
+  return { importedPresentationTemplateUrlRefreshLifecycleRef$ };
 }
 
 function createImportedPresentationTemplateDetailSignals(
-  resolveDetail$: ImportedPresentationTemplateDetailResolver,
+  resolveDetail$: ImportedPresentationTemplateDetailLookup,
 ) {
   const internalRequestedTemplateId$ = state<string | null>(null);
   const importedPresentationTemplateRequestedId$ = computed((get) => {
@@ -425,7 +610,16 @@ function createUpdateImportedPresentationTemplate$(
 
 /** Dialog-scoped state and mutations for persisted uploaded templates. */
 export function createImportedPresentationTemplateSignals() {
-  const catalog$ = importedPresentationTemplateCatalog$;
+  const cache: ImportedPresentationTemplateCache = {
+    previewAssetIdsByTemplateId: new Map(),
+    previewUrlByAssetId: new Map(),
+  };
+  const internalPreviewUrlsVersion$ = state(0);
+  const catalog$ = createCachedImportedPresentationTemplateCatalog$(
+    importedPresentationTemplateCatalog$,
+    cache,
+    internalPreviewUrlsVersion$,
+  );
   const internalUpdatedTemplates$ = state<
     readonly PresentationTemplateSummary[]
   >([]);
@@ -434,21 +628,15 @@ export function createImportedPresentationTemplateSignals() {
     deletedPresentationTemplateIds$,
     internalUpdatedTemplates$,
   );
-  const internalDetailUrlsVersion$ = state(0);
-  const resolveDetail$ = createImportedPresentationTemplateDetailResolver(
-    internalDetailUrlsVersion$,
-  );
+  const detailResolver =
+    createImportedPresentationTemplateDetailResolver(catalog$);
   const urlRefresh = createImportedPresentationTemplateUrlRefreshSignals(
     catalog$,
-    internalDetailUrlsVersion$,
+    cache,
+    internalPreviewUrlsVersion$,
   );
-  const importedPresentationTemplateResources$ =
-    createImportedPresentationTemplateResources$(
-      importedPresentationTemplates$,
-      resolveDetail$,
-    );
   const { internalRequestedTemplateId$, ...detailSignals } =
-    createImportedPresentationTemplateDetailSignals(resolveDetail$);
+    createImportedPresentationTemplateDetailSignals(detailResolver.resolve);
 
   const internalPreviewTemplateId$ = state<string | null>(null);
   const importedPresentationTemplatePreviewId$ = computed((get) => {
@@ -499,6 +687,13 @@ export function createImportedPresentationTemplateSignals() {
         [204],
       );
       signal.throwIfAborted();
+      evictImportedPresentationTemplateCache(cache, templateId);
+      detailResolver.evict(templateId);
+      set(internalUpdatedTemplates$, (updatedTemplates) => {
+        return updatedTemplates.filter((template) => {
+          return template.id !== templateId;
+        });
+      });
       set(deletedPresentationTemplateIds$, (deletedTemplateIds) => {
         return new Set([...deletedTemplateIds, templateId]);
       });
@@ -520,7 +715,6 @@ export function createImportedPresentationTemplateSignals() {
   return {
     importedPresentationTemplates$,
     importedPresentationTemplateDeletedIds$,
-    importedPresentationTemplateResources$,
     ...detailSignals,
     ...urlRefresh,
     importedPresentationTemplatePreviewId$,

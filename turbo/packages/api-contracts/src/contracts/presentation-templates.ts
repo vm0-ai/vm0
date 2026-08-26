@@ -6,6 +6,12 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const presentationTemplateVisibilitySchema = z.enum(["private", "public"]);
+const presentationTemplatePreviewAssetIdSchema = z.string().min(1).max(128);
+const presentationTemplatePreviewAssetSchema = z.object({
+  previewAssetId: presentationTemplatePreviewAssetIdSchema,
+  url: z.string().url(),
+  expiresAt: z.iso.datetime(),
+});
 
 export const MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES = 100 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PAGES = 100;
@@ -42,10 +48,27 @@ const presentationTemplateSummarySchema = z.object({
   updatedAt: z.string(),
 });
 
+const presentationTemplateCatalogEntrySchema =
+  presentationTemplateSummarySchema.extend({
+    previewAssets: z.array(presentationTemplatePreviewAssetSchema),
+  });
+
 const presentationTemplateDetailSchema =
   presentationTemplateSummarySchema.extend({
     pageUrls: z.array(z.string().url()),
+    previewAssets: z.array(presentationTemplatePreviewAssetSchema),
   });
+
+const resolvePresentationTemplatePreviewUrlsBodySchema = z.object({
+  previewAssetIds: z
+    .array(presentationTemplatePreviewAssetIdSchema)
+    .min(1)
+    .max(MAX_PRESENTATION_TEMPLATE_PAGES),
+});
+
+const resolvePresentationTemplatePreviewUrlsResponseSchema = z.object({
+  assets: z.array(presentationTemplatePreviewAssetSchema),
+});
 
 const presentationTemplateIdParamsSchema = z.object({
   templateId: z.uuid(),
@@ -96,7 +119,7 @@ export const presentationTemplatesContract = c.router({
     path: "/api/presentation-templates",
     headers: authHeadersSchema,
     responses: {
-      200: z.array(presentationTemplateSummarySchema),
+      200: z.array(presentationTemplateCatalogEntrySchema),
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,
@@ -117,6 +140,20 @@ export const presentationTemplatesContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get a presentation template",
+  },
+  resolvePreviewUrls: {
+    method: "POST",
+    path: "/api/presentation-templates/preview-urls",
+    headers: authHeadersSchema,
+    body: resolvePresentationTemplatePreviewUrlsBodySchema,
+    responses: {
+      200: resolvePresentationTemplatePreviewUrlsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Resolve accessible presentation template preview asset URLs",
   },
   update: {
     method: "PATCH",
@@ -155,8 +192,17 @@ export type PresentationTemplatesContract =
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
 >;
+export type PresentationTemplateCatalogEntry = z.infer<
+  typeof presentationTemplateCatalogEntrySchema
+>;
 export type PresentationTemplateDetail = z.infer<
   typeof presentationTemplateDetailSchema
+>;
+export type PresentationTemplatePreviewAsset = z.infer<
+  typeof presentationTemplatePreviewAssetSchema
+>;
+export type PresentationTemplatePreviewAssetId = z.infer<
+  typeof presentationTemplatePreviewAssetIdSchema
 >;
 export type PresentationTemplateVisibility = z.infer<
   typeof presentationTemplateVisibilitySchema
