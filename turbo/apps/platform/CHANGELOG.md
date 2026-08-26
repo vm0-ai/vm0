@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.801.1](https://github.com/vm0-ai/vm0/compare/app-v0.801.0...app-v0.801.1) (2026-08-26)
+
+
+### Performance Improvements
+
+* **platform:** shorten chat thread metadata readiness ([#29598](https://github.com/vm0-ai/vm0/issues/29598)) ([b4f7387](https://github.com/vm0-ai/vm0/commit/b4f7387f421aa7ba485f97451e7629986e698b85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.373.1
+    * @okouai/core bumped to 8.595.4
+
 ## [0.801.0](https://github.com/vm0-ai/vm0/compare/app-v0.800.2...app-v0.801.0) (2026-08-26)
 
 
