@@ -1058,6 +1058,11 @@ mod tests {
 
         let (_, events) = capture_mitmdump_monitor_events(future).await;
 
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stdout monitor events: {events:#?}"
+        );
         let overflow = captured_event(&events, "discarded oversized mitmdump log record");
         assert_eq!(
             overflow.fields.get("stream").map(String::as_str),
@@ -1095,6 +1100,11 @@ mod tests {
         let (port_in_use, events) = capture_mitmdump_monitor_events(future).await;
 
         assert!(!port_in_use);
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stderr monitor events: {events:#?}"
+        );
         let overflow = captured_event(&events, "discarded oversized mitmdump log record");
         assert_eq!(
             overflow.fields.get("stream").map(String::as_str),
