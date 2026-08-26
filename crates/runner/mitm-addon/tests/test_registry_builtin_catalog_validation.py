@@ -1,6 +1,7 @@
 """Tests for built-in registry catalog payload and trust validation."""
 
 import json
+from collections.abc import Callable
 from unittest.mock import patch
 
 import pytest
@@ -136,6 +137,102 @@ class TestRegistryBuiltinCatalogValidation:
         )
         raw = json.loads(cache_path.read_text())
         raw["schemaVersion"] = BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION + 1
+        write_trusted_catalog_cache_text(cache_path, json.dumps(raw, sort_keys=True))
+
+        with mitm_ctx():
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is not None
+        assert snapshot.catalog is None
+        assert snapshot.unavailable_reason == "cache_invalid"
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            pytest.param(
+                lambda raw: raw.__setitem__("schemaVersion", True),
+                id="boolean-schema-version",
+            ),
+            pytest.param(
+                lambda raw: raw.__setitem__("catalogVersion", ""),
+                id="empty-catalog-version",
+            ),
+            pytest.param(
+                lambda raw: raw.__setitem__("firewalls", {}),
+                id="empty-firewalls",
+            ),
+            pytest.param(
+                lambda raw: raw.__setitem__("catalogDigest", "sha512:" + "a" * 64),
+                id="wrong-digest-prefix",
+            ),
+            pytest.param(
+                lambda raw: raw.__setitem__(
+                    "firewalls",
+                    {"": {**raw["firewalls"]["fallback"], "name": ""}},
+                ),
+                id="empty-firewall-key",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"].__setitem__("fallback", []),
+                id="non-object-firewall",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"].__setitem__("name", "other"),
+                id="firewall-name-mismatch",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"].__setitem__("apis", [[]]),
+                id="non-object-api",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0].__setitem__("base", ""),
+                id="empty-api-base",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0].__setitem__("permissions", {}),
+                id="non-list-permissions",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0].__setitem__(
+                    "permissions", [[]]
+                ),
+                id="non-object-permission",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0]["permissions"][0].__setitem__(
+                    "name", 1
+                ),
+                id="non-string-permission-name",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0]["permissions"].append(
+                    {"name": "read", "rules": ["GET /other"]}
+                ),
+                id="duplicate-permission-name",
+            ),
+            pytest.param(
+                lambda raw: raw["firewalls"]["fallback"]["apis"][0]["permissions"][0].__setitem__(
+                    "rules", [1]
+                ),
+                id="non-string-rule",
+            ),
+        ],
+    )
+    def test_malformed_runner_catalog_cache_shapes_fail_closed(
+        self,
+        tmp_path,
+        mitm_ctx,
+        mutate: Callable[[dict], None],
+    ) -> None:
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": cache_firewall("fallback", "https://cache.example.com")},
+        )
+        raw = json.loads(cache_path.read_text())
+        mutate(raw)
         write_trusted_catalog_cache_text(cache_path, json.dumps(raw, sort_keys=True))
 
         with mitm_ctx():

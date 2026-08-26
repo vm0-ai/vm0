@@ -236,6 +236,7 @@ runs:
         fi
 
         if [[ -n "$api_backend_url" ]]; then
+          add_env OKOU_API_BACKEND_URL "$api_backend_url"
           add_env VM0_API_BACKEND_URL "$api_backend_url"
         fi
         if [[ "$INPUT_APP" == "api" ]]; then

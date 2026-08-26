@@ -14,10 +14,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import type {
-  ConnectorCatalogCompatibilityEvaluationPayload,
-  ConnectorCatalogRuntimeProjection,
-} from "@okouai/db/jsonb-contracts/connector-catalog";
+import type { ConnectorCatalogCompatibilityEvaluationPayload } from "@okouai/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -307,8 +304,6 @@ export const connectorCatalogRuntimeProjections = pgTable(
     projectionSetId: uuid("projection_set_id").notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     connectorDigest: varchar("connector_digest", { length: 71 }).notNull(),
-    // Rollback-only compatibility for retained v2 writers. Remove with #29439.
-    connector: jsonb("connector").$type<ConnectorCatalogRuntimeProjection>(),
     connectorPayload: byteaColumn("connector_payload").notNull(),
   },
   (table) => {

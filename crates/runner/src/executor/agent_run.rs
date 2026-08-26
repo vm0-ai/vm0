@@ -31,8 +31,9 @@ use super::diagnostics::{
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
     drain_stdout_to_file, explicit_enospc_evidence, failure_diagnostic_reports_workload_memory_oom,
-    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
-    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
+    host_oom_evidence_since_now, log_agent_abnormal_exit_env_diagnostics,
+    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
+    read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
@@ -1299,6 +1300,7 @@ impl RunControls {
 struct PreparedAgentProcess {
     handle: GuestProcessHandle,
     agent_started_at: Instant,
+    host_oom_evidence_since: super::diagnostics::HostOomEvidenceSince,
     deferred_background_fill: Option<crate::storage_cache::DeferredBackgroundFill>,
     session_restore_diagnostics: Option<SessionRestoreDiagnostics>,
     pre_run_restored_session_identity: Option<RestoredSessionIdentity>,
@@ -2130,6 +2132,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
     // sandbox supervisor remains a later hard fallback so guest-agent can
     // terminate the CLI and create a recovery checkpoint first.
+    let host_oom_evidence_since = host_oom_evidence_since_now();
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -2177,6 +2180,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             RunnerResult::Ok(PreparedAgentProcess {
                 handle,
                 agent_started_at: t,
+                host_oom_evidence_since,
                 deferred_background_fill,
                 session_restore_diagnostics,
                 pre_run_restored_session_identity,
@@ -2214,6 +2218,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let PreparedAgentProcess {
         mut handle,
         agent_started_at: t,
+        host_oom_evidence_since,
         deferred_background_fill,
         session_restore_diagnostics,
         mut pre_run_restored_session_identity,
@@ -2348,7 +2353,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // Sandbox crashed — check host dmesg for OOM evidence naming the
             // firecracker process before propagating a generic error.
             if let Some(host_process_pid) = sandbox.host_process_pid()
-                && check_host_oom(host_process_pid).await
+                && check_host_oom(host_process_pid, host_oom_evidence_since).await
             {
                 warn!(
                     run_id = %context.run_id,

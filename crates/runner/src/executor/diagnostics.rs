@@ -51,7 +51,9 @@ pub(super) use guest_logs::copy_guest_logs;
 pub(super) use guest_logs::{GuestLogCopyFailureKind, guest_log_copy_failure_kind};
 #[cfg(test)]
 pub(super) use oom::host_dmesg_indicates_oom;
-pub(super) use oom::{check_host_oom, dmesg_indicates_oom};
+pub(super) use oom::{
+    HostOomEvidenceSince, check_host_oom, dmesg_indicates_oom, host_oom_evidence_since_now,
+};
 pub(super) use resource::collect_agent_abnormal_exit_diagnostics;
 #[cfg(test)]
 pub(super) use resource::parse_agent_abnormal_exit_resource_diagnostics;
