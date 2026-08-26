@@ -297,29 +297,29 @@ function providerResult(
       readonly collection: SocialKitResponse["collection"];
       readonly billingQuantity: number;
     }
-  | { readonly ok: false; readonly credentialLeak: boolean } {
+  | { readonly ok: false } {
   if (
     !isRecord(body) ||
     body.success !== true ||
     !("data" in body) ||
     body.data === undefined
   ) {
-    return { ok: false, credentialLeak: false };
+    return { ok: false };
   }
   const serialized = JSON.stringify(body.data);
   if (serialized === undefined) {
-    return { ok: false, credentialLeak: false };
+    return { ok: false };
   }
   if (serialized.includes(accessKey)) {
-    return { ok: false, credentialLeak: true };
+    return { ok: false };
   }
   const result = tool.resultSchema.safeParse(body.data);
   if (!result.success) {
-    return { ok: false, credentialLeak: false };
+    return { ok: false };
   }
   const collection = validatedCollection(result.data, request, tool);
   if (collection === undefined) {
-    return { ok: false, credentialLeak: false };
+    return { ok: false };
   }
   const billingQuantity = tool.collection?.itemsPerBillingUnit
     ? Math.max(
