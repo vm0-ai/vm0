@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Aplique uma paleta luminosa e sutil a todas as camadas da interface.",
+          "description": "Adicione um tom luminoso e sutil à barra lateral e ao fundo da área de trabalho.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

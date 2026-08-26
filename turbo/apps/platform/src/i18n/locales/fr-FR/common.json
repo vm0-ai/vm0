@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Appliquez une palette lumineuse et subtile à toutes les couches de l’interface.",
+          "description": "Ajoutez une teinte lumineuse et subtile à la barre latérale et à l’arrière-plan de l’espace de travail.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

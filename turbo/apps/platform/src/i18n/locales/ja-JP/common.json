@@ -5026,7 +5026,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
+          "description": "サイドバーとワークスペースの背景に明るく淡い色合いを加えます。",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",

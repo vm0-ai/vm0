@@ -421,7 +421,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:
-      "Let people choose a palette-derived theme for interface surfaces, borders, states, and workspace ambience.",
+      "Tint the sidebar and add a palette-derived ambient gradient to the workspace background.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

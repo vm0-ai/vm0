@@ -5092,7 +5092,7 @@
       },
       "appearance": {
         "colorTheme": {
-          "description": "Applica una palette luminosa e delicata a ogni livello dell'interfaccia.",
+          "description": "Aggiungi una tonalità luminosa e delicata alla barra laterale e allo sfondo dell'area di lavoro.",
           "options": {
             "berryBlush": "Berry blush",
             "blueHorizon": "Blue horizon",
