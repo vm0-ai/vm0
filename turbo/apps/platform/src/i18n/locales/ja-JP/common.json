@@ -3383,7 +3383,7 @@
         },
         "slack": {
           "description": "ワークスペースでAIチームメイトとチャット",
-          "title": "Slackに接続"
+          "title": "SlackでOkouとチャット"
         },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",

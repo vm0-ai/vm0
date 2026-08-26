@@ -3383,7 +3383,7 @@
         },
         "slack": {
           "description": "Chat with your AI teammate in your workspace",
-          "title": "Connect Slack"
+          "title": "Chat with Okou in Slack"
         },
         "video": {
           "description": "Turn your ideas into video",

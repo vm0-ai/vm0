@@ -267,7 +267,7 @@ describe("onboarding flow", () => {
     await openMakePage();
 
     const slackOption = firstItem(screen.getAllByRole("radio"));
-    expect(slackOption).toHaveTextContent("Connect Slack");
+    expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
     expect(
       screen.getByTestId("onboarding-slack-illustration"),
     ).toBeInTheDocument();

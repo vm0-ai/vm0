@@ -3442,7 +3442,7 @@
         },
         "slack": {
           "description": "Chatta con il tuo collega IA nel tuo spazio di lavoro",
-          "title": "Connetti Slack"
+          "title": "Chatta con Okou su Slack"
         },
         "video": {
           "description": "Trasforma le tue idee in video",
