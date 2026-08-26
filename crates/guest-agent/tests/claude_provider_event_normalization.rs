@@ -5,6 +5,7 @@ mod common;
 
 use base64::Engine as _;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::managed_command::render_managed_shell_command;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -17,6 +18,9 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let server = common::RecordingServer::start(200, Duration::ZERO).await?;
+    let encoded_secret = base64::engine::general_purpose::STANDARD.encode(SECRET);
+    let original_command = format!("printf '%s' '{SECRET}' '{encoded_secret}'");
+    let managed_command = render_managed_shell_command(&original_command)?;
     let source_events = [
         json!({
             "type": "system",
@@ -38,9 +42,7 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
                         "id": "tool-use-a",
                         "name": "Bash",
                         "input": {
-                            "command": format!(
-                                "exec '/usr/local/bin/guest-tool-exec' --shell \"$0\" -c 'printf {SECRET}'"
-                            )
+                            "command": managed_command
                         }
                     },
                     {
@@ -99,7 +101,6 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
         Duration::ZERO,
     )?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
-    let encoded_secret = base64::engine::general_purpose::STANDARD.encode(SECRET);
     let masker = SecretMasker::from_raw(&encoded_secret);
 
     let result = tokio::time::timeout(
@@ -194,7 +195,7 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
         delivered[2]
             .pointer("/message/content/0/input/command")
             .and_then(Value::as_str),
-        Some("exec '/usr/local/bin/guest-tool-exec' --shell \"$0\" -c 'printf ***'")
+        Some("printf '%s' '***' '***'")
     );
     assert_eq!(
         delivered[3]
@@ -216,6 +217,9 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
     );
     let delivered_json = serde_json::to_string(&delivered)?;
     assert!(!delivered_json.contains(SECRET));
+    assert!(!delivered_json.contains(&encoded_secret));
+    assert!(!delivered_json.contains("guest-tool-exec"));
+    assert!(!delivered_json.contains("vm0.command"));
     assert!(delivered_json.contains("***"));
 
     let local_events = read_jsonl(runtime.paths.agent_log_file())?;
