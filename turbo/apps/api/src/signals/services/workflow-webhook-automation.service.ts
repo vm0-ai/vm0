@@ -13,11 +13,12 @@ import {
   workflows,
 } from "@okouai/db/schema/workflow";
 import { verifyCallbackRequest } from "../../lib/event-consumer/verify-signature";
+import { resolveImmutableDedupeInsert } from "../../lib/immutable-dedupe-insert";
 import { testOverride } from "../../lib/singleton";
 import { webUrl } from "../../lib/web-url";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
@@ -490,19 +491,21 @@ async function insertWebhookDelivery(
     readonly currentTime: Date;
   },
 ): Promise<{ readonly id: string } | null> {
-  const [delivery] = await db
-    .insert(workflowWebhookDeliveries)
-    .values({
-      automationId: args.automationId,
-      deliveryKey: args.deliveryKey,
-      bodySha256: args.bodySha256,
-      status: "accepted",
-      receivedAt: args.currentTime,
-      createdAt: args.currentTime,
-    })
-    .onConflictDoNothing()
-    .returning({ id: workflowWebhookDeliveries.id });
-  return delivery ?? null;
+  return resolveImmutableDedupeInsert(
+    await settle(
+      db
+        .insert(workflowWebhookDeliveries)
+        .values({
+          automationId: args.automationId,
+          deliveryKey: args.deliveryKey,
+          bodySha256: args.bodySha256,
+          status: "accepted",
+          receivedAt: args.currentTime,
+          createdAt: args.currentTime,
+        })
+        .returning({ id: workflowWebhookDeliveries.id }),
+    ),
+  );
 }
 
 async function deleteWebhookDelivery(
