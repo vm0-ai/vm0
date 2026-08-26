@@ -18,6 +18,7 @@ import { listConnectorAccountsCommand } from "../list";
 const FIRST_CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 const SECOND_CONNECTION_ID = "22222222-2222-4222-8222-222222222222";
 const CUSTOM_CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
+const FALLBACK_CONNECTION_ID = "44444444-4444-4444-8444-444444444444";
 
 function connectorAccount(
   overrides: Partial<ConnectorAccountConnection> = {},
@@ -102,7 +103,7 @@ describe("okou connector account list command", () => {
           reconnectReason: "authorization_expired_or_revoked",
         }),
         connectorAccount({
-          id: "44444444-4444-4444-8444-444444444444",
+          id: FALLBACK_CONNECTION_ID,
           authMethod: "api-token",
           externalEmail: "",
           externalId: "",
@@ -128,6 +129,15 @@ describe("okou connector account list command", () => {
     expect(output).toContain("reconnect-required");
     expect(output).toContain(FIRST_CONNECTION_ID);
     expect(output).toContain(SECOND_CONNECTION_ID);
+    const workRow = output.split("\n").find((row) => {
+      return row.includes(FIRST_CONNECTION_ID);
+    });
+    expect(workRow).toContain("yes");
+    expect(workRow).toContain("oauth");
+    const fallbackRow = output.split("\n").find((row) => {
+      return row.includes(FALLBACK_CONNECTION_ID);
+    });
+    expect(fallbackRow).toContain("api-token");
   });
 
   it("resolves a custom connector slug to its connection target", async () => {
