@@ -410,7 +410,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Apply a palette-derived tint across interface surfaces, borders, states, and workspace ambience.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    // Ming only for the first pass; widen once the system mapping settles.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ConnectorDiscovery]: {
     maintainer: "ethan@vm0.ai",
