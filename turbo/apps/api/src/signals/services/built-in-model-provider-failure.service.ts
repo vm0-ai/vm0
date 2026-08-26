@@ -2,6 +2,7 @@ import {
   runStatusSchema,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { and, eq, gt, lte } from "drizzle-orm";
@@ -117,7 +118,7 @@ function routeForRun(
   run: BuiltInModelProviderFailureRun,
 ): RouteIdentity | null {
   if (
-    run.modelProvider !== "vm0" ||
+    !isBuiltInModelProviderType(run.modelProvider) ||
     !run.selectedModel ||
     !run.modelRuntimeProvider ||
     !run.modelRuntimeModel ||
