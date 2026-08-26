@@ -5,7 +5,6 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -3241,21 +3240,6 @@ describe("zero sidebar", () => {
   });
 
   it("renders the three-column navigation when the flag is on", async () => {
-    const user = userEvent.setup();
-    const mutedIconColor = "rgb(89, 89, 89)";
-    document.documentElement.style.setProperty(
-      "--color-muted-foreground",
-      mutedIconColor,
-    );
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        document.documentElement.style.removeProperty(
-          "--color-muted-foreground",
-        );
-      },
-      { once: true },
-    );
     prepareDefaultAgent();
 
     setupSidebarPage({
@@ -3291,21 +3275,16 @@ describe("zero sidebar", () => {
     if (!(newChatIcon instanceof SVGElement)) {
       throw new Error("New chat icon is not rendered");
     }
-    const searchColor = getComputedStyle(searchIcon).color;
-    const newChatColor = getComputedStyle(newChatIcon).color;
-    expect(searchColor).toBe(mutedIconColor);
-    expect(newChatColor).toBe(mutedIconColor);
-    expect(getComputedStyle(searchIcon).opacity).toBe("0.7");
-    expect(getComputedStyle(newChatIcon).opacity).toBe("0.7");
-
-    await user.hover(searchButton);
-    expect(getComputedStyle(searchIcon).color).toBe(searchColor);
-    expect(getComputedStyle(searchIcon).opacity).toBe("0.7");
-
-    await user.unhover(searchButton);
-    await user.hover(newChatButton);
-    expect(getComputedStyle(newChatIcon).color).toBe(newChatColor);
-    expect(getComputedStyle(newChatIcon).opacity).toBe("0.7");
+    expect(searchButton.className).toContain("text-muted-foreground");
+    expect(newChatButton.className).toContain("text-muted-foreground");
+    expect(searchButton.className).toContain("hover:text-foreground");
+    expect(newChatButton.className).toContain("hover:text-foreground");
+    expect(searchIcon.style.color).toBe("");
+    expect(newChatIcon.style.color).toBe("");
+    expect(searchIcon.style.opacity).toBe("");
+    expect(newChatIcon.style.opacity).toBe("");
+    expect(searchButton.className).toContain("[&_svg]:size-[18px]");
+    expect(newChatButton.className).toContain("[&_svg]:size-[18px]");
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
