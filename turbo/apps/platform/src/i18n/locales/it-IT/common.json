@@ -2022,7 +2022,6 @@
     "forward": {
       "action": "Inoltra",
       "agents": "Agenti",
-      "agentsDescription": "Avvia una nuova chat con un agente.",
       "back": "Indietro",
       "content": "Contenuto",
       "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
@@ -2030,7 +2029,6 @@
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",
       "threads": "Chat",
-      "threadsDescription": "Aggiungi questo contenuto a una chat esistente.",
       "title": "Inoltra a"
     },
     "mail": {

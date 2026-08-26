@@ -114,17 +114,10 @@ function ForwardTargetPicker({
         {matchingAgents.length > 0 ? (
           <CommandGroup
             heading={
-              <span className="flex flex-col gap-0.5 pb-2">
-                <span className="text-sm font-medium leading-5 text-foreground">
-                  {t(($) => {
-                    return $.chat.forward.agents;
-                  })}
-                </span>
-                <span className="text-xs font-normal leading-4 text-muted-foreground">
-                  {t(($) => {
-                    return $.chat.forward.agentsDescription;
-                  })}
-                </span>
+              <span className="block pb-2 text-sm font-medium leading-5 text-foreground">
+                {t(($) => {
+                  return $.chat.forward.agents;
+                })}
               </span>
             }
           >
@@ -151,17 +144,10 @@ function ForwardTargetPicker({
           <CommandGroup
             className={matchingAgents.length > 0 ? "mt-4" : undefined}
             heading={
-              <span className="flex flex-col gap-0.5 pb-2">
-                <span className="text-sm font-medium leading-5 text-foreground">
-                  {t(($) => {
-                    return $.chat.forward.threads;
-                  })}
-                </span>
-                <span className="text-xs font-normal leading-4 text-muted-foreground">
-                  {t(($) => {
-                    return $.chat.forward.threadsDescription;
-                  })}
-                </span>
+              <span className="block pb-2 text-sm font-medium leading-5 text-foreground">
+                {t(($) => {
+                  return $.chat.forward.threads;
+                })}
               </span>
             }
           >

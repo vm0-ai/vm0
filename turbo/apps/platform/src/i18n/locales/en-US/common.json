@@ -1989,7 +1989,6 @@
     "forward": {
       "action": "Forward",
       "agents": "Agents",
-      "agentsDescription": "Start a new chat with an agent.",
       "back": "Back",
       "content": "Content",
       "description": "Forward selected content to an agent or chat.",
@@ -1997,7 +1996,6 @@
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
       "threads": "Chats",
-      "threadsDescription": "Add this content to an existing chat.",
       "title": "Forward to"
     },
     "mail": {

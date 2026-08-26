@@ -1989,7 +1989,6 @@
     "forward": {
       "action": "Weiterleiten",
       "agents": "Agenten",
-      "agentsDescription": "Einen neuen Chat mit einem Agenten starten.",
       "back": "Zurück",
       "content": "Inhalt",
       "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
@@ -1997,7 +1996,6 @@
       "search": "Agenten und Chats suchen...",
       "sent": "Erfolgreich weitergeleitet",
       "threads": "Chats",
-      "threadsDescription": "Diesen Inhalt zu einem bestehenden Chat hinzufügen.",
       "title": "Weiterleiten an"
     },
     "mail": {

@@ -2022,7 +2022,6 @@
     "forward": {
       "action": "Encaminhar",
       "agents": "Agentes",
-      "agentsDescription": "Inicie uma nova conversa com um agente.",
       "back": "Voltar",
       "content": "Conteúdo",
       "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
@@ -2030,7 +2029,6 @@
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",
       "threads": "Conversas",
-      "threadsDescription": "Adicione este conteúdo a uma conversa existente.",
       "title": "Encaminhar para"
     },
     "mail": {

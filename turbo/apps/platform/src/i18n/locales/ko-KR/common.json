@@ -1986,7 +1986,6 @@
     "forward": {
       "action": "전달",
       "agents": "에이전트",
-      "agentsDescription": "에이전트와 새 채팅을 시작합니다.",
       "back": "뒤로",
       "content": "내용",
       "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
@@ -1994,7 +1993,6 @@
       "search": "에이전트 및 채팅 검색...",
       "sent": "전달했습니다",
       "threads": "채팅",
-      "threadsDescription": "이 내용을 기존 채팅에 추가합니다.",
       "title": "전달 대상"
     },
     "mail": {
