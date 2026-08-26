@@ -872,6 +872,10 @@ describe("organization model providers settings", () => {
       "built-in",
     );
     mockAdminOrg();
+    mockBillingCapabilities({
+      supportByok: false,
+      restrictedVm0Models: false,
+    });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([canonicalPolicy]);
     let writtenProviderType: string | null = null;

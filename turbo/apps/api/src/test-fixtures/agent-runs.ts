@@ -553,7 +553,12 @@ export async function setRunModelRuntimeRouteFixture(args: {
   }
 }
 
-/** Simulate a persisted provider discriminator written by a later release. */
+/**
+ * Simulate a persisted discriminator written by a later release. The current
+ * production API intentionally cannot construct this canonical row because
+ * its write fence still rejects `built-in`; compatibility reads still require
+ * permanent coverage before that later writer exists.
+ */
 export async function setRunModelProviderFixture(args: {
   readonly runId: string;
   readonly modelProvider: ModelProviderType;

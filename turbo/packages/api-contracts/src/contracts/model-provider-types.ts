@@ -15,6 +15,12 @@ export const MODEL_PROVIDER_WRITE_TYPE_IDS = [
   "vm0",
 ] as const;
 
+/**
+ * Phase D1 DB/API expand compatibility for the persisted provider discriminator.
+ * Remove the legacy `vm0` read alias only after #28368's writer/backfill release
+ * is accepted and no legacy rows or rollback consumers remain. Until then,
+ * every write surface must stay on MODEL_PROVIDER_WRITE_TYPE_IDS.
+ */
 export const MODEL_PROVIDER_TYPE_IDS = [
   ...MODEL_PROVIDER_WRITE_TYPE_IDS,
   "built-in",

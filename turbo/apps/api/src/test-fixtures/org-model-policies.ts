@@ -7,7 +7,12 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
 
-/** Simulate a persisted provider discriminator written by a later release. */
+/**
+ * Simulate a persisted discriminator written by a later release. The current
+ * production API intentionally cannot construct this canonical row because
+ * its write fence still rejects `built-in`; compatibility reads still require
+ * permanent coverage before that later writer exists.
+ */
 export async function setOrgModelPolicyProviderTypeFixture(args: {
   readonly orgId: string;
   readonly model: SupportedRunModel;
