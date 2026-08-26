@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.174.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.174.0...runner-rs-v0.174.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **python:** protect refreshed auth cache entries from late 401s ([#29558](https://github.com/vm0-ai/vm0/issues/29558)) ([93385d4](https://github.com/vm0-ai/vm0/commit/93385d438bbf8255655df9acccda12e74c607afc))
+* **runner:** report unavailable best-effort timezones ([#29568](https://github.com/vm0-ai/vm0/issues/29568)) ([db27c70](https://github.com/vm0-ai/vm0/commit/db27c7048a1146dcaf02d363f86d5da7833df543))
+
+
+### Documentation
+
+* **python:** document firewall rule specificity ordering ([#29554](https://github.com/vm0-ai/vm0/issues/29554)) ([59824da](https://github.com/vm0-ai/vm0/commit/59824dae7a6c95cb6f7747989502dcd3c0a44d0f))
+
+
+### Refactoring
+
+* **python:** avoid caching resolved auth base urls ([#29570](https://github.com/vm0-ai/vm0/issues/29570)) ([eefb22f](https://github.com/vm0-ai/vm0/commit/eefb22fec3eec66d587725be23db419d739ab038))
+
+
+### Performance Improvements
+
+* **runner:** bound mitmdump log record buffering ([#29560](https://github.com/vm0-ai/vm0/issues/29560)) ([12d6dd6](https://github.com/vm0-ai/vm0/commit/12d6dd6616c22a340a89904314b13f489ba81dc4))
+
 ## [0.174.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.173.12...runner-rs-v0.174.0) (2026-08-26)
 
 
