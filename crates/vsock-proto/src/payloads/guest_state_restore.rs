@@ -32,7 +32,7 @@ pub enum GuestStateRestoreTimezone<'a> {
 }
 
 /// Decoded fixed guest-state restore request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct DecodedGuestStateRestoreRequest<'a> {
     /// Positive child-process timeout in milliseconds.
     pub timeout_ms: u32,
@@ -44,6 +44,19 @@ pub struct DecodedGuestStateRestoreRequest<'a> {
     pub entropy: &'a [u8],
     /// Optional timezone behavior.
     pub timezone: GuestStateRestoreTimezone<'a>,
+}
+
+impl std::fmt::Debug for DecodedGuestStateRestoreRequest<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DecodedGuestStateRestoreRequest")
+            .field("timeout_ms", &self.timeout_ms)
+            .field("unix_seconds", &self.unix_seconds)
+            .field("unix_nanoseconds", &self.unix_nanoseconds)
+            .field("entropy_len", &self.entropy.len())
+            .field("timezone", &self.timezone)
+            .finish()
+    }
 }
 
 /// Encode a fixed guest-state restore request payload.
@@ -382,6 +395,19 @@ mod tests {
             assert_eq!(decoded.entropy, entropy);
             assert_eq!(decoded.timezone, timezone);
         }
+    }
+
+    #[test]
+    fn request_debug_redacts_entropy_contents() {
+        let entropy = [222; GUEST_STATE_RESTORE_ENTROPY_BYTES];
+        let payload =
+            encode_guest_state_restore_request(1, 1, 0, &entropy, GuestStateRestoreTimezone::None)
+                .unwrap();
+        let decoded = decode_guest_state_restore_request(&payload).unwrap();
+
+        let debug = format!("{decoded:?}");
+        assert!(debug.contains("entropy_len: 256"), "debug={debug}");
+        assert!(!debug.contains("222, 222"), "debug={debug}");
     }
 
     #[test]
