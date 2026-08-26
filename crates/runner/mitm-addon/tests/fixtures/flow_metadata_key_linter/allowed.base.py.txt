@@ -297,3 +297,7 @@ try:
     pass
 except Exception as meta:
     value = meta["sandbox_run_id"]
+flow.metadata.update(zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]), ["run-1"]))
+flow.metadata.update(
+    zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]).keys(), ["run-1"])
+)

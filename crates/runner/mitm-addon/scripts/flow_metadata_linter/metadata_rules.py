@@ -161,7 +161,7 @@ def _metadata_collection_call_violations(
 ) -> list[str]:
     if isinstance(node.func, ast.Attribute):
         if (
-            mode is _MetadataCollectionMode.MAPPING_INPUT
+            mode is not _MetadataCollectionMode.PAIR_ITERABLE
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "dict"
             and node.func.attr == "fromkeys"
