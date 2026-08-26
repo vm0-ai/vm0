@@ -305,6 +305,36 @@ const workflowIdentities = [
     kind: "constraint",
     sources: SNAPSHOT_AND_CATALOG,
   },
+  {
+    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
+  {
+    key: "constraint:public.zero_workflow_github_processed_events.zero_workflow_github_processed_events_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
+  {
+    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
+  {
+    key: "constraint:public.zero_workflow_webhook_automations.zero_workflow_webhook_automations_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
+  {
+    key: "constraint:public.zero_workflow_webhook_deliveries.zero_workflow_webhook_deliveries_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
+  {
+    key: "constraint:public.zero_workflows.zero_workflows_pkey",
+    kind: "constraint",
+    sources: CATALOG_ONLY,
+  },
 ] as const satisfies readonly PhysicalIdentitySpec[];
 
 const acquisitionDisposition = {
@@ -375,14 +405,14 @@ const desktopDisposition = {
 const runnerProfileDisposition = {
   classification: "retain",
   reason:
-    "vm0/default remains the persisted Runner routing profile shared by the API, queue, and supported Runner releases.",
-  ownerIssue: "#28368",
+    "vm0/default remains a retained Runner routing protocol shared by the API, queue, and supported Runner releases, with its database surface tracked by #28368.",
+  ownerIssue: "#26701",
   writerStopCondition:
-    "#28368 records that API and Runner releases both emit an approved canonical profile and the oldest supported rollback Runner no longer requires vm0/default.",
+    "#26701 records that API and Runner releases both emit an approved canonical profile and the oldest supported rollback Runner no longer requires vm0/default.",
   drainEvidence:
-    "Queue counts remain zero for vm0/default across a 7-day Runner release cycle and no supported Runner advertises the legacy profile.",
+    "#26701 records exact zero queue counts for vm0/default across a 7-day Runner release cycle and no supported Runner advertises the legacy profile.",
   removalGate:
-    "#28368 approves a separate contract only after the 7-day zero-queue window and exact supported-Runner inventory both pass.",
+    "#26701 approves a separate contract only after the 7-day zero-queue window and exact supported-Runner inventory both pass.",
 } as const satisfies ManifestDisposition;
 
 const nonWorkflowPhysicalEntries = [

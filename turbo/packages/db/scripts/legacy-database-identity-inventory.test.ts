@@ -18,6 +18,7 @@ import {
   discoverLegacySnapshotIdentities,
   discoverPersistedSemanticLegacyIdentities,
   hasLegacyDatabaseToken,
+  REPLAYED_CATALOG_RELATION_CONSTRAINT_TYPES,
   type LegacyCatalogCandidate,
 } from "./legacy-database-identity-inventory";
 
@@ -85,6 +86,47 @@ describe("active legacy database identity inventory", () => {
         source: "semantic-contract",
       });
     }).not.toThrow();
+  });
+
+  it("keeps ordinary replay constraints complete without counting backing indexes", () => {
+    expect(REPLAYED_CATALOG_RELATION_CONSTRAINT_TYPES).toEqual(
+      expect.arrayContaining(["p", "u", "x"]),
+    );
+
+    const expectedPrimaryKeys = LEGACY_DATABASE_IDENTITY_MANIFEST.flatMap(
+      (entry) => {
+        if (entry.kind !== "relation" || entry.ownerIssue !== "#26896") {
+          return [];
+        }
+        const relationMember = entry.members[0];
+        if (!relationMember) return [];
+        const tableName = relationMember.slice(
+          relationMember.lastIndexOf(".") + 1,
+        );
+        return [`constraint:${relationMember}.${tableName}_pkey`];
+      },
+    ).sort();
+    const replayedPrimaryKeys = LEGACY_DATABASE_IDENTITY_MANIFEST.filter(
+      (entry) => {
+        return (
+          entry.kind === "constraint" &&
+          entry.sources.length === 1 &&
+          entry.sources[0] === "catalog" &&
+          entry.key.endsWith("_pkey")
+        );
+      },
+    )
+      .map((entry) => {
+        return entry.key;
+      })
+      .sort();
+
+    expect(replayedPrimaryKeys).toEqual(expectedPrimaryKeys);
+    expect(
+      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
+        return entry.kind === "index" && entry.key.endsWith("_pkey");
+      }),
+    ).toEqual([]);
   });
 
   it("ignores historical snapshots that are not selected by the journal tail", async () => {
@@ -351,6 +393,25 @@ describe("active legacy database identity inventory", () => {
         }),
       ]);
     }).toThrowError(/overlapping semantic families/u);
+  });
+
+  it("assigns the retained Runner profile protocol to its protocol owner", () => {
+    const runnerProfileEntry = LEGACY_DATABASE_IDENTITY_MANIFEST.find(
+      (entry) => {
+        return (
+          entry.key ===
+          "enum-discriminator-value:contract.runner-profile = 'vm0/default'"
+        );
+      },
+    );
+
+    expect(runnerProfileEntry).toMatchObject({
+      classification: "retain",
+      ownerIssue: "#26701",
+    });
+    expect(runnerProfileEntry?.writerStopCondition).toContain("#26701");
+    expect(runnerProfileEntry?.drainEvidence).toContain("#26701");
+    expect(runnerProfileEntry?.removalGate).toContain("#26701");
   });
 
   it.each([

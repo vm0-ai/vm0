@@ -28,6 +28,14 @@ const MEASURABLE_METADATA_PATTERN =
   /\b(?:all|both|every|exact|no|only|zero)\b|\b\d+(?:-day|-hour)\b|\b\d+\s+(?:consecutive\s+)?(?:days?|hours?)\b/iu;
 const WILDCARD_PATTERN = /[*?]/u;
 
+export const REPLAYED_CATALOG_RELATION_CONSTRAINT_TYPES = [
+  "c",
+  "f",
+  "p",
+  "u",
+  "x",
+] as const;
+
 export interface DiscoveredLegacyDatabaseIdentity {
   readonly evidence: readonly string[];
   readonly key: string;
@@ -88,6 +96,7 @@ interface CatalogIndexRow {
 
 interface CatalogConstraintRow {
   readonly constraintName: string;
+  readonly constraintType: string;
   readonly definition: string;
   readonly schemaName: string;
   readonly tableName: string;
@@ -314,167 +323,196 @@ function snapshotColumnSurfaces(snapshot: unknown): SnapshotColumnSurface[] {
   return surfaces;
 }
 
-export function discoverLegacySnapshotIdentities(
-  snapshot: unknown,
-): readonly DiscoveredLegacyDatabaseIdentity[] {
-  const root = asRecord(snapshot, "Drizzle snapshot");
+function snapshotColumnCandidates(args: {
+  readonly relationMember: string;
+  readonly table: Record<string, unknown>;
+  readonly tableKey: string;
+}): LegacyCatalogCandidate[] {
   const candidates: LegacyCatalogCandidate[] = [];
-
-  for (const [tableKey, rawTable] of Object.entries(snapshotTables(snapshot))) {
-    const table = asRecord(rawTable, `Drizzle snapshot table ${tableKey}`);
-    const tableName = snapshotObjectName(tableKey, table);
-    const schemaName = snapshotSchemaName(tableKey, table);
-    const relationMember = `${schemaName}.${tableName}`;
+  const columns = optionalRecord(
+    args.table.columns,
+    `Drizzle snapshot table ${args.tableKey} columns`,
+  );
+  for (const [columnKey, rawColumn] of Object.entries(columns)) {
+    const column = asRecord(
+      rawColumn,
+      `Drizzle snapshot column ${args.tableKey}.${columnKey}`,
+    );
+    const columnName =
+      optionalString(
+        column.name,
+        `Drizzle snapshot column ${args.tableKey}.${columnKey}.name`,
+      ) ?? columnKey;
+    const columnMember = `${args.relationMember}.${columnName}`;
     candidates.push(
       candidate(
-        `relation:${relationMember}`,
-        "relation",
-        relationMember,
-        [tableName],
-        `snapshot:relation:${relationMember}`,
+        `column:${columnMember}`,
+        "column",
+        columnMember,
+        [columnName],
+        `snapshot:column:${columnMember}`,
       ),
     );
-
-    const columns = optionalRecord(
-      table.columns,
-      `Drizzle snapshot table ${tableKey} columns`,
-    );
-    for (const [columnKey, rawColumn] of Object.entries(columns)) {
-      const column = asRecord(
-        rawColumn,
-        `Drizzle snapshot column ${tableKey}.${columnKey}`,
-      );
-      const columnName =
-        optionalString(
-          column.name,
-          `Drizzle snapshot column ${tableKey}.${columnKey}.name`,
-        ) ?? columnKey;
-      const columnMember = `${relationMember}.${columnName}`;
+    if (column.default !== undefined) {
       candidates.push(
         candidate(
-          `column:${columnMember}`,
-          "column",
+          `default:${columnMember}`,
+          "default",
           columnMember,
-          [columnName],
-          `snapshot:column:${columnMember}`,
-        ),
-      );
-      if (column.default !== undefined) {
-        candidates.push(
-          candidate(
-            `default:${columnMember}`,
-            "default",
-            columnMember,
-            [String(column.default)],
-            `snapshot:default:${columnMember}`,
-          ),
-        );
-      }
-    }
-
-    const indexes = optionalRecord(
-      table.indexes,
-      `Drizzle snapshot table ${tableKey} indexes`,
-    );
-    for (const [indexKey, rawIndex] of Object.entries(indexes)) {
-      const index = asRecord(
-        rawIndex,
-        `Drizzle snapshot index ${tableKey}.${indexKey}`,
-      );
-      const declaredName =
-        optionalString(
-          index.name,
-          `Drizzle snapshot index ${tableKey}.${indexKey}.name`,
-        ) ?? indexKey;
-      const indexName = postgresIdentifier(declaredName);
-      const member = `${schemaName}.${indexName}`;
-      candidates.push(
-        candidate(
-          `index:${member}`,
-          "index",
-          member,
-          [declaredName, JSON.stringify(index)],
-          `snapshot:index:${member}`,
+          [String(column.default)],
+          `snapshot:default:${columnMember}`,
         ),
       );
     }
+  }
+  return candidates;
+}
 
-    for (const collectionName of ["foreignKeys", "checkConstraints"] as const) {
-      const constraints = optionalRecord(
-        table[collectionName],
-        `Drizzle snapshot table ${tableKey} ${collectionName}`,
-      );
-      for (const [constraintKey, rawConstraint] of Object.entries(
-        constraints,
-      )) {
-        const constraint = asRecord(
-          rawConstraint,
-          `Drizzle snapshot constraint ${tableKey}.${constraintKey}`,
-        );
-        const declaredName =
-          optionalString(
-            constraint.name,
-            `Drizzle snapshot constraint ${tableKey}.${constraintKey}.name`,
-          ) ?? constraintKey;
-        const constraintName = postgresIdentifier(declaredName);
-        const member = `${relationMember}.${constraintName}`;
-        candidates.push(
-          candidate(
-            `constraint:${member}`,
-            "constraint",
-            member,
-            [declaredName, JSON.stringify(constraint)],
-            `snapshot:constraint:${member}`,
-          ),
-        );
-      }
-    }
-
-    const policies = optionalRecord(
-      table.policies,
-      `Drizzle snapshot table ${tableKey} policies`,
+function snapshotIndexCandidates(args: {
+  readonly schemaName: string;
+  readonly table: Record<string, unknown>;
+  readonly tableKey: string;
+}): LegacyCatalogCandidate[] {
+  const indexes = optionalRecord(
+    args.table.indexes,
+    `Drizzle snapshot table ${args.tableKey} indexes`,
+  );
+  return Object.entries(indexes).map(([indexKey, rawIndex]) => {
+    const index = asRecord(
+      rawIndex,
+      `Drizzle snapshot index ${args.tableKey}.${indexKey}`,
     );
-    for (const [policyKey, rawPolicy] of Object.entries(policies)) {
-      const policy = asRecord(
-        rawPolicy,
-        `Drizzle snapshot policy ${tableKey}.${policyKey}`,
+    const declaredName =
+      optionalString(
+        index.name,
+        `Drizzle snapshot index ${args.tableKey}.${indexKey}.name`,
+      ) ?? indexKey;
+    const indexName = postgresIdentifier(declaredName);
+    const member = `${args.schemaName}.${indexName}`;
+    return candidate(
+      `index:${member}`,
+      "index",
+      member,
+      [declaredName, JSON.stringify(index)],
+      `snapshot:index:${member}`,
+    );
+  });
+}
+
+function snapshotConstraintCandidates(args: {
+  readonly relationMember: string;
+  readonly table: Record<string, unknown>;
+  readonly tableKey: string;
+}): LegacyCatalogCandidate[] {
+  const candidates: LegacyCatalogCandidate[] = [];
+  for (const collectionName of ["foreignKeys", "checkConstraints"] as const) {
+    const constraints = optionalRecord(
+      args.table[collectionName],
+      `Drizzle snapshot table ${args.tableKey} ${collectionName}`,
+    );
+    for (const [constraintKey, rawConstraint] of Object.entries(constraints)) {
+      const constraint = asRecord(
+        rawConstraint,
+        `Drizzle snapshot constraint ${args.tableKey}.${constraintKey}`,
       );
       const declaredName =
         optionalString(
-          policy.name,
-          `Drizzle snapshot policy ${tableKey}.${policyKey}.name`,
-        ) ?? policyKey;
-      const policyName = postgresIdentifier(declaredName);
-      const member = `${relationMember}.policy:${policyName}`;
+          constraint.name,
+          `Drizzle snapshot constraint ${args.tableKey}.${constraintKey}.name`,
+        ) ?? constraintKey;
+      const constraintName = postgresIdentifier(declaredName);
+      const member = `${args.relationMember}.${constraintName}`;
       candidates.push(
         candidate(
           `constraint:${member}`,
           "constraint",
           member,
-          [declaredName, JSON.stringify(policy)],
-          `snapshot:policy:${member}`,
+          [declaredName, JSON.stringify(constraint)],
+          `snapshot:constraint:${member}`,
         ),
       );
     }
   }
+  return candidates;
+}
 
+function snapshotPolicyCandidates(args: {
+  readonly relationMember: string;
+  readonly table: Record<string, unknown>;
+  readonly tableKey: string;
+}): LegacyCatalogCandidate[] {
+  const policies = optionalRecord(
+    args.table.policies,
+    `Drizzle snapshot table ${args.tableKey} policies`,
+  );
+  return Object.entries(policies).map(([policyKey, rawPolicy]) => {
+    const policy = asRecord(
+      rawPolicy,
+      `Drizzle snapshot policy ${args.tableKey}.${policyKey}`,
+    );
+    const declaredName =
+      optionalString(
+        policy.name,
+        `Drizzle snapshot policy ${args.tableKey}.${policyKey}.name`,
+      ) ?? policyKey;
+    const policyName = postgresIdentifier(declaredName);
+    const member = `${args.relationMember}.policy:${policyName}`;
+    return candidate(
+      `constraint:${member}`,
+      "constraint",
+      member,
+      [declaredName, JSON.stringify(policy)],
+      `snapshot:policy:${member}`,
+    );
+  });
+}
+
+function snapshotTableCandidates(
+  tableKey: string,
+  rawTable: unknown,
+): LegacyCatalogCandidate[] {
+  const table = asRecord(rawTable, `Drizzle snapshot table ${tableKey}`);
+  const tableName = snapshotObjectName(tableKey, table);
+  const schemaName = snapshotSchemaName(tableKey, table);
+  const relationMember = `${schemaName}.${tableName}`;
+  return [
+    candidate(
+      `relation:${relationMember}`,
+      "relation",
+      relationMember,
+      [tableName],
+      `snapshot:relation:${relationMember}`,
+    ),
+    ...snapshotColumnCandidates({ relationMember, table, tableKey }),
+    ...snapshotIndexCandidates({ schemaName, table, tableKey }),
+    ...snapshotConstraintCandidates({ relationMember, table, tableKey }),
+    ...snapshotPolicyCandidates({ relationMember, table, tableKey }),
+  ];
+}
+
+function snapshotViewCandidates(
+  root: Record<string, unknown>,
+): LegacyCatalogCandidate[] {
   const views = optionalRecord(root.views, "Drizzle snapshot views");
-  for (const [viewKey, rawView] of Object.entries(views)) {
+  return Object.entries(views).map(([viewKey, rawView]) => {
     const view = asRecord(rawView, `Drizzle snapshot view ${viewKey}`);
     const viewName = snapshotObjectName(viewKey, view);
     const schemaName = snapshotSchemaName(viewKey, view);
     const member = `${schemaName}.${viewName}`;
-    candidates.push(
-      candidate(
-        `view:${member}`,
-        "view",
-        member,
-        [viewName, JSON.stringify(view)],
-        `snapshot:view:${member}`,
-      ),
+    return candidate(
+      `view:${member}`,
+      "view",
+      member,
+      [viewName, JSON.stringify(view)],
+      `snapshot:view:${member}`,
     );
-  }
+  });
+}
 
+function snapshotEnumCandidates(
+  root: Record<string, unknown>,
+): LegacyCatalogCandidate[] {
+  const candidates: LegacyCatalogCandidate[] = [];
   const enums = optionalRecord(root.enums, "Drizzle snapshot enums");
   for (const [enumKey, rawEnum] of Object.entries(enums)) {
     const enumObject = asRecord(rawEnum, `Drizzle snapshot enum ${enumKey}`);
@@ -515,7 +553,22 @@ export function discoverLegacySnapshotIdentities(
       );
     }
   }
+  return candidates;
+}
 
+export function discoverLegacySnapshotIdentities(
+  snapshot: unknown,
+): readonly DiscoveredLegacyDatabaseIdentity[] {
+  const root = asRecord(snapshot, "Drizzle snapshot");
+  const candidates = [
+    ...Object.entries(snapshotTables(snapshot)).flatMap(
+      ([tableKey, rawTable]) => {
+        return snapshotTableCandidates(tableKey, rawTable);
+      },
+    ),
+    ...snapshotViewCandidates(root),
+    ...snapshotEnumCandidates(root),
+  ];
   return discoverCandidates(candidates, "snapshot");
 }
 
@@ -562,12 +615,9 @@ export function discoverLegacyCatalogIdentities(
   return discoverCandidates(candidates, "catalog");
 }
 
-export async function discoverReplayedCatalogLegacyIdentities(
+async function catalogRelationCandidates(
   client: Client,
-): Promise<readonly DiscoveredLegacyDatabaseIdentity[]> {
-  await client.query(`SET search_path TO public, pg_catalog`);
-  const candidates: LegacyCatalogCandidate[] = [];
-
+): Promise<LegacyCatalogCandidate[]> {
   const relations = await client.query<CatalogRelationRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -585,23 +635,25 @@ export async function discoverReplayedCatalogLegacyIdentities(
       AND relation."relkind" IN ('r', 'p', 'v', 'm')
     ORDER BY namespace."nspname", relation."relname"
   `);
-  for (const relation of relations.rows) {
+  return relations.rows.map((relation) => {
     const kind =
       relation.relationKind === "v" || relation.relationKind === "m"
         ? "view"
         : "relation";
     const member = `${relation.schemaName}.${relation.objectName}`;
-    candidates.push(
-      candidate(
-        `${kind}:${member}`,
-        kind,
-        member,
-        [relation.objectName, relation.definition ?? ""],
-        `catalog:relation:${relation.relationKind}:${member}`,
-      ),
+    return candidate(
+      `${kind}:${member}`,
+      kind,
+      member,
+      [relation.objectName, relation.definition ?? ""],
+      `catalog:relation:${relation.relationKind}:${member}`,
     );
-  }
+  });
+}
 
+async function catalogColumnCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const columns = await client.query<CatalogColumnRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -625,9 +677,9 @@ export async function discoverReplayedCatalogLegacyIdentities(
       AND NOT attribute."attisdropped"
     ORDER BY namespace."nspname", relation."relname", attribute."attnum"
   `);
-  for (const column of columns.rows) {
+  return columns.rows.flatMap((column) => {
     const member = `${column.schemaName}.${column.tableName}.${column.columnName}`;
-    candidates.push(
+    const discovered = [
       candidate(
         `column:${member}`,
         "column",
@@ -635,9 +687,9 @@ export async function discoverReplayedCatalogLegacyIdentities(
         [column.columnName],
         `catalog:column:${member}`,
       ),
-    );
+    ];
     if (column.defaultExpression !== null) {
-      candidates.push(
+      discovered.push(
         candidate(
           `default:${member}`,
           "default",
@@ -647,8 +699,13 @@ export async function discoverReplayedCatalogLegacyIdentities(
         ),
       );
     }
-  }
+    return discovered;
+  });
+}
 
+async function catalogIndexCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const indexes = await client.query<CatalogIndexRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -670,24 +727,32 @@ export async function discoverReplayedCatalogLegacyIdentities(
       )
     ORDER BY namespace."nspname", index_relation."relname"
   `);
-  for (const index of indexes.rows) {
+  return indexes.rows.map((index) => {
     const member = `${index.schemaName}.${index.indexName}`;
-    candidates.push(
-      candidate(
-        `index:${member}`,
-        "index",
-        member,
-        [index.indexName, index.definition],
-        `catalog:index:${member}`,
-      ),
+    return candidate(
+      `index:${member}`,
+      "index",
+      member,
+      [index.indexName, index.definition],
+      `catalog:index:${member}`,
     );
-  }
+  });
+}
 
+async function catalogConstraintCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
+  const constraintTypes = REPLAYED_CATALOG_RELATION_CONSTRAINT_TYPES.map(
+    (constraintType) => {
+      return `'${constraintType}'`;
+    },
+  ).join(", ");
   const constraints = await client.query<CatalogConstraintRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
       relation."relname" AS "tableName",
       constraint_row."conname" AS "constraintName",
+      constraint_row."contype"::text AS "constraintType",
       pg_catalog.pg_get_constraintdef(constraint_row."oid", true)
         AS "definition"
     FROM pg_catalog."pg_constraint" AS constraint_row
@@ -696,22 +761,24 @@ export async function discoverReplayedCatalogLegacyIdentities(
     INNER JOIN pg_catalog."pg_namespace" AS namespace
       ON namespace."oid" = relation."relnamespace"
     WHERE namespace."nspname" = current_schema()
-      AND constraint_row."contype" IN ('c', 'f')
+      AND constraint_row."contype" IN (${constraintTypes})
     ORDER BY namespace."nspname", relation."relname", constraint_row."conname"
   `);
-  for (const constraint of constraints.rows) {
+  return constraints.rows.map((constraint) => {
     const member = `${constraint.schemaName}.${constraint.tableName}.${constraint.constraintName}`;
-    candidates.push(
-      candidate(
-        `constraint:${member}`,
-        "constraint",
-        member,
-        [constraint.constraintName, constraint.definition],
-        `catalog:constraint:${member}`,
-      ),
+    return candidate(
+      `constraint:${member}`,
+      "constraint",
+      member,
+      [constraint.constraintName, constraint.definition],
+      `catalog:constraint:${constraint.constraintType}:${member}`,
     );
-  }
+  });
+}
 
+async function catalogTriggerCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const triggers = await client.query<CatalogTriggerRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -727,19 +794,21 @@ export async function discoverReplayedCatalogLegacyIdentities(
       AND NOT trigger_row."tgisinternal"
     ORDER BY namespace."nspname", relation."relname", trigger_row."tgname"
   `);
-  for (const trigger of triggers.rows) {
+  return triggers.rows.map((trigger) => {
     const member = `${trigger.schemaName}.${trigger.tableName}.${trigger.triggerName}`;
-    candidates.push(
-      candidate(
-        `trigger:${member}`,
-        "trigger",
-        member,
-        [trigger.triggerName, trigger.definition],
-        `catalog:trigger:${member}`,
-      ),
+    return candidate(
+      `trigger:${member}`,
+      "trigger",
+      member,
+      [trigger.triggerName, trigger.definition],
+      `catalog:trigger:${member}`,
     );
-  }
+  });
+}
 
+async function catalogFunctionCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const functions = await client.query<CatalogFunctionRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -765,19 +834,21 @@ export async function discoverReplayedCatalogLegacyIdentities(
       function_row."proname",
       pg_catalog.pg_get_function_identity_arguments(function_row."oid")
   `);
-  for (const catalogFunction of functions.rows) {
+  return functions.rows.map((catalogFunction) => {
     const member = `${catalogFunction.schemaName}.${catalogFunction.functionName}(${catalogFunction.identityArguments})`;
-    candidates.push(
-      candidate(
-        `function:${member}`,
-        "function",
-        member,
-        [catalogFunction.functionName, catalogFunction.definition],
-        `catalog:function:${member}`,
-      ),
+    return candidate(
+      `function:${member}`,
+      "function",
+      member,
+      [catalogFunction.functionName, catalogFunction.definition],
+      `catalog:function:${member}`,
     );
-  }
+  });
+}
 
+async function replayedRuleCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const rules = await client.query<CatalogRuleRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -793,8 +864,12 @@ export async function discoverReplayedCatalogLegacyIdentities(
     WHERE namespace."nspname" = current_schema()
     ORDER BY namespace."nspname", relation."relname", rule_row."rulename"
   `);
-  candidates.push(...catalogRuleCandidates(rules.rows));
+  return catalogRuleCandidates(rules.rows);
+}
 
+async function catalogViewDependencyCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const dependencies = await client.query<CatalogViewDependencyRow>(`
     SELECT DISTINCT
       view_namespace."nspname" AS "viewSchemaName",
@@ -823,20 +898,22 @@ export async function discoverReplayedCatalogLegacyIdentities(
       source_namespace."nspname",
       source_relation."relname"
   `);
-  for (const dependency of dependencies.rows) {
+  return dependencies.rows.map((dependency) => {
     const member = `${dependency.viewSchemaName}.${dependency.viewName}`;
     const source = `${dependency.sourceSchemaName}.${dependency.sourceRelationName}`;
-    candidates.push(
-      candidate(
-        `view:${member}`,
-        "view",
-        member,
-        [dependency.viewName, dependency.sourceRelationName],
-        `catalog:dependency:${member}->${source}`,
-      ),
+    return candidate(
+      `view:${member}`,
+      "view",
+      member,
+      [dependency.viewName, dependency.sourceRelationName],
+      `catalog:dependency:${member}->${source}`,
     );
-  }
+  });
+}
 
+async function catalogEnumCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const enums = await client.query<CatalogEnumRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -850,20 +927,22 @@ export async function discoverReplayedCatalogLegacyIdentities(
     WHERE namespace."nspname" = current_schema()
     ORDER BY namespace."nspname", enum_type."typname", enum_value."enumsortorder"
   `);
-  for (const enumValue of enums.rows) {
+  return enums.rows.map((enumValue) => {
     const enumMember = `${enumValue.schemaName}.${enumValue.enumName}`;
     const member = `${enumMember} = '${enumValue.enumValue}'`;
-    candidates.push(
-      candidate(
-        `enum-discriminator-value:${member}`,
-        "enum-discriminator-value",
-        member,
-        [enumValue.enumName, enumValue.enumValue],
-        `catalog:enum-value:${member}`,
-      ),
+    return candidate(
+      `enum-discriminator-value:${member}`,
+      "enum-discriminator-value",
+      member,
+      [enumValue.enumName, enumValue.enumValue],
+      `catalog:enum-value:${member}`,
     );
-  }
+  });
+}
 
+async function catalogPolicyCandidates(
+  client: Client,
+): Promise<LegacyCatalogCandidate[]> {
   const policies = await client.query<CatalogPolicyRow>(`
     SELECT
       namespace."nspname" AS "schemaName",
@@ -881,22 +960,42 @@ export async function discoverReplayedCatalogLegacyIdentities(
     WHERE namespace."nspname" = current_schema()
     ORDER BY namespace."nspname", relation."relname", policy."polname"
   `);
-  for (const policy of policies.rows) {
+  return policies.rows.map((policy) => {
     const member = `${policy.schemaName}.${policy.tableName}.policy:${policy.policyName}`;
-    candidates.push(
-      candidate(
-        `constraint:${member}`,
-        "constraint",
-        member,
-        [
-          policy.policyName,
-          policy.policyUsing ?? "",
-          policy.policyWithCheck ?? "",
-        ],
-        `catalog:policy:${member}`,
-      ),
+    return candidate(
+      `constraint:${member}`,
+      "constraint",
+      member,
+      [
+        policy.policyName,
+        policy.policyUsing ?? "",
+        policy.policyWithCheck ?? "",
+      ],
+      `catalog:policy:${member}`,
     );
-  }
+  });
+}
+
+export async function discoverReplayedCatalogLegacyIdentities(
+  client: Client,
+): Promise<readonly DiscoveredLegacyDatabaseIdentity[]> {
+  await client.query(`SET search_path TO public, pg_catalog`);
+  const candidates: LegacyCatalogCandidate[] = [];
+  candidates.push(...(await catalogRelationCandidates(client)));
+
+  candidates.push(...(await catalogColumnCandidates(client)));
+
+  candidates.push(...(await catalogIndexCandidates(client)));
+  candidates.push(...(await catalogConstraintCandidates(client)));
+
+  candidates.push(...(await catalogTriggerCandidates(client)));
+  candidates.push(...(await catalogFunctionCandidates(client)));
+
+  candidates.push(...(await replayedRuleCandidates(client)));
+  candidates.push(...(await catalogViewDependencyCandidates(client)));
+
+  candidates.push(...(await catalogEnumCandidates(client)));
+  candidates.push(...(await catalogPolicyCandidates(client)));
 
   return discoverLegacyCatalogIdentities(candidates);
 }
