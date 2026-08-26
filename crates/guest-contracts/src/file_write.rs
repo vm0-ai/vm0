@@ -7,8 +7,8 @@ use crate::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 /// Maximum time the guest waits for its file-write helper process.
 pub const WRITE_FILE_HELPER_TIMEOUT_MS: u32 = 30_000;
 
-/// Duration form of [`WRITE_FILE_HELPER_TIMEOUT_MS`] for budget composition.
-pub const WRITE_FILE_HELPER_TIMEOUT: Duration = Duration::from_secs(30);
+// Duration form of `WRITE_FILE_HELPER_TIMEOUT_MS` for budget composition.
+const WRITE_FILE_HELPER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Maximum time the guest spends writing one terminal protocol frame.
 ///
@@ -16,9 +16,9 @@ pub const WRITE_FILE_HELPER_TIMEOUT: Duration = Duration::from_secs(30);
 /// response, so this remains a connection-wide frame deadline.
 pub const GUEST_FRAME_WRITE_DEADLINE: Duration = Duration::from_secs(10);
 
-/// Host-side allowance for request-frame construction, transmission, guest
-/// dispatch, and scheduling beyond the guest's configured processing budgets.
-pub const WRITE_FILE_TRANSPORT_HEADROOM: Duration = Duration::from_secs(15);
+// Host-side allowance for request-frame construction, transmission, guest
+// dispatch, and scheduling beyond the guest's configured processing budgets.
+const WRITE_FILE_TRANSPORT_HEADROOM: Duration = Duration::from_secs(15);
 
 /// End-to-end host deadline for one file-write request frame and its terminal
 /// response.

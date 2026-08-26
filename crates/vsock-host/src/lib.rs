@@ -114,16 +114,6 @@ pub enum RequestTimeoutStage {
     AwaitingTerminalResponse,
 }
 
-impl fmt::Display for RequestTimeoutStage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BeforeFrameWrite => f.write_str("before frame write"),
-            Self::FrameWrite => f.write_str("during frame write"),
-            Self::AwaitingTerminalResponse => f.write_str("awaiting terminal response"),
-        }
-    }
-}
-
 /// Typed request deadline error carried inside [`io::ErrorKind::TimedOut`].
 #[derive(Debug)]
 pub struct RequestTimeoutError {
