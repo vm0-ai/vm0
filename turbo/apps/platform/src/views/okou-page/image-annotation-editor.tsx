@@ -877,7 +877,10 @@ function AnnotationSurface({ target }: { target: AnnotationTarget }) {
         data-testid="image-annotation-editor"
       >
         <DeleteKeyBinding />
-        <div className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-2xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]">
+        <div
+          className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
+          data-testid="image-annotation-panel"
+        >
           <EditorHeader filename={target.filename} />
           <EditorStage filename={target.filename} url={resolvedUrl} />
           <EditorFooter />

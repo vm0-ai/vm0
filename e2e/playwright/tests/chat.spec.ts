@@ -218,7 +218,11 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 
 async function enableFeatureSwitch(
   page: Page,
-  key: "chatForward" | "imageModelSelection" | "responsiveFollowupCards",
+  key:
+    | "chatForward"
+    | "composerImageAnnotation"
+    | "imageModelSelection"
+    | "responsiveFollowupCards",
 ): Promise<void> {
   await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
@@ -1815,6 +1819,7 @@ test("keeps the flat follow-up list in a narrow desktop window", async ({
 test("image lightbox centers and pans across the full viewer", async ({
   page,
 }) => {
+  await enableFeatureSwitch(page, "composerImageAnnotation");
   const imageMarkup = `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
       <rect width="1200" height="900" fill="#2563eb" />
@@ -1861,10 +1866,17 @@ test("image lightbox centers and pans across the full viewer", async ({
     .click();
 
   const lightbox = page.getByTestId("attachment-lightbox");
+  const lightboxPanel = lightbox.getByTestId("attachment-lightbox-panel");
   const stage = lightbox.getByTestId("artifact-dialog-image-stage");
   const image = lightbox.getByTestId("attachment-lightbox-image");
   await expect(lightbox).toBeVisible();
+  await expect(lightboxPanel).toBeVisible();
   await expect(image).toBeVisible();
+  expect(
+    await lightboxPanel.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
   await expect
     .poll(async () => {
       return image.evaluate((element) => {
@@ -1926,6 +1938,24 @@ test("image lightbox centers and pans across the full viewer", async ({
 
   await lightbox.getByRole("button", { name: "Close" }).click();
   await expect(lightbox).toBeHidden();
+
+  await page
+    .getByRole("button", { name: "Open image preview for lightbox.svg" })
+    .click();
+  await page.getByTestId("artifact-dialog-annotate").click();
+
+  const annotationEditor = page.getByTestId("image-annotation-editor");
+  const annotationPanel = page.getByTestId("image-annotation-panel");
+  await expect(annotationEditor).toBeVisible();
+  await expect(annotationPanel).toBeVisible();
+  expect(
+    await annotationPanel.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
+
+  await annotationEditor.getByRole("button", { name: "Close" }).click();
+  await expect(annotationEditor).toBeHidden();
   await waitForAgentDraftClear(page, async () => {
     await page.getByRole("button", { name: "Remove lightbox.svg" }).click();
   });
