@@ -1134,6 +1134,7 @@ function SpotlightArtifactThumbnail({
         fit: "scale-down",
       })}
       load={artifact.thumbnailLoad}
+      loading="eager"
       className="h-8 w-8 shrink-0 rounded-lg bg-gray-50 object-cover"
       fallback={<SpotlightArtifactKindIcon kind={artifact.kind} />}
       testId="spotlight-artifact-thumbnail"

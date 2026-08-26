@@ -3732,6 +3732,7 @@ describe("zero sidebar", () => {
       "src",
       "https://cdn.vm0.io/cdn-cgi/image/width=64,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/launch-demo.webp",
     );
+    expect(artifactThumbnail).toHaveAttribute("loading", "eager");
     fireEvent.error(artifactThumbnail);
     await waitFor(() => {
       expect(artifactThumbnail).toHaveClass("hidden");
