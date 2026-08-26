@@ -476,6 +476,10 @@ describe("chat composer connector connection", () => {
       throw new Error("Expected the GitHub label to target its access switch");
     }
     expect(defaultMode.closest("label")).toBeNull();
+    expect(
+      defaultMode.compareDocumentPosition(accessLabel.control) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await user.click(connectorName);
     await waitFor(() => {
       expect(authorizationWrites).toBe(1);

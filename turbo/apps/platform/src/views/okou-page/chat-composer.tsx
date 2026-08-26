@@ -7927,6 +7927,11 @@ function ComposerConnectorAccessRow({
 }) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
+      {actions ? (
+        <span className="order-2 flex shrink-0 items-center gap-2">
+          {actions}
+        </span>
+      ) : null}
       <label className="contents">
         <span className="order-1 flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center">
           {icon}
@@ -7944,11 +7949,6 @@ function ComposerConnectorAccessRow({
           />
         </span>
       </label>
-      {actions ? (
-        <span className="order-2 flex shrink-0 items-center gap-2">
-          {actions}
-        </span>
-      ) : null}
     </div>
   );
 }
