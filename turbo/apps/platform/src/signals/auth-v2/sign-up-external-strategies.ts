@@ -6,13 +6,15 @@ import type {
 } from "@clerk/react/types";
 
 import type { AuthV2Navigation, AuthV2StepPath } from "./navigation.ts";
-
-const GOOGLE_OAUTH_STRATEGY = "oauth_google" as const;
+import {
+  enabledAuthV2OAuthStrategies,
+  type AuthV2OAuthStrategy,
+} from "./oauth-strategies.ts";
 
 export const AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH = "/sso-callback";
 
 export interface AuthV2SignUpExternalCapabilities {
-  readonly googleOAuth: boolean;
+  readonly oauthStrategies: readonly AuthV2OAuthStrategy[];
 }
 
 export type AuthV2SignUpTransferState =
@@ -96,16 +98,18 @@ export function discoverAuthV2SignUpExternalCapabilities(
   const strategies =
     clerk.__internal_environment?.userSettings.authenticatableSocialStrategies;
   return {
-    googleOAuth:
-      strategies?.includes(GOOGLE_OAUTH_STRATEGY) === true &&
-      typeof resource.authenticateWithRedirect === "function",
+    oauthStrategies:
+      typeof resource.authenticateWithRedirect === "function"
+        ? enabledAuthV2OAuthStrategies(strategies)
+        : [],
   };
 }
 
-export function startAuthV2GoogleSignUp(
+export function startAuthV2OAuthSignUp(
   resource: SignUpResource,
   navigation: AuthV2Navigation,
   legalAccepted: boolean,
+  strategy: AuthV2OAuthStrategy,
 ): Promise<void> {
   return resource.authenticateWithRedirect({
     continueSignIn: false,
@@ -116,11 +120,11 @@ export function startAuthV2GoogleSignUp(
       AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH,
     ),
     redirectUrlComplete: navigation.completionRedirectUrl,
-    strategy: GOOGLE_OAUTH_STRATEGY,
+    strategy,
   });
 }
 
-export async function recoverAuthV2GoogleSignUp(
+export async function recoverAuthV2OAuthSignUp(
   clerk: Clerk,
 ): Promise<AuthV2SignUpOAuthRecovery> {
   const client = clerk.client;

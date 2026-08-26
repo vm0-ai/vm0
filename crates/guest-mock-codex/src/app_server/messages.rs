@@ -1,4 +1,5 @@
 use crate::session;
+use guest_contracts::managed_command::render_managed_shell_command;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -152,6 +153,10 @@ pub(super) fn write_oversized_delivery_notifications<W: Write>(
     let large = "α".repeat(2_150_000);
     let secret = "delivery-secret-value";
     let completed_at_ms = 2;
+    let original_command = format!("command-head-{secret}-{large}-command-tail");
+    let managed_command =
+        render_managed_shell_command(&original_command).map_err(io::Error::other)?;
+    let codex_command = format!("/bin/bash -lc '{managed_command}'");
     write_json_line(
         output,
         &json!({
@@ -212,7 +217,7 @@ pub(super) fn write_oversized_delivery_notifications<W: Write>(
                 "item": {
                     "id": "oversized-command",
                     "type": "commandExecution",
-                    "command": format!("command-head-{large}-command-tail"),
+                    "command": codex_command,
                     "cwd": "/workspace",
                     "status": "completed",
                     "aggregatedOutput": format!("output-head-{secret}-{large}-output-tail"),
@@ -246,19 +251,42 @@ pub(super) fn write_oversized_delivery_notifications<W: Write>(
     write_json_line(
         output,
         &json!({
+            "method": "turn/plan/updated",
+            "params": {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "explanation": "oversized structural plan",
+                "plan": (0..75_000).map(|index| json!({
+                    "step": format!("step-{index:06}-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz"),
+                    "status": "pending",
+                })).collect::<Vec<_>>(),
+            }
+        }),
+    )?;
+    write_json_line(
+        output,
+        &json!({
             "method": "item/completed",
             "params": {
                 "threadId": thread_id,
                 "turnId": turn_id,
-                "completedAtMs": completed_at_ms + 5,
+                "completedAtMs": completed_at_ms + 6,
                 "item": {
-                    "id": "oversized-structure",
+                    "id": "oversized-multi-change",
                     "type": "fileChange",
                     "status": "completed",
-                    "changes": (0..75_000).map(|index| json!({
-                        "path": format!("path-{index:06}-abcdefghijklmnopqrstuvwxyz-abcdefghijklmnopqrstuvwxyz"),
-                        "kind": "modify",
-                    })).collect::<Vec<_>>(),
+                    "changes": [
+                        {
+                            "path": "structure-a.txt",
+                            "kind": "modify",
+                            "diff": format!("structure-a-head-{secret}-{large}-structure-a-tail"),
+                        },
+                        {
+                            "path": "structure-b.txt",
+                            "kind": "modify",
+                            "diff": format!("structure-b-head-{secret}-{large}-structure-b-tail"),
+                        }
+                    ],
                 }
             }
         }),

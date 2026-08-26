@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
+  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -528,6 +529,70 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("keeps the intro-video placeholder out of the picker while switched off", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideoTemplates]: false,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(tabByText("Video"));
+    expect(
+      screen.queryByLabelText(`Select video template ${template.title}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("selects Interview as a switched-on intro-video template", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideoTemplates]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(tabByText("Video"));
+    const select = await screen.findByLabelText(
+      `Select video template ${template.title}`,
+    );
+    expect(
+      select.closest("[class*='aspect-']")?.querySelector("video"),
+    ).toBeNull();
+    await user.click(select);
+    const chip = await waitFor(() => {
+      const found = document.querySelector("[data-composer-inline-template]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(chip).toHaveTextContent(template.title);
+
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
+        type: "intro-video",
+        selection: { templateId: template.id },
+      });
+    });
+  });
+
   it("leaves every video parameter to the composer in video mode", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
@@ -541,9 +606,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -3729,10 +3791,12 @@ describe("chat composer templates", () => {
     if (!(secondaryCard instanceof HTMLElement)) {
       throw new Error("Secondary template card not found");
     }
+    // Opening the picker refreshes the catalog, but the card reuses the deck
+    // resource the background preload already loaded.
     await waitFor(() => {
       expect(catalogRequestCount).toBe(2);
-      expect(primaryDetailRequestCount).toBe(2);
     });
+    expect(primaryDetailRequestCount).toBe(1);
     expect(within(card).getByRole("img")).toHaveAttribute("loading", "eager");
     expect(within(card).getByRole("img")).toHaveAttribute(
       "fetchpriority",
@@ -3778,8 +3842,10 @@ describe("chat composer templates", () => {
         "https://example.com/prefetch-primary-page-1.png",
       );
     });
+    // Hovering a card reads the slides from the same deck resource, so it
+    // never refetches what the preload already holds.
     expect(catalogRequestCount).toBe(2);
-    expect(primaryDetailRequestCount).toBe(3);
+    expect(primaryDetailRequestCount).toBe(1);
     expect(secondaryDetailRequestCount).toBe(0);
 
     // A metadata-only refresh must not reset the independent signed-detail URL
@@ -3789,8 +3855,8 @@ describe("chat composer templates", () => {
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
       expect(catalogRequestCount).toBe(3);
-      expect(primaryDetailRequestCount).toBe(4);
     });
+    expect(primaryDetailRequestCount).toBe(1);
     // The lifecycle renews signed URLs at ten minutes, leaving five minutes of
     // overlap with the API's 15-minute expiry. Opening is also a non-blocking
     // catch-up point for a suspended tab whose timer did not run.
@@ -3821,9 +3887,9 @@ describe("chat composer templates", () => {
     releaseRefreshCatalog.resolve();
     await refreshedPrimaryDetailRequested.promise;
     await waitFor(() => {
-      // Catalog reconciliation recreates the preload resource. The separate
-      // detail-version renewal is observed on the next card hover below.
-      expect(primaryDetailRequestCount).toBe(5);
+      // Renewing the signed URLs reloads the shared deck resource exactly once
+      // for every surface that reads it.
+      expect(primaryDetailRequestCount).toBe(2);
     });
     const refreshedPreviewButton = within(refreshingCard).getByLabelText(
       "Preview Primary draft deck at current slide",
@@ -3853,11 +3919,6 @@ describe("chat composer templates", () => {
     });
     const detailRequestsBeforeRenewedHover = primaryDetailRequestCount;
     fireEvent.mouseEnter(refreshedPreview);
-    await waitFor(() => {
-      expect(primaryDetailRequestCount).toBeGreaterThan(
-        detailRequestsBeforeRenewedHover,
-      );
-    });
     fireEvent.mouseMove(refreshedPreview, { clientX: 299, clientY: 80 });
     await loadImportedTemplateImage(
       refreshedPreview,
@@ -3869,8 +3930,133 @@ describe("chat composer templates", () => {
       "https://example.com/renewed-primary-page-100.png",
     );
     expect(catalogRequestCount).toBe(4);
-    expect(primaryDetailRequestCount).toBeGreaterThan(3);
+    // Hovering the renewed card still serves its slides from the renewed deck
+    // resource without asking for it again.
+    expect(primaryDetailRequestCount).toBe(detailRequestsBeforeRenewedHover);
     expect(secondaryDetailRequestCount).toBe(0);
+  });
+
+  it("loads resized uploaded deck previews with bounded thumbnail priority", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "6fbcce0d-cb09-42de-8d8a-d525f813f312";
+    const pageUrls = Array.from({ length: 18 }, (_, index) => {
+      const slideNumber = (index + 1).toString().padStart(3, "0");
+      return `https://cdn.vm0.io/artifacts/user/template/page-${slideNumber}.png?X-Amz-Signature=slide-${slideNumber}`;
+    });
+    const coverUrl = pageUrls[0];
+    if (coverUrl === undefined) {
+      throw new Error("Uploaded template cover URL not found");
+    }
+    const cardCoverUrl = r2ImageTransformUrl(coverUrl, {
+      width: 480,
+      height: 270,
+    });
+    const highResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 708,
+      height: 398,
+    });
+    const imageDecodes = controlImportedTemplateImageDecodes([
+      highResolutionUrl,
+    ]);
+    const template = {
+      id: templateId,
+      title: "Edge resized deck",
+      sourceFilename: "edge-resized-deck.pptx",
+      coverUrl,
+      pageCount: pageUrls.length,
+      visibility: "private" as const,
+      canManage: true,
+      pageUrls,
+      createdAt: "2026-08-25T03:00:00.000Z",
+      updatedAt: "2026-08-25T03:00:00.000Z",
+    };
+    context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      return respond(200, [presentationTemplateSummary(template)]);
+    });
+    context.mocks.api(
+      presentationTemplatesContract.get,
+      ({ params, respond }) => {
+        expect(params.templateId).toBe(templateId);
+        return respond(200, template);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const preloadedCover = await waitFor(() => {
+      const found = document.querySelector(`img[src="${cardCoverUrl}"]`);
+      if (!(found instanceof HTMLImageElement)) {
+        throw new Error("Resized uploaded template cover was not prefetched");
+      }
+      return found;
+    });
+    expect(preloadedCover).toHaveAttribute("loading", "eager");
+    expect(preloadedCover).toHaveAttribute("fetchpriority", "high");
+    expect(document.querySelector(`img[src="${coverUrl}"]`)).toBeNull();
+
+    await user.click(screen.getByLabelText("Template"));
+    const dialog = screen.getByRole("dialog");
+    const card = await waitFor(() => {
+      const found = dialog.querySelector(
+        `[data-imported-presentation-template="${templateId}"]`,
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Resized uploaded template card not found");
+      }
+      return found;
+    });
+    const previewButton = within(card).getByLabelText(
+      "Preview Edge resized deck at current slide",
+    );
+    const cardMedia = previewButton.parentElement;
+    if (cardMedia === null) {
+      throw new Error("Resized uploaded template card media not found");
+    }
+    await loadImportedTemplateImage(cardMedia, cardCoverUrl);
+    click(previewButton);
+
+    const detailPreview = await screen.findByTestId(
+      "Edge resized deck imported detail image preview",
+    );
+    const detailImage = activeImportedTemplateImage(detailPreview);
+    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
+    expect(detailImage).not.toHaveAttribute("src", highResolutionUrl);
+    await loadImportedTemplateImage(detailPreview, cardCoverUrl);
+    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
+    await imageDecodes.complete(highResolutionUrl);
+    await waitFor(() => {
+      expect(detailImage).toHaveAttribute("src", highResolutionUrl);
+    });
+    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+
+    const thumbnailCases = [
+      { slideNumber: 1, loading: "eager", priority: "high" },
+      { slideNumber: 16, loading: "eager", priority: "auto" },
+      { slideNumber: 17, loading: "lazy", priority: "low" },
+    ] as const;
+    for (const { slideNumber, loading, priority } of thumbnailCases) {
+      const thumbnailButton = await screen.findByLabelText(
+        `Preview slide ${slideNumber.toString()}`,
+      );
+      const pageUrl = pageUrls[slideNumber - 1];
+      if (pageUrl === undefined) {
+        throw new Error("Uploaded template thumbnail URL not found");
+      }
+      const thumbnailUrl = r2ImageTransformUrl(pageUrl, {
+        width: 224,
+        height: 126,
+      });
+      const thumbnailImage = activeImportedTemplateImage(thumbnailButton);
+      expect(thumbnailImage).toHaveAttribute("src", thumbnailUrl);
+      expect(thumbnailImage).toHaveAttribute("loading", loading);
+      expect(thumbnailImage).toHaveAttribute("fetchpriority", priority);
+    }
   });
 
   it("makes a workspace template published after navigating away usable in the other thread", async () => {
@@ -4078,7 +4264,7 @@ describe("chat composer templates", () => {
     const titleInput = screen.getByRole("textbox", {
       name: "Rename template",
     });
-    await fill(titleInput, "Brand refresh");
+    await fill(titleInput, "  Brand   refresh  ");
     const renameButton = queryAllByRoleFast("button").find((candidate) => {
       return candidate.getAttribute("aria-label") === "Rename template";
     });
@@ -4086,16 +4272,28 @@ describe("chat composer templates", () => {
       throw new Error("Imported template Rename button not found");
     }
     await user.click(renameButton);
+    // A wrapping field can take newlines and stray runs of spaces; the saved
+    // name is still the single line the preview keys off.
     await expect(
       screen.findByTestId("Brand refresh imported detail image preview"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
-    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    const changeVisibilityButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") === "Change template visibility"
+        );
+      },
+    );
+    if (!changeVisibilityButton) {
+      throw new Error("Imported template Change visibility button not found");
+    }
+    await user.click(changeVisibilityButton);
+    await user.click(screen.getByRole("radio", { name: /^Workspace/ }));
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Visibility" }),
-      ).toHaveTextContent("Workspace");
+        screen.getByText("Anyone in this workspace can use it"),
+      ).toBeInTheDocument();
     });
 
     const initialDeleteButton = queryAllByRoleFast("button").find(
@@ -4135,9 +4333,11 @@ describe("chat composer templates", () => {
       createdAt: "2026-08-21T02:41:59.522Z",
       updatedAt: "2026-08-21T02:41:59.522Z",
     };
+    let listRequestCount = 0;
     let detailRequestCount = 0;
     let updateRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      listRequestCount += 1;
       return respond(200, [presentationTemplateSummary(template)]);
     });
     context.mocks.api(
@@ -4204,16 +4404,29 @@ describe("chat composer templates", () => {
       await loadImportedTemplateImage(button, pageUrl);
     }
     const detailRequestCountBeforeUpdate = detailRequestCount;
-    expect(detailRequestCountBeforeUpdate).toBeGreaterThan(0);
+    const listRequestCountBeforeUpdate = listRequestCount;
+    expect(detailRequestCountBeforeUpdate).toBe(1);
 
-    await user.click(screen.getByRole("combobox", { name: "Visibility" }));
-    await user.click(screen.getByRole("option", { name: "Workspace" }));
+    const changeVisibilityButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return (
+          candidate.getAttribute("aria-label") === "Change template visibility"
+        );
+      },
+    );
+    if (!changeVisibilityButton) {
+      throw new Error("Imported template Change visibility button not found");
+    }
+    await user.click(changeVisibilityButton);
+    await user.click(screen.getByRole("radio", { name: /^Workspace/ }));
     await waitFor(() => {
       expect(updateRequestCount).toBe(1);
       expect(
-        screen.getByRole("combobox", { name: "Visibility" }),
-      ).toHaveTextContent("Workspace");
+        screen.getByText("Anyone in this workspace can use it"),
+      ).toBeInTheDocument();
     });
+    expect(listRequestCount).toBe(listRequestCountBeforeUpdate);
+    expect(detailRequestCount).toBe(detailRequestCountBeforeUpdate);
     expect(
       screen.getByTestId("Stable preview deck imported detail image preview"),
     ).toBe(detailPreview);
@@ -4467,14 +4680,11 @@ describe("chat composer templates", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(sentPrompt).toContain("reusable presentation template");
-      // The guide is not a mounted skill, so the message has to carry the
-      // private resource pull and its extracted entrypoint.
-      expect(sentPrompt).toContain(
-        "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
-      );
-      expect(sentPrompt).toContain(
-        "./generated/resources/reverse-template/SKILL.md",
+      // What the user sees in their own thread is the request they would have
+      // typed. How the run reaches the guide is carried by the agent tools
+      // prompt, so none of it leaks into the message sent on their behalf.
+      expect(sentPrompt).toBe(
+        "Analyse this deck and save its visual language as a reusable presentation template.",
       );
       expect(sentMessage?.parts).toContainEqual(
         expect.objectContaining({

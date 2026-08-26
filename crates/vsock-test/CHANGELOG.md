@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.244](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.243...vsock-test-v0.9.244) (2026-08-26)
+
+## [0.9.243](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.242...vsock-test-v0.9.243) (2026-08-26)
+
+## [0.9.242](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.241...vsock-test-v0.9.242) (2026-08-26)
+
+## [0.9.241](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.240...vsock-test-v0.9.241) (2026-08-25)
+
+## [0.9.240](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.239...vsock-test-v0.9.240) (2026-08-25)
+
+## [0.9.239](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.238...vsock-test-v0.9.239) (2026-08-25)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound chunked write temp names ([#29318](https://github.com/vm0-ai/vm0/issues/29318)) ([b13dcbb](https://github.com/vm0-ai/vm0/commit/b13dcbb28d961a8e30cbab4fdfafe19a30fa30dd))
+
 ## [0.9.238](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.237...vsock-test-v0.9.238) (2026-08-25)
 
 ## [0.9.237](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.236...vsock-test-v0.9.237) (2026-08-25)

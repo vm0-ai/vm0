@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.53](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.52...sandbox-v0.19.53) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
+## [0.19.52](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.51...sandbox-v0.19.52) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.19.51](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.50...sandbox-v0.19.51) (2026-08-24)
 
 

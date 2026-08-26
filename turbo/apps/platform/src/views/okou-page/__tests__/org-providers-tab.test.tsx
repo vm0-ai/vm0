@@ -15,7 +15,6 @@ import {
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -326,15 +325,10 @@ async function openProvidersTab(): Promise<void> {
   });
 }
 
-async function openModelSettings(
-  usagePackPlansEnabled: boolean,
-): Promise<void> {
+async function openModelSettings(): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
-    featureSwitches: {
-      [FeatureSwitchKey.UsagePackPlans]: usagePackPlansEnabled,
-    },
   });
   await waitFor(() => {
     expect(
@@ -908,7 +902,7 @@ describe("organization model providers settings", () => {
     ).toHaveTextContent("GPT 5.6 Sol");
   });
 
-  it("opens compare plans for a limited-free-1 default Pro model", async () => {
+  it("opens the plan chooser for a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     context.mocks.data.orgModelProviders([]);
@@ -926,14 +920,14 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings(false);
+    await openModelSettings();
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
     click(await screen.findByRole("option", { name: /Claude Fable 5.*Pro/u }));
 
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 
@@ -950,7 +944,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings(true);
+    await openModelSettings();
 
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -961,7 +955,7 @@ describe("organization model providers settings", () => {
     });
     click(gptOption);
 
-    expect(screen.queryByRole("heading", { name: "Compare plans" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Choose a plan" })).toBeNull();
     expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
     click(buttonByText("Upgrade to Pro", dialog));
 
@@ -972,7 +966,7 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("opens compare plans when BYOK is unsupported", async () => {
+  it("opens the plan chooser when BYOK is unsupported", async () => {
     mockAdminOrg();
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
     context.mocks.data.orgModelProviders([]);
@@ -984,7 +978,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings(false);
+    await openModelSettings();
 
     click(buttonByText("Add model"));
     await selectDialogModel("Claude Opus 4.8");
@@ -995,7 +989,7 @@ describe("organization model providers settings", () => {
     click(apiKeyRoute);
 
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 
@@ -1013,7 +1007,7 @@ describe("organization model providers settings", () => {
         true,
       ),
     ]);
-    await openModelSettings(false);
+    await openModelSettings();
 
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -1026,7 +1020,7 @@ describe("organization model providers settings", () => {
     click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
 
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 

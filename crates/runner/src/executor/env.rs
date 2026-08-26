@@ -6,6 +6,9 @@ use api_contracts::generated::types::runners::runs::{
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
+use guest_contracts::connector_account_context::{
+    RunConnectorAccountContext, RunConnectorAccountTarget,
+};
 use sandbox::Sandbox;
 
 use super::cli_framework::{
@@ -13,7 +16,9 @@ use super::cli_framework::{
 };
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
+use crate::types::{
+    ConnectorRuntimeTargetRegistration, ExecutionContext, SandboxReuseResult, WorkspaceReuseResult,
+};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -430,6 +435,49 @@ pub(super) fn guest_run_payload_file_path(run_id: RunId) -> RunnerResult<String>
         dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
             .join(guest_contracts::env::RUN_PAYLOAD_FILENAME)
     })
+}
+
+pub(super) fn guest_connector_account_context_file_path(run_id: RunId) -> RunnerResult<String> {
+    guest_runtime_path(run_id, |dir| {
+        dir.join(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILENAME)
+    })
+}
+
+pub(super) async fn write_connector_account_context_file(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+) -> RunnerResult<String> {
+    let targets = context
+        .connector_runtime_targets
+        .iter()
+        .map(|target| match target {
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug,
+                source_id,
+                ..
+            } => RunConnectorAccountTarget::Builtin {
+                connector_slug: connector_slug.clone(),
+                connection_id: source_id.clone(),
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id,
+                source_id,
+                ..
+            } => RunConnectorAccountTarget::Custom {
+                custom_connector_id: custom_connector_id.clone(),
+                connection_id: source_id.clone(),
+            },
+        })
+        .collect();
+    let payload = serde_json::to_vec(&RunConnectorAccountContext {
+        schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
+        targets,
+    })
+    .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
+    let file_path = guest_connector_account_context_file_path(context.run_id)?;
+    sandbox.write_private_file(&file_path, &payload).await?;
+    Ok(file_path)
 }
 
 pub(super) async fn write_user_env_file(

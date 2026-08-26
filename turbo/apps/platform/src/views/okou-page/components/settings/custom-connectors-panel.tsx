@@ -51,7 +51,7 @@ import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx"
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
-import { connectorAccountSummaryByTarget$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
+import { connectorAccountSummaryByTarget$ } from "../../../../signals/okou-page/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./connector-account-manager-dialog.tsx";
 import {
   ConnectorAccountSummaryText,
@@ -570,16 +570,19 @@ function CustomConnectorGrid({
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
-  const finishExplicitAccountAdd = (
+  const finishExplicitAccountAdd = async (
     connector: CustomConnectorResponse,
     connectionId: string | null,
-  ) => {
-    finishAccountConnection({
-      target: { kind: "custom", customConnectorId: connector.id },
-      connectionId,
-      connectorLabel: connector.displayName,
-      mode: { kind: "add" },
-    });
+  ): Promise<void> => {
+    await finishAccountConnection(
+      {
+        target: { kind: "custom", customConnectorId: connector.id },
+        connectionId,
+        connectorLabel: connector.displayName,
+        mode: { kind: "add" },
+      },
+      signal,
+    );
   };
   const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectorAccountsEnabled) {
@@ -591,7 +594,7 @@ function CustomConnectorGrid({
               signal,
             );
             if (result.connected) {
-              finishExplicitAccountAdd(connector, result.connectionId);
+              await finishExplicitAccountAdd(connector, result.connectionId);
             }
           })(),
           Reason.DomCallback,
@@ -668,16 +671,19 @@ function CustomAccountDialogs({
           connector={accountConnect.connector}
           accountMode={accountConnect.mode}
           onClose={closeAccountConnect}
-          onSuccess={(connectionId) => {
-            finishAccountConnection({
-              target: {
-                kind: "custom",
-                customConnectorId: accountConnect.connector.id,
+          onSuccess={async (connectionId) => {
+            await finishAccountConnection(
+              {
+                target: {
+                  kind: "custom",
+                  customConnectorId: accountConnect.connector.id,
+                },
+                connectionId,
+                connectorLabel: accountConnect.connector.displayName,
+                mode: accountConnect.mode,
               },
-              connectionId,
-              connectorLabel: accountConnect.connector.displayName,
-              mode: accountConnect.mode,
-            });
+              signal,
+            );
           }}
         />
       ) : null}
@@ -706,15 +712,18 @@ function CustomAccountDialogs({
                     signal,
                   );
                   if (result.connected) {
-                    finishAccountConnection({
-                      target: {
-                        kind: "custom",
-                        customConnectorId: managedAccounts.id,
+                    await finishAccountConnection(
+                      {
+                        target: {
+                          kind: "custom",
+                          customConnectorId: managedAccounts.id,
+                        },
+                        connectionId: result.connectionId,
+                        connectorLabel: managedAccounts.displayName,
+                        mode: { kind: "add" },
                       },
-                      connectionId: result.connectionId,
-                      connectorLabel: managedAccounts.displayName,
-                      mode: { kind: "add" },
-                    });
+                      signal,
+                    );
                   }
                 })(),
                 Reason.DomCallback,

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +12,7 @@ import {
   queryAllByRoleFast,
 } from "../../../../__tests__/page-helper.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -109,6 +110,69 @@ describe("auth v2 continuation card", () => {
     });
     await waitFor(() => {
       expect(location.pathname).toBe("/agents");
+    });
+  });
+
+  it("shows organization progress only on the selected action", async () => {
+    const activation = createDeferredPromise<void>(context.signal);
+    mockedClerk.setActive.mockImplementation(() => {
+      return activation.promise;
+    });
+    setupTaskPage({
+      memberships: [
+        membership("org_alpha", "Alpha Company"),
+        membership("org_beta", "Beta Studio"),
+      ],
+      taskKey: "choose-organization",
+    });
+
+    const alpha = await waitForButton("Continue with Alpha Company");
+    const beta = await waitForButton("Continue with Beta Studio");
+    fireEvent.click(beta);
+
+    await waitFor(() => {
+      expect(beta).toHaveAttribute("aria-busy", "true");
+    });
+    expect(beta).toHaveAccessibleName("Continue with Beta Studio");
+    expect(beta.textContent?.trim()).toBe("");
+    expect(alpha).toBeDisabled();
+    expect(alpha).toHaveAttribute("aria-busy", "false");
+    expect(alpha.textContent?.trim()).toBe("Continue with Alpha Company");
+    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+    await act(async () => {
+      activation.resolve(undefined);
+      await activation.promise;
+    });
+
+    await waitFor(() => {
+      expect(beta).toHaveAttribute("aria-busy", "false");
+      expect(beta).toHaveTextContent("Continue with Beta Studio");
+    });
+  });
+
+  it("keeps restart progress on the recovery action", async () => {
+    const signOut = createDeferredPromise<void>(context.signal);
+    mockedClerk.signOut.mockImplementation(() => {
+      return signOut.promise;
+    });
+    setupTaskPage({ taskKey: "future-sensitive-task" });
+
+    const restart = await waitForButton("Start over");
+    fireEvent.click(restart);
+
+    await waitFor(() => {
+      expect(mockedClerk.signOut).toHaveBeenCalledTimes(1);
+      expect(restart).toHaveAttribute("aria-busy", "true");
+    });
+    expect(restart).toHaveAccessibleName("Start over");
+    expect(restart).toBeDisabled();
+    expect(restart.textContent?.trim()).toBe("");
+    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+    await act(async () => {
+      signOut.resolve(undefined);
+      await signOut.promise;
     });
   });
 

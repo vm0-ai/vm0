@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.37](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.36...vsock-proto-v0.18.37) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
 ## [0.18.36](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.35...vsock-proto-v0.18.36) (2026-08-25)
 
 

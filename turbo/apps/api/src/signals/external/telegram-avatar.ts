@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
+import { webUrl } from "../../lib/web-url";
 
 const AVATAR_URL_TTL_SECONDS = 24 * 60 * 60;
 
@@ -53,7 +54,7 @@ export function verifyTelegramBotAvatarUrlSignature(params: {
 
 export function buildTelegramBotAvatarUrl(botId: string): string {
   const secretsKey = env("SECRETS_ENCRYPTION_KEY");
-  const webUrl = env("VM0_WEB_URL");
+  const configuredWebUrl = webUrl();
   const path = `/api/integrations/telegram/${encodeURIComponent(botId)}/avatar`;
   const expiresAt = Math.floor(now() / 1000) + AVATAR_URL_TTL_SECONDS;
   const signature = computeAvatarHmacSignature(botId, secretsKey, expiresAt);
@@ -62,8 +63,8 @@ export function buildTelegramBotAvatarUrl(botId: string): string {
     sig: signature,
   });
   const signedPath = `${path}?${query.toString()}`;
-  if (!webUrl) {
+  if (!configuredWebUrl) {
     return signedPath;
   }
-  return `${trimTrailingSlash(webUrl)}${signedPath}`;
+  return `${trimTrailingSlash(configuredWebUrl)}${signedPath}`;
 }

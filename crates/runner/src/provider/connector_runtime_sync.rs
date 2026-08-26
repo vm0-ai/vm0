@@ -571,10 +571,20 @@ impl ConnectorRuntimeSyncCore {
                     return false;
                 }
                 transport_retry_attempted = true;
+                let request = &error.request;
                 warn!(
                     run_id = %run_id,
                     targets = ?target_identities(&active_targets),
                     error = %error,
+                    endpoint = request.endpoint_label,
+                    method = %request.method,
+                    host = %request.host,
+                    path = %request.path,
+                    client_request_id = %request.client_request_id,
+                    client_session_id = %request.client_session_id,
+                    client_version = %request.client_version,
+                    failure_kind = error.failure_kind.as_str(),
+                    error_summary = %error.summary,
                     attempt = 1,
                     max_attempts = 2,
                     will_retry = true,
@@ -593,13 +603,33 @@ impl ConnectorRuntimeSyncCore {
                 return false;
             }
             Err(error) => {
-                warn!(
-                    run_id = %run_id,
-                    targets = ?target_identities(&active_targets),
-                    error = %error,
-                    transport_retry_attempted,
-                    "connector runtime sync failed; retaining last-known-good state"
-                );
+                if let RunnerError::ApiTransport(api_error) = &error {
+                    let request = &api_error.request;
+                    warn!(
+                        run_id = %run_id,
+                        targets = ?target_identities(&active_targets),
+                        error = %error,
+                        endpoint = request.endpoint_label,
+                        method = %request.method,
+                        host = %request.host,
+                        path = %request.path,
+                        client_request_id = %request.client_request_id,
+                        client_session_id = %request.client_session_id,
+                        client_version = %request.client_version,
+                        failure_kind = api_error.failure_kind.as_str(),
+                        error_summary = %api_error.summary,
+                        transport_retry_attempted,
+                        "connector runtime sync failed; retaining last-known-good state"
+                    );
+                } else {
+                    warn!(
+                        run_id = %run_id,
+                        targets = ?target_identities(&active_targets),
+                        error = %error,
+                        transport_retry_attempted,
+                        "connector runtime sync failed; retaining last-known-good state"
+                    );
+                }
                 self.schedule_sync_retries_for_registration(
                     run_id,
                     &active_targets,
@@ -2266,6 +2296,54 @@ mod tests {
             .get(field)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
         assert_eq!(actual, expected, "event={event:#?}");
+    }
+
+    fn assert_connector_transport_fields(event: &CapturedEvent, api_url: &str, run_id: RunId) {
+        assert_connector_field(event, "endpoint", "connector runtime sync");
+        assert_connector_field(event, "method", "POST");
+        assert_connector_field(
+            event,
+            "path",
+            &format!("/api/runners/runs/{run_id}/connector-runtime/sync"),
+        );
+        assert_connector_field(event, "client_session_id", "runner-session-test");
+        assert_connector_field(event, "client_version", env!("CARGO_PKG_VERSION"));
+        let host = event
+            .fields
+            .get("host")
+            .unwrap_or_else(|| panic!("missing field host; event={event:#?}"));
+        assert!(
+            host.starts_with("127.0.0.1:"),
+            "host should include only host and port; event={event:#?}"
+        );
+        let failure_kind = event
+            .fields
+            .get("failure_kind")
+            .unwrap_or_else(|| panic!("missing field failure_kind; event={event:#?}"));
+        assert!(
+            ["timeout", "connect", "request", "body", "unknown"].contains(&failure_kind.as_str()),
+            "unexpected failure kind; event={event:#?}"
+        );
+        let error_summary = event
+            .fields
+            .get("error_summary")
+            .unwrap_or_else(|| panic!("missing field error_summary; event={event:#?}"));
+        assert!(!error_summary.is_empty(), "event={event:#?}");
+        let client_request_id = event
+            .fields
+            .get("client_request_id")
+            .unwrap_or_else(|| panic!("missing field client_request_id; event={event:#?}"));
+        uuid::Uuid::parse_str(client_request_id).expect("client_request_id should be a UUID");
+
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains(api_url),
+            "event should not include full URL: {event_debug}"
+        );
+        assert!(
+            !event_debug.contains("runner-token") && !event_debug.contains(r#"\"connectorSlug\""#),
+            "event should not include bearer token or request body: {event_debug}"
+        );
     }
 
     fn active_run_connector_runtime_state(
@@ -5171,7 +5249,7 @@ mod tests {
         let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id = RunId::nil();
         let harness = ConnectorRuntimeSyncHarness::new_with_api(
-            api_client_for_url(api_url),
+            api_client_for_url(api_url.clone()),
             run_id,
             &["slack"],
         )
@@ -5258,6 +5336,7 @@ mod tests {
         assert_connector_field(retry, "attempt", "1");
         assert_connector_field(retry, "max_attempts", "2");
         assert_connector_field(retry, "will_retry", "true");
+        assert_connector_transport_fields(retry, &api_url, run_id);
         for message in [
             "connector runtime sync failed; retaining last-known-good state",
             "retained last-known-good connector runtime state; scheduled sync retry",
@@ -5289,8 +5368,9 @@ mod tests {
             RawHttpAction::Respond(json_response("200 OK", &response_body)),
         ])
         .await;
+        let api_url = server.url();
         let harness = ConnectorRuntimeSyncHarness::new_with_api(
-            api_client_for_url(server.url()),
+            api_client_for_url(api_url.clone()),
             run_id,
             &["slack"],
         )
@@ -5325,6 +5405,7 @@ mod tests {
             "connector runtime sync failed; retaining last-known-good state",
         );
         assert_connector_field(failure, "transport_retry_attempted", "true");
+        assert_connector_transport_fields(failure, &api_url, run_id);
         assert_connector_field(
             captured_event(
                 &events,

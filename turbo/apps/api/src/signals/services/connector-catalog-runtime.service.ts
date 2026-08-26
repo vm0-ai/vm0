@@ -927,7 +927,6 @@ async function readProjectedRuntimeRows(args: {
         return validateConnectorCatalogRuntimeProjectionRows({
           rows,
           connectorSlugs,
-          projectionVersion: args.projection.identity.projectionVersion,
           timing,
         });
       });
@@ -1067,7 +1066,7 @@ function clearRuntimeSelectionInFlight(
 export async function loadConnectorRuntimeSelection(
   db: ReadonlyDb,
   options: {
-    readonly timing: ApiDispatchTimingCollector;
+    readonly timing?: ApiDispatchTimingCollector;
     readonly requestedConnectorSlugs: readonly ConnectorSlug[];
     readonly metadataConnectorSlugs?: readonly ConnectorSlug[];
   },

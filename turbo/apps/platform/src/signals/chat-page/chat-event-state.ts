@@ -87,6 +87,54 @@ export function isInterruptedAssistantCancellation(
   );
 }
 
+type OutputToolChatEvent = Extract<
+  ChatEvent,
+  { readonly eventType: "output.tool" }
+>;
+
+interface ToolActivityAnchor {
+  readonly index: number;
+  readonly event: OutputToolChatEvent;
+}
+
+export function projectToolActivitySnapshots(
+  events: readonly ChatEvent[],
+  chatToolActivityEnabled: boolean,
+): ChatEvent[] {
+  if (!chatToolActivityEnabled) {
+    return events.filter((event) => {
+      return event.eventType !== "output.tool";
+    });
+  }
+
+  const projected: ChatEvent[] = [];
+  const anchorByToolUseId = new Map<string, ToolActivityAnchor>();
+  for (const event of events) {
+    if (event.eventType !== "output.tool") {
+      projected.push(event);
+      continue;
+    }
+
+    const anchor = anchorByToolUseId.get(event.toolUseId);
+    if (anchor === undefined) {
+      anchorByToolUseId.set(event.toolUseId, {
+        index: projected.length,
+        event,
+      });
+      projected.push(event);
+      continue;
+    }
+
+    projected[anchor.index] = {
+      ...anchor.event,
+      action: event.action,
+      status: event.status,
+      summary: event.summary,
+    };
+  }
+  return projected;
+}
+
 export interface SemanticChatEventState {
   readonly event: ChatEvent;
   readonly isQueued: boolean;
@@ -126,8 +174,34 @@ export interface SemanticChatGroups<
   readonly allGroups: SemanticChatEventGroup<T>[];
 }
 
+function isHiddenSemanticChatEvent(
+  event: ChatEvent,
+  context: {
+    readonly interruptedRunIds: ReadonlySet<string>;
+    readonly automationInputIds: ReadonlySet<string>;
+    readonly recalledIds: ReadonlySet<string>;
+    readonly replacedIds: ReadonlySet<string>;
+  },
+): boolean {
+  return (
+    isRecallControlEvent(event) ||
+    isQueueMarkerEvent(event) ||
+    isGoalQueueEvent(event) ||
+    event.eventType === "input.budget" ||
+    isGoalMarkerEvent(event) ||
+    isBrowserLifecycleEventType(event.eventType) ||
+    isInterruptedAssistantCancellation(event, context.interruptedRunIds) ||
+    (event.eventType === "input.rejected" &&
+      event.revokesEventId !== undefined &&
+      context.automationInputIds.has(event.revokesEventId)) ||
+    context.recalledIds.has(event.id) ||
+    context.replacedIds.has(event.id)
+  );
+}
+
 export function semanticChatEventsFromChatEvents(
   events: readonly ChatEvent[],
+  chatToolActivityEnabled: boolean,
 ): SemanticChatEventState[] {
   const interruptedRunIds = new Set(
     events.flatMap((event) => {
@@ -156,47 +230,43 @@ export function semanticChatEventsFromChatEvents(
     }),
   );
 
-  return events.flatMap((event): SemanticChatEventState[] => {
-    if (
-      isRecallControlEvent(event) ||
-      isQueueMarkerEvent(event) ||
-      isGoalQueueEvent(event) ||
-      event.eventType === "input.budget" ||
-      isGoalMarkerEvent(event) ||
-      isBrowserLifecycleEventType(event.eventType) ||
-      isInterruptedAssistantCancellation(event, interruptedRunIds) ||
-      (event.eventType === "input.rejected" &&
-        event.revokesEventId !== undefined &&
-        automationInputIds.has(event.revokesEventId)) ||
-      recalledIds.has(event.id) ||
-      replacedIds.has(event.id)
-    ) {
-      return [];
-    }
-    if (isInterruptControlEvent(event) && event.interruptsRunId) {
-      return [
-        {
-          event: createInterruptedAssistantProjection(
-            event,
-            event.interruptsRunId,
-          ),
-          isQueued: false,
-        },
-      ];
-    }
+  return projectToolActivitySnapshots(events, chatToolActivityEnabled).flatMap(
+    (event): SemanticChatEventState[] => {
+      if (
+        isHiddenSemanticChatEvent(event, {
+          interruptedRunIds,
+          automationInputIds,
+          recalledIds,
+          replacedIds,
+        })
+      ) {
+        return [];
+      }
+      if (isInterruptControlEvent(event) && event.interruptsRunId) {
+        return [
+          {
+            event: createInterruptedAssistantProjection(
+              event,
+              event.interruptsRunId,
+            ),
+            isQueued: false,
+          },
+        ];
+      }
 
-    const isUnassociatedUser =
-      chatEventCompatibilityRole(event.eventType) === "user" &&
-      event.runId === undefined;
-    const optimisticAssociation = event.optimisticUserMessageAssociation;
-    const isQueued =
-      isUnassociatedUser &&
-      optimisticAssociation !== "run" &&
-      (event.eventType === "input.automation" ||
-        (event.eventType === "input.prompt" &&
-          isTemporarilyQueuedMorningBrief(event)));
-    return [{ event, isQueued }];
-  });
+      const isUnassociatedUser =
+        chatEventCompatibilityRole(event.eventType) === "user" &&
+        event.runId === undefined;
+      const optimisticAssociation = event.optimisticUserMessageAssociation;
+      const isQueued =
+        isUnassociatedUser &&
+        optimisticAssociation !== "run" &&
+        (event.eventType === "input.automation" ||
+          (event.eventType === "input.prompt" &&
+            isTemporarilyQueuedMorningBrief(event)));
+      return [{ event, isQueued }];
+    },
+  );
 }
 
 function orderSemanticEventsByRunTurn<T extends SemanticChatEventState>(
@@ -315,7 +385,7 @@ export function queuedEventsFromChatEvents(
   events: readonly ChatEvent[],
 ): QueuedChatEvent[] {
   return queuedEventsFromSemanticEvents(
-    semanticChatEventsFromChatEvents(events),
+    semanticChatEventsFromChatEvents(events, false),
   );
 }
 

@@ -328,56 +328,32 @@ describe("chat composer models", () => {
     ).toStrictEqual([18, 16]);
   });
 
-  it.each([
-    {
-      kind: "image",
-      featureSwitch: FeatureSwitchKey.ImageModelSelection,
-      categoryTab: "Image",
-    },
-    {
-      kind: "video",
-      featureSwitch: FeatureSwitchKey.VideoModelSelection,
-      categoryTab: "Video",
-    },
-  ])(
-    "keeps the model brand icon on the trigger when $kind model selection is enabled",
-    async ({ featureSwitch, categoryTab }) => {
-      const user = userEvent.setup({ delay: null });
-      context.mocks.browser.matchMedia(true);
-      mockOrgModelRoutes("claude-fable-5");
-      mockAgent();
-      mockThread({ selectedModel: "claude-fable-5" });
+  it("keeps the model brand icon on the trigger beside the media categories", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({ selectedModel: "claude-fable-5" });
 
-      detachedSetupPage({
-        context,
-        featureSwitches: { [featureSwitch]: true },
-        path: `/chats/${THREAD_ID}`,
-      });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-      const modelPicker = await findComposerModel("Claude Fable 5");
-      // The category now lives inside the popover, so open it to confirm the
-      // media panel resolved before reading the trigger's icons.
-      await user.click(modelPicker);
-      await waitFor(() => {
-        expect(
-          queryAllByRoleFast("radio").find((radio) => {
-            return radio.getAttribute("aria-label") === categoryTab;
-          }),
-        ).toBeInTheDocument();
-      });
-      // The trigger reads the same whether or not media categories are on: the
-      // selected model's brand mark on both layouts, and no mode glyph.
-      expect(
-        Array.from(
-          modelPicker.querySelectorAll<HTMLImageElement>("img"),
-          (icon) => {
-            return icon.width;
-          },
-        ),
-      ).toStrictEqual([18, 16]);
-      expect(modelPicker.querySelector(".lucide-message-circle")).toBeNull();
-    },
-  );
+    const modelPicker = await findComposerModel("Claude Fable 5");
+    // The category now lives inside the popover, so open it to confirm the
+    // media panel resolved before reading the trigger's icons.
+    await user.click(modelPicker);
+    await expect(findCategoryTab("Image")).resolves.toBeInTheDocument();
+    // The trigger carries the selected model's brand mark on both layouts,
+    // and no mode glyph.
+    expect(
+      Array.from(
+        modelPicker.querySelectorAll<HTMLImageElement>("img"),
+        (icon) => {
+          return icon.width;
+        },
+      ),
+    ).toStrictEqual([18, 16]);
+    expect(modelPicker.querySelector(".lucide-message-circle")).toBeNull();
+  });
 
   it("shows user preference over workspace default", async () => {
     mockOrgModelRoutes("claude-fable-5");
@@ -481,8 +457,6 @@ describe("chat composer models", () => {
       context,
       featureSwitches: {
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
-        [FeatureSwitchKey.ImageModelSelection]: false,
-        [FeatureSwitchKey.VideoModelSelection]: false,
       },
       path: `/agents/${AGENT_ID}/chat`,
     });
@@ -497,7 +471,9 @@ describe("chat composer models", () => {
 
     await user.click(await findComposerModel("Claude Sonnet 4.6"));
     const modelPicker = await screen.findByRole("listbox");
-    expect(within(modelPicker).getByText("Models")).toBeInTheDocument();
+    // The always-present media panel replaces the "Models" section label with
+    // the category switch that holds this list.
+    await expect(findCategoryTab("Video")).resolves.toBeInTheDocument();
     expect(
       within(modelPicker).queryByText(
         "Default for new chats and new automations",
@@ -1830,21 +1806,14 @@ describe("chat composer models", () => {
     context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
       featureSwitchRequestStarted.resolve();
       await releaseFeatureSwitchResponse.promise;
-      return respond(200, {
-        switches: { [FeatureSwitchKey.ImageModelSelection]: true },
-        effectiveSwitches: {
-          [FeatureSwitchKey.ImageModelSelection]: true,
-        },
-      });
+      return respond(200, { switches: {}, effectiveSwitches: {} });
     });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
 
     detachedSetupPage({
       context,
-      cachedFeatureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: false,
-      },
+      cachedFeatureSwitches: {},
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -1858,12 +1827,10 @@ describe("chat composer models", () => {
     await expect(
       screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     ).resolves.toBeInTheDocument();
-    expect(categoryTab("Image")).toBeUndefined();
 
     releaseFeatureSwitchResponse.resolve();
 
     await waitFor(() => {
-      expect(categoryTab("Image")).toBeInTheDocument();
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
         screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
@@ -1931,13 +1898,11 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("edits thread override without loading user default model selection", async () => {
+  it("edits thread override without offering the new-chat default actions", async () => {
     const user = userEvent.setup({ delay: null });
-    let preferenceRequestStarted = false;
 
     mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
-      preferenceRequestStarted = true;
       return respond(200, {
         selectedModel: "claude-opus-4-8",
         serviceTier: null,
@@ -1962,8 +1927,6 @@ describe("chat composer models", () => {
       context,
       featureSwitches: {
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
-        [FeatureSwitchKey.ImageModelSelection]: false,
-        [FeatureSwitchKey.VideoModelSelection]: false,
       },
       path: `/chats/${THREAD_ID}`,
     });
@@ -1974,7 +1937,6 @@ describe("chat composer models", () => {
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
-    expect(preferenceRequestStarted).toBeFalsy();
     expect(
       screen.queryByText("Default for new chats and new automations"),
     ).not.toBeInTheDocument();
@@ -2025,7 +1987,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: false },
     });
 
     await expectComposerModel("DeepSeek V4 Flash");
@@ -2045,7 +2006,7 @@ describe("chat composer models", () => {
       screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
     );
     await expect(
-      screen.findByRole("heading", { name: "Compare plans" }),
+      screen.findByRole("heading", { name: "Choose a plan" }),
     ).resolves.toBeInTheDocument();
   });
 
@@ -3672,7 +3633,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -3750,8 +3710,6 @@ describe("chat composer image model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: true,
-        [FeatureSwitchKey.VideoModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
@@ -3837,7 +3795,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -3898,7 +3855,6 @@ describe("chat composer image model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
@@ -3978,8 +3934,6 @@ describe("chat composer image model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: true,
-        [FeatureSwitchKey.VideoModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
@@ -4027,69 +3981,6 @@ describe("chat composer image model", () => {
     expect(updates).toStrictEqual([]);
   });
 
-  it("omits image UI, preference writes, and thread pins when disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    let preferenceUpdateCount = 0;
-    let createdThreadId: string | undefined;
-    let createdImageModel: string | undefined;
-    context.mocks.browser.matchMedia(true);
-
-    mockOrgModelRoutes("claude-fable-5");
-    context.mocks.data.userModelPreference({
-      selectedModel: null,
-      serviceTier: null,
-      selectedImageModel: "fal-ai/nano-banana-2",
-      updatedAt: "2026-08-18T00:00:00Z",
-    });
-    context.mocks.api(
-      userModelPreferenceContract.update,
-      ({ body, respond }) => {
-        preferenceUpdateCount += 1;
-        return respond(200, {
-          ...body,
-          updatedAt: "2026-08-18T00:01:00Z",
-        });
-      },
-    );
-    mockAgent();
-    mockChatLifecycle(context, {
-      onThreadCreate: (body) => {
-        createdThreadId = body.clientThreadId;
-        createdImageModel = body.imageModel;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: false,
-        [FeatureSwitchKey.VideoModelSelection]: false,
-      },
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await user.click(await findComposerModel("Claude Fable 5"));
-    await screen.findByRole("option", { name: /Claude Fable 5/ });
-    expect(imageCategoryTab()).toBeUndefined();
-    await user.keyboard("{Escape}");
-    await sendMessageInUI(
-      user,
-      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      "Keep image selection disabled",
-    );
-    await waitFor(() => {
-      expect(createdThreadId).toBeDefined();
-    });
-    expect(createdImageModel).toBeUndefined();
-    expect(preferenceUpdateCount).toBe(0);
-    if (!createdThreadId) {
-      throw new Error("Created thread id not captured");
-    }
-    expect(
-      context.store.get(eventDrivenChatThread(createdThreadId)),
-    ).toMatchObject({ selectedImageModel: null });
-  });
-
   it("shows the effective member default and pins an image model optimistically", async () => {
     const user = userEvent.setup({ delay: null });
     const updateGate = context.mocks.deferred<void>();
@@ -4119,10 +4010,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: true,
-        [FeatureSwitchKey.VideoModelSelection]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4217,7 +4104,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4269,7 +4155,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4296,10 +4181,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageModelSelection]: true,
-        [FeatureSwitchKey.VideoModelSelection]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4363,7 +4244,6 @@ describe("chat composer image model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
       path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
     });
 
@@ -4495,7 +4375,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -4576,7 +4455,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -4605,54 +4483,6 @@ describe("chat composer video model", () => {
     });
   });
 
-  it("leaves new-chat video defaults disabled while the feature switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    let preferenceUpdateCount = 0;
-    let createdThreadBody: { readonly videoModel?: string } | undefined;
-
-    mockOrgModelRoutes("claude-fable-5");
-    context.mocks.data.userModelPreference({
-      selectedModel: null,
-      serviceTier: null,
-      selectedVideoModel: "MiniMax-H3",
-      updatedAt: "2026-08-14T00:00:00Z",
-    });
-    context.mocks.api(
-      userModelPreferenceContract.update,
-      ({ body, respond }) => {
-        preferenceUpdateCount += 1;
-        return respond(200, {
-          ...body,
-          updatedAt: "2026-08-14T00:01:00Z",
-        });
-      },
-    );
-    mockAgent();
-    mockChatLifecycle(context, {
-      onThreadCreate: (body) => {
-        createdThreadBody = body;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await sendMessageInUI(
-      user,
-      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
-      "Keep video model defaults disabled",
-    );
-
-    await waitFor(() => {
-      expect(createdThreadBody).toBeDefined();
-    });
-    expect(createdThreadBody?.videoModel).toBeUndefined();
-    expect(preferenceUpdateCount).toBe(0);
-  });
-
   it("pins a video model on the thread from the model picker", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(true);
@@ -4660,7 +4490,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4716,10 +4545,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
-        [FeatureSwitchKey.ImageModelSelection]: false,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4740,8 +4565,8 @@ describe("chat composer video model", () => {
 
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
     expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
-    // Only the categories the composer actually offers get a tab.
-    expect(categoryTab("Image")).toBeUndefined();
+    // Both media categories the composer offers get a tab.
+    await expect(findCategoryTab("Image")).resolves.toBeInTheDocument();
 
     // Switching category swaps the list without closing the popover.
     await user.click(await findCategoryTab("Video"));
@@ -4775,16 +4600,12 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
-        [FeatureSwitchKey.ImageModelSelection]: false,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    // Only the categories the composer offers get a tab, on mobile too.
-    expect(categoryTab("Image")).toBeUndefined();
+    // Both media categories get a tab, on mobile too.
+    await expect(findCategoryTab("Image")).resolves.toBeInTheDocument();
     await user.click(await findCategoryTab("Video"));
     expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
       "aria-pressed",
@@ -4814,7 +4635,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4825,21 +4645,6 @@ describe("chat composer video model", () => {
       "aria-pressed",
       "true",
     );
-  });
-
-  it("hides the video model row while the feature switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockVideoModelThread(null);
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await user.click(await findComposerModel("Claude Fable 5"));
-    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
-    expect(videoCategoryTab()).toBeUndefined();
   });
 
   it("sends the video parameters chosen on the composer chip", async () => {
@@ -4858,7 +4663,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4909,7 +4713,6 @@ describe("chat composer video model", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -4976,7 +4779,6 @@ describe("chat composer video model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
@@ -5045,7 +4847,6 @@ describe("chat composer video model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
@@ -5114,7 +4915,6 @@ describe("chat composer video model", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.VideoModelSelection]: true,
         [FeatureSwitchKey.NewChatDefaultModelAction]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,

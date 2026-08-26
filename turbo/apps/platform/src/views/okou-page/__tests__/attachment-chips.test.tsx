@@ -638,7 +638,6 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
     });
-
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,

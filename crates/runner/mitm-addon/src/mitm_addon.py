@@ -1463,7 +1463,16 @@ async def request(flow: http.HTTPFlow) -> None:
             return
 
         _unhandled_request_classification(classification)
-    except (asyncio.CancelledError, Exception):
+    except (asyncio.CancelledError, Exception) as error:
+        if isinstance(error, Exception) and flow.response is None and flow.error is None:
+            flow.response = http_local_responses.make_local_json_response(
+                flow,
+                500,
+                {
+                    "error": "request_processing_failed",
+                    "message": "Request processing failed",
+                },
+            )
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)

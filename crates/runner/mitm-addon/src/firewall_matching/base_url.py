@@ -41,8 +41,6 @@ _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61")
 _VALID_BASE_SCHEMES = frozenset(("http", "https"))
-_BASE_PATH_SCORE_MULTIPLIER = 1_000_000
-_BASE_AUTHORITY_SCORE_MULTIPLIER = 100
 _BASE_LITERAL_SEGMENT_SCORE = 1_000
 _BASE_MIXED_PARAM_SEGMENT_SCORE = 100
 _BASE_PLAIN_PARAM_SEGMENT_SCORE = 10
@@ -67,11 +65,17 @@ class _BaseUrlParts(NamedTuple):
         return f"{self.hostname}:{self.port}"
 
 
+class _BaseSpecificity(NamedTuple):
+    path: int
+    authority: int
+    static_bonus: int
+
+
 class _CompiledBase(NamedTuple):
     raw: str
     parts: _BaseUrlParts
     has_params: bool
-    specificity: int
+    specificity: _BaseSpecificity
     has_query_or_fragment: bool
     raw_syntax_malformed: bool
     param_parse_malformed: bool
@@ -522,7 +526,7 @@ def _base_specificity(
     has_params: bool,
     host_segments: tuple[ParsedSegment, ...],
     path_segments: tuple[ParsedSegment, ...],
-) -> int:
+) -> _BaseSpecificity:
     if has_params:
         authority_score = _score_base_segments(host_segments)
         path_score = _score_base_path(parts.path, path_segments)
@@ -534,11 +538,7 @@ def _base_specificity(
         path_score = _score_static_base_path(parts.path)
         static_bonus = _BASE_STATIC_SCORE_BONUS
 
-    return (
-        path_score * _BASE_PATH_SCORE_MULTIPLIER
-        + authority_score * _BASE_AUTHORITY_SCORE_MULTIPLIER
-        + static_bonus
-    )
+    return _BaseSpecificity(path_score, authority_score, static_bonus)
 
 
 def _compile_base(raw_base: str) -> _CompiledBase | None:

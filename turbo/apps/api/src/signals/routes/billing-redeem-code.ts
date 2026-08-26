@@ -3,7 +3,8 @@ import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billi
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
-import { logger } from "../../lib/log";
+import { logAliasResolutionInfo, logger } from "../../lib/log";
+import { singleton } from "../../lib/singleton";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -37,6 +38,27 @@ type MachineSecretKeyResolution =
       readonly source: "canonical-only" | "legacy-only" | "equal-dual";
       readonly value: string;
     };
+
+type MachineSecretAliasState = MachineSecretKeyResolution["source"];
+
+const reportedMachineSecretStates = singleton(() => {
+  return new Set<MachineSecretAliasState>();
+});
+
+function reportMachineSecretResolution(source: MachineSecretAliasState): void {
+  const states = reportedMachineSecretStates();
+  if (states.has(source)) {
+    return;
+  }
+  states.add(source);
+
+  const fields = { source };
+  if (source === "conflicting-dual") {
+    log.warn(MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, fields);
+    return;
+  }
+  logAliasResolutionInfo(log, MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, fields);
+}
 
 const ATOM_REDEEM_CODE_ERROR_MESSAGES: Readonly<Record<string, string>> =
   Object.freeze({
@@ -225,15 +247,8 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const machineSecretKeyResolution = resolveMachineSecretKey();
-  if (machineSecretKeyResolution.source === "legacy-only") {
-    log.debug(MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, {
-      source: machineSecretKeyResolution.source,
-    });
-  }
+  reportMachineSecretResolution(machineSecretKeyResolution.source);
   if (machineSecretKeyResolution.source === "conflicting-dual") {
-    log.warn(MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, {
-      source: machineSecretKeyResolution.source,
-    });
     return providerUnavailable("Redeem service not configured");
   }
   if (machineSecretKeyResolution.source === "absent") {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { connectorRuntimeTargetsSchema } from "./runners";
+import { CHAT_EVENT_SNAPSHOT_PROJECTIONS } from "./chat-event-schema-version";
 
 const c = initContract();
 
@@ -60,9 +61,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-usage-pack-purchase-serialization-schema-state"),
-  }),
-  z.object({
-    action: z.literal("read-connector-catalog-runtime-projection-schema-state"),
   }),
   z.object({
     action: z.literal("set-run-autonomy-budget"),
@@ -158,6 +156,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("read-chat-event-snapshot-head"),
     thread_id: z.uuid(),
+    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
   }),
   z.object({
     action: z.literal("advance-chat-event-sequence-as-previous-api"),
@@ -170,6 +169,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
     last_seq_id: z.int().nonnegative().optional(),
+    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
+  }),
+  z.object({
+    action: z.literal("delete-chat-event-snapshot-head"),
+    thread_id: z.uuid(),
+    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -186,6 +191,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-run-launch-snapshot"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-run-chat-tool-activity-decision"),
     run_id: z.uuid(),
   }),
   z.object({
@@ -251,7 +260,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
-  connector_catalog_runtime_projection_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({
@@ -300,6 +308,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
         .strict()
         .nullable(),
     })
+    .optional(),
+  run_chat_tool_activity_decision: z
+    .object({
+      run_id: z.uuid(),
+      chat_tool_activity_enabled: z.boolean(),
+    })
+    .nullable()
     .optional(),
   thread_session_binding: z
     .object({

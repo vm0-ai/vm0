@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
+use guest_contracts::file_write::WRITE_FILE_HELPER_TIMEOUT_MS;
 use vsock_proto::{
     self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
     MSG_WRITE_FILES_RESULT,
@@ -25,7 +26,6 @@ use crate::wait::{
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
-const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -106,7 +106,13 @@ fn wait_write_file_child<S>(
 where
     S: ThreadSpawner,
 {
-    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, connection_cancel, spawner)
+    wait_write_file_child_with_timeout(
+        child,
+        content,
+        WRITE_FILE_HELPER_TIMEOUT_MS,
+        connection_cancel,
+        spawner,
+    )
 }
 
 fn wait_write_file_child_with_timeout<S>(

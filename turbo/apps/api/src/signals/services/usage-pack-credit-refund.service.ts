@@ -4,9 +4,8 @@ import {
   type UsagePackCreditRefundSourceType,
 } from "@okouai/db/schema/usage-pack-credit-refund";
 import { usagePackInvitationPurchases } from "@okouai/db/schema/usage-pack-subscription";
-import { and, asc, eq, gt, inArray, like, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, like, lt, or } from "drizzle-orm";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -44,21 +43,6 @@ export type UsagePackCreditRefundSource =
       readonly amountCents: number;
     };
 
-async function usagePackCreditRefundSchemaAvailable(
-  db: Pick<Db, "select">,
-): Promise<boolean> {
-  const [state] = await db
-    .select({
-      available:
-        sql`to_regclass('usage_pack_credit_refunds') IS NOT NULL`.mapWith(
-          pgBooleanDecoder,
-        ),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  return state?.available ?? false;
-}
-
 function refundableUsagePackCreditGrantCondition(
   args: { readonly orgId: string; readonly userId: string },
   at: Date,
@@ -70,32 +54,6 @@ function refundableUsagePackCreditGrantCondition(
     gt(usagePackCreditGrants.remainingAmount, 0),
     gt(usagePackCreditGrants.expiresAt, at),
   );
-}
-
-async function requireUsagePackCreditRefundSchema(
-  db: Pick<Db, "select">,
-): Promise<void> {
-  if (await usagePackCreditRefundSchemaAvailable(db)) {
-    return;
-  }
-  // Member removal must preserve refundable credits until migration 0898 is
-  // available. Remove this guard after 0898 is guaranteed across the DB/API
-  // rollout window.
-  throw new Error("Usage pack credit refund schema is not available");
-}
-
-export async function assertUsagePackMemberCreditRefundReady(
-  db: Pick<Db, "select">,
-  args: { readonly orgId: string; readonly userId: string },
-): Promise<void> {
-  const [grant] = await db
-    .select({ id: usagePackCreditGrants.id })
-    .from(usagePackCreditGrants)
-    .where(refundableUsagePackCreditGrantCondition(args, nowDate()))
-    .limit(1);
-  if (grant) {
-    await requireUsagePackCreditRefundSchema(db);
-  }
 }
 
 function sourceColumns(source: UsagePackCreditRefundSource): {
@@ -151,9 +109,6 @@ export async function ensureUsagePackCreditRefundSource(
     readonly source: UsagePackCreditRefundSource;
   },
 ): Promise<void> {
-  if (!(await usagePackCreditRefundSchemaAvailable(db))) {
-    return;
-  }
   const source = sourceColumns(args.source);
   const [inserted] = await db
     .insert(usagePackCreditRefunds)
@@ -291,7 +246,6 @@ export async function prepareUsagePackMemberCreditRefunds(
   db: CreditRefundStore,
   args: { readonly orgId: string; readonly userId: string },
 ): Promise<number> {
-  await assertUsagePackMemberCreditRefundReady(db, args);
   const at = nowDate();
   const grants = await db
     .select()
@@ -814,9 +768,6 @@ export async function refundUsagePackMemberCredits(
   args: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
 ): Promise<number> {
-  if (!(await usagePackCreditRefundSchemaAvailable(db))) {
-    return 0;
-  }
   signal.throwIfAborted();
   const refunds = await db
     .select()
@@ -842,9 +793,6 @@ export async function reconcileUsagePackCreditRefunds(
   scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<number> {
-  if (!(await usagePackCreditRefundSchemaAvailable(db))) {
-    return 0;
-  }
   signal.throwIfAborted();
   const refunds = await db
     .select()

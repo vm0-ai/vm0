@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
@@ -15,7 +16,7 @@ use crate::operation_tracker::{
     NormalOperationRejection, NormalOperationToken, NormalOperationTransitionError,
     NormalOperationTransitionHandle,
 };
-use crate::{FrameWriteObserver, VsockHost};
+use crate::{FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, VsockHost};
 
 use super::{ConnectionState, PendingNormalOperation, PendingResponse, RouteId, Shared};
 
@@ -28,6 +29,34 @@ pub(crate) struct RequestWriteGuard {
     shared: Arc<Shared>,
     write_started: bool,
     write_returned: bool,
+}
+
+#[derive(Debug, Default)]
+struct RequestWriteProgress {
+    stage: AtomicU8,
+}
+
+impl RequestWriteProgress {
+    const BEFORE_FRAME_WRITE: u8 = 0;
+    const FRAME_WRITE: u8 = 1;
+    const AWAITING_TERMINAL_RESPONSE: u8 = 2;
+
+    fn mark_frame_write(&self) {
+        self.stage.store(Self::FRAME_WRITE, Ordering::Release);
+    }
+
+    fn mark_awaiting_terminal_response(&self) {
+        self.stage
+            .store(Self::AWAITING_TERMINAL_RESPONSE, Ordering::Release);
+    }
+
+    fn timeout_stage(&self) -> RequestTimeoutStage {
+        match self.stage.load(Ordering::Acquire) {
+            Self::BEFORE_FRAME_WRITE => RequestTimeoutStage::BeforeFrameWrite,
+            Self::FRAME_WRITE => RequestTimeoutStage::FrameWrite,
+            _ => RequestTimeoutStage::AwaitingTerminalResponse,
+        }
+    }
 }
 
 impl PendingRequestGuard {
@@ -119,35 +148,54 @@ async fn request_on_shared(
     timeout: Duration,
 ) -> io::Result<RawMessage> {
     if timeout.is_zero() {
-        return Err(request_timeout_error());
+        return Err(request_timeout_error(
+            RequestTimeoutStage::BeforeFrameWrite,
+            timeout,
+        ));
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
-    request_raw_on_shared(shared, msg_type, payload, deadline).await
+    request_raw_on_shared(shared, msg_type, payload, deadline, timeout).await
 }
 
 async fn write_request_frame(
     shared: &Arc<Shared>,
     data: &[u8],
     before_write: impl FnOnce() -> io::Result<()>,
+    progress: &RequestWriteProgress,
 ) -> io::Result<()> {
     let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
     let mut writer = shared.writer.lock().await;
     before_write()?;
+    progress.mark_frame_write();
     write_guard.mark_started();
     if let Err(error) = writer.write_all(data).await {
         write_guard.mark_returned();
         shared.poison_connection();
         return Err(error);
     }
+    progress.mark_awaiting_terminal_response();
     write_guard.mark_returned();
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) async fn write_request_frame_with_builder(
     shared: &Arc<Shared>,
     seq: u32,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
     before_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let progress = RequestWriteProgress::default();
+    write_request_frame_with_builder_and_progress(shared, seq, build_frame, before_write, &progress)
+        .await
+}
+
+async fn write_request_frame_with_builder_and_progress(
+    shared: &Arc<Shared>,
+    seq: u32,
+    build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
+    before_write: impl FnOnce() -> io::Result<()>,
+    progress: &RequestWriteProgress,
 ) -> io::Result<()> {
     let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
     let frame_builder_guard = shared.frame_builder.lock().await;
@@ -155,6 +203,7 @@ pub(crate) async fn write_request_frame_with_builder(
     build_frame(seq, &mut frame)?;
     let mut writer = shared.writer.lock().await;
     before_write()?;
+    progress.mark_frame_write();
     write_guard.mark_started();
     let result = writer.write_all(&frame).await;
     if let Err(error) = result {
@@ -168,6 +217,7 @@ pub(crate) async fn write_request_frame_with_builder(
     drop(writer);
     drop(frame);
     drop(frame_builder_guard);
+    progress.mark_awaiting_terminal_response();
     write_guard.mark_returned();
     Ok(())
 }
@@ -210,6 +260,7 @@ async fn write_registered_request_and_wait(
     shared: &Arc<Shared>,
     data: &[u8],
     deadline: Instant,
+    timeout: Duration,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
@@ -217,11 +268,15 @@ async fn write_registered_request_and_wait(
     // or cancellation before reader_loop dispatches a response. The write
     // helper separately poisons the connection if cancellation interrupts an
     // in-progress frame write.
-    time::timeout_at(deadline, write_request_frame(shared, data, before_write))
-        .await
-        .map_err(|_| request_timeout_error())??;
+    let progress = RequestWriteProgress::default();
+    time::timeout_at(
+        deadline,
+        write_request_frame(shared, data, before_write, &progress),
+    )
+    .await
+    .map_err(|_| request_timeout_error(progress.timeout_stage(), timeout))??;
 
-    await_pending_response(rx, deadline).await
+    await_pending_response(rx, deadline, timeout).await
 }
 
 async fn write_registered_request_and_wait_with_frame_builder(
@@ -229,22 +284,31 @@ async fn write_registered_request_and_wait_with_frame_builder(
     seq: u32,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
     deadline: Instant,
+    timeout: Duration,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
+    let progress = RequestWriteProgress::default();
     time::timeout_at(
         deadline,
-        write_request_frame_with_builder(shared, seq, build_frame, before_write),
+        write_request_frame_with_builder_and_progress(
+            shared,
+            seq,
+            build_frame,
+            before_write,
+            &progress,
+        ),
     )
     .await
-    .map_err(|_| request_timeout_error())??;
+    .map_err(|_| request_timeout_error(progress.timeout_stage(), timeout))??;
 
-    await_pending_response(rx, deadline).await
+    await_pending_response(rx, deadline, timeout).await
 }
 
 async fn await_pending_response(
     rx: oneshot::Receiver<RawMessage>,
     deadline: Instant,
+    timeout: Duration,
 ) -> io::Result<RawMessage> {
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -258,13 +322,19 @@ async fn await_pending_response(
             ))
         }
         _ = time::sleep_until(deadline) => {
-            Err(request_timeout_error())
+            Err(request_timeout_error(
+                RequestTimeoutStage::AwaitingTerminalResponse,
+                timeout,
+            ))
         }
     }
 }
 
-fn request_timeout_error() -> io::Error {
-    io::Error::new(io::ErrorKind::TimedOut, "request timeout")
+fn request_timeout_error(stage: RequestTimeoutStage, timeout: Duration) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        RequestTimeoutError::new(stage, timeout),
+    )
 }
 
 async fn request_raw_on_shared(
@@ -272,6 +342,7 @@ async fn request_raw_on_shared(
     msg_type: u8,
     payload: &[u8],
     deadline: Instant,
+    timeout: Duration,
 ) -> io::Result<RawMessage> {
     let (route_id, rx) = register_pending_response(shared, |route_id, tx| {
         Ok(PendingResponse {
@@ -285,7 +356,7 @@ async fn request_raw_on_shared(
     let seq = route_id.wire_seq();
     let data = encode_request_frame(msg_type, seq, payload)?;
 
-    write_registered_request_and_wait(shared, &data, deadline, || Ok(()), rx).await
+    write_registered_request_and_wait(shared, &data, deadline, timeout, || Ok(()), rx).await
 }
 
 pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
@@ -296,7 +367,10 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
     if timeout.is_zero() {
-        return Err(request_timeout_error());
+        return Err(request_timeout_error(
+            RequestTimeoutStage::BeforeFrameWrite,
+            timeout,
+        ));
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
     let normal_operation = shared.reserve_normal_operation()?;
@@ -316,6 +390,7 @@ pub(crate) async fn normal_request_on_shared_with_write_observer_frame_builder(
         seq,
         build_frame,
         deadline,
+        timeout,
         || {
             mark_pending_normal_operation_possible_guest_write(shared, route_id, |_| Ok(()))?;
             write_observer.record_write_start()
@@ -334,7 +409,10 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
     if timeout.is_zero() {
-        return Err(request_timeout_error());
+        return Err(request_timeout_error(
+            RequestTimeoutStage::BeforeFrameWrite,
+            timeout,
+        ));
     }
     let deadline = deadline_after(timeout, "request timeout overflowed")?;
     let (route_id, rx) = register_pending_response(shared, |route_id, tx| {
@@ -355,6 +433,7 @@ pub(crate) async fn request_on_shared_with_composite_operation_and_observer_fram
         seq,
         build_frame,
         deadline,
+        timeout,
         || {
             mark_pending_normal_operation_possible_guest_write(shared, route_id, |_| Ok(()))?;
             write_observer.record_write_start()

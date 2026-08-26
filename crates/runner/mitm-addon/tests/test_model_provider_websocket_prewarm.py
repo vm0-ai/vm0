@@ -26,6 +26,7 @@ from tests.model_provider_websocket_helpers import (
     openai_websocket_usage_frame,
 )
 from tests.usage_helpers import assert_usage_event_rows
+from usage.quantities import MAX_USAGE_QUANTITY
 
 
 @pytest.fixture(autouse=True)
@@ -143,6 +144,63 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert ignored_entry["provider_response_id"] == "warm-late"
         assert ignored_entry["reason"] == "responses_generate_false"
         assert ignored_entry["usage"] == {"tokens.input": 17}
+        assert not _correlation_entries(flow)
+
+    def test_model_websocket_terminal_usage_error_settles_prewarm_correlation(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("bad-prewarm"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "bad-prewarm",
+                    input_tokens=MAX_USAGE_QUANTITY + 1,
+                    output_tokens=0,
+                ),
+            )
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("next-prewarm"))
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "next-prewarm",
+                    input_tokens=7,
+                    output_tokens=0,
+                ),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.usage_events() == []
+        assert webhook.model_usage_observation_events() == []
+        [warning] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("message") == "Model provider WebSocket usage extraction failed"
+        ]
+        assert warning["error"] == "integer value limit exceeded"
+        [ignored_entry] = [
+            entry
+            for entry in model_usage_source_entries(flow)
+            if entry.get("disposition") == "ignored"
+        ]
+        assert ignored_entry["provider_response_id"] == "next-prewarm"
+        assert ignored_entry["reason"] == "responses_generate_false"
         assert not _correlation_entries(flow)
 
     def test_model_websocket_logs_each_prewarm_source_once_across_late_duplicate(

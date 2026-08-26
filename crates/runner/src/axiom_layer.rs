@@ -51,15 +51,16 @@ const _: () = assert!(
     FLUSH_DEADLINE.as_nanos() >= HTTP_TIMEOUT.as_nanos(),
     "FLUSH_DEADLINE must be >= HTTP_TIMEOUT; see FLUSH_DEADLINE doc comment",
 );
-/// Max bytes we'll serialize from a single `Debug`-formatted field.
+/// Max content bytes we'll retain from a single textual field.
 ///
-/// Covers typical legit Debug output (errors, configs — nearly all under
-/// ~2 KiB) while flagging accidental huge-struct dumps: `tracing::warn!(v
-/// = ?gigantic, ...)` would otherwise embed megabytes into a single event
-/// and blow past Axiom's per-request body limit. Oversized values are
-/// truncated on a UTF-8 boundary with a `…[truncated]` marker so the
-/// condition is visible in the log.
-const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
+/// Covers typical legitimate strings and formatted values while flagging
+/// accidental huge fields. Oversized values are truncated on a UTF-8
+/// boundary with a visible marker. The marker is appended after this content
+/// cap, matching the existing bounded Debug-field behavior.
+const TEXT_FIELD_MAX_BYTES: usize = 4 * 1024;
+/// Max native error sources retained after the top-level error message.
+const ERROR_SOURCE_MAX_DEPTH: usize = 8;
+const TRUNCATION_MARKER: &str = "…[truncated]";
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
@@ -71,27 +72,27 @@ const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
 const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 #[derive(Default)]
-struct BoundedDebugOutput {
+struct BoundedTextOutput {
     value: String,
     truncated: bool,
 }
 
-impl BoundedDebugOutput {
+impl BoundedTextOutput {
     fn finish(mut self) -> String {
         if self.truncated {
-            self.value.push_str("…[truncated]");
+            self.value.push_str(TRUNCATION_MARKER);
         }
         self.value
     }
 }
 
-impl std::fmt::Write for BoundedDebugOutput {
+impl std::fmt::Write for BoundedTextOutput {
     fn write_str(&mut self, value: &str) -> std::fmt::Result {
         if self.truncated {
             return Err(std::fmt::Error);
         }
 
-        let remaining = DEBUG_FIELD_MAX_BYTES - self.value.len();
+        let remaining = TEXT_FIELD_MAX_BYTES - self.value.len();
         if value.len() <= remaining {
             self.value.push_str(value);
             return Ok(());
@@ -105,6 +106,12 @@ impl std::fmt::Write for BoundedDebugOutput {
         self.truncated = true;
         Err(std::fmt::Error)
     }
+}
+
+fn format_bounded(arguments: std::fmt::Arguments<'_>) -> String {
+    let mut output = BoundedTextOutput::default();
+    let _ = output.write_fmt(arguments);
+    output.finish()
 }
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
@@ -328,7 +335,10 @@ fn serialize_event(event: &Event<'_>) -> Value {
     struct V(Map<String, Value>);
     impl Visit for V {
         fn record_str(&mut self, f: &Field, v: &str) {
-            self.0.insert(f.name().into(), Value::String(v.into()));
+            self.0.insert(
+                f.name().into(),
+                Value::String(format_bounded(format_args!("{v}"))),
+            );
         }
         fn record_i64(&mut self, f: &Field, v: i64) {
             self.0.insert(f.name().into(), v.into());
@@ -355,12 +365,21 @@ fn serialize_event(event: &Event<'_>) -> Value {
             // `.source()`, the closest analog to JS `cause`.
             let mut chain: Vec<Value> = Vec::new();
             let mut cur = err.source();
-            while let Some(e) = cur {
-                chain.push(Value::String(e.to_string()));
+            for _ in 0..ERROR_SOURCE_MAX_DEPTH {
+                let Some(e) = cur else {
+                    break;
+                };
+                chain.push(Value::String(format_bounded(format_args!("{e}"))));
                 cur = e.source();
             }
+            if cur.is_some() {
+                chain.push(Value::String(TRUNCATION_MARKER.into()));
+            }
             let mut obj = Map::new();
-            obj.insert("message".into(), Value::String(err.to_string()));
+            obj.insert(
+                "message".into(),
+                Value::String(format_bounded(format_args!("{err}"))),
+            );
             if !chain.is_empty() {
                 obj.insert("chain".into(), Value::Array(chain));
             }
@@ -369,10 +388,10 @@ fn serialize_event(event: &Event<'_>) -> Value {
         fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
             // Cap per-field size so a user who logs a huge struct via `?v`
             // can't blow past Axiom's body limit or starve the dispatcher.
-            let mut output = BoundedDebugOutput::default();
-            let _ = write!(output, "{v:?}");
-            self.0
-                .insert(f.name().into(), Value::String(output.finish()));
+            self.0.insert(
+                f.name().into(),
+                Value::String(format_bounded(format_args!("{v:?}"))),
+            );
         }
     }
 

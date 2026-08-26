@@ -3356,6 +3356,121 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
   }, 90_000);
 
+  it("persists normalized Claude text blocks independently across tool-only sequences", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "persist normalized Claude blocks",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    const events = [
+      {
+        type: "assistant" as const,
+        sequenceNumber: 0,
+        message: {
+          id: "msg_bdd_normalized_claude",
+          content: [{ type: "text" as const, text: "text A" }],
+        },
+      },
+      {
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        message: {
+          id: "msg_bdd_normalized_claude",
+          content: [
+            {
+              type: "tool_use" as const,
+              id: "tool_bdd_normalized_claude",
+              name: "Read",
+              input: { file_path: "README.md" },
+            },
+          ],
+        },
+      },
+      {
+        type: "assistant" as const,
+        sequenceNumber: 2,
+        message: {
+          id: "msg_bdd_normalized_claude",
+          content: [{ type: "text" as const, text: "text B" }],
+        },
+      },
+      {
+        type: "assistant" as const,
+        sequenceNumber: 3,
+        message: {
+          id: "msg_bdd_normalized_claude",
+          content: [{ type: "text" as const, text: "text C" }],
+        },
+      },
+    ];
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events },
+      sandboxHeaders,
+      [200],
+    );
+    context.mocks.axiom.query.mockClear();
+    context.mocks.axiomLogging.warn.mockClear();
+
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 3,
+    });
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, run.runId).length === 3;
+      },
+    );
+    const persisted = eventBackedContents(messages.events, run.runId).sort(
+      (left, right) => {
+        return (
+          (left.sequenceNumber ?? Number.MAX_SAFE_INTEGER) -
+          (right.sequenceNumber ?? Number.MAX_SAFE_INTEGER)
+        );
+      },
+    );
+    expect(
+      persisted.map((message) => {
+        return {
+          content: message.content,
+          runEventId: message.runEventId,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "text A", runEventId: "event:0", sequenceNumber: 0 },
+      { content: "text B", runEventId: "event:2", sequenceNumber: 2 },
+      { content: "text C", runEventId: "event:3", sequenceNumber: 3 },
+    ]);
+    expect(
+      new Set(
+        persisted.map((message) => {
+          return message.id;
+        }),
+      ).size,
+    ).toBe(3);
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
+        return (
+          message ===
+            "Run output projection is incomplete at terminal callback" &&
+          isRecord(fields) &&
+          fields.runId === run.runId
+        );
+      }),
+    ).toBeFalsy();
+  }, 90_000);
+
   it("returns 503 when the required DB output projection is locked", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {

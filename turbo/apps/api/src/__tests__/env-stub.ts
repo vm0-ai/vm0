@@ -6,6 +6,14 @@ export function stubTestTimezone(
   vi.stubEnv("TZ", timezone);
 }
 
+export function stubTestWebUrlEnvironment(
+  canonical: string | undefined,
+  legacy: string | undefined,
+): void {
+  vi.stubEnv("OKOU_WEB_URL", canonical);
+  vi.stubEnv("VM0_WEB_URL", legacy);
+}
+
 function stubTestDatabaseUrl(): void {
   const vitestWorkerId = process.env.VITEST_WORKER_ID;
   if (!vitestWorkerId) {
@@ -56,9 +64,10 @@ vi.stubEnv("R2_HOSTED_SITES_SECRET_ACCESS_KEY", "test-hosted-sites-secret-key");
 vi.stubEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
+vi.stubEnv("OKOU_API_BACKEND_URL", undefined);
 vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("FEISHU_CALLBACK_BASE_URL", "http://localhost:3000");
-vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
+stubTestWebUrlEnvironment(undefined, "http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",

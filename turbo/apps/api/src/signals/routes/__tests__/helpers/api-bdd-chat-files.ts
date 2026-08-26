@@ -965,6 +965,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
       selectedImageModel?: ImageModelId | null,
+      selectedVideoModel?: VideoModelId | null,
     ): Promise<void> {
       await accept(
         userModelPreferenceClient().update({
@@ -973,6 +974,7 @@ export function createChatFilesBddApi(context: TestContext) {
             selectedModel,
             serviceTier: null,
             ...(selectedImageModel === undefined ? {} : { selectedImageModel }),
+            ...(selectedVideoModel === undefined ? {} : { selectedVideoModel }),
           },
         }),
         [200],
@@ -1130,6 +1132,9 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
+                  ...(cursor.projection === undefined
+                    ? {}
+                    : { sinceProjection: cursor.projection }),
                 },
         }),
         [200],

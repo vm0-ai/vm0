@@ -19,7 +19,7 @@ export function LoadingSwitch({
   size = "default",
 }: LoadingSwitchProps) {
   return (
-    <div
+    <span
       className={cn(
         "relative shrink-0 flex items-center",
         size === "sm" ? "h-4 w-7" : "h-5 w-9",
@@ -42,6 +42,6 @@ export function LoadingSwitch({
           )}
         />
       )}
-    </div>
+    </span>
   );
 }

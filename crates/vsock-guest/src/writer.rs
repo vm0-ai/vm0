@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const WRITE_DEADLINE: Duration = Duration::from_secs(10);
+use guest_contracts::file_write::GUEST_FRAME_WRITE_DEADLINE;
 
 /// Shared guest-to-host frame writer.
 ///
@@ -26,7 +26,7 @@ impl GuestWriter {
     }
 
     pub(crate) fn write_frame(&self, frame: &[u8]) -> io::Result<()> {
-        self.write_frame_with_deadline(frame, WRITE_DEADLINE)
+        self.write_frame_with_deadline(frame, GUEST_FRAME_WRITE_DEADLINE)
     }
 
     pub(crate) fn shutdown(&self) {
@@ -57,7 +57,7 @@ impl GuestWriter {
     where
         F: FnOnce(),
     {
-        self.write_frame_with_deadline_after_lock(frame, WRITE_DEADLINE, after_lock)
+        self.write_frame_with_deadline_after_lock(frame, GUEST_FRAME_WRITE_DEADLINE, after_lock)
     }
 
     /// Release operation ownership at the writer boundary, then send the
@@ -76,7 +76,7 @@ impl GuestWriter {
         if cancelled.load(Ordering::Acquire) {
             return Ok(false);
         }
-        let result = send_frame(stream.as_raw_fd(), frame, WRITE_DEADLINE);
+        let result = send_frame(stream.as_raw_fd(), frame, GUEST_FRAME_WRITE_DEADLINE);
         if result.is_err() {
             let _ = stream.shutdown(Shutdown::Both);
         }
@@ -93,7 +93,7 @@ impl GuestWriter {
     {
         let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
         let frame = build_frame()?;
-        let result = send_frame(stream.as_raw_fd(), &frame, WRITE_DEADLINE);
+        let result = send_frame(stream.as_raw_fd(), &frame, GUEST_FRAME_WRITE_DEADLINE);
         if result.is_err() {
             let _ = stream.shutdown(Shutdown::Both);
         }

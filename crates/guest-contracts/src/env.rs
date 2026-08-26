@@ -21,6 +21,18 @@
 /// processes by the guest-agent's curated child environment.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
+/// Canonical backend API URL spelling shared by migration readers.
+///
+/// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
+/// spelling but have independent rollout floors. On the Runner-to-Guest surface,
+/// Runner writers keep using [`API_URL_ENV`], and the guest-agent keeps exposing
+/// that legacy spelling to managed CLI children. Remove that legacy reader only
+/// after the exact production Runner plus embedded-Guest reader floor, complete
+/// pre-reader service and reusable-sandbox drain, supported rollback window,
+/// and value-free legacy-source-zero gates in #28914. Runner operator input and
+/// managed CLI-child exposure each have their own later support floors.
+pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
+
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
@@ -168,6 +180,19 @@ pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
 /// Private runtime filename used by [`USER_ENV_FILE_ENV`].
 pub const USER_ENV_FILENAME: &str = "env.json";
+
+/// Path to the non-secret connector account context for the current run.
+///
+/// The runner adds this key to the filtered user environment after removing
+/// untrusted runner-owned keys. Managed CLI children may read the referenced
+/// file for self-inspection; authorization does not consume it.
+pub const CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV: &str = "OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE";
+
+/// Private runtime subdirectory used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
+pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-context";
+
+/// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
+pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
 
 /// Path to the private runner-owned run payload JSON file.
 ///
@@ -376,6 +401,12 @@ impl RunPayload {
 /// unset or unparseable values use the compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
+/// Canonical stuck-tool timeout alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`STUCK_TOOL_TIMEOUT_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
+
 /// Guest-agent grace period in seconds before sending SIGTERM after the CLI
 /// reports a final result.
 ///
@@ -383,6 +414,13 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 /// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
+
+/// Canonical post-result SIGTERM grace alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
+    "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
 /// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
 /// reports a final result, regardless of later post-result stdout events.
@@ -392,6 +430,12 @@ pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GR
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
+/// Canonical post-result total-cap alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_TOTAL_CAP_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
+
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
@@ -399,6 +443,13 @@ pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS
 /// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
 /// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
+
+/// Canonical post-result SIGKILL grace alias accepted by guest readers.
+///
+/// The runner writer and supported local tuning interface remain on
+/// [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
+    "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -421,10 +472,24 @@ pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
 
+/// Canonical mock Claude binary path alias accepted by guest readers.
+///
+/// Existing test/debug writers keep using [`MOCK_CLAUDE_PATH_ENV`] until the
+/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
+
 /// Optional test/debug override for the mock Codex binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
+
+/// Canonical mock Codex binary path alias accepted by guest readers.
+///
+/// Existing test/debug writers keep using [`MOCK_CODEX_PATH_ENV`] until the
+/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
+/// complete.
+pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
 /// boundary.
@@ -452,6 +517,7 @@ const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     PI_LAUNCH_CONFIG_ENV,
     PI_LAUNCH_PAYLOAD_FILE_ENV,
     PI_MODEL_CONFIG_ENV,
+    CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
     CLI_AGENT_TYPE_ENV,
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
@@ -531,6 +597,7 @@ mod tests {
     #[test]
     fn contract_names_match_wire_values() {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
+        assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -569,10 +636,39 @@ mod tests {
         assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
+        assert_eq!(
+            CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
+            "OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE"
+        );
+        assert_eq!(
+            CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME,
+            "connector-account-context"
+        );
+        assert_eq!(CONNECTOR_ACCOUNT_CONTEXT_FILENAME, "context.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
+        assert_eq!(
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            "OKOU_STUCK_TOOL_TIMEOUT_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "OKOU_POST_RESULT_SIGTERM_GRACE_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "OKOU_POST_RESULT_TOTAL_CAP_SECS"
+        );
+        assert_eq!(
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "OKOU_POST_RESULT_SIGKILL_GRACE_SECS"
+        );
+        assert_eq!(MOCK_CLAUDE_PATH_ENV, "VM0_MOCK_CLAUDE_PATH");
+        assert_eq!(CANONICAL_MOCK_CLAUDE_PATH_ENV, "OKOU_MOCK_CLAUDE_PATH");
+        assert_eq!(MOCK_CODEX_PATH_ENV, "VM0_MOCK_CODEX_PATH");
+        assert_eq!(CANONICAL_MOCK_CODEX_PATH_ENV, "OKOU_MOCK_CODEX_PATH");
     }
 
     #[test]
@@ -749,6 +845,7 @@ mod tests {
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
             API_URL_ENV,
+            CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
             API_TOKEN_ENV,
             CANONICAL_API_TOKEN_ENV,
@@ -762,6 +859,7 @@ mod tests {
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
+            CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             WORKING_DIR_ENV,
             USER_ENV_FILE_ENV,
             CANONICAL_USER_ENV_FILE_ENV,
@@ -798,17 +896,32 @@ mod tests {
 
     #[test]
     fn guest_agent_tuning_keys_are_explicit() {
-        assert!(is_guest_agent_tuning_env_key(STUCK_TOOL_TIMEOUT_SECS_ENV));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_SIGTERM_GRACE_SECS_ENV
-        ));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_TOTAL_CAP_SECS_ENV
-        ));
-        assert!(is_guest_agent_tuning_env_key(
-            POST_RESULT_SIGKILL_GRACE_SECS_ENV
-        ));
-        assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
+        assert_eq!(
+            GUEST_AGENT_TUNING_ENV_KEYS,
+            [
+                STUCK_TOOL_TIMEOUT_SECS_ENV,
+                POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                POST_RESULT_TOTAL_CAP_SECS_ENV,
+                POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            ]
+        );
+        for key in [
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        ] {
+            assert!(
+                !is_guest_agent_tuning_env_key(key),
+                "canonical reader alias {key} must not become a local tuning input"
+            );
+        }
+        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
+            assert!(
+                !is_guest_agent_tuning_env_key(key),
+                "API URL bootstrap key {key} must not become a local tuning input"
+            );
+        }
     }
 
     /// Contract sources scanned for declared environment key constants.
@@ -834,13 +947,16 @@ mod tests {
     /// Only declarations starting a line are matched, so prose mentioning the
     /// pattern inside a comment is not treated as a declaration.
     ///
-    /// Every current declaration occupies a single line. A `_ENV` declaration
-    /// this cannot parse yields an empty value, which fails the protection
-    /// check rather than being skipped, so an unparsed declaration fails closed.
+    /// Rustfmt may keep the string literal on the declaration line or move it
+    /// to the immediately following line. A `_ENV` declaration this cannot
+    /// parse yields an empty value, which fails the protection check rather
+    /// than being skipped, so an unparsed declaration fails closed.
     fn declared_env_key_constants(source: &str) -> Vec<(&str, &str)> {
-        source
-            .lines()
-            .filter_map(|line| {
+        let lines = source.lines().collect::<Vec<_>>();
+        lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| {
                 let declaration = line.trim_start().strip_prefix("pub const ")?;
                 let (name, rest) = declaration.split_once(':')?;
                 let name = name.trim();
@@ -848,7 +964,12 @@ mod tests {
                     return None;
                 }
                 let (_, rest) = rest.split_once('=')?;
-                let value = rest
+                let literal_source = if rest.trim_start().starts_with('"') {
+                    rest
+                } else {
+                    lines.get(index + 1).copied().unwrap_or("")
+                };
+                let value = literal_source
                     .trim_start()
                     .strip_prefix('"')
                     .and_then(|literal| literal.split_once('"'))

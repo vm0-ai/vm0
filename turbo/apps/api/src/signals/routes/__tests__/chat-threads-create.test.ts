@@ -285,6 +285,7 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(selected.body.selections).toStrictEqual([]);
+    expect(selected.body.selectedConnections).toStrictEqual([]);
     const inherited = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -293,6 +294,7 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(inherited.body.selections).toStrictEqual([]);
+    expect(inherited.body.selectedConnections).toStrictEqual([]);
 
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
     const deletedRemainingAccount = await accept(
@@ -314,6 +316,35 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(afterClear.body.selections).toStrictEqual([]);
+    expect(afterClear.body.selectedConnections).toStrictEqual([]);
+
+    const staleSelectionThread = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: firstResponse.body.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const staleSelection = await accept(
+      connectorSelectionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: staleSelectionThread.body.id },
+      }),
+      [200],
+    );
+    expect(staleSelection.body).toStrictEqual({
+      selections: [],
+      selectedConnections: [],
+    });
   });
 
   it("creates and reads an exact built-in connector account selection", async () => {
@@ -363,6 +394,12 @@ describe("POST /api/zero/chat-threads", () => {
         target: { kind: "builtin", connectorSlug: "openai" },
       },
     ]);
+    expect(selections.body.selectedConnections).toHaveLength(1);
+    expect(selections.body.selectedConnections[0]).toMatchObject({
+      id: connection.id,
+      target: { kind: "builtin", connectorSlug: "openai" },
+      connectionStatus: "connected",
+    });
     const readToken = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
@@ -397,6 +434,28 @@ describe("POST /api/zero/chat-threads", () => {
       seedOrgMembership$,
       { orgId: fixture.orgId, userId: foreignActor.userId },
       context.signal,
+    );
+    const foreignConnection = await connectorApi.connectManualGrant(
+      foreignActor,
+      "openai",
+      "api-token",
+      { apiKey: "foreign-openai-key" },
+    );
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+          connectorSelections: [
+            {
+              connectionId: foreignConnection.id,
+              target: { kind: "builtin", connectorSlug: "openai" },
+            },
+          ],
+        },
+      }),
+      [400],
     );
     const foreignToken = okouToken({
       userId: foreignActor.userId,
@@ -706,6 +765,7 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(selections.body.selections).toHaveLength(2);
+    expect(selections.body.selectedConnections).toHaveLength(2);
     expect(
       selections.body.selections.map((selection) => {
         return selection.connectionId;
@@ -883,83 +943,8 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("leaves media models unpinned while neither picker is enabled", async () => {
-    const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: false,
-      [FeatureSwitchKey.ImageModelSelection]: false,
-    });
-    await setMemberMediaDefaults(fixture);
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-
-    const response = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          title: "No media pickers enabled",
-          model: OTHER_WORKSPACE_MODEL,
-        },
-      }),
-      [201],
-    );
-
-    // A member who cannot reach either picker has no choice worth freezing, so
-    // the thread keeps following the live defaults. A written pin would also
-    // outlive a revert of this behavior.
-    await expect(
-      readCreatedThreadEvent(response.body.id, token),
-    ).resolves.toMatchObject({
-      selectedVideoModel: null,
-      selectedImageModel: null,
-    });
-  });
-
-  it("pins each media model whose picker is enabled", async () => {
-    const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-      [FeatureSwitchKey.ImageModelSelection]: false,
-    });
-    await setMemberMediaDefaults(fixture);
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-
-    const response = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          title: "Video picker only",
-          model: OTHER_WORKSPACE_MODEL,
-        },
-      }),
-      [201],
-    );
-
-    // Each switch gates its own pin: the video default freezes, the image one
-    // stays null while its own switch is off.
-    await expect(
-      readCreatedThreadEvent(response.body.id, token),
-    ).resolves.toMatchObject({
-      selectedVideoModel: MEMBER_VIDEO_MODEL,
-      selectedImageModel: null,
-    });
-  });
-
   it("pins the member media defaults when the request omits them", async () => {
     const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-      [FeatureSwitchKey.ImageModelSelection]: true,
-    });
     await setMemberMediaDefaults(fixture);
     const token = okouToken({
       userId: fixture.userId,

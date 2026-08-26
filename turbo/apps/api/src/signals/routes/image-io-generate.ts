@@ -5,8 +5,6 @@ import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-i
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   DEFAULT_IMAGE_MODEL,
   type ImageModel,
@@ -53,7 +51,6 @@ import {
   startRunBuiltInAdmission$,
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const L = logger("ImageGeneration");
 const imageBody$ = bodyResultOf(imageIoGenerateContract.post);
@@ -106,20 +103,6 @@ async function loadRunImageModelDefault(
     .limit(1);
   signal.throwIfAborted();
   if (!run) {
-    return null;
-  }
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    orgId,
-    userId,
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.ImageModelSelection,
-      featureSwitchContext,
-    )
-  ) {
     return null;
   }
   return isImageModelId(run.selectedImageModel) ? run.selectedImageModel : null;

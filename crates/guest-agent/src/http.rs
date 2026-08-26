@@ -31,7 +31,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 #[cfg(debug_assertions)]
-const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "VM0_TEST_DISABLE_HTTP_RETRY_DELAY";
+const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "OKOU_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
     "VM0 API response body exceeds the configured limit";
@@ -252,6 +252,14 @@ impl HttpClient {
         )
     }
 
+    /// Returns whether backend API/webhook configuration is present.
+    ///
+    /// This reports API capability, not generic HTTP transport availability.
+    /// [`Self::new`] returns `false` here while still providing a transport for
+    /// presigned uploads. [`Self::for_config`] also returns `false` when its API
+    /// token is empty, but that API-disabled client has no transport. Presigned
+    /// uploads require only the transport, while backend API operations require
+    /// API configuration.
     pub fn has_api(&self) -> bool {
         self.api.is_some()
     }

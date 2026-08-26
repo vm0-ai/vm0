@@ -17,7 +17,6 @@ import type {
   OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { apiClient$ } from "../../api-client.ts";
@@ -25,7 +24,6 @@ import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   billingStatusAsync$,
   reloadBillingStatus$,
@@ -307,9 +305,6 @@ export const closeInvitePurchasePreview$ = command(({ set }) => {
 });
 
 export const memberUsagePackManagement$ = computed((get) => {
-  if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
-    return null;
-  }
   return (async () => {
     if (!(await get(isOrgAdmin$))) {
       return null;

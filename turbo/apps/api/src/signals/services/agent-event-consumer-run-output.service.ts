@@ -1,6 +1,11 @@
+import {
+  outputToolPayloadSchema,
+  type OutputToolPayload,
+} from "@okouai/api-contracts/contracts/chat-events";
 import { command } from "ccstate";
-import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 
 import type {
@@ -21,6 +26,14 @@ import {
 } from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
+import {
+  normalizeAgentToolEvent,
+  terminalToolSummary,
+} from "./agent-tool-event-normalization";
+import {
+  toolUseIdForProviderOperation,
+  toolUseIdForRunEvent,
+} from "./assistant-event-id";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
@@ -29,6 +42,11 @@ interface OutputCandidate {
   readonly sequenceNumber: number;
   readonly content: string;
 }
+
+type ToolOperationState = Pick<
+  OutputToolPayload,
+  "action" | "status" | "summary"
+>;
 
 export interface MaterializedChatProjection {
   readonly thread: {
@@ -154,11 +172,6 @@ function latestCandidate(
 }
 
 function eventOutputId(event: AgentEvent): string {
-  const message = recordOf(event.message);
-  if (typeof message?.id === "string") {
-    return message.id;
-  }
-
   const item = recordOf(event.item);
   if (typeof item?.id === "string") {
     return item.id;
@@ -228,10 +241,21 @@ function nextStoredProjectionSequenceState(
   );
 }
 
-function assistantEventItems(
-  events: readonly AgentEvent[],
-): InsertAssistantEventsInput["items"] {
+function toolRunEventId(sequenceNumber: number): string {
+  return `tool:event:${sequenceNumber}`;
+}
+
+function assistantEventItems(args: {
+  readonly events: readonly AgentEvent[];
+  readonly runId: string;
+  readonly toolActivityEnabled: boolean;
+  readonly priorToolOperations: ReadonlyMap<string, ToolOperationState>;
+}): InsertAssistantEventsInput["items"] {
   const items: InsertAssistantEventsInput["items"][number][] = [];
+  const toolOperations = new Map(args.priorToolOperations);
+  const events = [...args.events].sort((left, right) => {
+    return left.sequenceNumber - right.sequenceNumber;
+  });
   for (const event of events) {
     const messageText = assistantMessageText(event);
     if (messageText !== null) {
@@ -245,18 +269,175 @@ function assistantEventItems(
     }
 
     const reasoningText = codexReasoningText(event);
-    if (reasoningText === null) {
+    if (reasoningText !== null) {
+      items.push({
+        eventType: "output.thinking",
+        runEventSequenceNumber: event.sequenceNumber,
+        thinking: reasoningText,
+        runEventId: eventOutputId(event),
+      });
       continue;
     }
 
+    if (!args.toolActivityEnabled) {
+      continue;
+    }
+    const normalized = normalizeAgentToolEvent(event);
+    if (normalized === null) {
+      continue;
+    }
+
+    const runEventId = toolRunEventId(event.sequenceNumber);
+    if (normalized.kind === "standalone") {
+      const toolUseId = toolUseIdForRunEvent(args.runId, runEventId);
+      items.push({
+        eventType: "output.tool",
+        runEventSequenceNumber: event.sequenceNumber,
+        runEventId,
+        toolUseId,
+        action: normalized.action,
+        status: normalized.status,
+        summary: normalized.summary,
+      });
+      toolOperations.set(toolUseId, {
+        action: normalized.action,
+        status: normalized.status,
+        summary: normalized.summary,
+      });
+      continue;
+    }
+
+    const toolUseId = toolUseIdForProviderOperation(
+      args.runId,
+      normalized.provider,
+      normalized.providerOperationId,
+    );
+    const prior = toolOperations.get(toolUseId);
+    if (normalized.kind === "correlated-terminal") {
+      const sourceOperation =
+        prior ??
+        (normalized.standaloneOperation === undefined
+          ? undefined
+          : {
+              ...normalized.standaloneOperation,
+              status: normalized.status,
+            });
+      if (sourceOperation === undefined) {
+        continue;
+      }
+      const operation: ToolOperationState = {
+        action: sourceOperation.action,
+        status: normalized.status,
+        summary:
+          sourceOperation.status === "pending"
+            ? terminalToolSummary(
+                sourceOperation.action,
+                sourceOperation.summary,
+              )
+            : sourceOperation.summary,
+      };
+      items.push({
+        eventType: "output.tool",
+        runEventSequenceNumber: event.sequenceNumber,
+        runEventId,
+        toolUseId,
+        action: operation.action,
+        status: operation.status,
+        summary: operation.summary,
+      });
+      toolOperations.set(toolUseId, operation);
+      continue;
+    }
+
+    const operation = {
+      action: normalized.action,
+      status: normalized.status,
+      summary: normalized.summary,
+    };
     items.push({
-      eventType: "output.thinking",
+      eventType: "output.tool",
       runEventSequenceNumber: event.sequenceNumber,
-      thinking: reasoningText,
-      runEventId: eventOutputId(event),
+      runEventId,
+      toolUseId,
+      action: operation.action,
+      status: operation.status,
+      summary: operation.summary,
     });
+    toolOperations.set(toolUseId, operation);
   }
   return items;
+}
+
+async function priorToolOperationsForRun(
+  tx: Tx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, ToolOperationState>> {
+  const rows = await tx
+    .select({ payload: chatEvents.payload })
+    .from(chatEvents)
+    .where(
+      and(eq(chatEvents.runId, runId), eq(chatEvents.eventType, "output.tool")),
+    )
+    .orderBy(asc(chatEvents.seqId));
+  signal.throwIfAborted();
+
+  const operations = new Map<string, ToolOperationState>();
+  for (const row of rows) {
+    const payload = outputToolPayloadSchema.parse(row.payload);
+    operations.set(payload.toolUseId, {
+      action: payload.action,
+      status: payload.status,
+      summary: payload.summary,
+    });
+  }
+  return operations;
+}
+
+interface AssistantEventInsertion {
+  readonly insertedRowCount: number;
+  readonly shouldAttemptFirstAssistantEventClaim: boolean;
+}
+
+async function insertRunOutputChatEvents(
+  tx: Tx,
+  payload: EventConsumerPayload,
+  thread: MaterializedChatProjection["thread"],
+  signal: AbortSignal,
+): Promise<AssistantEventInsertion> {
+  const [run] = await tx
+    .select({
+      chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, payload.runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (run === undefined) {
+    throw new Error(
+      `Run ${payload.runId} is missing during output materialization`,
+    );
+  }
+  const toolActivityEnabled = run.chatToolActivityEnabled;
+  const priorToolOperations = toolActivityEnabled
+    ? await priorToolOperationsForRun(tx, payload.runId, signal)
+    : new Map<string, ToolOperationState>();
+  const assistantItems = assistantEventItems({
+    events: payload.events,
+    runId: payload.runId,
+    toolActivityEnabled,
+    priorToolOperations,
+  });
+  return await insertAssistantEventsInTransaction(
+    tx,
+    {
+      runId: payload.runId,
+      threadId: thread.chatThreadId,
+      userId: thread.userId,
+      items: assistantItems,
+    },
+    signal,
+  );
 }
 
 async function lockRunOutputProjection(
@@ -282,7 +463,6 @@ async function materializeRunOutputEvents(
   payload: EventConsumerPayload,
   signal: AbortSignal,
 ): Promise<MaterializedChatProjection | null> {
-  const assistantItems = assistantEventItems(payload.events);
   const latestResult = latestCandidate(payload.events, resultText);
   const latestOutput = latestCandidate(payload.events, callbackOutputText);
 
@@ -295,14 +475,10 @@ async function materializeRunOutputEvents(
     let insertedRowCount = 0;
     let shouldAttemptFirstAssistantEventClaim = false;
     if (thread) {
-      const insertion = await insertAssistantEventsInTransaction(
+      const insertion = await insertRunOutputChatEvents(
         tx,
-        {
-          runId: payload.runId,
-          threadId: thread.chatThreadId,
-          userId: thread.userId,
-          items: assistantItems,
-        },
+        payload,
+        thread,
         signal,
       );
       insertedRowCount = insertion.insertedRowCount;

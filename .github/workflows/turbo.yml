@@ -1816,9 +1816,9 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
-          VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
+          OKOU_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          OKOU_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
+          OKOU_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2576,6 +2576,23 @@ jobs:
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
+      - name: Enable runner connector account coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"connectorAccounts":true}}' \
+            "${E2E_API_URL}/api/feature-switches" \
+            | jq -e '.effectiveSwitches.connectorAccounts == true' \
+            >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Reset runner model defaults
         shell: bash
         run: |

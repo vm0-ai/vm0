@@ -7,9 +7,10 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
 import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
+import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import {
   connectorAccountDeletionImpact$,
-  reloadConnectorAccountSummaries$,
+  readConnectorAccount$,
   settingsConnectorAccounts,
 } from "./connector-accounts.ts";
 
@@ -146,7 +147,7 @@ export const closeCustomAccountConnectDialog$ = command(({ set }) => {
 
 interface ConnectorAccountNamePrompt {
   readonly target: ConnectorAccountTarget;
-  readonly connectionId: string;
+  readonly account: ConnectorAccountConnection;
   readonly connectorLabel: string;
 }
 
@@ -181,21 +182,30 @@ export const closeConnectorAccountNamePrompt$ = command(({ set }) => {
 });
 
 export const finishConnectorAccountConnection$ = command(
-  (
+  async (
     { set },
-    args: Omit<ConnectorAccountNamePrompt, "connectionId"> & {
+    args: {
+      readonly target: ConnectorAccountTarget;
       readonly connectionId: string | null;
+      readonly connectorLabel: string;
       readonly mode: ConnectorAccountConnectMode;
     },
-  ) => {
+    signal: AbortSignal,
+  ): Promise<void> => {
     set(reloadConnectorAccountSummaries$);
     if (args.mode.kind !== "add" || !args.connectionId) {
       return;
     }
+    const account = await set(
+      readConnectorAccount$,
+      { target: args.target, connectionId: args.connectionId },
+      signal,
+    );
+    signal.throwIfAborted();
     set(internalConnectorAccountNamePromptValue$, "");
     set(internalConnectorAccountNamePrompt$, {
       target: args.target,
-      connectionId: args.connectionId,
+      account,
       connectorLabel: args.connectorLabel,
     });
   },

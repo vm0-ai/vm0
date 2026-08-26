@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
 
@@ -201,7 +202,7 @@ export async function exchangeSupabaseCode(
   }
 
   const userInfo = await fetchSupabaseUserInfo(data.access_token);
-  const scopes = data.scope ? data.scope.split(" ") : [];
+  const scopes = effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " ");
 
   return {
     accessToken: data.access_token,

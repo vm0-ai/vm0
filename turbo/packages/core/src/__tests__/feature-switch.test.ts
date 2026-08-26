@@ -107,8 +107,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -121,12 +120,13 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -141,8 +141,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.IntroVideoTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -154,13 +153,14 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HomeGrowthEntry]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
   });
 
   it("should enable the composer flat feedback note for the staff org only", () => {

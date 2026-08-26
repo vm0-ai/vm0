@@ -12,8 +12,9 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, DEBUG_FIELD_MAX_BYTES, INTERNAL_TARGET,
-    init_from_env_values, init_with_base_url, with_ingest_filter,
+    AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH, INTERNAL_TARGET,
+    TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER, init_from_env_values, init_with_base_url,
+    with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -345,6 +346,39 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
 }
 
 #[tokio::test]
+async fn oversized_string_field_is_bounded_before_ingest() {
+    const SENTINEL_PAST_CAP: &str = "STRING_SENTINEL_PAST_CAP";
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        let mut oversized = "A".repeat(TEXT_FIELD_MAX_BYTES + 1_000);
+        oversized.push_str(SENTINEL_PAST_CAP);
+        tracing::warn!(oversized = oversized.as_str(), "bounded string");
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "bounded string");
+    let retained = string_field(event, "oversized");
+    assert_eq!(
+        retained.len(),
+        TEXT_FIELD_MAX_BYTES + TRUNCATION_MARKER.len(),
+    );
+    assert!(retained.ends_with(TRUNCATION_MARKER));
+    assert!(
+        !retained.contains(SENTINEL_PAST_CAP),
+        "far-past-cap string content reached ingest: {retained:?}",
+    );
+}
+
+#[tokio::test]
 async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     let server = MockServer::start_async().await;
 
@@ -433,13 +467,13 @@ fn init_returns_none_when_token_empty() {
 /// `record_error` visitor without pulling in extra deps.
 #[derive(Debug)]
 struct ChainErr {
-    msg: &'static str,
+    msg: String,
     src: Option<Box<ChainErr>>,
 }
 
 impl std::fmt::Display for ChainErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.msg)
+        f.write_str(&self.msg)
     }
 }
 
@@ -461,11 +495,11 @@ async fn error_field_serializes_with_message_and_source_chain() {
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         let err = ChainErr {
-            msg: "top",
+            msg: "top".into(),
             src: Some(Box::new(ChainErr {
-                msg: "middle",
+                msg: "middle".into(),
                 src: Some(Box::new(ChainErr {
-                    msg: "root",
+                    msg: "root".into(),
                     src: None,
                 })),
             })),
@@ -482,6 +516,112 @@ async fn error_field_serializes_with_message_and_source_chain() {
     let event = event_with_message(&events, "explosion");
     assert_eq!(event["error"]["message"], json!("top"));
     assert_eq!(event["error"]["chain"], json!(["middle", "root"]));
+}
+
+#[tokio::test]
+async fn oversized_deep_error_is_bounded_independently_of_input_size() {
+    const SENTINEL_PAST_CAP: &str = "ERROR_SENTINEL_PAST_CAP";
+
+    fn oversized_message(label: &str, input_bytes: usize) -> String {
+        let mut message = format!("{label}:");
+        message.push_str(&"A".repeat(input_bytes));
+        message.push_str(SENTINEL_PAST_CAP);
+        message
+    }
+
+    fn oversized_chain(input_bytes: usize) -> ChainErr {
+        let mut source = None;
+        for index in (0..ERROR_SOURCE_MAX_DEPTH + 2).rev() {
+            source = Some(Box::new(ChainErr {
+                msg: oversized_message(&format!("source-{index}"), input_bytes),
+                src: source,
+            }));
+        }
+        ChainErr {
+            msg: oversized_message("top", input_bytes),
+            src: source,
+        }
+    }
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        for input_bytes in [TEXT_FIELD_MAX_BYTES * 2, TEXT_FIELD_MAX_BYTES * 20] {
+            let err = oversized_chain(input_bytes);
+            tracing::error!(
+                error = &err as &(dyn std::error::Error + 'static),
+                "bounded error",
+            );
+        }
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    assert_eq!(events.len(), 2);
+
+    let mut serialized_event_bytes = Vec::new();
+    for event in &events {
+        let error = &event["error"];
+        let message = string_field(error, "message");
+        assert!(message.starts_with("top:"));
+        assert!(message.ends_with(TRUNCATION_MARKER));
+        assert_eq!(
+            message.len(),
+            TEXT_FIELD_MAX_BYTES + TRUNCATION_MARKER.len(),
+        );
+
+        let chain = error["chain"]
+            .as_array()
+            .unwrap_or_else(|| panic!("expected bounded error chain: {event:#?}"));
+        assert_eq!(chain.len(), ERROR_SOURCE_MAX_DEPTH + 1);
+        for (index, source) in chain[..ERROR_SOURCE_MAX_DEPTH].iter().enumerate() {
+            let source = source
+                .as_str()
+                .unwrap_or_else(|| panic!("expected string source in chain: {event:#?}"));
+            assert!(source.starts_with(&format!("source-{index}:")));
+            assert!(source.ends_with(TRUNCATION_MARKER));
+            assert_eq!(source.len(), TEXT_FIELD_MAX_BYTES + TRUNCATION_MARKER.len(),);
+        }
+        assert_eq!(
+            chain[ERROR_SOURCE_MAX_DEPTH].as_str(),
+            Some(TRUNCATION_MARKER),
+        );
+        assert!(
+            !json_contains_string(event, SENTINEL_PAST_CAP),
+            "far-past-cap error content reached ingest: {event:#?}",
+        );
+
+        let retained_error_text_bytes = message.len()
+            + chain
+                .iter()
+                .map(|source| {
+                    source
+                        .as_str()
+                        .expect("error chain values are strings")
+                        .len()
+                })
+                .sum::<usize>();
+        assert_eq!(
+            retained_error_text_bytes,
+            (ERROR_SOURCE_MAX_DEPTH + 1) * (TEXT_FIELD_MAX_BYTES + TRUNCATION_MARKER.len())
+                + TRUNCATION_MARKER.len(),
+        );
+        serialized_event_bytes.push(
+            serde_json::to_vec(event)
+                .expect("captured Axiom event should serialize")
+                .len(),
+        );
+    }
+    assert_eq!(
+        serialized_event_bytes[0], serialized_event_bytes[1],
+        "serialized event size should not grow with the original error text",
+    );
 }
 
 #[tokio::test]
@@ -659,7 +799,7 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     );
 }
 
-// -- Debug field truncation (DEBUG_FIELD_MAX_BYTES = 4 KiB) ------------------
+// -- Debug field truncation (TEXT_FIELD_MAX_BYTES = 4 KiB) -------------------
 
 #[tokio::test]
 async fn debug_field_formatting_stops_after_reaching_limit() {
@@ -703,7 +843,7 @@ async fn debug_field_formatting_stops_after_reaching_limit() {
     );
     assert_eq!(
         formatted_chunks.load(Ordering::Relaxed),
-        DEBUG_FIELD_MAX_BYTES / CHUNK_BYTES + 1,
+        TEXT_FIELD_MAX_BYTES / CHUNK_BYTES + 1,
         "formatting should stop on the first chunk beyond the byte limit instead of visiting all {TOTAL_CHUNKS} chunks",
     );
 }
@@ -786,7 +926,7 @@ async fn debug_field_at_exact_limit_passes_through_unmodified() {
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // Debug form of a &str is `"<contents>"` — surrounding quotes cost
-        // 2 bytes, so 4094 content bytes yields exactly DEBUG_FIELD_MAX_BYTES.
+        // 2 bytes, so 4094 content bytes yields exactly TEXT_FIELD_MAX_BYTES.
         // The truncation check is `s.len() > MAX`, which is FALSE at equality
         // → value must pass through unmodified. Ending with a sentinel lets
         // the positive mock verify the full body arrived, not just the

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
 
@@ -99,7 +100,7 @@ export async function exchangeNeonCode(
   }
 
   const userInfo = await fetchNeonUserInfo(data.access_token);
-  const scopes = data.scope ? data.scope.split(" ") : [];
+  const scopes = effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " ");
 
   return {
     accessToken: data.access_token,

@@ -494,6 +494,33 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
   });
 }
 
+export async function corruptApiTestConnectorCatalogActiveSnapshotPayload(): Promise<void> {
+  const identity = await currentApiTestConnectorCatalogIdentity();
+  const db = store.set(writeDb$);
+  const updated = await db
+    .update(connectorCatalogActiveSnapshot)
+    .set({ catalogGzip: Buffer.from("invalid-gzip", "utf8") })
+    .where(
+      and(
+        eq(connectorCatalogActiveSnapshot.sourceId, identity.sourceId),
+        eq(
+          connectorCatalogActiveSnapshot.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogVersion,
+          identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogActiveSnapshot.catalogDigest,
+          identity.catalogDigest,
+        ),
+      ),
+    )
+    .returning({ sourceId: connectorCatalogActiveSnapshot.sourceId });
+  requireSingleCatalogMutation(updated, "active snapshot payload corruption");
+}
+
 export async function invalidateApiTestConnectorCatalogCompatibility(): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
@@ -615,7 +642,7 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionDigest(
 
 export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
   connectorSlug: string,
-  connectorPayload: Buffer | null = Buffer.from("{}", "utf8"),
+  connectorPayload: Buffer = Buffer.from("{}", "utf8"),
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
@@ -626,14 +653,10 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
     );
   const updated = await db
     .update(connectorCatalogRuntimeProjections)
-    .set(
-      connectorPayload === null
-        ? { connectorPayload: null }
-        : {
-            connectorDigest: sha256Digest(connectorPayload),
-            connectorPayload,
-          },
-    )
+    .set({
+      connectorDigest: sha256Digest(connectorPayload),
+      connectorPayload,
+    })
     .where(
       and(
         eq(
@@ -650,38 +673,6 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
     updated,
     "runtime projection payload corruption",
   );
-}
-
-export async function setApiTestConnectorCatalogRuntimeProjectionLegacy(): Promise<void> {
-  const identity = await currentApiTestConnectorCatalogIdentity();
-  const db = store.set(writeDb$);
-  const projectionSet =
-    await requireCurrentApiTestConnectorCatalogRuntimeProjectionSet(
-      db,
-      identity,
-    );
-  const updatedRows = await db
-    .update(connectorCatalogRuntimeProjections)
-    .set({ connectorPayload: null })
-    .where(
-      eq(connectorCatalogRuntimeProjections.projectionSetId, projectionSet.id),
-    )
-    .returning({
-      connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
-    });
-  if (updatedRows.length !== projectionSet.connectorCount) {
-    throw new Error("Unexpected legacy runtime projection row count");
-  }
-  const updatedSets = await db
-    .update(connectorCatalogRuntimeProjectionSets)
-    .set({
-      projectionVersion: 1,
-      catalogValidationBackendVersion: null,
-      catalogValidationBuildCommitSha: null,
-    })
-    .where(eq(connectorCatalogRuntimeProjectionSets.id, projectionSet.id))
-    .returning({ id: connectorCatalogRuntimeProjectionSets.id });
-  requireSingleCatalogMutation(updatedSets, "legacy runtime projection update");
 }
 
 export async function expireApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<void> {

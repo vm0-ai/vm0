@@ -1472,13 +1472,13 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         submittedAccount = body.account;
         submittedAuthorizeAgent = body.authorizeAgent;
-        const connector = {
+        const connector: ConnectorResponse = {
           id: connectionId,
           slug: params.connectorSlug,
           authMethod: body.authMethod,
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
+          externalId: "provider-account-id",
+          externalUsername: "provider-user",
+          externalEmail: "owner@example.com",
           oauthScopes: null,
           connectionStatus: "connected" as const,
           reconnectReason: null,
@@ -1532,8 +1532,10 @@ describe("connectors page", () => {
     const nameDialog = await screen.findByRole("dialog", {
       name: "Name your Ahrefs account",
     });
-    expect(within(nameDialog).getByLabelText("Account name")).toHaveValue("");
-    await fill(within(nameDialog).getByLabelText("Account name"), "Work");
+    const nameInput = within(nameDialog).getByLabelText("Account name");
+    expect(nameInput).toHaveValue("");
+    expect(nameInput).toHaveAttribute("placeholder", "owner@example.com");
+    await fill(nameInput, "Work");
     click(buttonByText("Save", nameDialog));
     await waitFor(() => {
       expect(renamedConnectionId).toBe(connectionId);
@@ -3565,7 +3567,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         submittedAccount = body.account;
         submittedAuthorizeAgent = body.authorizeAgent;
-        return respond(200, {
+        const connector: ConnectorResponse = {
           id: connectionId,
           slug: params.connectorSlug,
           authMethod: body.authMethod,
@@ -3578,7 +3580,9 @@ describe("connectors page", () => {
           tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        };
+        context.mocks.data.connectors([connector]);
+        return respond(200, connector);
       },
     );
     detachedSetupPage({
@@ -3592,6 +3596,10 @@ describe("connectors page", () => {
     const nameDialog = await screen.findByRole("dialog", {
       name: "Name your Public Stripe account",
     });
+    expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
+      "placeholder",
+      `Account #${connectionId.slice(0, 8)}`,
+    );
     click(buttonByText("Skip", nameDialog));
     expect(submittedAccount).toStrictEqual({ intent: "add" });
     expect(submittedAuthorizeAgent).toBeUndefined();
@@ -6375,6 +6383,7 @@ describe("connectors page", () => {
     async ({ connector: initialConnector }) => {
       let connector: CustomConnectorResponse = initialConnector;
       let account: ConnectorAccountConnection | null = null;
+      const connectionId = crypto.randomUUID();
       let submittedAccount: unknown;
       let grantMutationCount = 0;
       context.mocks.api(customConnectorsContract.list, ({ respond }) => {
@@ -6394,6 +6403,16 @@ describe("connectors page", () => {
             : [],
         });
       });
+      context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+        return account
+          ? respond(200, account)
+          : respond(404, {
+              error: {
+                message: "Connector account not found",
+                code: "NOT_FOUND",
+              },
+            });
+      });
       context.mocks.api(
         customConnectorValuesContract.set,
         ({ body, respond }) => {
@@ -6405,7 +6424,7 @@ describe("connectors page", () => {
             configuredFieldKeys: ["secret"],
           };
           account = {
-            id: crypto.randomUUID(),
+            id: connectionId,
             target: {
               kind: "custom",
               customConnectorId: connector.id,
@@ -6456,6 +6475,10 @@ describe("connectors page", () => {
       const nameDialog = await screen.findByRole("dialog", {
         name: `Name your ${connector.displayName} account`,
       });
+      expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
+        "placeholder",
+        `Account #${connectionId.slice(0, 8)}`,
+      );
       click(buttonByText("Skip", nameDialog));
       await waitFor(() => {
         expect(

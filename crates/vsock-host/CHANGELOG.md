@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.17.97](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.96...vsock-host-v0.17.97) (2026-08-26)
+
+## [0.17.96](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.95...vsock-host-v0.17.96) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
+## [0.17.95](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.94...vsock-host-v0.17.95) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
+## [0.17.94](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.93...vsock-host-v0.17.94) (2026-08-25)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound chunked write temp names ([#29318](https://github.com/vm0-ai/vm0/issues/29318)) ([b13dcbb](https://github.com/vm0-ai/vm0/commit/b13dcbb28d961a8e30cbab4fdfafe19a30fa30dd))
+
 ## [0.17.93](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.92...vsock-host-v0.17.93) (2026-08-25)
 
 ## [0.17.92](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.91...vsock-host-v0.17.92) (2026-08-24)

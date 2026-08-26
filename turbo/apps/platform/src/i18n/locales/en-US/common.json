@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Collapse sidebar",
       "expand": "Expand sidebar",
+      "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
         "invite": "Invite",
@@ -455,6 +456,7 @@
         "works": "Works"
       },
       "searchConversations": "Search conversations",
+      "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",
         "creating": "Creating…",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "Arrow",
         "box": "Box",
-        "crop": "Crop",
-        "highlight": "Highlight",
         "pen": "Draw",
         "redact": "Redact",
-        "select": "Select",
         "text": "Text"
       },
       "undo": "Undo"
@@ -700,6 +699,12 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "visibility": {
+        "change": "Change",
+        "changeLabel": "Change template visibility",
+        "privateState": "Only you can see and use it",
+        "workspaceState": "Anyone in this workspace can use it"
+      },
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
       "workflow": "Workflow",
@@ -1064,14 +1069,20 @@
         "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
         "unsupportedTitle": "Sign-in step unavailable"
       },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
       "signIn": {
         "action": "Use current sign-in",
         "addAccount": "Add account",
+        "appleMethod": "Continue with Apple",
         "back": "Back",
         "chooseAccountSubtitle": "Select the account with which you wish to continue.",
         "chooseAccountTitle": "Choose an account",
         "chooseMethodSubtitle": "Facing issues? You can use any of these methods to sign in.",
         "chooseMethodTitle": "Use another method",
+        "clientTrustNotice": "You're signing in from a new device. We're asking for verification to keep your account secure.",
         "codeExpired": "This verification code has expired. Request a new code.",
         "codeLabel": "Verification code",
         "completeSubtitle": "You will be redirected soon",
@@ -1079,13 +1090,21 @@
         "confirmPasswordLabel": "Confirm password",
         "continue": "Continue",
         "editIdentifier": "Edit identifier",
+        "emailAddressLabel": "Email address",
+        "emailAddressPlaceholder": "Enter your email address",
         "emailCodeMethod": "Email code to {{identifier}}",
         "emailCodeSubtitle": "to continue to {{brandName}}",
         "emailCodeTitle": "Check your email",
+        "emailSupport": "Email support",
         "forgotPassword": "Forgot password?",
+        "getHelp": "Get help",
         "googleMethod": "Continue with Google",
+        "helpDescription": "If you have trouble signing into your account, email us and we will work with you to restore access as soon as possible.",
+        "helpTitle": "Get help",
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
+        "identifierPlaceholder": "Enter your email address or username",
+        "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
         "newPasswordTitle": "Set new password",
@@ -1098,25 +1117,33 @@
         "passwordLabel": "Password",
         "passwordMethod": "Sign in with your password",
         "passwordMismatch": "Passwords don't match.",
+        "passwordPlaceholder": "Enter your password",
         "passwordResetMethod": "Reset your password",
         "passwordSubtitle": "Enter the password associated with your account",
         "passwordTitle": "Enter your password",
+        "recoveryMethodsDivider": "Or, sign in with another method",
+        "recoveryTitle": "Forgot Password?",
         "resendCode": "Didn't receive a code? Resend",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}}s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "resetPassword": "Reset Password",
         "resetPasswordCodeSubtitle": "First, enter the code sent to your email address",
         "resetPasswordCodeTitle": "Reset password",
+        "separator": "or",
         "showPassword": "Show password",
+        "signOutOfOtherSessions": "Sign out of all other devices",
         "signUp": "Sign up",
         "startSubtitle": "Welcome back! Please sign in to continue",
         "title": "Sign in to {{brandName}}",
         "unknownError": "This action couldn't be completed. Please try again later or contact support if this persists.",
         "useAnotherMethod": "Use another method",
+        "usernameLabel": "Username",
+        "usernamePlaceholder": "Enter your username",
         "verify": "Verify"
       },
       "signUp": {
         "action": "Use current sign-up",
         "alreadyHaveAccount": "Already have an account?",
+        "appleMethod": "Continue with Apple",
         "back": "Back",
         "captchaError": "Sign up unsuccessful due to failed bot validation. Please refresh the page to try again or reach out to support for more assistance.",
         "captchaExpired": "Bot verification expired. Try again.",
@@ -1131,12 +1158,15 @@
         "description": "Welcome! Please fill in the details to get started.",
         "editEmailAddress": "Edit email address",
         "emailAddressLabel": "Email address",
+        "emailAddressPlaceholder": "Enter your email address",
         "emailCodeSubtitle": "Enter the verification code sent to your email",
         "emailCodeTitle": "Verify your email",
         "firstNameLabel": "First name",
+        "firstNamePlaceholder": "Enter your first name",
         "googleMethod": "Continue with Google",
         "hidePassword": "Hide password",
         "lastNameLabel": "Last name",
+        "lastNamePlaceholder": "Enter your last name",
         "legalPrivacyOnly": "I agree to the <privacy>Privacy Policy</privacy>",
         "legalRequired": "Please read and accept the terms to continue",
         "legalTermsAndPrivacy": "I agree to the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
@@ -1144,13 +1174,15 @@
         "optional": "Optional",
         "passwordInvalid": "Your password is not strong enough.",
         "passwordLabel": "Password",
+        "passwordPlaceholder": "Create a password",
         "resendCode": "Didn't receive a code? Resend",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}}s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "restart": "Use another method",
         "retry": "Try again",
+        "separator": "or",
         "showPassword": "Show password",
         "signIn": "Sign in",
-        "title": "Create your {{brandName}} account",
+        "title": "Create your account",
         "unknownError": "This action couldn't be completed. Please try again later or contact support if this persists.",
         "unknownMessage": "Sign ups are currently disabled. If you believe you should have access, please contact support.",
         "unknownTitle": "Access restricted",
@@ -1897,6 +1929,7 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
+      "accountForThread": "Account for this thread",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
@@ -1905,9 +1938,14 @@
       "available_other": "Available connectors to connect ({{count}})",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
+      "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
+      "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",
+      "noUsableAccount": "No usable account",
       "remove": "Remove {{connectorName}}",
-      "title": "Connectors"
+      "selectedAccountFor": "{{connector}} · Selected account: {{account}}",
+      "title": "Connectors",
+      "useDefault": "Use default"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2266,6 +2304,48 @@
       "copied": "Copied",
       "deleted": "Chat deleted"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": {
+          "pending": {
+            "plural": "Changing files",
+            "singular": "Changing a file"
+          },
+          "terminal": {
+            "plural": "Changed files",
+            "singular": "Changed a file"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "Reading files",
+            "singular": "Reading a file"
+          },
+          "terminal": {
+            "plural": "Read files",
+            "singular": "Read a file"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "Running commands",
+            "singular": "Running a command"
+          },
+          "terminal": {
+            "plural": "Ran commands",
+            "singular": "Ran a command"
+          }
+        }
+      },
+      "collapse": "Collapse tool activity",
+      "expand": "Expand tool activity",
+      "status": {
+        "cancelled": "Cancelled",
+        "error": "Failed",
+        "pending": "In progress",
+        "success": "Completed"
+      }
+    },
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
@@ -2331,8 +2411,7 @@
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
       "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Work account"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Apply",
@@ -3327,9 +3406,17 @@
           "description": "Generate slides and speaker",
           "title": "Generate a presentation"
         },
+        "slack": {
+          "description": "Chat with your AI teammate in your workspace",
+          "title": "Chat with Okou in Slack"
+        },
         "video": {
           "description": "Turn your ideas into video",
           "title": "Video production"
+        },
+        "website": {
+          "description": "Create and publish a shareable page",
+          "title": "Build a website"
         },
         "workflow": {
           "description": "Explore from preset templates",
@@ -4636,7 +4723,6 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
-          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }

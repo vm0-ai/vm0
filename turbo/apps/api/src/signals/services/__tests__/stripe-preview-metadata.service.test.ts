@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { EVENT } from "@axiomhq/logging";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +22,8 @@ type PreviewJobRefAliasState =
   | "absent"
   | "canonical-only"
   | "legacy-only"
-  | "dual";
+  | "equal-dual"
+  | "conflicting-dual";
 
 interface PreviewJobRefAliasFixture {
   readonly name: string;
@@ -91,7 +94,7 @@ const PREVIEW_JOB_REF_ALIAS_FIXTURES: readonly PreviewJobRefAliasFixture[] = [
     name: "equal dual aliases",
     canonical: "shared-preview-job",
     legacy: "shared-preview-job",
-    state: "dual",
+    state: "equal-dual",
     jobRef: "shared-preview-job",
   },
 ];
@@ -118,11 +121,36 @@ function aliasEvidence(
   };
 }
 
+function expectValueFree(diagnostics: string, values: readonly string[]): void {
+  for (const value of values) {
+    const forbiddenDerivatives = [
+      value,
+      String(value.length),
+      createHash("sha256").update(value).digest("hex"),
+      JSON.stringify(value),
+    ];
+    for (const derivative of forbiddenDerivatives) {
+      expect(diagnostics).not.toContain(derivative);
+    }
+  }
+}
+
 describe("Stripe preview metadata job reference aliases", () => {
-  it.each(PREVIEW_JOB_REF_ALIAS_FIXTURES)(
-    "resolves $name for metadata creation and matching",
-    ({ canonical, legacy, state, jobRef }) => {
+  it("resolves the matrix with one value-free info event per state", () => {
+    const reportedStates = new Set<PreviewJobRefAliasState>();
+
+    for (const {
+      canonical,
+      legacy,
+      state,
+      jobRef,
+    } of PREVIEW_JOB_REF_ALIAS_FIXTURES) {
       configureAliases("preview", canonical, legacy);
+      const logCount = context.mocks.axiomLogging.info.mock.calls.filter(
+        ([message]) => {
+          return message === PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT;
+        },
+      ).length;
       const expectedMetadata: Readonly<Record<string, string>> = jobRef
         ? { vm0_environment: "preview", job_ref: jobRef }
         : {};
@@ -131,36 +159,37 @@ describe("Stripe preview metadata job reference aliases", () => {
       expect(isCurrentStripePreviewMetadata(expectedMetadata)).toBeTruthy();
       expect(isCurrentStripePreviewMetadata(null)).toBe(jobRef === null);
 
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledTimes(3);
-      for (const call of context.mocks.axiomLogging.debug.mock.calls) {
-        expect(call).toStrictEqual([
-          PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
-          aliasEvidence(state),
-        ]);
-      }
-      const evidence = JSON.stringify(
-        context.mocks.axiomLogging.debug.mock.calls,
-      );
+      const aliasResolutionCalls = context.mocks.axiomLogging.info.mock.calls
+        .filter(([message]) => {
+          return message === PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT;
+        })
+        .slice(logCount);
+      const expectedCalls = reportedStates.has(state)
+        ? []
+        : [[PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT, aliasEvidence(state)]];
+      expect(aliasResolutionCalls).toStrictEqual(expectedCalls);
+      reportedStates.add(state);
       const configuredValues = [canonical, legacy].filter(
         (value): value is string => {
           return Boolean(value);
         },
       );
-      expect(
-        configuredValues.some((value) => {
-          return evidence.includes(value);
-        }),
-      ).toBeFalsy();
-      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-    },
-  );
+      expectValueFree(JSON.stringify(aliasResolutionCalls), configuredValues);
+    }
+
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+  });
 
   it("fails closed on unequal dual aliases without exposing either value", () => {
     const canonical = "canonical-job-ref-must-not-leak";
     const legacy = "legacy-job-ref-must-not-leak";
     configureAliases("preview", canonical, legacy);
     const expectedMessage =
-      "Preview job reference aliases conflict: canonicalKey=OKOU_PREVIEW_JOB_REF legacyKey=VM0_PREVIEW_JOB_REF state=dual";
+      "Preview job reference aliases conflict: canonicalKey=OKOU_PREVIEW_JOB_REF legacyKey=VM0_PREVIEW_JOB_REF state=conflicting-dual";
 
     expect(() => {
       stripePreviewMetadata();
@@ -172,20 +201,25 @@ describe("Stripe preview metadata job reference aliases", () => {
       });
     }).toThrow(expectedMessage);
 
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(2);
-    for (const call of context.mocks.axiomLogging.warn.mock.calls) {
-      expect(call).toStrictEqual([
+    expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([
+      [
         PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
-        aliasEvidence("dual"),
-      ]);
-    }
+        aliasEvidence("conflicting-dual"),
+      ],
+    ]);
     const diagnostics = JSON.stringify({
       error: expectedMessage,
       logs: context.mocks.axiomLogging.warn.mock.calls,
     });
-    expect(diagnostics).not.toContain(canonical);
-    expect(diagnostics).not.toContain(legacy);
-    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expectValueFree(diagnostics, [canonical, legacy]);
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
   });
 
   it("ignores preview alias conflicts outside preview deployments", () => {
@@ -197,7 +231,14 @@ describe("Stripe preview metadata job reference aliases", () => {
 
     expect(stripePreviewMetadata()).toStrictEqual({});
     expect(isCurrentStripePreviewMetadata(null)).toBeTruthy();
-    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT,
+      expect.anything(),
+    );
     expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 });

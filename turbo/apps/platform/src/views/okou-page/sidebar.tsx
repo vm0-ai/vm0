@@ -643,6 +643,7 @@ function LabeledRailLink({
       }}
       aria-label={label}
       aria-current={isActive ? "page" : undefined}
+      title={caption}
       className="group flex w-full flex-col items-center gap-1 no-underline"
     >
       <span
@@ -680,7 +681,57 @@ function LabeledRailLink({
   );
 }
 
+function ThreeColumnChatListToggle({
+  hidden,
+  tooltipSide,
+}: {
+  hidden: boolean;
+  tooltipSide: "bottom" | "right";
+}) {
+  const onToggle = useSidebarCollapseToggle();
+  const { t } = useTranslation();
+  const label = hidden
+    ? t(($) => {
+        return $.appShell.sidebar.showChatList;
+      })
+    : t(($) => {
+        return $.appShell.sidebar.hideChatList;
+      });
+  const shortcutLabel = getShortcutLabel("mod+b");
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          onClick={onToggle}
+          aria-label={label}
+          aria-keyshortcuts="Meta+B Control+B"
+          variant="quiet"
+          size="icon-sm"
+        >
+          <PanelLeftClose
+            style={chatHeaderIconStyle}
+            size={17}
+            className={cn(
+              "transition-transform duration-200",
+              hidden && "rotate-180",
+            )}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={tooltipSide}>
+        <p className="text-xs">
+          {label}
+          <span aria-hidden="true">{` · ${shortcutLabel}`}</span>
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function LabeledNavRail() {
+  const chatListHidden = useGet(sidebarOff$);
   const activeId = useGet(activeRoute$);
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
   const onSelect = useNavSelect();
@@ -709,12 +760,19 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
+      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />
       </div>
+      {chatListHidden && (
+        <div className="mb-3 shrink-0">
+          <TooltipProvider delayDuration={200}>
+            <ThreeColumnChatListToggle hidden tooltipSide="right" />
+          </TooltipProvider>
+        </div>
+      )}
       <nav
         aria-label={t(($) => {
           return $.appShell.sidebar.ariaLabel;
@@ -792,80 +850,80 @@ function ChatListColumn() {
     );
   };
   return (
-    <>
-      <aside
-        data-testid="chat-list-column"
-        className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
-      >
-        <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-          <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
-            {t(($) => {
-              return $.appShell.sidebar.chat;
-            })}
-          </span>
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    openThreeColumnSearch();
-                  }}
-                  aria-label={searchLabel}
-                  aria-keyshortcuts="Meta+K Control+K"
-                  variant="quiet"
-                  size="icon-sm"
-                >
-                  <Search style={chatHeaderIconStyle} size={17} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">
-                  {searchLabel}
-                  <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
-                </p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={onNewChat}
-                  disabled={!currentChatAgentId || newChatDisabled}
-                  aria-label={newChatLabel}
-                  variant="quiet"
-                  size="icon-sm"
-                >
-                  <Edit style={chatHeaderIconStyle} size={17} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">{newChatLabel}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1">
-          <PinnedAgentListSection layout="horizontal" />
-          <ChatThreadsSection
-            scrollSignals={threeColumnSidebarChatThreadScrollSignals}
-            showMarkAllRead
-          />
-        </div>
-        <div className="px-3 pb-3">
-          <SidebarUpgradeCard />
-        </div>
-      </aside>
-      <ThreeColumnSearchDialogContainer />
-    </>
+    <aside
+      data-testid="chat-list-column"
+      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
+    >
+      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
+        <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
+          {t(($) => {
+            return $.appShell.sidebar.chat;
+          })}
+        </span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  openThreeColumnSearch();
+                }}
+                aria-label={searchLabel}
+                aria-keyshortcuts="Meta+K Control+K"
+                variant="quiet"
+                size="icon-sm"
+              >
+                <Search style={chatHeaderIconStyle} size={17} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">
+                {searchLabel}
+                <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
+              </p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={onNewChat}
+                disabled={!currentChatAgentId || newChatDisabled}
+                aria-label={newChatLabel}
+                variant="quiet"
+                size="icon-sm"
+              >
+                <Edit style={chatHeaderIconStyle} size={17} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">{newChatLabel}</p>
+            </TooltipContent>
+          </Tooltip>
+          <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
+        </TooltipProvider>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1">
+        <PinnedAgentListSection layout="horizontal" />
+        <ChatThreadsSection
+          scrollSignals={threeColumnSidebarChatThreadScrollSignals}
+          showMarkAllRead
+        />
+      </div>
+      <div className="px-3 pb-3">
+        <SidebarUpgradeCard />
+      </div>
+    </aside>
   );
 }
 
 function ThreeColumnNav() {
+  const chatListHidden = useGet(sidebarOff$);
   return (
     <>
       <LabeledNavRail />
-      <ChatListColumn />
+      {!chatListHidden && <ChatListColumn />}
+      <ThreeColumnSearchDialogContainer />
       {/* Reuse the full sidebar as the mobile drawer only. */}
       <ExpandedSidebar mobileOnly />
     </>

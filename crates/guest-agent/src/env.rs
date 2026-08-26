@@ -30,6 +30,38 @@ fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+/// Resolve the Runner-to-Guest Agent API URL at the single process-env capture
+/// boundary. The canonical alias is reader-only during #28914 Stage 1; Runner
+/// writers and managed CLI-child exposure remain [`guest_contracts::env::API_URL_ENV`].
+/// Remove the legacy reader only after the exact production Runner plus
+/// embedded-Guest reader floor, complete pre-reader service and reusable-sandbox
+/// drain, supported rollback window, and value-free legacy-source-zero gates.
+fn api_url_env_or_empty() -> Result<String, String> {
+    let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
+    let legacy_key = guest_contracts::env::API_URL_ENV;
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting API backend URL environment aliases: canonical_key={canonical_key} \
+                 legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "api_url_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
 #[derive(Clone, Copy)]
 enum PrivatePayloadFileEnvSource {
     CanonicalOnly,
@@ -152,6 +184,68 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
     Ok(value)
 }
 
+/// Resolve one Guest Agent timing alias pair at the single process-env capture
+/// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
+/// runner writer and supported local tuning interface remain legacy-only.
+/// Remove the legacy reader only after #28914's existing runner/sandbox drain
+/// and rollback gates close and source telemetry shows zero legacy-only reads.
+fn guest_agent_tuning_env_or_empty(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<String, String> {
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(String::new()),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting guest agent tuning environment aliases: \
+                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "guest_agent_tuning_env_source key={canonical_key} source={source}"
+    );
+    Ok(value)
+}
+
+/// Resolve one optional test/debug mock binary path alias pair at the single
+/// process-env capture boundary. Canonical aliases are reader-only during
+/// #28914 Stage 1; all existing test/debug writers remain legacy-only.
+fn mock_binary_path_env(
+    canonical_key: &'static str,
+    legacy_key: &'static str,
+) -> Result<Option<String>, String> {
+    let canonical = std::env::var(canonical_key).ok();
+    let legacy = std::env::var(legacy_key).ok();
+
+    let (value, source) = match (canonical, legacy) {
+        (None, None) => return Ok(None),
+        (Some(value), None) => (value, "canonical-only"),
+        (None, Some(value)) => (value, "legacy-only"),
+        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(_), Some(_)) => {
+            return Err(format!(
+                "conflicting mock binary path environment aliases: \
+                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
+            ));
+        }
+    };
+
+    log_info!(
+        LOG_TAG,
+        "mock_binary_path_env_source key={canonical_key} source={source}"
+    );
+    Ok(Some(value))
+}
+
 #[derive(Clone, Copy)]
 enum RunMetadataEnvSource {
     CanonicalOnly,
@@ -230,7 +324,7 @@ impl Framework {
 
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
-/// `VM0_MOCK_CLAUDE_PATH` env override is unset.
+/// mock Claude path aliases are absent or non-Unicode.
 pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 
 /// Production install location for the mock-codex binary, mirroring
@@ -351,7 +445,7 @@ pub struct GuestConfigRaw {
     pub api_start_time: String,
     pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
-    /// Optional `VM0_MOCK_CLAUDE_PATH` executable override.
+    /// Optional canonical or legacy mock Claude executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -361,7 +455,7 @@ pub struct GuestConfigRaw {
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    /// Optional `VM0_MOCK_CODEX_PATH` executable override.
+    /// Optional canonical or legacy mock Codex executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -398,6 +492,24 @@ impl GuestConfigRaw {
         guest_runtime_dir: guest_contracts::runtime_paths::GuestRuntimeDirEnvResolution,
     ) -> Result<Self, String> {
         let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
+        let api_url = api_url_env_or_empty()?;
+
+        let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        )?;
+        let post_result_sigterm_grace_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        )?;
+        let post_result_total_cap_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        )?;
+        let post_result_sigkill_grace_secs = guest_agent_tuning_env_or_empty(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        )?;
 
         let (user_env_file, user_env_file_source) = private_payload_file_env(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
@@ -419,7 +531,7 @@ impl GuestConfigRaw {
 
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
-            api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
+            api_url,
             api_token: api_token_env_or_empty()?,
             sandbox_id: run_metadata_env_or_empty(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
@@ -444,12 +556,18 @@ impl GuestConfigRaw {
             )?,
             agent_execution_timeout_secs: agent_execution_timeout_env_or_empty()?,
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
-            mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
+            mock_claude_path: mock_binary_path_env(
+                guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+                guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+            )?,
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file,
             run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
+            mock_codex_path: mock_binary_path_env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            )?,
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
@@ -461,18 +579,10 @@ impl GuestConfigRaw {
             test_codex_home_dir: std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
-            stuck_tool_timeout_secs: env_or_empty(
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            ),
-            post_result_sigterm_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            ),
-            post_result_total_cap_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-            ),
-            post_result_sigkill_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ),
+            stuck_tool_timeout_secs,
+            post_result_sigterm_grace_secs,
+            post_result_total_cap_secs,
+            post_result_sigkill_grace_secs,
         })
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.173.3"
+version = "0.174.0"
 edition.workspace = true
 
 [dependencies]
@@ -33,7 +33,7 @@ tracing-subscriber = { workspace = true }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
-rustix = { workspace = true, features = ["process"] }
+rustix = { workspace = true, features = ["process", "time"] }
 hex = { workspace = true }
 idna = { workspace = true }
 libc = { workspace = true }

@@ -33,7 +33,7 @@ async fn process_control_endpoint_aliases_without_workload_capability_fail_close
             .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
             .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
             .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
-            .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+            .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
         let output = common::command_output_with_timeout(
             &mut command,
             PROCESS_CONTROL_CHILD_TIMEOUT,
@@ -98,7 +98,7 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
             guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "test-tool-placement",
         )
-        .env_remove("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+        .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
     let output_result = common::command_output_with_timeout(
         &mut command,
         PROCESS_CONTROL_CHILD_TIMEOUT,

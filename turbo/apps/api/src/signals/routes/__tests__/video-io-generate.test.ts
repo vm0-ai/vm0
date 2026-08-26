@@ -9,7 +9,6 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -30,7 +29,6 @@ import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model"
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createRouteMocks } from "./helpers/route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
@@ -711,9 +709,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let observedRequestUrl: string | null = null;
     let calledKling = false;
@@ -811,9 +806,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledFal = false;
     server.use(
@@ -878,9 +870,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledKling = false;
     let calledBytePlus = false;
@@ -939,9 +928,6 @@ describe("POST /api/video-io/generate", () => {
     await setRunVideoModelFixture({
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
     });
 
     let observedRequestUrl: string | null = null;
@@ -1032,9 +1018,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let observedRequestUrl: string | null = null;
     server.use(
@@ -1095,75 +1078,6 @@ describe("POST /api/video-io/generate", () => {
     });
   });
 
-  it("keeps the request model when video model selection is disabled", async () => {
-    const fixture = await seedVideoFixture();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-    await setRunVideoModelFixture({
-      runId,
-      selectedVideoModel: KLING_V3_4K_MODEL,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: false,
-    });
-
-    let calledVeo = false;
-    let calledKling = false;
-    server.use(
-      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
-        calledVeo = true;
-        return HttpResponse.json({
-          request_id: "switch-off-veo-request",
-          status_url: FAL_STATUS_URL,
-          response_url: FAL_RESPONSE_URL,
-        });
-      }),
-      http.post(KLING_V3_4K_QUEUE_URL, () => {
-        calledKling = true;
-        return HttpResponse.json({
-          request_id: "unexpected-kling-request",
-          status_url: KLING_STATUS_URL,
-          response_url: KLING_RESPONSE_URL,
-        });
-      }),
-    );
-
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-    });
-    const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/video-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "a city at night",
-        model: "veo3.1-fast",
-        duration: "8s",
-        resolution: "1080p",
-        aspectRatio: "16:9",
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    expect(calledVeo).toBeTruthy();
-    expect(calledKling).toBeFalsy();
-  });
-
   it("keeps the request model when the run video model snapshot is null", async () => {
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
@@ -1182,9 +1096,6 @@ describe("POST /api/video-io/generate", () => {
       context.signal,
     );
     await setRunVideoModelFixture({ runId, selectedVideoModel: null });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledFal = false;
     server.use(
@@ -1222,9 +1133,6 @@ describe("POST /api/video-io/generate", () => {
 
   it("keeps the request model for callers without a run ID", async () => {
     const fixture = await seedVideoFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledMiniMax = false;
     server.use(

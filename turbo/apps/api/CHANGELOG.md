@@ -1,5 +1,232 @@
 # Changelog
 
+## [1.495.0](https://github.com/vm0-ai/vm0/compare/api-v1.494.3...api-v1.495.0) (2026-08-26)
+
+
+### Features
+
+* **cli:** show connector accounts used by current run ([#29523](https://github.com/vm0-ai/vm0/issues/29523)) ([3d1ce4e](https://github.com/vm0-ai/vm0/commit/3d1ce4e549aa7a2405aa83d76e6794a0f4f4f587))
+
+
+### Performance Improvements
+
+* **api:** collapse media model snapshot reads ([#29525](https://github.com/vm0-ai/vm0/issues/29525)) ([5e286d5](https://github.com/vm0-ai/vm0/commit/5e286d54a7b006d82dbc51012234fd32e3d10993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.369.0
+    * @okouai/core bumped to 8.594.3
+    * @okouai/db bumped to 1.224.10
+
+## [1.494.3](https://github.com/vm0-ai/vm0/compare/api-v1.494.2...api-v1.494.3) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write api backend url aliases ([#29513](https://github.com/vm0-ai/vm0/issues/29513)) ([c9d9947](https://github.com/vm0-ai/vm0/commit/c9d99475e62f32633034af21c739cf39f6e1cb2d)), closes [#29495](https://github.com/vm0-ai/vm0/issues/29495) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **api:** make workflow dedupe writes view-safe ([#29503](https://github.com/vm0-ai/vm0/issues/29503)) ([5954906](https://github.com/vm0-ai/vm0/commit/5954906bf61d374ebe4029453a2ace7ce16870e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.224.9
+
+## [1.494.2](https://github.com/vm0-ai/vm0/compare/api-v1.494.1...api-v1.494.2) (2026-08-26)
+
+
+### Performance Improvements
+
+* scope connector runtime refresh catalog loads ([#29471](https://github.com/vm0-ai/vm0/issues/29471)) ([d8ebf8a](https://github.com/vm0-ai/vm0/commit/d8ebf8a06a25ced82d02bfed54baf230ff17e72c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.2
+    * @okouai/connectors bumped to 1.210.2
+    * @okouai/core bumped to 8.594.2
+    * @okouai/db bumped to 1.224.8
+
+## [1.494.1](https://github.com/vm0-ai/vm0/compare/api-v1.494.0...api-v1.494.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **connectors:** persist custom oauth granted scopes ([#29474](https://github.com/vm0-ai/vm0/issues/29474)) ([28122f9](https://github.com/vm0-ai/vm0/commit/28122f968195ddac30f111a830ec1b2f9a47f6a5))
+
+
+### Refactoring
+
+* **api:** cut over connector projections to v2 storage ([#29473](https://github.com/vm0-ai/vm0/issues/29473)) ([95c0b84](https://github.com/vm0-ai/vm0/commit/95c0b8462be902d9e1809f7e3e1a23060ed62b46))
+* **api:** retain alias source telemetry ([#29478](https://github.com/vm0-ai/vm0/issues/29478)) ([a085202](https://github.com/vm0-ai/vm0/commit/a085202d38d9f92f517e5cbd586512cf196a6ab3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.1
+    * @okouai/core bumped to 8.594.1
+    * @okouai/db bumped to 1.224.7
+
+## [1.494.0](https://github.com/vm0-ai/vm0/compare/api-v1.493.0...api-v1.494.0) (2026-08-26)
+
+
+### Features
+
+* enable the latest website templates for everyone ([#29446](https://github.com/vm0-ai/vm0/issues/29446)) ([6e911fa](https://github.com/vm0-ai/vm0/commit/6e911fa281806db6af98c6d3d59abbbc2e17f3f3))
+
+
+### Bug Fixes
+
+* **api:** attribute shared axiom sdk failures ([#29454](https://github.com/vm0-ai/vm0/issues/29454)) ([61ec6f4](https://github.com/vm0-ai/vm0/commit/61ec6f4fd459407e88e70ee780efad59e5a475ef))
+
+
+### Refactoring
+
+* **db:** switch Agent Draft physical storage ([#29451](https://github.com/vm0-ai/vm0/issues/29451)) ([0708921](https://github.com/vm0-ai/vm0/commit/0708921381efb8c470cbcd2b8b02e8a0a15ff8ef))
+* remove the media model selection feature switches ([#29430](https://github.com/vm0-ai/vm0/issues/29430)) ([1b11e08](https://github.com/vm0-ai/vm0/commit/1b11e08edcc2a07cac7698c6bdded314ec77901e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.594.0
+    * @okouai/db bumped to 1.224.6
+
+## [1.493.0](https://github.com/vm0-ai/vm0/compare/api-v1.492.2...api-v1.493.0) (2026-08-26)
+
+
+### Features
+
+* **chat:** make tool activity copy lifecycle-aware ([#29434](https://github.com/vm0-ai/vm0/issues/29434)) ([bec654e](https://github.com/vm0-ai/vm0/commit/bec654e4597cbbe2b4a1776cd9fc439a19e66489))
+* scaffold intro-video templates ([#29370](https://github.com/vm0-ai/vm0/issues/29370)) ([8c5da7c](https://github.com/vm0-ai/vm0/commit/8c5da7c4ca03434810c4d401e1b6f11a9cac305e))
+
+
+### Refactoring
+
+* **api:** dual-write web URL aliases ([#29443](https://github.com/vm0-ai/vm0/issues/29443)) ([fe2d09f](https://github.com/vm0-ai/vm0/commit/fe2d09fdfec462e63bb028f96e819855f77a37d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.368.0
+    * @okouai/core bumped to 8.593.0
+    * @okouai/db bumped to 1.224.5
+
+## [1.492.2](https://github.com/vm0-ai/vm0/compare/api-v1.492.1...api-v1.492.2) (2026-08-26)
+
+
+### Refactoring
+
+* **api:** dual-write debug logging aliases ([#29421](https://github.com/vm0-ai/vm0/issues/29421)) ([3de9f7f](https://github.com/vm0-ai/vm0/commit/3de9f7fafe2567f2993864fdda2760e0760134ba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.592.1
+    * @okouai/db bumped to 1.224.4
+
+## [1.492.1](https://github.com/vm0-ai/vm0/compare/api-v1.492.0...api-v1.492.1) (2026-08-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.592.0
+    * @okouai/db bumped to 1.224.3
+
+## [1.492.0](https://github.com/vm0-ai/vm0/compare/api-v1.491.0...api-v1.492.0) (2026-08-25)
+
+
+### Features
+
+* add per-thread connector account picker ([#29337](https://github.com/vm0-ai/vm0/issues/29337)) ([8434768](https://github.com/vm0-ai/vm0/commit/843476856beade4376249579dac0ce96d2df1dc5))
+* **social:** expose typed tools and results ([#29379](https://github.com/vm0-ai/vm0/issues/29379)) ([eafebf9](https://github.com/vm0-ai/vm0/commit/eafebf9f455c283b6410c18e4715c68bfef47d5f)), closes [#29368](https://github.com/vm0-ai/vm0/issues/29368)
+
+
+### Bug Fixes
+
+* decode managed Codex command wrappers ([#29396](https://github.com/vm0-ai/vm0/issues/29396)) ([b25dc18](https://github.com/vm0-ai/vm0/commit/b25dc18ae633cff097689ae3bfefd714f237abe8))
+
+
+### Refactoring
+
+* **api:** dual-read api backend url aliases ([#29392](https://github.com/vm0-ai/vm0/issues/29392)) ([0643e7f](https://github.com/vm0-ai/vm0/commit/0643e7fd75cf5ea2ef261a86ce3f43e2d98f5a1d))
+* **api:** dual-read debug logging aliases ([#29402](https://github.com/vm0-ai/vm0/issues/29402)) ([2682a27](https://github.com/vm0-ai/vm0/commit/2682a2721a4fa485ddf1299945c3fa19c54acec0)), closes [#29400](https://github.com/vm0-ai/vm0/issues/29400)
+* **api:** dual-read web url aliases ([#29404](https://github.com/vm0-ai/vm0/issues/29404)) ([332d2ff](https://github.com/vm0-ai/vm0/commit/332d2ff1d723584497354c72f94b3ac31f6a2487))
+* remove expired deployment compatibility ([#29405](https://github.com/vm0-ai/vm0/issues/29405)) ([d86c760](https://github.com/vm0-ai/vm0/commit/d86c760015662e5272734aa0e0172836be75c1b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.367.0
+    * @okouai/connectors bumped to 1.210.1
+    * @okouai/core bumped to 8.591.1
+    * @okouai/db bumped to 1.224.2
+
+## [1.491.0](https://github.com/vm0-ai/vm0/compare/api-v1.490.0...api-v1.491.0) (2026-08-25)
+
+
+### Features
+
+* make presentation templates org scoped ([#29382](https://github.com/vm0-ai/vm0/issues/29382)) ([c7106e1](https://github.com/vm0-ai/vm0/commit/c7106e12bb4b94facd532ca5115a3ea4a6aab7d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.224.1
+
+## [1.490.0](https://github.com/vm0-ai/vm0/compare/api-v1.489.0...api-v1.490.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add built-in model cooldown axiom event ([#29373](https://github.com/vm0-ai/vm0/issues/29373)) ([973db00](https://github.com/vm0-ai/vm0/commit/973db005c07b4c3ef0bbfe3b7a2ba4a5d6f956ec))
+* materialize provider tool activity ([#29372](https://github.com/vm0-ai/vm0/issues/29372)) ([0383cb8](https://github.com/vm0-ai/vm0/commit/0383cb83c9d370a730c97dade61994165ab69023))
+
+## [1.489.0](https://github.com/vm0-ai/vm0/compare/api-v1.488.2...api-v1.489.0) (2026-08-25)
+
+
+### Features
+
+* add output tool transport foundation ([#29361](https://github.com/vm0-ai/vm0/issues/29361)) ([0820224](https://github.com/vm0-ai/vm0/commit/0820224394881c0a76d2376bcbff728061b0dd55))
+* **guest-agent:** normalize provider events before sequencing ([#29353](https://github.com/vm0-ai/vm0/issues/29353)) ([3462eda](https://github.com/vm0-ai/vm0/commit/3462eda85bc1b4a384a5562a0e9de84d93341ee9))
+* refresh the built-in website template archives ([#29327](https://github.com/vm0-ai/vm0/issues/29327)) ([e6ef597](https://github.com/vm0-ai/vm0/commit/e6ef5971bc8f1329ad05f2b74f299fdb99175442))
+
+
+### Refactoring
+
+* **api:** make agent draft writes compatibility-view safe ([#29339](https://github.com/vm0-ai/vm0/issues/29339)) ([c229b0b](https://github.com/vm0-ai/vm0/commit/c229b0b26548a03e16fc3bf1f2d52720afa1c47d))
+* remove boxConnector feature switch ([#29342](https://github.com/vm0-ai/vm0/issues/29342)) ([76667a2](https://github.com/vm0-ai/vm0/commit/76667a2c2d1f2eef9f44e557487ce5d8fdd2f85a))
+* remove usage pack plans feature switch ([#29349](https://github.com/vm0-ai/vm0/issues/29349)) ([eb8a72a](https://github.com/vm0-ai/vm0/commit/eb8a72a5ae960eb4e2ff70c2c15e45e2c351b6b8))
+* retire okou translate command ([#29350](https://github.com/vm0-ai/vm0/issues/29350)) ([e54c38c](https://github.com/vm0-ai/vm0/commit/e54c38c545b579749f93a70a1d486ace3e6b7a22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.366.0
+    * @okouai/core bumped to 8.591.0
+    * @okouai/db bumped to 1.224.0
+
 ## [1.488.2](https://github.com/vm0-ai/vm0/compare/api-v1.488.1...api-v1.488.2) (2026-08-25)
 
 

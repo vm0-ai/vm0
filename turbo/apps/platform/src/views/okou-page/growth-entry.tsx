@@ -65,14 +65,6 @@ function useSlackInstalled(): boolean | null {
   return loadable.data.isInstalled || loadable.data.isConnected;
 }
 
-/** Organization credits without usage-pack credits. */
-function useOrganizationCreditLabel(): string | null {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const orgCredits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
-  return orgCredits === null ? null : formatLocalizedNumber(orgCredits);
-}
-
 function useCombinedCreditLabel(): string | null {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const usagePackLoadable = useLastLoadable(usagePackCreditsAsync$);
@@ -121,29 +113,13 @@ function CreditMenuItem({
   );
 }
 
-function OrganizationCreditMenuItem({
-  openCredits,
-}: {
-  openCredits: () => void;
-}) {
-  const creditLabel = useOrganizationCreditLabel();
-  return <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />;
-}
-
 function CombinedCreditMenuItem({ openCredits }: { openCredits: () => void }) {
   const creditLabel = useCombinedCreditLabel();
   return <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />;
 }
 
 function GrowthCreditMenuItem({ openCredits }: { openCredits: () => void }) {
-  const features = useLastResolved(featureSwitch$);
-  const usagePackPlansEnabled =
-    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
-  return usagePackPlansEnabled ? (
-    <CombinedCreditMenuItem openCredits={openCredits} />
-  ) : (
-    <OrganizationCreditMenuItem openCredits={openCredits} />
-  );
+  return <CombinedCreditMenuItem openCredits={openCredits} />;
 }
 
 function useGrowthActions() {

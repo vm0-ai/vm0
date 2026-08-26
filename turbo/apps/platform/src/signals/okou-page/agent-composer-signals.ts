@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
@@ -10,11 +11,7 @@ import {
   sendNewThreadWithoutNavigation$,
 } from "../chat-page/optimistic-chat-thread-page.ts";
 import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
-import {
-  featureSwitch$,
-  imageModelSelectionEnabled$,
-  videoModelSelectionEnabled$,
-} from "../external/feature-switch.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   updateUserModelPreference$,
   userModelPreference$,
@@ -32,6 +29,8 @@ import {
   type ComposerSubmission,
 } from "./composer-signals.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
+import { connectorAccountTargetKey } from "./connector-accounts.ts";
+import { createComposerConnectorSignals } from "./connectors.ts";
 import {
   chatPageEffectiveImageModel$,
   chatPageEffectiveVideoModel$,
@@ -93,9 +92,6 @@ const setVideoModel$ = command(
     videoModel: VideoModel | null,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (!get(videoModelSelectionEnabled$)) {
-      return;
-    }
     set(setChatPageVideoModelSelection$, videoModel);
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
@@ -124,9 +120,6 @@ const setImageModel$ = command(
     imageModel: ImageModel | null,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (!get(imageModelSelectionEnabled$)) {
-      return;
-    }
     set(setChatPageImageModelSelection$, imageModel);
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
@@ -181,15 +174,18 @@ const noOpEventAction$ = command(
 );
 const noOp$ = command((): void => {});
 
-function createAgentComposerSignalsWithDraft(
+interface AgentComposerOptions {
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
+}
+
+function createAgentSubmitMessage(
   agentId: string,
   agentDraft: EnsuredAgentDraft,
-  options: {
-    readonly forward?: ChatForwardContext;
-    readonly onOptimisticSend?: () => void;
-  } = {},
+  connector: ReturnType<typeof createComposerConnectorSignals>,
+  options: AgentComposerOptions,
 ) {
-  const submitMessage$ = command(
+  return command(
     async (
       { get, set },
       action: "send" | "queue",
@@ -200,13 +196,13 @@ function createAgentComposerSignalsWithDraft(
         return false;
       }
       const access = get(newThreadComputerAccess$);
-      const imageModelEnabled = get(imageModelSelectionEnabled$);
-      const videoModelEnabled = get(videoModelSelectionEnabled$);
-      const [hosts, imageModelPin, videoModelPin] = await Promise.all([
-        get(computerUseHosts$),
-        imageModelEnabled ? get(chatPageImageModelPin$) : Promise.resolve(null),
-        videoModelEnabled ? get(chatPageVideoModelPin$) : Promise.resolve(null),
-      ]);
+      const [hosts, imageModelPin, videoModelPin, connectorPreference] =
+        await Promise.all([
+          get(computerUseHosts$),
+          get(chatPageImageModelPin$),
+          get(chatPageVideoModelPin$),
+          get(connector.accounts.preferenceState$),
+        ]);
       signal.throwIfAborted();
       const hostId =
         access.kind === "computerUse"
@@ -215,6 +211,36 @@ function createAgentComposerSignalsWithDraft(
       const send = options.forward
         ? sendNewThreadWithoutNavigation$
         : sendNewThread$;
+      let connectorSelections: readonly ConnectorAccountSelection[] = [];
+      if (connectorPreference.selections.length > 0) {
+        const connectorAuthorization = await get(
+          connector.connectorAuthorization$,
+        );
+        signal.throwIfAborted();
+        const authorizedTargetKeys = new Set([
+          ...connectorAuthorization.enabledConnectorSlugs.map(
+            (connectorSlug) => {
+              return connectorAccountTargetKey({
+                kind: "builtin",
+                connectorSlug,
+              });
+            },
+          ),
+          ...connectorAuthorization.customConnectorGrants.map((grant) => {
+            return connectorAccountTargetKey({
+              kind: "custom",
+              customConnectorId: grant.customConnectorId,
+            });
+          }),
+        ]);
+        connectorSelections = connectorPreference.selections.filter(
+          (selection) => {
+            return authorizedTargetKeys.has(
+              connectorAccountTargetKey(selection.target),
+            );
+          },
+        );
+      }
       const sent = await set(
         send,
         {
@@ -241,6 +267,7 @@ function createAgentComposerSignalsWithDraft(
           ...(options.onOptimisticSend
             ? { onOptimisticSend: options.onOptimisticSend }
             : {}),
+          ...(connectorSelections.length > 0 ? { connectorSelections } : {}),
         },
         signal,
       );
@@ -249,13 +276,29 @@ function createAgentComposerSignalsWithDraft(
         set(resetChatPageImageModelSelection$);
         set(resetChatPageModelSelection$);
         set(resetChatPageVideoModelSelection$);
+        set(connector.accounts.resetPendingSelections$);
       }
       return sent;
     },
   );
+}
+
+function createAgentComposerSignalsWithDraft(
+  agentId: string,
+  agentDraft: EnsuredAgentDraft,
+  options: AgentComposerOptions = {},
+) {
+  const connector = createComposerConnectorSignals(agentId);
+  const submitMessage$ = createAgentSubmitMessage(
+    agentId,
+    agentDraft,
+    connector,
+    options,
+  );
 
   return createComposerSignals({
     agentId,
+    connector,
     draft: {
       signals: agentDraft.draft,
       save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,

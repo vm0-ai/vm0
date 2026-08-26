@@ -9,7 +9,6 @@ import {
   type UsageRecordResponse,
   type UsageRecordRow,
 } from "@okouai/api-contracts/contracts/usage-record";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -266,56 +265,19 @@ function mockPersonalUsageStory(
 }
 
 async function openUsageSettings(
-  usagePackPlansEnabled = true,
   section: "usage" | "usage-records" = "usage",
 ): Promise<void> {
   detachedSetupPage({
     context,
     path: `/?settings=${section}`,
-    featureSwitches: {
-      [FeatureSwitchKey.UsagePackPlans]: usagePackPlansEnabled,
-    },
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  if (!usagePackPlansEnabled) {
-    await screen.findByRole("heading", { name: "Preference" });
-  }
 }
 
 describe("personal usage settings", () => {
-  it("does not request or show usage pack credits when the switch is disabled", async () => {
-    mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    let usagePackCreditRequests = 0;
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      usagePackCreditRequests += 1;
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        creditGrants: [],
-      });
-    });
-
-    await openUsageSettings(false);
-    // Without the new pricing a member has neither an organization balance nor
-    // a records section to open.
-    expect(
-      queryAllByRoleFast("button").some((button) => {
-        return button.textContent === "Credit balance";
-      }),
-    ).toBeFalsy();
-    expect(
-      queryAllByRoleFast("button").some((button) => {
-        return button.textContent === "Credit usage";
-      }),
-    ).toBeFalsy();
-    expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
-    expect(usagePackCreditRequests).toBe(0);
-  });
-
-  it("shows the member's usage pack credit breakdown when the switch is enabled", async () => {
+  it("shows the member's usage pack credit breakdown", async () => {
     const user = userEvent.setup();
     mockPersonalUsageStory(usageRows(), "pro", false, "member");
     context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
@@ -345,7 +307,7 @@ describe("personal usage settings", () => {
       });
     });
 
-    await openUsageSettings(true);
+    await openUsageSettings();
 
     const card = await screen.findByTestId("usage-pack-credit-card");
     expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
@@ -400,7 +362,7 @@ describe("personal usage settings", () => {
       });
     });
 
-    await openUsageSettings(true);
+    await openUsageSettings();
 
     await waitFor(() => {
       expect(requests).toBe(1);
@@ -429,7 +391,7 @@ describe("personal usage settings", () => {
       });
     });
 
-    await openUsageSettings(true);
+    await openUsageSettings();
 
     const card = await screen.findByTestId("usage-pack-credit-card");
     expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
@@ -478,7 +440,7 @@ describe("personal usage settings", () => {
       });
     });
 
-    await openUsageSettings(true);
+    await openUsageSettings();
 
     const card = await screen.findByTestId("usage-pack-credit-card");
     await waitFor(() => {
@@ -555,7 +517,7 @@ describe("personal usage settings", () => {
       });
     });
 
-    await openUsageSettings(true);
+    await openUsageSettings();
 
     const card = await screen.findByTestId("usage-pack-credit-card");
     expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
@@ -665,7 +627,7 @@ describe("personal usage settings", () => {
 
   it("shows an illustrated empty state when the range has no usage", async () => {
     mockPersonalUsageStory([]);
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     const empty = await screen.findByTestId("usage-records-empty");
     expect(
@@ -686,7 +648,7 @@ describe("personal usage settings", () => {
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
     const requests = mockPersonalUsageStory();
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     await waitFor(() => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
@@ -769,7 +731,7 @@ describe("personal usage settings", () => {
     });
     const requests = mockPersonalUsageStory(rows);
 
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     await expect(
       screen.findByText("Usage record 20"),
@@ -808,7 +770,7 @@ describe("personal usage settings", () => {
       return respond(200, personalUsagePage(rows, query.page, query.pageSize));
     });
 
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
     expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
 
     await user.click(screen.getByText("Load more"));
@@ -846,7 +808,7 @@ describe("personal usage settings", () => {
       ],
       "limited-free-1",
     );
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
@@ -876,7 +838,7 @@ describe("personal usage settings", () => {
         ],
       },
     ]);
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     await user.hover(screen.getByTestId("usage-kind-segment-video"));
 
@@ -892,7 +854,7 @@ describe("personal usage settings", () => {
 
   it("keeps keyboard focus styling on the usage title instead of the row", async () => {
     mockPersonalUsageStory();
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     const titleLink = await screen.findByText("Quarterly planning chat");
 
@@ -960,7 +922,7 @@ describe("personal usage settings", () => {
     });
     mockEmptyUsagePackCredits();
 
-    await openUsageSettings(true, "usage-records");
+    await openUsageSettings("usage-records");
 
     await waitFor(() => {
       expect(screen.getByText("Initial usage row")).toBeInTheDocument();

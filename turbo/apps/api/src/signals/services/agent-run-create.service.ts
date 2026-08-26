@@ -229,6 +229,7 @@ import {
   type PresentationRunbookArchiveVersion,
   type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
+import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import {
   resolvePiSandboxModelConfig,
   shouldUsePiExecution,
@@ -296,8 +297,7 @@ import {
 } from "./chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
-import { resolveImageModelForRun } from "./image-model.service";
-import { resolveVideoModelForRun } from "./video-model.service";
+import { resolveMediaModelsForRun } from "./run-media-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -6139,6 +6139,7 @@ interface LaunchRunRowsArgs {
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
   readonly launchSnapshot: AgentRunLaunchSnapshot;
+  readonly chatToolActivityEnabled: boolean;
   readonly error: string | undefined;
 }
 
@@ -6185,6 +6186,7 @@ function launchRunValues(
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
     launchSnapshot: args.launchSnapshot,
+    chatToolActivityEnabled: args.chatToolActivityEnabled,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
@@ -6311,6 +6313,12 @@ function buildStoredPlatformEnvironment(args: {
   const platformEnvironment = {
     ...args.platformEnvironment,
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    [INTRO_VIDEO_TEMPLATES_ENABLED_ENV]: isFeatureEnabled(
+      FeatureSwitchKey.IntroVideoTemplates,
+      args.featureSwitchContext,
+    )
+      ? "1"
+      : "0",
     [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
     ),
@@ -7123,6 +7131,7 @@ function preparedLaunchRowsArgs(args: {
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
     launchSnapshot: args.commit.context.launchSnapshot,
+    chatToolActivityEnabled: args.commit.context.chatToolActivityEnabled,
     error: undefined,
   };
 }
@@ -7567,6 +7576,7 @@ async function commitFailedLaunch(args: {
         apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
         launchSnapshot: args.context.launchSnapshot,
+        chatToolActivityEnabled: args.context.chatToolActivityEnabled,
         error: message,
       });
       if (queueFirstClaim) {
@@ -8124,8 +8134,10 @@ interface PreparedRunContext {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  /** Captured once and persisted; later event writers must not re-resolve it. */
+  readonly chatToolActivityEnabled: boolean;
   readonly imageRecognitionAvailable: boolean;
-  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  /** Snapshotted onto the run row; see `resolveMediaModelsForRun`. */
   readonly selectedVideoModel: string;
   /** Resolved once at run start and used as the run's built-in image default. */
   readonly selectedImageModel: ImageModel | null;
@@ -9243,6 +9255,10 @@ function prepareRunContext(
         resolved: bodyContext.resolved,
         modelProvider: runtimeContext.modelProvider,
       });
+      const chatToolActivityEnabled = isFeatureEnabled(
+        FeatureSwitchKey.ChatToolActivity,
+        bodyContext.featureSwitchContext,
+      );
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         featureSwitchContext: bodyContext.featureSwitchContext,
@@ -9273,21 +9289,13 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
-      const selectedVideoModel = await resolveVideoModelForRun({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-      });
-      signal.throwIfAborted();
-
-      const selectedImageModel = await resolveImageModelForRun({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-        featureSwitchContext: bodyContext.featureSwitchContext,
-      });
+      const { selectedVideoModel, selectedImageModel } =
+        await resolveMediaModelsForRun({
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          chatThreadId: args.chatThreadId,
+        });
       signal.throwIfAborted();
 
       const outputMetadata = await timing.measure(
@@ -9327,6 +9335,7 @@ function prepareRunContext(
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
+        chatToolActivityEnabled,
         selectedVideoModel,
         selectedImageModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({

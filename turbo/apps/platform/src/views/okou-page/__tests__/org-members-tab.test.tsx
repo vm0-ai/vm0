@@ -10,7 +10,6 @@ import {
   billingUsagePackManagementContract,
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
@@ -24,7 +23,6 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const LEGACY_PRICING = { [FeatureSwitchKey.UsagePackPlans]: false } as const;
 
 function buttonByText(
   text: string,
@@ -348,11 +346,11 @@ function mockUsagePackCatalog(): void {
   });
 }
 
-async function openLegacyMembersTab(heading = "People"): Promise<void> {
+async function openMembersTab(heading = "People"): Promise<void> {
+  mockMemberInviteEntitlement(false);
   detachedSetupPage({
     context,
     path: "/?settings=people",
-    featureSwitches: LEGACY_PRICING,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -371,7 +369,7 @@ function rowByEmail(email: string): HTMLElement {
 describe("organization members settings", () => {
   it("filters members and sends an invitation", async () => {
     mockMembersStory();
-    await openLegacyMembersTab();
+    await openMembersTab();
 
     expect(screen.getByText("Alice Admin")).toBeInTheDocument();
     expect(screen.getByText("bob@example.com")).toBeInTheDocument();
@@ -435,7 +433,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await waitFor(() => {
       expect(
@@ -571,7 +568,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
@@ -626,9 +622,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: {
-        [FeatureSwitchKey.UsagePackPlans]: true,
-      },
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
 
@@ -681,7 +674,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
 
@@ -726,7 +718,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await screen.findByRole("heading", { name: "People" });
     click(buttonByText("Add member"));
@@ -792,7 +783,6 @@ describe("organization members settings", () => {
       detachedSetupPage({
         context,
         path: "/?settings=people",
-        featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
       });
       await waitFor(() => {
         expect(
@@ -837,7 +827,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await waitFor(() => {
       expect(
@@ -871,7 +860,7 @@ describe("organization members settings", () => {
 
   it("accepts and rejects membership requests", async () => {
     mockMembersStory();
-    await openLegacyMembersTab();
+    await openMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "carol");
     await waitFor(() => {
@@ -913,7 +902,7 @@ describe("organization members settings", () => {
 
   it("changes roles, removes a member, and lets an admin self-demote", async () => {
     mockMembersStory();
-    await openLegacyMembersTab();
+    await openMembersTab();
 
     click(screen.getByLabelText("Actions for bob@example.com"));
     click(menuItemByText("Make admin"));
@@ -981,7 +970,6 @@ describe("organization members settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
 
@@ -1017,7 +1005,7 @@ describe("organization members settings", () => {
 
   it("cancels and confirms invitation revoke", async () => {
     mockMembersStory();
-    await openLegacyMembersTab();
+    await openMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "pending");
     await waitFor(() => {
@@ -1061,7 +1049,7 @@ describe("organization members settings", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await openLegacyMembersTab("Pessoas");
+    await openMembersTab("Pessoas");
 
     const settingsDialog = screen.getByRole("dialog", {
       name: "Configurações",

@@ -614,6 +614,12 @@ async def test_unexpected_request_exception_releases_tracking(
     ):
         await mitm_addon.request(flow)
 
+    assert flow.response is not None
+    assert flow.response.status_code == 500
+    assert flow.response.json() == {
+        "error": "request_processing_failed",
+        "message": "Request processing failed",
+    }
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
@@ -650,6 +656,7 @@ async def test_request_cancellation_releases_tracking_during_auth_resolution(
     ):
         await mitm_addon.request(flow)
 
+    assert flow.response is None
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")

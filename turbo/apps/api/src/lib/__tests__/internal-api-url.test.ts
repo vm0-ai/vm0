@@ -6,8 +6,9 @@ import { internalApiBaseUrl } from "../internal-api-url";
 // Mocked env is reset after each test by the shared test setup
 // (src/__tests__/setup.ts calls clearMockedEnv in afterEach).
 describe("internalApiBaseUrl", () => {
-  it("uses VM0_API_BACKEND_URL when set so internal API calls skip www", () => {
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  it("uses OKOU_API_BACKEND_URL when set so internal API calls skip www", () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("VM0_API_BACKEND_URL", undefined);
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
 
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
@@ -19,16 +20,18 @@ describe("internalApiBaseUrl", () => {
     ).toBe("https://api.vm0.ai/api/cron/aggregate-model-stats");
   });
 
-  it("defaults to the API backend origin in production when VM0_API_BACKEND_URL is unset", () => {
+  it("defaults to the API backend origin in production when both aliases are unset", () => {
     mockEnv("ENV", "production");
+    mockEnv("OKOU_API_BACKEND_URL", undefined);
     mockEnv("VM0_API_BACKEND_URL", undefined);
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
 
     expect(internalApiBaseUrl()).toBe("https://vm0-api.vm6.ai");
   });
 
-  it("falls back to VM0_WEB_URL outside production when VM0_API_BACKEND_URL is unset", () => {
+  it("falls back to VM0_WEB_URL outside production when both aliases are unset", () => {
     mockEnv("ENV", "development");
+    mockEnv("OKOU_API_BACKEND_URL", undefined);
     mockEnv("VM0_API_BACKEND_URL", undefined);
     mockEnv("VM0_WEB_URL", "https://tunnel-abc.vm0.dev");
 

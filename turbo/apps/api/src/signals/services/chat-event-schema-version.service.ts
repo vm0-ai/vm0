@@ -1,4 +1,7 @@
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 interface VersionErrorResponse {
   readonly status: 400 | 409 | 426;
@@ -26,7 +29,7 @@ function invalidVersion(): ChatEventSchemaVersionResolution {
   };
 }
 
-/** Resolve the explicit wire version. */
+/** Resolve the explicit wire version during the bounded V5-to-V6 rollout. */
 export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {
@@ -40,7 +43,10 @@ export function resolveChatEventSchemaVersion(
   if (!Number.isSafeInteger(version)) {
     return invalidVersion();
   }
-  if (version < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
+  // Old app bundles can live for about two days, and pinned runner/CLI
+  // contexts can live through the queue window plus two hours. Remove the V5
+  // bridge under #29362 after the V6 app floor ships and those contexts drain.
+  if (version < CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR) {
     return {
       kind: "error",
       response: {
@@ -69,5 +75,5 @@ export function resolveChatEventSchemaVersion(
       },
     };
   }
-  return { kind: "ok", version: CURRENT_CHAT_EVENT_SCHEMA_VERSION };
+  return { kind: "ok", version };
 }

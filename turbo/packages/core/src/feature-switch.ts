@@ -283,17 +283,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.VideoModelSelection]: {
+  [FeatureSwitchKey.IntroVideoTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Let the chat composer model picker pin the video model a chat thread generates with.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ImageModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker choose the default built-in image model for a chat thread.",
-    enabled: true,
+      "Expose intro-video templates and their implementation-specific authoring flows.",
+    enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
@@ -307,13 +301,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LatestWebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.LatestPresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
@@ -327,12 +321,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
     enabled: false,
-  },
-  [FeatureSwitchKey.UsagePackPlans]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -351,6 +339,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatToolActivity]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Generate and deliver redacted tool activity events in Chat history.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

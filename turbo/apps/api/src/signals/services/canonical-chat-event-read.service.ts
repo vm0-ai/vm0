@@ -53,10 +53,16 @@ export function canonicalChatEventGoalId(
 export function canonicalArchivedChatEventContent(
   row: ChatEventRow,
 ): string | null {
+  if (row.eventType === "output.tool") {
+    return null;
+  }
   return row.payload?.content ?? null;
 }
 
 export function canonicalArchivedChatEventUserMessage(row: ChatEventRow) {
+  if (row.eventType === "output.tool") {
+    return null;
+  }
   const userMessage = row.payload?.userMessage;
   return userMessage === undefined
     ? null
@@ -66,6 +72,9 @@ export function canonicalArchivedChatEventUserMessage(row: ChatEventRow) {
 export function canonicalArchivedChatEventError(
   row: ChatEventRow,
 ): string | null {
+  if (row.eventType === "output.tool") {
+    return null;
+  }
   return row.payload?.error ?? null;
 }
 

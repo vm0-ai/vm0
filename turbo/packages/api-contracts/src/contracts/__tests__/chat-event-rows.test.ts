@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
 import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "../chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "../chat-event-schema-version";
 import { chatThreadEventsContract } from "../chat-threads";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
-function canonicalRow(overrides: Partial<ChatEventRow>): ChatEventRow {
-  return {
+function canonicalRow(
+  overrides: Readonly<Record<string, unknown>>,
+): ChatEventRow {
+  return chatEventRowSchema.parse({
     id: "00000000-0000-4000-8000-000000000003",
     chatThreadId: "00000000-0000-4000-8000-000000000002",
     runId: null,
@@ -22,7 +27,7 @@ function canonicalRow(overrides: Partial<ChatEventRow>): ChatEventRow {
     seqId: 2,
     createdAt: CREATED_AT,
     ...overrides,
-  };
+  });
 }
 
 function projectableRow(eventType: ChatEventType): ChatEventRow {
@@ -32,7 +37,7 @@ function projectableRow(eventType: ChatEventType): ChatEventRow {
     version: 1,
     parts: [{ type: "text", text: eventType }],
   };
-  const variants: Record<ChatEventType, Partial<ChatEventRow>> = {
+  const variants: Record<ChatEventType, Readonly<Record<string, unknown>>> = {
     "input.prompt": { payload: { userMessage }, contextType: "web" },
     "input.automation": {
       payload: { userMessage },
@@ -55,6 +60,15 @@ function projectableRow(eventType: ChatEventType): ChatEventRow {
     },
     "output.thinking": { payload: { thinking: "thinking" } },
     "output.followups": { payload: { content: "followups" } },
+    "output.tool": {
+      runId,
+      payload: {
+        toolUseId: "tool-use-1",
+        action: "read",
+        status: "success",
+        summary: "Read package.json",
+      },
+    },
     "run.queued": { runId, payload: { content: "queued" } },
     "run.dequeued": { runId, revokesEventId },
     "run.completed": { runId },
@@ -121,6 +135,25 @@ describe("canonical chat event row schema", () => {
     expect(parsed).not.toHaveProperty("interruptsRunId");
     expect(parsed).not.toHaveProperty("runGroupId");
   });
+
+  it("enforces the exact output.tool payload boundary", () => {
+    const valid = projectableRow("output.tool");
+    if (valid.eventType !== "output.tool") {
+      throw new Error("Expected an output.tool row");
+    }
+    expect(chatEventRowSchema.safeParse(valid).success).toBe(true);
+    for (const payload of [
+      { ...valid.payload, action: "execute" },
+      { ...valid.payload, status: "running" },
+      { ...valid.payload, summary: "first\nsecond" },
+      { ...valid.payload, summary: "x".repeat(241) },
+      { ...valid.payload, stdout: "raw result" },
+    ]) {
+      expect(chatEventRowSchema.safeParse({ ...valid, payload }).success).toBe(
+        false,
+      );
+    }
+  });
 });
 
 describe("Chat Event Raw Event cursor contract", () => {
@@ -152,7 +185,8 @@ describe("Chat Event versioned read contract", () => {
     expect(
       headersSchema.safeParse({
         authorization: "Bearer test",
-        [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+        [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
       }).success,
     ).toBe(true);
 

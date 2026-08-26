@@ -195,9 +195,7 @@ async function submitIdentifier(
   identifier: string,
   factors: readonly MockedSignInFactor[],
 ): Promise<void> {
-  const identifierInput = await screen.findByLabelText(
-    "Email address or username",
-  );
+  const identifierInput = await screen.findByLabelText("Email address");
   const nextResource = moveSignInTo({
     status: "needs_first_factor",
     supportedFirstFactors: factors,
@@ -233,7 +231,7 @@ describe("auth v2 sign-in flow", () => {
     });
 
     await expect(
-      screen.findByLabelText("Email address or username"),
+      screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
   });
 
@@ -243,9 +241,17 @@ describe("auth v2 sign-in flow", () => {
       status: "needs_identifier",
     });
 
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
+    expect(screen.getByLabelText("Email address")).toHaveAttribute(
+      "placeholder",
+      "Enter your email address",
+    );
+    expect(screen.getByLabelText("Email address")).toHaveAttribute(
+      "autocomplete",
+      "email",
+    );
   });
 
   it("preserves exact navigation context in the ordinary sign-up switch", async () => {
@@ -254,12 +260,15 @@ describe("auth v2 sign-in flow", () => {
 
     const signUp = await waitForRoleElement("link", "Sign up");
     expect(signUp).toHaveAttribute("href", expectedHref);
+    expect(
+      screen.getByRole("region", { name: /^Sign in to / }),
+    ).toContainElement(signUp);
     expect(signUp.parentElement).toHaveTextContent(
       "Don’t have an account? Sign up",
     );
   });
 
-  it("discovers password factors, coalesces duplicate submits, and activates once", async () => {
+  it("defaults an ordinary identifier submit to password, coalesces duplicate submits, and activates once", async () => {
     const user = userEvent.setup({ delay: null });
     const attempt = createDeferredPromise<
       ReturnType<typeof currentSignInResource>
@@ -271,19 +280,13 @@ describe("auth v2 sign-in flow", () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
 
-    const passwordMethod = await waitForRoleElement(
-      "button",
-      "Sign in with your password",
-    );
-    expect(document.activeElement).toBe(
-      screen.getByRole("heading", { level: 1, name: "Sign in to VM0" }),
-    );
-    fireEvent.click(passwordMethod);
-
     const passwordInput = await screen.findByLabelText("Password");
     expect(document.activeElement).toBe(
-      screen.getByRole("heading", { level: 1, name: "Sign in to VM0" }),
+      screen.getByRole("heading", { level: 1, name: "Enter your password" }),
     );
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    expect(passwordInput).toHaveAttribute("placeholder", "Enter your password");
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
     const revealPassword = await waitForRoleElement("button", "Show password");
     expect(revealPassword).toHaveAttribute("aria-pressed", "false");
     expect(passwordInput).toHaveAttribute("type", "password");
@@ -298,6 +301,7 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.signInAttemptFirstFactor).not.toHaveBeenCalled();
     fireEvent.change(passwordInput, { target: { value: "correct-password" } });
     const passwordForm = containingForm(passwordInput);
+    const continueButton = await waitForRoleElement("button", "Continue");
     fireEvent.submit(passwordForm);
     fireEvent.submit(passwordForm);
 
@@ -308,6 +312,11 @@ describe("auth v2 sign-in flow", () => {
       password: "correct-password",
       strategy: "password",
     });
+    await waitFor(() => {
+      expect(continueButton).toHaveAttribute("aria-busy", "true");
+    });
+    expect(continueButton).toHaveAccessibleName("Continue");
+    expect(continueButton.textContent?.trim()).toBe("");
 
     await act(async () => {
       const resource = moveSignInTo({
@@ -349,9 +358,6 @@ describe("auth v2 sign-in flow", () => {
 
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
-    fireEvent.click(
-      await waitForRoleElement("button", "Sign in with your password"),
-    );
 
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "correct-password" } });
@@ -387,7 +393,18 @@ describe("auth v2 sign-in flow", () => {
       await clientTrustPreparation.promise;
     });
     const codeInput = await screen.findByLabelText("Verification code");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Check your email" }),
+    ).toBeVisible();
     expect(screen.getByText("p***@example.com")).toBeVisible();
+    expect(
+      screen.getByText(
+        "You're signing in from a new device. We're asking for verification to keep your account secure.",
+      ),
+    ).toBeVisible();
+    await expect(waitForRoleElement("button", "Back")).resolves.toBeVisible();
+    expect(roleElement("button", "Use another method")).toBeUndefined();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
     fireEvent.change(codeInput, { target: { value: "424242" } });
     fireEvent.submit(containingForm(codeInput));
 
@@ -426,12 +443,117 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.signInPrepareSecondFactor).not.toHaveBeenCalled();
   });
 
+  it("opens a filtered method chooser and restores the exact password presentation without preparation", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      emailCodeFactor(),
+      passwordResetFactor(),
+    ]);
+
+    await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
+    expect(roleElement("link", "Use current sign-in")).toBeDefined();
+
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Use another method" }),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Apple"),
+    ).resolves.toHaveTextContent("Apple");
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toHaveTextContent("Google");
+    await expect(
+      waitForRoleElement("button", "Email code to p***@example.com"),
+    ).resolves.toBeVisible();
+    expect(roleElement("button", "Sign in with your password")).toBeUndefined();
+    expect(roleElement("button", "Reset your password")).toBeUndefined();
+    const getHelp = await waitForRoleElement("button", "Get help");
+    expect(getHelp).toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "Use another method" }),
+    ).toContainElement(getHelp);
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+
+    await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Enter your password" }),
+    ).toBeVisible();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+  });
+
+  it("shows recovery loading only on the selected method", async () => {
+    const preparation = createDeferredPromise<
+      ReturnType<typeof currentSignInResource>
+    >(context.signal);
+    mockedClerk.signInPrepareFirstFactor.mockImplementation(() => {
+      return preparation.promise;
+    });
+    mockAuthV2Capabilities({
+      appleOAuth: true,
+      googleOAuth: true,
+      passkey: true,
+    });
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      emailCodeFactor(),
+      passwordResetFactor(),
+      passkeyFactor(),
+    ]);
+
+    fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+    const reset = await waitForRoleElement("button", "Reset your password");
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    const email = await waitForRoleElement(
+      "button",
+      "Email code to p***@example.com",
+    );
+    const passkey = await waitForRoleElement(
+      "button",
+      "Sign in with your passkey",
+    );
+
+    fireEvent.click(email);
+
+    await waitFor(() => {
+      expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
+      expect(email).toHaveAttribute("aria-busy", "true");
+    });
+    expect(email).toHaveAccessibleName("Email code to p***@example.com");
+    expect(email.textContent?.trim()).toBe("");
+    for (const competingAction of [reset, apple, google, passkey]) {
+      expect(competingAction).toBeDisabled();
+      expect(competingAction).toHaveAttribute("aria-busy", "false");
+      expect(competingAction.textContent?.trim()).not.toBe("");
+    }
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return button.getAttribute("aria-busy") === "true";
+      }),
+    ).toStrictEqual([email]);
+
+    mockPreparedFirstFactor("email_code");
+    await act(async () => {
+      preparation.resolve(currentSignInResource());
+      await preparation.promise;
+    });
+
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+  });
+
   it("associates only typed password errors and clears them on change", async () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
-    fireEvent.click(
-      await waitForRoleElement("button", "Sign in with your password"),
-    );
 
     const passwordInput = await screen.findByLabelText("Password");
     mockedClerk.signInAttemptFirstFactor
@@ -477,12 +599,52 @@ describe("auth v2 sign-in flow", () => {
     expectFieldErrorAssociation(passwordInput, passwordAlert);
     expect(screen.queryByText("Private password provider detail.")).toBeNull();
 
+    fireEvent.change(passwordInput, { target: { value: "second-attempt" } });
+    expect(screen.getByRole("alert")).toBe(passwordAlert);
+    expectFieldErrorAssociation(passwordInput, passwordAlert);
+
     fireEvent.change(passwordInput, { target: { value: "retry-password" } });
     await waitFor(() => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
     expect(passwordInput).toHaveValue("retry-password");
     expectNoFieldErrorAssociation(passwordInput);
+  });
+
+  it("shows configured Apple and Google providers with compact visible labels", async () => {
+    const redirect = createDeferredPromise<void>(context.signal);
+    mockedClerk.signInAuthenticateWithRedirect.mockImplementation(() => {
+      return redirect.promise;
+    });
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+    setupSignInPage({ status: "needs_identifier" });
+
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(apple.textContent?.trim()).toBe("Apple");
+    expect(google.textContent?.trim()).toBe("Google");
+
+    fireEvent.click(apple);
+    await waitFor(() => {
+      expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({ strategy: "oauth_apple" }),
+      );
+      expect(apple).toHaveAttribute("aria-busy", "true");
+    });
+    expect(apple).toHaveAccessibleName("Continue with Apple");
+    expect(apple.textContent?.trim()).toBe("");
+    expect(google).toBeDisabled();
+    expect(google).toHaveAttribute("aria-busy", "false");
+    expect(google.textContent?.trim()).toBe("Google");
+
+    await act(async () => {
+      redirect.resolve(undefined);
+      await redirect.promise;
+    });
+    await waitFor(() => {
+      expect(apple).toHaveAttribute("aria-busy", "false");
+      expect(apple).toHaveTextContent("Apple");
+    });
   });
 
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
@@ -708,7 +870,7 @@ describe("auth v2 sign-in flow", () => {
     );
 
     await expect(
-      screen.findByLabelText("Email address or username"),
+      screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
     expect(mockedGoogleOneTap.initialize).not.toHaveBeenCalled();
     expect(mockedGoogleOneTap.prompt).not.toHaveBeenCalled();
@@ -725,7 +887,7 @@ describe("auth v2 sign-in flow", () => {
 
     // Script loading is a browser resource boundary and cannot be triggered
     // through a rendered control, so dispatch its terminal event directly.
-    await screen.findByLabelText("Email address or username");
+    await screen.findByLabelText("Email address");
     fireEvent.error(failedScript);
 
     await waitFor(() => {
@@ -742,7 +904,7 @@ describe("auth v2 sign-in flow", () => {
     act(() => {
       window.history.back();
     });
-    await screen.findByLabelText("Email address or username");
+    await screen.findByLabelText("Email address");
     expect(retryScript).not.toBe(failedScript);
 
     mockGoogleOneTapCredential("retry-google-one-tap-token");
@@ -926,12 +1088,13 @@ describe("auth v2 sign-in flow", () => {
 
     fireEvent.click(await waitForRoleElement("button", "Add account"));
 
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
   });
 
   it("prepares and resends one email code per concurrent user action", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
     const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
     mockNow(startedAt, context.signal);
     const prepare = createDeferredPromise<
@@ -957,7 +1120,16 @@ describe("auth v2 sign-in flow", () => {
       passwordFactor(),
       emailCodeFactor(),
     ]);
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
+    const appleMethod = await waitForRoleElement(
+      "button",
+      "Continue with Apple",
+    );
+    const googleMethod = await waitForRoleElement(
+      "button",
+      "Continue with Google",
+    );
     const emailMethod = await waitForRoleElement(
       "button",
       "Email code to p***@example.com",
@@ -967,6 +1139,7 @@ describe("auth v2 sign-in flow", () => {
 
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
+      expect(emailMethod).toHaveAttribute("aria-busy", "true");
     });
     expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenLastCalledWith({
       emailAddressId: "email_primary",
@@ -975,6 +1148,13 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(emailMethod).toBeDisabled();
     });
+    expect(emailMethod).toHaveAccessibleName("Email code to p***@example.com");
+    expect(emailMethod.textContent?.trim()).toBe("");
+    for (const competingMethod of [appleMethod, googleMethod]) {
+      expect(competingMethod).toBeDisabled();
+      expect(competingMethod).toHaveAttribute("aria-busy", "false");
+      expect(competingMethod.textContent?.trim()).not.toBe("");
+    }
     expect(
       screen.queryByLabelText("Verification code"),
     ).not.toBeInTheDocument();
@@ -985,9 +1165,55 @@ describe("auth v2 sign-in flow", () => {
     });
 
     const codeInput = await screen.findByLabelText("Verification code");
+    codeInput.focus();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(codeInput);
+    });
+    fireEvent.change(codeInput, { target: { value: "1" } });
+    expect(codeInput).toHaveValue("1");
+    fireEvent.change(codeInput, { target: { value: "12" } });
+    expect(codeInput).toHaveValue("12");
+    fireEvent.change(codeInput, { target: { value: "" } });
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Check your email" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    await expect(
+      waitForRoleElement("button", "Use another method"),
+    ).resolves.toBeVisible();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
+    await expect(
+      screen.findByRole("heading", { name: "Use another method" }),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Sign in with your password"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Apple"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toBeVisible();
+    expect(
+      roleElement("button", "Email code to p***@example.com"),
+    ).toBeUndefined();
+    expect(roleElement("button", "Reset your password")).toBeUndefined();
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+    const restoredCodeInput = await screen.findByLabelText("Verification code");
+    expect(restoredCodeInput).toHaveValue("");
+    expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
+    expect(restoredCodeInput).toHaveAttribute("autocomplete", "one-time-code");
+    expect(restoredCodeInput).toHaveAttribute("inputmode", "numeric");
+    expect(restoredCodeInput).toHaveAttribute("maxlength", "6");
+    expect(
+      restoredCodeInput.parentElement?.querySelectorAll(
+        '[aria-hidden="true"] > span',
+      ),
+    ).toHaveLength(6);
     const coolingDownButton = await waitForRoleElement(
       "button",
-      "Didn't receive a code? Resend (30s)",
+      "Didn't receive a code? Resend (30)",
     );
     expect(coolingDownButton).toBeDisabled();
     fireEvent.click(coolingDownButton);
@@ -1006,7 +1232,7 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
     });
-    const verifyButton = await waitForRoleElement("button", "Verify");
+    const verifyButton = await waitForRoleElement("button", "Continue");
     await waitFor(() => {
       expect(verifyButton).toBeDisabled();
     });
@@ -1018,8 +1244,8 @@ describe("auth v2 sign-in flow", () => {
       await resend.promise;
     });
 
-    fireEvent.change(codeInput, { target: { value: "123456" } });
-    const codeForm = containingForm(codeInput);
+    fireEvent.change(restoredCodeInput, { target: { value: "123456" } });
+    const codeForm = containingForm(restoredCodeInput);
     fireEvent.submit(codeForm);
     fireEvent.submit(codeForm);
 
@@ -1052,14 +1278,18 @@ describe("auth v2 sign-in flow", () => {
 
   it.each([
     {
-      factor: emailCodeFactor(),
+      factors: [emailCodeFactor()],
       method: "Email code to p***@example.com",
       name: "email verification",
+      recovery: false,
+      title: "Check your email",
     },
     {
-      factor: passwordResetFactor(),
+      factors: [passwordFactor(), passwordResetFactor()],
       method: "Reset your password",
       name: "password reset",
+      recovery: true,
+      title: "Reset password",
     },
   ])("recovers an expired $name code with one resend", async (testCase) => {
     mockedClerk.signInPrepareFirstFactor.mockResolvedValue(
@@ -1075,10 +1305,30 @@ describe("auth v2 sign-in flow", () => {
     });
 
     setupSignInPage({ status: "needs_identifier" });
-    await submitIdentifier("person@example.com", [testCase.factor]);
+    await submitIdentifier("person@example.com", testCase.factors);
+    if (testCase.recovery) {
+      fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+      await expect(
+        screen.findByRole("heading", { name: "Forgot Password?" }),
+      ).resolves.toBeVisible();
+      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+    }
     fireEvent.click(await waitForRoleElement("button", testCase.method));
 
     const codeInput = await screen.findByLabelText("Verification code");
+    expect(
+      screen.getByRole("heading", { level: 1, name: testCase.title }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    if (testCase.recovery) {
+      expect(roleElement("button", "Back")).toBeUndefined();
+      expect(roleElement("button", "Use another method")).toBeUndefined();
+    } else {
+      await expect(
+        waitForRoleElement("button", "Use another method"),
+      ).resolves.toBeVisible();
+      expect(roleElement("button", "Back")).toBeUndefined();
+    }
     fireEvent.change(codeInput, { target: { value: "123456" } });
     fireEvent.submit(containingForm(codeInput));
 
@@ -1125,14 +1375,14 @@ describe("auth v2 sign-in flow", () => {
   it.each([
     {
       factor: emailCodeFactor(),
-      method: "Email code to p***@example.com",
       name: "email-code",
+      showsMethodChooser: true,
       strategy: "email_code" as const,
     },
     {
       factor: passwordResetFactor(),
-      method: "Reset your password",
       name: "password-reset-code",
+      showsMethodChooser: false,
       strategy: "reset_password_email_code" as const,
     },
   ])(
@@ -1152,17 +1402,26 @@ describe("auth v2 sign-in flow", () => {
 
       fireEvent.click(screen.getByLabelText("Toggle theme"));
       expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-      fireEvent.click(await waitForRoleElement("button", "Back"));
-      fireEvent.click(await waitForRoleElement("button", testCase.method));
-      await expect(
-        screen.findByLabelText("Verification code"),
-      ).resolves.toBeVisible();
-      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+      if (testCase.showsMethodChooser) {
+        fireEvent.click(
+          await waitForRoleElement("button", "Use another method"),
+        );
+        await expect(
+          screen.findByRole("heading", { name: "Use another method" }),
+        ).resolves.toBeVisible();
+        fireEvent.click(await waitForRoleElement("button", "Back"));
+        await expect(
+          screen.findByLabelText("Verification code"),
+        ).resolves.toBeVisible();
+        expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+      } else {
+        expect(roleElement("button", "Back")).toBeUndefined();
+        expect(roleElement("button", "Use another method")).toBeUndefined();
+      }
 
-      fireEvent.click(await waitForRoleElement("button", "Back"));
       fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
       await expect(
-        screen.findByLabelText("Email address or username"),
+        screen.findByLabelText("Email address"),
       ).resolves.toHaveValue("person@example.com");
       expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
     },
@@ -1178,11 +1437,8 @@ describe("auth v2 sign-in flow", () => {
     });
 
     await screen.findByLabelText("Verification code");
-    fireEvent.click(await waitForRoleElement("button", "Back"));
     fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     expect(identifierInput).toHaveValue("person@example.com");
     fireEvent.change(identifierInput, {
       target: { value: "edited@example.com" },
@@ -1204,9 +1460,9 @@ describe("auth v2 sign-in flow", () => {
       });
     });
     fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("edited@example.com");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "edited@example.com",
+    );
   });
 
   it("keeps factor selection usable when email-code preparation fails", async () => {
@@ -1219,6 +1475,7 @@ describe("auth v2 sign-in flow", () => {
       passwordFactor(),
       emailCodeFactor(),
     ]);
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
     const emailMethod = await waitForRoleElement(
       "button",
@@ -1244,9 +1501,6 @@ describe("auth v2 sign-in flow", () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [passwordFactor()]);
 
-    fireEvent.click(
-      await waitForRoleElement("button", "Sign in with your password"),
-    );
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "route-secret" } });
 
@@ -1278,6 +1532,15 @@ describe("auth v2 sign-in flow", () => {
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", factors);
 
+    fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+    await expect(
+      screen.findByRole("heading", { name: "Forgot Password?" }),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+    expect(roleElement("link", "Sign up")).toBeUndefined();
+    await expect(
+      waitForRoleElement("button", "Get help"),
+    ).resolves.toBeVisible();
     fireEvent.click(await waitForRoleElement("button", "Reset your password"));
     await waitFor(() => {
       expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledWith({
@@ -1305,6 +1568,14 @@ describe("auth v2 sign-in flow", () => {
 
     const newPasswordInput = await screen.findByLabelText("New password");
     const confirmPasswordInput = screen.getByLabelText("Confirm password");
+    const signOutOtherDevices = screen.getByRole("checkbox", {
+      name: "Sign out of all other devices",
+    });
+    expect(signOutOtherDevices).toBeChecked();
+    expect(
+      screen.getByRole("region", { name: "Set new password" }),
+    ).not.toHaveAttribute("aria-describedby");
+    expect(roleElement("link", "Sign up")).toBeUndefined();
     const revealButtons = queryAllByRoleFast("button").filter((candidate) => {
       return candidate.getAttribute("aria-label") === "Show password";
     });
@@ -1327,7 +1598,7 @@ describe("auth v2 sign-in flow", () => {
     const mismatchAlert = await screen.findByRole("alert");
     expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
     expect(document.activeElement).toBe(mismatchAlert);
-    expectFieldErrorAssociation(newPasswordInput, mismatchAlert);
+    expectNoFieldErrorAssociation(newPasswordInput);
     expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();
 
@@ -1352,9 +1623,134 @@ describe("auth v2 sign-in flow", () => {
     await waitFor(() => {
       expect(mockedClerk.signInResetPassword).toHaveBeenCalledWith({
         password: "new-password",
+        signOutOfOtherSessions: true,
       });
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
+    await expect(
+      screen.findByRole("heading", { name: "Sign-in complete" }),
+    ).resolves.toBeVisible();
+  });
+
+  it("passes an explicit session-sign-out opt-out and completes the visible reset flow", async () => {
+    const user = userEvent.setup({ delay: null });
+    const factors = [passwordFactor(), passwordResetFactor()];
+    setupSignInPage({
+      status: "needs_new_password",
+      supportedFirstFactors: factors,
+    });
+
+    const newPasswordInput = await screen.findByLabelText("New password");
+    const confirmPasswordInput = screen.getByLabelText("Confirm password");
+    const signOutOtherDevices = screen.getByRole("checkbox", {
+      name: "Sign out of all other devices",
+    });
+    expect(signOutOtherDevices).toBeChecked();
+    await user.click(signOutOtherDevices);
+    expect(signOutOtherDevices).not.toBeChecked();
+
+    fireEvent.change(newPasswordInput, { target: { value: "new-password" } });
+    fireEvent.change(confirmPasswordInput, {
+      target: { value: "new-password" },
+    });
+    mockedClerk.signInResetPassword.mockResolvedValue(
+      moveSignInTo({
+        createdSessionId: "session_reset_opt_out",
+        status: "complete",
+      }),
+    );
+    fireEvent.submit(containingForm(newPasswordInput));
+
+    await expect(
+      screen.findByRole("heading", { name: "Sign-in complete" }),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInResetPassword).toHaveBeenCalledWith({
+      password: "new-password",
+      signOutOfOtherSessions: false,
+    });
+  });
+
+  it("returns from new password to the identifier entry without preparation and preserves navigation context", async () => {
+    const { expectedHref, url } = signUpSwitchContext();
+    setupSignInPage(
+      {
+        status: "needs_new_password",
+        supportedFirstFactors: [passwordFactor(), passwordResetFactor()],
+      },
+      { url },
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "Set new password" }),
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByText(
+        "For security reasons, it is required to reset your password.",
+      ),
+    ).not.toBeInTheDocument();
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Sign in to Okou" }),
+    ).resolves.toBeVisible();
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("link", "Sign up"),
+    ).resolves.toHaveAttribute("href", expectedHref);
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+  });
+
+  it("opens safe support help and restores each chooser without a Clerk request", async () => {
+    mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      emailCodeFactor(),
+      passwordResetFactor(),
+    ]);
+
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
+    fireEvent.click(await waitForRoleElement("button", "Get help"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Get help" }),
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "Get help" }),
+    ).toHaveAccessibleDescription(
+      "If you have trouble signing into your account, email us and we will work with you to restore access as soon as possible.",
+    );
+    await expect(
+      waitForRoleElement("link", "Email support"),
+    ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
+    expect(roleElement("link", "Sign up")).toBeUndefined();
+    expect(roleElement("link", "Use current sign-in")).toBeDefined();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+    await expect(
+      screen.findByRole("heading", { name: "Use another method" }),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Email code to p***@example.com"),
+    ).resolves.toBeVisible();
+
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+    fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+    fireEvent.click(await waitForRoleElement("button", "Get help"));
+    await expect(
+      screen.findByRole("heading", { name: "Get help" }),
+    ).resolves.toBeVisible();
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+    await expect(
+      screen.findByRole("heading", { name: "Forgot Password?" }),
+    ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Reset your password"),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
   });
 
   it("keeps an incomplete step usable after a Clerk API error", async () => {
@@ -1369,9 +1765,7 @@ describe("auth v2 sign-in flow", () => {
 
     setupSignInPage({ status: "needs_identifier" });
 
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     fireEvent.change(identifierInput, {
       target: { value: "missing@example.com" },
     });
@@ -1409,9 +1803,7 @@ describe("auth v2 sign-in flow", () => {
     });
     mockedClerk.clientSignInCreate.mockResolvedValueOnce(nextResource);
     fireEvent.submit(containingForm(identifierInput));
-    await expect(
-      waitForRoleElement("button", "Sign in with your password"),
-    ).resolves.toBeVisible();
+    await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
   });
 
   it("substitutes the Okou brand and support address in safe errors", async () => {
@@ -1429,9 +1821,7 @@ describe("auth v2 sign-in flow", () => {
       { url: "https://app.okou.ai/v2/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText(
-      "Email address or username",
-    );
+    const identifierInput = await screen.findByLabelText("Email address");
     fireEvent.change(identifierInput, {
       target: { value: "person@example.com" },
     });
@@ -1454,9 +1844,7 @@ describe("auth v2 sign-in flow", () => {
       { url: "https://app.okou.ai/v2/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText(
-      "E-Mail-Adresse oder Benutzername",
-    );
+    const identifierInput = await screen.findByLabelText("E-Mail-Adresse");
     expect(
       screen.getByRole("region", { name: "Bei Okou anmelden" }),
     ).toHaveAccessibleDescription("weiter zu Okou");
@@ -1471,15 +1859,9 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(identifierInput));
 
-    fireEvent.click(
-      await waitForRoleElement(
-        "button",
-        "Melden Sie sich mit Ihrem Passwort an",
-      ),
-    );
     await screen.findByLabelText("Passwort");
     expect(
-      screen.getByRole("region", { name: "Bei Okou anmelden" }),
+      screen.getByRole("region", { name: "Geben Sie Ihr Passwort ein" }),
     ).toHaveAccessibleDescription("weiter zu Okou");
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
@@ -1500,9 +1882,9 @@ describe("auth v2 sign-in flow", () => {
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
-    await expect(
-      screen.findByLabelText("Email address or username"),
-    ).resolves.toHaveValue("");
+    await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+      "",
+    );
   });
 
   it("preserves exact navigation context in the transfer sign-up action", async () => {

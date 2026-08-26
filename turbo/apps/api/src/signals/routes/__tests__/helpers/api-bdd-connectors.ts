@@ -17,6 +17,7 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorAccountsContract,
+  type ConnectorAccountConnection,
   type ConnectorAccountMutationIntent,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
@@ -216,6 +217,7 @@ interface CustomConnectorOAuth2ProviderRecorder {
 interface CustomConnectorOAuth2ProviderOptions {
   readonly initialExpiresIn?: number;
   readonly initialRefreshToken?: string | null;
+  readonly initialScope?: string;
   readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
 }
 
@@ -257,6 +259,9 @@ export function mockCustomConnectorOAuth2Provider(
         id_token: "custom-oauth-id-token",
         token_type: "Bearer",
         expires_in: options.initialExpiresIn ?? 0,
+        ...(options.initialScope === undefined
+          ? {}
+          : { scope: options.initialScope }),
       });
     }),
   );
@@ -1477,6 +1482,27 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listCustomConnectorAccounts(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<readonly ConnectorAccountConnection[]> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: {
+            kind: "custom",
+            customConnectorId: connectorId,
+            limit: 100,
+          },
+        }),
+        [200],
+      );
+      return response.body.connections;
     },
 
     async requestScopeDiff(

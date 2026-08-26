@@ -16,6 +16,7 @@ interface AuthV2PasswordInputProps {
   readonly id: string;
   readonly name: string;
   readonly onChange: (value: string) => void;
+  readonly placeholder?: string;
   readonly required: boolean;
   readonly showPasswordLabel: string;
   readonly value: string;
@@ -29,6 +30,7 @@ export function AuthV2PasswordInput({
   id,
   name,
   onChange,
+  placeholder,
   required,
   showPasswordLabel,
   value,
@@ -44,12 +46,13 @@ export function AuthV2PasswordInput({
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         autoComplete={autoComplete}
-        className="pr-10"
+        className="border border-border pr-10"
         id={id}
         name={name}
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
+        placeholder={placeholder}
         ref={resetOnRef}
         required={required}
         type={revealed ? "text" : "password"}
@@ -59,7 +62,7 @@ export function AuthV2PasswordInput({
         aria-controls={id}
         aria-label={label}
         aria-pressed={revealed}
-        className="absolute top-0 right-0"
+        className="absolute top-0 right-0 text-foreground"
         onClick={() => {
           setRevealed(id, !revealed);
         }}

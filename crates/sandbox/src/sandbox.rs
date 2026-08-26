@@ -9,8 +9,9 @@ use tokio::sync::Notify;
 
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    StartProcessRequest, StorageManifestRequest, WriteFileEntry,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle,
+    GuestStateRestoreRequest, ProcessExit, StartProcessRequest, StorageManifestRequest,
+    WriteFileEntry,
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
@@ -733,6 +734,17 @@ pub trait Sandbox: Send + Sync + Any {
     async fn apply_storage_manifest(
         &self,
         request: &StorageManifestRequest<'_>,
+    ) -> Result<ExecResult>;
+
+    /// Restore snapshot-sensitive clock, CRNG, and optional timezone state
+    /// through the provider's fixed guest helper operation.
+    ///
+    /// Implementations must preserve helper timeout and cancellation, bounded
+    /// stderr capture, structured termination, and backend-crash
+    /// classification. The entropy payload is always exactly 256 bytes.
+    async fn restore_guest_state(
+        &self,
+        request: &GuestStateRestoreRequest<'_>,
     ) -> Result<ExecResult>;
 
     /// Read a small file from the guest.

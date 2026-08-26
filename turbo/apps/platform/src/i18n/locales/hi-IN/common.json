@@ -432,6 +432,7 @@
       "chat": "चैट",
       "collapse": "साइडबार को संक्षिप्त करें",
       "expand": "साइडबार का विस्तार करें",
+      "hideChatList": "चैट सूची छिपाएं",
       "manage": "प्रबंधित करें",
       "mobile": {
         "invite": "आमंत्रित करें",
@@ -455,6 +456,7 @@
         "works": "काम करता है"
       },
       "searchConversations": "वार्तालाप खोजें",
+      "showChatList": "चैट सूची दिखाएं",
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
         "creating": "बनाया जा रहा है...",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "तीर",
         "box": "बॉक्स",
-        "crop": "काटें",
-        "highlight": "हाइलाइट",
         "pen": "बनाएँ",
         "redact": "छिपाएँ",
-        "select": "चुनें",
         "text": "टेक्स्ट"
       },
       "undo": "पूर्ववत करें"
@@ -700,6 +699,12 @@
       "tryDifferentSearch": "भिन्न खोज का प्रयास करें.",
       "use": "उपयोग",
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
+      "visibility": {
+        "change": "बदलें",
+        "changeLabel": "टेम्पलेट की दृश्यता बदलें",
+        "privateState": "केवल आप इसे देख और उपयोग कर सकते हैं",
+        "workspaceState": "इस वर्कस्पेस में कोई भी इसका उपयोग कर सकता है"
+      },
       "website": "वेबसाइट",
       "websitePreview": "{{title}} वेबसाइट टेम्पलेट पूर्वावलोकन",
       "workflow": "वर्कफ़्लो",
@@ -1064,14 +1069,20 @@
         "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
       },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
       "signIn": {
         "action": "मौजूदा साइन-इन का उपयोग करें",
         "addAccount": "खाता जोड़ें",
+        "appleMethod": "Apple के साथ जारी रखें",
         "back": "वापस",
         "chooseAccountSubtitle": "वह खाता चुनें जिसके साथ आप जारी रखना चाहते हैं।",
         "chooseAccountTitle": "एक खाता चुनें",
         "chooseMethodSubtitle": "समस्याओं का सामना कर रहे हैं? साइन इन करने के लिए आप इनमें से किसी भी विधि का उपयोग कर सकते हैं।",
         "chooseMethodTitle": "दूसरी विधि का उपयोग करें",
+        "clientTrustNotice": "आप एक नए डिवाइस से साइन इन कर रहे हैं। हम आपके खाते को सुरक्षित रखने के लिए सत्यापन मांग रहे हैं।",
         "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
         "codeLabel": "सत्यापन कोड",
         "completeSubtitle": "आप जल्द ही पुनर्निर्देशित किए जाएंगे",
@@ -1079,13 +1090,21 @@
         "confirmPasswordLabel": "पासवर्ड की पुष्टि करें",
         "continue": "जारी रखें",
         "editIdentifier": "ईमेल पता या उपयोगकर्ता नाम संपादित करें",
+        "emailAddressLabel": "ईमेल पता",
+        "emailAddressPlaceholder": "अपना ईमेल पता दर्ज करें",
         "emailCodeMethod": "{{identifier}} पर ईमेल कोड",
         "emailCodeSubtitle": "{{brandName}} पर जारी रखने के लिए",
         "emailCodeTitle": "अपना ईमेल जांचें",
+        "emailSupport": "सहायता को ईमेल करें",
         "forgotPassword": "पासवर्ड भूल गए?",
+        "getHelp": "सहायता प्राप्त करें",
         "googleMethod": "Google के साथ जारी रखें",
+        "helpDescription": "यदि आपको अपने खाते में साइन इन करने में परेशानी हो रही है, तो हमें ईमेल करें और हम जल्द से जल्द आपकी पहुँच बहाल करने में सहायता करेंगे।",
+        "helpTitle": "सहायता प्राप्त करें",
         "hidePassword": "पासवर्ड छिपाएँ",
         "identifierLabel": "ईमेल पता या उपयोगकर्ता नाम",
+        "identifierPlaceholder": "अपना ईमेल पता या उपयोगकर्ता नाम दर्ज करें",
+        "methodsHelpPrompt": "इनमें से कोई विकल्प नहीं है?",
         "newPasswordLabel": "नया पासवर्ड",
         "newPasswordSubtitle": "सुरक्षा कारणों से, आपका पासवर्ड रीसेट करना आवश्यक है।",
         "newPasswordTitle": "नया पासवर्ड सेट करें",
@@ -1098,25 +1117,33 @@
         "passwordLabel": "पासवर्ड",
         "passwordMethod": "अपने पासवर्ड से साइन इन करें",
         "passwordMismatch": "पासवर्ड मेल नहीं खाते।",
+        "passwordPlaceholder": "अपना पासवर्ड दर्ज करें",
         "passwordResetMethod": "अपना पासवर्ड रीसेट करें",
         "passwordSubtitle": "अपने खाते से जुड़ा पासवर्ड दर्ज करें",
         "passwordTitle": "अपना पासवर्ड दर्ज करें",
+        "recoveryMethodsDivider": "या किसी अन्य तरीके से साइन इन करें",
+        "recoveryTitle": "पासवर्ड भूल गए?",
         "resendCode": "कोड नहीं मिला? फिर से भेजें",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}}s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "resetPassword": "पासवर्ड रीसेट करें",
         "resetPasswordCodeSubtitle": "पहले, अपने ईमेल पते पर भेजा गया कोड दर्ज करें",
         "resetPasswordCodeTitle": "पासवर्ड रीसेट करें",
+        "separator": "या",
         "showPassword": "पासवर्ड दिखाएँ",
+        "signOutOfOtherSessions": "अन्य सभी डिवाइस से साइन आउट करें",
         "signUp": "साइन अप करें",
         "startSubtitle": "वापस आने पर स्वागत है! जारी रखने के लिए कृपया साइन इन करें",
         "title": "{{brandName}} में साइन इन करें",
         "unknownError": "यह कार्रवाई पूरी नहीं हो सकी। कृपया बाद में फिर से प्रयास करें या समस्या बनी रहने पर सहायता से संपर्क करें।",
         "useAnotherMethod": "दूसरी विधि का उपयोग करें",
+        "usernameLabel": "उपयोगकर्ता नाम",
+        "usernamePlaceholder": "अपना उपयोगकर्ता नाम दर्ज करें",
         "verify": "सत्यापित करें"
       },
       "signUp": {
         "action": "मौजूदा साइन-अप का उपयोग करें",
         "alreadyHaveAccount": "पहले से ही खाता है?",
+        "appleMethod": "Apple के साथ जारी रखें",
         "back": "वापस",
         "captchaError": "असफल बॉट सत्यापन के कारण साइन अप असफल रहा। पुनः प्रयास करने के लिए कृपया पृष्ठ को रिफ्रेश करें या अधिक सहायता के लिए सपोर्ट से संपर्क करें।",
         "captchaExpired": "बॉट सत्यापन की समय-सीमा समाप्त हो गई है। फिर से कोशिश करें।",
@@ -1131,12 +1158,15 @@
         "description": "स्वागत है! आरंभ करने के लिए कृपया विवरण भरें।",
         "editEmailAddress": "ईमेल पता संपादित करें",
         "emailAddressLabel": "ईमेल पता",
+        "emailAddressPlaceholder": "अपना ईमेल पता दर्ज करें",
         "emailCodeSubtitle": "अपने ईमेल पर भेजा गया सत्यापन कोड दर्ज करें",
         "emailCodeTitle": "अपना ईमेल सत्यापित करें",
         "firstNameLabel": "पहला नाम",
+        "firstNamePlaceholder": "अपना पहला नाम दर्ज करें",
         "googleMethod": "Google के साथ जारी रखें",
         "hidePassword": "पासवर्ड छिपाएँ",
         "lastNameLabel": "अंतिम नाम",
+        "lastNamePlaceholder": "अपना अंतिम नाम दर्ज करें",
         "legalPrivacyOnly": "मैं <privacy>गोपनीयता नीति</privacy> से सहमत हूं",
         "legalRequired": "जारी रखने के लिए कृपया शर्तों को पढ़ें और स्वीकार करें",
         "legalTermsAndPrivacy": "मैं <terms>सेवा की शर्तें</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत हूं",
@@ -1144,13 +1174,15 @@
         "optional": "वैकल्पिक",
         "passwordInvalid": "आपका पासवर्ड पर्याप्त मजबूत नहीं है।",
         "passwordLabel": "पासवर्ड",
+        "passwordPlaceholder": "पासवर्ड बनाएं",
         "resendCode": "कोड नहीं मिला? फिर से भेजें",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}} सेकंड)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "restart": "दूसरी विधि का उपयोग करें",
         "retry": "पुनः प्रयास करें",
+        "separator": "या",
         "showPassword": "पासवर्ड दिखाएँ",
         "signIn": "साइन इन करें",
-        "title": "अपना {{brandName}} खाता बनाएं",
+        "title": "अपना खाता बनाएं",
         "unknownError": "यह कार्रवाई पूरी नहीं हो सकी। कृपया बाद में फिर से प्रयास करें या समस्या बनी रहने पर सहायता से संपर्क करें।",
         "unknownMessage": "साइन अप वर्तमान में अक्षम हैं। यदि आपका मानना है कि आपके पास पहुंच होनी चाहिए, तो कृपया सहायता से संपर्क करें।",
         "unknownTitle": "पहुंच सीमित है",
@@ -1897,6 +1929,7 @@
       "yourComputer": "आपका कंप्यूटर"
     },
     "connectors": {
+      "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
       "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
@@ -1905,9 +1938,14 @@
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
+      "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
+      "fallsBackTo": "{{account}} पर वापस जाता है",
       "find": "कनेक्टर ढूंढें...",
+      "noUsableAccount": "कोई उपयोग योग्य खाता नहीं",
       "remove": "{{connectorName}} हटाएँ",
-      "title": "कनेक्टर्स"
+      "selectedAccountFor": "{{connector}} · चुना गया खाता: {{account}}",
+      "title": "कनेक्टर्स",
+      "useDefault": "डिफ़ॉल्ट उपयोग करें"
     },
     "documentTitle": "चैट",
     "errors": {
@@ -2266,6 +2304,48 @@
       "copied": "कॉपी किया गया",
       "deleted": "चैट हटा दी गई"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": {
+          "pending": {
+            "plural": "फ़ाइलें बदल रहे हैं",
+            "singular": "एक फ़ाइल बदल रहे हैं"
+          },
+          "terminal": {
+            "plural": "फ़ाइलें बदलीं",
+            "singular": "एक फ़ाइल बदली"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "फ़ाइलें पढ़ रहे हैं",
+            "singular": "एक फ़ाइल पढ़ रहे हैं"
+          },
+          "terminal": {
+            "plural": "फ़ाइलें पढ़ीं",
+            "singular": "एक फ़ाइल पढ़ी"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "कमांड चला रहे हैं",
+            "singular": "एक कमांड चला रहे हैं"
+          },
+          "terminal": {
+            "plural": "कमांड चलाए",
+            "singular": "एक कमांड चलाया"
+          }
+        }
+      },
+      "collapse": "टूल गतिविधि संक्षिप्त करें",
+      "expand": "टूल गतिविधि विस्तृत करें",
+      "status": {
+        "cancelled": "रद्द",
+        "error": "विफल",
+        "pending": "जारी",
+        "success": "पूरा हुआ"
+      }
+    },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
       "input": "ध्वनि इनपुट",
@@ -2339,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "कार्य खाता"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "आवेदन करना",
@@ -3335,9 +3414,17 @@
           "description": "स्लाइड और स्पीकर जेनरेट करें",
           "title": "एक प्रस्तुति तैयार करें"
         },
+        "slack": {
+          "description": "अपने कार्यक्षेत्र में अपने AI टीममेट के साथ चैट करें",
+          "title": "Slack में Okou से चैट करें"
+        },
         "video": {
           "description": "अपने विचारों को वीडियो में बदलें",
           "title": "वीडियो निर्माण"
+        },
+        "website": {
+          "description": "साझा करने योग्य पेज बनाएं और प्रकाशित करें",
+          "title": "वेबसाइट बनाएं"
         },
         "workflow": {
           "description": "पूर्व निर्धारित टेम्प्लेट से अन्वेषण करें",
@@ -4644,7 +4731,6 @@
         "usage": {
           "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
-          "balanceUsageDescription": "आपकी टीम का क्रेडिट बैलेंस और उपयोग।",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
         }

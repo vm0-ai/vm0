@@ -432,6 +432,7 @@
       "chat": "Chat",
       "collapse": "Seitenleiste einklappen",
       "expand": "Seitenleiste erweitern",
+      "hideChatList": "Chatliste ausblenden",
       "manage": "Verwalten",
       "mobile": {
         "invite": "Einladen",
@@ -455,6 +456,7 @@
         "works": "Kanäle"
       },
       "searchConversations": "Gespräche suchen",
+      "showChatList": "Chatliste anzeigen",
       "workspaceSwitcher": {
         "create": "Arbeitsbereich erstellen",
         "creating": "Wird erstellt…",
@@ -503,11 +505,8 @@
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
-        "crop": "Zuschneiden",
-        "highlight": "Hervorheben",
         "pen": "Zeichnen",
         "redact": "Schwärzen",
-        "select": "Auswählen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -700,6 +699,12 @@
       "tryDifferentSearch": "Versuchen Sie es mit einer anderen Suche.",
       "use": "Verwenden",
       "useThisTemplate": "Verwenden Sie diese Vorlage",
+      "visibility": {
+        "change": "Ändern",
+        "changeLabel": "Sichtbarkeit der Vorlage ändern",
+        "privateState": "Nur du kannst sie sehen und verwenden",
+        "workspaceState": "Alle in diesem Arbeitsbereich können sie verwenden"
+      },
       "website": "Webseite",
       "websitePreview": "{{title}} Vorschau der Website-Vorlage",
       "workflow": "Workflow",
@@ -1064,14 +1069,20 @@
         "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
       },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
       "signIn": {
         "action": "Aktuelle Anmeldung verwenden",
         "addAccount": "Konto hinzufügen",
+        "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
         "chooseAccountSubtitle": "Wählen Sie das Konto, mit dem Sie fortfahren möchten.",
         "chooseAccountTitle": "Wählen Sie ein Konto",
         "chooseMethodSubtitle": "Haben Sie Probleme? Sie können eine der folgenden Methoden zur Anmeldung verwenden.",
         "chooseMethodTitle": "Verwenden Sie eine andere Methode",
+        "clientTrustNotice": "Sie melden sich von einem neuen Gerät an. Wir bitten um eine Überprüfung, um Ihr Konto sicher zu halten.",
         "codeExpired": "Dieser Bestätigungscode ist abgelaufen. Fordere einen neuen Code an.",
         "codeLabel": "Bestätigungscode",
         "completeSubtitle": "Sie werden in Kürze weitergeleitet",
@@ -1079,13 +1090,21 @@
         "confirmPasswordLabel": "Passwort bestätigen",
         "continue": "Fortsetzen",
         "editIdentifier": "E-Mail-Adresse oder Benutzernamen bearbeiten",
+        "emailAddressLabel": "E-Mail-Adresse",
+        "emailAddressPlaceholder": "E-Mail-Adresse eingeben",
         "emailCodeMethod": "Code an {{identifier}} senden",
         "emailCodeSubtitle": "weiter zu {{brandName}}",
         "emailCodeTitle": "Überprüfen Sie Ihren Posteingang",
+        "emailSupport": "E-Mail an den Support",
         "forgotPassword": "Passwort vergessen?",
+        "getHelp": "Hilfe erhalten",
         "googleMethod": "Weiter mit Google",
+        "helpDescription": "Wenn Sie Probleme bei der Anmeldung haben, schreiben Sie uns eine E-Mail. Wir helfen Ihnen so schnell wie möglich, den Zugriff wiederherzustellen.",
+        "helpTitle": "Hilfe erhalten",
         "hidePassword": "Passwort ausblenden",
         "identifierLabel": "E-Mail-Adresse oder Benutzername",
+        "identifierPlaceholder": "E-Mail-Adresse oder Benutzernamen eingeben",
+        "methodsHelpPrompt": "Keine dieser Methoden verfügbar?",
         "newPasswordLabel": "Neues Passwort",
         "newPasswordSubtitle": "Es existiert bereits ein Konto mit einer nicht verifizierten E-Mail Adresse. Bitte setzen Sie Ihr Passwort zur Sicherheit zurück.",
         "newPasswordTitle": "Neues Passwort setzen",
@@ -1098,25 +1117,33 @@
         "passwordLabel": "Passwort",
         "passwordMethod": "Melden Sie sich mit Ihrem Passwort an",
         "passwordMismatch": "Passwörter stimmen nicht überein.",
+        "passwordPlaceholder": "Geben Sie Ihr Passwort ein",
         "passwordResetMethod": "Passwort zurücksetzen",
         "passwordSubtitle": "weiter zu {{brandName}}",
         "passwordTitle": "Geben Sie Ihr Passwort ein",
+        "recoveryMethodsDivider": "Oder mit einer anderen Methode anmelden",
+        "recoveryTitle": "Passwort vergessen?",
         "resendCode": "Code erneut senden",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}}s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "resetPassword": "Passwort zurücksetzen",
         "resetPasswordCodeSubtitle": "Geben Sie zunächst den an Ihre E-Mail gesendeten Code ein",
         "resetPasswordCodeTitle": "Passwort zurücksetzen",
+        "separator": "oder",
         "showPassword": "Passwort anzeigen",
+        "signOutOfOtherSessions": "Von allen anderen Geräten abmelden",
         "signUp": "Registrieren",
         "startSubtitle": "weiter zu {{brandName}}",
         "title": "Bei {{brandName}} anmelden",
         "unknownError": "Diese Aktion konnte nicht abgeschlossen werden. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support, wenn das Problem weiterhin besteht.",
         "useAnotherMethod": "Verwenden Sie eine andere Methode",
+        "usernameLabel": "Benutzername",
+        "usernamePlaceholder": "Benutzernamen eingeben",
         "verify": "Verifizieren"
       },
       "signUp": {
         "action": "Aktuelle Registrierung verwenden",
         "alreadyHaveAccount": "Haben Sie ein Konto?",
+        "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
         "captchaError": "Die Anmeldung ist aufgrund einer fehlgeschlagenen Bot-Validierung fehlgeschlagen. Bitte aktualisieren Sie die Seite, um es erneut zu versuchen, oder wenden Sie sich an den Support, um weitere Unterstützung zu erhalten.",
         "captchaExpired": "Die Bot-Verifizierung ist abgelaufen. Versuche es erneut.",
@@ -1131,12 +1158,15 @@
         "description": "weiter zu {{brandName}}",
         "editEmailAddress": "E-Mail-Adresse bearbeiten",
         "emailAddressLabel": "E-Mail-Adresse",
+        "emailAddressPlaceholder": "E-Mail-Adresse eingeben",
         "emailCodeSubtitle": "weiter zu {{brandName}}",
         "emailCodeTitle": "Bestätigen Sie Ihre E-Mail",
         "firstNameLabel": "Vorname",
+        "firstNamePlaceholder": "Vornamen eingeben",
         "googleMethod": "Weiter mit Google",
         "hidePassword": "Passwort ausblenden",
         "lastNameLabel": "Nachname",
+        "lastNamePlaceholder": "Nachnamen eingeben",
         "legalPrivacyOnly": "Ich stimme der <privacy>Datenschutzerklärung</privacy> zu",
         "legalRequired": "Bitte lesen und akzeptieren Sie die Bedingungen, um fortzufahren",
         "legalTermsAndPrivacy": "Ich stimme den <terms>Nutzungsbedingungen</terms> und der <privacy>Datenschutzerklärung</privacy> zu",
@@ -1144,13 +1174,15 @@
         "optional": "Optional",
         "passwordInvalid": "Passwort nicht stark genug.",
         "passwordLabel": "Passwort",
+        "passwordPlaceholder": "Passwort erstellen",
         "resendCode": "Code erneut senden",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}} s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "restart": "Verwenden Sie eine andere Methode",
         "retry": "Erneut versuchen",
+        "separator": "oder",
         "showPassword": "Passwort anzeigen",
         "signIn": "Einloggen",
-        "title": "Ihr {{brandName}}-Konto erstellen",
+        "title": "Ihr Konto erstellen",
         "unknownError": "Diese Aktion konnte nicht abgeschlossen werden. Bitte versuchen Sie es später erneut oder wenden Sie sich an den Support, wenn das Problem weiterhin besteht.",
         "unknownMessage": "Ihr Zugang ist momentan eingeschränkt.",
         "unknownTitle": "Zugang verweigert",
@@ -1897,6 +1929,7 @@
       "yourComputer": "Ihr Computer"
     },
     "connectors": {
+      "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",
       "addConnectors": "Integrationen hinzufügen",
       "authorizationFailed": "{{connectorName}} verbunden, konnte aber nicht für {{agentName}} autorisiert werden",
@@ -1905,9 +1938,14 @@
       "available_other": "Verfügbare Integrationen ({{count}})",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
+      "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",
+      "fallsBackTo": "Wechselt zu {{account}} zurück",
       "find": "Integrationen suchen...",
+      "noUsableAccount": "Kein verwendbares Konto",
       "remove": "{{connectorName}} entfernen",
-      "title": "Integrationen"
+      "selectedAccountFor": "{{connector}} · Ausgewähltes Konto: {{account}}",
+      "title": "Integrationen",
+      "useDefault": "Standard verwenden"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -2266,6 +2304,48 @@
       "copied": "Kopiert",
       "deleted": "Chat gelöscht"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": {
+          "pending": {
+            "plural": "Dateien werden geändert",
+            "singular": "Datei wird geändert"
+          },
+          "terminal": {
+            "plural": "Dateien geändert",
+            "singular": "Datei geändert"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "Dateien werden gelesen",
+            "singular": "Datei wird gelesen"
+          },
+          "terminal": {
+            "plural": "Dateien gelesen",
+            "singular": "Datei gelesen"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "Befehle werden ausgeführt",
+            "singular": "Befehl wird ausgeführt"
+          },
+          "terminal": {
+            "plural": "Befehle ausgeführt",
+            "singular": "Befehl ausgeführt"
+          }
+        }
+      },
+      "collapse": "Tool-Aktivität einklappen",
+      "expand": "Tool-Aktivität ausklappen",
+      "status": {
+        "cancelled": "Abgebrochen",
+        "error": "Fehlgeschlagen",
+        "pending": "In Bearbeitung",
+        "success": "Abgeschlossen"
+      }
+    },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "input": "Spracheingabe",
@@ -2339,8 +2419,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Arbeitskonto"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Anwenden",
@@ -3335,9 +3414,17 @@
           "description": "Folien und Referenten erstellen",
           "title": "Erstellen Sie eine Präsentation"
         },
+        "slack": {
+          "description": "Chatten Sie mit Ihrem KI-Teammitglied in Ihrem Workspace",
+          "title": "Mit Okou in Slack chatten"
+        },
         "video": {
           "description": "Verwandeln Sie Ihre Ideen in Videos",
           "title": "Videoproduktion"
+        },
+        "website": {
+          "description": "Erstellen Sie eine teilbare Seite",
+          "title": "Website erstellen"
         },
         "workflow": {
           "description": "Entdecken Sie anhand voreingestellter Vorlagen",
@@ -4644,7 +4731,6 @@
         "usage": {
           "balanceDescription": "Was deinem Team noch zum Ausgeben bleibt.",
           "balanceTitle": "Credit-Guthaben",
-          "balanceUsageDescription": "Guthaben und Verbrauch deines Teams.",
           "usageDescription": "Ihre Credit-Nutzung über Chats, Automatisierungen und Kanäle hinweg.",
           "usageTitle": "Credit-Nutzung"
         }

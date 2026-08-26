@@ -325,11 +325,38 @@ def resolve_firewall_entries(
     IDs are preserved. Callers must validate `sandbox["runId"]` as a non-empty string
     before calling.
 
+    When `sandbox["firewalls"]` is present, `connectorRuntimeTargets` defaults to
+    an empty list when absent. When supplied, it must be a list of object targets.
+    A `builtin` target requires a non-empty string `connectorSlug`, and a
+    `custom` target requires a UUID string `customConnectorId`. Builtin slugs and
+    custom connector IDs must each be unique within their target kind. Missing
+    or unsupported kinds, malformed target entries, missing or invalid identities,
+    and duplicate identities raise `FirewallEntryResolutionError`.
+
+    Runtime ownership metadata is assigned by the registry rather than trusted
+    from source firewall data. Resolution clears any source-provided
+    `_vm0ConnectorRuntimeKind` marker, marks a resolved builtin as `builtin` only
+    when its name is registered in `connectorRuntimeTargets`, and marks an inline
+    custom firewall as `custom` only when its UUID is registered there. Unregistered
+    or absent connector identities remain unclassified.
+
+    Optional entry `sourceId` values must be UUID strings and are copied to the
+    resolved firewall and each dictionary API entry. An optional inline
+    `customConnectorId` must also be a UUID string and is copied to the resolved
+    firewall and each dictionary API entry. The registry-owned runtime marker is
+    consumed by request matching: a registered custom candidate can shadow a
+    registered builtin candidate when they match the same base. Auth resolution
+    carries the propagated connector and source identities into the auth request
+    context. If resolution raises `FirewallEntryResolutionError`, the registry
+    loader records the affected sandbox as `invalid_firewalls` instead of
+    accepting partially classified runtime ownership.
+
     Builtin names absent from a valid current catalog are omitted and returned
     in `omitted_builtin_names`. Raises `FirewallEntryResolutionError` for an
-    unavailable catalog, malformed firewall lists or entries, unsupported entry
-    kinds, invalid builtin base URL templates, and builtin host-policy validation
-    failures.
+    unavailable catalog, malformed connector runtime targets, invalid connector
+    identities, duplicate target identities, malformed firewall lists or entries,
+    unsupported entry kinds, invalid builtin base URL templates, and builtin
+    host-policy validation failures.
     """
     raw_firewalls = sandbox.get("firewalls")
     if raw_firewalls is None:

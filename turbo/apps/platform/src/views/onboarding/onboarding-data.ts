@@ -14,20 +14,23 @@ interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
   readonly title: string;
   readonly description: string;
-  readonly imageUrl: string;
+  readonly imageUrl: string | null;
 }
 
 const ONBOARDING_MAKE_OPTION_IDS = [
+  "slack",
   "workflow",
   "presentation",
   "video",
   "images",
+  "website",
   "explore",
 ] as const satisfies readonly OnboardingChoice[];
 
 const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
-  Record<OnboardingChoice, string>
+  Record<OnboardingChoice, string | null>
 > = {
+  slack: null,
   workflow:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
   presentation:
@@ -36,6 +39,8 @@ const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
     "https://static.vm0.io/web/assets/onboarding/v2-choice-video_80x80.png",
   images:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-images_80x80.png",
+  website:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-website_80x80.png",
   explore:
     "https://static.vm0.io/web/assets/onboarding/v2-choice-explore_80x80.png",
 };
@@ -44,6 +49,7 @@ export function onboardingMakeOptions(
   t: TFunction<"common">,
 ): readonly OnboardingMakeOption[] {
   return ONBOARDING_MAKE_OPTION_IDS.map((id) => {
+    const imageUrl = ONBOARDING_MAKE_OPTION_IMAGES[id];
     return {
       id,
       title: t(($) => {
@@ -52,7 +58,7 @@ export function onboardingMakeOptions(
       description: t(($) => {
         return $.onboarding.make.options[id].description;
       }),
-      imageUrl: platformPublicStaticUrl(ONBOARDING_MAKE_OPTION_IMAGES[id]),
+      imageUrl: imageUrl ? platformPublicStaticUrl(imageUrl) : null,
     };
   });
 }

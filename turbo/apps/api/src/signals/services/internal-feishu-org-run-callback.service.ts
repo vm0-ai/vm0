@@ -194,7 +194,6 @@ async function handleFeishuCallback(
     .select({
       orgId: feishuOrgInstallations.orgId,
       defaultAgentId: feishuOrgInstallations.defaultAgentId,
-      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgInstallations)
     .where(
@@ -208,11 +207,7 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
-  // Paired with feishuOrgCallbackPayloadSchema's bounded #27750 rollout
-  // fallback; the installation brand is read only for callbacks from the
-  // previous API and is removable after those callbacks and rollback writers
-  // drain.
-  const publicBrand = payload.publicBrand ?? installation.publicBrand;
+  const publicBrand = payload.publicBrand;
   const connection = await loadFeishuCallbackConnection(args.db, payload);
   signal.throwIfAborted();
   if (!connection) {

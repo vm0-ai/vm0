@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const QUICKBOOKS_TOKEN_URL =
   "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
@@ -129,7 +130,7 @@ export async function exchangeQuickBooksCode(
     refreshToken: data.refresh_token ?? null,
     realmId: parseQuickBooksRealmId(oauthContext),
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : authCodeGrant.scopes,
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

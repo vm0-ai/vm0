@@ -413,66 +413,6 @@ describe("zero sidebar account menu", () => {
     expect(within(accountButton).queryByRole("status")).toBeNull();
   });
 
-  it("does not request or show member usage pack credits when the switch is disabled", async () => {
-    mockMemberAccountSidebar();
-    let billingRequests = 0;
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      billingRequests += 1;
-      return respond(200, {
-        tier: "pro",
-        credits: 12_500,
-        onboardingPaymentPending: false,
-        subscriptionStatus: "active",
-        currentPeriodEnd: "2026-04-01T00:00:00Z",
-        cancelAtPeriodEnd: false,
-        scheduledChange: null,
-        hasSubscription: true,
-        autoRecharge: { enabled: false, threshold: null, amount: null },
-        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
-        creditBreakdown: [],
-        creditGrants: [],
-        concurrencyLimit: 0,
-        concurrencySubscriptions: [],
-      });
-    });
-    let usagePackCreditRequests = 0;
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      usagePackCreditRequests += 1;
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        creditGrants: [],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-    });
-    billingRequests = 0;
-    const menu = await openAccountMenu();
-    expect(within(menu).getByText("Settings")).toBeInTheDocument();
-    expect(
-      within(menu).queryByTestId("account-menu-credit-balance"),
-    ).toBeNull();
-    expect(billingRequests).toBe(0);
-    expect(usagePackCreditRequests).toBe(0);
-  });
-
   it("refreshes member usage pack credits without requesting org billing", async () => {
     mockMemberAccountSidebar();
     let usagePackCredits = 20_400;
@@ -515,7 +455,6 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     await waitFor(() => {
@@ -581,7 +520,6 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
     const menu = await openAccountMenu();

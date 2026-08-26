@@ -1,5 +1,6 @@
 import {
   bigint,
+  check,
   index,
   integer,
   pgTable,
@@ -8,11 +9,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreads } from "./chat-thread";
 
 /**
  * Version pointers for immutable R2 Chat Event Snapshot objects. A thread has
- * at most one pointer per Chat Event schema version. Updating a pointer first
+ * at most one pointer per Chat Event schema version and projection. Updating a pointer first
  * uploads a new content-addressed object, then atomically replaces the cursor
  * and object key. Snapshot refreshes reuse the stored prefix and append only
  * Raw Events after its cursor; full PostgreSQL rebuilds are valid only when a
@@ -36,15 +39,27 @@ export const chatEventSnapshots = pgTable(
     lastEventId: uuid("last_event_id").notNull(),
     /** Version of the NDJSON line shape inside the archive object. */
     archiveSchemaVersion: integer("archive_schema_version").notNull(),
-    objectKey: text("object_key").notNull().unique(),
+    /** Existing pointers are the full projection; redacted pointers are explicit. */
+    projection: text("projection")
+      .$type<ChatEventSnapshotProjection>()
+      .default("full")
+      .notNull(),
+    /** Multiple projections may safely reference the same content-addressed object. */
+    objectKey: text("object_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
       index("chat_event_snapshots_thread_idx").on(table.chatThreadId),
-      uniqueIndex("chat_event_snapshots_thread_version_unique").on(
+      index("chat_event_snapshots_object_key_idx").on(table.objectKey),
+      uniqueIndex("chat_event_snapshots_thread_version_projection_unique").on(
         table.chatThreadId,
         table.archiveSchemaVersion,
+        table.projection,
+      ),
+      check(
+        "chat_event_snapshots_projection_check",
+        sql`${table.projection} IN ('full', 'tool-redacted')`,
       ),
     ];
   },

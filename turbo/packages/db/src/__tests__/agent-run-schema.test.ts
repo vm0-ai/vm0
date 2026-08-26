@@ -81,6 +81,9 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.autonomyBudget.hasDefault).toBe(false);
     expect(agentRuns.launchSnapshot.notNull).toBe(false);
     expect(agentRuns.launchSnapshot.hasDefault).toBe(false);
+    expect(agentRuns.chatToolActivityEnabled.notNull).toBe(true);
+    expect(agentRuns.chatToolActivityEnabled.hasDefault).toBe(true);
+    expect(agentRuns.chatToolActivityEnabled.default).toBe(false);
     expect(Reflect.has(agentRuns, "vm0ModelKeyId")).toBe(false);
     expect(agentRuns.builtInModelKeyId.notNull).toBe(false);
     expect(agentRuns.builtInModelKeyId.hasDefault).toBe(false);
@@ -168,6 +171,7 @@ describe("agentRuns circular foreign keys", () => {
     expect(launchSnapshotSql).toContain("'pi'");
     expect(launchSnapshotSql).toContain(">= 1");
     expect(launchSnapshotSql).toContain("<= 255");
+    expect(launchSnapshotSql).not.toContain("chat_tool_activity_enabled");
 
     const agentSessionRun = foreignKeyReference(
       chatThreads,

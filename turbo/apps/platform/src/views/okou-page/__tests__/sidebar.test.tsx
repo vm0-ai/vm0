@@ -559,7 +559,6 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: false },
       path: `/agents/${AGENT_ID}/chat`,
     });
 
@@ -1006,6 +1005,12 @@ describe("zero sidebar", () => {
         within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
       ).toBeInTheDocument();
     });
+    expect(
+      within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+    ).toHaveAttribute("role", "img");
+    expect(
+      within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
+    ).toHaveAttribute("role", "img");
 
     openThreadMenu("Release plan");
     click(menuItemByText("Pin chat"));
@@ -1675,32 +1680,6 @@ describe("zero sidebar", () => {
         within(sidebar()).getByText("Archived context"),
       ).toBeInTheDocument();
     });
-  });
-
-  it("recedes both sidebar section headers at rest and lifts them on hover", async () => {
-    prepareDefaultAgent();
-    mockChatThreadSnapshot(() => {
-      return [createThread(EXISTING_THREAD_ID, "Release plan")];
-    });
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    const chatTitle = await waitFor(() => {
-      return within(sidebar()).getByText("Chats with Zero");
-    });
-    const pinnedTitle = within(
-      screen.getByTestId("pinned-section-header"),
-    ).getByText("Pinned");
-
-    // The chat list and pinned headers are the same control, so they must
-    // carry the same resting tone. A full-strength resting tone also makes
-    // the header's own group-hover class a no-op and drops the hover lift.
-    const restingTone = "text-sidebar-foreground/50";
-    expect(pinnedTitle).toHaveClass(restingTone);
-    expect(chatTitle).toHaveClass(
-      restingTone,
-      "group-hover:text-sidebar-foreground",
-    );
   });
 
   it("leaves the footer as the only owner of the gap below the thread list", async () => {
@@ -3323,6 +3302,73 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides only the three-column chat list and keeps search available", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    const list = screen.getByTestId("chat-list-column");
+    const hideButton = within(list).getByLabelText("Hide chat list");
+    expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+    click(hideButton);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+    });
+    expect(rail).toBeInTheDocument();
+    const showButton = within(rail).getByLabelText("Show chat list");
+    expect(showButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+    const composer = mountedComposer();
+    composer.focus();
+    const searchEvent = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(searchEvent);
+
+    expect(searchEvent.defaultPrevented).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats and messages...",
+    });
+    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Search chats and messages...",
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    const restoredComposer = mountedComposer();
+    restoredComposer.focus();
+    fireEvent.keyDown(restoredComposer, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      ctrlKey: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
+      expect(
+        within(rail).queryByLabelText("Show chat list"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps the three-column chat list on one text and box inset", async () => {
     prepareDefaultAgent();
 
@@ -3358,10 +3404,40 @@ describe("zero sidebar", () => {
     expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
     expect(pinnedLabel).not.toHaveClass("pb-2");
 
+    expect(
+      within(list).getByRole("region", { name: "Chat threads" }),
+    ).toBeInTheDocument();
+
     // The label row supplies that bottom gap, so the grid must not stack a
     // second one under the avatars.
     const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
     expect(grid).not.toHaveClass("pb-1");
+  });
+
+  it("shows a visible unread indicator on a pinned agent", async () => {
+    prepareDefaultAgent();
+    mockUnreadAgents(() => {
+      return [AGENT_ID];
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    const card = await waitFor(() => {
+      return within(grid).getByTestId("pinned-agent-card");
+    });
+    const unread = await waitFor(() => {
+      return within(card).getByLabelText("Unread");
+    });
+
+    expect(unread).toBeVisible();
+    expect(unread).toHaveAttribute("role", "img");
   });
 
   it("searches chats and messages in the three-column spotlight", async () => {
@@ -3703,7 +3779,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -3762,7 +3837,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -3893,6 +3967,9 @@ describe("zero sidebar", () => {
     // Billing, so Pin closes the first row and the rest wrap after it.
     const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
     const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
+
+    expect(fourthAgent).toHaveAttribute("title", "Operations Agent");
+    expect(fifthAgent).toHaveAttribute("title", "Analytics Agent");
 
     expect(
       fourthAgent.compareDocumentPosition(pinAgent) &
@@ -4287,7 +4364,8 @@ describe("zero sidebar", () => {
       within(rail).getByRole("navigation", { name: "Barra lateral" }),
     ).toBeInTheDocument();
     expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-    expect(within(rail).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    const workflowsLink = within(rail).getByLabelText("Fluxos de trabalho");
+    expect(workflowsLink).toHaveAttribute("title", "Fluxos de trabalho");
     expect(within(rail).getByText("Conectores")).toBeInTheDocument();
     expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
     expect(

@@ -38,6 +38,7 @@ afterAll(() => {
 describe("test-oauth provider URLs", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", undefined);
+    vi.stubEnv("OKOU_WEB_URL", undefined);
     vi.stubEnv("VM0_WEB_URL", undefined);
     vi.stubEnv("APP_URL", undefined);
     vi.stubEnv("VERCEL_URL", undefined);
@@ -102,6 +103,63 @@ describe("test-oauth provider URLs", () => {
     );
 
     expect(authorizationUrl.origin).toBe("https://pr-12962-api.vm6.ai");
+  });
+
+  it.each([
+    {
+      state: "canonical-only",
+      canonical: "https://canonical-web.example.test",
+      legacy: undefined,
+      expectedOrigin: "https://canonical-web.example.test",
+    },
+    {
+      state: "legacy-only",
+      canonical: undefined,
+      legacy: "https://legacy-web.example.test",
+      expectedOrigin: "https://legacy-web.example.test",
+    },
+    {
+      state: "equal-dual",
+      canonical: "https://equal-web.example.test",
+      legacy: "https://equal-web.example.test",
+      expectedOrigin: "https://equal-web.example.test",
+    },
+  ])(
+    "resolves $state web aliases before the APP_URL fallback",
+    ({ canonical, legacy, expectedOrigin }) => {
+      vi.stubEnv("OKOU_WEB_URL", canonical);
+      vi.stubEnv("VM0_WEB_URL", legacy);
+      vi.stubEnv("APP_URL", "https://app-fallback.example.test");
+
+      const authorizationUrl = new URL(
+        buildTestOAuthAuthorizationUrl(
+          authCodeGrant(),
+          "test-client",
+          "https://app.vm0.ai/callback",
+          "state-123",
+        ),
+      );
+
+      expect(authorizationUrl.origin).toBe(expectedOrigin);
+    },
+  );
+
+  it("fails on unequal web aliases before URL normalization or API fallback", () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api-backend.example.test");
+    vi.stubEnv("OKOU_WEB_URL", "https://same-origin.example.test");
+    vi.stubEnv("VM0_WEB_URL", "https://same-origin.example.test/");
+    vi.stubEnv("APP_URL", "https://app-fallback.example.test");
+
+    expect(() => {
+      buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
+        "test-client",
+        "https://app.vm0.ai/callback",
+        "state-123",
+      );
+    }).toThrow(
+      "Test OAuth web URL aliases conflict: canonicalKey=OKOU_WEB_URL legacyKey=VM0_WEB_URL state=conflicting-dual",
+    );
   });
 
   it("sends both Vercel and internal preview bypass headers on refresh", async () => {

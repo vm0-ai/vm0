@@ -20,6 +20,13 @@ pub(crate) fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_be_bytes(bytes))
 }
 
+/// Read a `u64` from `data` at `offset`. Returns `None` if out of bounds.
+pub(crate) fn read_u64_at(data: &[u8], offset: usize) -> Option<u64> {
+    let end = offset.checked_add(8)?;
+    let bytes: [u8; 8] = data.get(offset..end)?.try_into().ok()?;
+    Some(u64::from_be_bytes(bytes))
+}
+
 /// Read an `i32` from `data` at `offset`. Returns `None` if out of bounds.
 pub(crate) fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
     let end = offset.checked_add(4)?;
@@ -98,6 +105,16 @@ pub(crate) fn read_u32(
 ) -> Result<u32, ProtocolError> {
     let value = read_u32_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
     *offset += 4;
+    Ok(value)
+}
+
+pub(crate) fn read_u64(
+    payload: &[u8],
+    offset: &mut usize,
+    err: &'static str,
+) -> Result<u64, ProtocolError> {
+    let value = read_u64_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
+    *offset += 8;
     Ok(value)
 }
 

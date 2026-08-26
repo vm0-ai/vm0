@@ -19,6 +19,8 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -34,10 +36,16 @@ interface ZeroChatEventSnapshotDownload {
   readonly url: string;
   readonly lastEventId: string;
   readonly lastSeqId: number;
+  readonly projection: ChatEventSnapshotProjection;
 }
 
 type ZeroChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | {
+      readonly kind: "rows";
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+      readonly hasMore: boolean;
+    }
   | { readonly kind: "expired" };
 
 const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
@@ -234,10 +242,13 @@ export async function getChatEventSnapshot(options: {
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
+    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
+    // leaves rollback and contexts pinned to this CLI have drained.
     return {
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
+      projection: result.body.projection ?? "full",
     };
   }
   if (result.status === 404) {
@@ -252,7 +263,11 @@ export async function listChatEventRows(
     readonly limit: number;
   } & (
     | { readonly sinceEventId: null; readonly sinceSeqId: 0 }
-    | { readonly sinceEventId: string; readonly sinceSeqId: number }
+    | {
+        readonly sinceEventId: string;
+        readonly sinceSeqId: number;
+        readonly sinceProjection?: ChatEventSnapshotProjection;
+      }
   ),
 ): Promise<ZeroChatEventRowsPage> {
   const config = await getClientConfig();
@@ -266,12 +281,41 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
+            ...(options.sinceProjection === undefined
+              ? {}
+              : { sinceProjection: options.sinceProjection }),
             limit: options.limit,
           },
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    return { kind: "rows", rows: result.body.rows };
+    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
+    // leaves rollback and contexts pinned to this CLI have drained.
+    const projection =
+      result.body.projection ??
+      (options.sinceEventId === null ? undefined : options.sinceProjection) ??
+      "full";
+    const lastRow = result.body.rows.at(-1);
+    return {
+      kind: "rows",
+      rows: result.body.rows,
+      cursor:
+        result.body.cursor ??
+        (lastRow === undefined
+          ? options.sinceEventId === null
+            ? { lastEventId: null, lastSeqId: 0 }
+            : {
+                lastEventId: options.sinceEventId,
+                lastSeqId: options.sinceSeqId,
+                projection,
+              }
+          : {
+              lastEventId: lastRow.id,
+              lastSeqId: lastRow.seqId,
+              projection,
+            }),
+      hasMore: result.body.hasMore ?? result.body.rows.length === options.limit,
+    };
   }
   if (result.status === 410) {
     return { kind: "expired" };

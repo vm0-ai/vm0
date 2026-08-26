@@ -4,10 +4,12 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
+  findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
-  MANAGED_SOCIALKIT_OPERATIONS,
+  MANAGED_SOCIALKIT_TOOLS,
   socialContract,
   socialKitRequestSchema,
+  type SocialKitRequest,
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
@@ -47,266 +49,49 @@ const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_CATEGORY = MANAGED_SOCIALKIT_BILLING_CATEGORY;
 const SOCIALKIT_REQUEST_CREDITS = 3;
 const DEFAULT_SOCIAL_REQUEST = {
-  method: "GET",
-  path: "/youtube/transcript",
-  query: { url: "https://youtu.be/video123" },
+  tool: "youtube_transcript",
+  input: { url: "https://youtu.be/video123" },
 } as const;
 
-const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
-  { path: "/linkedin/profile", queryNames: ["url", "cache", "cache_ttl"] },
-  { path: "/linkedin/company", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/linkedin/company-posts",
-    queryNames: ["url", "limit", "cache", "cache_ttl"],
-    maxLimit: 50,
-    collection: {
-      resultField: "posts",
-      defaultLimit: 10,
-      pagination: { kind: "none" },
-    },
-  },
-  { path: "/linkedin/post", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/linkedin/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  { path: "/twitter/profile", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/twitter/tweets",
-    queryNames: ["url", "limit", "cursor", "cache", "cache_ttl"],
-    maxLimit: 100,
-    collection: {
-      resultField: "tweets",
-      defaultLimit: 20,
-      pagination: { kind: "next_cursor" },
-    },
-  },
-  { path: "/twitter/tweet", queryNames: ["url", "cache", "cache_ttl"] },
-  { path: "/twitter/thread", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/twitter/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  { path: "/facebook/stats", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/facebook/channel-stats",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/facebook/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/facebook/comments",
-    queryNames: ["url", "limit", "cursor"],
-    maxLimit: 100,
-    collection: {
-      resultField: "comments",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/facebook/summarize",
-    queryNames: [
-      "url",
-      "custom_response",
-      "custom_prompt",
-      "cache",
-      "cache_ttl",
-    ],
-  },
-  { path: "/instagram/stats", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/instagram/channel-stats",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/instagram/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/instagram/comments",
-    queryNames: ["url", "limit", "cursor", "sortBy"],
-    maxLimit: 100,
-    collection: {
-      resultField: "comments",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/instagram/channel-posts",
-    queryNames: ["url", "limit", "cursor"],
-    maxLimit: 100,
-    collection: {
-      resultField: "items",
-      defaultLimit: 12,
-      itemsPerBillingUnit: 20,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/instagram/channel-reels",
-    queryNames: ["url", "limit", "cursor"],
-    maxLimit: 100,
-    collection: {
-      resultField: "items",
-      defaultLimit: 12,
-      itemsPerBillingUnit: 20,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/instagram/reels-search",
-    queryNames: ["query", "page"],
-    collection: {
-      resultField: "items",
-      pagination: { kind: "page", maxPage: 2 },
-    },
-  },
-  {
-    path: "/instagram/summarize",
-    queryNames: [
-      "url",
-      "custom_response",
-      "custom_prompt",
-      "cache",
-      "cache_ttl",
-    ],
-  },
-  { path: "/tiktok/stats", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/tiktok/comments",
-    queryNames: ["url", "limit", "cursor"],
-    maxLimit: 100,
-    collection: {
-      resultField: "comments",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/tiktok/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/tiktok/channel-stats",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/tiktok/channel-videos",
-    queryNames: ["url", "limit", "cursor", "cache", "cache_ttl"],
-    maxLimit: 100,
-    collection: {
-      resultField: "results",
-      defaultLimit: 30,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/tiktok/search",
-    queryNames: [
-      "query",
-      "limit",
-      "cursor",
-      "sortBy",
-      "datePosted",
-      "cache",
-      "cache_ttl",
-    ],
-    maxLimit: 100,
-    collection: {
-      resultField: "results",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/tiktok/hashtag-search",
-    queryNames: ["hashtag", "limit", "cursor", "cache", "cache_ttl"],
-    maxLimit: 100,
-    collection: {
-      resultField: "results",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "cursor" },
-    },
-  },
-  {
-    path: "/tiktok/summarize",
-    queryNames: [
-      "url",
-      "custom_response",
-      "custom_prompt",
-      "cache",
-      "cache_ttl",
-    ],
-  },
-  {
-    path: "/youtube/transcript",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  { path: "/youtube/stats", queryNames: ["url", "cache", "cache_ttl"] },
-  {
-    path: "/youtube/comments",
-    queryNames: ["url", "limit", "sortBy"],
-    maxLimit: 100,
-    collection: {
-      resultField: "comments",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "none" },
-    },
-  },
-  {
-    path: "/youtube/channel-stats",
-    queryNames: ["url", "cache", "cache_ttl"],
-  },
-  {
-    path: "/youtube/search",
-    queryNames: [
-      "query",
-      "limit",
-      "sortBy",
-      "uploadDate",
-      "type",
-      "cache",
-      "cache_ttl",
-    ],
-    maxLimit: 100,
-    collection: {
-      resultField: "results",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "none" },
-    },
-  },
-  {
-    path: "/youtube/videos",
-    queryNames: ["url", "limit", "full_details", "cache", "cache_ttl"],
-    maxLimit: 100,
-    collection: {
-      resultField: "results",
-      defaultLimit: 10,
-      itemsPerBillingUnit: 50,
-      pagination: { kind: "none" },
-    },
-  },
-  {
-    path: "/youtube/summarize",
-    queryNames: [
-      "url",
-      "custom_response",
-      "custom_prompt",
-      "cache",
-      "cache_ttl",
-    ],
-  },
+const EXPECTED_SOCIALKIT_TOOLS = [
+  ["linkedin_profile", "/linkedin/profile"],
+  ["linkedin_company", "/linkedin/company"],
+  ["linkedin_company_posts", "/linkedin/company-posts"],
+  ["linkedin_post", "/linkedin/post"],
+  ["linkedin_transcript", "/linkedin/transcript"],
+  ["twitter_profile", "/twitter/profile"],
+  ["twitter_tweets", "/twitter/tweets"],
+  ["twitter_tweet", "/twitter/tweet"],
+  ["twitter_thread", "/twitter/thread"],
+  ["twitter_transcript", "/twitter/transcript"],
+  ["facebook_stats", "/facebook/stats"],
+  ["facebook_channel_stats", "/facebook/channel-stats"],
+  ["facebook_transcript", "/facebook/transcript"],
+  ["facebook_comments", "/facebook/comments"],
+  ["facebook_summarize", "/facebook/summarize"],
+  ["instagram_stats", "/instagram/stats"],
+  ["instagram_channel_stats", "/instagram/channel-stats"],
+  ["instagram_transcript", "/instagram/transcript"],
+  ["instagram_comments", "/instagram/comments"],
+  ["instagram_channel_posts", "/instagram/channel-posts"],
+  ["instagram_channel_reels", "/instagram/channel-reels"],
+  ["instagram_reels_search", "/instagram/reels-search"],
+  ["instagram_summarize", "/instagram/summarize"],
+  ["tiktok_stats", "/tiktok/stats"],
+  ["tiktok_comments", "/tiktok/comments"],
+  ["tiktok_transcript", "/tiktok/transcript"],
+  ["tiktok_channel_stats", "/tiktok/channel-stats"],
+  ["tiktok_channel_videos", "/tiktok/channel-videos"],
+  ["tiktok_search", "/tiktok/search"],
+  ["tiktok_hashtag_search", "/tiktok/hashtag-search"],
+  ["tiktok_summarize", "/tiktok/summarize"],
+  ["youtube_transcript", "/youtube/transcript"],
+  ["youtube_stats", "/youtube/stats"],
+  ["youtube_comments", "/youtube/comments"],
+  ["youtube_channel_stats", "/youtube/channel-stats"],
+  ["youtube_search", "/youtube/search"],
+  ["youtube_videos", "/youtube/videos"],
+  ["youtube_summarize", "/youtube/summarize"],
 ] as const;
 
 const socialTestRoutes: readonly RouteEntry[] = [
@@ -456,17 +241,17 @@ function providerResponse(data: unknown = { value: "provider result" }) {
   return { success: true, data };
 }
 
-function providerItems(count: number): { readonly id: number }[] {
-  return Array.from({ length: count }, (_, id) => {
-    return { id };
+function providerItems(count: number): { readonly marker: number }[] {
+  return Array.from({ length: count }, (_, marker) => {
+    return { marker };
   });
 }
 
 function validProviderData(path: string): Record<string, unknown> {
-  const operation = MANAGED_SOCIALKIT_OPERATIONS.find((candidate) => {
-    return candidate.method === "GET" && candidate.path === path;
+  const tool = MANAGED_SOCIALKIT_TOOLS.find((candidate) => {
+    return candidate.path === path;
   });
-  const collection = operation?.collection;
+  const collection = tool?.collection;
   if (!collection) {
     return { path };
   }
@@ -477,6 +262,44 @@ function validProviderData(path: string): Record<string, unknown> {
     collection.pagination.kind === "page"
     ? { ...result, hasMore: false }
     : result;
+}
+
+function toolForPath(path: string) {
+  const tool = MANAGED_SOCIALKIT_TOOLS.find((candidate) => {
+    return candidate.path === path;
+  });
+  if (!tool) {
+    throw new Error(`No managed SocialKit tool for ${path}`);
+  }
+  return tool;
+}
+
+function requestForPath(
+  path: string,
+  input: Readonly<Record<string, unknown>>,
+): SocialKitRequest {
+  const tool = toolForPath(path);
+  const normalizedInput = Object.fromEntries(
+    Object.entries(input).map(([name, value]) => {
+      if (
+        typeof value === "string" &&
+        (name === "limit" || name === "page" || name === "cache_ttl")
+      ) {
+        return [name, Number(value)];
+      }
+      if (
+        typeof value === "string" &&
+        (name === "cache" || name === "full_details")
+      ) {
+        return [name, value === "true"];
+      }
+      return [name, value];
+    }),
+  );
+  return socialKitRequestSchema.parse({
+    tool: tool.name,
+    input: normalizedInput,
+  });
 }
 
 function providerHandler(
@@ -490,51 +313,34 @@ function providerHandler(
   return method === "GET" ? http.get(url, response) : http.post(url, response);
 }
 
-describe("managed SocialKit route", () => {
-  it("pins the reviewed 76-operation inventory and collection policies", () => {
-    const expectedOperations = EXPECTED_PAIRED_SOCIALKIT_PATHS.flatMap(
-      (operation) => {
-        return [
-          { ...operation, method: "GET" },
-          { ...operation, method: "POST" },
-        ];
-      },
-    );
+function managedSocialKitWarningCalls(): unknown[][] {
+  return context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+    return message === "Managed SocialKit request failed";
+  });
+}
 
-    expect(MANAGED_SOCIALKIT_OPERATIONS).toStrictEqual(expectedOperations);
+describe("managed SocialKit route", () => {
+  it("pins the reviewed 38-tool inventory and typed inputs", () => {
+    expect(
+      MANAGED_SOCIALKIT_TOOLS.map((tool) => {
+        return [tool.name, tool.path];
+      }),
+    ).toStrictEqual(EXPECTED_SOCIALKIT_TOOLS);
     expect(MANAGED_SOCIALKIT_BILLING_CATEGORY).toBe("request");
-    expect(expectedOperations).toHaveLength(76);
-    for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
-      const requiredQueryName = ["url", "query", "hashtag"].find((name) => {
-        return operation.queryNames.includes(name);
-      });
-      if (!requiredQueryName) {
-        throw new Error(`${operation.path} has no required query field`);
-      }
-      const request = {
-        method: operation.method,
-        path: operation.path,
-        query: {
-          [requiredQueryName]:
-            requiredQueryName === "url"
-              ? "https://example.com/public-content"
-              : "public-content",
-        },
-      };
-      expect(socialKitRequestSchema.safeParse(request).success).toBeTruthy();
-    }
-    for (const request of [
-      { method: "GET", path: "/youtube/download" },
-      { method: "POST", path: "/tiktok/download" },
-      { method: "GET", path: "/instagram/download" },
-      { method: "POST", path: "/v2/youtube/download" },
-      { method: "GET", path: "/v2/downloads/job-123" },
-      { method: "POST", path: "/youtube/transcript/bulk" },
-      { method: "GET", path: "/video/transcript" },
-      { method: "POST", path: "/video/summarize" },
-    ]) {
-      expect(socialKitRequestSchema.safeParse(request).success).toBeFalsy();
-    }
+    expect(MANAGED_SOCIALKIT_TOOLS).toHaveLength(38);
+    expect(
+      socialKitRequestSchema.safeParse({
+        tool: "youtube_search",
+        input: { query: "typed tools", limit: 10, cache: false },
+      }).success,
+    ).toBeTruthy();
+    expect(
+      socialKitRequestSchema.safeParse({
+        tool: "youtube_search",
+        input: { query: "typed tools", limit: "10" },
+      }).success,
+    ).toBeFalsy();
+    expect(findManagedSocialKitTool("youtube_download")).toBeUndefined();
   });
 
   it("rejects agent tokens without social:read capability", async () => {
@@ -557,11 +363,7 @@ describe("managed SocialKit route", () => {
     const response = await accept(
       client()(socialContract).request({
         headers: { authorization: `Bearer ${token}` },
-        body: {
-          method: "GET",
-          path: "/youtube/transcript",
-          query: { url: "https://youtu.be/video123" },
-        },
+        body: DEFAULT_SOCIAL_REQUEST,
       }),
       [403],
     );
@@ -632,11 +434,7 @@ describe("managed SocialKit route", () => {
     const response = await accept(
       client(pricing.resolution)(socialContract).request({
         headers: { authorization: `Bearer ${token}` },
-        body: {
-          method: "GET",
-          path: "/youtube/transcript",
-          query: { url: "https://youtu.be/video123" },
-        },
+        body: DEFAULT_SOCIAL_REQUEST,
       }),
       [200],
     );
@@ -723,22 +521,19 @@ describe("managed SocialKit route", () => {
       const response = await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: {
-            method: "GET",
-            path,
-            query: {
-              [queryName]:
-                queryName === "url"
-                  ? "https://example.com/public-content"
-                  : "public content",
-            },
-          },
+          body: requestForPath(path, {
+            [queryName]:
+              queryName === "url"
+                ? "https://example.com/public-content"
+                : "public content",
+          }),
         }),
         [200],
       );
+      const tool = toolForPath(path);
       expect(response.body).toMatchObject({
         provider: "socialkit",
-        operation: { method: "GET", path },
+        tool: tool.name,
         billingCategory: DEFAULT_CATEGORY,
         billingQuantity: 1,
         creditsCharged: SOCIALKIT_REQUEST_CREDITS,
@@ -764,7 +559,7 @@ describe("managed SocialKit route", () => {
     );
   });
 
-  it("forwards reviewed POST operations without a request body", async () => {
+  it("maps typed tools to canonical GET requests without a body", async () => {
     const actor = createBddApi(context).user();
     let observedUrl = "";
     let observedAccessKey: string | null = null;
@@ -774,7 +569,7 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     const beforeCredits = await credits(actor);
     server.use(
-      http.post(
+      http.get(
         `${SOCIALKIT_BASE}/instagram/reels-search`,
         async ({ request }) => {
           observedUrl = request.url;
@@ -790,11 +585,10 @@ describe("managed SocialKit route", () => {
     const response = await accept(
       client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: {
-          method: "POST",
-          path: "/instagram/reels-search",
-          query: { query: "cats", page: "2" },
-        },
+        body: requestForPath("/instagram/reels-search", {
+          query: "cats",
+          page: 2,
+        }),
       }),
       [200],
     );
@@ -821,7 +615,14 @@ describe("managed SocialKit route", () => {
     const cases = [
       {
         path: "/tiktok/channel-videos",
-        query: {
+        input: {
+          url: "https://tiktok.com/@example",
+          limit: 10,
+          cursor: "next-page",
+          cache: true,
+          cache_ttl: 3600,
+        },
+        expectedQuery: {
           url: "https://tiktok.com/@example",
           limit: "10",
           cursor: "next-page",
@@ -831,7 +632,16 @@ describe("managed SocialKit route", () => {
       },
       {
         path: "/youtube/search",
-        query: {
+        input: {
+          query: "product launch",
+          limit: 10,
+          sortBy: "date",
+          uploadDate: "month",
+          type: "video",
+          cache: false,
+          cache_ttl: 2_592_000,
+        },
+        expectedQuery: {
           query: "product launch",
           limit: "10",
           sortBy: "date",
@@ -843,7 +653,13 @@ describe("managed SocialKit route", () => {
       },
       {
         path: "/instagram/comments",
-        query: {
+        input: {
+          url: "https://instagram.com/p/example",
+          limit: 10,
+          cursor: "next-page",
+          sortBy: "recent",
+        },
+        expectedQuery: {
           url: "https://instagram.com/p/example",
           limit: "10",
           cursor: "next-page",
@@ -852,7 +668,14 @@ describe("managed SocialKit route", () => {
       },
       {
         path: "/youtube/summarize",
-        query: {
+        input: {
+          url: "https://youtu.be/video123",
+          custom_response: { title: "Video title" },
+          custom_prompt: "Return only the requested fields",
+          cache: true,
+          cache_ttl: 3600,
+        },
+        expectedQuery: {
           url: "https://youtu.be/video123",
           custom_response: '{"title":"Video title"}',
           custom_prompt: "Return only the requested fields",
@@ -882,13 +705,17 @@ describe("managed SocialKit route", () => {
       await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: { method: "GET", ...request },
+          body: requestForPath(request.path, request.input),
         }),
         [200],
       );
     }
 
-    expect(observed).toStrictEqual(cases);
+    expect(observed).toStrictEqual(
+      cases.map(({ path, expectedQuery }) => {
+        return { path, query: expectedQuery };
+      }),
+    );
   });
 
   it("settles result-metered pages from validated returned item counts", async () => {
@@ -943,11 +770,7 @@ describe("managed SocialKit route", () => {
       const response = await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: {
-            method: "GET",
-            path: testCase.path,
-            query: testCase.query,
-          },
+          body: requestForPath(testCase.path, testCase.query),
         }),
         [200],
       );
@@ -992,11 +815,7 @@ describe("managed SocialKit route", () => {
     const response = await accept(
       client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: {
-          method: "GET",
-          path: "/youtube/search",
-          query: { query: "launch" },
-        },
+        body: requestForPath("/youtube/search", { query: "launch" }),
       }),
       [200],
     );
@@ -1019,43 +838,43 @@ describe("managed SocialKit route", () => {
       {
         path: "/tiktok/search",
         query: { query: "launch", limit: "10" },
-        data: { results: [{ id: 1 }], hasMore: true, cursor: 30 },
+        data: { results: [{ id: "1" }], hasMore: true, cursor: 30 },
         expected: {
           state: "more",
           itemsReturned: 1,
-          nextQuery: { cursor: "30" },
+          nextInput: { cursor: "30" },
         },
       },
       {
         path: "/twitter/tweets",
         query: { url: "https://x.com/example", limit: "20" },
-        data: { tweets: [{ id: 1 }], nextCursor: "next-tweet" },
+        data: { tweets: [{ id: "1" }], nextCursor: "next-tweet" },
         expected: {
           state: "more",
           itemsReturned: 1,
-          nextQuery: { cursor: "next-tweet" },
+          nextInput: { cursor: "next-tweet" },
         },
       },
       {
         path: "/instagram/reels-search",
         query: { query: "cats", page: "1" },
-        data: { items: [{ id: 1 }], hasMore: true },
+        data: { items: [{ id: "1" }], hasMore: true },
         expected: {
           state: "more",
           itemsReturned: 1,
-          nextQuery: { page: "2" },
+          nextInput: { page: 2 },
         },
       },
       {
         path: "/instagram/reels-search",
         query: { query: "cats", page: "2" },
-        data: { items: [{ id: 2 }], hasMore: true },
+        data: { items: [{ id: "2" }], hasMore: true },
         expected: { state: "provider_limited", itemsReturned: 1 },
       },
       {
         path: "/linkedin/company-posts",
         query: { url: "https://linkedin.com/company/example", limit: "50" },
-        data: { posts: [{ id: 1 }] },
+        data: { posts: [{ id: "1" }] },
         expected: { state: "provider_limited", itemsReturned: 1 },
       },
     ] as const;
@@ -1069,11 +888,7 @@ describe("managed SocialKit route", () => {
       const response = await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: {
-            method: "GET",
-            path: testCase.path,
-            query: testCase.query,
-          },
+          body: requestForPath(testCase.path, testCase.query),
         }),
         [200],
       );
@@ -1100,11 +915,10 @@ describe("managed SocialKit route", () => {
     const response = await accept(
       client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
-        body: {
-          method: "GET",
-          path: "/youtube/search",
-          query: { query: "launch", limit: "100" },
-        },
+        body: requestForPath("/youtube/search", {
+          query: "launch",
+          limit: 100,
+        }),
       }),
       [402],
     );
@@ -1152,11 +966,7 @@ describe("managed SocialKit route", () => {
       const response = await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
-          body: {
-            method: "GET",
-            path: testCase.path,
-            query: testCase.query,
-          },
+          body: requestForPath(testCase.path, testCase.query),
         }),
         [502],
       );
@@ -1169,181 +979,121 @@ describe("managed SocialKit route", () => {
 
   it.each([
     {
-      caseName: "an unknown path",
-      body: { method: "GET", path: "/youtube/unknown" },
+      caseName: "an unknown tool",
+      body: { tool: "youtube_unknown", input: {} },
     },
     {
-      caseName: "a download path",
-      body: { method: "GET", path: "/youtube/download" },
+      caseName: "a download tool",
+      body: { tool: "youtube_download", input: {} },
     },
     {
-      caseName: "an absolute provider URL",
+      caseName: "the removed generic request shape",
+      body: { method: "GET", path: "/youtube/transcript" },
+    },
+    {
+      caseName: "an auth input field",
       body: {
-        method: "GET",
-        path: "https://api.socialkit.dev/youtube/transcript",
+        tool: "youtube_transcript",
+        input: { url: "https://youtu.be/id", access_key: "caller-key" },
       },
     },
     {
-      caseName: "an auth query field",
+      caseName: "an input field from another tool",
       body: {
-        method: "GET",
-        path: "/youtube/transcript",
-        query: { access_key: "caller-key" },
-      },
-    },
-    {
-      caseName: "a query field from another operation",
-      body: {
-        method: "GET",
-        path: "/youtube/transcript",
-        query: { query: "not a transcript input" },
+        tool: "youtube_transcript",
+        input: { query: "not a transcript input" },
       },
     },
     {
       caseName: "a missing URL",
-      body: { method: "GET", path: "/youtube/transcript" },
+      body: { tool: "youtube_transcript", input: {} },
     },
     {
       caseName: "a missing search query",
-      body: { method: "GET", path: "/tiktok/search", query: { limit: "1" } },
+      body: { tool: "tiktok_search", input: { limit: 1 } },
     },
     {
       caseName: "a missing hashtag",
-      body: {
-        method: "POST",
-        path: "/tiktok/hashtag-search",
-        query: { limit: "1" },
-      },
+      body: { tool: "tiktok_hashtag_search", input: { limit: 1 } },
     },
     {
       caseName: "the obsolete Instagram Reels limit field",
       body: {
-        method: "GET",
-        path: "/instagram/reels-search",
-        query: { query: "cats", limit: "1" },
+        tool: "instagram_reels_search",
+        input: { query: "cats", limit: 1 },
       },
     },
     {
       caseName: "an out-of-range Instagram Reels page",
       body: {
-        method: "GET",
-        path: "/instagram/reels-search",
-        query: { query: "cats", page: "3" },
+        tool: "instagram_reels_search",
+        input: { query: "cats", page: 3 },
       },
     },
     {
       caseName: "an invalid cache flag",
       body: {
-        method: "GET",
-        path: "/youtube/stats",
-        query: { url: "https://youtu.be/id", cache: "yes" },
+        tool: "youtube_stats",
+        input: { url: "https://youtu.be/id", cache: "yes" },
       },
     },
     {
       caseName: "an out-of-range cache TTL",
       body: {
-        method: "GET",
-        path: "/youtube/stats",
-        query: { url: "https://youtu.be/id", cache_ttl: "3599" },
+        tool: "youtube_stats",
+        input: { url: "https://youtu.be/id", cache_ttl: 3599 },
       },
     },
     {
       caseName: "an invalid search sort order",
       body: {
-        method: "GET",
-        path: "/youtube/search",
-        query: { query: "launch", sortBy: "popular" },
+        tool: "youtube_search",
+        input: { query: "launch", sortBy: "popular" },
       },
     },
     {
       caseName: "a prefixed TikTok hashtag",
-      body: {
-        method: "GET",
-        path: "/tiktok/hashtag-search",
-        query: { hashtag: "#launch" },
-      },
+      body: { tool: "tiktok_hashtag_search", input: { hashtag: "#launch" } },
     },
     {
       caseName: "an invalid full-details flag",
       body: {
-        method: "GET",
-        path: "/youtube/videos",
-        query: {
-          url: "https://youtube.com/@example",
-          full_details: "yes",
-        },
-      },
-    },
-    {
-      caseName: "an auth body field",
-      body: {
-        method: "POST",
-        path: "/youtube/transcript",
-        body: { access_key: "caller-key" },
+        tool: "youtube_videos",
+        input: { url: "https://youtube.com/", full_details: "yes" },
       },
     },
     {
       caseName: "a URL with embedded credentials",
       body: {
-        method: "GET",
-        path: "/youtube/transcript",
-        query: { url: "https://user:password@youtube.com/watch?v=id" },
+        tool: "youtube_transcript",
+        input: { url: "https://user:password@youtube.com/watch?v=id" },
       },
     },
     {
-      caseName: "a GET body",
-      body: {
-        method: "GET",
-        path: "/youtube/transcript",
-        body: { url: "https://youtu.be/id" },
-      },
+      caseName: "a bulk tool",
+      body: { tool: "youtube_stats_bulk", input: {} },
     },
     {
-      caseName: "a bulk operation with unknown provider billing",
+      caseName: "a direct-video tool",
       body: {
-        method: "POST",
-        path: "/youtube/stats/bulk",
-      },
-    },
-    {
-      caseName: "a direct-video operation with duration-based billing",
-      body: {
-        method: "GET",
-        path: "/video/transcript",
-        query: { url: "https://example.com/video.mp4" },
+        tool: "video_transcript",
+        input: { url: "https://example.com/video.mp4" },
       },
     },
     {
       caseName: "a result limit above the provider maximum",
       body: {
-        method: "GET",
-        path: "/youtube/comments",
-        query: { url: "https://youtu.be/id", limit: "101" },
-      },
-    },
-    {
-      caseName: "a video-list limit above the provider maximum",
-      body: {
-        method: "GET",
-        path: "/tiktok/channel-videos",
-        query: { url: "https://tiktok.com/@example", limit: "101" },
-      },
-    },
-    {
-      caseName: "an Instagram result limit above the provider maximum",
-      body: {
-        method: "GET",
-        path: "/instagram/channel-posts",
-        query: { url: "https://instagram.com/example", limit: "101" },
+        tool: "youtube_comments",
+        input: { url: "https://youtu.be/id", limit: 101 },
       },
     },
     {
       caseName: "a non-integer result limit",
-      body: {
-        method: "GET",
-        path: "/tiktok/search",
-        query: { query: "launch", limit: "1.5" },
-      },
+      body: { tool: "tiktok_search", input: { query: "launch", limit: 1.5 } },
+    },
+    {
+      caseName: "a string result limit",
+      body: { tool: "youtube_search", input: { query: "launch", limit: "10" } },
     },
   ])("rejects $caseName before provider work", async ({ body }) => {
     const actor = createBddApi(context).user();
@@ -1443,28 +1193,74 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
+    const invalidInputWarnings = [
+      [
+        "Managed SocialKit request failed",
+        expect.objectContaining({
+          context: "ManagedSocialKit",
+          tool: "youtube_transcript",
+          path: "/youtube/transcript",
+          failureKind: "http_error",
+          httpStatus: 400,
+        }),
+      ],
+    ];
+    const noWarnings: readonly unknown[] = [];
     const cases = [
-      [400, "raw invalid input payload", 400, "SOCIALKIT_INVALID_INPUT"],
-      [401, "raw missing key payload", 502, "SOCIALKIT_AUTH_ERROR"],
-      [403, "Invalid Access key", 502, "SOCIALKIT_AUTH_ERROR"],
+      [
+        400,
+        "raw invalid input payload",
+        400,
+        "SOCIALKIT_INVALID_INPUT",
+        invalidInputWarnings,
+      ],
+      [401, "raw missing key payload", 502, "SOCIALKIT_AUTH_ERROR", noWarnings],
+      [403, "Invalid Access key", 502, "SOCIALKIT_AUTH_ERROR", noWarnings],
       [
         403,
         "Request limit exceeded for this month",
         503,
         "SOCIALKIT_QUOTA_EXHAUSTED",
+        noWarnings,
       ],
-      [403, "unexpected forbidden response", 502, "SOCIALKIT_UPSTREAM_ERROR"],
+      [
+        403,
+        "unexpected forbidden response",
+        502,
+        "SOCIALKIT_UPSTREAM_ERROR",
+        noWarnings,
+      ],
       [
         404,
         "raw missing content payload",
         404,
         "SOCIALKIT_CONTENT_UNAVAILABLE",
+        noWarnings,
       ],
-      [429, "raw rate limit payload", 502, "SOCIALKIT_RATE_LIMITED"],
-      [500, "raw provider failure payload", 502, "SOCIALKIT_UPSTREAM_ERROR"],
+      [
+        429,
+        "raw rate limit payload",
+        502,
+        "SOCIALKIT_RATE_LIMITED",
+        noWarnings,
+      ],
+      [
+        500,
+        "raw provider failure payload",
+        502,
+        "SOCIALKIT_UPSTREAM_ERROR",
+        noWarnings,
+      ],
     ] as const;
 
-    for (const [providerStatus, providerMessage, apiStatus, code] of cases) {
+    for (const [
+      providerStatus,
+      providerMessage,
+      apiStatus,
+      code,
+      expectedWarnings,
+    ] of cases) {
+      context.mocks.axiomLogging.warn.mockClear();
       server.use(
         providerHandler("GET", "/youtube/transcript", () => {
           return HttpResponse.json(
@@ -1481,6 +1277,7 @@ describe("managed SocialKit route", () => {
       expect(response.status).toBe(apiStatus);
       expect(body).toMatchObject({ error: { code } });
       expect(JSON.stringify(body)).not.toContain(providerMessage);
+      expect(managedSocialKitWarningCalls()).toStrictEqual(expectedWarnings);
     }
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
@@ -1509,6 +1306,7 @@ describe("managed SocialKit route", () => {
     ];
 
     for (const responseFactory of invalidResponses) {
+      context.mocks.axiomLogging.warn.mockClear();
       server.use(
         providerHandler("GET", "/youtube/transcript", responseFactory),
       );
@@ -1522,6 +1320,7 @@ describe("managed SocialKit route", () => {
       expectApiError(response.body);
       expect(response.body.error.code).toBe("SOCIALKIT_INVALID_RESPONSE");
       expect(JSON.stringify(response.body)).not.toContain("test-socialkit-key");
+      expect(managedSocialKitWarningCalls()).toStrictEqual([]);
     }
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
@@ -1557,6 +1356,7 @@ describe("managed SocialKit route", () => {
     ];
 
     for (const responseFactory of responses) {
+      context.mocks.axiomLogging.warn.mockClear();
       server.use(
         providerHandler("GET", "/youtube/transcript", responseFactory),
       );
@@ -1569,6 +1369,7 @@ describe("managed SocialKit route", () => {
       );
       expectApiError(response.body);
       expect(response.body.error.code).toBe("SOCIALKIT_OUTPUT_TOO_LARGE");
+      expect(managedSocialKitWarningCalls()).toStrictEqual([]);
     }
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
@@ -1580,6 +1381,7 @@ describe("managed SocialKit route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
+    context.mocks.axiomLogging.warn.mockClear();
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         const stream = new ReadableStream<Uint8Array>({
@@ -1599,7 +1401,9 @@ describe("managed SocialKit route", () => {
     );
     expectApiError(timeout.body);
     expect(timeout.body.error.code).toBe("SOCIALKIT_REQUEST_TIMEOUT");
+    expect(managedSocialKitWarningCalls()).toStrictEqual([]);
 
+    context.mocks.axiomLogging.warn.mockClear();
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         return HttpResponse.error();
@@ -1614,6 +1418,7 @@ describe("managed SocialKit route", () => {
     );
     expectApiError(network.body);
     expect(network.body.error.code).toBe("SOCIALKIT_UPSTREAM_ERROR");
+    expect(managedSocialKitWarningCalls()).toStrictEqual([]);
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
@@ -1714,11 +1519,10 @@ describe("managed SocialKit route", () => {
       }),
     );
     const socialClient = client(pricing.resolution)(socialContract);
-    const request = {
-      method: "GET",
-      path: "/youtube/search",
-      query: { query: "launch", limit: "100" },
-    } as const;
+    const request = requestForPath("/youtube/search", {
+      query: "launch",
+      limit: 100,
+    });
 
     const [first, second] = await Promise.all([
       accept(

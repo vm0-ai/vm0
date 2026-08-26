@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.39](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.38...guest-session-prune-v0.3.39) (2026-08-26)
+
+## [0.3.38](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.37...guest-session-prune-v0.3.38) (2026-08-26)
+
+## [0.3.37](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.36...guest-session-prune-v0.3.37) (2026-08-25)
+
+## [0.3.36](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.35...guest-session-prune-v0.3.36) (2026-08-25)
+
+## [0.3.35](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.34...guest-session-prune-v0.3.35) (2026-08-25)
+
 ## [0.3.34](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.33...guest-session-prune-v0.3.34) (2026-08-25)
 
 ## [0.3.33](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.32...guest-session-prune-v0.3.33) (2026-08-24)

@@ -3,6 +3,7 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { homeAgentId$ } from "../agent.ts";
 import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
+import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
 
 export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -24,6 +25,9 @@ export const setupHomePage$ = command(
     const queue = params.get("queue");
     const settings = params.get("settings");
     const billingView = params.get("billingView");
+    const templatePicker = parseTemplatePickerEntryCategory(
+      params.get("templatePicker"),
+    );
     const forwardParams = new URLSearchParams();
     if (prompt) {
       forwardParams.set("prompt", prompt);
@@ -36,6 +40,9 @@ export const setupHomePage$ = command(
     }
     if (billingView) {
       forwardParams.set("billingView", billingView);
+    }
+    if (templatePicker) {
+      forwardParams.set("templatePicker", templatePicker);
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: homeAgentId },

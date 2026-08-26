@@ -645,7 +645,13 @@ const networkLogEntrySchema = z.object({
   auth_cache_hit: z.boolean().optional(),
   auth_url_rewrite: z.boolean().optional(),
   error: z.string().optional(),
-  // Capture-only fields (opt-in via captureNetworkBodies)
+  // Capture-only fields (opt-in via captureNetworkBodies). Header maps are
+  // default-redacted, sanitized, and independently bounded to 512 fields / 32
+  // KiB; see crates/runner/mitm-addon/src/body_capture.py for the contract.
+  // *_headers_truncated describes only an incomplete serialized header map.
+  // Body strings are bounded capture results; *_body_encoding distinguishes
+  // UTF-8, base64, and binary outcomes, while *_body_truncated describes an
+  // incomplete or suppressed capture. Empty bodies have no body or encoding.
   request_headers: z.record(z.string(), z.string()).optional(),
   request_headers_truncated: z.boolean().optional(),
   request_body: z.string().optional(),

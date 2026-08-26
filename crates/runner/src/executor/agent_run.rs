@@ -31,16 +31,17 @@ use super::diagnostics::{
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
     check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
     drain_stdout_to_file, explicit_enospc_evidence, failure_diagnostic_reports_workload_memory_oom,
-    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
-    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
+    host_oom_evidence_since_now, log_agent_abnormal_exit_env_diagnostics,
+    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
+    read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::effective_cli_framework;
 use super::env::{
-    PreparedRunPayload, build_env_json_for_run, build_user_env_json, write_run_payload_file,
-    write_user_env_file,
+    PreparedRunPayload, build_env_json_for_run, build_user_env_json,
+    write_connector_account_context_file, write_run_payload_file, write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
@@ -90,6 +91,24 @@ const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
 const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
 const USER_CANCELLATION_CONTROL_PAYLOAD: &[u8] = br#"{"type":"user-cancellation"}"#;
+
+fn private_write_timeout_stage(error: &RunnerError) -> Option<&'static str> {
+    let RunnerError::Sandbox(sandbox::SandboxError::OperationTimeout {
+        operation: sandbox::SandboxOperation::WriteFile,
+        stage,
+        ..
+    }) = error
+    else {
+        return None;
+    };
+    Some(match stage {
+        sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite => "before_frame_write",
+        sandbox::SandboxOperationTimeoutStage::FrameWrite => "frame_write",
+        sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse => {
+            "await_terminal_response"
+        }
+    })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
@@ -1281,6 +1300,7 @@ impl RunControls {
 struct PreparedAgentProcess {
     handle: GuestProcessHandle,
     agent_started_at: Instant,
+    host_oom_evidence_since: super::diagnostics::HostOomEvidenceSince,
     deferred_background_fill: Option<crate::storage_cache::DeferredBackgroundFill>,
     session_restore_diagnostics: Option<SessionRestoreDiagnostics>,
     pre_run_restored_session_identity: Option<RestoredSessionIdentity>,
@@ -1992,8 +2012,38 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Finalize the prepared private run payload and build the environment used
     // to bootstrap guest-agent. User-provided env is passed through a private
     // guest file and injected into the CLI child after guest-agent has started.
+    let mut user_env_map = build_user_env_json(context);
+    let connector_account_context_started = Instant::now();
+    match write_connector_account_context_file(sandbox, context).await {
+        Ok(path) => {
+            telemetry.record(
+                "runner_connector_account_context_write",
+                connector_account_context_started.elapsed(),
+                true,
+                None,
+            );
+            user_env_map.insert(
+                guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
+                path,
+            );
+        }
+        Err(error) => {
+            let outcome = private_write_timeout_stage(&error);
+            telemetry.record_with_outcome(
+                "runner_connector_account_context_write",
+                connector_account_context_started.elapsed(),
+                false,
+                Some("connector account context unavailable"),
+                outcome,
+            );
+            warn!(
+                run_id = %context.run_id,
+                outcome = outcome.unwrap_or("write_failed"),
+                "connector account context unavailable"
+            );
+        }
+    }
     let user_env_started = Instant::now();
-    let user_env_map = build_user_env_json(context);
     let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
         Ok(user_env_file) => {
             telemetry.record(
@@ -2005,11 +2055,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             user_env_file
         }
         Err(error) => {
-            telemetry.record(
+            telemetry.record_with_outcome(
                 "runner_user_env_write",
                 user_env_started.elapsed(),
                 false,
                 None,
+                private_write_timeout_stage(&error),
             );
             return Err(error);
         }
@@ -2052,11 +2103,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             path
         }
         Err(error) => {
-            telemetry.record(
+            telemetry.record_with_outcome(
                 "runner_run_payload_write",
                 run_payload_write_started.elapsed(),
                 false,
                 None,
+                private_write_timeout_stage(&error),
             );
             return Err(error);
         }
@@ -2110,6 +2162,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
     // sandbox supervisor remains a later hard fallback so guest-agent can
     // terminate the CLI and create a recovery checkpoint first.
+    let host_oom_evidence_since = host_oom_evidence_since_now();
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -2157,6 +2210,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             RunnerResult::Ok(PreparedAgentProcess {
                 handle,
                 agent_started_at: t,
+                host_oom_evidence_since,
                 deferred_background_fill,
                 session_restore_diagnostics,
                 pre_run_restored_session_identity,
@@ -2194,6 +2248,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let PreparedAgentProcess {
         mut handle,
         agent_started_at: t,
+        host_oom_evidence_since,
         deferred_background_fill,
         session_restore_diagnostics,
         mut pre_run_restored_session_identity,
@@ -2328,7 +2383,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // Sandbox crashed — check host dmesg for OOM evidence naming the
             // firecracker process before propagating a generic error.
             if let Some(host_process_pid) = sandbox.host_process_pid()
-                && check_host_oom(host_process_pid).await
+                && check_host_oom(host_process_pid, host_oom_evidence_since).await
             {
                 warn!(
                     run_id = %context.run_id,

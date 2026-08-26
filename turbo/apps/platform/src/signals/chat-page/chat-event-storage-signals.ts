@@ -29,7 +29,6 @@ import {
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
-  CHAT_EVENT_ROWS_PAGE_LIMIT,
   fetchChatEventSnapshotRows$,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
@@ -184,6 +183,7 @@ function createSyncRemoteRowsCommand({
       const cursor = {
         lastEventId: snapshot.value.lastEventId,
         lastSeqId: snapshot.value.lastSeqId,
+        projection: snapshot.value.projection,
       };
       await set(
         writeIndexedDbChatEventRows$,
@@ -237,22 +237,18 @@ function createSyncRemoteRowsCommand({
         needsColdStartTailConfirmation = true;
         continue;
       }
-      const lastRow = page.rows.at(-1);
-      if (lastRow !== undefined) {
-        cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
-        await set(
-          writeIndexedDbChatEventRows$,
-          { threadId, rows: page.rows, cursor },
-          signal,
-        );
-        signal.throwIfAborted();
-      }
+      cursor = page.cursor;
+      await set(
+        writeIndexedDbChatEventRows$,
+        { threadId, rows: page.rows, cursor },
+        signal,
+      );
+      signal.throwIfAborted();
       await mergeRows(page.rows);
       signal.throwIfAborted();
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
-      shouldLoadNextPage =
-        confirmColdStartTail || page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+      shouldLoadNextPage = confirmColdStartTail || page.hasMore;
     }
   });
 }

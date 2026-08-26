@@ -206,6 +206,7 @@ describe("chat event retention cron", () => {
   it("requires a current snapshot and durable search coverage", async () => {
     const snapshotThreadId = await createFixtureThread("snapshot-gate");
     const searchThreadId = await createFixtureThread("search-gate");
+    const projectionThreadId = await createFixtureThread("projection-gate");
     const snapshotEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: snapshotThreadId, offsetMs: OLD_OFFSET_MS },
@@ -214,6 +215,11 @@ describe("chat event retention cron", () => {
     const searchEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: searchThreadId, offsetMs: OLD_OFFSET_MS },
+      context.signal,
+    );
+    const projectionEventId = await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: projectionThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
     await store.set(
@@ -234,16 +240,28 @@ describe("chat event retention cron", () => {
       },
       context.signal,
     );
+    await store.set(
+      coverRetentionThread$,
+      {
+        chatThreadId: projectionThreadId,
+        snapshotProjections: ["full"],
+      },
+      context.signal,
+    );
 
-    const held = await retainFixtures(snapshotThreadId, searchThreadId);
+    const held = await retainFixtures(
+      snapshotThreadId,
+      searchThreadId,
+      projectionThreadId,
+    );
     expect(held).toMatchObject({
       deleted: 0,
-      skippedSnapshot: 1,
+      skippedSnapshot: 2,
       skippedSearchWatermark: 1,
     });
     await expect(
-      eventRows(snapshotEventId, searchEventId),
-    ).resolves.toHaveLength(2);
+      eventRows(snapshotEventId, searchEventId, projectionEventId),
+    ).resolves.toHaveLength(3);
 
     await store.set(
       coverRetentionThread$,
@@ -255,10 +273,19 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId },
       context.signal,
     );
-    const released = await retainFixtures(snapshotThreadId, searchThreadId);
-    expect(released.deleted).toBe(2);
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: projectionThreadId },
+      context.signal,
+    );
+    const released = await retainFixtures(
+      snapshotThreadId,
+      searchThreadId,
+      projectionThreadId,
+    );
+    expect(released.deleted).toBe(3);
     await expect(
-      eventRows(snapshotEventId, searchEventId),
+      eventRows(snapshotEventId, searchEventId, projectionEventId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 

@@ -260,8 +260,12 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config)
-    #[arg(long, env = "VM0_API_BACKEND_URL")]
+    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
+    #[arg(
+        long,
+        env = crate::operator_api_url::clap_environment_name(),
+        hide_env_values = true
+    )]
     api_url: Option<String>,
     /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
     #[arg(
@@ -277,6 +281,10 @@ pub struct StartArgs {
 
 #[cfg(test)]
 impl StartArgs {
+    pub(crate) fn api_url_for_test(&self) -> Option<&str> {
+        self.api_url.as_deref()
+    }
+
     pub(crate) fn token_for_test(&self) -> Option<&str> {
         self.token.as_deref()
     }
@@ -403,9 +411,11 @@ async fn run_start_with_home(
 
     // Validate required server fields
     if server.url.is_empty() {
-        return Err(RunnerError::Config(
-            "server.url is required (set in config or via --api-url / VM0_API_BACKEND_URL)".into(),
-        ));
+        return Err(RunnerError::Config(format!(
+            "server.url is required (set in config or via --api-url / {} / {})",
+            crate::operator_api_url::CANONICAL_ENV,
+            crate::operator_api_url::LEGACY_ENV
+        )));
     }
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {

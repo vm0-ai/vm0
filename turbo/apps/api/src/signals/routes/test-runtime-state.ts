@@ -52,7 +52,6 @@ import {
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
-import { connectorCatalogRuntimeProjectionSchemaAvailable } from "../services/connector-catalog-runtime-projection.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
@@ -972,10 +971,6 @@ type ReadUsagePackPurchaseSerializationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-purchase-serialization-schema-state" }
 >;
-type ReadConnectorCatalogRuntimeProjectionSchemaStateAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-connector-catalog-runtime-projection-schema-state" }
->;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -989,7 +984,6 @@ type PersistenceStateAction =
   | ReadBrowserScreenshotSchemaStateAction
   | ReadUsagePackInvitationSchemaStateAction
   | ReadUsagePackPurchaseSerializationSchemaStateAction
-  | ReadConnectorCatalogRuntimeProjectionSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -1012,9 +1006,6 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-usage-pack-purchase-serialization-schema-state": {
-      return true;
-    }
-    case "read-connector-catalog-runtime-projection-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -1122,18 +1113,6 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           usage_pack_purchase_serialization_schema_available: available,
-        },
-      };
-    }
-    case "read-connector-catalog-runtime-projection-schema-state": {
-      const available =
-        await connectorCatalogRuntimeProjectionSchemaAvailable(db);
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          connector_catalog_runtime_projection_schema_available: available,
         },
       };
     }
@@ -1587,6 +1566,7 @@ type ChatEventFixtureAction = Extract<
   {
     action:
       | "advance-chat-event-sequence-as-previous-api"
+      | "delete-chat-event-snapshot-head"
       | "read-chat-event-snapshot-head"
       | "set-chat-event-snapshot-head-version";
   }
@@ -1597,9 +1577,34 @@ function isChatEventFixtureAction(
 ): body is ChatEventFixtureAction {
   return (
     body.action === "advance-chat-event-sequence-as-previous-api" ||
+    body.action === "delete-chat-event-snapshot-head" ||
     body.action === "read-chat-event-snapshot-head" ||
     body.action === "set-chat-event-snapshot-head-version"
   );
+}
+
+async function deleteChatEventSnapshotHeadFixture(
+  db: Db,
+  body: Extract<
+    TestRuntimeStateActionBody,
+    { action: "delete-chat-event-snapshot-head" }
+  >,
+  signal: AbortSignal,
+) {
+  const deleted = await db
+    .delete(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, body.thread_id),
+        eq(chatEventSnapshots.projection, body.projection),
+      ),
+    )
+    .returning({ id: chatEventSnapshots.id });
+  signal.throwIfAborted();
+  if (deleted.length === 0) {
+    throw new Error("delete-chat-event-snapshot-head missing pointer");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
 }
 
 async function chatEventFixtureActionResponse(
@@ -1607,6 +1612,10 @@ async function chatEventFixtureActionResponse(
   body: ChatEventFixtureAction,
   signal: AbortSignal,
 ) {
+  const projection =
+    "projection" in body && body.projection !== undefined
+      ? body.projection
+      : "full";
   if (body.action === "advance-chat-event-sequence-as-previous-api") {
     const [updated] = await db
       .update(chatThreads)
@@ -1623,11 +1632,19 @@ async function chatEventFixtureActionResponse(
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
+  if (body.action === "delete-chat-event-snapshot-head") {
+    return await deleteChatEventSnapshotHeadFixture(db, body, signal);
+  }
   if (body.action === "set-chat-event-snapshot-head-version") {
     const [pointer] = await db
       .select({ id: chatEventSnapshots.id })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      )
       .orderBy(
         desc(chatEventSnapshots.archiveSchemaVersion),
         desc(chatEventSnapshots.lastSeqId),
@@ -1666,7 +1683,12 @@ async function chatEventFixtureActionResponse(
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      )
       .orderBy(
         desc(chatEventSnapshots.archiveSchemaVersion),
         desc(chatEventSnapshots.lastSeqId),
@@ -1676,7 +1698,12 @@ async function chatEventFixtureActionResponse(
     db
       .select({ value: count() })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.projection, projection),
+        ),
+      ),
   ]);
   signal.throwIfAborted();
   if (!snapshotCount) {
@@ -1808,6 +1835,29 @@ const postRuntimeStateAction$ = command(
       case "set-runner-job-connector-runtime-targets": {
         await setRunnerJobConnectorRuntimeTargets(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "read-run-chat-tool-activity-decision": {
+        const [run] = await db
+          .select({
+            runId: agentRuns.id,
+            chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
+          })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, body.run_id))
+          .limit(1);
+        signal.throwIfAborted();
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            run_chat_tool_activity_decision: run
+              ? {
+                  run_id: run.runId,
+                  chat_tool_activity_enabled: run.chatToolActivityEnabled,
+                }
+              : null,
+          },
+        };
       }
       case "hold-org-admission-lock": {
         await holdOrgAdmissionLock(db, body.org_id, signal);

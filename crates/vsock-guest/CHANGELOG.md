@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.113](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.112...vsock-guest-v0.19.113) (2026-08-26)
+
+## [0.19.112](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.111...vsock-guest-v0.19.112) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
+## [0.19.111](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.110...vsock-guest-v0.19.111) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
+## [0.19.110](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.109...vsock-guest-v0.19.110) (2026-08-25)
+
+## [0.19.109](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.108...vsock-guest-v0.19.109) (2026-08-25)
+
+## [0.19.108](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.107...vsock-guest-v0.19.108) (2026-08-25)
+
 ## [0.19.107](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.106...vsock-guest-v0.19.107) (2026-08-25)
 
 ## [0.19.106](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.105...vsock-guest-v0.19.106) (2026-08-25)

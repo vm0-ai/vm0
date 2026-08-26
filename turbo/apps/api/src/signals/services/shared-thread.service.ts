@@ -173,6 +173,7 @@ function loadSharedThreadSourceRows(
             bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
           },
           threadId,
+          "full",
           signal,
         ),
       );

@@ -4,6 +4,7 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  ReactNode,
 } from "react";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
@@ -42,6 +43,7 @@ import {
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
+  Lock,
   Mic,
   Monitor,
   Paperclip,
@@ -57,6 +59,8 @@ import {
   SwatchBook,
   Target,
   User,
+  UserCheck,
+  Users,
   Video,
   X,
   type LucideIcon,
@@ -129,6 +133,11 @@ import type { IllustrationTemplateItem } from "@okouai/core/illustration-templat
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import type { VideoTemplateItem } from "@okouai/core/video-template-items";
+import {
+  INTRO_VIDEO_TEMPLATE_ITEMS,
+  findIntroVideoTemplateItem,
+  type IntroVideoTemplateItem,
+} from "@okouai/core/intro-video-template-items";
 import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
@@ -138,7 +147,15 @@ import {
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountSelection,
+  ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountEffectiveLabel,
+  type PlatformConnectorCatalogStatusItem,
+} from "../../signals/connector-domain.ts";
 import {
   isIntegrationManagedCustomConnector,
   type CustomConnectorResponse,
@@ -187,9 +204,8 @@ import {
 import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
-  imageModelSelectionEnabled$,
+  introVideoTemplatesEnabled$,
   imageRecognitionAvailable$,
-  videoModelSelectionEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -200,6 +216,10 @@ import {
 } from "../../signals/okou-page/computer-use-hosts.ts";
 import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/okou-page/connectors.ts";
+import {
+  CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
+  connectorAccountTargetKey,
+} from "../../signals/okou-page/connector-accounts.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/okou-page/settings/permission-grant-save.ts";
@@ -352,6 +372,7 @@ const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
 );
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
+const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
 const ILLUSTRATION_SCROLL_PREWARM_LOOKAHEAD_COUNT = 12;
@@ -856,11 +877,9 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): string | undefined {
-  if (value?.type === "video") {
-    return (
-      avatarTemplateSelection(value)?.title ??
-      selectedVideoTemplateItem(value)?.title
-    );
+  const videoTitle = selectedVideoFamilyTemplateTitle(value);
+  if (videoTitle !== undefined) {
+    return videoTitle;
   }
   if (value?.type === "workflow") {
     const workflowItem = selectedWorkflowTemplateItem(value);
@@ -876,6 +895,21 @@ function selectedTemplateTitle(
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
   );
+}
+
+function selectedVideoFamilyTemplateTitle(
+  value: GenerationTemplateRequest | undefined,
+): string | undefined {
+  if (value?.type === "video") {
+    return (
+      avatarTemplateSelection(value)?.title ??
+      selectedVideoTemplateItem(value)?.title
+    );
+  }
+  if (value?.type === "intro-video") {
+    return selectedIntroVideoTemplateItem(value)?.title;
+  }
+  return undefined;
 }
 
 function selectedPresentationTemplateItem(
@@ -955,6 +989,36 @@ function selectedVideoTemplateItem(
     return undefined;
   }
   return findVideoTemplateItem(value.selection.stylePresetId);
+}
+
+function isSelectedIntroVideoTemplate(
+  item: IntroVideoTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "intro-video" &&
+    findIntroVideoTemplateItem(value.selection.templateId)?.id === item.id
+  );
+}
+
+function toIntroVideoGenerationTemplate(
+  item: IntroVideoTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "intro-video",
+    selection: {
+      templateId: item.id,
+    },
+  };
+}
+
+function selectedIntroVideoTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): IntroVideoTemplateItem | undefined {
+  if (value?.type !== "intro-video") {
+    return undefined;
+  }
+  return findIntroVideoTemplateItem(value.selection.templateId);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1244,15 +1308,29 @@ function VideoTemplateCard({
 
 function VideoTemplateGrid({
   items,
+  introVideoItems,
   value,
   onSelect,
+  onSelectIntroVideo,
 }: {
   items: readonly VideoTemplateItem[];
+  introVideoItems: readonly IntroVideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoTemplateItem) => void;
+  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {introVideoItems.map((item) => {
+        return (
+          <IntroVideoTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedIntroVideoTemplate(item, value)}
+            onSelect={onSelectIntroVideo}
+          />
+        );
+      })}
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1263,6 +1341,80 @@ function VideoTemplateGrid({
           />
         );
       })}
+    </div>
+  );
+}
+
+function IntroVideoTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: IntroVideoTemplateItem;
+  selected: boolean;
+  onSelect: (item: IntroVideoTemplateItem) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={TEMPLATE_TILE_WRAPPER}>
+      <div
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "aspect-[16/9]",
+          selected && TEMPLATE_TILE_RING_SELECTED,
+        )}
+      >
+        <div className="h-full bg-[#f7f7f5] p-3">
+          <div className="flex h-full flex-col rounded-2xl border border-black/5 bg-white p-3 shadow-[0_8px_24px_rgba(20,20,20,0.06)]">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-violet-600 text-base font-black leading-none text-white">
+                *
+              </span>
+              <span className="text-[11px] font-semibold text-neutral-700">
+                {item.title}
+              </span>
+              <span className="ml-auto rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
+                {item.implementation.label}
+              </span>
+            </div>
+            <div className="mt-3 rounded-xl bg-neutral-100 px-3 py-2 text-[10px] font-medium leading-4 text-neutral-700">
+              {item.previewQuote}
+            </div>
+            <div className="mt-auto flex items-center gap-1.5">
+              <span className="h-1.5 flex-1 rounded-full bg-violet-600" />
+              <span className="h-1.5 flex-1 rounded-full bg-violet-200" />
+              <span className="h-1.5 flex-1 rounded-full bg-neutral-200" />
+            </div>
+          </div>
+        </div>
+        {selected ? (
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Check size={14} />
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectVideo;
+            },
+            { title: item.title },
+          )}
+          aria-pressed={selected}
+          onClick={() => {
+            onSelect(item);
+          }}
+          className={TEMPLATE_TILE_USE}
+        >
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
+        </button>
+      </div>
+      <div className={TEMPLATE_TILE_CAPTION}>
+        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
+      </div>
     </div>
   );
 }
@@ -5009,6 +5161,25 @@ function ImportedPptCardMediaControls({
 // Keep one rendered image stable while its replacement loads and decodes
 // off-DOM, then swap the src atomically. Stale requests are ignored by URL.
 
+function importedPptImageVariant(
+  imageUrl: string,
+  size: TemplatePreviewImageSize,
+): string;
+function importedPptImageVariant(
+  imageUrl: null,
+  size: TemplatePreviewImageSize,
+): null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null;
+function importedPptImageVariant(
+  imageUrl: string | null,
+  size: TemplatePreviewImageSize,
+): string | null {
+  return imageUrl === null ? null : r2ImageTransformUrl(imageUrl, size);
+}
+
 function importedPptImage(media: HTMLElement): HTMLImageElement | null {
   return media.querySelector<HTMLImageElement>(
     "[data-imported-presentation-template-image]",
@@ -5383,8 +5554,12 @@ function ImportedPptCard({
       slideCount - 1,
     ),
   );
-  const activeImageUrl =
+  const activeImageSource =
     detail?.pageUrls[activeSlideIndex] ?? template.coverUrl;
+  const activeImageUrl = importedPptImageVariant(
+    activeImageSource,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   const loading =
     requestedTemplateId === template.id && detailLoadable.state === "loading";
   const label = t(
@@ -5427,6 +5602,28 @@ function ImportedPptCard({
   );
 }
 
+/** A name wraps across lines on screen but is stored as one. */
+function normalizeImportedTemplateTitle(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * A template name is one line of meaning but not one line of layout: the panel
+ * is 320px wide, so anything past a dozen or so characters has to go somewhere.
+ * An `<input>` answers that by scrolling the overflow out of view without even
+ * an ellipsis, which is how a name ends up cut mid-glyph. A textarea wraps
+ * instead, and the mirrored `::after` grows the grid row to the wrapped text so
+ * the field gains lines rather than a scrollbar. Enter still submits and
+ * whitespace folds on the way out, so the value stays the single line it models.
+ *
+ * The check then keeps its column at every height but not its ink. Lit from
+ * the moment the panel opens it reads as a state badge rather than an action,
+ * so it waits for a reason to exist: pointing at the control, entering it, or
+ * a draft that differs from the saved name. Hover and focus have to count
+ * because the check is now the only thing that says the name is editable —
+ * a hairline border alone reads as decoration. A dirty draft pins it on, so
+ * the way back to the check is never to go find the field again.
+ */
 function ImportedPresentationTemplateRenameControl({
   title,
   updating,
@@ -5442,24 +5639,58 @@ function ImportedPresentationTemplateRenameControl({
   });
   return (
     <form
-      className="flex min-w-0 items-center gap-1.5"
+      className="group flex min-w-0 items-start gap-1.5"
+      data-rename-dirty="false"
       onSubmit={(event) => {
         event.preventDefault();
         const nextTitle = new FormData(event.currentTarget).get("title");
-        if (typeof nextTitle === "string") {
-          onRename(nextTitle);
+        if (typeof nextTitle !== "string") {
+          return;
+        }
+        const normalized = normalizeImportedTemplateTitle(nextTitle);
+        if (normalized.length > 0 && normalized !== title) {
+          onRename(normalized);
         }
       }}
     >
-      <Input
-        key={title}
-        name="title"
-        aria-label={label}
-        defaultValue={title}
-        required
-        maxLength={255}
-        className="h-10 min-w-0 flex-1 border-transparent bg-transparent px-1 text-xl font-semibold hover:border-[hsl(var(--gray-400))]"
-      />
+      <div
+        className="grid min-h-10 min-w-0 flex-1 rounded-lg border-[0.7px] border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
+        data-value={title}
+      >
+        <textarea
+          name="title"
+          aria-label={label}
+          defaultValue={title}
+          required
+          rows={1}
+          maxLength={255}
+          className="col-start-1 row-start-1 resize-none overflow-hidden break-words bg-transparent p-0 outline-none"
+          onChange={(event) => {
+            const field = event.currentTarget;
+            const mirror = field.parentElement;
+            const form = field.form;
+            if (!mirror || !form) {
+              return;
+            }
+            const normalized = normalizeImportedTemplateTitle(field.value);
+            mirror.dataset.value = field.value;
+            form.dataset.renameDirty = String(
+              normalized.length > 0 && normalized !== title,
+            );
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key !== "Enter" ||
+              event.shiftKey ||
+              event.nativeEvent.isComposing
+            ) {
+              return;
+            }
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
+        />
+      </div>
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -5469,7 +5700,7 @@ function ImportedPresentationTemplateRenameControl({
               size="icon-sm"
               disabled={updating}
               aria-label={label}
-              className="shrink-0"
+              className="invisible mt-1 shrink-0 group-focus-within:visible group-hover:visible group-data-[rename-dirty=true]:visible"
             >
               {updating ? <Loader2 className="animate-spin" /> : <Check />}
             </Button>
@@ -5481,6 +5712,18 @@ function ImportedPresentationTemplateRenameControl({
   );
 }
 
+const IMPORTED_TEMPLATE_VISIBILITY_OPTIONS = [
+  { value: "private", Icon: Lock },
+  { value: "public", Icon: Users },
+] as const;
+
+/**
+ * Visibility for an imported deck, stated as its consequence rather than as a
+ * setting: a template is only ever "mine" or "everyone's here", so the two
+ * words that name those states carry less than the one sentence that says what
+ * they do. The sentence stays on screen and the picker moves behind `Change`,
+ * because reading the current state is the common act and switching it is not.
+ */
 function ImportedPresentationTemplateVisibilityControl({
   visibility,
   updating,
@@ -5491,43 +5734,106 @@ function ImportedPresentationTemplateVisibilityControl({
   onChange: (visibility: PresentationTemplateSummary["visibility"]) => void;
 }) {
   const { t } = useTranslation();
+  const optionLabel = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.workflows.common.private;
+        })
+      : t(($) => {
+          return $.settings.dialog.groups.workspace;
+        });
+  };
+  const optionState = (value: PresentationTemplateSummary["visibility"]) => {
+    return value === "private"
+      ? t(($) => {
+          return $.artifacts.templates.visibility.privateState;
+        })
+      : t(($) => {
+          return $.artifacts.templates.visibility.workspaceState;
+        });
+  };
+  const CurrentIcon = visibility === "private" ? Lock : Users;
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.workflows.detail.metadata.visibility;
-        })}
+    <Popover>
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+        <CurrentIcon size={14} className="shrink-0" aria-hidden="true" />
+        <span>{optionState(visibility)}</span>
+        <span aria-hidden="true">·</span>
+        <PopoverTrigger
+          disabled={updating}
+          className="font-medium text-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:decoration-foreground disabled:opacity-50"
+          aria-label={t(($) => {
+            return $.artifacts.templates.visibility.changeLabel;
+          })}
+        >
+          {t(($) => {
+            return $.artifacts.templates.visibility.change;
+          })}
+        </PopoverTrigger>
       </p>
-      <Select
-        value={visibility}
-        disabled={updating}
-        onValueChange={(nextVisibility) => {
-          if (nextVisibility === "private" || nextVisibility === "public") {
-            onChange(nextVisibility);
-          }
-        }}
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="w-[19rem] p-1.5"
       >
-        <SelectTrigger
+        <div
+          role="radiogroup"
           aria-label={t(($) => {
             return $.workflows.detail.metadata.visibility;
           })}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="private">
-            {t(($) => {
-              return $.workflows.common.private;
-            })}
-          </SelectItem>
-          <SelectItem value="public">
-            {t(($) => {
-              return $.settings.dialog.groups.workspace;
-            })}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+          {IMPORTED_TEMPLATE_VISIBILITY_OPTIONS.map(({ value, Icon }) => {
+            const selected = value === visibility;
+            return (
+              <PopoverClose asChild key={value}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-state-hover",
+                    selected && "bg-state-selected",
+                  )}
+                  onClick={() => {
+                    if (!selected) {
+                      onChange(value);
+                    }
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    className="mt-0.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground">
+                      {optionLabel(value)}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {optionState(value)}
+                    </span>
+                  </span>
+                  {/* The check column is reserved on both rows: letting it
+                      appear only on the selected one narrows that row's text
+                      box, so the description reflows every time the selection
+                      moves. */}
+                  <span className="mt-0.5 w-4 shrink-0">
+                    {selected ? (
+                      <Check
+                        size={16}
+                        className="text-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                  </span>
+                </button>
+              </PopoverClose>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -5624,6 +5930,7 @@ function ImportedPresentationTemplateSidebar({
       <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
         {activeTemplate.canManage ? (
           <ImportedPresentationTemplateRenameControl
+            key={title}
             title={title}
             updating={updating}
             onRename={(nextTitle) => {
@@ -5719,12 +6026,25 @@ function ImportedPresentationTemplateMainPreview({
     },
     { title },
   );
+  const highResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+  );
+  const lowResolutionImageUrl = importedPptImageVariant(
+    activeImageUrl,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
   return (
     <div
       role="group"
       aria-label={previewLabel}
       ref={(media) => {
-        syncImportedPptImage(media, activeImageUrl, previewLabel);
+        syncImportedPptImage(
+          media,
+          highResolutionImageUrl,
+          previewLabel,
+          lowResolutionImageUrl,
+        );
       }}
       data-imported-presentation-template-image-container=""
       data-testid={`${title} imported detail image preview`}
@@ -5790,6 +6110,12 @@ function ImportedPresentationTemplateThumbnails({
       {pageUrls.map((pageUrl, index) => {
         const slideNumber = index + 1;
         const active = index === activeSlideIndex;
+        const eagerlyLoad =
+          index < IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT;
+        const thumbnailUrl = importedPptImageVariant(
+          pageUrl,
+          TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
+        );
         const previewLabel = t(
           ($) => {
             return $.artifacts.templates.previewSlide;
@@ -5803,7 +6129,7 @@ function ImportedPresentationTemplateThumbnails({
             aria-label={previewLabel}
             aria-pressed={active}
             ref={(media) => {
-              syncImportedPptImage(media, pageUrl, previewLabel);
+              syncImportedPptImage(media, thumbnailUrl, previewLabel);
             }}
             data-imported-presentation-template-image-container=""
             onClick={() => {
@@ -5817,8 +6143,8 @@ function ImportedPresentationTemplateThumbnails({
             )}
           >
             <ImportedPptImage
-              loading="lazy"
-              fetchPriority="auto"
+              loading={eagerlyLoad ? "eager" : "lazy"}
+              fetchPriority={active ? "high" : eagerlyLoad ? "auto" : "low"}
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
             <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
@@ -6039,6 +6365,10 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const introVideoTemplatesEnabled = useGet(introVideoTemplatesEnabled$);
+  const introVideoItems = introVideoTemplatesEnabled
+    ? INTRO_VIDEO_TEMPLATE_ITEMS
+    : [];
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
@@ -6200,6 +6530,11 @@ function TemplatePickerDialog({
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handleSelectIntroVideo = (item: IntroVideoTemplateItem) => {
+    onChange(toIntroVideoGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -6456,6 +6791,7 @@ function TemplatePickerDialog({
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
+                introVideoItems={introVideoItems}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6471,6 +6807,7 @@ function TemplatePickerDialog({
                 onSelectIllustration={handleSelectIllustration}
                 onIllustrationVariantChange={setIllustrationVariantIndex}
                 onSelectVideo={handleSelectVideo}
+                onSelectIntroVideo={handleSelectIntroVideo}
                 onSelectAvatar={handleSelectAvatar}
                 onWorkflowCategoryChange={setWorkflowCategoryFilter}
                 onSelectWorkflow={handleSelectWorkflow}
@@ -6513,6 +6850,7 @@ function TemplatePickerCategoryContent({
   websiteItems,
   illustrationItems,
   videoItems,
+  introVideoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -6528,6 +6866,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
+  onSelectIntroVideo,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -6543,6 +6882,7 @@ function TemplatePickerCategoryContent({
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
+  introVideoItems: readonly IntroVideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -6567,6 +6907,7 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
+  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
   onSelectAvatar: (
     avatar: AvatarVideoAvatar,
     voice: AvatarVideoVoice,
@@ -6661,11 +7002,13 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 ? (
+        {videoItems.length > 0 || introVideoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
+            introVideoItems={introVideoItems}
             value={value}
             onSelect={onSelectVideo}
+            onSelectIntroVideo={onSelectIntroVideo}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -6783,6 +7126,14 @@ function selectedComposerTemplateAttachment(
   if (videoItem) {
     return { type: "video", title: videoItem.title, category: "video" };
   }
+  const introVideoItem = selectedIntroVideoTemplateItem(value);
+  if (introVideoItem) {
+    return {
+      type: "intro-video",
+      title: introVideoItem.title,
+      category: "video",
+    };
+  }
   const workflowItem = selectedWorkflowTemplateItem(value);
   if (workflowItem) {
     return {
@@ -6889,11 +7240,15 @@ function ImportedPresentationTemplateResourcePreload({
   return detail?.pageUrls
     .slice(startPageIndex, startPageIndex + pageCount)
     .map((pageUrl) => {
+      const previewUrl = importedPptImageVariant(
+        pageUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
       return (
         <img
-          key={pageUrl}
+          key={previewUrl}
           alt=""
-          src={pageUrl}
+          src={previewUrl}
           loading="eager"
           decoding="async"
           fetchPriority="low"
@@ -6939,7 +7294,11 @@ function ComposerTemplateAttachmentSync({
   );
   const importedTemplateCoverUrls = uniqueTemplatePreviewImageUrls(
     importedTemplates.flatMap((template) => {
-      return template.coverUrl === null ? [] : [template.coverUrl];
+      const coverUrl = importedPptImageVariant(
+        template.coverUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      );
+      return coverUrl === null ? [] : [coverUrl];
     }),
   );
   const importedTemplatePagePreloads =
@@ -7748,6 +8107,14 @@ function composerPopoverConnectorId(
   return item.kind === "builtin" ? item.connector.slug : item.connector.id;
 }
 
+function composerPopoverConnectorTarget(
+  item: ComposerPopoverConnectorItem,
+): ConnectorAccountTarget {
+  return item.kind === "builtin"
+    ? { kind: "builtin", connectorSlug: item.connector.slug }
+    : { kind: "custom", customConnectorId: item.connector.id };
+}
+
 function matchesComposerPopoverConnectorSearch(
   search: string,
   item: ComposerPopoverConnectorItem,
@@ -7755,6 +8122,575 @@ function matchesComposerPopoverConnectorSearch(
   return item.kind === "builtin"
     ? matchesConnectorSearch(search, item.connector)
     : matchesCustomConnectorSearch(search, item.connector);
+}
+
+function ComposerConnectorAccessRow({
+  icon,
+  connectorLabel,
+  actions,
+  checked,
+  loading,
+  onCheckedChange,
+  ariaLabel,
+}: {
+  readonly icon: ReactNode;
+  readonly connectorLabel: string;
+  readonly actions?: ReactNode;
+  readonly checked: boolean;
+  readonly loading: boolean;
+  readonly onCheckedChange: (checked: boolean) => void;
+  readonly ariaLabel: string;
+}) {
+  return (
+    <div className="flex h-10 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
+      {actions ? (
+        <span className="order-2 flex shrink-0 items-center gap-2">
+          {actions}
+        </span>
+      ) : null}
+      <label className="contents">
+        <span className="order-1 flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center">
+          {icon}
+        </span>
+        <span className="order-1 min-w-0 flex-1 cursor-pointer truncate text-sm text-foreground">
+          {connectorLabel}
+        </span>
+        <span className="order-3 shrink-0">
+          <LoadingSwitch
+            checked={checked}
+            onCheckedChange={onCheckedChange}
+            loading={loading}
+            ariaLabel={ariaLabel}
+            size="sm"
+          />
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function ComposerConnectorAccountMenu({
+  signals,
+  target,
+  connectorLabel,
+  selectedConnection,
+  defaultConnection,
+  explicit,
+}: {
+  readonly signals: ComposerSignals;
+  readonly target: ConnectorAccountTarget;
+  readonly connectorLabel: string;
+  readonly selectedConnection: ConnectorAccountConnection | undefined;
+  readonly defaultConnection: ConnectorAccountConnection | null;
+  readonly explicit: boolean;
+}) {
+  const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
+  const menuTarget = useGet(signals.connector.accounts.menuTarget$);
+  const menuOpen = useGet(signals.connector.accounts.menuOpen$);
+  const openTarget = useSet(signals.connector.accounts.openTarget$);
+  const closeMenu = useSet(signals.connector.accounts.closeMenu$);
+  const open = Boolean(
+    menuOpen &&
+    menuTarget &&
+    connectorAccountTargetKey(menuTarget) === connectorAccountTargetKey(target),
+  );
+  const effectiveConnection = explicit ? selectedConnection : defaultConnection;
+  const accountLabel = effectiveConnection
+    ? connectorAccountEffectiveLabel(
+        effectiveConnection,
+        t(
+          ($) => {
+            return $.connectors.accounts.fallbackName;
+          },
+          { id: effectiveConnection.id.slice(0, 8) },
+        ),
+      )
+    : t(($) => {
+        return $.chat.connectors.noUsableAccount;
+      });
+  const accessibleLabel = explicit
+    ? t(
+        ($) => {
+          return $.chat.connectors.selectedAccountFor;
+        },
+        { connector: connectorLabel, account: accountLabel },
+      )
+    : t(
+        ($) => {
+          return $.chat.connectors.defaultAccountFor;
+        },
+        { connector: connectorLabel, account: accountLabel },
+      );
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          openTarget(target, signal);
+        } else {
+          closeMenu();
+        }
+      }}
+    >
+      <Tooltip>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-2xs"
+              className="shrink-0"
+              aria-label={accessibleLabel}
+            >
+              {explicit ? <UserCheck size={14} /> : <User size={14} />}
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {accessibleLabel}
+        </TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        side="right"
+        align="start"
+        className="w-72 p-0"
+        aria-label={t(($) => {
+          return $.chat.connectors.accountForThread;
+        })}
+      >
+        <ComposerConnectorAccountMenuContent
+          signals={signals}
+          target={target}
+          connectorLabel={connectorLabel}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function handleConnectorAccountRadioKeyDown(
+  event: ReactKeyboardEvent<HTMLDivElement>,
+): void {
+  const buttons = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="radio"]:not(:disabled)',
+    ),
+  ];
+  if (buttons.length === 0 || !(event.target instanceof HTMLButtonElement)) {
+    return;
+  }
+  const currentIndex = buttons.indexOf(event.target);
+  if (currentIndex === -1) {
+    return;
+  }
+  let nextIndex: number;
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    nextIndex = (currentIndex + 1) % buttons.length;
+  } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = buttons.length - 1;
+  } else {
+    return;
+  }
+  event.preventDefault();
+  buttons[nextIndex]?.focus();
+  buttons[nextIndex]?.click();
+}
+
+function ComposerConnectorAccountChoices({
+  connectorLabel,
+  connections,
+  selection,
+  defaultConnection,
+  saving,
+  loading,
+  unavailable,
+  noResults,
+  loadingAccountCount,
+  onSelect,
+  onUseDefault,
+}: {
+  readonly connectorLabel: string;
+  readonly connections: readonly ConnectorAccountConnection[];
+  readonly selection: ConnectorAccountSelection | undefined;
+  readonly defaultConnection: ConnectorAccountConnection | null;
+  readonly saving: boolean;
+  readonly loading: boolean;
+  readonly unavailable: boolean;
+  readonly noResults: boolean;
+  readonly loadingAccountCount: number;
+  readonly onSelect: (connection: ConnectorAccountConnection) => void;
+  readonly onUseDefault: () => void;
+}) {
+  const { t } = useTranslation();
+  const choiceClassName = cn(
+    "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    saving && "cursor-default opacity-50",
+  );
+  const accountLabel = (connection: ConnectorAccountConnection): string => {
+    return connectorAccountEffectiveLabel(
+      connection,
+      t(
+        ($) => {
+          return $.connectors.accounts.fallbackName;
+        },
+        { id: connection.id.slice(0, 8) },
+      ),
+    );
+  };
+  const defaultLabel = defaultConnection
+    ? accountLabel(defaultConnection)
+    : t(($) => {
+        return $.chat.connectors.noUsableAccount;
+      });
+  const hasCheckedConnection = connections.some((connection) => {
+    return selection?.connectionId === connection.id;
+  });
+  const accountStatus = (connection: ConnectorAccountConnection): string => {
+    if (connection.connectionStatus === "connected") {
+      return t(($) => {
+        return $.connectors.accounts.connected;
+      });
+    }
+    if (selection?.connectionId !== connection.id) {
+      return t(($) => {
+        return $.connectors.accounts.reconnectRequired;
+      });
+    }
+    if (
+      defaultConnection?.connectionStatus === "connected" &&
+      defaultConnection.id !== connection.id
+    ) {
+      return t(
+        ($) => {
+          return $.chat.connectors.fallsBackTo;
+        },
+        { account: defaultLabel },
+      );
+    }
+    return t(($) => {
+      return $.chat.connectors.noUsableAccount;
+    });
+  };
+
+  return (
+    <div
+      className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto p-1"
+      role="radiogroup"
+      aria-label={connectorLabel}
+      onKeyDown={handleConnectorAccountRadioKeyDown}
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!selection}
+        tabIndex={!selection || !hasCheckedConnection ? 0 : -1}
+        disabled={saving}
+        className={choiceClassName}
+        onClick={onUseDefault}
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+          {!selection ? <Check size={15} strokeWidth={2.5} /> : null}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.chat.connectors.useDefault;
+            })}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {defaultLabel}
+            {defaultConnection?.connectionStatus === "reconnect-required"
+              ? ` · ${t(($) => {
+                  return $.connectors.accounts.reconnectRequired;
+                })}`
+              : ""}
+          </span>
+        </span>
+      </button>
+      {loading ? (
+        <>
+          <div className="flex flex-col" aria-hidden="true">
+            {Array.from(
+              {
+                length: Math.max(1, Math.min(loadingAccountCount, 4)),
+              },
+              (_, index) => {
+                return (
+                  <div
+                    key={index}
+                    className="flex h-[52px] shrink-0 animate-pulse items-center gap-2 px-2 py-2"
+                  >
+                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <span className="h-3.5 w-28 rounded bg-muted/50" />
+                      <span className="h-3 w-16 rounded bg-muted/50" />
+                    </span>
+                  </div>
+                );
+              },
+            )}
+          </div>
+          <span className="sr-only" role="status">
+            {t(($) => {
+              return $.connectors.accounts.loading;
+            })}
+          </span>
+        </>
+      ) : null}
+      {unavailable ? (
+        <div className="px-2 py-3 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.connectors.accounts.accountsUnavailable;
+          })}
+        </div>
+      ) : null}
+      {connections.map((connection) => {
+        const checked = selection?.connectionId === connection.id;
+        return (
+          <button
+            key={connection.id}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            tabIndex={checked ? 0 : -1}
+            disabled={saving}
+            className={choiceClassName}
+            onClick={() => {
+              onSelect(connection);
+            }}
+          >
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+              {checked ? <Check size={15} strokeWidth={2.5} /> : null}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">
+                {accountLabel(connection)}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {accountStatus(connection)}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+      {noResults ? (
+        <div className="px-2 py-3 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.connectors.accounts.noAccountsFound;
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ComposerConnectorAccountMenuContent({
+  signals,
+  target,
+  connectorLabel,
+}: {
+  readonly signals: ComposerSignals;
+  readonly target: ConnectorAccountTarget;
+  readonly connectorLabel: string;
+}) {
+  const { t } = useTranslation();
+  const preferenceLoadable = useLastLoadable(
+    signals.connector.accounts.preferenceState$,
+  );
+  const summariesLoadable = useLastLoadable(
+    signals.connector.accounts.summaryByTarget$,
+  );
+  const accountsLoadable = useLoadable(signals.connector.accounts.accounts$);
+  const search = useGet(signals.connector.accounts.search$);
+  const savingTargetKey = useGet(signals.connector.accounts.savingTargetKey$);
+  const closeMenu = useSet(signals.connector.accounts.closeMenu$);
+  const setSearch = useSet(signals.connector.accounts.setSearch$);
+  const selectAccount = useSet(signals.connector.accounts.selectAccount$);
+  const clearAccountSelection = useSet(signals.connector.accounts.useDefault$);
+  const [loadMoreLoadable, loadMore] = useLoadableSet(
+    signals.connector.accounts.loadMore$,
+  );
+  const signal = useGet(pageSignal$);
+  const targetKey = connectorAccountTargetKey(target);
+  const preference =
+    preferenceLoadable.state === "hasData"
+      ? preferenceLoadable.data
+      : { selections: [], selectedConnections: [] };
+  const selection = preference.selections.find((candidate) => {
+    return connectorAccountTargetKey(candidate.target) === targetKey;
+  });
+  const selectedConnection = selection
+    ? preference.selectedConnections.find((connection) => {
+        return connection.id === selection.connectionId;
+      })
+    : undefined;
+  const summary =
+    summariesLoadable.state === "hasData"
+      ? summariesLoadable.data.get(targetKey)
+      : undefined;
+  const defaultConnection = summary?.defaultConnection ?? null;
+  const accountList =
+    accountsLoadable.state === "hasData"
+      ? accountsLoadable.data
+      : { connections: [], nextCursor: null, available: true };
+  const connections = selectedConnection
+    ? [
+        selectedConnection,
+        ...accountList.connections.filter((connection) => {
+          return connection.id !== selectedConnection.id;
+        }),
+      ]
+    : accountList.connections;
+  const showSearch =
+    search.length > 0 ||
+    (summary?.accountCount ?? 0) > CONNECTOR_ACCOUNT_SEARCH_THRESHOLD ||
+    accountList.nextCursor !== null;
+  const saving = savingTargetKey === targetKey;
+  const selectAndClose = (connection: ConnectorAccountConnection): void => {
+    detach(
+      (async () => {
+        await selectAccount(connection, signal);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+  const selectDefaultAndClose = (): void => {
+    detach(
+      (async () => {
+        await clearAccountSelection(target, signal);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.chat.connectors.accountForThread;
+        })}
+      </div>
+      {showSearch ? (
+        <div className="shrink-0 border-b border-border/50 px-3 py-2">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value, signal);
+            }}
+            placeholder={t(($) => {
+              return $.connectors.accounts.find;
+            })}
+            className="h-8"
+          />
+        </div>
+      ) : null}
+      <ComposerConnectorAccountChoices
+        connectorLabel={connectorLabel}
+        connections={connections}
+        selection={selection}
+        defaultConnection={defaultConnection}
+        saving={saving}
+        loading={accountsLoadable.state === "loading"}
+        unavailable={
+          accountsLoadable.state === "hasError" || !accountList.available
+        }
+        noResults={connectorAccountSearchHasNoResults({
+          state: accountsLoadable.state,
+          available: accountList.available,
+          resultCount: accountList.connections.length,
+          search,
+        })}
+        loadingAccountCount={summary?.accountCount ?? 0}
+        onSelect={(connection) => {
+          selectAndClose(connection);
+        }}
+        onUseDefault={() => {
+          selectDefaultAndClose();
+        }}
+      />
+      {accountList.nextCursor ? (
+        <div className="shrink-0 border-t border-border/50 p-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={loadMoreLoadable.state === "loading"}
+            onClick={() => {
+              return detach(loadMore(signal), Reason.DomCallback);
+            }}
+          >
+            {loadMoreLoadable.state === "loading"
+              ? t(($) => {
+                  return $.connectors.accounts.loadingMore;
+                })
+              : t(($) => {
+                  return $.connectors.accounts.loadMore;
+                })}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function connectorAccountSearchHasNoResults(args: {
+  readonly state: Loadable<unknown>["state"];
+  readonly available: boolean;
+  readonly resultCount: number;
+  readonly search: string;
+}): boolean {
+  return (
+    args.state === "hasData" &&
+    args.available &&
+    args.resultCount === 0 &&
+    Boolean(args.search.trim())
+  );
+}
+
+function deriveComposerConnectorPopoverState(args: {
+  readonly connectorItems: readonly ComposerPopoverConnectorItem[];
+  readonly sortOrder: readonly string[] | null;
+  readonly search: string;
+  readonly showSearch: boolean;
+  readonly permissionConnectorSlug: ConnectorSlug | null;
+  readonly agentConnectors: readonly ComposerConnectorItem[];
+}) {
+  const sorted = args.sortOrder
+    ? [...args.connectorItems].sort((a, b) => {
+        const ai = args.sortOrder?.indexOf(composerPopoverConnectorId(a)) ?? -1;
+        const bi = args.sortOrder?.indexOf(composerPopoverConnectorId(b)) ?? -1;
+        if (ai === -1 && bi === -1) {
+          return 0;
+        }
+        if (ai === -1) {
+          return 1;
+        }
+        if (bi === -1) {
+          return -1;
+        }
+        return ai - bi;
+      })
+    : args.connectorItems;
+  const visibleConnectors =
+    args.showSearch && args.search.trim()
+      ? sorted.filter((item) => {
+          return matchesComposerPopoverConnectorSearch(args.search, item);
+        })
+      : sorted;
+  const permissionConnector = args.permissionConnectorSlug
+    ? args.agentConnectors.find((connector) => {
+        return connector.slug === args.permissionConnectorSlug;
+      })
+    : undefined;
+  return { visibleConnectors, permissionConnector };
 }
 
 function ConnectorsPopoverButton({
@@ -7793,6 +8729,15 @@ function ConnectorsPopoverButton({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
+  const accountPreferenceLoadable = useLastLoadable(
+    signals.connector.accounts.preferenceState$,
+  );
+  const accountSummariesLoadable = useLastLoadable(
+    signals.connector.accounts.summaryByTarget$,
+  );
+  const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
+  const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
   const search = connectorUi.popoverSearch;
   const sortOrder = connectorUi.popoverSortOrder;
   const downloadDialogOpen = useGet(
@@ -7811,44 +8756,86 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
-  const permissionConnector = permissionConnectorSlug
-    ? agentConnectors.find((c) => {
-        return c.slug === permissionConnectorSlug;
-      })
-    : undefined;
-
-  // Use snapshot order if available, otherwise preserve catalog order.
-  const sorted = sortOrder
-    ? [...connectorItems].sort((a, b) => {
-        const ai = sortOrder.indexOf(composerPopoverConnectorId(a));
-        const bi = sortOrder.indexOf(composerPopoverConnectorId(b));
-        if (ai === -1 && bi === -1) {
-          return 0;
+  const accountPreference =
+    accountPreferenceLoadable.state === "hasData"
+      ? accountPreferenceLoadable.data
+      : { selections: [], selectedConnections: [] };
+  const accountSummaries =
+    accountSummariesLoadable.state === "hasData"
+      ? accountSummariesLoadable.data
+      : new Map();
+  const selectionByTarget = new Map(
+    accountPreference.selections.map((selection) => {
+      return [connectorAccountTargetKey(selection.target), selection];
+    }),
+  );
+  const selectedConnectionById = new Map(
+    accountPreference.selectedConnections.map((connection) => {
+      return [connection.id, connection];
+    }),
+  );
+  const { visibleConnectors, permissionConnector } =
+    deriveComposerConnectorPopoverState({
+      connectorItems,
+      sortOrder,
+      search,
+      showSearch,
+      permissionConnectorSlug,
+      agentConnectors,
+    });
+  const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
+    if (
+      !connectorAccountsEnabled ||
+      !item.connector.authorized ||
+      (item.kind === "custom" &&
+        isIntegrationManagedCustomConnector(item.connector))
+    ) {
+      return undefined;
+    }
+    const summary = accountSummaries.get(
+      connectorAccountTargetKey(composerPopoverConnectorTarget(item)),
+    );
+    if (!summary || summary.accountCount <= 1) {
+      return undefined;
+    }
+    return summary;
+  };
+  const accountModeButton = (item: ComposerPopoverConnectorItem) => {
+    const summary = accountSummaryForItem(item);
+    if (!summary) {
+      return null;
+    }
+    const target = composerPopoverConnectorTarget(item);
+    const targetKey = connectorAccountTargetKey(target);
+    const selection = selectionByTarget.get(targetKey);
+    return (
+      <ComposerConnectorAccountMenu
+        signals={signals}
+        target={target}
+        connectorLabel={
+          item.kind === "builtin"
+            ? item.connector.label
+            : item.connector.displayName
         }
-        if (ai === -1) {
-          return 1;
+        explicit={selection !== undefined}
+        selectedConnection={
+          selection
+            ? selectedConnectionById.get(selection.connectionId)
+            : undefined
         }
-        if (bi === -1) {
-          return -1;
-        }
-        return ai - bi;
-      })
-    : connectorItems;
-
-  const visibleConnectors =
-    showSearch && search.trim()
-      ? sorted.filter((item) => {
-          return matchesComposerPopoverConnectorSearch(search, item);
-        })
-      : sorted;
-
+        defaultConnection={summary.defaultConnection}
+      />
+    );
+  };
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
       const freshSort = connectorItems.map(composerPopoverConnectorId);
       updateConnectorUi({ popoverSortOrder: freshSort });
+      openAccountsPopover();
     } else {
       updateConnectorUi({ popoverSortOrder: null, popoverSearch: "" });
+      closeAccountMenu();
     }
   };
 
@@ -7887,65 +8874,135 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+        className="w-72 max-h-[var(--available-height)] overflow-hidden rounded-lg p-0"
       >
-        {(connectorItems.length > 0 || connectorsLoading) && (
-          <div className="flex min-h-0 flex-col py-1">
-            {showSearch && (
-              <div className="px-3 py-1 border-b border-border/50">
-                <input
-                  type="text"
-                  placeholder={t(($) => {
-                    return $.chat.connectors.find;
-                  })}
-                  value={search}
-                  onChange={(e) => {
-                    return updateConnectorUi({
-                      popoverSearch: e.target.value,
-                    });
-                  }}
-                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-                />
-              </div>
-            )}
-            {connectorsLoading ? (
-              <div className="flex flex-col animate-pulse">
-                {Array.from({ length: 3 }, (_, i) => {
-                  return (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2">
-                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                      <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
-                      <span className="h-3 w-6 rounded-full bg-muted/50" />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
-                {visibleConnectors.map((item) => {
-                  if (item.kind === "custom") {
-                    const connector = item.connector;
-                    return (
-                      <label
-                        key={connector.id}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
-                      >
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                          <CustomConnectorIcon
-                            id={connector.id}
-                            displayName={connector.displayName}
-                            size={16}
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex min-h-0 flex-col">
+            {(connectorItems.length > 0 || connectorsLoading) && (
+              <div className="flex min-h-0 flex-col py-1">
+                {showSearch && (
+                  <div className="px-3 py-1 border-b border-border/50">
+                    <input
+                      type="text"
+                      placeholder={t(($) => {
+                        return $.chat.connectors.find;
+                      })}
+                      value={search}
+                      onChange={(e) => {
+                        return updateConnectorUi({
+                          popoverSearch: e.target.value,
+                        });
+                      }}
+                      className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                    />
+                  </div>
+                )}
+                {connectorsLoading ? (
+                  <div className="flex flex-col animate-pulse">
+                    {Array.from({ length: 3 }, (_, i) => {
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 px-3 py-2"
+                        >
+                          <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                          <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                          <span className="h-3 w-6 rounded-full bg-muted/50" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
+                    {visibleConnectors.map((item) => {
+                      if (item.kind === "custom") {
+                        const connector = item.connector;
+                        return (
+                          <ComposerConnectorAccessRow
+                            key={connector.id}
+                            icon={
+                              <CustomConnectorIcon
+                                id={connector.id}
+                                displayName={connector.displayName}
+                                size={16}
+                              />
+                            }
+                            connectorLabel={connector.displayName}
+                            actions={accountModeButton(item)}
+                            checked={connector.authorized}
+                            onCheckedChange={onDomEventFn(async (checked) => {
+                              await onToggleCustom(connector.id, checked);
+                            })}
+                            loading={savingCustomConnectorId === connector.id}
+                            ariaLabel={
+                              connector.authorized
+                                ? t(
+                                    ($) => {
+                                      return $.chat.connectors.remove;
+                                    },
+                                    {
+                                      connectorName: connector.displayName,
+                                    },
+                                  )
+                                : t(
+                                    ($) => {
+                                      return $.chat.connectors.add;
+                                    },
+                                    {
+                                      connectorName: connector.displayName,
+                                    },
+                                  )
+                            }
                           />
-                        </span>
-                        <span className="text-sm flex-1 truncate text-foreground">
-                          {connector.displayName}
-                        </span>
-                        <LoadingSwitch
+                        );
+                      }
+                      const connector = item.connector;
+                      const accountAction = accountModeButton(item);
+                      const showPermissionAction =
+                        Boolean(agentId) &&
+                        connector.authorized &&
+                        connector.permissionSummary.hasPermissions;
+                      return (
+                        <ComposerConnectorAccessRow
+                          key={connector.slug}
+                          icon={
+                            <ConnectorIcon icon={connector.icon} size={16} />
+                          }
+                          connectorLabel={connector.label}
+                          actions={
+                            showPermissionAction || accountAction ? (
+                              <>
+                                {showPermissionAction ? (
+                                  <Button
+                                    type="button"
+                                    onClick={() => {
+                                      updateConnectorUi({
+                                        permissionConnectorSlug: connector.slug,
+                                      });
+                                    }}
+                                    aria-label={t(
+                                      ($) => {
+                                        return $.chat.connectors
+                                          .configurePermissions;
+                                      },
+                                      { connectorName: connector.label },
+                                    )}
+                                    variant="quiet"
+                                    size="icon-2xs"
+                                    className="shrink-0"
+                                  >
+                                    <SlidersHorizontal size={15} />
+                                  </Button>
+                                ) : null}
+                                {accountAction}
+                              </>
+                            ) : null
+                          }
                           checked={connector.authorized}
                           onCheckedChange={onDomEventFn(async (checked) => {
-                            await onToggleCustom(connector.id, checked);
+                            await onToggle(connector.slug, checked);
                           })}
-                          loading={savingCustomConnectorId === connector.id}
+                          loading={savingConnectorSlug === connector.slug}
                           ariaLabel={
                             connector.authorized
                               ? t(
@@ -7953,7 +9010,7 @@ function ConnectorsPopoverButton({
                                     return $.chat.connectors.remove;
                                   },
                                   {
-                                    connectorName: connector.displayName,
+                                    connectorName: connector.label,
                                   },
                                 )
                               : t(
@@ -7961,113 +9018,46 @@ function ConnectorsPopoverButton({
                                     return $.chat.connectors.add;
                                   },
                                   {
-                                    connectorName: connector.displayName,
+                                    connectorName: connector.label,
                                   },
                                 )
                           }
-                          size="sm"
                         />
-                      </label>
-                    );
-                  }
-                  const connector = item.connector;
-                  return (
-                    <label
-                      key={connector.slug}
-                      className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
-                    >
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon icon={connector.icon} size={16} />
-                      </span>
-                      <span className="text-sm flex-1 truncate text-foreground">
-                        {connector.label}
-                      </span>
-                      {agentId &&
-                        connector.authorized &&
-                        connector.permissionSummary.hasPermissions && (
-                          <Button
-                            type="button"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              updateConnectorUi({
-                                permissionConnectorSlug: connector.slug,
-                              });
-                            }}
-                            aria-label={t(
-                              ($) => {
-                                return $.chat.connectors.configurePermissions;
-                              },
-                              { connectorName: connector.label },
-                            )}
-                            variant="quiet"
-                            size="icon-2xs"
-                            className="shrink-0"
-                          >
-                            <SlidersHorizontal size={15} />
-                          </Button>
-                        )}
-                      <LoadingSwitch
-                        checked={connector.authorized}
-                        onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(connector.slug, checked);
-                        })}
-                        loading={savingConnectorSlug === connector.slug}
-                        ariaLabel={
-                          connector.authorized
-                            ? t(
-                                ($) => {
-                                  return $.chat.connectors.remove;
-                                },
-                                {
-                                  connectorName: connector.label,
-                                },
-                              )
-                            : t(
-                                ($) => {
-                                  return $.chat.connectors.add;
-                                },
-                                {
-                                  connectorName: connector.label,
-                                },
-                              )
-                        }
-                        size="sm"
-                      />
-                    </label>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
+            <div className="flex shrink-0 flex-col p-1">
+              {(connectorItems.length > 0 || connectorsLoading) && (
+                <div className="mx-2 mb-1 border-t border-border/50" />
+              )}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+                onClick={() => {
+                  return onOpenAddDialog();
+                }}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                  <Plus size={13} />
+                </span>
+                {t(($) => {
+                  return $.chat.connectors.addConnectors;
+                })}
+              </button>
+            </div>
+            {computerUse && (
+              <ComputerUseConnectorMenuSection
+                computerUse={computerUse}
+                onOpenDownloadDialog={() => {
+                  setDownloadDialogOpen(true);
+                }}
+              />
+            )}
           </div>
-        )}
-        <div className="flex shrink-0 flex-col p-1">
-          {(connectorItems.length > 0 || connectorsLoading) && (
-            <div className="mx-2 mb-1 border-t border-border/50" />
-          )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-            onClick={() => {
-              return onOpenAddDialog();
-            }}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <Plus size={13} />
-            </span>
-            {t(($) => {
-              return $.chat.connectors.addConnectors;
-            })}
-          </button>
         </div>
-        {computerUse && (
-          <ComputerUseConnectorMenuSection
-            computerUse={computerUse}
-            onOpenDownloadDialog={() => {
-              setDownloadDialogOpen(true);
-            }}
-          />
-        )}
       </PopoverContent>
       {computerUse && (
         <ComputerUseDownloadDialog
@@ -9180,14 +10170,10 @@ function ComposerExistingMediaModelPickerSlot({
   signals,
   imageModelSignals,
   videoModelSignals,
-  imageModelEnabled,
-  videoModelEnabled,
 }: {
   signals: ComposerSignals;
   imageModelSignals: ComposerImageModelSignals;
   videoModelSignals: ComposerVideoModelSignals;
-  imageModelEnabled: boolean;
-  videoModelEnabled: boolean;
 }) {
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const selectedImageModel =
@@ -9197,26 +10183,20 @@ function ComposerExistingMediaModelPickerSlot({
   const setImageModel = useSet(imageModelSignals.setImageModel$);
   const setVideoModel = useSet(videoModelSignals.setVideoModel$);
   const pageSignal = useGet(pageSignal$);
-  const imageModel: ComposerImageModelPickerState | undefined =
-    imageModelEnabled
-      ? {
-          value: selectedImageModel,
-          onChange: (next) => {
-            detach(setImageModel(next, pageSignal), Reason.DomCallback);
-            setModelPickerOpen(false);
-          },
-        }
-      : undefined;
-  const videoModel: ComposerVideoModelPickerState | undefined =
-    videoModelEnabled
-      ? {
-          value: selectedVideoModel,
-          onChange: (next) => {
-            detach(setVideoModel(next, pageSignal), Reason.DomCallback);
-            setModelPickerOpen(false);
-          },
-        }
-      : undefined;
+  const imageModel: ComposerImageModelPickerState = {
+    value: selectedImageModel,
+    onChange: (next) => {
+      detach(setImageModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+  };
+  const videoModel: ComposerVideoModelPickerState = {
+    value: selectedVideoModel,
+    onChange: (next) => {
+      detach(setVideoModel(next, pageSignal), Reason.DomCallback);
+      setModelPickerOpen(false);
+    },
+  };
   return (
     <ComposerModelPickerSlotBase
       signals={signals}
@@ -9227,26 +10207,18 @@ function ComposerExistingMediaModelPickerSlot({
 }
 
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
-  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
-  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
-  if (
-    (imageModelEnabled || videoModelEnabled) &&
-    imageModelSignals &&
-    videoModelSignals
-  ) {
+  if (imageModelSignals && videoModelSignals) {
     return (
       <ComposerExistingMediaModelPickerSlot
         signals={signals}
         imageModelSignals={imageModelSignals}
         videoModelSignals={videoModelSignals}
-        imageModelEnabled={imageModelEnabled}
-        videoModelEnabled={videoModelEnabled}
       />
     );
   }
-  if (videoModelEnabled && videoModelSignals) {
+  if (videoModelSignals) {
     return (
       <ComposerVideoModelPickerSlot
         signals={signals}
@@ -9468,8 +10440,6 @@ function ComposerTemporaryModelNoticeSlot({
   signals: ComposerSignals;
 }) {
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
-  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
-  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
   const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
@@ -9478,22 +10448,14 @@ function ComposerTemporaryModelNoticeSlot({
   }
   // One notice at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
-  if (
-    imageModelEnabled &&
-    imageModelSignals &&
-    mediaModelCategory === "image"
-  ) {
+  if (imageModelSignals && mediaModelCategory === "image") {
     return (
       <ComposerTemporaryImageModelNotice
         imageModelSignals={imageModelSignals}
       />
     );
   }
-  if (
-    videoModelEnabled &&
-    videoModelSignals &&
-    mediaModelCategory === "video"
-  ) {
+  if (videoModelSignals && mediaModelCategory === "video") {
     return (
       <ComposerTemporaryVideoModelNotice
         videoModelSignals={videoModelSignals}

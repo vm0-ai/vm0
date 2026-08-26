@@ -10,7 +10,6 @@ import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorCatalogContract,
@@ -186,11 +185,9 @@ function mockCatalogItem({
   });
 }
 
-async function openMakePage(
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
+async function openMakePage(): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding", featureSwitches });
+  detachedSetupPage({ context, path: "/onboarding" });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -266,6 +263,65 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("leads with Slack and opens its setup after completing onboarding", async () => {
+    await openMakePage();
+
+    const slackOption = firstItem(screen.getAllByRole("radio"));
+    expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
+    expect(
+      screen.getByTestId("onboarding-slack-illustration"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+      "src",
+      expect.stringContaining("slack-198390069136.svg"),
+    );
+
+    click(slackOption);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(ROUTES.works);
+    });
+  });
+
+  it.each([
+    ["Generate a presentation", "Generate slides and speaker", "Presentation"],
+    ["Generate images", "Create high-quality visuals", "Illustration"],
+    ["Video production", "Turn your ideas into video", "Video"],
+    ["Build a website", "Create and publish a shareable page", "Website"],
+  ])(
+    "opens the %s product templates from the make page",
+    async (option, description, tab) => {
+      await openMakePage();
+
+      const makeOption = screen.getByRole("radio", {
+        name: `${option} ${description}`,
+      });
+      click(makeOption);
+
+      await waitFor(() => {
+        const selectedTab = queryAllByRoleFast("tab").find((candidate) => {
+          return (
+            candidate.textContent === tab &&
+            candidate.getAttribute("aria-selected") === "true"
+          );
+        });
+        expect(selectedTab).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("shows the website choice illustration", async () => {
+    await openMakePage();
+
+    const websiteOption = screen.getByRole("radio", {
+      name: /Build a website/u,
+    });
+    expect(websiteOption.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("v2-choice-website_80x80.png"),
+    );
+  });
+
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();
@@ -1077,10 +1133,13 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("selects and reviews a presentation template", async () => {
+  it("keeps the presentation template deep link available", async () => {
     const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
-    await openMakePage();
-    chooseMakeOption("Generate a presentation");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/presentation-template?choice=presentation",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1126,8 +1185,11 @@ describe("onboarding flow", () => {
       },
     });
 
-    await openMakePage();
-    chooseMakeOption("Generate images");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/image-template?choice=images",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1163,19 +1225,25 @@ describe("onboarding flow", () => {
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      successUrl = body.successUrl;
-      cancelUrl = body.cancelUrl;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/onboarding-video",
-      });
-    });
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        successUrl = body.successUrl;
+        cancelUrl = body.cancelUrl;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test/onboarding-video",
+        });
+      },
+    );
     context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage({ [FeatureSwitchKey.UsagePackPlans]: false });
-    chooseMakeOption("Video production");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1247,9 +1315,8 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("uses the new Pro plan with a $20 usage pack when enabled", async () => {
+  it("uses the Pro plan with a $20 usage pack", async () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let legacyCheckoutCalled = false;
     let usagePackCheckoutBody:
       | {
           readonly tier: "pro" | "team";
@@ -1259,12 +1326,6 @@ describe("onboarding flow", () => {
           }[];
         }
       | undefined;
-    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
-      legacyCheckoutCalled = true;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/legacy-onboarding-video",
-      });
-    });
     context.mocks.api(
       billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
@@ -1278,15 +1339,8 @@ describe("onboarding flow", () => {
     mockOnboardingNeeded();
     detachedSetupPage({
       context,
-      path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+      path: "/onboarding/video-template?choice=video",
     });
-    await expect(
-      screen.findByRole("heading", {
-        name: "What do you want to make first",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseMakeOption("Video production");
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
@@ -1307,7 +1361,6 @@ describe("onboarding flow", () => {
         "https://checkout.stripe.com/test/usage-pack-onboarding-video",
       );
     });
-    expect(legacyCheckoutCalled).toBeFalsy();
     expect(usagePackCheckoutBody).toMatchObject({
       tier: "pro",
       memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
@@ -1440,19 +1493,22 @@ describe("onboarding flow", () => {
       });
     });
 
-    await openMakePage();
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
-    expect(sentConversions(gtag)).toStrictEqual([
-      ONBOARDING_START_SEND_TO,
-      ADSMARCH_ONBOARDING_START_SEND_TO,
-    ]);
-
-    chooseMakeOption("Video production");
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
       }),
     ).resolves.toBeInTheDocument();
+
+    expect(sentConversions(gtag)).toStrictEqual([
+      ONBOARDING_START_SEND_TO,
+      ADSMARCH_ONBOARDING_START_SEND_TO,
+    ]);
     chooseTemplate(template.title, "video");
 
     await expect(

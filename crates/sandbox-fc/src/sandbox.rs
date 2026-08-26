@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestMemorySnapshot,
     GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
-    ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
+    GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
+    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
     ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
     ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkHandoff,
     SandboxFinalExecParkHandoffOutcome, SandboxFinalExecParkHandoffPoint,
@@ -25,10 +26,13 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use vsock_host::{
     ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
-    GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
-    SupervisedExecControl, SupervisedExecRequest, VsockHost,
+    GuestStateRestoreResult, GuestStorageManifestResult, NormalOperationFence,
+    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest, VsockHost,
 };
-use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
+use vsock_proto::{
+    ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy,
+    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
+};
 
 use crate::api::BalloonStatistics;
 use crate::duration::duration_ms;
@@ -700,6 +704,27 @@ impl FirecrackerSandbox {
     ) -> SandboxError {
         if backend_crashed {
             return Self::backend_crashed_error(operation);
+        }
+        if let Some(timeout) = error
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<vsock_host::RequestTimeoutError>())
+        {
+            let stage = match timeout.stage() {
+                vsock_host::RequestTimeoutStage::BeforeFrameWrite => {
+                    sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite
+                }
+                vsock_host::RequestTimeoutStage::FrameWrite => {
+                    sandbox::SandboxOperationTimeoutStage::FrameWrite
+                }
+                vsock_host::RequestTimeoutStage::AwaitingTerminalResponse => {
+                    sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse
+                }
+            };
+            return SandboxError::OperationTimeout {
+                operation,
+                stage,
+                timeout_ms: u64::try_from(timeout.timeout().as_millis()).unwrap_or(u64::MAX),
+            };
         }
         let reason = if error.kind() == io::ErrorKind::TimedOut {
             SandboxOperationReason::Timeout
@@ -2430,6 +2455,39 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn restore_guest_state(
+        &self,
+        request: &GuestStateRestoreRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::Exec;
+        let timeout_ms = request.timeout_ms();
+        let timezone = match request.timezone {
+            GuestStateRestoreTimezone::None => VsockGuestStateRestoreTimezone::None,
+            GuestStateRestoreTimezone::BestEffort(timezone) => {
+                VsockGuestStateRestoreTimezone::BestEffort(timezone)
+            }
+            GuestStateRestoreTimezone::Required(timezone) => {
+                VsockGuestStateRestoreTimezone::Required(timezone)
+            }
+        };
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            validate_exec_capture_timeout(timeout_ms)?;
+            guest
+                .guest_state_restore(
+                    request.unix_seconds,
+                    request.unix_nanoseconds,
+                    request.entropy,
+                    timezone,
+                    timeout_ms,
+                    Duration::from_millis(u64::from(timeout_ms) + 5_000),
+                )
+                .await
+                .map(guest_state_restore_exec_result)
+        })
+        .await
+    }
+
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         let operation = SandboxOperation::ReadFile;
 
@@ -2645,6 +2703,18 @@ fn storage_manifest_exec_result(result: GuestStorageManifestResult) -> ExecResul
         stderr: result.stderr,
         diagnostic: result.diagnostic,
         stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
+    }
+}
+
+fn guest_state_restore_exec_result(result: GuestStateRestoreResult) -> ExecResult {
+    ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
+        stdout: Vec::new(),
+        stderr: result.stderr,
+        diagnostic: result.diagnostic,
+        stdout_truncated: false,
         stderr_truncated: result.stderr_truncated,
     }
 }

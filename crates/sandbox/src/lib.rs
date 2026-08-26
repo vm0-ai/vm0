@@ -37,7 +37,7 @@ pub use control::{
 pub use error::{
     Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
     SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason,
+    SandboxOperationReason, SandboxOperationTimeoutStage,
 };
 pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
@@ -58,8 +58,9 @@ pub use types::{
     CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
     EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, ExecTermination,
     GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessControlOutcomeFuture,
-    GuestProcessHandle, GuestProcessWaiter, ProcessControlAck, ProcessControlFailureKind,
-    ProcessControlGuestStatus, ProcessControlMode, ProcessControlOutcome, ProcessControlWriteState,
-    ProcessExit, ProcessOutputChunk, ProcessOutputMode, ProcessOutputReceiver, StartProcessRequest,
-    StorageManifestRequest, WriteFileEntry,
+    GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone,
+    ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
+    ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
+    ProcessOutputMode, ProcessOutputReceiver, StartProcessRequest, StorageManifestRequest,
+    WriteFileEntry,
 };

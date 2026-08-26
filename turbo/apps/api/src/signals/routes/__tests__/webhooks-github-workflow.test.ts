@@ -1164,6 +1164,31 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(secondMerged).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
+    const concurrentDeliveryId = `delivery-${randomUUID()}`;
+    const concurrentPayload = githubPullRequestPayload({
+      action: "closed",
+      merged: true,
+      number: 45,
+      installationId: installed.remoteInstallationId,
+    });
+    const concurrent = await Promise.all([
+      postGithubWebhook({
+        event: "pull_request",
+        deliveryId: concurrentDeliveryId,
+        rawBody: concurrentPayload,
+      }),
+      postGithubWebhook({
+        event: "pull_request",
+        deliveryId: concurrentDeliveryId,
+        rawBody: concurrentPayload,
+      }),
+    ]);
+    expect(concurrent).toStrictEqual([
+      { status: 200, text: "OK" },
+      { status: 200, text: "OK" },
+    ]);
+    await flushWaitUntilForTest();
+
     const closedWithoutMerge = await postGithubWebhook({
       event: "pull_request",
       deliveryId: `delivery-${randomUUID()}`,
@@ -1178,11 +1203,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    // Two merged deliveries matched two automations each; the duplicate
-    // redelivery was recorded as processed and added nothing, and the
+    // Three accepted merged deliveries matched two automations each. The
+    // sequential and concurrent duplicate attempts added nothing, and the
     // closed-without-merge delivery never matched. Under the per-thread
     // workflow queue, the first matched event creates the only admitted run
-    // and the remaining three wait as pending workflow queue events.
+    // and the remaining five wait as pending workflow queue events.
     await runsApi.heartbeatRunner();
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const admittedRunId = listedRuns.runs[0]?.id;
@@ -1199,7 +1224,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     }
     await expect(
       pendingAutomationEventCount(created.body.chatThreadId),
-    ).resolves.toBe(3);
+    ).resolves.toBe(5);
 
     for (const runId of [admittedRunId]) {
       const timingEvents = sandboxOperationEventsForRun(runId);
@@ -1290,18 +1315,34 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     await flushWaitUntilForTest();
 
     const deliveryId = `delivery-${randomUUID()}`;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const matching = await postGithubWebhook({
+    const matchingPayload = githubWorkflowRunPayload({
+      conclusion: "failure",
+      installationId: installed.remoteInstallationId,
+    });
+    const concurrent = await Promise.all([
+      postGithubWebhook({
         event: "workflow_run",
         deliveryId,
-        rawBody: githubWorkflowRunPayload({
-          conclusion: "failure",
-          installationId: installed.remoteInstallationId,
-        }),
-      });
+        rawBody: matchingPayload,
+      }),
+      postGithubWebhook({
+        event: "workflow_run",
+        deliveryId,
+        rawBody: matchingPayload,
+      }),
+    ]);
+    for (const matching of concurrent) {
       expect(matching).toStrictEqual({ status: 200, text: "OK" });
-      await flushWaitUntilForTest();
     }
+    await flushWaitUntilForTest();
+
+    const sequentialDuplicate = await postGithubWebhook({
+      event: "workflow_run",
+      deliveryId,
+      rawBody: matchingPayload,
+    });
+    expect(sequentialDuplicate).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
 
     await runsApi.heartbeatRunner();
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });

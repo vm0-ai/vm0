@@ -1,6 +1,9 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import {
+  isValidChatEventRevocation,
+  type OutputToolPayload,
+} from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
@@ -301,6 +304,14 @@ type OutputFollowupsEvent = ChatEventIdentity & {
   readonly content: string;
 };
 
+type OutputToolEvent = ChatEventIdentity &
+  ChatEventOutputSequence &
+  OutputToolPayload & {
+    readonly eventType: "output.tool";
+    readonly runId: string;
+    readonly content?: null;
+  };
+
 type RunQueuedEvent = ChatEventIdentity & {
   readonly eventType: "run.queued";
   readonly runId: string;
@@ -387,6 +398,7 @@ export type NewChatEvent =
   | OutputErrorEvent
   | OutputThinkingEvent
   | OutputFollowupsEvent
+  | OutputToolEvent
   | RunQueuedEvent
   | RunDequeuedEvent
   | RunCompletedEvent
@@ -981,6 +993,15 @@ function canonicalChatEventPayload(
   const error = "error" in values ? values.error : undefined;
   const usagePayload =
     "usagePayload" in values ? values.usagePayload : undefined;
+  const toolPayload =
+    values.eventType === "output.tool"
+      ? {
+          toolUseId: values.toolUseId,
+          action: values.action,
+          status: values.status,
+          summary: values.summary,
+        }
+      : {};
   const payload: ChatEventPayload = {
     ...(content === null || content === undefined ? {} : { content }),
     ...(userMessage === null || userMessage === undefined
@@ -991,6 +1012,7 @@ function canonicalChatEventPayload(
     ...(usagePayload === null || usagePayload === undefined
       ? {}
       : { usage: usagePayload }),
+    ...toolPayload,
   };
   return Object.keys(payload).length === 0 ? null : payload;
 }

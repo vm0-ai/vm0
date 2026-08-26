@@ -212,11 +212,19 @@ impl ExecProcessContainment {
         self,
         mode: ProcessContainmentCleanupMode,
     ) -> Result<(), ProcessContainmentError> {
+        self.cleanup_with_evidence(mode).map(|_| ())
+    }
+
+    pub(crate) fn cleanup_with_evidence(
+        self,
+        mode: ProcessContainmentCleanupMode,
+    ) -> Result<Option<String>, ProcessContainmentError> {
         match self.backend {
             ContainmentBackend::Cgroup(guard) => guard.cleanup(mode),
-            ContainmentBackend::TestNoop => Ok(()),
+            ContainmentBackend::TestNoop => Ok(None),
             #[cfg(test)]
             ContainmentBackend::TestDirectory(group_path) => fs::remove_dir(group_path)
+                .map(|()| None)
                 .map_err(|error| ProcessContainmentError::new("remove test cgroup", error)),
         }
     }
@@ -490,7 +498,10 @@ impl CgroupGuard {
         })
     }
 
-    fn cleanup(self, mode: ProcessContainmentCleanupMode) -> Result<(), ProcessContainmentError> {
+    fn cleanup(
+        self,
+        mode: ProcessContainmentCleanupMode,
+    ) -> Result<Option<String>, ProcessContainmentError> {
         let started = Instant::now();
         let CgroupGuard {
             group_name,
@@ -508,26 +519,17 @@ impl CgroupGuard {
         let result = cleanup_cgroup(&group_path, mode);
         match result {
             Ok(report) => {
-                // Healthy exec cleanup is a hot path. Emit diagnostics
-                // only when containment had work beyond removing an empty leaf.
-                if report.descendants_observed
-                    || report.cgroup_kill_used
-                    || report.graceful_errors > 0
-                {
-                    log(
-                        "INFO",
-                        &format!(
-                            "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
-                            report.descendants_observed,
-                            report.cgroup_kill_used,
-                            report.initial_members,
-                            report.graceful_errors,
-                            create_elapsed.as_micros(),
-                            started.elapsed().as_millis()
-                        ),
-                    );
+                let evidence = cleanup_evidence_line(
+                    &group_name,
+                    mode,
+                    &report,
+                    create_elapsed,
+                    started.elapsed(),
+                );
+                if let Some(evidence) = evidence.as_deref() {
+                    log("INFO", evidence);
                 }
-                Ok(())
+                Ok(evidence)
             }
             Err(error) => {
                 log(
@@ -712,6 +714,29 @@ struct CleanupReport {
     cgroup_kill_used: bool,
     initial_members: usize,
     graceful_errors: usize,
+}
+
+fn cleanup_evidence_line(
+    group_name: &str,
+    mode: ProcessContainmentCleanupMode,
+    report: &CleanupReport,
+    create_elapsed: Duration,
+    cleanup_elapsed: Duration,
+) -> Option<String> {
+    // Healthy exec cleanup is a hot path. Produce evidence only when
+    // containment had work beyond removing an empty leaf.
+    if !report.descendants_observed && !report.cgroup_kill_used && report.graceful_errors == 0 {
+        return None;
+    }
+    Some(format!(
+        "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
+        report.descendants_observed,
+        report.cgroup_kill_used,
+        report.initial_members,
+        report.graceful_errors,
+        create_elapsed.as_micros(),
+        cleanup_elapsed.as_millis()
+    ))
 }
 
 fn cleanup_cgroup(
@@ -1435,6 +1460,47 @@ mod tests {
         assert_eq!(parse_populated("populated 1\nfrozen 0\n"), Some(true));
         assert_eq!(parse_populated("frozen 0\n"), None);
         assert_eq!(parse_populated("populated 2\n"), None);
+    }
+
+    #[test]
+    fn cleanup_evidence_reports_material_cgroup_kill() {
+        let evidence = cleanup_evidence_line(
+            "exec-7-1",
+            ProcessContainmentCleanupMode::Graceful,
+            &CleanupReport {
+                descendants_observed: true,
+                cgroup_kill_used: true,
+                initial_members: 61,
+                graceful_errors: 0,
+            },
+            Duration::from_micros(42),
+            Duration::from_millis(17),
+        )
+        .unwrap();
+
+        assert_eq!(
+            evidence,
+            "exec process containment cleaned group=exec-7-1 mode=Graceful descendants_observed=true cgroup_kill_used=true initial_members=61 graceful_errors=0 create_us=42 cleanup_ms=17"
+        );
+    }
+
+    #[test]
+    fn cleanup_evidence_omits_empty_healthy_cleanup() {
+        assert!(
+            cleanup_evidence_line(
+                "exec-8-1",
+                ProcessContainmentCleanupMode::Graceful,
+                &CleanupReport {
+                    descendants_observed: false,
+                    cgroup_kill_used: false,
+                    initial_members: 0,
+                    graceful_errors: 0,
+                },
+                Duration::ZERO,
+                Duration::ZERO,
+            )
+            .is_none()
+        );
     }
 
     #[test]

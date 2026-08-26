@@ -446,6 +446,7 @@
       "chat": "Chat",
       "collapse": "Réduire la barre latérale",
       "expand": "Développer la barre latérale",
+      "hideChatList": "Masquer la liste des chats",
       "manage": "Gérer",
       "mobile": {
         "invite": "Inviter",
@@ -469,6 +470,7 @@
         "works": "Travail"
       },
       "searchConversations": "Rechercher des conversations",
+      "showChatList": "Afficher la liste des chats",
       "workspaceSwitcher": {
         "create": "Créer un espace de travail",
         "creating": "Création…",
@@ -518,11 +520,8 @@
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",
-        "crop": "Rogner",
-        "highlight": "Surligner",
         "pen": "Dessiner",
         "redact": "Masquer",
-        "select": "Sélectionner",
         "text": "Texte"
       },
       "undo": "Annuler"
@@ -719,6 +718,12 @@
       "tryDifferentSearch": "Essayez une recherche différente.",
       "use": "Utiliser",
       "useThisTemplate": "Utilisez ce modèle",
+      "visibility": {
+        "change": "Modifier",
+        "changeLabel": "Modifier la visibilité du modèle",
+        "privateState": "Vous seul pouvez le voir et l'utiliser",
+        "workspaceState": "Tout le monde dans cet espace de travail peut l'utiliser"
+      },
       "website": "Site web",
       "websitePreview": "Aperçu du modèle de site web {{title}}",
       "workflow": "Workflow",
@@ -1083,14 +1088,20 @@
         "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "unsupportedTitle": "Étape de connexion indisponible"
       },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
       "signIn": {
         "action": "Utiliser la connexion actuelle",
         "addAccount": "Ajouter un compte",
+        "appleMethod": "Continuer avec Apple",
         "back": "Retour",
         "chooseAccountSubtitle": "Sélectionnez le compte avec lequel vous souhaitez continuer.",
         "chooseAccountTitle": "Choisissez un compte",
         "chooseMethodSubtitle": "Vous rencontrez des problèmes ? Vous pouvez utiliser l'une de ces méthodes pour vous connecter.",
         "chooseMethodTitle": "Utiliser une autre méthode",
+        "clientTrustNotice": "Vous vous connectez depuis un nouvel appareil. Nous demandons une vérification pour sécuriser votre compte.",
         "codeExpired": "Ce code de vérification a expiré. Demandez-en un nouveau.",
         "codeLabel": "Le code de vérification",
         "completeSubtitle": "Vous allez bientôt être redirigé",
@@ -1098,13 +1109,21 @@
         "confirmPasswordLabel": "Confirmer le mot de passe",
         "continue": "Continuer",
         "editIdentifier": "Modifier l'adresse e-mail ou le nom d'utilisateur",
+        "emailAddressLabel": "Adresse e-mail",
+        "emailAddressPlaceholder": "Saisissez votre adresse e-mail",
         "emailCodeMethod": "Envoyer le code à {{identifier}}",
         "emailCodeSubtitle": "pour continuer vers {{brandName}}",
         "emailCodeTitle": "Vérifiez votre messagerie",
+        "emailSupport": "Contacter le support par e-mail",
         "forgotPassword": "Mot de passe oublié ?",
+        "getHelp": "Obtenir de l’aide",
         "googleMethod": "Continuer avec Google",
+        "helpDescription": "Si vous avez des difficultés à vous connecter à votre compte, envoyez-nous un e-mail et nous vous aiderons à rétablir votre accès au plus vite.",
+        "helpTitle": "Obtenir de l’aide",
         "hidePassword": "Masquer le mot de passe",
         "identifierLabel": "Adresse e-mail ou nom d'utilisateur",
+        "identifierPlaceholder": "Saisissez votre adresse e-mail ou votre nom d'utilisateur",
+        "methodsHelpPrompt": "Vous n’avez aucune de ces options ?",
         "newPasswordLabel": "Nouveau mot de passe",
         "newPasswordSubtitle": "Pour des raisons de sécurité, il est nécessaire de réinitialiser votre mot de passe.",
         "newPasswordTitle": "Réinitialiser le mot de passe",
@@ -1117,25 +1136,33 @@
         "passwordLabel": "Mot de passe",
         "passwordMethod": "Connectez-vous avec votre mot de passe",
         "passwordMismatch": "Les mots de passe ne correspondent pas.",
+        "passwordPlaceholder": "Saisissez votre mot de passe",
         "passwordResetMethod": "Réinitialiser votre mot de passe",
         "passwordSubtitle": "pour continuer vers {{brandName}}",
         "passwordTitle": "Entrez votre mot de passe",
+        "recoveryMethodsDivider": "Ou connectez-vous avec une autre méthode",
+        "recoveryTitle": "Mot de passe oublié ?",
         "resendCode": "Renvoyer le code",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}}s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "resetPassword": "Réinitialiser",
         "resetPasswordCodeSubtitle": "Tout d'abord, saisissez le code envoyé à votre adresse e-mail.",
         "resetPasswordCodeTitle": "Réinitialiser le mot de passe",
+        "separator": "ou",
         "showPassword": "Afficher le mot de passe",
+        "signOutOfOtherSessions": "Se déconnecter de tous les autres appareils",
         "signUp": "S'inscrire",
         "startSubtitle": "pour continuer vers {{brandName}}",
         "title": "Se connecter à {{brandName}}",
         "unknownError": "Cette action n'a pas pu être effectuée. Réessayez plus tard ou contactez le support si le problème persiste.",
         "useAnotherMethod": "Utiliser une autre méthode",
+        "usernameLabel": "Nom d'utilisateur",
+        "usernamePlaceholder": "Saisissez votre nom d'utilisateur",
         "verify": "Vérifier"
       },
       "signUp": {
         "action": "Utiliser l'inscription actuelle",
         "alreadyHaveAccount": "Vous avez déjà un compte ?",
+        "appleMethod": "Continuer avec Apple",
         "back": "Retour",
         "captchaError": "Inscription échouée en raison d'une validation de captcha non réussie. Veuillez actualiser la page pour réessayer ou contacter le support pour obtenir de l'aide.",
         "captchaExpired": "La vérification anti-robot a expiré. Réessayez.",
@@ -1150,12 +1177,15 @@
         "description": "pour continuer vers {{brandName}}",
         "editEmailAddress": "Modifier l'adresse e-mail",
         "emailAddressLabel": "Adresse e-mail",
+        "emailAddressPlaceholder": "Saisissez votre adresse e-mail",
         "emailCodeSubtitle": "pour continuer vers {{brandName}}",
         "emailCodeTitle": "Vérifiez votre e-mail",
         "firstNameLabel": "Prénom",
+        "firstNamePlaceholder": "Saisissez votre prénom",
         "googleMethod": "Continuer avec Google",
         "hidePassword": "Masquer le mot de passe",
         "lastNameLabel": "Nom",
+        "lastNamePlaceholder": "Saisissez votre nom",
         "legalPrivacyOnly": "J'accepte la <privacy>Politique de confidentialité</privacy>.",
         "legalRequired": "Lisez et acceptez les conditions pour continuer.",
         "legalTermsAndPrivacy": "J'accepte les <terms>Conditions d'utilisation</terms> et la <privacy>Politique de confidentialité</privacy>.",
@@ -1163,13 +1193,15 @@
         "optional": "Optionnel",
         "passwordInvalid": "Votre mot de passe n'est pas assez fort.",
         "passwordLabel": "Mot de passe",
+        "passwordPlaceholder": "Créez un mot de passe",
         "resendCode": "Renvoyer le code",
-        "resendCodeCooldown": "{{resendCode}} ({{seconds}} s)",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
         "restart": "Utiliser une autre méthode",
         "retry": "Réessayer",
+        "separator": "ou",
         "showPassword": "Afficher le mot de passe",
         "signIn": "Se connecter",
-        "title": "Créer votre compte {{brandName}}",
+        "title": "Créer votre compte",
         "unknownError": "Cette action n'a pas pu être effectuée. Réessayez plus tard ou contactez le support si le problème persiste.",
         "unknownMessage": "Vous n'avez pas la permission d'accéder à cette page.",
         "unknownTitle": "Accès restreint",
@@ -1927,6 +1959,7 @@
       "yourComputer": "Votre ordinateur"
     },
     "connectors": {
+      "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
       "addConnectors": "Ajouter des connecteurs",
       "authorizationFailed": "{{connectorName}} connecté mais n'a pas pu être autorisé pour {{agentName}}",
@@ -1936,9 +1969,14 @@
       "available_other": "Connecteurs disponibles à connecter ({{count}})",
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
+      "defaultAccountFor": "{{connector}} · Compte par défaut utilisé : {{account}}",
+      "fallsBackTo": "Utilise {{account}} en repli",
       "find": "Rechercher des connecteurs...",
+      "noUsableAccount": "Aucun compte utilisable",
       "remove": "Supprimer {{connectorName}}",
-      "title": "Connecteurs"
+      "selectedAccountFor": "{{connector}} · Compte sélectionné : {{account}}",
+      "title": "Connecteurs",
+      "useDefault": "Utiliser le compte par défaut"
     },
     "documentTitle": "Discussion",
     "errors": {
@@ -2310,6 +2348,48 @@
       "copied": "Copié",
       "deleted": "Chat supprimé"
     },
+    "toolActivity": {
+      "categories": {
+        "changes": {
+          "pending": {
+            "plural": "Modification de fichiers",
+            "singular": "Modification d’un fichier"
+          },
+          "terminal": {
+            "plural": "Fichiers modifiés",
+            "singular": "Fichier modifié"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "Lecture de fichiers",
+            "singular": "Lecture d’un fichier"
+          },
+          "terminal": {
+            "plural": "Fichiers lus",
+            "singular": "Fichier lu"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "Exécution de commandes",
+            "singular": "Exécution d’une commande"
+          },
+          "terminal": {
+            "plural": "Commandes exécutées",
+            "singular": "Commande exécutée"
+          }
+        }
+      },
+      "collapse": "Réduire l’activité des outils",
+      "expand": "Développer l’activité des outils",
+      "status": {
+        "cancelled": "Annulé",
+        "error": "Échec",
+        "pending": "En cours",
+        "success": "Terminé"
+      }
+    },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
       "input": "Entrée vocale",
@@ -2387,8 +2467,7 @@
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
       "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}",
-      "workPlaceholder": "Compte professionnel"
+      "summaryWithDefault": "{{summary}} · {{account}}"
     },
     "actions": {
       "apply": "Appliquer",
@@ -3386,9 +3465,17 @@
           "description": "Générer des diapositives et un présentateur",
           "title": "Générer une présentation"
         },
+        "slack": {
+          "description": "Discutez avec votre coéquipier IA dans votre espace de travail",
+          "title": "Discuter avec Okou sur Slack"
+        },
         "video": {
           "description": "Transformez vos idées en vidéo",
           "title": "Production vidéo"
+        },
+        "website": {
+          "description": "Créez et publiez une page partageable",
+          "title": "Créer un site web"
         },
         "workflow": {
           "description": "Explorer à partir de modèles prédéfinis",
@@ -4701,7 +4788,6 @@
         "usage": {
           "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
-          "balanceUsageDescription": "Le solde de crédits et la consommation de votre équipe.",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"
         }

@@ -48,10 +48,7 @@ import {
 } from "../external/stripe-client";
 import { settle } from "../utils";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
-import {
-  assertUsagePackMemberCreditRefundReady,
-  prepareUsagePackMemberCreditRefunds,
-} from "./usage-pack-credit-refund.service";
+import { prepareUsagePackMemberCreditRefunds } from "./usage-pack-credit-refund.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import {
@@ -1797,14 +1794,12 @@ export async function reserveUsagePackMemberRemoval(
   signal: AbortSignal,
 ): Promise<string | null> {
   if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
-    await assertUsagePackMemberCreditRefundReady(db, args);
     return null;
   }
   signal.throwIfAborted();
   const at = nowDate();
   const reservationId = await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, args.orgId);
-    await assertUsagePackMemberCreditRefundReady(tx, args);
     await expireStaleUsagePackPreviews(tx, args.orgId, at);
     const [allocation] = await tx
       .select()
