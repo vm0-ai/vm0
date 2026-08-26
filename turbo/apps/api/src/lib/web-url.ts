@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { logger } from "./log";
+import { logAliasResolutionInfo, logger } from "./log";
 import { singleton } from "./singleton";
 
 const CANONICAL_WEB_URL_KEY = "OKOU_WEB_URL";
@@ -38,7 +38,7 @@ function reportResolution(state: WebUrlAliasState): void {
     log.warn(WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
     return;
   }
-  log.debug(WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
+  logAliasResolutionInfo(log, WEB_URL_ALIAS_RESOLUTION_EVENT, fields);
 }
 
 // This API-process compatibility boundary retains VM0_WEB_URL while the
