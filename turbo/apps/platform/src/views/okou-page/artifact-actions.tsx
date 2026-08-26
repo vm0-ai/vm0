@@ -288,10 +288,15 @@ export function ArtifactActionTooltip({
   label: string;
   side?: "top" | "right" | "bottom" | "left";
 }) {
+  const trigger = (children.props as { disabled?: boolean }).disabled ? (
+    <span className="inline-flex">{children}</span>
+  ) : (
+    children
+  );
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger render={children} />
+        <TooltipTrigger render={trigger} />
         <TooltipContent
           side={side}
           className={ARTIFACT_FLOATING_TRANSITION_CLASS}
@@ -332,7 +337,6 @@ export function ArtifactShareButton({
           detach(shareArtifactUrl(url), Reason.DomCallback, "artifact share");
         }}
         aria-label={label}
-        title={publicAttachmentUrl(url)}
         className={iconButtonClassName(className)}
       >
         <Share2 size={iconSize} />

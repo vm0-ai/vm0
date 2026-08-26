@@ -347,6 +347,7 @@ function OAuthAccountRow({
       ) : null}
       <div className="flex items-center gap-3">
         <Button
+          showTooltip
           type="button"
           role="radio"
           variant="quiet"
@@ -474,6 +475,7 @@ function OAuthAccountMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          showTooltip
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"
@@ -1329,6 +1331,7 @@ function OAuthCredentialRow({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
+                    showTooltip
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-hover hover:text-foreground"

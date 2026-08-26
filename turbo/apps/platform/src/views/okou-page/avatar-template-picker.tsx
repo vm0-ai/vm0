@@ -44,6 +44,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const AVATAR_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
@@ -648,6 +649,7 @@ function AvatarVoicePickerToolbar({
       className="flex w-full items-center gap-3"
     >
       <Button
+        showTooltip
         type="button"
         variant="ghost"
         size="icon"
@@ -790,7 +792,7 @@ function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
   const { t } = useTranslation();
   return (
     <>
-      <button
+      <IconTooltipButton
         type="button"
         aria-label={t(
           ($) => {
@@ -813,7 +815,7 @@ function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
           size={17}
           className="hidden group-data-[playing=true]/voice:block"
         />
-      </button>
+      </IconTooltipButton>
       {voice.sampleUrl && (
         <audio
           data-avatar-voice-preview=""

@@ -52,6 +52,7 @@ function SidebarCloseButton({ close }: { readonly close: () => void }) {
   const { t } = useTranslation();
   return (
     <Button
+      showTooltip
       type="button"
       onClick={close}
       aria-label={t(($) => {

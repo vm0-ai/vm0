@@ -481,6 +481,7 @@ function ConnectedConnectorPermissions({
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
               />
               <Button
+                showTooltip
                 type="button"
                 onClick={() => {
                   setSearch("");
@@ -499,6 +500,7 @@ function ConnectedConnectorPermissions({
           )}
           {!searchActive && (
             <Button
+              showTooltip
               type="button"
               onClick={() => {
                 return setSearchActive(true);

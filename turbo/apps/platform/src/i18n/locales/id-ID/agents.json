@@ -614,6 +614,7 @@
     "pinAgentDescription": "Pilih agen untuk disematkan ke sidebar.",
     "pinned": "Disematkan",
     "pinnedAgents": "Agen yang disematkan",
+    "pinSuccess": "{{agentName}} disematkan",
     "resultCount_other": "{{count}} hasil",
     "searchAgents": "Cari agen...",
     "searchAgentsAndChats": "Cari agen dan chat...",
@@ -626,7 +627,8 @@
       "others": "Lainnya"
     },
     "talkTo": "Ngobrol dengan",
-    "unpin": "Lepaskan sematan"
+    "unpin": "Lepaskan sematan",
+    "unpinSuccess": "Sematan {{agentName}} dilepas"
   },
   "status": {
     "unread": "Belum dibaca"

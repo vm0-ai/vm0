@@ -197,6 +197,25 @@ fn runner_name_from_config(path: &Path) -> String {
     sanitize_name(&raw)
 }
 
+/// Read the optional canonical hostname before tracing starts.
+///
+/// Normal config loading remains responsible for reporting read, parse, and
+/// validation failures. This early read only supplies trusted common Axiom
+/// dimensions when the same Runner config boundary already accepts the value.
+fn runner_hostname_from_config(path: &Path) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Partial {
+        hostname: Option<String>,
+    }
+
+    let content = std::fs::read_to_string(path).ok()?;
+    let hostname = serde_yaml_ng::from_str::<Partial>(&content)
+        .ok()?
+        .hostname?;
+    config::validate_runner_hostname(&hostname).ok()?;
+    Some(hostname)
+}
+
 /// Replace non-`[a-zA-Z0-9_-]` characters with `-`.
 /// Returns `"default"` if the result is empty.
 fn sanitize_name(raw: &str) -> String {
@@ -293,9 +312,14 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse_with_environment_aliases();
 
+    let runner_hostname = match &cli.command {
+        Command::Start(args) => runner_hostname_from_config(&args.config),
+        _ => None,
+    };
+
     // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
     // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
-    let (axiom_layer, axiom_guard) = match axiom_layer::init() {
+    let (axiom_layer, axiom_guard) = match axiom_layer::init(runner_hostname) {
         Some((layer, guard)) => (Some(layer), Some(guard)),
         None => (None, None),
     };
@@ -599,6 +623,33 @@ mod tests {
             runner_name_from_config(Path::new("/nonexistent.yaml")),
             "default"
         );
+    }
+
+    #[test]
+    fn runner_hostname_partial_read_preserves_valid_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("runner.yaml");
+        std::fs::write(
+            &config_path,
+            "name: v0.174.0\nhostname: prod-1.aws.vm3.ai\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            runner_hostname_from_config(&config_path).as_deref(),
+            Some("prod-1.aws.vm3.ai")
+        );
+    }
+
+    #[test]
+    fn runner_hostname_partial_read_omits_missing_or_invalid_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("runner.yaml");
+        std::fs::write(&config_path, "name: v0.174.0\n").unwrap();
+        assert_eq!(runner_hostname_from_config(&config_path), None);
+
+        std::fs::write(&config_path, "name: v0.174.0\nhostname: ''\n").unwrap();
+        assert_eq!(runner_hostname_from_config(&config_path), None);
     }
 
     #[test]

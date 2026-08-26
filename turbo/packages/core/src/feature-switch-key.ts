@@ -79,4 +79,5 @@ export enum FeatureSwitchKey {
   SharedChatDatabase = "sharedChatDatabase",
   ComposerImageAnnotation = "composerImageAnnotation",
   ComposerFlatFeedbackNote = "composerFlatFeedbackNote",
+  GradientColorThemes = "gradientColorThemes",
 }

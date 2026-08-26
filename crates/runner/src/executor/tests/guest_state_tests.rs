@@ -181,6 +181,54 @@ async fn restore_guest_state_logs_embedded_timezone_failure_without_failing_rest
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn restore_guest_state_logs_unavailable_best_effort_timezone_without_failing_restore() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        Vec::new(),
+        b"guest timezone unavailable".to_vec(),
+    )));
+    let mut ctx = minimal_context();
+    ctx.user_timezone = Some("Mars/Olympus".into());
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+
+    restore_guest_state(&sandbox, &ctx).await.unwrap();
+
+    let events = captured.entries();
+    let event = events
+        .iter()
+        .find(|event| {
+            event.level == Level::WARN
+                && event.fields.get("message").map(String::as_str)
+                    == Some("failed to set guest timezone")
+        })
+        .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+    let run_id = RunId::nil().to_string();
+    assert_eq!(
+        event.fields.get("run_id").map(String::as_str),
+        Some(run_id.as_str())
+    );
+    assert_eq!(
+        event.fields.get("tz").map(String::as_str),
+        Some("Mars/Olympus")
+    );
+    assert_eq!(
+        event.fields.get("termination").map(String::as_str),
+        Some("exited")
+    );
+    assert!(
+        event
+            .fields
+            .get("stderr_excerpt")
+            .is_some_and(|value| value.contains("guest timezone unavailable")),
+        "event={event:#?}"
+    );
+}
+
 #[tokio::test]
 async fn restore_guest_state_propagates_exec_error() {
     let sandbox = MockSandbox::new("test");

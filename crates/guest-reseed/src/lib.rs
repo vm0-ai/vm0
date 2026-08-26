@@ -323,7 +323,10 @@ where
     };
     match timezone_fn(timezone) {
         Ok(true) => 0,
-        Ok(false) if restore.timezone_mode == RestoreTimezoneMode::BestEffort => 0,
+        Ok(false) if restore.timezone_mode == RestoreTimezoneMode::BestEffort => {
+            let _ = writeln!(stderr, "{TIMEZONE_UNAVAILABLE_MARKER}");
+            0
+        }
         Ok(false) => {
             let _ = writeln!(stderr, "{TIMEZONE_UNAVAILABLE_MARKER}");
             1
@@ -607,7 +610,12 @@ mod tests {
     fn restore_mode_preserves_required_and_best_effort_timezone_failures() {
         let entropy = [5u8; RESTORE_ENTROPY_BYTES];
         for (mode, timezone_result, expected_code, marker) in [
-            ("best-effort", Ok(false), 0, None),
+            (
+                "best-effort",
+                Ok(false),
+                0,
+                Some(TIMEZONE_UNAVAILABLE_MARKER),
+            ),
             (
                 "best-effort",
                 Err(io::Error::other("write denied")),

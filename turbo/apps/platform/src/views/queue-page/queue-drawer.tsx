@@ -70,10 +70,32 @@ const UPGRADE_PATHS = {
   },
 } as const;
 
-const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
+function concurrencyMonthlyTotalCents(
+  quantity: number,
+  unitAmountCents: number | undefined,
+): number | null {
+  return unitAmountCents === undefined ? null : quantity * unitAmountCents;
+}
 
-function concurrencyMonthlyTotal(quantity: number): number {
-  return quantity * CONCURRENCY_SLOT_MONTHLY_PRICE_USD;
+function formatConcurrencyMonthlyTotal(
+  language: string | undefined,
+  quantity: number,
+  unitAmountCents: number | undefined,
+): string | null {
+  const monthlyTotalCents = concurrencyMonthlyTotalCents(
+    quantity,
+    unitAmountCents,
+  );
+  if (monthlyTotalCents === null) {
+    return null;
+  }
+  const fractionDigits = monthlyTotalCents % 100 === 0 ? 0 : 2;
+  return new Intl.NumberFormat(language, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(monthlyTotalCents / 100);
 }
 
 function useUpgradePath(tier: string): UpgradePath | undefined {
@@ -389,6 +411,7 @@ function ConcurrencyQuantityControl({
         </span>
         <div className="flex h-9 items-center rounded-lg border border-border/70 bg-background">
           <Button
+            showTooltip
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.decreaseQuantity;
@@ -439,6 +462,7 @@ function ConcurrencyQuantityControl({
             }}
           />
           <Button
+            showTooltip
             type="button"
             aria-label={t(($) => {
               return $.queue.purchase.increaseQuantity;
@@ -471,6 +495,7 @@ function ConcurrencyPurchaseCard({
   quantity,
   reviewingInApp,
   tierColor,
+  unitAmountCents,
 }: {
   readonly loading: boolean;
   readonly onCheckout: (newTab: boolean) => void;
@@ -478,16 +503,14 @@ function ConcurrencyPurchaseCard({
   readonly quantity: number | null;
   readonly reviewingInApp: boolean;
   readonly tierColor: string;
+  readonly unitAmountCents: number | undefined;
 }) {
   const { i18n, t } = useTranslation();
-  const currencyFormat = new Intl.NumberFormat(i18n.resolvedLanguage, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
   const effectiveQuantity = quantity ?? 0;
-  const monthlyTotal = currencyFormat.format(
-    concurrencyMonthlyTotal(effectiveQuantity),
+  const monthlyTotal = formatConcurrencyMonthlyTotal(
+    i18n.resolvedLanguage,
+    effectiveQuantity,
+    unitAmountCents,
   );
   return (
     <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
@@ -526,12 +549,14 @@ function ConcurrencyPurchaseCard({
       />
 
       <p className="mt-4 text-sm font-medium text-foreground">
-        {t(
-          ($) => {
-            return $.queue.pricePerMonth;
-          },
-          { price: monthlyTotal },
-        )}
+        {monthlyTotal
+          ? t(
+              ($) => {
+                return $.queue.pricePerMonth;
+              },
+              { price: monthlyTotal },
+            )
+          : "—"}
       </p>
 
       <ul className="flex flex-col gap-2 mt-4">
@@ -573,12 +598,16 @@ function ConcurrencyPurchaseCard({
               : t(($) => {
                   return $.queue.redirecting;
                 })
-            : t(
-                ($) => {
-                  return $.queue.purchase.buy;
-                },
-                { price: monthlyTotal },
-              )}
+            : monthlyTotal
+              ? t(
+                  ($) => {
+                    return $.queue.purchase.buy;
+                  },
+                  { price: monthlyTotal },
+                )
+              : t(($) => {
+                  return $.billing.concurrency.buyButton;
+                })}
         </Button>
       </div>
     </div>
@@ -691,6 +720,7 @@ function ConcurrencyPurchaseCardMount({
       quantity={quantity}
       reviewingInApp={reviewingInApp}
       tierColor={tierColor}
+      unitAmountCents={billingStatus?.concurrencyUnitAmountCents}
     />
   );
 }

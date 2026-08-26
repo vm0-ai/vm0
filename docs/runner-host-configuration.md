@@ -1,5 +1,32 @@
 # Runner Host Configuration
 
+## Diagnostic Host Attribution
+
+`runner.yaml` may contain an optional `hostname` used only to identify the
+physical runner in claims, sandbox telemetry, and Runner Axiom warning/error
+events. Production automation writes the exact Ansible `inventory_hostname`;
+it does not derive the value from DNS or the operating system at runtime.
+
+The value must be non-empty and no longer than 255 JavaScript string units
+(UTF-16 code units). `runner config --hostname <value>` validates and preserves
+the raw value. Existing configuration files without `hostname` continue to
+load and omit the canonical hostname fields.
+
+Hostname does not select a service, directory, release, or rollback target.
+Those lifecycle identities continue to use the version-shaped `name`, such as
+`v0.174.0`. During the compatibility window, sandbox telemetry sends all of:
+
+- legacy `runnerName`, retaining its version-shaped value;
+- optional canonical `runnerHostname` from configuration; and
+- canonical `runnerVersion` compiled into the Runner binary.
+
+Runner Axiom warning/error events similarly include optional
+`runner_hostname` and required `runner_version`. Deploy the compatible API
+receiver before deploying a Runner that produces these fields. Canary the
+Runner and verify claim snapshots, telemetry/Axiom dimensions, distinct
+hostnames on two hosts running one version, and retained-version rollback
+before relying on canonical attribution in presentation code.
+
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
 `runner.yaml` for its concurrency factor and leaves I/O limiters disabled.

@@ -5,6 +5,12 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { asChildRender } from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./tooltip";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -54,7 +60,7 @@ const buttonVariants = cva(
   },
 );
 
-export interface ButtonProps
+interface ButtonBaseProps
   extends
     Omit<ButtonPrimitive.Props, "className" | "render">,
     VariantProps<typeof buttonVariants> {
@@ -62,6 +68,17 @@ export interface ButtonProps
   className?: string;
   render?: ButtonPrimitive.Props["render"];
 }
+
+export type ButtonProps = ButtonBaseProps &
+  (
+    | {
+        showTooltip: true;
+        "aria-label": string;
+      }
+    | {
+        showTooltip?: false;
+      }
+  );
 
 interface ButtonAsChildProps {
   children: React.ReactNode;
@@ -100,6 +117,7 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
       iconSize,
       nativeButton,
       render,
+      showTooltip = false,
       size,
       variant,
       ...props
@@ -109,26 +127,49 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
     const resolvedClassName = cn(
       buttonVariants({ variant, size, iconSize, className }),
     );
+    const { title: _title, ...propsWithoutTitle } = props;
+    const buttonProps = showTooltip ? propsWithoutTitle : props;
 
-    if (asChild) {
-      return (
-        <ButtonAsChild className={resolvedClassName} props={props} ref={ref}>
-          {children}
-        </ButtonAsChild>
-      );
-    }
-
-    return (
+    const button = asChild ? (
+      <ButtonAsChild
+        className={resolvedClassName}
+        props={buttonProps}
+        ref={ref}
+      >
+        {children}
+      </ButtonAsChild>
+    ) : (
       <ButtonPrimitive
         className={resolvedClassName}
         data-slot="button"
         nativeButton={nativeButton}
         ref={ref}
         render={render}
-        {...props}
+        {...buttonProps}
       >
         {children}
       </ButtonPrimitive>
+    );
+
+    if (!showTooltip) {
+      return button;
+    }
+
+    const tooltipTrigger = buttonProps.disabled ? (
+      <span className="inline-flex">{button}</span>
+    ) : (
+      button
+    );
+
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger render={tooltipTrigger} />
+          <TooltipContent>
+            <p className="text-xs">{buttonProps["aria-label"]}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   },
 );

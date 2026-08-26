@@ -59,6 +59,7 @@ export function AuthV2PasswordInput({
         value={value}
       />
       <Button
+        showTooltip
         aria-controls={id}
         aria-label={label}
         aria-pressed={revealed}

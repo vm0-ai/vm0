@@ -22,6 +22,7 @@ import {
 import {
   avatarVideoContract,
   type AvatarVideoAvatarsQuery,
+  type AvatarVideoVoice,
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
@@ -195,7 +196,7 @@ function createSelectedAvatar() {
   };
 }
 
-function createSelectedVoice() {
+function createSelectedVoice(): AvatarVideoVoice {
   return {
     id: "en-US-ChristopherNeural",
     name: "Christopher",
@@ -272,13 +273,14 @@ function mockVoiceCatalog({
   observedQueries = [],
   filterReady,
   pageTwoReady,
+  selectedVoice = createSelectedVoice(),
 }: {
   readonly observedQueries?: AvatarVideoVoicesQuery[];
   readonly filterReady?: TestDeferred;
   readonly pageTwoReady?: TestDeferred;
+  readonly selectedVoice?: AvatarVideoVoice;
 } = {}): void {
   const alternateVoice = createAlternateVoice();
-  const selectedVoice = createSelectedVoice();
   const secondVoice = createSecondVoice();
   context.mocks.api(avatarVideoContract.voices, async ({ query, respond }) => {
     observedQueries.push(query);
@@ -1078,6 +1080,41 @@ describe("chat composer templates", () => {
         ethnicity: "north_american",
       },
     ]);
+  });
+
+  it("shows a tooltip for an unavailable voice preview", async () => {
+    const user = userEvent.setup({ delay: null });
+    const selectedAvatar = createSelectedAvatar();
+    const unavailableVoice: AvatarVideoVoice = {
+      ...createSelectedVoice(),
+      sampleUrl: undefined,
+    };
+    mockAvatarCatalog({ firstPage: [selectedAvatar] });
+    mockVoiceCatalog({ selectedVoice: unavailableVoice });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    const dialog = await openAvatarPicker(user);
+    await selectAvatarRecommendationFilters(user, dialog);
+    await user.click(
+      await within(dialog).findByLabelText("Select template Ada"),
+    );
+
+    const previewButton = await within(dialog).findByLabelText(
+      "Preview voice Christopher",
+    );
+    expect(previewButton).toBeDisabled();
+    expect(previewButton).not.toHaveAttribute("title");
+    const trigger = previewButton.closest<HTMLElement>(
+      '[data-slot="tooltip-trigger"]',
+    );
+    if (trigger === null) {
+      throw new Error("Unavailable voice tooltip trigger not found");
+    }
+    await user.hover(trigger);
+
+    await expect(
+      screen.findByText("Preview voice Christopher"),
+    ).resolves.toBeVisible();
   });
 
   it("recommends, previews, filters, and paginates avatar voices", async () => {

@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { createStore } from "ccstate";
-import { onTestFinished } from "vitest";
+import StripeSDK from "stripe";
+import { beforeEach, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {
   seedOrgMetadata,
@@ -27,11 +28,16 @@ import {
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { mockStripeClient } from "../../external/stripe-client";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
+
+beforeEach(() => {
+  mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
+});
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -390,8 +396,21 @@ describe("GET /api/billing/status", () => {
     expect(Number.isFinite(response.body.concurrencyLimit)).toBeTruthy();
   });
 
-  it("returns entitlement capabilities for a non-staff org", async () => {
+  it("returns entitlement capabilities and the current Stripe concurrency price", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "3");
+    const concurrencyPriceId = `price_concurrency_${randomUUID()}`;
+    mockEnv("OKOU_PRICE_CONCURRENCY", concurrencyPriceId);
+    mockOptionalEnv("STRIPE_SECRET_KEY", "sk_test_billing_status");
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    context.mocks.stripe.prices.retrieve.mockResolvedValue({
+      id: concurrencyPriceId,
+      active: true,
+      currency: "usd",
+      type: "recurring",
+      unit_amount: 4200,
+      recurring: { interval: "month", interval_count: 1 },
+      product: "prod_concurrency",
+    });
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     onTestFinished(async () => {
@@ -438,6 +457,26 @@ describe("GET /api/billing/status", () => {
     expect(response.body.videoGenerationAllowed).toBeFalsy();
     expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
+    expect(response.body.concurrencyUnitAmountCents).toBe(4200);
+
+    context.mocks.stripe.prices.retrieve.mockRejectedValueOnce(
+      new StripeSDK.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        code: "resource_missing",
+        message: "No such price",
+      }),
+    );
+    const missingPriceResponse = await accept(
+      setupApp({ context, routes: billingStatusRoutes })(
+        billingStatusContract,
+      ).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(missingPriceResponse.body).not.toHaveProperty(
+      "concurrencyUnitAmountCents",
+    );
   });
 
   it("keeps plan capabilities accurate for legacy rollout writes", async () => {

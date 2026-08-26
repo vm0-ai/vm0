@@ -183,6 +183,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
 
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             type="button"
             variant="quiet"
             size="icon-sm"

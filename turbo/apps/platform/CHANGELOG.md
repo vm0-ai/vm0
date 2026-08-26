@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.799.4](https://github.com/vm0-ai/vm0/compare/app-v0.799.3...app-v0.799.4) (2026-08-26)
+
+
+### Bug Fixes
+
+* **auth:** align Clerk passkey action styling ([#29549](https://github.com/vm0-ai/vm0/issues/29549)) ([66e28c4](https://github.com/vm0-ai/vm0/commit/66e28c4874286b75a43919bdcb1b006a9f35c1f3))
+* **auth:** reuse alert for field errors ([#29548](https://github.com/vm0-ai/vm0/issues/29548)) ([2119a9b](https://github.com/vm0-ai/vm0/commit/2119a9b8cd0f5dd07017fe7746bd764ef7adafe6))
+* drop the model picker's fixed dropdown height cap ([#29533](https://github.com/vm0-ai/vm0/issues/29533)) ([6247a94](https://github.com/vm0-ai/vm0/commit/6247a94ef585d0ed57512dca00af6da9c99a952d))
+* **platform:** clarify forward target choices ([#29539](https://github.com/vm0-ai/vm0/issues/29539)) ([f85cfe1](https://github.com/vm0-ai/vm0/commit/f85cfe19e3691ee7094290e07ad87303be8d162c))
+* **platform:** keep pin dialog open after updates ([#29561](https://github.com/vm0-ai/vm0/issues/29561)) ([a9f721f](https://github.com/vm0-ai/vm0/commit/a9f721f4dad80d405aadfb78901e297502798e3d))
+* **platform:** label three-column works nav as channels ([#29535](https://github.com/vm0-ai/vm0/issues/29535)) ([1cc80d5](https://github.com/vm0-ai/vm0/commit/1cc80d503445e1bb2e77f88d6bb1beebf5f624da))
+* **platform:** prevent pinned agent drags from opening split view ([#29559](https://github.com/vm0-ai/vm0/issues/29559)) ([897a6ef](https://github.com/vm0-ai/vm0/commit/897a6ef9464d81479a8989295498ef3c1b8e2547))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+    * @okouai/ui bumped to 1.0.0
+
 ## [0.799.3](https://github.com/vm0-ai/vm0/compare/app-v0.799.2...app-v0.799.3) (2026-08-26)
 
 

@@ -800,6 +800,7 @@ async fn complete_claimed_without_sandbox(
             context.run_id,
             context.sandbox_token.clone(),
             ctx.exec_config.runner_name.clone(),
+            ctx.exec_config.runner_hostname.clone(),
         );
         outcome.record(&mut telemetry);
         telemetry

@@ -52,6 +52,14 @@ function getSegmentByText(text: string): HTMLElement {
   return segment;
 }
 
+function getButtonByText(text: string): HTMLButtonElement {
+  const button = screen.getByText(text).closest("button");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
+
 describe("preferences page", () => {
   it("switches between preference tabs", async () => {
     context.mocks.data.userPreferences(createMockPreferences());
@@ -80,6 +88,64 @@ describe("preferences page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps gradient color themes behind their feature switch", async () => {
+    context.mocks.data.userPreferences(createMockPreferences());
+
+    renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Color theme")).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".zero-app[data-gradient-color-themes]"),
+    ).not.toBeInTheDocument();
+    expect(document.documentElement).not.toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).not.toHaveAttribute("data-color-theme");
+  });
+
+  it("selects a palette-derived interface theme", async () => {
+    context.mocks.data.userPreferences(createMockPreferences());
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Blue horizon")).toBeInTheDocument();
+    });
+    const blueHorizon = getButtonByText("Blue horizon");
+    const app = document.querySelector(".zero-app");
+    expect(app).toHaveAttribute("data-gradient-color-themes");
+    expect(app).toHaveAttribute("data-color-theme", "blue-horizon");
+    expect(document.documentElement).toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).toHaveAttribute(
+      "data-color-theme",
+      "blue-horizon",
+    );
+    expect(blueHorizon).toHaveAttribute("aria-pressed", "true");
+
+    click(getButtonByText("Golden hour"));
+
+    await waitFor(() => {
+      expect(app).toHaveAttribute("data-color-theme", "golden-hour");
+      expect(document.documentElement).toHaveAttribute(
+        "data-color-theme",
+        "golden-hour",
+      );
+      expect(getButtonByText("Golden hour")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
   });
 

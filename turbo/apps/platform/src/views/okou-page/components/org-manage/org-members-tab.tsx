@@ -1148,6 +1148,7 @@ function SelfDemoteAction({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -1274,6 +1275,7 @@ function MemberActions({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -1480,6 +1482,7 @@ function PendingInvitationRow({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
+                  showTooltip
                   aria-label={t(
                     ($) => {
                       return $.settings.workspace.members.actionsFor;

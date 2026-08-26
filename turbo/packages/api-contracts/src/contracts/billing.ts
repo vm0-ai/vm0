@@ -81,6 +81,11 @@ const usageAllowanceSchema = z.object({
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   canBuyConcurrency: z.boolean().optional(),
+  // New web/app -> old API rollout: keep this optional while a pre-#29359 API
+  // can still serve or remain a rollback target. After that gate closes,
+  // #29592 removes the rollout-only rationale/test. Current APIs may still
+  // omit the amount when the configured Stripe Price is unavailable.
+  concurrencyUnitAmountCents: z.number().int().positive().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),

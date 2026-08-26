@@ -296,6 +296,7 @@ import {
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -2782,6 +2783,7 @@ function HeaderAutomationSidebar({
           </div>
         </div>
         <Button
+          showTooltip
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
@@ -4778,7 +4780,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
   }
 
   return (
-    <button
+    <IconTooltipButton
       type="button"
       data-scroll-to-bottom
       aria-label={t(($) => {
@@ -4790,7 +4792,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
       className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-background-hover hover:text-foreground"
     >
       <ArrowDown size={18} />
-    </button>
+    </IconTooltipButton>
   );
 }
 
@@ -6662,7 +6664,7 @@ function UserMessageActions({
   }
   return (
     <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-      <button
+      <IconTooltipButton
         type="button"
         onClick={onCopy}
         className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
@@ -6671,7 +6673,7 @@ function UserMessageActions({
         })}
       >
         {copied ? <Check size={18} /> : <Copy size={18} />}
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }

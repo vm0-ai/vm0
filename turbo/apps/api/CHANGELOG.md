@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.496.0](https://github.com/vm0-ai/vm0/compare/api-v1.495.0...api-v1.496.0) (2026-08-26)
+
+
+### Features
+
+* **api:** persist runner hostname and version attribution ([#29557](https://github.com/vm0-ai/vm0/issues/29557)) ([5f0f394](https://github.com/vm0-ai/vm0/commit/5f0f3945df7e7d476a8847bd6599e0e11f9147f3))
+* **chat:** expose unread threads to workflows ([#29566](https://github.com/vm0-ai/vm0/issues/29566)) ([0592465](https://github.com/vm0-ai/vm0/commit/05924657c5a154e45c5df69b08be268daa6b3a0d))
+
+
+### Refactoring
+
+* **api:** report machine secret alias source at startup ([#29565](https://github.com/vm0-ai/vm0/issues/29565)) ([c073b7c](https://github.com/vm0-ai/vm0/commit/c073b7cea572ba1943cc0890c2055a5663481f7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.370.0
+    * @okouai/core bumped to 8.594.4
+    * @okouai/db bumped to 1.225.0
+
 ## [1.495.0](https://github.com/vm0-ai/vm0/compare/api-v1.494.3...api-v1.495.0) (2026-08-26)
 
 
