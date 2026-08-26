@@ -241,17 +241,16 @@ function validatedSandboxEventSequenceStart(args: {
   // and the two-hour runner drain. Remove v1 after #29618 is live on every Pi
   // runner, pre-v2 work has drained, and no retained rollback API emits v1;
   // tracked by #29612.
-  const manifestSequenceStart =
-    args.manifest.schemaVersion === 1
-      ? 1
-      : args.manifest.sandboxEventSequenceStart;
-  if (manifestSequenceStart !== args.config.sandboxEventSequenceStart) {
+  if (args.manifest.schemaVersion === 2) {
+    return args.manifest.sandboxEventSequenceStart;
+  }
+  if (args.config.sandboxEventSequenceStart !== 1) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_SEQUENCE_MISMATCH",
       "Pi API first-turn manifest boundary does not match the launch",
     );
   }
-  return manifestSequenceStart;
+  return 1;
 }
 
 async function restoreSession(args: {

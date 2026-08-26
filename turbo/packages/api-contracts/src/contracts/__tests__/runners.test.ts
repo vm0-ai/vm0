@@ -316,7 +316,7 @@ describe("Pi sandbox execution contract", () => {
     ).toBe(false);
   });
 
-  it("accepts a future manifest and launch config with the same dynamic boundary", () => {
+  it("accepts an authoritative future manifest boundary after launch", () => {
     const sandboxEventSequenceStart = 4;
     const manifest = piApiFirstTurnManifestSchema.parse({
       schemaVersion: 2,
@@ -325,16 +325,15 @@ describe("Pi sandbox execution contract", () => {
       session: handoffSession,
       sandboxEventSequenceStart,
     });
-    const config = piApiFirstTurnConfigSchema.parse({
-      ...piStoredContext.piLaunchConfig.apiFirstTurn,
-      sandboxEventSequenceStart,
-    });
+    const config = piApiFirstTurnConfigSchema.parse(
+      piStoredContext.piLaunchConfig.apiFirstTurn,
+    );
 
     expect(manifest).toMatchObject({
       schemaVersion: 2,
       sandboxEventSequenceStart,
     });
-    expect(config.sandboxEventSequenceStart).toBe(sandboxEventSequenceStart);
+    expect(config.sandboxEventSequenceStart).toBe(1);
   });
 
   it.each([0, -1, 1.5, MAX_EVENT_SEQUENCE_NUMBER + 1])(
