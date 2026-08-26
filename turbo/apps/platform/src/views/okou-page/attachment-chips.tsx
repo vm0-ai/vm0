@@ -1412,7 +1412,7 @@ function ArtifactPreviewDialogContent({
             "flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
             fullscreen
               ? "zero-fixed-viewport-shell w-dvw rounded-none"
-              : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl",
+              : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-xl",
           )}
           data-testid="attachment-lightbox-panel"
         >

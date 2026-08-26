@@ -638,6 +638,9 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
+      "rounded-xl",
+    );
 
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
