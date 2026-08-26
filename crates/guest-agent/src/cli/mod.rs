@@ -55,7 +55,7 @@ use crate::paths;
 use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
-use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
+use event_delivery::{EventDeliveryReport, EventDeliveryRuntime, EventDeliverySender};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
@@ -87,6 +87,7 @@ const CODEX_SERVICE_TIER_LEGACY_ENV: &str = "VM0_CODEX_SERVICE_TIER";
 const CODEX_SERVICE_TIER_RESOLUTION_EVENT: &str = "codex_service_tier_environment_resolution";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
+const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
@@ -605,30 +606,6 @@ fn write_claude_append_system_prompt_file(
     Ok(())
 }
 
-fn pi_sandbox_event_sequence_start(runtime: &CliRuntimeConfig<'_>) -> Result<u32, AgentError> {
-    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
-        .map_err(|error| AgentError::Execution(format!("parse Pi launch config: {error}")))?;
-    let sequence = launch_config
-        .pointer("/apiFirstTurn/sandboxEventSequenceStart")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            AgentError::Execution(
-                "Pi launch config requires apiFirstTurn.sandboxEventSequenceStart".to_string(),
-            )
-        })?;
-    let sequence = u32::try_from(sequence).map_err(|_| {
-        AgentError::Execution(
-            "Pi launch config apiFirstTurn.sandboxEventSequenceStart exceeds u32".to_string(),
-        )
-    })?;
-    if sequence != 1 {
-        return Err(AgentError::Execution(
-            "Pi Sandbox event sequence must start at 1".to_string(),
-        ));
-    }
-    Ok(sequence)
-}
-
 fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
     [
         (
@@ -839,7 +816,16 @@ impl<'a> CliEventIngestor<'a> {
     ) -> Result<(), AgentError> {
         for event in provider_event_normalization::normalize_for_sequencing(self.framework, event) {
             let sequence = self.seq;
-            self.seq += 1;
+            if sequence > MAX_EVENT_SEQUENCE_NUMBER {
+                return Err(AgentError::Execution(
+                    "CLI event sequence exceeds the supported maximum".to_string(),
+                ));
+            }
+            self.seq = sequence.checked_add(1).ok_or_else(|| {
+                AgentError::Execution(
+                    "CLI event sequence exceeds the supported maximum".to_string(),
+                )
+            })?;
             if should_send_events {
                 let event = events::prepare_event_for_delivery(event, sequence, masker);
                 if self.framework == env::Framework::Codex {
@@ -875,6 +861,30 @@ impl<'a> CliEventIngestor<'a> {
 
     fn failure_diagnostic(&self) -> Option<CliFailureDiagnostic> {
         self.failure_diagnostic.clone()
+    }
+}
+
+struct CliEventPipeline<'a> {
+    ingestor: CliEventIngestor<'a>,
+    delivery: EventDeliveryRuntime,
+}
+
+impl<'a> CliEventPipeline<'a> {
+    fn start(
+        runtime: &CliRuntimeConfig<'_>,
+        session_metadata: SessionMetadataStore,
+        http: &HttpClient,
+        initial_sequence: u32,
+    ) -> Result<Self, AgentError> {
+        let delivery =
+            EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_sequence)?;
+        let ingestor = CliEventIngestor::new_with_session_metadata(
+            runtime,
+            None,
+            session_metadata,
+            initial_sequence,
+        );
+        Ok(Self { ingestor, delivery })
     }
 }
 
@@ -1001,12 +1011,6 @@ async fn execute_cli_inner(
         )
         .await;
     }
-
-    let initial_event_sequence = if matches!(runtime.framework, env::Framework::Pi) {
-        pi_sandbox_event_sequence_start(runtime)?
-    } else {
-        0
-    };
 
     let CliExecutionControls {
         active_input,
@@ -1137,6 +1141,7 @@ async fn execute_cli_inner(
     let mut pi_rpc_projection = pi_execution.then(|| {
         pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
     });
+    let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
     let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
@@ -1228,8 +1233,16 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery =
-        EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_event_sequence)?;
+    let mut event_pipeline = if pi_execution {
+        None
+    } else {
+        Some(CliEventPipeline::start(
+            runtime,
+            session_metadata.clone(),
+            &http,
+            0,
+        )?)
+    };
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
@@ -1237,12 +1250,6 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new_with_session_metadata(
-        runtime,
-        None,
-        session_metadata,
-        initial_event_sequence,
-    );
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1386,6 +1393,82 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            if let Some(startup_boundary) = pi_rpc_startup_boundary.as_mut() {
+                                match startup_boundary.admit(&event) {
+                                    Ok(pi_rpc::PiRpcRecordAdmission::InstallBoundary(sequence)) => {
+                                        match CliEventPipeline::start(
+                                            runtime,
+                                            session_metadata.clone(),
+                                            &http,
+                                            sequence,
+                                        ) {
+                                            Ok(pipeline) => {
+                                                event_pipeline = Some(pipeline);
+                                            }
+                                            Err(error) => {
+                                                startup_boundary.discard_remaining();
+                                                active_input_controller.close_terminal();
+                                                if cli_status.is_some() {
+                                                    break Err(error);
+                                                }
+                                                let error_log = error.to_string();
+                                                termination_runtime.begin_control_failure(
+                                                    TerminationReason::StdoutIngestion,
+                                                    error,
+                                                    ControlTerminationLog::StdoutIngestionFailed {
+                                                        error: error_log,
+                                                    },
+                                                    termination_deadline.as_mut(),
+                                                );
+                                            }
+                                        }
+                                        // The startup control is private CLI/guest state. It is
+                                        // consumed before official RPC projection and is never
+                                        // written to the agent transcript or public delivery.
+                                        continue;
+                                    }
+                                    Ok(pi_rpc::PiRpcRecordAdmission::Project) => {
+                                        if event_pipeline.is_none() {
+                                            startup_boundary.discard_remaining();
+                                            let error = AgentError::Execution(
+                                                "CLI event pipeline was not initialized before Pi RPC projection"
+                                                    .to_string(),
+                                            );
+                                            active_input_controller.close_terminal();
+                                            if cli_status.is_some() {
+                                                break Err(error);
+                                            }
+                                            let error_log = error.to_string();
+                                            termination_runtime.begin_control_failure(
+                                                TerminationReason::StdoutIngestion,
+                                                error,
+                                                ControlTerminationLog::StdoutIngestionFailed {
+                                                    error: error_log,
+                                                },
+                                                termination_deadline.as_mut(),
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                    Ok(pi_rpc::PiRpcRecordAdmission::Discard) => continue,
+                                    Err(error) => {
+                                        active_input_controller.close_terminal();
+                                        if cli_status.is_some() {
+                                            break Err(error);
+                                        }
+                                        let error_log = error.to_string();
+                                        termination_runtime.begin_control_failure(
+                                            TerminationReason::StdoutIngestion,
+                                            error,
+                                            ControlTerminationLog::StdoutIngestionFailed {
+                                                error: error_log,
+                                            },
+                                            termination_deadline.as_mut(),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
                             if let Some(projection) = pi_rpc_projection.as_mut() {
                                 match projection.project(event, &pi_rpc_response_tx) {
                                     Ok(Some(projected)) => event = projected,
@@ -1439,9 +1522,31 @@ async fn execute_cli_inner(
                                 continue;
                             }
 
+                            let Some(event_pipeline) = event_pipeline.as_mut() else {
+                                let error = AgentError::Execution(
+                                    "CLI event pipeline was not initialized before projection"
+                                        .to_string(),
+                                );
+                                active_input_controller.close_terminal();
+                                if cli_status.is_some() {
+                                    break Err(error);
+                                }
+                                let error_log = error.to_string();
+                                termination_runtime.begin_control_failure(
+                                    TerminationReason::StdoutIngestion,
+                                    error,
+                                    ControlTerminationLog::StdoutIngestionFailed {
+                                        error: error_log,
+                                    },
+                                    termination_deadline.as_mut(),
+                                );
+                                continue;
+                            };
+
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            let event_action = event_ingestor
+                            let event_action = event_pipeline
+                                .ingestor
                                 .begin_event(
                                     &mut agent_log,
                                     line.as_bytes(),
@@ -1493,10 +1598,12 @@ async fn execute_cli_inner(
                                     log_warn!(
                                         LOG_TAG,
                                         "Claude JSONL failure result seq={} subtype={subtype}: {}",
-                                        event_ingestor.current_sequence(),
+                                        event_pipeline.ingestor.current_sequence(),
                                         candidate.message
                                     );
-                                    event_ingestor.replace_failure_diagnostic(candidate);
+                                    event_pipeline
+                                        .ingestor
+                                        .replace_failure_diagnostic(candidate);
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
@@ -1534,11 +1641,11 @@ async fn execute_cli_inner(
                             );
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
-                            if let Err(error) = event_ingestor.enqueue_event(
+                            if let Err(error) = event_pipeline.ingestor.enqueue_event(
                                 event,
                                 masker,
                                 should_send_events,
-                                event_delivery.sender(),
+                                event_pipeline.delivery.sender(),
                             ) {
                                 should_send_events = false;
                                 if cli_status.is_some() {
@@ -1552,6 +1659,30 @@ async fn execute_cli_inner(
                                     termination_deadline.as_mut(),
                                 );
                             }
+                        } else if pi_rpc_startup_boundary
+                            .as_ref()
+                            .is_some_and(|boundary| {
+                                boundary.requires_boundary()
+                                    || pi_rpc::PiRpcStartupBoundary::looks_like_control(stripped)
+                            })
+                        {
+                            if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
+                                boundary.discard_remaining();
+                            }
+                            let error = pi_rpc::PiRpcStartupBoundary::malformed_record_error();
+                            active_input_controller.close_terminal();
+                            if cli_status.is_some() {
+                                break Err(error);
+                            }
+                            let error_log = error.to_string();
+                            termination_runtime.begin_control_failure(
+                                TerminationReason::StdoutIngestion,
+                                error,
+                                ControlTerminationLog::StdoutIngestionFailed {
+                                    error: error_log,
+                                },
+                                termination_deadline.as_mut(),
+                            );
                         } else {
                             agent_log.write_raw_line(line.as_bytes()).await;
                         }
@@ -1559,6 +1690,28 @@ async fn execute_cli_inner(
                     Ok(None) => {
                         stdout_closed = true;
                         active_input_controller.close_terminal();
+                        if pi_rpc_startup_boundary
+                            .as_ref()
+                            .is_some_and(pi_rpc::PiRpcStartupBoundary::requires_boundary)
+                        {
+                            if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
+                                boundary.discard_remaining();
+                            }
+                            let error = pi_rpc::PiRpcStartupBoundary::missing_error();
+                            if cli_status.is_some() {
+                                break Err(error);
+                            }
+                            let error_log = error.to_string();
+                            termination_runtime.begin_control_failure(
+                                TerminationReason::StdoutIngestion,
+                                error,
+                                ControlTerminationLog::StdoutIngestionFailed {
+                                    error: error_log,
+                                },
+                                termination_deadline.as_mut(),
+                            );
+                            continue;
+                        }
                         if cli_status.is_some() {
                             break Ok(());
                         }
@@ -1839,14 +1992,25 @@ async fn execute_cli_inner(
     } else {
         event_result.err()
     };
+    let last_read_event_at = event_pipeline
+        .as_ref()
+        .and_then(|pipeline| pipeline.ingestor.last_read_event_at());
+    let failure_diagnostic = event_pipeline
+        .as_ref()
+        .and_then(|pipeline| pipeline.ingestor.failure_diagnostic());
 
     // On success, boundedly drain accepted events. On any execution or
     // control error, abort unsent delivery rather than stalling on retries.
-    let delivery_report = if event_error.is_none() && !has_control_error {
-        event_delivery.finish().await
-    } else {
-        Ok(event_delivery.abort().await)
-    }?;
+    let delivery_report = match event_pipeline {
+        Some(pipeline) if event_error.is_none() && !has_control_error => {
+            pipeline.delivery.finish().await?
+        }
+        Some(pipeline) => pipeline.delivery.abort().await,
+        None => EventDeliveryReport {
+            last_acknowledged_sequence: None,
+            diagnostic: None,
+        },
+    };
     let status = match cli_status {
         Some(s) => s,
         None => {
@@ -1855,9 +2019,7 @@ async fn execute_cli_inner(
             status
         }
     };
-    if let (Some(last_read_event_at), Some(cli_exit_at)) =
-        (event_ingestor.last_read_event_at(), cli_exit_at)
-    {
+    if let (Some(last_read_event_at), Some(cli_exit_at)) = (last_read_event_at, cli_exit_at) {
         record_sandbox_op(
             "last_read_event_to_cli_exit",
             cli_exit_at
@@ -1919,7 +2081,7 @@ async fn execute_cli_inner(
         event_delivery: delivery_report.diagnostic,
         claude_result,
         post_result_cleanup_result,
-        failure_diagnostic: event_ingestor.failure_diagnostic(),
+        failure_diagnostic,
         control_error,
         cli_termination,
         active_input_delivery_ids,
@@ -2081,9 +2243,8 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, command, exec_boundary,
-        pi_child_env_values, pi_sandbox_event_sequence_start, record_cli_exit,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
-        write_pi_launch_payload_file,
+        pi_child_env_values, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason, write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
@@ -2362,30 +2523,6 @@ mod tests {
         let raw = std::fs::read(paths.pi_launch_payload_file()).unwrap();
         let payload: serde_json::Value = serde_json::from_slice(&raw).unwrap();
         assert!(payload["appendSystemPrompt"].is_null());
-    }
-
-    #[test]
-    fn pi_event_sequence_continues_after_the_api_first_turn() {
-        let user_env = HashMap::new();
-        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config =
-            Cow::Borrowed(r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#);
-
-        assert_eq!(pi_sandbox_event_sequence_start(&runtime).unwrap(), 1);
-    }
-
-    #[test]
-    fn pi_event_sequence_rejects_a_missing_handoff_boundary() {
-        let user_env = HashMap::new();
-        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
-
-        assert_eq!(
-            pi_sandbox_event_sequence_start(&runtime)
-                .unwrap_err()
-                .to_string(),
-            "execution: Pi launch config requires apiFirstTurn.sandboxEventSequenceStart"
-        );
     }
 
     #[test]

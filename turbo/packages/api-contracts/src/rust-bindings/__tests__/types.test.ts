@@ -11,6 +11,7 @@ import {
   rustTypeBindings,
 } from "../types";
 import { modelProviderCodexRuntimeConfigSchema } from "../../contracts/model-providers";
+import { MAX_EVENT_SEQUENCE_NUMBER } from "../../contracts/runs";
 import {
   piLaunchConfigSchema,
   piModelConfigSchema,
@@ -397,7 +398,11 @@ describe("Rust type bindings", () => {
           ],
           properties: {
             schemaVersion: { const: 1 },
-            sandboxEventSequenceStart: { const: 1 },
+            sandboxEventSequenceStart: {
+              type: "integer",
+              minimum: 1,
+              maximum: MAX_EVENT_SEQUENCE_NUMBER,
+            },
             baseSession: {
               required: ["sessionId", "sha256"],
             },

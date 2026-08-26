@@ -18,6 +18,8 @@ const RUN_ID_ENV = "OKOU_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
 const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
+const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE =
+  "vm0_pi_api_first_turn_boundary";
 
 export interface PiSandboxAgentConfig {
   readonly runId: string;
@@ -49,6 +51,29 @@ async function readLaunchPayload(
   const path = requiredEnv(env, PI_LAUNCH_PAYLOAD_FILE_ENV);
   const raw = await readFile(path, "utf8");
   return piLaunchPayloadSchema.parse(JSON.parse(raw) as unknown);
+}
+
+async function writePiApiFirstTurnBoundaryControl(
+  sandboxEventSequenceStart: number,
+): Promise<void> {
+  const line = `${JSON.stringify({
+    type: PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+    schemaVersion: 1,
+    sandboxEventSequenceStart,
+  })}\n`;
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(line, (error) => {
+      if (error) {
+        reject(
+          new Error("Pi API first-turn boundary control could not be written", {
+            cause: error,
+          }),
+        );
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 /**
@@ -91,6 +116,7 @@ export async function runPiSandboxAgentLoop(args: {
     sessionDir,
     sessionId: args.config.sessionId,
   });
+  await writePiApiFirstTurnBoundaryControl(handoff.sandboxEventSequenceStart);
   return await runPiOfficialRpcMode({
     sessionId: args.config.sessionId,
     sessionDir,
