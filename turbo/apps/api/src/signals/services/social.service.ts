@@ -29,14 +29,6 @@ const SOCIALKIT_TIMEOUT_MS = 240_000;
 const MAX_SOCIALKIT_RESPONSE_BYTES = 4 * 1024 * 1024;
 const L = logger("ManagedSocialKit");
 
-type ProviderFailureKind =
-  | "credential_leak"
-  | "http_error"
-  | "invalid_response"
-  | "network"
-  | "response_too_large"
-  | "timeout";
-
 type ErrorStatus = 400 | 404 | 502 | 503;
 
 interface SocialKitErrorResponse {
@@ -108,19 +100,6 @@ function invalidResponse(): SocialKitErrorResponse {
     "SocialKit returned an invalid response",
     "SOCIALKIT_INVALID_RESPONSE",
   );
-}
-
-function logProviderFailure(
-  tool: ManagedSocialKitTool,
-  failureKind: ProviderFailureKind,
-  httpStatus?: number,
-): void {
-  L.warn("Managed SocialKit request failed", {
-    tool: tool.name,
-    path: tool.path,
-    failureKind,
-    ...(httpStatus === undefined ? {} : { httpStatus }),
-  });
 }
 
 function providerErrorMessage(body: unknown): string | undefined {
@@ -251,7 +230,6 @@ async function fetchSocialKit(
         MAX_SOCIALKIT_RESPONSE_BYTES,
       );
       if (textResult.kind === "too_large") {
-        logProviderFailure(tool, "response_too_large", response.status);
         return errorResult(
           badGateway(
             "SocialKit response is too large",
@@ -276,12 +254,10 @@ async function fetchSocialKit(
       error instanceof Error &&
       (error.name === "AbortError" || error.name === "TimeoutError")
     ) {
-      logProviderFailure(tool, "timeout");
       return errorResult(
         badGateway("SocialKit request timed out", "SOCIALKIT_REQUEST_TIMEOUT"),
       );
     }
-    logProviderFailure(tool, "network");
     return errorResult(
       badGateway("SocialKit request failed", "SOCIALKIT_UPSTREAM_ERROR"),
     );
@@ -290,7 +266,14 @@ async function fetchSocialKit(
     return settled.value;
   }
   if (!settled.value.response.ok) {
-    logProviderFailure(tool, "http_error", settled.value.response.status);
+    if (settled.value.response.status === 400) {
+      L.warn("Managed SocialKit request failed", {
+        tool: tool.name,
+        path: tool.path,
+        failureKind: "http_error",
+        httpStatus: settled.value.response.status,
+      });
+    }
     return errorResult(
       providerHttpError(settled.value.response.status, settled.value.body),
     );
@@ -528,10 +511,6 @@ async function completeSocialKitRequest(
     args.tool,
   );
   if (!parsed.ok) {
-    const failureKind = parsed.credentialLeak
-      ? "credential_leak"
-      : "invalid_response";
-    logProviderFailure(args.tool, failureKind);
     return invalidResponse();
   }
   const creditsCharged = await args.recordUsage(parsed.billingQuantity);
