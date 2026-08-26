@@ -3747,10 +3747,6 @@ describe("organization billing settings", () => {
     const decreaseQuantity = within(dialog).getByLabelText(
       "Decrease additional concurrency quantity",
     );
-    const increaseQuantity = within(dialog).getByLabelText(
-      "Increase additional concurrency quantity",
-    );
-
     expect(quantityInput).toHaveValue("1");
     expect(decreaseQuantity).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "0" } });
@@ -3758,7 +3754,9 @@ describe("organization billing settings", () => {
 
     fireEvent.change(quantityInput, { target: { value: "1000" } });
     expect(quantityInput).toHaveValue("1000");
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
     expect(within(dialog).getByText("$100,000/month")).toBeInTheDocument();
     fireEvent.change(quantityInput, { target: { value: "1001" } });
     expect(quantityInput).toHaveValue("1000");
@@ -3815,9 +3813,6 @@ describe("organization billing settings", () => {
       dialog,
     );
     const cancel = buttonByText("Cancel", dialog);
-    const decreaseQuantity = within(dialog).getByLabelText(
-      "Decrease additional concurrency quantity",
-    );
     const increaseQuantity = within(dialog).getByLabelText(
       "Increase additional concurrency quantity",
     );
@@ -3832,8 +3827,12 @@ describe("organization billing settings", () => {
     });
     expect(cancelSubscription).toBeDisabled();
     expect(cancel).toBeDisabled();
-    expect(decreaseQuantity).toBeDisabled();
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Decrease additional concurrency quantity"),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
 
     previewReady.resolve(undefined);
     await screen.findByRole("dialog", { name: "Review concurrency change" });

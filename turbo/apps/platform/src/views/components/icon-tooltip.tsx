@@ -27,7 +27,7 @@ export function IconTooltip({
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger render={trigger} />
+        <TooltipTrigger className="icon-tooltip-trigger" render={trigger} />
         <TooltipContent side={side}>
           <p className="text-xs">{children.props["aria-label"]}</p>
         </TooltipContent>
