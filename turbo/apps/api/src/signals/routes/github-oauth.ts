@@ -104,11 +104,13 @@ async function resolveGithubOauthMethodForNewAction(
 }
 
 async function githubAppInstallRequestedScopes(
-  resolver: ConnectorActionResolver,
+  resolver: Promise<ConnectorActionResolver>,
   signal: AbortSignal,
 ): Promise<readonly string[] | undefined> {
   const result = await settle(
-    resolveGithubOauthMethodForNewAction(resolver),
+    (async () => {
+      return await resolveGithubOauthMethodForNewAction(await resolver);
+    })(),
     signal,
   );
   if (!result.ok) {
@@ -736,7 +738,7 @@ const installGithubOauth$ = command(
     const oauthRequestedScopes =
       userId && githubAppUserOauthCredentials()
         ? await githubAppInstallRequestedScopes(
-            await get(connectorActionResolver()),
+            get(connectorActionResolver()),
             signal,
           )
         : undefined;
