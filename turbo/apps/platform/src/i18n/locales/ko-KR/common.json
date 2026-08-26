@@ -2303,9 +2303,36 @@
     },
     "toolActivity": {
       "categories": {
-        "changes": "파일 변경",
-        "read": "파일 읽음",
-        "run": "명령 실행"
+        "changes": {
+          "pending": {
+            "plural": "여러 파일 변경 중",
+            "singular": "파일 변경 중"
+          },
+          "terminal": {
+            "plural": "여러 파일 변경",
+            "singular": "파일 변경"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "여러 파일 읽는 중",
+            "singular": "파일 읽는 중"
+          },
+          "terminal": {
+            "plural": "여러 파일 읽음",
+            "singular": "파일 읽음"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "여러 명령 실행 중",
+            "singular": "명령 실행 중"
+          },
+          "terminal": {
+            "plural": "여러 명령 실행",
+            "singular": "명령 실행"
+          }
+        }
       },
       "collapse": "도구 활동 접기",
       "expand": "도구 활동 펼치기",

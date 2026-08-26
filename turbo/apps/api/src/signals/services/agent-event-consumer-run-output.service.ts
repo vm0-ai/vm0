@@ -26,7 +26,10 @@ import {
 } from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
-import { normalizeAgentToolEvent } from "./agent-tool-event-normalization";
+import {
+  normalizeAgentToolEvent,
+  terminalToolSummary,
+} from "./agent-tool-event-normalization";
 import {
   toolUseIdForProviderOperation,
   toolUseIdForRunEvent,
@@ -40,7 +43,10 @@ interface OutputCandidate {
   readonly content: string;
 }
 
-type ToolOperationState = Pick<OutputToolPayload, "action" | "summary">;
+type ToolOperationState = Pick<
+  OutputToolPayload,
+  "action" | "status" | "summary"
+>;
 
 export interface MaterializedChatProjection {
   readonly thread: {
@@ -295,6 +301,7 @@ function assistantEventItems(args: {
       });
       toolOperations.set(toolUseId, {
         action: normalized.action,
+        status: normalized.status,
         summary: normalized.summary,
       });
       continue;
@@ -307,17 +314,35 @@ function assistantEventItems(args: {
     );
     const prior = toolOperations.get(toolUseId);
     if (normalized.kind === "correlated-terminal") {
-      const operation = prior ?? normalized.standaloneOperation;
-      if (operation === undefined) {
+      const sourceOperation =
+        prior ??
+        (normalized.standaloneOperation === undefined
+          ? undefined
+          : {
+              ...normalized.standaloneOperation,
+              status: normalized.status,
+            });
+      if (sourceOperation === undefined) {
         continue;
       }
+      const operation: ToolOperationState = {
+        action: sourceOperation.action,
+        status: normalized.status,
+        summary:
+          sourceOperation.status === "pending"
+            ? terminalToolSummary(
+                sourceOperation.action,
+                sourceOperation.summary,
+              )
+            : sourceOperation.summary,
+      };
       items.push({
         eventType: "output.tool",
         runEventSequenceNumber: event.sequenceNumber,
         runEventId,
         toolUseId,
         action: operation.action,
-        status: normalized.status,
+        status: operation.status,
         summary: operation.summary,
       });
       toolOperations.set(toolUseId, operation);
@@ -326,6 +351,7 @@ function assistantEventItems(args: {
 
     const operation = {
       action: normalized.action,
+      status: normalized.status,
       summary: normalized.summary,
     };
     items.push({
@@ -334,7 +360,7 @@ function assistantEventItems(args: {
       runEventId,
       toolUseId,
       action: operation.action,
-      status: normalized.status,
+      status: operation.status,
       summary: operation.summary,
     });
     toolOperations.set(toolUseId, operation);
@@ -361,6 +387,7 @@ async function priorToolOperationsForRun(
     const payload = outputToolPayloadSchema.parse(row.payload);
     operations.set(payload.toolUseId, {
       action: payload.action,
+      status: payload.status,
       summary: payload.summary,
     });
   }

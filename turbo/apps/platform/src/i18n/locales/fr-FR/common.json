@@ -2351,9 +2351,36 @@
     },
     "toolActivity": {
       "categories": {
-        "changes": "Fichiers modifiés",
-        "read": "Fichiers lus",
-        "run": "Commandes exécutées"
+        "changes": {
+          "pending": {
+            "plural": "Modification de fichiers",
+            "singular": "Modification d’un fichier"
+          },
+          "terminal": {
+            "plural": "Fichiers modifiés",
+            "singular": "Fichier modifié"
+          }
+        },
+        "read": {
+          "pending": {
+            "plural": "Lecture de fichiers",
+            "singular": "Lecture d’un fichier"
+          },
+          "terminal": {
+            "plural": "Fichiers lus",
+            "singular": "Fichier lu"
+          }
+        },
+        "run": {
+          "pending": {
+            "plural": "Exécution de commandes",
+            "singular": "Exécution d’une commande"
+          },
+          "terminal": {
+            "plural": "Commandes exécutées",
+            "singular": "Commande exécutée"
+          }
+        }
       },
       "collapse": "Réduire l’activité des outils",
       "expand": "Développer l’activité des outils",
