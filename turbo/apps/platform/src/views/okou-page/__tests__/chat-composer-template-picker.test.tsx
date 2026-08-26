@@ -4675,14 +4675,11 @@ describe("chat composer templates", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(sentPrompt).toContain("reusable presentation template");
-      // The guide is not a mounted skill, so the message has to carry the
-      // private resource pull and its extracted entrypoint.
-      expect(sentPrompt).toContain(
-        "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
-      );
-      expect(sentPrompt).toContain(
-        "./generated/resources/reverse-template/SKILL.md",
+      // What the user sees in their own thread is the request they would have
+      // typed. How the run reaches the guide is carried by the agent tools
+      // prompt, so none of it leaks into the message sent on their behalf.
+      expect(sentPrompt).toBe(
+        "Analyse this deck and save its visual language as a reusable presentation template.",
       );
       expect(sentMessage?.parts).toContainEqual(
         expect.objectContaining({
