@@ -927,7 +927,6 @@ async function readProjectedRuntimeRows(args: {
         return validateConnectorCatalogRuntimeProjectionRows({
           rows,
           connectorSlugs,
-          projectionVersion: args.projection.identity.projectionVersion,
           timing,
         });
       });

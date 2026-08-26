@@ -58,6 +58,7 @@ import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-mode
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
+import { validateConnectorRuntimeProjectionV2Cutover } from "./test-connector-runtime-projection-v2-cutover";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
@@ -10837,6 +10838,7 @@ async function main(): Promise<void> {
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
+    await validateConnectorRuntimeProjectionV2Cutover();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

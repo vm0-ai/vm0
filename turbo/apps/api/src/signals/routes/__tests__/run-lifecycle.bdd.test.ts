@@ -71,7 +71,6 @@ import {
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
-  setApiTestConnectorCatalogRuntimeProjectionLegacy,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -2790,12 +2789,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     },
     {
-      payloadState: "missing",
-      createPayload: (): null => {
-        return null;
-      },
-    },
-    {
       payloadState: "oversized",
       createPayload: (): Buffer => {
         return Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1);
@@ -2803,7 +2796,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     },
   ] satisfies readonly {
     readonly payloadState: string;
-    readonly createPayload: () => Buffer | null;
+    readonly createPayload: () => Buffer;
   }[])(
     "falls back when an attested projection payload is $payloadState",
     async ({ payloadState, createPayload }) => {
@@ -2849,45 +2842,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestCancelRun(actor, run.runId, [200]);
     },
   );
-
-  it("keeps legacy projections readable during mixed-version rollout", async () => {
-    const api = createRunsApi(context);
-    mockEnv(
-      "R2_USER_STORAGES_BUCKET_NAME",
-      `test-run-lifecycle-legacy-runtime-projection-${randomUUID()}`,
-    );
-    await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-legacy-runtime-projection-${randomUUID()}`,
-      runtimeProjection: true,
-    });
-    await setApiTestConnectorCatalogRuntimeProjectionLegacy();
-    const { actor, agentId } = await entitledRunActor();
-    const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
-        agentId,
-        prompt: "legacy runtime projection",
-      }),
-      connectorScope: {
-        allowedConnectorSlugs: ["x"],
-        allowedCustomConnectorIds: [],
-      },
-    });
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectProjectionRowReadActionCounts(timingEvents, 1);
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_connector_catalog_load_runtime_snapshot",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        connector_catalog_runtime_selection_source: "projection",
-        connector_catalog_projection_cache_outcome: "miss",
-        connector_catalog_projection_readiness: "ready",
-      }),
-    );
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
 
   it("falls back when projection validation authority is stale", async () => {
     const api = createRunsApi(context);
