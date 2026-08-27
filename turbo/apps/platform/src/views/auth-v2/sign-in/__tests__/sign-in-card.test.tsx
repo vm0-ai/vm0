@@ -1806,6 +1806,11 @@ describe("auth v2 sign-in flow", () => {
     const mismatchAlert = await screen.findByRole("alert");
     expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
     expect(document.activeElement).toBe(mismatchAlert);
+    expect(mismatchAlert).not.toHaveClass(
+      "focus:ring-2",
+      "focus:ring-ring",
+      "focus:ring-offset-2",
+    );
     expectNoFieldErrorAssociation(newPasswordInput);
     expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();
