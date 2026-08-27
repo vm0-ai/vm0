@@ -86,7 +86,7 @@ export function expectTextBefore(firstText: string, secondText: string): void {
   ).toBeTruthy();
 }
 
-function queryTabByText(text: string): HTMLElement | null {
+export function queryTabByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("tab").find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === text;

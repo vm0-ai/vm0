@@ -655,6 +655,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
+      "introVideo": "Video intro",
       "multiAccent": "Multi-aksen",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",
@@ -672,6 +673,7 @@
       "searchConnector": "Cari templat",
       "searchConnectors": "Cari templat",
       "selected": "Templat: {{title}}",
+      "selectIntroVideo": "Pilih template video intro {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
       "selectVideo": "Pilih template video {{title}}",
@@ -2251,6 +2253,7 @@
     "templates": {
       "categories": {
         "illustration": "Ilustrasi",
+        "introVideo": "Video intro",
         "presentation": "Presentasi",
         "video": "Video",
         "website": "Situs web",

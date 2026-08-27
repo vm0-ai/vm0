@@ -675,6 +675,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
+      "introVideo": "Vídeo de introdução",
       "multiAccent": "Várias cores de destaque",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
@@ -692,6 +693,7 @@
       "searchConnector": "Buscar modelos",
       "searchConnectors": "Buscar modelos",
       "selected": "Modelo: {{title}}",
+      "selectIntroVideo": "Selecionar modelo de vídeo de introdução {{title}}",
       "selectStyle": "Selecionar estilo {{style}}",
       "selectTemplate": "Selecionar modelo {{title}}",
       "selectVideo": "Selecionar modelo de vídeo {{title}}",
@@ -2299,6 +2301,7 @@
     "templates": {
       "categories": {
         "illustration": "Ilustração",
+        "introVideo": "Vídeo de introdução",
         "presentation": "Apresentação",
         "video": "Vídeo",
         "website": "Site",
