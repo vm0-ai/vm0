@@ -128,6 +128,8 @@ struct WorkspaceImageCacheInner {
     #[cfg(test)]
     held_state_root_scan_count: AtomicUsize,
     #[cfg(test)]
+    held_state_root_scan_notify: tokio::sync::Notify,
+    #[cfg(test)]
     fail_next_session_history_sidecar_metadata_commit: AtomicBool,
 }
 
@@ -211,6 +213,7 @@ impl WorkspaceImageCache {
                 fs_stats_override: fs_stats,
                 gc_root_scan_count: AtomicUsize::new(0),
                 held_state_root_scan_count: AtomicUsize::new(0),
+                held_state_root_scan_notify: tokio::sync::Notify::new(),
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
             prepare_lock_test_gate: None,

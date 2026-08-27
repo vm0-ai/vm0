@@ -392,6 +392,15 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
         );
     }
 
+    tokio::time::advance(WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY - HEARTBEAT_PERIOD * 2).await;
+    assert_eq!(
+        workspace_cache
+            .wait_for_held_state_root_scan_after(0, Duration::from_secs(5))
+            .await,
+        1,
+        "independent reconciliation should scan once while the watcher remains healthy",
+    );
+
     shutdown(&env, run_handle).await;
 }
 

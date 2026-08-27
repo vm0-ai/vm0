@@ -126,9 +126,9 @@ use signals::{
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
 /// Bounds routine cache-budget and stale-state cleanup without returning full scans to promotions.
 const WORKSPACE_CACHE_GC_PERIOD: Duration = Duration::from_secs(60);
-/// Bounds authoritative state recovery when workspace-cache observation is unavailable.
+/// Bounds authoritative state recovery from missed workspace-cache observations.
 const WORKSPACE_CACHE_RECONCILIATION_PERIOD: Duration = Duration::from_secs(60);
-/// Staggers the first fallback inventory from the first routine cache GC.
+/// Staggers the first state inventory from the first routine cache GC.
 const WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY: Duration = Duration::from_secs(30);
 
 fn candidate_for_admission(
@@ -1996,8 +1996,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 }
             }
             _ = workspace_cache_reconciliation_tick.tick(),
-                if exec_config.workspace_cache.is_some()
-                    && workspace_cache_change_fut.is_none() =>
+                if exec_config.workspace_cache.is_some() =>
             {
                 let live_mode = *mode_rx.borrow();
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
