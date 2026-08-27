@@ -757,7 +757,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
+      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
