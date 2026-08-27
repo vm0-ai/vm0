@@ -459,6 +459,13 @@ function mockPublicConnectorStatus(
       ...(categoryMetadata ? { categoryMetadata } : {}),
     });
   });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+      ...(categoryMetadata ? { categoryMetadata } : {}),
+    });
+  });
 }
 
 function mockCustomConnectorStory(): {
@@ -712,7 +719,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });
@@ -788,7 +794,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });
@@ -840,7 +845,7 @@ describe("connectors page", () => {
   });
 
   it("shows only the update dialog when the client requires an upgrade", async () => {
-    context.mocks.http.get("*/api/connector-catalog/status", () => {
+    context.mocks.http.get("*/api/connector-catalog/discovery", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },
@@ -2592,7 +2597,7 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
   });
 
-  it("refreshes connector catalog status when connector feature switches change", async () => {
+  it("refreshes connector discovery when connector feature switches change", async () => {
     mockConnectors([]);
 
     detachedSetupPage({
@@ -3999,9 +4004,12 @@ describe("connectors page", () => {
     ];
     let catalogStatusRequestCount = 0;
     let manualGrantConnectResponded = false;
-    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
       catalogStatusRequestCount += 1;
-      return respond(200, { connectors: [...catalogStatusItems] });
+      return respond(200, {
+        connectors: [...catalogStatusItems],
+        totalConnectorCount: catalogStatusItems.length,
+      });
     });
     context.mocks.api(
       connectorManualGrantContract.connect,
