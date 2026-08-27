@@ -24,8 +24,6 @@ export const syncPrimaryThread$ = command(
     meta: ThreadMeta,
     signal: AbortSignal,
   ): Promise<void> => {
-    set(resetDocumentTitle$);
-
     const currentAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
     if (currentAgentId !== meta.agentId) {
