@@ -487,7 +487,7 @@ async fn run_start_with_home(
     let runner_identity = load_runner_process_identity(&runner_config.base_dir).await?;
     info!(
         runner_id = %runner_identity.runner_id(),
-        runner_name = %runner_config.name,
+        runner_release = crate::RUNNER_RELEASE,
         "runner identity"
     );
 
@@ -518,7 +518,7 @@ async fn run_start_with_home(
         client_session_id: runner_client_session_id.clone(),
     })?;
     let background_fill = crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()?;
-    let name = runner_config.name;
+    let legacy_name = runner_config.name;
     let hostname = runner_config.hostname;
     let group = runner_config.group;
     let cancel_tokens = RunCancellationRegistry::new();
@@ -831,7 +831,7 @@ async fn run_start_with_home(
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: registry_config_path,
         base_dir: base_dir_canonical.clone(),
-        runner_name: name.clone(),
+        runner_name: legacy_name,
         runner_group: group_name.clone(),
         subcommand: "start".into(),
     };
@@ -857,7 +857,6 @@ async fn run_start_with_home(
     let config = RunConfig {
         runner: RunnerInfo {
             identity: runner_identity,
-            name,
             group: group_name,
             profiles: runner_config.profiles,
         },
@@ -942,7 +941,6 @@ struct RunConfig {
 
 struct RunnerInfo {
     identity: RunnerProcessIdentity,
-    name: String,
     group: String,
     profiles: BTreeMap<String, ProfileConfig>,
 }
@@ -1631,7 +1629,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     if startup_mode == RunnerMode::Running {
         info!(
-            name = %runner.name,
+            runner_release = crate::RUNNER_RELEASE,
             group = %runner.group,
             effective_vcpu = capacity.budget.effective_vcpu(),
             effective_memory_mb = capacity.budget.effective_memory_mb(),
@@ -1640,7 +1638,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         );
     } else {
         info!(
-            name = %runner.name,
+            runner_release = crate::RUNNER_RELEASE,
             group = %runner.group,
             mode = ?startup_mode,
             "runner startup completed after lifecycle signal"

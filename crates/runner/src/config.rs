@@ -72,9 +72,10 @@ pub(crate) const DIAGNOSTIC_CONFIG_MAX_BYTES: u64 = 1024 * 1024;
 /// are resolved against the YAML file's parent directory during [`load`].
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
-    /// Human-readable identifier for this runner instance, surfaced in logs
-    /// and reported to the control plane alongside `group`.
-    pub name: String,
+    /// Legacy release-shaped identifier retained during the local identity
+    /// compatibility window. Current runtime selection must not depend on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Canonical physical host identity used only for diagnostic attribution.
     /// The raw configured value is preserved and never used for scheduling,
     /// authorization, targeting, or ownership.

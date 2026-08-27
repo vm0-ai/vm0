@@ -13,13 +13,21 @@ the raw value. Existing configuration files without `hostname` continue to
 load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
-Those lifecycle identities continue to use the version-shaped `name`, such as
-`v0.174.0`. Current Runner binaries send optional canonical `runnerHostname`
-from configuration and canonical `runnerVersion` compiled into the binary. They
-no longer send legacy `runnerName` in heartbeats or sandbox telemetry. Current
-API revisions no longer declare, persist, or map that field. During deployment
-overlap, an extra `runnerName` from an older Runner payload is tolerated but
-discarded before request handling.
+Systemd suffixes and versioned binary/Runner directories remain explicit
+release lifecycle identities. Live processes are selected by their exact
+config path and process identity, and rolling log files use the release
+compiled into the Runner binary. Current Runner binaries send optional
+canonical `runnerHostname` from configuration and canonical `runnerVersion`
+compiled into the binary. They no longer send legacy `runnerName` in
+heartbeats or sandbox telemetry. Current API revisions no longer declare,
+persist, or map that field. During deployment overlap, an extra `runnerName`
+from an older Runner payload is tolerated but discarded before request
+handling.
+
+The version-shaped YAML `name` remains an optional local compatibility field
+while retained Runner binaries and operator automation still require it.
+Current production configuration continues writing it, but current runtime,
+readiness, and doctor selection do not use it as process identity.
 
 Operational queries and alerts should use `runner_hostname` and
 `runner_version`. A bounded historical fallback may use `runner_name` only for
