@@ -484,6 +484,20 @@ async fn write_command(
     Ok(())
 }
 
+async fn write_command_with_cancellation(
+    stdin: &mut tokio::process::ChildStdin,
+    command: &Value,
+    cancellation: &CancellationToken,
+) -> Result<(), AgentError> {
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Err(AgentError::Execution(
+            "Pi RPC command write was interrupted by cancellation".to_string(),
+        )),
+        result = write_command(stdin, command) => result,
+    }
+}
+
 async fn wait_for_response(
     responses: &mut mpsc::UnboundedReceiver<Value>,
     expected_id: &str,
@@ -527,13 +541,12 @@ async fn abort(
     run_id: &str,
 ) -> Result<(), AgentError> {
     let id = format!("{run_id}:pi:abort");
-    write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
-    tokio::time::timeout(
-        PI_RPC_ABORT_TIMEOUT,
-        wait_for_response(responses, &id, "abort", true),
-    )
+    tokio::time::timeout(PI_RPC_ABORT_TIMEOUT, async {
+        write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
+        wait_for_response(responses, &id, "abort", true).await
+    })
     .await
-    .map_err(|_| AgentError::Execution("Pi RPC abort acknowledgement timed out".to_string()))?
+    .map_err(|_| AgentError::Execution("Pi RPC abort timed out".to_string()))?
 }
 
 async fn request_prompt(
@@ -543,13 +556,14 @@ async fn request_prompt(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "prompt",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -569,13 +583,14 @@ async fn request_steer(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "steer",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -622,7 +637,12 @@ pub(super) async fn write_commands(
     cancellation: CancellationToken,
 ) -> Result<(), AgentError> {
     let state_id = format!("{run_id}:pi:get-state");
-    write_command(&mut stdin, &json!({ "id": state_id, "type": "get_state" })).await?;
+    write_command_with_cancellation(
+        &mut stdin,
+        &json!({ "id": state_id, "type": "get_state" }),
+        &cancellation,
+    )
+    .await?;
     tokio::select! {
         biased;
         () = cancellation.cancelled() => {
