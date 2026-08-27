@@ -1486,6 +1486,33 @@ describe("connectors page", () => {
     });
   });
 
+  it("keeps the zero-account connect action disabled while connection starts", async () => {
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+    const authWindow = createMockAuthWindow();
+    const openMock = context.mocks.browser.open(authWindow);
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const connectAction = await screen.findByLabelText("Connect GitHub");
+    click(connectAction);
+
+    await waitFor(() => {
+      expect(openMock.calls).toHaveLength(1);
+      expect(connectAction).toBeDisabled();
+    });
+    expect(screen.getByLabelText("Connect GitHub")).toBe(connectAction);
+  });
+
   it("shows an account identity while agent access is unavailable", async () => {
     const [connector] = mockConnectors([
       { connectorSlug: "github", externalUsername: "work" },

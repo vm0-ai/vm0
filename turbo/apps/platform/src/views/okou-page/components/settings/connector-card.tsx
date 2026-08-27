@@ -476,10 +476,13 @@ function AccountsConnectorCard({
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
   const showDescription = summaryStatus === "ready" && accountCount === 0;
-  const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
-  const canConnect = summaryStatus === "ready" && accountCount === 0 && !busy;
-  const canActivate = canManage || canConnect;
+  const canManage = summaryStatus === "ready" && accountCount > 0;
+  const canConnect = summaryStatus === "ready" && accountCount === 0;
+  const canActivate = !busy && (canManage || canConnect);
   const activate = () => {
+    if (!canActivate) {
+      return;
+    }
     if (canManage) {
       onManage();
       return;
@@ -496,7 +499,7 @@ function AccountsConnectorCard({
         canActivate && "cursor-pointer",
       )}
     >
-      {canActivate ? (
+      {canManage || canConnect ? (
         <button
           type="button"
           aria-label={
@@ -514,7 +517,11 @@ function AccountsConnectorCard({
                   { connector: connector.label },
                 )
           }
-          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className={cn(
+            "absolute inset-0 z-10 rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            busy ? "cursor-default" : "cursor-pointer",
+          )}
+          disabled={busy}
           onClick={activate}
         />
       ) : null}
