@@ -279,6 +279,9 @@ export async function reportBuiltInModelProviderFailure(
     ) {
       return await observeTransportFailure(tx, lockedRoute, report);
     }
+    // Source-less connection reports can arrive from old runners during the
+    // #29672 rollout. Remove this immediate path after their two-hour sandbox
+    // drain plus bounded finalization; #29805 tracks that cleanup.
     return await activateCooldown(tx, lockedRoute, {
       receivedAt: report.receivedAt,
       failureKind: report.failureKind,
