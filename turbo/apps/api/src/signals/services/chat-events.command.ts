@@ -151,6 +151,11 @@ import {
   type PresentationTemplateVolume,
 } from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import {
+  logTemplateUsage,
+  type TemplateUsageLogContext,
+} from "../../lib/template-usage-log";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -252,6 +257,13 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  /**
+   * The selections behind that guidance, reported once the run is created.
+   * Carried through preparation rather than reported during it: preparation can
+   * still fail afterwards, and a queue-first send that stays queued is reported
+   * by the claim path instead.
+   */
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   /**
    * Guidance packages to mount for this run, one per uploaded template the
    * message selected and this caller was authorised for.
@@ -1089,19 +1101,21 @@ function resolveSelectedTemplateContext(
   mountedUserPresentationTemplateIds: readonly string[],
 ): {
   readonly generationTemplatePrompt: string;
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
+  const resolved = resolveThreadGenerationTemplatePrompt({
+    explicit: runtimeBody.primaryTemplate,
+    explicitTemplates: runtimeBody.templates,
+    introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
+    latestPresentationTemplatesEnabled:
+      featureSwitches.latestPresentationTemplatesEnabled,
+    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
+    mountedUserPresentationTemplateIds,
+  });
   return {
-    generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.primaryTemplate,
-      explicitTemplates: runtimeBody.templates,
-      introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
-      latestPresentationTemplatesEnabled:
-        featureSwitches.latestPresentationTemplatesEnabled,
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
-      mountedUserPresentationTemplateIds,
-    }),
+    generationTemplatePrompt: resolved.prompt,
+    generationTemplateIdentities: resolved.identities,
     videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
@@ -2576,6 +2590,45 @@ function resolveTimedNormalSendAgentRunSource(
   );
 }
 
+function normalSendTemplateUsageContext(
+  args: NormalSendArgs,
+  thread: PreparedNormalSend["thread"],
+): TemplateUsageLogContext {
+  return {
+    dispatchPath: "normal-send",
+    orgId: args.orgId,
+    userId: args.userId,
+    chatThreadId: thread.threadId,
+    triggerSource: normalSendTriggerSource(args.auth),
+  };
+}
+
+/**
+ * Persist the explicit model and service-tier choices this send carried.
+ *
+ * Both writes settle the same decision — what the user pinned for this one
+ * message — and only the model selection is part of the prepared value, so they
+ * travel together rather than sitting inline among unrelated resolution steps.
+ */
+async function persistTimedExplicitSelections(
+  args: NormalSendArgs,
+  db: Db,
+  thread: PreparedNormalSend["thread"],
+  runConfiguration: PreparedNormalSend["runConfiguration"],
+  signal: AbortSignal,
+) {
+  const persistedExplicitSelection =
+    await maybePersistTimedExplicitModelFirstSelection(
+      args,
+      db,
+      runConfiguration.codexServiceTier,
+    );
+  signal.throwIfAborted();
+  await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
+  signal.throwIfAborted();
+  return persistedExplicitSelection;
+}
+
 function usesPi(
   args: NormalSendArgs,
   thread: PreparedNormalSend["thread"],
@@ -2670,21 +2723,18 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const { generationTemplatePrompt, videoRunOptions } =
-      resolveSelectedTemplateContext(
-        runtimeBody,
-        featureSwitches,
-        authorizedTemplates.userPresentationTemplateIds,
-      );
-    const persistedExplicitSelection =
-      await maybePersistTimedExplicitModelFirstSelection(
-        args,
-        db,
-        runConfiguration.codexServiceTier,
-      );
-    signal.throwIfAborted();
-    await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
-    signal.throwIfAborted();
+    const templateContext = resolveSelectedTemplateContext(
+      runtimeBody,
+      featureSwitches,
+      authorizedTemplates.userPresentationTemplateIds,
+    );
+    const persistedExplicitSelection = await persistTimedExplicitSelections(
+      args,
+      db,
+      thread,
+      runConfiguration,
+      signal,
+    );
     const computerAccess = await resolveTimedComputerAccess(args, db, thread);
     signal.throwIfAborted();
     if ("status" in computerAccess) {
@@ -2706,11 +2756,13 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      generationTemplatePrompt,
+      generationTemplatePrompt: templateContext.generationTemplatePrompt,
+      generationTemplateIdentities:
+        templateContext.generationTemplateIdentities,
       presentationTemplateVolumes: userPresentationTemplateVolumes(
         authorizedTemplates.userPresentationTemplateIds,
       ),
-      videoRunOptions,
+      videoRunOptions: templateContext.videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
@@ -3495,6 +3547,14 @@ const createNormalChatRun$ = command(
     if (runResult.status !== 201) {
       return runResult;
     }
+    // The run now exists, which is what makes this a use. Reporting any earlier
+    // counts sends that never produced one: a lost claim hands the message to
+    // another dispatcher that reports it through `queued-claim`, and a non-201
+    // result leaves no run at all.
+    logTemplateUsage(
+      normalSendTemplateUsageContext(args, prepared.thread),
+      prepared.generationTemplateIdentities,
+    );
     const response = createdNormalChatRunResponse({
       runId: runResult.body.runId,
       threadId: prepared.thread.threadId,

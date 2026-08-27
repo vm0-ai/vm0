@@ -91,6 +91,7 @@ export async function setupPage(options: {
     firstName?: string;
     imageUrl?: string;
     createOrganizationEnabled?: boolean;
+    createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
   } | null;
   session?: { token: string } | null;

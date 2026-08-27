@@ -101,6 +101,31 @@ function logoForm(file: File): FormData {
   return form;
 }
 
+describe("ORG-00: user-level organization creation count", () => {
+  it("counts owned workspaces independently of the active workspace", async () => {
+    const actor = api.user();
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: {
+            id: orgIdOf(actor),
+            createdBy: "other-user",
+          },
+        },
+        {
+          organization: {
+            id: "org_owned",
+            createdBy: actor.userId,
+          },
+        },
+      ],
+      totalCount: 2,
+    });
+
+    await expect(api.readCreatedOrganizationsCount(actor)).resolves.toBe(1);
+  });
+});
+
 describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
   it("serves, uploads, and removes the org logo across auth, validation, and clerk error arms [ORG-LOGO-A]", async () => {
     const admin = api.user();

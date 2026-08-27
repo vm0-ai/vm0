@@ -5757,6 +5757,90 @@ async fn unpark_resumes_and_deflates() {
 }
 
 #[tokio::test]
+async fn unpark_returns_while_controller_guards_pending_deflation() {
+    let lagging_stats_entered = Arc::new(Notify::new());
+    let release_lagging_stats = Arc::new(Notify::new());
+    let converged_stats_entered = Arc::new(Notify::new());
+    let release_converged_stats = Arc::new(Notify::new());
+    let active_stats_entered = Arc::new(Notify::new());
+    let release_active_stats = Arc::new(Notify::new());
+    let lagging_stats = MockBalloonStats::new(0, 3581).with_memory(
+        3431 * BYTES_PER_MIB,
+        3506 * BYTES_PER_MIB,
+        3934 * BYTES_PER_MIB,
+    );
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&lagging_stats_entered),
+                release: Arc::clone(&release_lagging_stats),
+                stats: lagging_stats,
+            },
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&converged_stats_entered),
+                release: Arc::clone(&release_converged_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&active_stats_entered),
+                release: Arc::clone(&release_active_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
+        ]),
+    );
+    let api_socket = api.socket_path().to_path_buf();
+    let mut is_parked = true;
+    let mut controller: Option<balloon::ControllerHandle> = None;
+    let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+
+    unpark_inner(
+        &mut is_parked,
+        4096,
+        &mut controller,
+        &api_socket,
+        state_rx,
+        "test-unpark-lagging-actual",
+    )
+    .await
+    .unwrap();
+    assert!(!is_parked);
+    assert!(
+        controller.is_some(),
+        "protected controller should be installed without waiting for deflation"
+    );
+
+    lagging_stats_entered.notified().await;
+    let unpark_requests = api.drain_requests();
+    let unpark_patches = patches(&unpark_requests);
+    assert_eq!(unpark_patches.len(), 2);
+    assert_eq!(unpark_patches[0].path, "/vm");
+    assert_eq!(unpark_patches[1].path, "/balloon");
+    assert_eq!(mock_request_body_json(unpark_patches[1])["amount_mib"], 0);
+
+    release_lagging_stats.notify_one();
+    converged_stats_entered.notified().await;
+    let guarded_requests = api.drain_requests();
+    assert!(
+        patches(&guarded_requests).is_empty(),
+        "the contradictory high-free sample must not reverse target-zero deflation"
+    );
+
+    release_converged_stats.notify_one();
+    active_stats_entered.notified().await;
+    assert!(
+        patches(&api.drain_requests()).is_empty(),
+        "normal policy must not start before exact deflation"
+    );
+
+    release_active_stats.notify_one();
+    state_tx.send(SandboxState::Stopped).unwrap();
+    if let Some(handle) = controller.take() {
+        handle.abort_and_join().await;
+    }
+}
+
+#[tokio::test]
 async fn unpark_propagates_deflate_error() {
     // Resume succeeds (204), deflate fails (400).
     let mut api = MockLifecycleApi::new(std::collections::VecDeque::from(vec![204, 400]), None);

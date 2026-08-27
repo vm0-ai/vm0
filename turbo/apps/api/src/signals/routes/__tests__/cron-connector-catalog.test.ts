@@ -3696,45 +3696,50 @@ describe("connector catalog valid lifecycle", () => {
   }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
-    const provider = mockTestOAuthDeviceConnectorProvider();
+    const provider = mockTestOAuthDeviceConnectorProvider({ tokenScope: null });
     configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.external-device-grant",
-      connectorSlug: "test-oauth-device",
-      label: "Catalog Device OAuth",
-      mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "api",
-          grantKind: "device-auth",
-        });
-        method.startOptions = [
-          {
-            id: "environment",
-            kind: "select",
-            label: "Environment",
-            required: true,
-            defaultValue: null,
-            options: [
-              { value: "test", label: "Test" },
-              { value: "live", label: "Live" },
-            ],
-          },
-        ];
-        setArtifactAuthMethods(artifact, [method]);
-      },
-      mutateRuntime: (artifact) => {
-        const method = devicePrivateAuthMethod({
-          accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
-          clientId: "test-oauth-device-api-client",
-          scopes: ["read"],
-        });
-        method.id = "api";
-        recordValue(method.grant, "device grant").startOptionMappings = [
-          { privateName: "mode", publicId: "environment" },
-        ];
-        setArtifactAuthMethods(artifact, [method]);
-      },
-    });
+    const deviceGrantRelease = (version: string, scopes: readonly string[]) => {
+      return buildRelease({
+        version,
+        connectorSlug: "test-oauth-device",
+        label: "Catalog Device OAuth",
+        mutateCatalog: (artifact) => {
+          const method = publicAuthMethod({
+            id: "api",
+            grantKind: "device-auth",
+          });
+          method.startOptions = [
+            {
+              id: "environment",
+              kind: "select",
+              label: "Environment",
+              required: true,
+              defaultValue: null,
+              options: [
+                { value: "test", label: "Test" },
+                { value: "live", label: "Live" },
+              ],
+            },
+          ];
+          setArtifactAuthMethods(artifact, [method]);
+        },
+        mutateRuntime: (artifact) => {
+          const method = devicePrivateAuthMethod({
+            accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
+            clientId: "test-oauth-device-api-client",
+            scopes,
+          });
+          method.id = "api";
+          recordValue(method.grant, "device grant").startOptionMappings = [
+            { privateName: "mode", publicId: "environment" },
+          ];
+          setArtifactAuthMethods(artifact, [method]);
+        },
+      });
+    };
+    const release = deviceGrantRelease("2026-07-15.external-device-grant", [
+      "read",
+    ]);
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
@@ -3767,6 +3772,16 @@ describe("connector catalog valid lifecycle", () => {
       { environment: "live" },
     );
     expect(provider.deviceCodeBodies[0]?.get("mode")).toBe("live");
+    expect(provider.deviceCodeBodies[0]?.get("scope")).toBe("read");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+
+    const changedScopes = deviceGrantRelease(
+      "2026-07-15.external-device-scope-change",
+      ["read", "future_scope"],
+    );
+    serveObjects(catalogObjects([release, changedScopes], changedScopes));
+    await syncCatalog();
+    const callsBeforeCompletion = context.mocks.s3.send.mock.calls.length;
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: false,
     });
@@ -3787,6 +3802,14 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "api",
       oauthScopes: ["read"],
     });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "test-oauth-device"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: ["read", "future_scope"],
+      storedScopes: ["read"],
+    });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
@@ -3798,7 +3821,7 @@ describe("connector catalog valid lifecycle", () => {
         type: "connector",
       }),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeCompletion);
   });
 
   it("executes an external OpenID grant with catalog-owned storage", async () => {

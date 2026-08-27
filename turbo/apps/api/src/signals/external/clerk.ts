@@ -49,6 +49,7 @@ export interface ClerkOrganization {
   readonly imageUrl: string;
   readonly hasImage: boolean;
   readonly createdAt: number;
+  readonly createdBy?: string;
 }
 
 export interface ClerkOrganizationMembershipPublicUserData {

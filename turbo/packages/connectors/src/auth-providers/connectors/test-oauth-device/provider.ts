@@ -22,6 +22,7 @@ function createTestOauthDeviceGrant(): DeviceAuthGrantProvider<
       return await pollTestOAuthDeviceAuth({
         clientId,
         deviceCode: args.deviceCode,
+        scopes: args.scopes,
       });
     },
   };
@@ -46,6 +47,7 @@ function createTestOauthDeviceApiGrant(): DeviceAuthGrantProvider<
       return await pollTestOAuthDeviceAuth({
         clientId,
         deviceCode: args.deviceCode,
+        scopes: args.scopes,
       });
     },
   };
