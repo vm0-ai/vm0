@@ -1151,7 +1151,6 @@
         "verify": "Verifikasi"
       },
       "signUp": {
-        "action": "Gunakan pendaftaran saat ini",
         "alreadyHaveAccount": "Sudah punya akun?",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",

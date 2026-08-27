@@ -1151,7 +1151,6 @@
         "verify": "確認する"
       },
       "signUp": {
-        "action": "現在のサインアップを使用",
         "alreadyHaveAccount": "アカウントをお持ちですか？",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
