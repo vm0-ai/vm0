@@ -284,10 +284,22 @@ def classification_for_request(
             api_url=api_url,
             tls_admission=tls_admission,
         )
+    return revalidate_classification_for_current_destination(flow, classification)
+
+
+def revalidate_classification_for_current_destination(
+    flow: http.HTTPFlow,
+    classification: RequestClassification,
+    *,
+    defer_unresolved_public_destination: bool = False,
+) -> RequestClassification:
+    """Recheck destination-dependent policy for an existing classification."""
+
     if isinstance(classification, FirewallAllow | FirewallPolicyAllow):
         public_destination_denial = current_public_destination_denial(
             flow,
             classification.firewall_allow,
+            defer_unresolved_hostnames=defer_unresolved_public_destination,
         )
         if public_destination_denial is not None:
             return PublicDestinationDenied(
@@ -567,11 +579,14 @@ def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> boo
 def current_public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
+    *,
+    defer_unresolved_hostnames: bool = False,
 ) -> PublicDestinationDenial | None:
-    """Revalidate a cached firewall allow against the current runtime destination.
+    """Revalidate an existing firewall allow against the current runtime destination.
 
     Header-phase publicDestination checks may defer unresolved runtime hostnames
-    until the request phase can observe the final destination.
+    until the request phase can observe the final destination. Callers must opt
+    into that header-phase behavior explicitly.
     """
 
     trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
@@ -584,6 +599,7 @@ def current_public_destination_denial(
         flow,
         allow,
         trusted_authority_host=trusted_authority_host,
+        defer_unresolved_hostnames=defer_unresolved_hostnames,
     )
 
 
