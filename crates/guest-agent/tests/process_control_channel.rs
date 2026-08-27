@@ -140,7 +140,10 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let run_payload_path = run_payload_path.to_string_lossy().into_owned();
     let env = [
         ("CLI_AGENT_TYPE", "claude-code"),
-        ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
+        (
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path.as_str(),
+        ),
         ("USE_MOCK_CLAUDE", "true"),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
@@ -268,7 +271,10 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     let run_payload_path = run_payload_path.to_string_lossy().into_owned();
     let env = [
         ("CLI_AGENT_TYPE", "claude-code"),
-        ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
+        (
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path.as_str(),
+        ),
         ("USE_MOCK_CLAUDE", "true"),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),

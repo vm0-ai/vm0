@@ -161,7 +161,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
             command
                 .env("CLI_AGENT_TYPE", "codex")
                 .env("USE_MOCK_CODEX", "true")
-                .env("VM0_MOCK_CODEX_PATH", binary);
+                .env(guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV, binary);
             if let Some(scenario) = app_server_scenario {
                 command.env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
             }
@@ -170,7 +170,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
             command
                 .env("CLI_AGENT_TYPE", "claude-code")
                 .env("USE_MOCK_CLAUDE", "true")
-                .env("VM0_MOCK_CLAUDE_PATH", binary);
+                .env(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV, binary);
         }
     }
 
