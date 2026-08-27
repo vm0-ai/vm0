@@ -149,6 +149,7 @@ describe("zero org switcher", () => {
       id: "org_current",
       name: "Solo",
       role: "admin",
+      createdBy: "other-user-456",
     });
 
     detachedSetupPage({
@@ -159,6 +160,7 @@ describe("zero org switcher", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
         createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
       },
       org: {
         activeOrg: {
@@ -203,6 +205,59 @@ describe("zero org switcher", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledWith({
         organization: "new-org-id",
       });
+    });
+  });
+
+  it("hides workspace creation after the user reaches the single-workspace limit", async () => {
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Solo",
+      role: "admin",
+      createdBy: "test-user-123",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Solo",
+          slug: "solo",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Solo",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Solo");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
     });
   });
 

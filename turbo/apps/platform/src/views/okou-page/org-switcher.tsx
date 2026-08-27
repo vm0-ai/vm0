@@ -15,6 +15,7 @@ import {
 } from "@okouai/ui";
 import { ChevronDown, Plus, Mail } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
+import { org$ } from "../../signals/org.ts";
 import {
   bestEffort,
   detach,
@@ -97,10 +98,20 @@ function InvitationRow({
 
 function CreateWorkspaceItem() {
   const clerkLoadable = useLastLoadable(clerk$);
+  const orgLoadable = useLastLoadable(org$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const creatingOrg = useGet(creatingOrg$);
   const setCreating = useSet(setCreatingOrg$);
   const { t } = useTranslation();
+  const user = clerk?.user;
+  const reachedSingleOrgLimit =
+    orgLoadable.state === "hasData" &&
+    user?.createOrganizationsLimit === 1 &&
+    orgLoadable.data?.createdBy === user.id;
+  const canCreateOrg =
+    orgLoadable.state === "hasData" &&
+    user?.createOrganizationEnabled === true &&
+    !reachedSingleOrgLimit;
 
   const handleCreateOrg = onDomEventFn(async () => {
     if (!clerk) {
@@ -117,8 +128,12 @@ function CreateWorkspaceItem() {
     setCreating(false);
   });
 
+  if (!canCreateOrg) {
+    return null;
+  }
+
   return (
-    <>
+    <div className="shrink-0">
       <DropdownMenuSeparator />
       <DropdownMenuItem
         onClick={handleCreateOrg}
@@ -136,7 +151,7 @@ function CreateWorkspaceItem() {
               })}
         </span>
       </DropdownMenuItem>
-    </>
+    </div>
   );
 }
 
@@ -207,7 +222,6 @@ function OrgDropdownContent() {
     );
   });
   const hasOrgOptions = hasOtherMemberships || hasPendingInvitations;
-  const canCreateOrg = clerk?.user?.createOrganizationEnabled ?? false;
 
   return (
     <DropdownMenuContent
@@ -251,11 +265,7 @@ function OrgDropdownContent() {
         </div>
       )}
 
-      {canCreateOrg && (
-        <div className="shrink-0">
-          <CreateWorkspaceItem />
-        </div>
-      )}
+      <CreateWorkspaceItem />
     </DropdownMenuContent>
   );
 }

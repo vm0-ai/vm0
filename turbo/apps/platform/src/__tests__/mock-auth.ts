@@ -135,6 +135,7 @@ interface MockedUser {
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
   createOrganizationEnabled: boolean;
+  createOrganizationsLimit: number | null;
   organizationMemberships: MockedMembership[];
   getOrganizationInvitations: (params?: {
     status?: string;
@@ -380,6 +381,7 @@ export function mockUser(
     imageUrl?: string;
     createdAt?: Date;
     createOrganizationEnabled?: boolean;
+    createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
   } | null,
   session: { token: string } | null,
@@ -391,6 +393,7 @@ export function mockUser(
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
       createOrganizationEnabled: user.createOrganizationEnabled ?? false,
+      createOrganizationsLimit: user.createOrganizationsLimit ?? null,
       get organizationMemberships() {
         return internalMockedMemberships;
       },
