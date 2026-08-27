@@ -29,6 +29,20 @@ pub(crate) enum ExecMatcherOutcome {
     Panic(String),
 }
 
+pub(crate) enum GuestStateRestoreBehavior {
+    Return(Result<ExecResult>),
+    Panic(String),
+}
+
+impl GuestStateRestoreBehavior {
+    pub(crate) fn into_result(self) -> Result<ExecResult> {
+        match self {
+            Self::Return(result) => result,
+            Self::Panic(message) => std::panic::resume_unwind(Box::new(message)),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ExecOverrideState {
     /// Pattern-matched exec behaviors. First matching pattern wins and is
@@ -43,8 +57,8 @@ pub(crate) struct ExecOverrideState {
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
     /// Recorded fixed guest-state restore calls across all attached sandboxes.
     pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
-    /// FIFO results for fixed guest-state restore operations.
-    pub(crate) guest_state_restore_results: Mutex<VecDeque<Result<ExecResult>>>,
+    /// FIFO behaviors for fixed guest-state restore operations.
+    pub(crate) guest_state_restore_behaviors: Mutex<VecDeque<GuestStateRestoreBehavior>>,
     /// Wakes tests after a guest-state restore call is recorded.
     pub(crate) guest_state_restore_call_notify: tokio::sync::Notify,
     /// Wakes tests after an exec call is recorded.
@@ -476,9 +490,17 @@ impl MockSandboxOverrides {
     /// Queue a result for the next fixed guest-state restore operation.
     pub fn push_guest_state_restore_result(&self, result: Result<ExecResult>) {
         self.exec
-            .guest_state_restore_results
+            .guest_state_restore_behaviors
             .lock_ignoring_poison()
-            .push_back(result);
+            .push_back(GuestStateRestoreBehavior::Return(result));
+    }
+
+    /// Queue a panic for the next fixed guest-state restore operation.
+    pub fn push_guest_state_restore_panic(&self, message: impl Into<String>) {
+        self.exec
+            .guest_state_restore_behaviors
+            .lock_ignoring_poison()
+            .push_back(GuestStateRestoreBehavior::Panic(message.into()));
     }
 
     /// Return fixed guest-state restore calls across all attached sandboxes.
