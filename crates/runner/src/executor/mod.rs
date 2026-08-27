@@ -77,7 +77,7 @@ use api_contracts::generated::constants::runners::{
 };
 use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
-/// Maximum guest-side runtime budget for a single agent process (2 hours).
+/// Maximum guest-side runtime budget for a single agent process.
 const JOB_TIMEOUT: Duration = Duration::from_secs(AGENT_EXECUTION_TIMEOUT_SECONDS);
 /// Exit code used when the runner's job timeout stops an agent process.
 const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE;
