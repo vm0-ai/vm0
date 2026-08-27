@@ -239,6 +239,7 @@ export const socialContract = c.router({
       401: apiErrorSchema,
       402: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       502: apiErrorSchema,
       503: apiErrorSchema,

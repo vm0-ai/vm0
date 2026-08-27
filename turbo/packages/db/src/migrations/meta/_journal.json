@@ -1478,6 +1478,13 @@
       "when": 1787870435556,
       "tag": "1018_broad_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 1019,
+      "version": "7",
+      "when": 1787884012384,
+      "tag": "1019_sturdy_firestar",
+      "breakpoints": true
     }
   ]
 }

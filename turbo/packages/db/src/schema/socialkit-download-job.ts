@@ -17,6 +17,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { agentRuns } from "./agent-run";
 
@@ -71,6 +72,11 @@ export const socialKitDownloadJobs = pgTable(
       uniqueIndex("uq_socialkit_download_jobs_provider_job").on(
         table.providerJobId,
       ),
+      uniqueIndex("uq_socialkit_download_jobs_user_active")
+        .on(table.userId)
+        .where(
+          sql`status IN ('submitting', 'processing', 'materializing', 'artifact_failed')`,
+        ),
       index("idx_socialkit_download_jobs_owner_created").on(
         table.orgId,
         table.userId,

@@ -1874,6 +1874,65 @@ describe("managed SocialKit route", () => {
     expect(providerRequests).toBe(0);
   });
 
+  it("allows only one active download per user", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const providerStarted = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    const providerJobPrefix = `provider-single-download-${randomUUID()}`;
+    let providerStarts = 0;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, async () => {
+        providerStarts += 1;
+        if (providerStarts === 1) {
+          providerStarted.resolve();
+          await releaseProvider.promise;
+        }
+        return HttpResponse.json({
+          jobId: `${providerJobPrefix}-${providerStarts}`,
+          status: "queued",
+        });
+      }),
+      http.get(/^https:\/\/api\.socialkit\.dev\/v2\/downloads\//u, () => {
+        return HttpResponse.json({ status: "failed" });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+    const request = {
+      headers: authenticate(actor),
+      body: {
+        platform: "youtube" as const,
+        url: "https://youtu.be/public-video",
+        maxDuration: 60,
+        quality: "720p" as const,
+        format: "mp4" as const,
+      },
+    };
+
+    const firstPromise = socialClient.createDownload(request);
+    await providerStarted.promise;
+    const blocked = await accept(socialClient.createDownload(request), [409]);
+    releaseProvider.resolve();
+    const first = await accept(firstPromise, [202]);
+
+    expectApiError(blocked.body);
+    expect(blocked.body.error).toStrictEqual({
+      code: "DOWNLOAD_IN_PROGRESS",
+      message: "Another social media download is already in progress",
+    });
+    expect(first.body.status).toBe("processing");
+    expect(providerStarts).toBe(1);
+
+    await flushWaitUntilForTest();
+    const next = await accept(socialClient.createDownload(request), [202]);
+
+    expect(next.body.status).toBe("processing");
+    expect(providerStarts).toBe(2);
+    await flushWaitUntilForTest();
+  });
+
   it("does not expose download state to another user", async () => {
     const owner = createBddApi(context).user();
     if (!owner.orgId) {
@@ -2287,6 +2346,23 @@ describe("managed SocialKit route", () => {
         return command instanceof AbortMultipartUploadCommand;
       }),
     ).toBeTruthy();
+    const blocked = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/another-public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [409],
+    );
+
+    expectApiError(blocked.body);
+    expect(blocked.body.error.code).toBe("DOWNLOAD_IN_PROGRESS");
+    expect(providerStarts).toBe(1);
 
     mockNow(now() + 61_000);
     await Promise.all([

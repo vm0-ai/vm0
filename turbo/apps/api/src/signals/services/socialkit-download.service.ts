@@ -70,7 +70,7 @@ const ACTIVE_STATUSES = [
 type DownloadJob = typeof socialKitDownloadJobs.$inferSelect;
 
 interface SocialKitDownloadErrorResponse {
-  readonly status: 502 | 503;
+  readonly status: 409 | 502 | 503;
   readonly body: {
     readonly error: {
       readonly message: string;
@@ -132,7 +132,7 @@ const providerThumbnailSchema = z
   });
 
 function errorResponse(
-  status: 502 | 503,
+  status: 409 | 502 | 503,
   message: string,
   code: string,
 ): SocialKitDownloadErrorResponse {
@@ -652,10 +652,15 @@ export const createSocialKitDownload$ = command(
         publicBrand: args.publicBrand,
         request: args.body,
       })
+      .onConflictDoNothing()
       .returning();
     signal.throwIfAborted();
     if (!created) {
-      throw new Error("Failed to create SocialKit download job");
+      return errorResponse(
+        409,
+        "Another social media download is already in progress",
+        "DOWNLOAD_IN_PROGRESS",
+      );
     }
 
     const processing = await startAndPersistProviderJob(
