@@ -51,6 +51,7 @@ const SOCIALKIT_PROVIDER_TIMEOUT_MS = 240_000;
 const SOCIALKIT_DOWNLOAD_TIMEOUT_MS = 270_000;
 export const SOCIALKIT_RECONCILIATION_TIMEOUT_MS = 280_000;
 const MULTIPART_CLEANUP_TIMEOUT_MS = 10_000;
+const CLAIM_CLEANUP_TIMEOUT_MS = 10_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
@@ -514,7 +515,12 @@ async function deferClaimedJob(
   const [current] = await writeDb
     .select({ creditsCharged: socialKitDownloadJobs.creditsCharged })
     .from(socialKitDownloadJobs)
-    .where(eq(socialKitDownloadJobs.id, job.id));
+    .where(
+      and(
+        eq(socialKitDownloadJobs.id, job.id),
+        inArray(socialKitDownloadJobs.status, ACTIVE_STATUSES),
+      ),
+    );
   signal.throwIfAborted();
   const billed = current !== undefined && current.creditsCharged !== null;
   await writeDb
@@ -533,7 +539,12 @@ async function deferClaimedJob(
       claimExpiresAt: sql`now() + LEAST(30, ${socialKitDownloadJobs.retryCount} + 1) * interval '1 minute'`,
       updatedAt: nowDate(),
     })
-    .where(eq(socialKitDownloadJobs.id, job.id));
+    .where(
+      and(
+        eq(socialKitDownloadJobs.id, job.id),
+        inArray(socialKitDownloadJobs.status, ACTIVE_STATUSES),
+      ),
+    );
   signal.throwIfAborted();
 }
 
@@ -952,48 +963,65 @@ export const reconcileSocialKitDownload$ = command(
     if (!job?.providerJobId) {
       return false;
     }
+    const providerJobId = job.providerJobId;
     const writeDb = set(writeDb$);
-    const poll = await settle(
-      pollProviderJob(accessKey, job.providerJobId, signal),
+    return await onRejection(
+      (async (): Promise<boolean> => {
+        const poll = await settle(
+          pollProviderJob(accessKey, providerJobId, signal),
+        );
+        signal.throwIfAborted();
+        if (!poll.ok) {
+          await deferClaimedJob(writeDb, job, signal);
+          return true;
+        }
+        if (poll.value.status === "processing") {
+          await recordProcessingPoll(writeDb, job);
+          signal.throwIfAborted();
+          return true;
+        }
+        if (poll.value.status === "failed") {
+          await recordProviderFailure(writeDb, job, signal);
+          signal.throwIfAborted();
+          return true;
+        }
+        if (poll.value.status === "invalid") {
+          await recordProviderFailure(writeDb, job, signal, true);
+          signal.throwIfAborted();
+          return true;
+        }
+        if (!readyMetadataIsValid(job, poll.value.ready)) {
+          await recordProviderFailure(writeDb, job, signal, true);
+          signal.throwIfAborted();
+          return true;
+        }
+        const completed = await settle(
+          set(
+            completeReadySocialKitDownload$,
+            { job, ready: poll.value.ready },
+            signal,
+          ),
+        );
+        signal.throwIfAborted();
+        if (!completed.ok) {
+          await deferClaimedJob(writeDb, job, signal);
+          return true;
+        }
+        return true;
+      })(),
+      async () => {
+        if (!signal.aborted) {
+          return;
+        }
+        await settleIncludingAbort(
+          deferClaimedJob(
+            writeDb,
+            job,
+            AbortSignal.timeout(CLAIM_CLEANUP_TIMEOUT_MS),
+          ),
+        );
+      },
     );
-    signal.throwIfAborted();
-    if (!poll.ok) {
-      await deferClaimedJob(writeDb, job, signal);
-      return true;
-    }
-    if (poll.value.status === "processing") {
-      await recordProcessingPoll(writeDb, job);
-      signal.throwIfAborted();
-      return true;
-    }
-    if (poll.value.status === "failed") {
-      await recordProviderFailure(writeDb, job, signal);
-      signal.throwIfAborted();
-      return true;
-    }
-    if (poll.value.status === "invalid") {
-      await recordProviderFailure(writeDb, job, signal, true);
-      signal.throwIfAborted();
-      return true;
-    }
-    if (!readyMetadataIsValid(job, poll.value.ready)) {
-      await recordProviderFailure(writeDb, job, signal, true);
-      signal.throwIfAborted();
-      return true;
-    }
-    const completed = await settle(
-      set(
-        completeReadySocialKitDownload$,
-        { job, ready: poll.value.ready },
-        signal,
-      ),
-    );
-    signal.throwIfAborted();
-    if (!completed.ok) {
-      await deferClaimedJob(writeDb, job, signal);
-      return true;
-    }
-    return true;
   },
 );
 

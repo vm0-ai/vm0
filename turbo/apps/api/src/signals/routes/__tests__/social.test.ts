@@ -1879,6 +1879,75 @@ describe("managed SocialKit route", () => {
     expect(terminal.body.status).toBe("provider_failed");
   });
 
+  it("defers a claimed download when its reconciliation budget expires", async () => {
+    const actor = createBddApi(context).user();
+    const reconciliation = new AbortController();
+    const abortError = new DOMException(
+      "SocialKit reconciliation timed out",
+      "TimeoutError",
+    );
+    let suppliedReconciliationSignal = false;
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      if (milliseconds === 280_000 && !suppliedReconciliationSignal) {
+        suppliedReconciliationSignal = true;
+        return reconciliation.signal;
+      }
+      return undefined;
+    });
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-timeout-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        reconciliation.abort(abortError);
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "processing",
+        });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await expect(flushWaitUntilForTest()).rejects.toBe(abortError);
+    const deferred = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(deferred.body).toMatchObject({
+      status: "processing",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_RECONCILIATION_FAILED",
+        billed: false,
+        retryable: true,
+      },
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
   it("reuses a completed multipart result and bills concurrent retries once", async () => {
     const actor = createBddApi(context).user();
     configureProvider();
