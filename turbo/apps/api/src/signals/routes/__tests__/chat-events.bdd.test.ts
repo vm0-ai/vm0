@@ -11050,6 +11050,70 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
+  it("reports every template on a multi-template message with its position", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
+    if (!first || !second) {
+      throw new Error("Expected two registered illustration styles");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "draw both",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Draw " },
+            {
+              type: "template",
+              titleSnapshot: first.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: first.illustrationStyleId },
+              },
+            },
+            { type: "text", text: " then " },
+            {
+              type: "template",
+              titleSnapshot: second.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: second.illustrationStyleId },
+              },
+            },
+          ],
+        },
+      },
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the multi-template send to be accepted");
+    }
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: first.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: second.illustrationStyleId,
+        templateIndex: 1,
+        templateRole: "inline",
+      }),
+    ]);
+    const { runId } = sent.body;
+    if (runId) {
+      await cancelChatRun(actor, runId);
+    }
+  }, 60_000);
+
   it("reports an avatar selection as avatar rather than video", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -13601,6 +13665,19 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    // Exactly one event: the send left the message queued, so only the claim
+    // that created this run reports it.
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "queued-claim",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
 
     await expect
       .poll(() => {

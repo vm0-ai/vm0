@@ -11,29 +11,18 @@ import { findWorkflowTemplateItem } from "./workflow-template-items";
  * presentations is `"slides"` (see `resolveTemplatePickerCategory` in the
  * platform composer); this enum follows the wire contract's `type` instead, so
  * a tab rename cannot silently rewrite historical reporting.
- *
- * `unknown` is reachable: independent deployments mean a newer client can send
- * a template `type` this build does not know about. Such a selection is
- * reported as unknown rather than dropped, so a missing mapping shows up in the
- * data instead of disappearing from it.
  */
 export type GenerationTemplateCategory =
   | "avatar"
   | "illustration"
   | "intro-video"
   | "presentation"
-  | "unknown"
   | "video"
   | "website"
   | "workflow";
 
-/**
- * Where the selected template came from.
- *
- * `unknown` pairs with the `unknown` category: an unrecognised selection says
- * nothing about provenance, and guessing `builtin` would be a fabricated fact.
- */
-export type GenerationTemplateSource = "builtin" | "unknown" | "user-imported";
+/** Where the selected template came from. */
+export type GenerationTemplateSource = "builtin" | "user-imported";
 
 /**
  * One template selection, normalised into a shape that is comparable across
@@ -68,7 +57,11 @@ export interface GenerationTemplateIdentity {
  */
 const USER_IMPORTED_TEMPLATE_ID = "user-template";
 
-const UNKNOWN_TEMPLATE_ID = "unknown";
+function unreachableGenerationTemplateType(request: never): never {
+  throw new Error(
+    `Unsupported generation template type: ${JSON.stringify(request)}`,
+  );
+}
 
 /**
  * Drop the namespace prefix shared by every catalogue's identifiers.
@@ -154,9 +147,12 @@ function workflowIdentity(
 /**
  * Normalise one template selection for reporting.
  *
- * Total by construction: an unrecognised selection resolves to the `unknown`
- * category rather than throwing or returning nothing, because the callers are
- * reporting paths that must never fail a user's request.
+ * Every branch of the wire contract's discriminated union is mapped, so an
+ * unrecognised `type` is unreachable: the request body is validated against
+ * that union before a route sees it, and the two paths that read a persisted
+ * message only reach this function for a selection the prompt builder already
+ * resolved. The remaining case is therefore a programmer error and throws
+ * rather than inventing a category.
  */
 export function generationTemplateIdentity(
   request: GenerationTemplateRequest,
@@ -184,12 +180,7 @@ export function generationTemplateIdentity(
       return builtinIdentity("website", request.selection.websiteTemplateId);
     }
     default: {
-      return {
-        category: "unknown",
-        templateId: UNKNOWN_TEMPLATE_ID,
-        templateSlug: UNKNOWN_TEMPLATE_ID,
-        source: "unknown",
-      };
+      return unreachableGenerationTemplateType(request);
     }
   }
 }

@@ -155,6 +155,7 @@ import {
   logTemplateUsage,
   type TemplateUsageLogContext,
 } from "../../lib/template-usage-log";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -256,6 +257,13 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  /**
+   * The selections behind that guidance, reported once the run is created.
+   * Carried through preparation rather than reported during it: preparation can
+   * still fail afterwards, and a queue-first send that stays queued is reported
+   * by the claim path instead.
+   */
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   /**
    * Guidance packages to mount for this run, one per uploaded template the
    * message selected and this caller was authorised for.
@@ -1091,9 +1099,9 @@ function resolveSelectedTemplateContext(
   runtimeBody: RuntimeNormalSendBody,
   featureSwitches: NormalSendFeatureSwitches,
   mountedUserPresentationTemplateIds: readonly string[],
-  usageContext: TemplateUsageLogContext,
 ): {
   readonly generationTemplatePrompt: string;
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
   const resolved = resolveThreadGenerationTemplatePrompt({
@@ -1105,9 +1113,9 @@ function resolveSelectedTemplateContext(
     presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
-  logTemplateUsage(usageContext, resolved.identities);
   return {
     generationTemplatePrompt: resolved.prompt,
+    generationTemplateIdentities: resolved.identities,
     videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
@@ -2715,13 +2723,11 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const { generationTemplatePrompt, videoRunOptions } =
-      resolveSelectedTemplateContext(
-        runtimeBody,
-        featureSwitches,
-        authorizedTemplates.userPresentationTemplateIds,
-        normalSendTemplateUsageContext(args, thread),
-      );
+    const templateContext = resolveSelectedTemplateContext(
+      runtimeBody,
+      featureSwitches,
+      authorizedTemplates.userPresentationTemplateIds,
+    );
     const persistedExplicitSelection = await persistTimedExplicitSelections(
       args,
       db,
@@ -2750,11 +2756,13 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      generationTemplatePrompt,
+      generationTemplatePrompt: templateContext.generationTemplatePrompt,
+      generationTemplateIdentities:
+        templateContext.generationTemplateIdentities,
       presentationTemplateVolumes: userPresentationTemplateVolumes(
         authorizedTemplates.userPresentationTemplateIds,
       ),
-      videoRunOptions,
+      videoRunOptions: templateContext.videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
@@ -3443,6 +3451,14 @@ async function buildNormalChatRunArgs(
     ),
   });
   signal.throwIfAborted();
+  // Reported here rather than at resolution: this is the one point a normal
+  // send is committed to creating its own run. A send rejected later in
+  // preparation never reaches it, and a queue-first message left queued is
+  // reported by the claim path when that run is created.
+  logTemplateUsage(
+    normalSendTemplateUsageContext(args, prepared.thread),
+    prepared.generationTemplateIdentities,
+  );
   return createRunArgs;
 }
 
