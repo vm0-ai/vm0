@@ -1135,6 +1135,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
         "newPasswordSubtitle": "Por razones de seguridad, se requiere restablecer su contraseña.",

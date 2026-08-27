@@ -1115,6 +1115,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",

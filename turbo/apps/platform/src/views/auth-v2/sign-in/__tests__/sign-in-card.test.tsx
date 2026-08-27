@@ -664,6 +664,20 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
+  it("marks Google's last authentication strategy", async () => {
+    mockAuthV2Capabilities({
+      appleOAuth: true,
+      googleOAuth: true,
+      lastAuthenticationStrategy: "oauth_google",
+    });
+    setupSignInPage({ status: "needs_identifier" });
+
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(within(google).getByText("Last used")).toBeVisible();
+    expect(within(apple).queryByText("Last used")).not.toBeInTheDocument();
+  });
+
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=oauth";
     const authSearch = new URLSearchParams({
@@ -689,8 +703,6 @@ describe("auth v2 sign-in flow", () => {
       );
     });
     expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith({
-      continueSignIn: true,
-      continueSignUp: false,
       redirectUrl: `/v2/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
       redirectUrlComplete: redirectUrl,
       strategy: "oauth_google",

@@ -45,6 +45,7 @@ export interface AuthV2SignInCopy {
   readonly helpTitle: string;
   readonly identifierLabel: string;
   readonly identifierPlaceholder: string;
+  readonly lastUsed: string;
   readonly legacySignIn: string;
   readonly loading: string;
   readonly methodsHelpPrompt: string;
@@ -140,6 +141,9 @@ function signInEntryCopy(
     }),
     identifierPlaceholder: t(($) => {
       return $.auth.v2.signIn.identifierPlaceholder;
+    }),
+    lastUsed: t(($) => {
+      return $.auth.v2.signIn.lastUsed;
     }),
     noAccount: t(($) => {
       return $.auth.v2.signIn.noAccount;

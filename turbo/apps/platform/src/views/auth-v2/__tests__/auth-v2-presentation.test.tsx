@@ -7,7 +7,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -62,6 +65,16 @@ function buttonByLabel(label: string): HTMLButtonElement {
   return button;
 }
 
+function buttonByText(text: string): HTMLButtonElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
+
 describe("auth v2 presentation", () => {
   it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
@@ -108,6 +121,10 @@ describe("auth v2 presentation", () => {
     ).toHaveAccessibleDescription(
       "Select the account with which you wish to continue.",
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
     expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
 
     const announcer = screen.getByTestId("auth-v2-announcer");
@@ -129,9 +146,16 @@ describe("auth v2 presentation", () => {
     await screen.findByLabelText("Password");
     const region = screen.getByTestId("app-auth-v2");
     const passwordVisibilityAction = buttonByLabel("Show password");
+    const continueAction = buttonByText("Continue");
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
+    expect(continueAction).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground",
+      "hover:bg-primary-hover",
+      "active:bg-primary-pressed",
+    );
     const currentSignUpAction = linkByText("Use current sign-up");
     expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
     expect(
@@ -162,6 +186,10 @@ describe("auth v2 presentation", () => {
       "src",
       platformVm0LogoImg,
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoImg,
+    );
 
     await user.keyboard("{Enter}");
 
@@ -189,6 +217,7 @@ describe("auth v2 presentation", () => {
       "href",
       "/sign-up",
     );
+    expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");
   });

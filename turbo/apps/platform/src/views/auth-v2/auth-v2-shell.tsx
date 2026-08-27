@@ -5,16 +5,23 @@ import {
   CardFooter,
   CardHeader,
 } from "@okouai/ui";
-import { useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../lib/static-assets.ts";
 import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
+import type { AuthBrandContext } from "../../signals/auth.ts";
+import { theme$ } from "../../signals/theme.ts";
 
 const AUTH_V2_TITLE_ID = "auth-v2-title";
 const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
 
 interface AuthV2ShellProps {
   readonly announcement?: ReactNode;
+  readonly authBrand: AuthBrandContext;
   readonly cardFooter?: ReactNode;
   readonly children: ReactNode;
   readonly description?: ReactNode;
@@ -26,6 +33,7 @@ interface AuthV2ShellProps {
 
 export function AuthV2Shell({
   announcement,
+  authBrand,
   cardFooter,
   children,
   description,
@@ -35,6 +43,7 @@ export function AuthV2Shell({
   title,
 }: AuthV2ShellProps) {
   const focusHeading = useSet(focusAuthV2HeadingRef$);
+  const theme = useGet(theme$);
 
   return (
     <div className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4">
@@ -46,25 +55,41 @@ export function AuthV2Shell({
         role="region"
       >
         <div className="flex flex-col gap-8 px-10 py-8">
-          <CardHeader className="items-center space-y-1 bg-transparent p-0 text-center">
-            <h1
-              className="text-lg font-medium text-foreground outline-none"
-              id={AUTH_V2_TITLE_ID}
-              key={focusKey}
-              ref={focusHeading}
-              tabIndex={-1}
-            >
-              {title}
-            </h1>
-            {description ? (
-              <CardDescription
-                className="max-w-sm leading-5"
-                id={AUTH_V2_DESCRIPTION_ID}
-              >
-                {description}
-              </CardDescription>
+          <CardHeader className="items-center space-y-0 bg-transparent p-0 text-center">
+            {authBrand.brandName === "VM0" ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="mb-5 h-5 w-auto"
+                crossOrigin="anonymous"
+                data-testid="auth-v2-brand-logo"
+                height={20}
+                src={
+                  theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
+                }
+                width={82}
+              />
             ) : null}
-            {headerDetail}
+            <div className="w-full space-y-1">
+              <h1
+                className="text-lg font-medium text-foreground outline-none"
+                id={AUTH_V2_TITLE_ID}
+                key={focusKey}
+                ref={focusHeading}
+                tabIndex={-1}
+              >
+                {title}
+              </h1>
+              {description ? (
+                <CardDescription
+                  className="max-w-sm leading-5"
+                  id={AUTH_V2_DESCRIPTION_ID}
+                >
+                  {description}
+                </CardDescription>
+              ) : null}
+              {headerDetail}
+            </div>
           </CardHeader>
           <CardContent className="p-0">{children}</CardContent>
         </div>

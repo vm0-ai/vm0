@@ -1115,6 +1115,7 @@
         "hidePassword": "비밀번호 숨기기",
         "identifierLabel": "이메일 주소 혹은 아이디",
         "identifierPlaceholder": "이메일 주소 또는 사용자 이름을 입력하세요",
+        "lastUsed": "최근 사용",
         "methodsHelpPrompt": "이 방법들을 사용할 수 없나요?",
         "newPasswordLabel": "새 비밀번호",
         "newPasswordSubtitle": "보안을 위해 비밀번호를 재설정해야 해요.",
