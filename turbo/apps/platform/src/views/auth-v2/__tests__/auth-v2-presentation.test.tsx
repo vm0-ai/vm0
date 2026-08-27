@@ -113,12 +113,6 @@ describe("auth v2 presentation", () => {
     const announcer = screen.getByTestId("auth-v2-announcer");
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
-
-    expect(
-      queryAllByRoleFast("link").some((candidate) => {
-        return candidate.getAttribute("href") === "/sign-in";
-      }),
-    ).toBeFalsy();
   });
 
   it("keeps password controls and fallback navigation in their accessible regions", async () => {

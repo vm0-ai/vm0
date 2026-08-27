@@ -448,11 +448,6 @@ describe("app auth pages", () => {
     expect(fallbackLink?.getAttribute("href") ?? null).toBe(
       routeCase.fallback?.path ?? null,
     );
-    expect(
-      queryAllByRoleFast("link").some((candidate) => {
-        return candidate.getAttribute("href") === "/sign-in";
-      }),
-    ).toBeFalsy();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
@@ -475,11 +470,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: "Choose an organization" }),
     ).resolves.toBeVisible();
     expect(authV2Button("Continue with Route Organization")).toBeVisible();
-    expect(
-      queryAllByRoleFast("link").some((candidate) => {
-        return candidate.getAttribute("href") === "/sign-in";
-      }),
-    ).toBeFalsy();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(document.title).toBe("Sign in | VM0");

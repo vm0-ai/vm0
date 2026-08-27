@@ -150,15 +150,10 @@ async function waitForRoleElement(
   return element;
 }
 
-function expectNoLegacySignInLink(): void {
-  expect(
-    queryAllByRoleFast("link").some((candidate) => {
-      return candidate.getAttribute("href") === "/sign-in";
-    }),
-  ).toBeFalsy();
-}
-
 function navigateToLegacySignIn(): void {
+  // These cases exercise teardown after address-bar navigation. JSDOM cannot
+  // perform a document navigation, and the removed fallback leaves no rendered
+  // control for this transition, so invoke the production router command.
   context.store.set(detachedNavigateTo$, ROUTES.signIn);
 }
 
@@ -470,7 +465,6 @@ describe("auth v2 sign-in flow", () => {
 
     await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expectNoLegacySignInLink();
     const editIdentifier = await waitForRoleElement(
       "button",
       "Edit identifier",
@@ -1769,7 +1763,6 @@ describe("auth v2 sign-in flow", () => {
       waitForRoleElement("link", "Email support"),
     ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expectNoLegacySignInLink();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));
