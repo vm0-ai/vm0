@@ -40,7 +40,7 @@ interface S3FileEntry {
   readonly size: number;
 }
 
-interface MultipartS3Part {
+export interface MultipartS3Part {
   readonly partNumber: number;
   readonly etag: string;
 }
@@ -584,6 +584,35 @@ export function generatePresignedUploadPartUrl(
       }),
       { expiresIn },
     );
+  });
+}
+
+export function uploadMultipartS3Part(
+  args: {
+    readonly bucket: string;
+    readonly key: string;
+    readonly uploadId: string;
+    readonly partNumber: number;
+    readonly body: Uint8Array;
+  },
+  signal?: AbortSignal,
+): Computed<Promise<MultipartS3Part>> {
+  return computed(async (get): Promise<MultipartS3Part> => {
+    const client = get(s3ClientForBucket(args.bucket));
+    const result = await client.send(
+      new UploadPartCommand({
+        Bucket: args.bucket,
+        Key: args.key,
+        UploadId: args.uploadId,
+        PartNumber: args.partNumber,
+        Body: args.body,
+      }),
+      { abortSignal: signal },
+    );
+    if (!result.ETag) {
+      throw new Error("R2 did not return a multipart part ETag");
+    }
+    return { partNumber: args.partNumber, etag: result.ETag };
   });
 }
 

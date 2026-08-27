@@ -21,6 +21,7 @@ import { cronRenewGoogleFormsWatchesRoutes } from "./routes/cron-renew-google-fo
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
+import { cronReconcileSocialKitDownloadRoutes } from "./routes/cron-reconcile-socialkit-downloads";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -246,6 +247,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
+  ...cronReconcileSocialKitDownloadRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,

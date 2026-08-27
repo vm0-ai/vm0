@@ -29,6 +29,98 @@ export {
 
 const c = initContract();
 
+export const socialKitDownloadPlatformSchema = z.enum([
+  "youtube",
+  "tiktok",
+  "instagram",
+  "facebook",
+]);
+
+export const socialKitDownloadQualitySchema = z.enum([
+  "240p",
+  "360p",
+  "480p",
+  "720p",
+  "1080p",
+]);
+
+export const socialKitDownloadFormatSchema = z.enum(["mp4", "m4a"]);
+
+export const socialKitDownloadRequestSchema = z
+  .object({
+    platform: socialKitDownloadPlatformSchema,
+    url: z
+      .url()
+      .max(4096)
+      .refine((value) => {
+        return new URL(value).protocol === "https:";
+      }, "URL must use HTTPS"),
+    maxDuration: z.number().int().positive().max(86_400),
+    quality: socialKitDownloadQualitySchema.default("720p"),
+    format: socialKitDownloadFormatSchema.default("mp4"),
+  })
+  .strict();
+
+export const socialKitDownloadStatusSchema = z.enum([
+  "queued",
+  "processing",
+  "materializing",
+  "artifact_failed",
+  "provider_failed",
+  "completed",
+]);
+
+const socialKitDownloadProviderResultSchema = z.object({
+  durationSeconds: z.number().int().nonnegative(),
+  fileSizeMB: z.number().nonnegative(),
+  creditsCost: z.number().int().positive(),
+  title: z.string().max(1000).optional(),
+  thumbnail: z.url().max(4096).optional(),
+});
+
+const socialKitDownloadArtifactSchema = z.object({
+  id: z.string().uuid(),
+  url: z.url(),
+  filename: z.string().min(1),
+  contentType: z.string().min(1),
+  sizeBytes: z.number().int().positive(),
+});
+
+export const socialKitDownloadResponseSchema = z.object({
+  downloadId: z.string().uuid(),
+  status: socialKitDownloadStatusSchema,
+  platform: socialKitDownloadPlatformSchema,
+  quality: socialKitDownloadQualitySchema,
+  format: socialKitDownloadFormatSchema,
+  maxDuration: z.number().int().positive(),
+  billingCategory: z.literal(MANAGED_SOCIALKIT_BILLING_CATEGORY),
+  provider: socialKitDownloadProviderResultSchema.nullable(),
+  billing: z
+    .object({
+      quantity: z.number().int().positive(),
+      creditsCharged: z.number().int().nonnegative(),
+    })
+    .nullable(),
+  artifact: socialKitDownloadArtifactSchema.nullable(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      retryable: z.boolean(),
+      billed: z.boolean(),
+    })
+    .nullable(),
+  createdAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+});
+
+export type SocialKitDownloadRequest = z.infer<
+  typeof socialKitDownloadRequestSchema
+>;
+export type SocialKitDownloadResponse = z.infer<
+  typeof socialKitDownloadResponseSchema
+>;
+
 const socialKitCollectionSchema = z
   .discriminatedUnion("state", [
     z.object({
@@ -130,6 +222,37 @@ export const socialContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Call a typed managed SocialKit tool",
+  },
+  createDownload: {
+    method: "POST",
+    path: "/api/social/downloads",
+    headers: authHeadersSchema,
+    body: socialKitDownloadRequestSchema,
+    responses: {
+      202: socialKitDownloadResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      502: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Start a managed SocialKit artifact download",
+  },
+  getDownload: {
+    method: "GET",
+    path: "/api/social/downloads/:downloadId",
+    headers: authHeadersSchema,
+    pathParams: z.object({ downloadId: z.string().uuid() }),
+    responses: {
+      200: socialKitDownloadResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get a managed SocialKit artifact download",
   },
 });
 

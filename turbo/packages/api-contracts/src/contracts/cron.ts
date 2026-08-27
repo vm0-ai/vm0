@@ -75,6 +75,11 @@ const cronProcessUsageEventsResponseSchema = z.object({
   processed: z.number(),
 });
 
+const cronReconcileSocialKitDownloadsResponseSchema = z.object({
+  success: z.literal(true),
+  processed: z.number().int().nonnegative(),
+});
+
 const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   success: z.literal(true),
   scopes: z.number(),
@@ -318,6 +323,19 @@ export const cronProcessUsageEventsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Process pending usage events",
+  },
+});
+
+export const cronReconcileSocialKitDownloadsContract = c.router({
+  reconcile: {
+    method: "GET",
+    path: "/api/cron/reconcile-socialkit-downloads",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronReconcileSocialKitDownloadsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Reconcile managed SocialKit downloads",
   },
 });
 
@@ -639,6 +657,8 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
 
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
+export type CronReconcileSocialKitDownloadsContract =
+  typeof cronReconcileSocialKitDownloadsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
 export type CronMonitorChatEventQueueContract =
@@ -678,6 +698,7 @@ export {
   cronSnapshotChatEventsResponseSchema,
   cronRetainChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
+  cronReconcileSocialKitDownloadsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
   cronConnectorOauthStateCleanupResponseSchema,

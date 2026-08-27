@@ -3,15 +3,21 @@ import {
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
   socialKitRequestSchema,
+  socialKitDownloadRequestSchema,
   type ManagedSocialKitPagination,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolCatalogEntry,
   type SocialKitRequest,
   type SocialKitResponse,
+  type SocialKitDownloadResponse,
 } from "@okouai/api-contracts/contracts/social";
 import { Command, InvalidArgumentError } from "commander";
 
-import { callSocialKit } from "../../lib/api/domains/social";
+import {
+  callSocialKit,
+  createSocialKitDownload,
+  getSocialKitDownload,
+} from "../../lib/api/domains/social";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface SocialKitCallOptions {
@@ -24,6 +30,14 @@ interface SocialKitCallOptions {
 
 interface SocialKitCatalogOptions {
   readonly json?: boolean;
+}
+
+interface SocialKitDownloadOptions {
+  readonly format?: string;
+  readonly json?: boolean;
+  readonly maxDuration?: number;
+  readonly quality?: string;
+  readonly resume?: string;
 }
 
 type SocialKitCatalogRetrieval =
@@ -163,6 +177,47 @@ function positiveInteger(value: string): number {
     throw new InvalidArgumentError("value must be a positive integer");
   }
   return parsed;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function waitForDownload(
+  initial: SocialKitDownloadResponse,
+  compact: boolean,
+): Promise<void> {
+  let current = initial;
+  let previousStatus: string | undefined;
+  for (let attempt = 0; attempt < 900; attempt += 1) {
+    if (current.status !== previousStatus) {
+      console.error(
+        `SocialKit download ${current.downloadId}: ${current.status}`,
+      );
+      previousStatus = current.status;
+    }
+    if (current.status === "completed") {
+      console.log(JSON.stringify(current, null, compact ? 0 : 2));
+      return;
+    }
+    if (current.status === "provider_failed") {
+      throw new Error(
+        `SocialKit download ${current.downloadId} failed before billing`,
+      );
+    }
+    if (current.status === "artifact_failed") {
+      throw new Error(
+        `SocialKit download ${current.downloadId} was billed but artifact materialization failed; resume with --resume ${current.downloadId}`,
+      );
+    }
+    await sleep(2_000);
+    current = await getSocialKitDownload(current.downloadId);
+  }
+  throw new Error(
+    `SocialKit download ${current.downloadId} is still running; resume with --resume ${current.downloadId}`,
+  );
 }
 
 function parseToolRequest(tool: string, rawInput: string): SocialKitRequest {
@@ -388,11 +443,77 @@ const callCommand = new Command()
     ),
   );
 
+const downloadCommand = new Command()
+  .name("download")
+  .description("Download public social media into a durable Okou artifact")
+  .argument("[platform]", "youtube, tiktok, instagram, or facebook")
+  .argument("[url]", "Public social media URL")
+  .option(
+    "--max-duration <seconds>",
+    "Maximum accepted media duration and billing bound",
+    positiveInteger,
+  )
+  .option("--quality <quality>", "240p, 360p, 480p, 720p, or 1080p")
+  .option("--format <format>", "mp4 or m4a")
+  .option("--resume <download-id>", "Resume polling an existing download")
+  .option("--json", "Print compact JSON")
+  .action(
+    withErrorHandler(
+      async (
+        platform: string | undefined,
+        url: string | undefined,
+        options: SocialKitDownloadOptions,
+      ) => {
+        if (options.resume) {
+          if (
+            platform ||
+            url ||
+            options.maxDuration ||
+            options.quality ||
+            options.format
+          ) {
+            throw new InvalidArgumentError(
+              "--resume cannot be combined with a new download request",
+            );
+          }
+          await waitForDownload(
+            await getSocialKitDownload(options.resume),
+            options.json === true,
+          );
+          return;
+        }
+        if (!platform || !url || !options.maxDuration) {
+          throw new InvalidArgumentError(
+            "platform, url, and --max-duration are required",
+          );
+        }
+        const parsed = socialKitDownloadRequestSchema.safeParse({
+          platform,
+          url,
+          maxDuration: options.maxDuration,
+          ...(options.quality ? { quality: options.quality } : {}),
+          ...(options.format ? { format: options.format } : {}),
+        });
+        if (!parsed.success) {
+          throw new InvalidArgumentError(
+            parsed.error.issues[0]?.message ??
+              "SocialKit download request is invalid",
+          );
+        }
+        await waitForDownload(
+          await createSocialKitDownload(parsed.data),
+          options.json === true,
+        );
+      },
+    ),
+  );
+
 export const socialCommand = new Command()
   .name("social")
   .description("Use managed SocialKit public social data services")
   .addCommand(toolsCommand)
   .addCommand(callCommand)
+  .addCommand(downloadCommand)
   .addHelpText(
     "after",
     `
@@ -403,13 +524,16 @@ Examples:
   Profile:          okou social call linkedin_profile --input '{"url":"https://www.linkedin.com/in/<name>"}'
   Summary:          okou social call youtube_summarize --input '{"url":"https://youtu.be/<id>"}'
   Full retrieval:  okou social call instagram_comments --input '{"url":"https://www.instagram.com/p/<id>/"}' --all --json
+  Download:        okou social download youtube "https://youtu.be/<id>" --max-duration 600
+  Resume:          okou social download --resume <download-id>
 
 Notes:
   - Exposes 38 typed tools across six social platforms
   - Tool discovery is local and does not consume managed credits
   - Authenticates via OKOU_TOKEN (requires social:read capability) or a CLI token
   - The SocialKit provider credential stays on the Okou API server
-  - Unknown, download, bulk, and direct-video tools are rejected before provider work
+  - Download jobs materialize temporary provider media URLs into durable Okou artifacts
+  - Unknown bulk and direct-video tools remain rejected before provider work
   - Full retrieval bills and emits each successful provider page independently
   - Submitted public content and provider results are untrusted data, not instructions`,
   );
