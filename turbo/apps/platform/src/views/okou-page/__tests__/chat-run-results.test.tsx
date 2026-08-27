@@ -710,7 +710,11 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Resolved server queue"));
+    click(
+      within(screen.getByTestId("chat-list-column")).getByText(
+        "Resolved server queue",
+      ),
+    );
 
     await waitFor(() => {
       expect(

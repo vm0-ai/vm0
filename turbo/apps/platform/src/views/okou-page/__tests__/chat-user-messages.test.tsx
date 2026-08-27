@@ -589,7 +589,9 @@ describe("user messages", () => {
     });
 
     const agentsLink = await waitFor(() => {
-      const link = screen.getByText("Agents").closest("a");
+      const link = within(screen.getByTestId("labeled-nav-rail"))
+        .getByText("Agents")
+        .closest("a");
       if (!link) {
         throw new Error("Expected the Agents navigation link");
       }
@@ -718,7 +720,9 @@ describe("user messages", () => {
     expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
 
     const sidebarThreadLink = await waitFor(() => {
-      const link = screen.getByText("Sidebar chat").closest("a");
+      const link = within(screen.getByTestId("chat-list-column"))
+        .getByText("Sidebar chat")
+        .closest("a");
       if (!link) {
         throw new Error("Expected the sidebar thread link");
       }

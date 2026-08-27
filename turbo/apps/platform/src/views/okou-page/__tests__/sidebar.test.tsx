@@ -3231,9 +3231,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");

@@ -593,6 +593,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
 test("reveal the default agent unread action from the whole row", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
   const defaultAgentId = new URL(page.url()).pathname.match(
@@ -613,8 +614,11 @@ test("reveal the default agent unread action from the whole row", async ({
   await page.reload();
   await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
 
-  const defaultAgentRow = page.getByTestId("pinned-agent-card").filter({
-    has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
+  await page.getByRole("button", { name: "Open menu" }).click();
+  const mobileSidebar = page.locator("aside.zero-pwa-fixed-cover");
+  await expect(mobileSidebar).toBeVisible();
+  const defaultAgentRow = mobileSidebar.getByTestId("pinned-agent-card").filter({
+    has: mobileSidebar.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
   });
   const unreadIndicator = defaultAgentRow.getByLabel("Unread");
   const unreadContainer = unreadIndicator.locator("..");
