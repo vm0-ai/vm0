@@ -1185,6 +1185,25 @@ export function getApiTestMocks(): ApiTestMocks {
   return apiTestMocks;
 }
 
+export function apiTestS3PresignedUrl(command: unknown): string {
+  const candidate = command as {
+    readonly constructor?: { readonly name?: string };
+    readonly input?: { readonly Bucket?: unknown; readonly Key?: unknown };
+  };
+  if (candidate.constructor?.name !== "GetObjectCommand") {
+    return "https://r2.example.com/upload?sig=test";
+  }
+  const bucket = candidate.input?.Bucket;
+  const key = candidate.input?.Key;
+  if (typeof bucket !== "string" || typeof key !== "string") {
+    throw new Error("Expected S3 GET presign request to identify an object");
+  }
+  const url = new URL("https://r2.example.com/storage/archive.tar.gz");
+  url.searchParams.set("sig", "bdd");
+  url.searchParams.set("object", `${bucket}/${key}`);
+  return url.toString();
+}
+
 export function resetApiTestMocks(): void {
   apiTestMocks.abortSignal.timeout.mockReset();
   apiTestMocks.ably.channelGet.mockReset();
@@ -1232,8 +1251,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
-  apiTestMocks.s3.getSignedUrl.mockResolvedValue(
-    "https://r2.example.com/upload?sig=test",
+  apiTestMocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      return Promise.resolve(apiTestS3PresignedUrl(command));
+    },
   );
   apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.dns.lookupOverrides.clear();

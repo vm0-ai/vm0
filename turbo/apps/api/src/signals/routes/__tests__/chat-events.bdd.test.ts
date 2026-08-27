@@ -76,6 +76,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import {
   API_TEST_CONNECTOR_CATALOG,
   apiTestConnectorCatalogValidationAuthority,
@@ -4794,9 +4795,7 @@ interface PiCheckpointS3Command {
   };
 }
 
-function piCheckpointObjectKey(
-  candidate: PiCheckpointS3Command,
-): string | undefined {
+function piS3ObjectKey(candidate: PiCheckpointS3Command): string | undefined {
   const bucket = candidate.input?.Bucket;
   const key = candidate.input?.Key;
   return typeof bucket === "string" && typeof key === "string"
@@ -4808,7 +4807,7 @@ function mockPiPutObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "PutObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4827,7 +4826,7 @@ function mockPiGetObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "GetObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4877,22 +4876,60 @@ function mockPiCheckpointObjectStore(): Map<string, Buffer> {
   return objects;
 }
 
-function latestStoredArchive(): Buffer {
+const PI_RESOURCE_ARCHIVE_DOWNLOAD_URL =
+  "https://r2.example.com/storage/archive.tar.gz";
+
+function uploadedPiS3Object(objectKey: string): Buffer | undefined {
   for (const [command] of [...context.mocks.s3.send.mock.calls].reverse()) {
-    const candidate = command as {
-      readonly constructor?: { readonly name?: string };
-      readonly input?: { readonly Body?: unknown; readonly Key?: unknown };
-    };
+    const candidate = command as PiCheckpointS3Command;
     if (
       candidate.constructor?.name === "PutObjectCommand" &&
-      typeof candidate.input?.Key === "string" &&
-      candidate.input.Key.endsWith("/archive.tar.gz") &&
-      candidate.input.Body instanceof Uint8Array
+      piS3ObjectKey(candidate) === objectKey
     ) {
+      if (!(candidate.input?.Body instanceof Uint8Array)) {
+        throw new Error(
+          `Expected uploaded Pi S3 object bytes for ${objectKey}`,
+        );
+      }
       return Buffer.from(candidate.input.Body);
     }
   }
-  throw new Error("Expected an uploaded Storage archive fixture");
+  return undefined;
+}
+
+function piS3Object(objectKey: string): Buffer {
+  const uploaded = uploadedPiS3Object(objectKey);
+  if (uploaded) {
+    return uploaded;
+  }
+  const bucketPrefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/`;
+  const seeded = objectKey.startsWith(bucketPrefix)
+    ? seededSystemSkillArchive(objectKey.slice(bucketPrefix.length))
+    : undefined;
+  if (seeded) {
+    return seeded;
+  }
+  throw new Error(`Expected Pi S3 object ${objectKey}`);
+}
+
+function mockPiResourceArchiveDownloads(unavailable = false): void {
+  server.use(
+    http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+      if (unavailable) {
+        return HttpResponse.json(
+          { error: "archive unavailable" },
+          { status: 503 },
+        );
+      }
+      const objectKey = new URL(request.url).searchParams.get("object");
+      if (!objectKey) {
+        throw new Error("Expected Pi resource archive object identity");
+      }
+      return new HttpResponse(piS3Object(objectKey), {
+        headers: { "content-type": "application/gzip" },
+      });
+    }),
+  );
 }
 
 function occurrences(haystack: string, needle: string): number {
@@ -5144,14 +5181,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const discoveryArchive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(discoveryArchive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
@@ -5310,14 +5340,9 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.PiLoop]: true },
     );
-    const archive = latestStoredArchive();
+    mockPiResourceArchiveDownloads();
     const consumedAgentEvents: Record<string, unknown>[] = [];
     server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
       http.post(
         "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
         async ({ request }) => {
@@ -5442,19 +5467,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId: actor.orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return failResource
-            ? HttpResponse.json(
-                { error: "archive unavailable" },
-                { status: 503 },
-              )
-            : new HttpResponse(archive, {
-                headers: { "content-type": "application/gzip" },
-              });
-        }),
-      );
+      mockPiResourceArchiveDownloads(failResource);
       let modelCalls = 0;
       server.use(
         http.post("https://api.deepseek.com/responses", () => {
@@ -5512,14 +5525,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.PiLoop]: true },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
@@ -5613,14 +5619,7 @@ describe("CHAT-02: model-first provider policies", () => {
         [FeatureSwitchKey.ChatToolActivity]: true,
       },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
@@ -7260,14 +7259,7 @@ describe("CHAT-02: model-first provider policies", () => {
           modelProviderId: null,
         },
       ]);
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(archive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
