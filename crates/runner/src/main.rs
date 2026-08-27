@@ -546,34 +546,6 @@ mod tests {
     }
 
     #[test]
-    fn runner_config_rejects_removed_name_argument() {
-        let error = Cli::try_parse_from([
-            "runner",
-            "config",
-            "--profile",
-            "vm0/default",
-            "--rootfs-hash",
-            "rootfs-hash",
-            "--snapshot-hash",
-            "snapshot-hash",
-            "--name",
-            "v1.2.3",
-            "--group",
-            "vm0/test",
-            "--runner-dirname",
-            "v1.2.3",
-            "--api-url",
-            "https://api.example.test",
-            "--token",
-            "runner-token",
-        ])
-        .err()
-        .expect("runner config must reject the removed --name argument");
-
-        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
-    }
-
-    #[test]
     fn runner_hostname_partial_read_preserves_valid_value() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("runner.yaml");

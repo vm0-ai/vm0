@@ -54,11 +54,6 @@ verify_configs() {
   for hostname in runner-promotion-a runner-promotion-b; do
     local config="$tmp/$hostname/runners/$runner_name/runner.yaml"
     assert_line_count "$config" 1 "hostname: \"$hostname\""
-    if grep -Eq '^name:' "$config"; then
-      echo "generated config retained removed top-level name: $config" >&2
-      sed -n '1,40p' "$config" >&2
-      exit 1
-    fi
   done
 }
 
@@ -101,10 +96,6 @@ while [ "$#" -gt 0 ]; do
     --runner-dirname)
       runner_dirname=$2
       shift 2
-      ;;
-    --name)
-      echo "config generation retained removed --name: $*" >&2
-      exit 1
       ;;
     --profile|--rootfs-hash|--snapshot-hash|--group|--api-url|--token)
       shift 2

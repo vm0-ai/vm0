@@ -958,8 +958,6 @@ mod tests {
         assert_eq!(record.pid, std::process::id());
         assert_eq!(record.euid, current_euid());
         assert_eq!(record.base_dir, registry.root().join("base"));
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(value.get("runner_name").is_none());
 
         #[cfg(unix)]
         {

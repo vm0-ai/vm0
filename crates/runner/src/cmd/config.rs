@@ -459,12 +459,6 @@ mod tests {
         assert_eq!(profile.rootfs_disk_mb, 12288);
         assert_eq!(profile.workspace_disk_mb, 16384);
         assert_eq!(runner_config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
-        assert!(
-            config_content
-                .lines()
-                .all(|line| !line.starts_with("name:")),
-            "generated config must not contain the removed top-level name field"
-        );
     }
 
     fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {

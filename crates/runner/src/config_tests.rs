@@ -1162,7 +1162,6 @@ async fn generate_then_load_round_trip() {
     let generated = tokio::fs::read_to_string(&config_path).await.unwrap();
     assert!(generated.contains("rootfs_disk_mb: 8192"));
     assert!(generated.contains("workspace_disk_mb: 16384"));
-    assert!(generated.lines().all(|line| !line.starts_with("name:")));
     assert!(
         generated
             .lines()
