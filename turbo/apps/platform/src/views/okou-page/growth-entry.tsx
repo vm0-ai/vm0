@@ -300,24 +300,25 @@ export function GrowthEntryHeader() {
     hideAppSkeletonOnContentReadyRef$,
   );
   const roleReady = currentIsAdminLoadable.state === "hasData";
-  const isAdmin = roleReady
-    ? currentIsAdminLoadable.data
-    : lastIsAdminLoadable.state === "hasData" && lastIsAdminLoadable.data;
+  const isCurrentAdmin = roleReady && currentIsAdminLoadable.data;
+  const preserveAdminLayout =
+    isCurrentAdmin ||
+    (!roleReady &&
+      lastIsAdminLoadable.state === "hasData" &&
+      lastIsAdminLoadable.data);
   return (
     <>
       {/* Reveal only after the current role and its layout commit together. */}
       {roleReady ? (
         <span ref={hideAppSkeletonOnContentReadyRef} hidden />
       ) : null}
-      {isAdmin ? (
-        <>
-          {/* Match the former in-flow header's 16px + 32px + 8px height. The
-              controls stay absolute, but the home content keeps its
-              established desktop position while Slack resolves. */}
-          <div aria-hidden className="hidden h-14 shrink-0 md:block" />
-          <AdminGrowthEntryHeader />
-        </>
+      {/* Match the former in-flow header's 16px + 32px + 8px height. Preserve
+          only its layout while the role refreshes; stale role data must not
+          keep admin controls available. */}
+      {preserveAdminLayout ? (
+        <div aria-hidden className="hidden h-14 shrink-0 md:block" />
       ) : null}
+      {isCurrentAdmin ? <AdminGrowthEntryHeader /> : null}
     </>
   );
 }

@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
+import { refreshOrg$ } from "../../../signals/org.ts";
 import { AGENT_ID, context, mockAgent } from "./chat-composer-test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -89,6 +90,45 @@ describe("home growth entry", () => {
     await waitFor(() => {
       expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
     });
+  });
+
+  it("hides admin controls while the organization role refreshes", async () => {
+    const refreshRequested = context.mocks.deferred<void>();
+    const releaseRefresh = context.mocks.deferred<void>();
+    let requestCount = 0;
+    mockAgent();
+    mockSlackStatus({ isConnected: false, isInstalled: true });
+    context.mocks.api(orgContract.get, async ({ respond }) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return respond(200, {
+          id: "org_1",
+          name: "Test Org",
+          role: "admin",
+        });
+      }
+      refreshRequested.resolve(undefined);
+      await releaseRefresh.promise;
+      return respond(200, {
+        id: "org_1",
+        name: "Test Org",
+        role: "admin",
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await screen.findByTestId("growth-entry");
+    context.store.set(refreshOrg$);
+    await refreshRequested.promise;
+
+    expect(screen.queryByTestId("growth-entry")).not.toBeInTheDocument();
+
+    releaseRefresh.resolve(undefined);
+    await screen.findByTestId("growth-entry");
   });
 
   it("hides the growth entry from non-admin members", async () => {
