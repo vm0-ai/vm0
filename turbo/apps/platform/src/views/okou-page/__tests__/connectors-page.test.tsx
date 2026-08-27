@@ -4949,7 +4949,9 @@ describe("connectors page", () => {
       expect(
         within(card).queryByTestId("connector-card-agent-access"),
       ).not.toBeInTheDocument();
-      expect(card).toHaveAccessibleName("Connect Acme Search");
+      expect(within(card).getByLabelText("Connect Acme Search").tagName).toBe(
+        "BUTTON",
+      );
     });
 
     click(screen.getByLabelText("More options"));
@@ -6663,6 +6665,21 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(supportAccessSwitch).not.toHaveAttribute("aria-disabled", "true");
     });
+    click(within(accessDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Manage Acme Search access" }),
+      ).toBeNull();
+    });
+    const manageAccounts = await waitForButtonByAriaLabel(
+      "Manage Acme Search accounts",
+    );
+    const manageAccess = within(
+      connectorCardByLabel("Acme Search"),
+    ).getByLabelText("Manage Acme Search access");
+    expect(manageAccounts.tagName).toBe("BUTTON");
+    expect(manageAccounts.querySelector("button")).toBeNull();
+    expect(manageAccounts).not.toContainElement(manageAccess);
   });
 
   it.each([

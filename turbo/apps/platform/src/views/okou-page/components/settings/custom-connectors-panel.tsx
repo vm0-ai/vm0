@@ -233,15 +233,7 @@ function CustomConnectorCardFooter({
         <CustomConnectorConnectionStatus connected={connector.connected} />
       )}
       {connector.connected || accountManagement ? (
-        <div
-          className="min-w-0 max-w-full"
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-          }}
-        >
+        <div className="relative z-20 min-w-0 max-w-full">
           <CustomConnectorAgentAccess
             connector={connector}
             allowAccessIncrease={allowAccessIncrease}
@@ -276,36 +268,25 @@ function CustomConnectorActivationCard({
   readonly children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const activate = () => {
-    if (canActivate) {
-      onActivate();
-    }
-  };
   return (
     <div
-      role={canActivate ? "button" : undefined}
-      tabIndex={canActivate ? 0 : undefined}
-      aria-label={
-        canActivate
-          ? t(
-              ($) => {
-                return managesAccounts
-                  ? $.connectors.accounts.managerTitle
-                  : $.connectors.card.connectAria;
-              },
-              { connector: connectorLabel },
-            )
-          : undefined
-      }
-      className={`zero-card flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
-      onClick={activate}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          activate();
-        }
-      }}
+      className={`zero-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
     >
+      {canActivate ? (
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return managesAccounts
+                ? $.connectors.accounts.managerTitle
+                : $.connectors.card.connectAria;
+            },
+            { connector: connectorLabel },
+          )}
+          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={onActivate}
+        />
+      ) : null}
       {children}
     </div>
   );
@@ -340,7 +321,7 @@ function CustomConnectorActions({
   }
   const directOAuth = connectsDirectlyWithOAuth(connector);
   return (
-    <div className="absolute bottom-2 right-2">
+    <div className="absolute bottom-2 right-2 z-20">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
