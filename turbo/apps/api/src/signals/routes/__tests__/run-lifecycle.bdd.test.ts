@@ -16952,19 +16952,28 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       files: [cacheFile],
     });
 
-    const created = await api.createRun(actor, {
-      agentId,
-      prompt: "report snapshots and telemetry",
-      modelProvider: "anthropic-api-key",
-      additionalVolumes: [
-        {
-          name: cacheVolume,
-          version: cachePrepared.versionId,
-          mountPath: "/cache",
-        },
-        { name: scratchVolume, mountPath: "/scratch" },
-      ],
-    });
+    const createdResponse = await api.requestCreateRunUnchecked(
+      actor,
+      {
+        agentId,
+        prompt: "report snapshots and telemetry",
+        modelProvider: "anthropic-api-key",
+        additionalVolumes: [
+          {
+            name: cacheVolume,
+            version: cachePrepared.versionId,
+            mountPath: "/cache",
+            baselineCandidate: true,
+          },
+          { name: scratchVolume, mountPath: "/scratch" },
+        ],
+      },
+      [201],
+    );
+    if (createdResponse.status !== 201) {
+      throw new Error("Expected unchecked run creation to succeed");
+    }
+    const created = createdResponse.body;
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(created.runId);
     const storageMounts =
