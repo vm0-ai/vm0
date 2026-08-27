@@ -10,7 +10,6 @@ import {
   type MailDraftStatus,
   type MailInlineImage,
 } from "@okouai/api-contracts/contracts/mail";
-import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
 import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
@@ -42,6 +41,11 @@ const TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
+const REQUIRED_GMAIL_MAIL_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.modify",
+] as const;
+const GMAIL_MAIL_PERMISSION_ERROR =
+  "Gmail access does not include permission to manage mail drafts";
 const oauthScopesSchema = z.array(z.string());
 
 interface GmailMessagePart {
@@ -106,7 +110,6 @@ interface MailConnection extends ConnectorCredentialConnection {
   readonly connectorSlug: "gmail";
   readonly externalEmail: string;
   readonly externalUsername: string | null;
-  readonly scopesReady: boolean;
 }
 
 interface MailDraftResult {
@@ -332,10 +335,6 @@ async function loadMailConnections(args: {
         oauthScopes,
         stateRevision: row.stateRevision,
         storageVersion: access.storageVersion,
-        scopesReady: connectorAuthMethodHasRequiredScopes(
-          runtimeMethod.method,
-          oauthScopes,
-        ),
         tokenExpiresAt: row.tokenExpiresAt,
       },
     ];
@@ -456,8 +455,16 @@ async function resolveMailAccessToken(
   },
   signal: AbortSignal,
 ): Promise<MailAccessTokenResult> {
-  if (args.connection.needsReconnect || !args.connection.scopesReady) {
+  if (args.connection.needsReconnect) {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
+  }
+  const grantedScopes = new Set(args.connection.oauthScopes ?? []);
+  if (
+    REQUIRED_GMAIL_MAIL_SCOPES.some((scope) => {
+      return !grantedScopes.has(scope);
+    })
+  ) {
+    return { kind: "error", message: GMAIL_MAIL_PERMISSION_ERROR };
   }
   const accessTokenValueRef = connectorCredentialRuntimeValueRef(
     args.connection,
@@ -1502,7 +1509,7 @@ export const linkMailDraft$ = command(
         agentId: threadAgentId,
       })
     ).filter((connection) => {
-      return !connection.needsReconnect && connection.scopesReady;
+      return !connection.needsReconnect;
     });
     signal.throwIfAborted();
     const connection = connections.length === 1 ? connections[0] : undefined;

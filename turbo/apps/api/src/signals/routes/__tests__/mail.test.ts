@@ -29,6 +29,7 @@ import {
   seedCustomThreadConnectorSelection,
   setConnectorDefaultState,
   setConnectorCredentialStorageState,
+  setLegacyBuiltinOAuthScopes,
   setConnectorSecretOwner,
 } from "./helpers/connector-credential-storage-state";
 import { mailRoutes } from "../mail";
@@ -45,6 +46,9 @@ const GMAIL_THREAD_ID = "gmail-thread-id";
 const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
 const GMAIL_SENT_MESSAGE_ID = "gmail-sent-message-id";
 const GMAIL_IMAGE_ATTACHMENT_ID = "attachment-image";
+const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+const GMAIL_SETTINGS_SCOPE =
+  "https://www.googleapis.com/auth/gmail.settings.basic";
 const GMAIL_IMAGE_BYTES = Buffer.from("mail draft image");
 const GMAIL_PDF_BYTES = Buffer.from("mail draft pdf");
 const GMAIL_TEXT_BYTES = Buffer.from("mail draft decision");
@@ -250,7 +254,9 @@ function mockGmailDraftApi(options?: {
   return state;
 }
 
-async function seedGmailMailCardFixture() {
+async function seedGmailMailCardFixture(options?: {
+  readonly grantedScopes?: readonly string[];
+}) {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -268,6 +274,9 @@ async function seedGmailMailCardFixture() {
   mockGmailConnectorOAuth({
     accessToken: "gmail-mail-card-token",
     email: "sender@example.com",
+    ...(options?.grantedScopes === undefined
+      ? {}
+      : { scopes: options.grantedScopes }),
   });
   const start = await connectors.startOauth(actor, "gmail", "oauth");
   const state = new URL(start.authorizationUrl).searchParams.get("state");
@@ -315,6 +324,43 @@ async function linkDraft(
 }
 
 describe("POST /api/mail/drafts/link", () => {
+  it("uses the authoritative Gmail grant instead of the requested scope snapshot", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setLegacyBuiltinOAuthScopes(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorSlug: "gmail",
+      oauthScopes: [GMAIL_MODIFY_SCOPE, GMAIL_SETTINGS_SCOPE],
+    });
+    const gmail = mockGmailDraftApi();
+
+    await linkDraft(fixture);
+
+    expect(gmail.draftReadCount).toBe(1);
+  });
+
+  it("rejects a Gmail draft operation when its required grant is missing", async () => {
+    const fixture = await seedGmailMailCardFixture({ grantedScopes: [] });
+    const gmail = mockGmailDraftApi();
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Gmail access does not include permission to manage mail drafts",
+    );
+    expect(gmail.draftReadCount).toBe(0);
+  });
+
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();

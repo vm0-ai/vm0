@@ -576,6 +576,7 @@ interface GmailConnectorOAuthOptions {
   readonly refreshToken?: string;
   readonly subject?: string;
   readonly email?: string;
+  readonly scopes?: readonly string[];
 }
 
 export function mockGmailConnectorOAuth(
@@ -603,7 +604,9 @@ export function mockGmailConnectorOAuth(
         refresh_token: options.refreshToken ?? "gmail-refresh-token",
         expires_in: 3600,
         token_type: "Bearer",
-        scope: "https://www.googleapis.com/auth/gmail.modify",
+        scope: (
+          options.scopes ?? ["https://www.googleapis.com/auth/gmail.modify"]
+        ).join(" "),
       });
     }),
     http.get(GOOGLE_OPENID_USERINFO_URL, () => {
