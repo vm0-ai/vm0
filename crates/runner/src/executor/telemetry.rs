@@ -507,10 +507,24 @@ pub(super) fn record_api_startup_boundaries(
     } else {
         RunnerStartupPath::Cold
     };
-    if let Some(duration) = api_latency_duration_at("api_to_spawn", context, shell_started_at) {
+    let observed_at = Instant::now();
+    let observed_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    if let Some(duration) = api_latency_duration_at(
+        "api_to_spawn",
+        context,
+        shell_started_at,
+        observed_at,
+        observed_ms,
+    ) {
         telemetry.record_api_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
     }
-    if let Some(duration) = api_latency_duration_at("api_to_agent_ready", context, agent_ready_at) {
+    if let Some(duration) = api_latency_duration_at(
+        "api_to_agent_ready",
+        context,
+        agent_ready_at,
+        observed_at,
+        observed_ms,
+    ) {
         telemetry.record_api_to_agent_ready(duration, runner_startup_path, sandbox_reuse_result);
     }
     telemetry.finish_runner_pre_spawn_attribution();
@@ -520,20 +534,16 @@ fn api_latency_duration_at(
     action_type: &str,
     context: &ExecutionContext,
     completed_at: Instant,
+    observed_at: Instant,
+    observed_ms: u64,
 ) -> Option<Duration> {
-    let observed_at = Instant::now();
-    let observed_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-    let completed_ago_ms = u64::try_from(
-        observed_at
-            .saturating_duration_since(completed_at)
-            .as_millis(),
-    )
-    .unwrap_or(u64::MAX);
-    api_latency_duration_from_ms(
-        action_type,
-        context,
-        observed_ms.saturating_sub(completed_ago_ms),
-    )
+    let completed_ago = observed_at.saturating_duration_since(completed_at);
+    let completed_ago_ms = completed_ago
+        .as_secs()
+        .saturating_mul(1_000)
+        .saturating_add(u64::from(completed_ago.subsec_millis()));
+    let completed_ms = observed_ms.saturating_sub(completed_ago_ms);
+    api_latency_duration_from_ms(action_type, context, completed_ms)
 }
 
 fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
