@@ -765,14 +765,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             guest_contracts::env::SETTINGS_ENV.into(),
             r#"{"hooks":{}}"#.into(),
         ),
-        (
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV.into(),
-            "/tmp/mock-claude".into(),
-        ),
-        (
-            guest_contracts::env::MOCK_CODEX_PATH_ENV.into(),
-            "/tmp/mock-codex".into(),
-        ),
+        ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
+        ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
         (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
@@ -828,8 +822,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
         guest_contracts::env::SETTINGS_ENV,
-        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-        guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        "VM0_MOCK_CLAUDE_PATH",
+        "VM0_MOCK_CODEX_PATH",
         USER_ENV_FILE_ENV_KEY,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
