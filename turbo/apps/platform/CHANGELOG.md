@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.803.4](https://github.com/vm0-ai/vm0/compare/app-v0.803.3...app-v0.803.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* align permission controls across scrollbar gutter ([#29675](https://github.com/vm0-ai/vm0/issues/29675)) ([e94cd19](https://github.com/vm0-ai/vm0/commit/e94cd19ae112db48a783d8154b7fd0d88cbfef99))
+* **platform:** use chat terminology for account selector ([#29686](https://github.com/vm0-ai/vm0/issues/29686)) ([7435737](https://github.com/vm0-ai/vm0/commit/74357375c1f9e95db3fb07e855e42f9f6d1733ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+
 ## [0.803.3](https://github.com/vm0-ai/vm0/compare/app-v0.803.2...app-v0.803.3) (2026-08-27)
 
 

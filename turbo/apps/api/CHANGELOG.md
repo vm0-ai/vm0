@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.501.1](https://github.com/vm0-ai/vm0/compare/api-v1.501.0...api-v1.501.1) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** stop emitting legacy runner name ([#29680](https://github.com/vm0-ai/vm0/issues/29680)) ([e8bec5e](https://github.com/vm0-ai/vm0/commit/e8bec5ebcecd3e2e3b4b7af5a89cfb9aed804b60))
+
+
+### Performance Improvements
+
+* **api:** attribute web queue-first enqueue transaction ([#29682](https://github.com/vm0-ai/vm0/issues/29682)) ([07f859a](https://github.com/vm0-ai/vm0/commit/07f859a9bd2149d274f31d100892fa2a26328f16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+    * @okouai/db bumped to 1.226.1
+
 ## [1.501.0](https://github.com/vm0-ai/vm0/compare/api-v1.500.1...api-v1.501.0) (2026-08-27)
 
 
