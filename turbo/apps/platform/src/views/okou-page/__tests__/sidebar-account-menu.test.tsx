@@ -1448,7 +1448,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("opens the custom v2 sign-in flow in a dialog when enabled", async () => {
+  it("opens the custom v2 add-account dialog at identifier entry", async () => {
     prepareDefaultAgent();
 
     detachedSetupPage({
@@ -1469,6 +1469,9 @@ describe("zero sidebar account menu", () => {
     const dialog = await screen.findByTestId("auth-v2-add-account-dialog");
     expect(dialog).toHaveAttribute("role", "dialog");
     expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
+    await expect(
+      within(dialog).findByLabelText("Email address"),
+    ).resolves.toBeVisible();
     expect(window.location.href).toBe(originalUrl);
     expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
 

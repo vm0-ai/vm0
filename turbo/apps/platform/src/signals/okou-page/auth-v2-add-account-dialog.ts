@@ -80,6 +80,7 @@ export const openAuthV2AddAccountDialog$ = command(
         isOAuthCallbackRoute: false,
       },
     );
+    set(signInSignals.useAnotherAccount$);
 
     set(internalDialogModel$, {
       continuationSignals,
