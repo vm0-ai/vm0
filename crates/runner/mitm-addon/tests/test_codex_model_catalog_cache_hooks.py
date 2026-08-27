@@ -147,6 +147,15 @@ async def test_non_ows_request_content_length_bypasses_catalog_cache(
             "request_url",
             id="query",
         ),
+        pytest.param(
+            "GET",
+            True,
+            b"",
+            False,
+            "https://chatgpt.com/backend-api/codex/models?invalid\udcff=1",
+            "request_url",
+            id="surrogate-escaped-query",
+        ),
     ],
 )
 async def test_unsafe_catalog_requests_never_enter_cache(
