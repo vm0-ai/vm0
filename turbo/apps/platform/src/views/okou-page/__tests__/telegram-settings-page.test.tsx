@@ -10,6 +10,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. Production
+// still resolves this module only after matching a settings route.
+import "../../../signals/route-setups/settings.ts";
+
 const context = testContext();
 
 const ZERO_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
