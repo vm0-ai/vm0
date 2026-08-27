@@ -19,8 +19,9 @@
 //!
 //! Two companion placement endpoints are derived from the same operation-local
 //! control name. The one-shot runtime endpoint transfers a root-opened
-//! `workload/runtime/cgroup.procs` descriptor to Guest Agent. The tool endpoint
-//! serves repeated authenticated Bash-launcher connections: root creates a
+//! `workload/runtime/cgroup.procs` descriptor to Guest Agent, which confirms
+//! after validating and adopting it. The tool endpoint serves repeated
+//! authenticated Bash-launcher connections: root creates a
 //! unique tool cgroup, transfers its write-only `cgroup.procs` descriptor, and
 //! acknowledges only after the launcher confirms and root revalidates exact
 //! placement. User shell code does not run before that acknowledgement.
@@ -77,9 +78,10 @@ pub use codec::{
 };
 pub use transport::{
     accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name,
-    read_tool_placement_ack, read_tool_placement_confirmation, receive_tool_placement,
-    receive_workload_placement, send_tool_placement, send_workload_placement,
-    write_tool_placement_ack, write_tool_placement_confirmation,
+    read_tool_placement_ack, read_tool_placement_confirmation,
+    read_workload_placement_confirmation, receive_tool_placement, receive_workload_placement,
+    send_tool_placement, send_workload_placement, write_tool_placement_ack,
+    write_tool_placement_confirmation, write_workload_placement_confirmation,
 };
 
 /// Environment variable carrying the operation-control abstract socket name.

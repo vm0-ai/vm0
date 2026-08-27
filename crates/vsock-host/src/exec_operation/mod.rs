@@ -15,7 +15,7 @@ pub use handle::{
 pub use types::{
     ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlOutcome,
     ExecOperationRequest, ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput,
-    ExecStreamRequest, SupervisedExecControl, SupervisedExecRequest,
+    ExecStreamRequest, SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming,
 };
 
 pub(crate) use diagnostics::log_operations_closed;

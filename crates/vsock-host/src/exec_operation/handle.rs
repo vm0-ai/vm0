@@ -20,7 +20,7 @@ use super::frame::{
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
     ExecControlAck, ExecControlOutcome, ExecOperationResult, ExecOutputEvent,
-    exec_control_status_error,
+    SupervisedExecStartTiming, exec_control_status_error,
 };
 
 /// Handle for a host-side exec operation.
@@ -654,6 +654,7 @@ impl Drop for ExecOperationHandle {
 pub struct SupervisedExecHandle {
     pub(in crate::exec_operation) wait_core: ExecWaitCore,
     pub(in crate::exec_operation) pid: u32,
+    pub(in crate::exec_operation) start_timing: SupervisedExecStartTiming,
     pub(in crate::exec_operation) cancel_handle_taken: bool,
     pub(in crate::exec_operation) stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
     pub(in crate::exec_operation) control: Option<ExecControlHandle>,
@@ -712,6 +713,11 @@ impl SupervisedExecHandle {
     /// Guest process id reported by the `exec_started` acknowledgement.
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// Host and guest timing captured while the supervised start completed.
+    pub fn start_timing(&self) -> SupervisedExecStartTiming {
+        self.start_timing
     }
 
     /// Return a cloneable exec-control handle when control was enabled.

@@ -12,7 +12,8 @@ use vsock_proto::{
 
 use super::super::super::support::{
     assert_connection_accepts_exec_operation, normal_operation_readiness, operation_count,
-    read_guest_message, send_exec_result, send_exec_started, setup_host_and_guest,
+    read_guest_message, send_exec_agent_ready, send_exec_result, send_exec_started,
+    setup_host_and_guest,
 };
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::{
@@ -88,6 +89,21 @@ impl PendingSupervisedExec {
         );
     }
 
+    pub(super) fn assert_waiting_for_agent_ready(&self) {
+        assert!(
+            !self.task.is_finished(),
+            "Agent supervised start must wait for exec_agent_ready"
+        );
+    }
+
+    pub(super) async fn send_started(&mut self, pid: u32) {
+        send_exec_started(&mut self.guest, self.start.seq(), pid).await;
+    }
+
+    pub(super) async fn send_agent_ready(&mut self) {
+        send_exec_agent_ready(&mut self.guest, self.start.seq()).await;
+    }
+
     pub(super) async fn wait_start_result(self) -> PendingSupervisedExecResult {
         let result = self.task.await.unwrap();
         PendingSupervisedExecResult {
@@ -103,6 +119,13 @@ impl PendingSupervisedExec {
 
     pub(super) async fn started_with_pid(mut self, pid: u32) -> StartedSupervisedExec {
         send_exec_started(&mut self.guest, self.start.seq(), pid).await;
+        if vsock_proto::decode_exec_start(&self.start.msg.payload)
+            .unwrap()
+            .role
+            == vsock_proto::ExecProcessRole::Agent
+        {
+            send_exec_agent_ready(&mut self.guest, self.start.seq()).await;
+        }
         let handle = self.task.await.unwrap().unwrap();
         StartedSupervisedExec {
             host: self.host,

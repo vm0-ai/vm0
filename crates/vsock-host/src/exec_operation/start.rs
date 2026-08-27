@@ -257,6 +257,7 @@ where
             stream_queue_capacity,
             lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
                 start_tx: Some(start_tx),
+                role: request.role,
                 control_nonce,
             },
             role: request.role,
@@ -289,11 +290,11 @@ where
     }
     after_start_write.await;
 
-    let pid = tokio::select! {
+    let (pid, start_timing) = tokio::select! {
         biased;
         result = start_rx => {
             match result {
-                Ok(Ok(pid)) => pid,
+                Ok(Ok(start)) => start,
                 Ok(Err(error)) => {
                     start_cancel_on_drop.disarm();
                     return Err(error);
@@ -360,6 +361,7 @@ where
     Ok(SupervisedExecHandle {
         wait_core: ExecWaitCore::new(Arc::clone(shared), route_id, diagnostic, result_rx),
         pid,
+        start_timing,
         cancel_handle_taken: false,
         stream_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {

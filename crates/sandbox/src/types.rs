@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
@@ -876,11 +876,32 @@ impl GuestProcessHandle {
 pub struct GuestAgentProcessHandle {
     process: GuestProcessHandle,
     control: GuestProcessControlHandle,
+    start_timing: GuestAgentStartTiming,
+}
+
+/// Provider-neutral timing captured at the controlled Agent readiness boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestAgentStartTiming {
+    /// Host monotonic instant when the guest shell was spawned.
+    pub shell_started_at: Instant,
+    /// Host monotonic instant when Agent runtime placement was confirmed.
+    pub ready_at: Instant,
+    /// Guest time spent creating the per-exec process containment hierarchy.
+    pub containment_create: Duration,
+    /// Guest time spent creating workload and tool placement brokers.
+    pub placement_broker_setup: Duration,
+    /// Guest time spent spawning the supervised shell.
+    pub shell_spawn: Duration,
+    /// Guest time from shell spawn through confirmed runtime placement.
+    pub bootstrap_ready_wait: Duration,
 }
 
 impl GuestAgentProcessHandle {
     /// Convert a provider process handle into a controlled Agent handle.
-    pub fn try_from_process(mut process: GuestProcessHandle) -> crate::Result<Self> {
+    pub fn try_from_process(
+        mut process: GuestProcessHandle,
+        start_timing: GuestAgentStartTiming,
+    ) -> crate::Result<Self> {
         let Some(control) = process.control.take() else {
             return Err(crate::SandboxError::Operation {
                 operation: crate::SandboxOperation::StartAgentProcess,
@@ -888,7 +909,16 @@ impl GuestAgentProcessHandle {
                 message: "provider returned an Agent process without process control".into(),
             });
         };
-        Ok(Self { process, control })
+        Ok(Self {
+            process,
+            control,
+            start_timing,
+        })
+    }
+
+    /// Return timing captured while the controlled Agent became ready.
+    pub fn start_timing(&self) -> GuestAgentStartTiming {
+        self.start_timing
     }
 
     /// Consume the Agent handle into its process owner and control capability.
@@ -1091,6 +1121,18 @@ impl ProcessExit {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn guest_agent_start_timing() -> GuestAgentStartTiming {
+        let ready_at = Instant::now();
+        GuestAgentStartTiming {
+            shell_started_at: ready_at,
+            ready_at,
+            containment_create: Duration::ZERO,
+            placement_broker_setup: Duration::ZERO,
+            shell_spawn: Duration::ZERO,
+            bootstrap_ready_wait: Duration::ZERO,
+        }
+    }
 
     #[test]
     fn timeout_ms_normal() {
@@ -1452,10 +1494,11 @@ mod tests {
             }),
         );
 
-        let error = match GuestAgentProcessHandle::try_from_process(process) {
-            Ok(_) => panic!("Agent handle unexpectedly accepted missing control"),
-            Err(error) => error,
-        };
+        let error =
+            match GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()) {
+                Ok(_) => panic!("Agent handle unexpectedly accepted missing control"),
+                Err(error) => error,
+            };
         assert!(matches!(
             error,
             crate::SandboxError::Operation {
@@ -1480,7 +1523,8 @@ mod tests {
             }),
         );
 
-        let agent = GuestAgentProcessHandle::try_from_process(process).unwrap();
+        let agent =
+            GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()).unwrap();
         let (process, control) = agent.into_parts();
         assert_eq!(process.guest_pid, 42);
         let ack = control
