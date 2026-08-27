@@ -75,7 +75,10 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
         .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
         .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "claude-code")
         .env(guest_contracts::env::USE_MOCK_CLAUDE_ENV, "true")
-        .env(guest_contracts::env::MOCK_CLAUDE_PATH_ENV, &probe_path)
+        .env(
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            &probe_path,
+        )
         .env(
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
