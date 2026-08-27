@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 16;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 14;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -92,14 +92,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
         family: "agent_execution_timeout_env_source",
         canonical_key: guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
     },
-    BootstrapAliasSourceEventSpec {
-        family: "mock_binary_path_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "mock_binary_path_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-    },
 ];
 
 #[derive(Clone, Copy)]
@@ -118,8 +110,6 @@ enum BootstrapAlias {
     ResumeSessionId,
     ApiStartTime,
     AgentExecutionTimeout,
-    MockClaudePath,
-    MockCodexPath,
 }
 
 #[derive(Clone, Copy)]
@@ -141,7 +131,7 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the 16 canonical keys in
+/// The internal slots correspond exactly to the 14 canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
@@ -160,8 +150,6 @@ pub struct BootstrapAliasSourceEvents {
     resume_session_id: Option<BootstrapAliasSource>,
     api_start_time: Option<BootstrapAliasSource>,
     agent_execution_timeout: Option<BootstrapAliasSource>,
-    mock_claude_path: Option<BootstrapAliasSource>,
-    mock_codex_path: Option<BootstrapAliasSource>,
 }
 
 impl BootstrapAliasSourceEvents {
@@ -181,8 +169,6 @@ impl BootstrapAliasSourceEvents {
             BootstrapAlias::ResumeSessionId => &mut self.resume_session_id,
             BootstrapAlias::ApiStartTime => &mut self.api_start_time,
             BootstrapAlias::AgentExecutionTimeout => &mut self.agent_execution_timeout,
-            BootstrapAlias::MockClaudePath => &mut self.mock_claude_path,
-            BootstrapAlias::MockCodexPath => &mut self.mock_codex_path,
         };
         *slot = Some(source);
     }
@@ -203,8 +189,6 @@ impl BootstrapAliasSourceEvents {
             self.resume_session_id,
             self.api_start_time,
             self.agent_execution_timeout,
-            self.mock_claude_path,
-            self.mock_codex_path,
         ]
     }
 
@@ -394,37 +378,6 @@ fn guest_agent_tuning_env_or_empty(
     Ok(value)
 }
 
-/// Resolve one optional test/debug mock binary path alias pair at the single
-/// process-env capture boundary. Canonical aliases are reader-only during
-/// #28914 Stage 1; all existing test/debug writers remain legacy-only.
-fn mock_binary_path_env(
-    alias: BootstrapAlias,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<Option<String>, String> {
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(None),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting mock binary path environment aliases: \
-                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(alias, source);
-    Ok(Some(value))
-}
-
 /// Resolve Stage 1 compatibility between an existing runner or sandbox and a
 /// new guest reader. #28914 owns the follow-up writer-cutover and reader-removal
 /// issues; remove the legacy branch only after the reader floor, sandbox drain,
@@ -605,7 +558,7 @@ pub struct GuestConfigRaw {
     pub api_start_time: String,
     pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
-    /// Optional canonical or legacy mock Claude executable override.
+    /// Optional canonical mock Claude executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -615,7 +568,7 @@ pub struct GuestConfigRaw {
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    /// Optional canonical or legacy mock Codex executable override.
+    /// Optional canonical mock Codex executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -743,22 +696,14 @@ impl GuestConfigRaw {
                 &mut bootstrap_alias_sources,
             )?,
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
-            mock_claude_path: mock_binary_path_env(
-                BootstrapAlias::MockClaudePath,
-                guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-                guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
+            mock_claude_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV)
+                .ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file,
             run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            mock_codex_path: mock_binary_path_env(
-                BootstrapAlias::MockCodexPath,
-                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-                guest_contracts::env::MOCK_CODEX_PATH_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
+            mock_codex_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV)
+                .ok(),
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
