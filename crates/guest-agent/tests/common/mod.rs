@@ -1045,6 +1045,7 @@ pub struct CodexAppServerEnvConfig<'a> {
 pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
     for key in [
         guest_contracts::env::API_URL_ENV,
+        guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::API_TOKEN_ENV,
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
