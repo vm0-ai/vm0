@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.176.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.1...runner-rs-v0.176.2) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** stop emitting legacy runner name ([#29680](https://github.com/vm0-ai/vm0/issues/29680)) ([e8bec5e](https://github.com/vm0-ai/vm0/commit/e8bec5ebcecd3e2e3b4b7af5a89cfb9aed804b60))
+
 ## [0.176.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.0...runner-rs-v0.176.1) (2026-08-26)
 
 
