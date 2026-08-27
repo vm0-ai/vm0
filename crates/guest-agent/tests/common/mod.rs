@@ -1199,9 +1199,12 @@ pub unsafe fn setup_codex_app_server_env(
             },
         )?;
         if let Some(resume_session_id) = config.resume_session_id {
-            std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                resume_session_id,
+            );
         } else {
-            std::env::remove_var("VM0_RESUME_SESSION_ID");
+            std::env::remove_var(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV);
         }
     }
     std::fs::create_dir_all(home).map_err(|error| format!("create home: {error}"))?;

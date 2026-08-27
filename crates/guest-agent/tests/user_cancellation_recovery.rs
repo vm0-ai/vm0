@@ -200,7 +200,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 &mock_codex,
             )
             .env(
-                guest_contracts::env::RESUME_SESSION_ID_ENV,
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
                 scenario.thread_id,
             )
             .env(
