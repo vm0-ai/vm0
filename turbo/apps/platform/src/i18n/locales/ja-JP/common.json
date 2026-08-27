@@ -5358,13 +5358,11 @@
     "handoffDescription": "{{assistantName}} がコンテキストを新しいチャットに引き継ぎます",
     "handoffPrompt": "この共有された会話を私と続けてください: {{url}}",
     "makeConversationYours": "この会話を自分のものに",
-    "notFoundDescription": "この共有された会話は存在しません。",
     "notFoundTitle": "共有された会話が見つかりません",
     "share": "共有",
     "signIn": "ログイン",
     "signUp": "新規登録",
-    "tryItYourself": "自分で試す",
-    "yourWorkspace": "あなたのワークスペース"
+    "tryItYourself": "自分で試す"
   },
   "usage": {
     "displayNames": {

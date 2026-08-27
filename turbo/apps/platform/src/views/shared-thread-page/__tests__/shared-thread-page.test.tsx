@@ -61,7 +61,13 @@ describe("shared thread page", () => {
     expect(
       screen.getByText("Make this conversation yours"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Your workspace")).toBeInTheDocument();
+    expect(document.querySelector("[data-message-container]")).toHaveClass(
+      "max-w-[900px]",
+      "gap-6",
+    );
+    expect(document.querySelector("[data-shared-thread-handoff]")).toHaveClass(
+      "shrink-0",
+    );
 
     const links = queryAllByRoleFast("link");
     const handoffLink = links.find((link) => {
@@ -122,7 +128,7 @@ describe("shared thread page", () => {
     });
 
     const scroller = await screen.findByTestId("shared-thread-scroll");
-    expect(scroller).toHaveClass("h-full", "overflow-y-auto");
+    expect(scroller).toHaveClass("absolute", "inset-0", "overflow-y-auto");
   });
 
   it("does not repeat a brand-only document title", async () => {
@@ -166,7 +172,7 @@ describe("shared thread page", () => {
     const links = queryAllByRoleFast("link");
     expect(
       links.find((link) => {
-        return link.textContent === "VM0";
+        return link.getAttribute("aria-label") === "VM0";
       }),
     ).toBeInTheDocument();
     expect(

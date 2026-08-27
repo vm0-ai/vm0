@@ -5358,13 +5358,11 @@
     "handoffDescription": "{{assistantName}} carries the context into a new chat",
     "handoffPrompt": "Continue this shared conversation with me: {{url}}",
     "makeConversationYours": "Make this conversation yours",
-    "notFoundDescription": "This shared conversation does not exist.",
     "notFoundTitle": "Shared conversation not found",
     "share": "Share",
     "signIn": "Sign in",
     "signUp": "Sign up",
-    "tryItYourself": "Try it yourself",
-    "yourWorkspace": "Your workspace"
+    "tryItYourself": "Try it yourself"
   },
   "usage": {
     "displayNames": {

@@ -5425,13 +5425,11 @@
     "handoffDescription": "{{assistantName}} porta il contesto in una nuova chat",
     "handoffPrompt": "Continua questa conversazione condivisa con me: {{url}}",
     "makeConversationYours": "Fai tua questa conversazione",
-    "notFoundDescription": "Questa conversazione condivisa non esiste.",
     "notFoundTitle": "Conversazione condivisa non trovata",
     "share": "Condividi",
     "signIn": "Accedi",
     "signUp": "Registrati",
-    "tryItYourself": "Provalo tu",
-    "yourWorkspace": "Il tuo spazio di lavoro"
+    "tryItYourself": "Provalo tu"
   },
   "usage": {
     "displayNames": {

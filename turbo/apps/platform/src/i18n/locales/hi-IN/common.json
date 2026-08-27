@@ -5366,13 +5366,11 @@
     "handoffDescription": "{{assistantName}} संदर्भ को एक नई चैट में ले जाता है",
     "handoffPrompt": "इस साझा बातचीत को मेरे साथ जारी रखें: {{url}}",
     "makeConversationYours": "इस बातचीत को अपना बनाएं",
-    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
     "notFoundTitle": "साझा बातचीत नहीं मिली",
     "share": "साझा करें",
     "signIn": "साइन इन करें",
     "signUp": "साइन अप करें",
-    "tryItYourself": "खुद आज़माएं",
-    "yourWorkspace": "आपका वर्कस्पेस"
+    "tryItYourself": "खुद आज़माएं"
   },
   "usage": {
     "displayNames": {
