@@ -20,12 +20,14 @@ export function AuthV2SignInCard({
   authBrand,
   navigation,
   signals,
+  surface = "page",
 }: {
   readonly authBrand: AuthBrandContext;
   readonly navigation: AuthV2Navigation;
   readonly signals: AuthV2SignInSignals;
+  readonly surface?: "dialog" | "page";
 }) {
-  const copy = useAuthV2SignInCopy();
+  const copy = useAuthV2SignInCopy(authBrand);
   const flowState = useGet(signals.state$);
   const identifier = useGet(signals.identifier$);
   const backToIdentifier = useSet(signals.backToIdentifier$);
@@ -73,6 +75,7 @@ export function AuthV2SignInCard({
         ) : null
       }
       layout={showsAccountChooser ? "choice" : "default"}
+      surface={surface}
       title={title}
     >
       <SignInCardContent

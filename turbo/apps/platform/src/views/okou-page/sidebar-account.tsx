@@ -51,7 +51,6 @@ import {
   type SettingsSection,
 } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
@@ -77,6 +76,7 @@ import {
   okouDebugRealtimeIndicator$,
   type OkouDebugRealtimeIndicator,
 } from "../../signals/okou-page/realtime-status.ts";
+import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -765,6 +765,7 @@ export function AccountDropdown({
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
+  const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -819,7 +820,11 @@ export function AccountDropdown({
 
   const handleAddAccount = () => {
     if (authV2AddAccountEnabled) {
-      window.location.href = ROUTES.signInV2;
+      detach(
+        openAuthV2AddAccountDialog(pageSignal),
+        Reason.DomCallback,
+        "open auth v2 add account dialog",
+      );
       return;
     }
     detach(

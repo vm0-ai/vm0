@@ -22,11 +22,17 @@ export interface AuthV2PlatformContext {
   readonly satelliteConfig: AuthV2SatelliteConfig;
 }
 
+interface ResolveAuthV2PlatformContextOptions {
+  readonly authHash?: string;
+  readonly authSearch?: string;
+}
+
 export function resolveAuthV2PlatformContext(
   mode: AuthV2RouteMode,
+  options: ResolveAuthV2PlatformContextOptions = {},
 ): AuthV2PlatformContext {
-  const authSearch = location.search;
-  const authHash = location.hash;
+  const authSearch = options.authSearch ?? location.search;
+  const authHash = options.authHash ?? location.hash;
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
   const signUpCompletionRedirectUrl = buildSignupRedirectUrl(
     authSearch,

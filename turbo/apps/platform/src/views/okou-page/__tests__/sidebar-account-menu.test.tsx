@@ -1448,7 +1448,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("opens the custom v2 sign-in flow for add account when enabled", async () => {
+  it("opens the custom v2 sign-in flow in a dialog when enabled", async () => {
     prepareDefaultAgent();
 
     detachedSetupPage({
@@ -1463,12 +1463,22 @@ describe("zero sidebar account menu", () => {
     });
 
     const menu = await openAccountMenu();
+    const originalUrl = window.location.href;
     click(within(menu).getByText("Add account"));
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/v2/sign-in");
-    });
+    const dialog = await screen.findByTestId("auth-v2-add-account-dialog");
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
+    expect(window.location.href).toBe(originalUrl);
     expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
+
+    click(buttonByLabel("Close", dialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auth-v2-add-account-dialog"),
+      ).not.toBeInTheDocument();
+    });
+    expect(window.location.href).toBe(originalUrl);
   });
 
   it("preserves satellite session sync after signing out", async () => {

@@ -367,9 +367,10 @@ function signInTerminalCopy(
   };
 }
 
-export function useAuthV2SignInCopy(): AuthV2SignInCopy {
+export function useAuthV2SignInCopy(
+  authBrand: AuthBrandContext = resolveAuthBrandContext(),
+): AuthV2SignInCopy {
   const { t } = useTranslation();
-  const authBrand = resolveAuthBrandContext();
   return {
     ...signInEntryCopy(t, authBrand.brandName),
     ...signInCodeCopy(t, authBrand.brandName),

@@ -208,10 +208,12 @@ export function AuthV2ContinuationCard({
   authBrand,
   signals,
   state,
+  surface = "page",
 }: {
   readonly authBrand: AuthBrandContext;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: AuthV2ContinuationState;
+  readonly surface?: "dialog" | "page";
 }) {
   const copy = useAuthV2ContinuationCopy(authBrand.brandName);
   if (state.status === "inactive") {
@@ -246,6 +248,7 @@ export function AuthV2ContinuationCard({
       description={heading.description}
       focusKey={focusKey}
       layout={state.status === "incomplete" ? "choice" : "default"}
+      surface={surface}
       title={heading.title}
     >
       {content}
