@@ -4383,7 +4383,12 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
-        *balloon_controller = Some(balloon::spawn(client, memory_mb, state_rx));
+        *balloon_controller = Some(balloon::spawn_after_unpark_deflation(
+            client,
+            memory_mb,
+            state_rx,
+            log_id.to_owned(),
+        ));
     }
 
     *is_parked = false;
