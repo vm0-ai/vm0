@@ -132,6 +132,9 @@
         },
         "crates/vsock-proto": {
             "release-type": "rust"
+        },
+        "crates/vsock-test": {
+            "release-type": "rust"
         }
     },
     "plugins": [
