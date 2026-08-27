@@ -70,6 +70,7 @@ function mockXImageShareProvider(options?: {
   readonly imageBody?: ReadableStream<Uint8Array> | Uint8Array;
   readonly imageBytes?: Uint8Array;
   readonly imageUrl?: string;
+  readonly mediaStatus?: number;
 }): {
   readonly mediaUploadBodies: unknown[];
   readonly createPostBodies: unknown[];
@@ -99,6 +100,16 @@ function mockXImageShareProvider(options?: {
         `Bearer ${X_ACCESS_TOKEN}`,
       );
       mediaUploadBodies.push(await request.json());
+      if (options?.mediaStatus !== undefined) {
+        return HttpResponse.json(
+          {
+            title: "Forbidden",
+            detail: "This account cannot upload media",
+            type: "https://api.x.com/2/problems/not-authorized-for-resource",
+          },
+          { status: options.mediaStatus },
+        );
+      }
       return HttpResponse.json({ data: { id: "media-123" } });
     }),
     http.post(X_CREATE_POST_URL, async ({ request }) => {
@@ -113,7 +124,9 @@ function mockXImageShareProvider(options?: {
   return { mediaUploadBodies, createPostBodies };
 }
 
-async function setupAuthenticatedXActor() {
+async function setupAuthenticatedXActor(
+  oauthGrantedScopes: readonly string[] | null = null,
+) {
   const bdd = createBddApi(context);
   const actor = bdd.user();
   if (!actor.orgId) {
@@ -122,6 +135,7 @@ async function setupAuthenticatedXActor() {
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   await seedConnectedXConnector({
     accessToken: X_ACCESS_TOKEN,
+    oauthGrantedScopes,
     orgId: actor.orgId,
     userId: actor.userId,
   });
@@ -129,6 +143,50 @@ async function setupAuthenticatedXActor() {
 }
 
 describe("POST /api/image-share/x", () => {
+  it("rejects a known-insufficient grant before X provider access", async () => {
+    await setupAuthenticatedXActor(["tweet.write"]);
+    const provider = mockXImageShareProvider();
+
+    const response = await accept(
+      client().post({
+        headers: authHeaders(),
+        body: { imageUrl: IMAGE_URL },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "CONFLICT",
+        message: "Reconnect X to post images",
+      },
+    });
+    expect(provider.mediaUploadBodies).toStrictEqual([]);
+    expect(provider.createPostBodies).toStrictEqual([]);
+  });
+
+  it("reports provider permission denial for an unknown grant", async () => {
+    await setupAuthenticatedXActor();
+    const provider = mockXImageShareProvider({ mediaStatus: 403 });
+
+    const response = await accept(
+      client().post({
+        headers: authHeaders(),
+        body: { imageUrl: IMAGE_URL },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "CONFLICT",
+        message: "X did not authorize this account to post images",
+      },
+    });
+    expect(provider.mediaUploadBodies).toHaveLength(1);
+    expect(provider.createPostBodies).toStrictEqual([]);
+  });
+
   it("preserves an explicit caption for an Okou request and records connector usage billing", async () => {
     const billing = createBillingMediaApi(context);
     const actor = await setupAuthenticatedXActor();

@@ -187,7 +187,7 @@ export async function loadConnectorCredentialConnection(args: {
       externalEmail: row.externalEmail,
       externalId: row.externalId,
       needsReconnect: row.needsReconnect,
-      oauthScopes: parseOauthScopes(row.oauthGrantedScopes ?? row.oauthScopes),
+      oauthScopes: parseOauthScopes(row.oauthGrantedScopes),
       runtimeMethod: access.runtimeMethod,
       stateRevision: row.stateRevision,
       storageVersion: access.storageVersion,

@@ -134,11 +134,12 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),
     z.object({
-      action: z.literal("set-legacy-builtin-oauth-scopes"),
+      action: z.literal("set-builtin-oauth-scope-facts"),
       org_id: z.string(),
       user_id: z.string(),
       connector_slug: z.string(),
       oauth_scopes: z.array(z.string()),
+      oauth_granted_scopes: z.array(z.string()).nullable(),
     }),
     z.object({
       action: z.literal("set-connector-default"),

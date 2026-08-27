@@ -9,7 +9,7 @@ import { z } from "zod";
 import { publicArtifactsBaseUrlForBrand } from "../../lib/file-url";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { safeJsonParse, safeUrlParse, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -63,6 +63,16 @@ type XAccessTokenResult =
       readonly accessToken: string;
     }
   | XShareFailure;
+
+class XApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`X API returned ${status}`);
+    this.name = "XApiHttpError";
+    this.status = status;
+  }
+}
 
 const xMediaUploadResponseSchema = z
   .object({
@@ -312,7 +322,7 @@ async function xApiJson(
 
   const responseText = await response.text();
   if (!response.ok) {
-    throw new Error(`X API returned ${response.status}`);
+    throw new XApiHttpError(response.status);
   }
 
   const body = safeJsonParse(responseText);
@@ -427,9 +437,11 @@ export const shareImageToX$ = command(
       return xShareError("CONFLICT", "Reconnect X to post images");
     }
     const connector = loaded.connection;
-    const missingScopes = missingRequiredScopes(connector.oauthScopes ?? []);
-    if (missingScopes.length > 0) {
-      return xShareError("CONFLICT", "Reconnect X to post images");
+    if (connector.oauthScopes !== null) {
+      const missingScopes = missingRequiredScopes(connector.oauthScopes);
+      if (missingScopes.length > 0) {
+        return xShareError("CONFLICT", "Reconnect X to post images");
+      }
     }
 
     const accessTokenResult = await resolveXAccessToken(
@@ -456,7 +468,7 @@ export const shareImageToX$ = command(
       return image;
     }
 
-    const postResult = await tapError(
+    const postResult = await settle(
       (async () => {
         const mediaId = await uploadXImageMedia(
           {
@@ -480,9 +492,20 @@ export const shareImageToX$ = command(
           tweetUrl: `https://x.com/i/web/status/${tweetId}`,
         };
       })(),
+      signal,
     );
-    signal.throwIfAborted();
-    if (!postResult) {
+    if (!postResult.ok) {
+      if (postResult.error instanceof XApiHttpError) {
+        if (postResult.error.status === 401) {
+          return xShareError("CONFLICT", "Reconnect X to post images");
+        }
+        if (postResult.error.status === 403) {
+          return xShareError(
+            "CONFLICT",
+            "X did not authorize this account to post images",
+          );
+        }
+      }
       return xShareError(
         "PROVIDER_UNAVAILABLE",
         "X couldn't publish the post, try again",
@@ -498,6 +521,6 @@ export const shareImageToX$ = command(
     await set(processOrgUsageEvents$, args.orgId, signal);
     signal.throwIfAborted();
 
-    return postResult;
+    return postResult.value;
   },
 );
