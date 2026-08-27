@@ -278,7 +278,10 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
         ))
         .unwrap();
     let orphan = OrphanProcessGuard::new("orphan-exec-operation-sleep");
-    let command = orphan_sleep_command("orphan-exec-operation", orphan.pid_path());
+    let command = format!(
+        "{}; printf stderr-marker >&2",
+        orphan_sleep_command("orphan-exec-operation", orphan.pid_path()),
+    );
     let start = Instant::now();
     send_exec_start(
         &mut host_stream,
@@ -290,7 +293,11 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
             stream_limit_bytes: 1024,
             chunk_limit_bytes: 64,
         },
-        ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1024,
+            stream_limit_bytes: 4,
+            chunk_limit_bytes: 4,
+        },
     );
     let (chunks, result) = read_exec_result(&mut host_stream, 122);
     let elapsed = start.elapsed();
@@ -304,22 +311,30 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
         "expected stdout to contain 'orphan-exec-operation', got: {:?}",
         String::from_utf8_lossy(&stdout),
     );
+    assert_eq!(result.stderr.unwrap_or_default(), b"stderr-marker".to_vec());
     let streamed_stdout = stdout_data(&chunks);
     assert!(
         String::from_utf8_lossy(&streamed_stdout).contains("orphan-exec-operation"),
         "expected streamed stdout to contain 'orphan-exec-operation', got: {:?}",
         String::from_utf8_lossy(&streamed_stdout),
     );
-    let truncation_markers = chunks
+    assert_eq!(stderr_data(&chunks), b"stde".to_vec());
+    let stdout_truncation_markers = chunks
         .iter()
         .filter(|chunk| chunk.stream == ExecOutputStream::Stdout && chunk.truncated)
         .collect::<Vec<_>>();
-    assert_eq!(truncation_markers.len(), 1);
-    assert!(truncation_markers[0].chunk.is_empty());
+    assert_eq!(stdout_truncation_markers.len(), 1);
+    assert!(stdout_truncation_markers[0].chunk.is_empty());
     assert_eq!(
-        usize::try_from(truncation_markers[0].output_seq).unwrap(),
+        usize::try_from(stdout_truncation_markers[0].output_seq).unwrap(),
         chunks.len() - 1,
     );
+    let stderr_truncation_markers = chunks
+        .iter()
+        .filter(|chunk| chunk.stream == ExecOutputStream::Stderr && chunk.truncated)
+        .collect::<Vec<_>>();
+    assert_eq!(stderr_truncation_markers.len(), 1);
+    assert!(stderr_truncation_markers[0].chunk.is_empty());
     assert!(
         elapsed < EXEC_OUTPUT_DRAIN_DEADLINE,
         "test exec result should arrive before the production drain deadline, took {elapsed:?}",
