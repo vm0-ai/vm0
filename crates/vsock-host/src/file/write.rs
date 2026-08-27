@@ -765,7 +765,12 @@ impl VsockHost {
         }
 
         let validated = validate_write_files(files, WriteFilesMode::Private)?;
-        if files.len() == 1 || validated.total_content_len > batch_content_limit {
+        let batch_fits_protocol =
+            vsock_proto::validate_write_files(&validated.proto_entries).is_ok();
+        if files.len() == 1
+            || validated.total_content_len > batch_content_limit
+            || !batch_fits_protocol
+        {
             for file in files {
                 self.write_private_file_with_write_observer_and_chunk_limit(
                     file.path,

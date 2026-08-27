@@ -1635,6 +1635,40 @@ async fn write_files_rejects_protocol_message_too_large_before_waiting_for_write
 }
 
 #[tokio::test]
+async fn write_private_files_protocol_oversize_falls_back_to_private_single_writes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
+            let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT];
+            let files = (0..17)
+                .map(|index| WriteFileEntry {
+                    path: &path,
+                    content: if index == 0 { &content } else { &[] },
+                })
+                .collect::<Vec<_>>();
+
+            host.write_private_files(&files).await
+        })
+    };
+
+    for index in 0..17 {
+        let write = expect_write_file(&mut guest).await;
+        assert!(write.private);
+        if index == 0 {
+            assert_eq!(write.content.len(), WRITE_FILES_BATCH_CONTENT_LIMIT);
+        } else {
+            assert!(write.content.is_empty());
+        }
+        send_write_file_success(&mut guest, write.seq()).await;
+    }
+
+    write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn write_file_observer_error_cleans_pending_without_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
