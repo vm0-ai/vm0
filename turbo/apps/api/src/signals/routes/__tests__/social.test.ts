@@ -13,7 +13,6 @@ import {
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -40,7 +39,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -175,18 +173,6 @@ async function setActorCredits(
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
   await setActorCredits(actor, 10_000);
-  await enableSocialKit(actor);
-}
-
-async function enableSocialKit(actor: ApiTestUser): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Social test actor must belong to an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.ManagedSocialKit]: true },
-  );
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -374,10 +360,12 @@ describe("managed SocialKit route", () => {
     );
   });
 
-  it("rejects valid requests while managed SocialKit is disabled", async () => {
+  it("accepts valid requests without a feature override", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
@@ -386,16 +374,15 @@ describe("managed SocialKit route", () => {
     );
 
     const response = await accept(
-      client()(socialContract).request({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
         body: DEFAULT_SOCIAL_REQUEST,
       }),
-      [403],
+      [200],
     );
 
-    expectApiError(response.body);
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(providerRequests).toBe(0);
+    expect(response.body.provider).toBe("socialkit");
+    expect(providerRequests).toBe(1);
   });
 
   it("accepts agent tokens and attributes usage to their run", async () => {
@@ -800,7 +787,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
-    await enableSocialKit(actor);
     server.use(
       http.get(`${SOCIALKIT_BASE}/youtube/search`, ({ request }) => {
         observedLimit = new URL(request.url).searchParams.get("limit");
@@ -904,7 +890,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
-    await enableSocialKit(actor);
     server.use(
       providerHandler("GET", "/youtube/search", () => {
         providerRequests += 1;
@@ -1118,7 +1103,6 @@ describe("managed SocialKit route", () => {
 
   it("rejects requests when SocialKit is not configured", async () => {
     const actor = createBddApi(context).user();
-    await enableSocialKit(actor);
     mockEnv("OKOU_SOCIAL_SOCIALKIT_TOKEN", undefined);
 
     const response = await accept(
@@ -1166,7 +1150,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS - 1);
-    await enableSocialKit(actor);
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
