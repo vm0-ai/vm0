@@ -5363,10 +5363,16 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
+    "handoffDescription": "{{assistantName}} übernimmt den Kontext in einen neuen Chat",
+    "handoffPrompt": "Setze diese geteilte Unterhaltung mit mir fort: {{url}}",
+    "makeConversationYours": "Mach diese Unterhaltung zu deiner",
     "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
     "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
-    "tryOkou": "{{assistantName}} ausprobieren"
+    "share": "Teilen",
+    "signIn": "Anmelden",
+    "signUp": "Registrieren",
+    "tryItYourself": "Selbst ausprobieren",
+    "yourWorkspace": "Dein Workspace"
   },
   "usage": {
     "displayNames": {

@@ -53,11 +53,49 @@ describe("shared thread page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
-    const tryOkouLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent === "Try Okou";
+    expect(
+      queryAllByRoleFast("button").find((button) => {
+        return button.getAttribute("aria-label") === "Share";
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Make this conversation yours"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Your workspace")).toBeInTheDocument();
+
+    const links = queryAllByRoleFast("link");
+    const handoffLink = links.find((link) => {
+      return link.textContent === "Try it yourself";
     });
-    expect(tryOkouLink).toBeInTheDocument();
-    expect(tryOkouLink).toHaveAttribute("href", window.location.origin);
+    expect(handoffLink).toBeInTheDocument();
+    const handoffUrl = new URL(handoffLink?.getAttribute("href") ?? "");
+    expect(handoffUrl.origin).toBe(window.location.origin);
+    expect(handoffUrl.pathname).toBe("/");
+    expect(handoffUrl.searchParams.get("prompt")).toContain(
+      `/share/threads/${SHARED_THREAD_ID}`,
+    );
+
+    const signInLinks = links.filter((link) => {
+      return link.textContent === "Sign in";
+    });
+    expect(signInLinks).toHaveLength(2);
+    for (const signInLink of signInLinks) {
+      const signInUrl = new URL(signInLink.getAttribute("href") ?? "");
+      expect(signInUrl.pathname).toBe("/sign-in");
+      expect(signInUrl.searchParams.get("redirect_url")).toBe(
+        handoffUrl.toString(),
+      );
+    }
+
+    const signUpLink = links.find((link) => {
+      return link.textContent === "Sign up";
+    });
+    expect(signUpLink).toBeInTheDocument();
+    const signUpUrl = new URL(signUpLink?.getAttribute("href") ?? "");
+    expect(signUpUrl.pathname).toBe("/sign-up");
+    expect(signUpUrl.searchParams.get("redirect_url")).toBe(
+      handoffUrl.toString(),
+    );
   });
 
   it("owns its scrolling because the app shell clips overflow", async () => {
@@ -133,7 +171,7 @@ describe("shared thread page", () => {
     ).toBeInTheDocument();
     expect(
       links.find((link) => {
-        return link.textContent === "Try Zero";
+        return link.textContent === "Sign up";
       }),
     ).toBeInTheDocument();
   });
