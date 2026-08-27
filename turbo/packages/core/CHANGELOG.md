@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.596.2](https://github.com/vm0-ai/vm0/compare/core-v8.596.1...core-v8.596.2) (2026-08-27)
+
+
+### Refactoring
+
+* remove composerFlatFeedbackNote feature switch ([#29721](https://github.com/vm0-ai/vm0/issues/29721)) ([897515d](https://github.com/vm0-ai/vm0/commit/897515d2e90822674b61d3a65074afc3f36c7496))
+* roll out the latest website templates and remove their feature switch ([#29442](https://github.com/vm0-ai/vm0/issues/29442)) ([7ef1518](https://github.com/vm0-ai/vm0/commit/7ef1518aff0eacf8e8b83f6421e515ad12088998))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.2
+
 ## [8.596.1](https://github.com/vm0-ai/vm0/compare/core-v8.596.0...core-v8.596.1) (2026-08-27)
 
 
