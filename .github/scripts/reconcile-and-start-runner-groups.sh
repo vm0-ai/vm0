@@ -129,7 +129,7 @@ start_on_host() {
     --profile vm0/default \
     --rootfs-hash ${ROOTFS_HASH} \
     --snapshot-hash ${SNAPSHOT_HASH} \
-    --name ${RUNNER_NAME} \
+    --hostname ${HOST} \
     --group ${RUNNER_GROUP} \
     --runner-dirname ${RUNNER_DIRNAME} \
     --concurrency-factor 1.5 \

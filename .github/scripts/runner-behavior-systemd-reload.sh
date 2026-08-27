@@ -11,7 +11,7 @@ for SUFFIX in systemd-reload-a systemd-reload-b; do
     --profile vm0/default \
     --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
     --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-    --name ${JOB_REF}-${SUFFIX} \
+    --hostname ${HOST} \
     --group ${GROUP} \
     --runner-dirname ${JOB_REF}-${SUFFIX} \
     --max-concurrent 1 \
