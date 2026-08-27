@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -12,9 +11,10 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  DEFAULT_PROFILE,
+  BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  DEFAULT_PROFILE,
   type ConnectorRuntimeSyncResult,
   type ExecutionContext,
   type Job as RunnerJob,
@@ -2933,7 +2933,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     {
       payloadState: "oversized",
       createPayload: (): Buffer => {
-        return Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1);
+        return Buffer.alloc(BUILTIN_FIREWALL_CATALOG_MAX_BYTES + 1);
       },
     },
   ] satisfies readonly {

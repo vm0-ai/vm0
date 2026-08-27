@@ -316,7 +316,7 @@ export const rustConstantBindings = [
     value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
     rustDoc: [
       "Maximum builtin firewall catalog response and cache size accepted by runners.",
-      "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+      "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
     ],
   },
   {
