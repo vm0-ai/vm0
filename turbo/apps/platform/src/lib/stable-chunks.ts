@@ -102,7 +102,7 @@ function packageChunkName(moduleId: string): string | null {
 
 export function createStableChunkName(entryModuleId: string) {
   const normalizedEntryModuleId = normalizeModuleId(entryModuleId);
-  const startupModuleCache = new Map<string, boolean>();
+  const startupModules = new Set<string>();
 
   // Walking static importers back to main keeps feature-only dependencies in
   // Rolldown's normal lazy chunks instead of pulling them into startup.
@@ -111,12 +111,11 @@ export function createStableChunkName(entryModuleId: string) {
     context: ChunkingContext,
     visiting = new Set<string>(),
   ): boolean {
-    const cached = startupModuleCache.get(moduleId);
-    if (cached !== undefined) {
-      return cached;
+    if (startupModules.has(moduleId)) {
+      return true;
     }
     if (normalizeModuleId(moduleId) === normalizedEntryModuleId) {
-      startupModuleCache.set(moduleId, true);
+      startupModules.add(moduleId);
       return true;
     }
     if (visiting.has(moduleId)) {
@@ -133,7 +132,12 @@ export function createStableChunkName(entryModuleId: string) {
       return isStartupModule(importerId, context, visiting);
     });
     visiting.delete(moduleId);
-    startupModuleCache.set(moduleId, startupModule);
+    // A false result can be specific to the current cycle traversal. Cache only
+    // proven reachability so later Rolldown callbacks cannot inherit that
+    // contextual miss and become order-dependent.
+    if (startupModule) {
+      startupModules.add(moduleId);
+    }
     return startupModule;
   }
 
