@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+AGENT_READY_BENCHMARK_SOURCE="${SCRIPT_DIR}/runner-behavior-agent-ready-benchmark-remote.sh"
 REMOTE="${METAL_USER}@${HOST}"
 SVC="${JOB_REF}-process-containment"
 GROUP="vm0/process-containment-${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
 GROUP_DIR="/var/lib/vm0-runner/groups/vm0/process-containment-${JOB_REF}"
+AGENT_READY_BENCHMARK_WORKER="${RUNNER_DIR}/agent-ready-benchmark.sh"
 
 echo "=== Cleaning stale process-containment runner state ==="
 ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
@@ -39,25 +42,31 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --api-url https://not-a-real-server.test \
   --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
+echo "=== Staging Agent-ready benchmark worker ==="
+# shellcheck disable=SC2029
+ssh "$REMOTE" "sudo tee '${AGENT_READY_BENCHMARK_WORKER}' >/dev/null \
+  && sudo chmod 0755 '${AGENT_READY_BENCHMARK_WORKER}'" \
+  < "$AGENT_READY_BENCHMARK_SOURCE"
+
 echo "=== Running process-containment test ==="
-ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" "${AGENT_READY_BENCHMARK_SAMPLES:-3}" <<'REMOTE_SCRIPT'
+ssh "$REMOTE" bash -s -- \
+  "${BIN_DIR}" \
+  "${SVC}" \
+  "${GROUP}" \
+  "${RUNNER_DIR}" \
+  "${GROUP_DIR}" \
+  "${AGENT_READY_BENCHMARK_WORKER}" \
+  "${AGENT_READY_BENCHMARK_SAMPLES:-3}" <<'REMOTE_SCRIPT'
 set -euo pipefail
-BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5; AGENT_READY_BENCHMARK_SAMPLES=$6
+BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
+AGENT_READY_BENCHMARK_WORKER=$6; AGENT_READY_BENCHMARK_SAMPLES=$7
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-process-containment-session"
 CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 PRESSURE_SUBMIT_PID=""
 PRESSURE_SUBMIT_OUTPUT=""
-AGENT_READY_BENCHMARK_RAW=""
 
 fail() { echo "FAIL: $1"; exit 1; }
-
-case "$AGENT_READY_BENCHMARK_SAMPLES" in
-  ''|*[!0-9]*) fail "Agent-ready benchmark sample count must be an integer" ;;
-esac
-[ "$AGENT_READY_BENCHMARK_SAMPLES" -ge 1 ] \
-  && [ "$AGENT_READY_BENCHMARK_SAMPLES" -le 100 ] \
-  || fail "Agent-ready benchmark sample count must be between 1 and 100"
 
 wait_for_unit_inactive() {
   for _ in $(seq 1 30); do
@@ -77,9 +86,6 @@ cleanup() {
   fi
   if [ -n "$PRESSURE_SUBMIT_OUTPUT" ]; then
     rm -f "$PRESSURE_SUBMIT_OUTPUT"
-  fi
-  if [ -n "$AGENT_READY_BENCHMARK_RAW" ]; then
-    rm -f "$AGENT_READY_BENCHMARK_RAW"
   fi
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   wait_for_unit_inactive
@@ -982,231 +988,11 @@ if grep -F 'process control latency exceeded calibrated bound' <<<"$LOGS" >/dev/
 fi
 
 echo "--- Benchmark: Guest Agent ready boundary ---"
-AGENT_READY_BENCHMARK_RAW=$(mktemp)
-
-record_agent_ready_benchmark_failure() {
-  local path=$1
-  local run_id=$2
-  local error=$3
-  error=$(printf '%s' "$error" | tail -c 512)
-  jq -cn \
-    --arg path "$path" \
-    --arg run_id "$run_id" \
-    --arg error "$error" \
-    '{path: $path, success: false, run_id: $run_id, error: $error}' \
-    >> "$AGENT_READY_BENCHMARK_RAW"
-}
-
-agent_ready_log_field() {
-  local line=$1
-  local field=$2
-  sed -n "s/.*${field}=\\([^ ]*\\).*/\\1/p" <<<"$line"
-}
-
-read_agent_ready_log() {
-  local run_id=$1
-  local line=""
-  for _ in $(seq 1 50); do
-    line=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1 \
-      | grep -F "run_id=$run_id" \
-      | grep -F 'agent startup timing' \
-      | tail -n 1) || true
-    if [ -n "$line" ]; then
-      printf '%s\n' "$line"
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
-
-record_agent_ready_benchmark_sample() {
-  local path=$1
-  local expected_sandbox_reuse=$2
-  local expected_workspace_reuse=$3
-  local chat_thread_id=$4
-  local session_id=$5
-  local result=""
-  local result_json=""
-  local run_id=""
-  local ready_log=""
-  local sandbox_reuse=""
-  local workspace_reuse=""
-  local shell_spawn_ms=""
-  local agent_ready_ms=""
-  local containment_create_us=""
-  local placement_broker_setup_us=""
-  local shell_spawn_component_us=""
-  local bootstrap_ready_wait_us=""
-
-  if ! result=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-    --chat-thread-id "$chat_thread_id" \
-    --session-id "$session_id" \
-    --feature-flag sandboxReuse=true \
-    --prompt 'true' 2>&1); then
-    record_agent_ready_benchmark_failure "$path" "" "local submit failed: $result"
-    return
-  fi
-  result_json=$(awk '/^\{/{line=$0} END{print line}' <<<"$result")
-  run_id=$(jq -r '.run_id // empty' <<<"$result_json" 2>/dev/null) || true
-  if [ -z "$run_id" ]; then
-    record_agent_ready_benchmark_failure "$path" "" "local submit omitted run ID"
-    return
-  fi
-  if ! ready_log=$(read_agent_ready_log "$run_id"); then
-    record_agent_ready_benchmark_failure "$path" "$run_id" "Agent-ready log was not found"
-    return
-  fi
-
-  sandbox_reuse=$(agent_ready_log_field "$ready_log" sandbox_reuse)
-  workspace_reuse=$(agent_ready_log_field "$ready_log" workspace_reuse)
-  if [ "$sandbox_reuse" != "$expected_sandbox_reuse" ]; then
-    record_agent_ready_benchmark_failure "$path" "$run_id" \
-      "expected sandbox_reuse=$expected_sandbox_reuse, observed $sandbox_reuse"
-    return
-  fi
-  if [ -n "$expected_workspace_reuse" ] \
-    && [ "$workspace_reuse" != "$expected_workspace_reuse" ]; then
-    record_agent_ready_benchmark_failure "$path" "$run_id" \
-      "expected workspace_reuse=$expected_workspace_reuse, observed $workspace_reuse"
-    return
-  fi
-
-  shell_spawn_ms=$(agent_ready_log_field "$ready_log" shell_spawn_ms)
-  agent_ready_ms=$(agent_ready_log_field "$ready_log" agent_ready_ms)
-  containment_create_us=$(agent_ready_log_field "$ready_log" containment_create_us)
-  placement_broker_setup_us=$(agent_ready_log_field "$ready_log" placement_broker_setup_us)
-  shell_spawn_component_us=$(agent_ready_log_field "$ready_log" shell_spawn_component_us)
-  bootstrap_ready_wait_us=$(agent_ready_log_field "$ready_log" bootstrap_ready_wait_us)
-  for value in \
-    "$shell_spawn_ms" \
-    "$agent_ready_ms" \
-    "$containment_create_us" \
-    "$placement_broker_setup_us" \
-    "$shell_spawn_component_us" \
-    "$bootstrap_ready_wait_us"; do
-    case "$value" in
-      ''|*[!0-9]*)
-        record_agent_ready_benchmark_failure "$path" "$run_id" \
-          "Agent-ready log contained a missing or invalid duration"
-        return
-        ;;
-    esac
-  done
-
-  jq -cn \
-    --arg path "$path" \
-    --arg run_id "$run_id" \
-    --arg sandbox_reuse "$sandbox_reuse" \
-    --arg workspace_reuse "$workspace_reuse" \
-    --argjson shell_spawn_ms "$shell_spawn_ms" \
-    --argjson agent_ready_ms "$agent_ready_ms" \
-    --argjson containment_create_us "$containment_create_us" \
-    --argjson placement_broker_setup_us "$placement_broker_setup_us" \
-    --argjson shell_spawn_component_us "$shell_spawn_component_us" \
-    --argjson bootstrap_ready_wait_us "$bootstrap_ready_wait_us" \
-    '{
-      path: $path,
-      success: true,
-      run_id: $run_id,
-      sandbox_reuse: $sandbox_reuse,
-      workspace_reuse: $workspace_reuse,
-      shell_spawn_ms: $shell_spawn_ms,
-      agent_ready_ms: $agent_ready_ms,
-      containment_create_us: $containment_create_us,
-      placement_broker_setup_us: $placement_broker_setup_us,
-      shell_spawn_component_us: $shell_spawn_component_us,
-      bootstrap_ready_wait_us: $bootstrap_ready_wait_us
-    }' >> "$AGENT_READY_BENCHMARK_RAW"
-}
-
-for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  thread_id=$(cat /proc/sys/kernel/random/uuid)
-  record_agent_ready_benchmark_sample \
-    fresh PoolMiss CacheMiss "$thread_id" "agent-ready-fresh-$index"
-done
-
-WORKSPACE_BENCHMARK_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
-WORKSPACE_BENCHMARK_EVICTOR_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
-sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --chat-thread-id "$WORKSPACE_BENCHMARK_THREAD_ID" \
-  --session-id agent-ready-workspace \
-  --feature-flag sandboxReuse=true \
-  --prompt 'true' >/dev/null \
-  || fail "workspace-cache Agent-ready benchmark warmup failed"
-
-for _ in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  # Pool-pressure eviction promotes the measured workspace. Alternate with a
-  # second key so every sample checks out that promoted image instead of taking
-  # the exact sandbox-reuse path or relying on service-stop promotion.
-  sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-    --chat-thread-id "$WORKSPACE_BENCHMARK_EVICTOR_THREAD_ID" \
-    --session-id agent-ready-workspace-evictor \
-    --feature-flag sandboxReuse=true \
-    --prompt 'true' >/dev/null \
-    || fail "workspace-cache Agent-ready benchmark eviction failed"
-  record_agent_ready_benchmark_sample \
-    workspace-cache PoolMiss Reused \
-    "$WORKSPACE_BENCHMARK_THREAD_ID" agent-ready-workspace
-done
-
-EXACT_REUSE_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
-sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --chat-thread-id "$EXACT_REUSE_THREAD_ID" \
-  --session-id agent-ready-exact-reuse \
-  --feature-flag sandboxReuse=true \
-  --prompt 'true' >/dev/null \
-  || fail "exact-reuse Agent-ready benchmark warmup failed"
-for _ in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  record_agent_ready_benchmark_sample \
-    exact-reuse Reused SandboxReused \
-    "$EXACT_REUSE_THREAD_ID" agent-ready-exact-reuse
-done
-
-echo "AGENT_READY_BENCHMARK_RAW_BEGIN"
-cat "$AGENT_READY_BENCHMARK_RAW"
-echo "AGENT_READY_BENCHMARK_RAW_END"
-jq -s '
-  def percentile($values; $ratio):
-    ($values | sort) as $ordered
-    | if ($ordered | length) == 0 then null
-      else $ordered[((($ordered | length) * $ratio | ceil) - 1)]
-      end;
-  def metric_summary($rows; $field):
-    [$rows[] | select(.success) | .[$field]] as $values
-    | {
-        p50: percentile($values; 0.50),
-        p90: percentile($values; 0.90),
-        p95: percentile($values; 0.95),
-        p99: percentile($values; 0.99)
-      };
-  . as $records
-  | ["fresh", "workspace-cache", "exact-reuse"]
-  | map(
-      . as $path
-      | [$records[] | select(.path == $path)] as $rows
-      | {
-          path: $path,
-          sample_count: ($rows | length),
-          failures: ([$rows[] | select(.success | not)] | length),
-          metrics: {
-            shell_spawn_ms: metric_summary($rows; "shell_spawn_ms"),
-            agent_ready_ms: metric_summary($rows; "agent_ready_ms"),
-            containment_create_us: metric_summary($rows; "containment_create_us"),
-            placement_broker_setup_us: metric_summary($rows; "placement_broker_setup_us"),
-            shell_spawn_component_us: metric_summary($rows; "shell_spawn_component_us"),
-            bootstrap_ready_wait_us: metric_summary($rows; "bootstrap_ready_wait_us")
-          }
-        }
-    )
-' "$AGENT_READY_BENCHMARK_RAW"
-
-AGENT_READY_BENCHMARK_FAILURES=$(jq -s '[.[] | select(.success | not)] | length' \
-  "$AGENT_READY_BENCHMARK_RAW")
-[ "$AGENT_READY_BENCHMARK_FAILURES" -eq 0 ] \
-  || fail "Agent-ready benchmark recorded $AGENT_READY_BENCHMARK_FAILURES failures"
-rm -f "$AGENT_READY_BENCHMARK_RAW"
-AGENT_READY_BENCHMARK_RAW=""
+sudo "$AGENT_READY_BENCHMARK_WORKER" \
+  "$BIN_DIR" \
+  "$GROUP" \
+  "$INVOCATION_ID" \
+  "$AGENT_READY_BENCHMARK_SAMPLES"
 
 echo "PASS: detached user/root descendants were reclaimed"
 echo "PASS: mixed-identity leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
