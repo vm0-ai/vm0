@@ -2463,15 +2463,14 @@ jobs:
     concurrency:
       group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
+    needs: [prepare, deploy-api, deploy-app]
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
-      needs.deploy-app.result == 'success' &&
-      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+      needs.deploy-app.result == 'success'
     outputs:
       runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
       codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}

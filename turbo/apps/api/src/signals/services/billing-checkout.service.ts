@@ -91,6 +91,10 @@ type CheckoutCompletionResult =
       readonly status: "completed";
       readonly paidInvoice: StripeInvoice | null;
     }
+  | {
+      readonly status: "paid_invoice_ready";
+      readonly paidInvoice: StripeInvoice;
+    }
   | { readonly status: "pending" }
   | { readonly status: "customer_mismatch" }
   | {
@@ -1406,11 +1410,12 @@ export const completeCheckoutSession$ = command(
       );
     signal.throwIfAborted();
 
-    return alreadyPaidSubscription
-      ? {
-          status: "completed",
-          paidInvoice: expandedLatestInvoice(subscription),
-        }
+    const latestInvoice = expandedLatestInvoice(subscription);
+    if (alreadyPaidSubscription) {
+      return { status: "completed", paidInvoice: latestInvoice };
+    }
+    return latestInvoice?.status === "paid"
+      ? { status: "paid_invoice_ready", paidInvoice: latestInvoice }
       : { status: "pending" };
   },
 );

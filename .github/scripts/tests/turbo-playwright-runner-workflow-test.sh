@@ -78,6 +78,13 @@ fi
 if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
   fail "the default mock runner account must remain on limited-free"
 fi
+grep -Fq 'for (const target of targets)' "$RUNNER_TOKEN" ||
+  fail "runner credential provisioning must serialize live Checkout sessions"
+if grep -Fq 'RUNNER_CREDENTIAL_CONCURRENCY' "$RUNNER_TOKEN"; then
+  fail "runner credential provisioning must not retain concurrent Checkout batches"
+fi
+grep -Fq 'during ${stage}' "$RUNNER_TOKEN" ||
+  fail "runner credential provisioning failures must identify their stage"
 
 ruby -ryaml -ropen3 -rtempfile - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
@@ -311,15 +318,14 @@ unless prepare_step.fetch("run").end_with?("runner-account.ts prepare")
   raise "runner E2E account preparation must use the shared lifecycle entry point"
 end
 
-unless %w[prepare deploy-api deploy-app deploy-stripe-listener].all? do |job_name|
+unless %w[prepare deploy-api deploy-app].all? do |job_name|
     Array(account_prepare["needs"]).include?(job_name)
   end
-  raise "runner E2E account preparation must wait for previews and Stripe forwarding"
+  raise "runner E2E account preparation must wait for API and app previews"
 end
-unless account_prepare.fetch("if").include?(
-    "github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success'"
-  )
-  raise "runner E2E account preparation must use staging or preview Stripe forwarding"
+if Array(account_prepare["needs"]).include?("deploy-stripe-listener") ||
+    account_prepare.fetch("if").include?("needs.deploy-stripe-listener")
+  raise "runner E2E account preparation must reconcile Checkout without Stripe forwarding"
 end
 
 expected_organization_outputs = {

@@ -40,6 +40,7 @@ import { server } from "../../../mocks/server";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import {
   mockStripeClient,
+  type StripeInvoice,
   type StripeInvoiceCreatePreviewParams,
 } from "../../external/stripe-client";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -14717,6 +14718,138 @@ describe("POST /api/billing/checkout/complete", () => {
     expect(status.subscriptionStatus).toBe("trialing");
     expect(status.onboardingPaymentPending).toBeTruthy();
     expect(status.currentPeriodEnd).toBeNull();
+  });
+
+  it("reconciles a paid invoice before its webhook arrives", async () => {
+    mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const invoiceId = `in_${randomUUID().slice(0, 8)}`;
+    const periodEnd = currentSecond() + 30 * 86_400;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const paidInvoice: StripeInvoice = {
+      id: invoiceId,
+      customer: customerId,
+      metadata: {},
+      amount_due: 2000,
+      amount_paid: 2000,
+      currency: "usd",
+      status: "paid",
+      parent: {
+        subscription_details: {
+          subscription: subscriptionId,
+          metadata: {},
+        },
+      },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: `il_${randomUUID().slice(0, 8)}`,
+            amount: 2000,
+            subtotal: 2000,
+            quantity: 1,
+            price: { id: TEST_PRICE_PRO },
+            period: {
+              start: periodEnd - 30 * 86_400,
+              end: periodEnd,
+            },
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: { proration: false },
+            },
+          },
+        ],
+      },
+    };
+    const subscription = {
+      id: subscriptionId,
+      status: "active",
+      customer: customerId,
+      cancel_at_period_end: false,
+      cancel_at: null,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      latest_invoice: paidInvoice,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: periodEnd,
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_paid_before_webhook",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingCheckoutContract,
+    );
+    const requests = [
+      client.complete({
+        body: { sessionId: "cs_test_paid_before_webhook" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      client.complete({
+        body: { sessionId: "cs_test_paid_before_webhook" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+    ];
+    const responses = await Promise.all(
+      requests.map(async (request) => {
+        return await accept(request, [200]);
+      }),
+    );
+
+    for (const response of responses) {
+      expect(response.body).toStrictEqual({
+        completed: true,
+        googleAdsConversion: {
+          transactionId: invoiceId,
+          valueUsd: 20,
+        },
+      });
+    }
+    const statusBeforeWebhook = await readBillingStatus(fixture);
+    expect(statusBeforeWebhook).toMatchObject({
+      tier: "pro",
+      credits: 20_000,
+      hasSubscription: true,
+      subscriptionStatus: "active",
+      onboardingPaymentPending: false,
+    });
+
+    const event = {
+      type: "invoice.paid",
+      data: { object: paidInvoice },
+    };
+    context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
+        body: JSON.stringify(event),
+        extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
+      }),
+      [200],
+    );
+
+    await expect(readBillingStatus(fixture)).resolves.toStrictEqual(
+      statusBeforeWebhook,
+    );
   });
 
   it("keeps checkout pending when the subscription is incomplete", async () => {

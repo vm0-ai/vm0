@@ -21,8 +21,6 @@ import {
   fillStripeCheckout,
 } from "./lib/stripe-checkout";
 
-const RUNNER_CREDENTIAL_CONCURRENCY = 2;
-
 interface RunnerCredentialTarget {
   readonly email: string;
   readonly fileName: string;
@@ -88,45 +86,15 @@ async function main(): Promise<void> {
   await clerkSetup();
   const browser = await chromium.launch();
   try {
-    for (
-      let batchStart = 0;
-      batchStart < targets.length;
-      batchStart += RUNNER_CREDENTIAL_CONCURRENCY
-    ) {
-      const batch = targets.slice(
-        batchStart,
-        batchStart + RUNNER_CREDENTIAL_CONCURRENCY,
-      );
-      const results = await Promise.allSettled(
-        batch.map((target) =>
-          provisionRunnerCredential({
-            apiUrl,
-            appUrl,
-            browser,
-            outputDirectory,
-            target,
-            vercelAutomationBypassSecret,
-          }),
-        ),
-      );
-      const failures = results.flatMap((result, index) => {
-        if (result.status === "fulfilled") {
-          return [];
-        }
-        const target = batch[index];
-        return [
-          new Error(
-            `Failed to provision runner E2E credential for ${target.email} (${target.fileName})`,
-            { cause: result.reason },
-          ),
-        ];
+    for (const target of targets) {
+      await provisionRunnerCredential({
+        apiUrl,
+        appUrl,
+        browser,
+        outputDirectory,
+        target,
+        vercelAutomationBypassSecret,
       });
-      if (failures.length > 0) {
-        throw new AggregateError(
-          failures,
-          failures.map((failure) => failure.message).join("; "),
-        );
-      }
     }
   } finally {
     await browser.close();
@@ -144,54 +112,68 @@ async function provisionRunnerCredential(
     target,
     vercelAutomationBypassSecret,
   } = options;
-  await withLoadedClerkTestingPage(
-    browser,
-    {
-      appUrl,
-      contextOptions: {
-        ignoreHTTPSErrors: true,
-        extraHTTPHeaders: vercelAutomationBypassSecret
-          ? {
-              "x-vercel-protection-bypass": vercelAutomationBypassSecret,
-            }
-          : undefined,
-      },
-    },
-    async (page) => {
-      let clerkSessionToken = await signInWithLoadedClerkTestingHelper(
-        page,
-        target.email,
+  let stage = "browser setup";
+  try {
+    await withLoadedClerkTestingPage(
+      browser,
+      {
         appUrl,
-        { activeOrganizationId: target.organizationId },
-      );
-      await ensureRunnerOrganizationReady({
-        apiUrl,
-        clerkSessionToken,
-        vercelAutomationBypassSecret,
-      });
-      if (target.upgradeToPro) {
-        await completePaidOnboarding(page, target, appUrl, outputDirectory);
-        clerkSessionToken = await refreshClerkSessionToken(page, {
-          activeOrganizationId: target.organizationId,
+        contextOptions: {
+          ignoreHTTPSErrors: true,
+          extraHTTPHeaders: vercelAutomationBypassSecret
+            ? {
+                "x-vercel-protection-bypass": vercelAutomationBypassSecret,
+              }
+            : undefined,
+        },
+      },
+      async (page) => {
+        stage = "Clerk sign-in";
+        let clerkSessionToken = await signInWithLoadedClerkTestingHelper(
+          page,
+          target.email,
+          appUrl,
+          { activeOrganizationId: target.organizationId },
+        );
+        stage = "organization bootstrap";
+        await ensureRunnerOrganizationReady({
+          apiUrl,
+          clerkSessionToken,
+          vercelAutomationBypassSecret,
         });
-      }
-      const token = await issueCliToken({
-        apiUrl,
-        clerkSessionToken,
-        vercelAutomationBypassSecret,
-      });
-      const outputFile = join(outputDirectory, target.fileName);
-      await writeFile(
-        outputFile,
-        `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
-        { encoding: "utf8", mode: 0o600 },
-      );
-      console.log("Generated runner E2E API credential", {
-        email: target.email,
-        outputFile,
-      });
-    },
-  );
+        if (target.upgradeToPro) {
+          stage = "paid onboarding";
+          await completePaidOnboarding(page, target, appUrl, outputDirectory);
+          stage = "Clerk session refresh";
+          clerkSessionToken = await refreshClerkSessionToken(page, {
+            activeOrganizationId: target.organizationId,
+          });
+        }
+        stage = "CLI authorization";
+        const token = await issueCliToken({
+          apiUrl,
+          clerkSessionToken,
+          vercelAutomationBypassSecret,
+        });
+        const outputFile = join(outputDirectory, target.fileName);
+        stage = "credential file write";
+        await writeFile(
+          outputFile,
+          `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
+          { encoding: "utf8", mode: 0o600 },
+        );
+        console.log("Generated runner E2E API credential", {
+          email: target.email,
+          outputFile,
+        });
+      },
+    );
+  } catch (cause: unknown) {
+    throw new Error(
+      `Failed to provision runner E2E credential for ${target.email} (${target.fileName}) during ${stage}`,
+      { cause },
+    );
+  }
 }
 
 async function completePaidOnboarding(
