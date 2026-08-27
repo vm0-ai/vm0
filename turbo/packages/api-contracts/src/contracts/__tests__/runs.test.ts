@@ -87,19 +87,19 @@ describe("unified run request contract", () => {
     },
   );
 
-  it("keeps the internal Zero run provider request legacy-only", () => {
+  it("normalizes both internal Zero run request aliases to built-in", () => {
     expect(
-      runCreateBodySchema.safeParse({
+      runCreateBodySchema.parse({
         prompt: "run through Zero",
         modelProvider: "vm0",
-      }).success,
-    ).toBe(true);
+      }).modelProvider,
+    ).toBe("built-in");
     expect(
-      runCreateBodySchema.safeParse({
+      runCreateBodySchema.parse({
         prompt: "run through Zero",
         modelProvider: "built-in",
-      }).success,
-    ).toBe(false);
+      }).modelProvider,
+    ).toBe("built-in");
   });
 });
 

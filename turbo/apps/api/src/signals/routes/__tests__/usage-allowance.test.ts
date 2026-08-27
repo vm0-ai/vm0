@@ -139,7 +139,7 @@ async function createVm0Run(
   return await api.createRun(actor, {
     agentId,
     prompt,
-    modelProvider: "vm0",
+    modelProvider: "built-in",
   });
 }
 
@@ -451,7 +451,7 @@ describe("Usage Allowance", () => {
       {
         agentId,
         prompt: "vm0 run rejected after allowance exhaustion",
-        modelProvider: "vm0",
+        modelProvider: "built-in",
       },
       [402],
     );

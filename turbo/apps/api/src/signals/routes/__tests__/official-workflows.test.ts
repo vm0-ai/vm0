@@ -62,6 +62,7 @@ import {
   readOfficialWorkflowRunStateFixture,
   readWorkflowAutomationAutonomyFixture,
   retargetWorkflowAutomationFixture,
+  seedVm0BuiltInModelKey,
   setOfficialWorkflowAutomationAdmissionStateFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -96,6 +97,19 @@ type ActiveDefinition = Extract<
 function authHeaders(actor: ApiTestUser) {
   mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return { authorization: "Bearer clerk-session" };
+}
+
+async function selectBuiltInDefaultModel(actor: ApiTestUser): Promise<void> {
+  await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+  await runs.updateOrgModelPolicies(actor, [
+    {
+      model: "claude-sonnet-5",
+      isDefault: true,
+      defaultProviderType: "built-in",
+      credentialScope: "org",
+      modelProviderId: null,
+    },
+  ]);
 }
 
 function catalog(
@@ -2052,6 +2066,7 @@ describe.sequential("Official Workflow Run admission", () => {
     if (!actor.orgId) {
       throw new Error("Expected organization-scoped actor");
     }
+    await selectBuiltInDefaultModel(actor);
     const { agentId } = await workflowBdd.createAgent(actor);
     const headers = authHeaders(actor);
     await setOfficialWorkflowsEnabled(actor, true);
@@ -2203,6 +2218,7 @@ describe.sequential("Official Workflow Run admission", () => {
     const accepted = await readAcceptedDefinitionFixture(definitionName);
     for (const runId of producerRunIds) {
       const state = await readOfficialWorkflowRunStateFixture(context, runId);
+      expect(state.model_provider).toBe("built-in");
       expect(state.provenance?.definitions).toStrictEqual([
         expect.objectContaining({
           name: definitionName,

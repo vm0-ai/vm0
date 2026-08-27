@@ -1434,7 +1434,8 @@ function frameworkForProviderSelection(
   if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
-  const vm0Model = selectedModel ?? MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  const vm0Model =
+    selectedModel ?? MODEL_PROVIDER_TYPES["built-in"].defaultModel;
   if (!vm0Model) {
     return null;
   }
@@ -2420,7 +2421,7 @@ async function vm0ModelProviderEnvironment(
 
   return {
     id: null,
-    type: "vm0",
+    type: "built-in",
     concreteType: route.providerType,
     environment,
     secrets: { [secretName]: key.apiKey },
@@ -2732,7 +2733,7 @@ async function resolveCandidateModelProviderEnvironment(
     const selectedModel =
       args.selectedModelOverride ??
       row.selectedModel ??
-      MODEL_PROVIDER_TYPES.vm0.defaultModel;
+      MODEL_PROVIDER_TYPES["built-in"].defaultModel;
     const provider = await vm0ModelProviderEnvironment(
       db,
       selectedModel,
@@ -2806,7 +2807,8 @@ async function resolveModelProviderEnvironment(
   if (isBuiltInModelProviderType(args.modelProviderType)) {
     const provider = await vm0ModelProviderEnvironment(
       db,
-      args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
+      args.selectedModelOverride ??
+        MODEL_PROVIDER_TYPES["built-in"].defaultModel,
       args.builtInModelRuntimeRoute,
     );
     return provider?.concreteType &&
@@ -8371,7 +8373,7 @@ async function resolveRunModelProvider(
         db,
         orgId: args.orgId,
         userId: args.userId,
-        modelProviderType: "vm0",
+        modelProviderType: "built-in",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
     signal.throwIfAborted();

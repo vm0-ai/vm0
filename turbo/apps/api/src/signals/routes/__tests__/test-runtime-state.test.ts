@@ -55,7 +55,7 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
   const run = await runs.createRun(actor, {
     agentId: agent.agentId,
     prompt: "report a built-in model provider failure",
-    modelProvider: "vm0",
+    modelProvider: "built-in",
   });
   const runnerIdentity = {
     runnerId: randomUUID(),
@@ -184,7 +184,7 @@ describe("POST /api/test/runtime-state/action", () => {
         {
           model: selectedModel,
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "built-in",
           credentialScope: "org",
           modelProviderId: null,
         },
@@ -228,7 +228,7 @@ describe("POST /api/test/runtime-state/action", () => {
       ]);
       const detail = await reads.requestReadLogById(actor, runId, [200]);
       expect(detail.body).toMatchObject({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel,
         modelRuntimeProvider: fallback.provider_type,
         modelRuntimeModel: fallback.upstream_model,
@@ -361,7 +361,7 @@ describe("POST /api/test/runtime-state/action", () => {
       {
         model: "gpt-5.6-sol",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },

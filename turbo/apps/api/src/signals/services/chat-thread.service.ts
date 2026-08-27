@@ -15,6 +15,7 @@ import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models"
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
+  normalizeModelProviderWriteType,
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -193,9 +194,12 @@ function ownedChatThread(
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       modelProviderId: thread.modelProviderId,
-      modelProviderType: modelProviderTypeSchema
-        .nullable()
-        .parse(thread.modelProviderType),
+      modelProviderType:
+        thread.modelProviderType === null
+          ? null
+          : normalizeModelProviderWriteType(
+              modelProviderTypeSchema.parse(thread.modelProviderType),
+            ),
       modelProviderCredentialScope: modelProviderCredentialScopeSchema
         .nullable()
         .parse(thread.modelProviderCredentialScope),
@@ -690,7 +694,12 @@ export const createChatThread$ = command(
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
           modelProviderId: args.modelProviderId,
-          modelProviderType: args.modelProviderType,
+          modelProviderType:
+            args.modelProviderType === null
+              ? null
+              : normalizeModelProviderWriteType(
+                  modelProviderTypeSchema.parse(args.modelProviderType),
+                ),
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
           codexServiceTier: args.codexServiceTier,

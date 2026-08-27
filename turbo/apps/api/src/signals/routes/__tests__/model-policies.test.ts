@@ -59,7 +59,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
       defaultProviderType: isBuiltInModelProviderType(
         policy.defaultProviderType,
       )
-        ? "vm0"
+        ? "built-in"
         : policy.defaultProviderType,
       credentialScope: policy.credentialScope,
       modelProviderId: policy.modelProviderId,
@@ -75,7 +75,7 @@ function makeVm0Policy(
   return {
     model,
     isDefault,
-    defaultProviderType: "vm0",
+    defaultProviderType: "built-in",
     credentialScope: "org",
     modelProviderId: null,
   };
@@ -225,7 +225,7 @@ describe("GET/PUT /api/model-policies", () => {
       }),
     ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
     expect(response.body.policies[0]).toMatchObject({
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -268,51 +268,7 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 
-  it("applies the built-in no-provider-ID rule to canonical rows", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-    const client = apiClient();
-    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
-    const providerId = await createOrgProvider(fixture, "deepseek");
-    const updates = toUpdate(listed.body).map((policy) => {
-      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
-        ? {
-            ...policy,
-            defaultProviderType: "deepseek" as const,
-            modelProviderId: providerId,
-          }
-        : policy;
-    });
-    await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { policies: updates },
-      }),
-      [200],
-    );
-    await setOrgModelPolicyProviderTypeFixture({
-      orgId: fixture.orgId,
-      model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      defaultProviderType: "built-in",
-    });
-
-    const response = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    expect(
-      response.body.policies.find((policy) => {
-        return policy.isDefault;
-      }),
-    ).toMatchObject({
-      defaultProviderType: "built-in",
-      modelProviderId: providerId,
-      routeStatus: "invalid",
-      routeStatusReason: "Built-in routes cannot store a provider ID",
-    });
-  });
-
-  it("rejects legacy built-in policy writes with a provider ID", async () => {
+  it("rejects built-in policy writes with a provider ID", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const providerId = await createOrgProvider(fixture, "deepseek");
@@ -322,7 +278,7 @@ describe("GET/PUT /api/model-policies", () => {
       return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
         ? {
             ...policy,
-            defaultProviderType: "vm0" as const,
+            defaultProviderType: "built-in" as const,
             modelProviderId: providerId,
           }
         : policy;
@@ -910,7 +866,7 @@ describe("GET/PUT /api/model-policies", () => {
           defaultProviderType: isBuiltInModelProviderType(
             policy.defaultProviderType,
           )
-            ? "vm0"
+            ? "built-in"
             : policy.defaultProviderType,
           credentialScope: policy.credentialScope,
           modelProviderId: policy.modelProviderId,
@@ -939,7 +895,7 @@ describe("GET/PUT /api/model-policies", () => {
       return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
-            defaultProviderType: "vm0" as const,
+            defaultProviderType: "built-in" as const,
             credentialScope: "org" as const,
             modelProviderId: null,
             modelProviderSurfaceId: null,
@@ -958,7 +914,7 @@ describe("GET/PUT /api/model-policies", () => {
         return policy.model === "claude-sonnet-5";
       }),
     ).toMatchObject({
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: null,
@@ -1064,7 +1020,7 @@ describe("GET/PUT /api/model-policies", () => {
       return policy.model === "gpt-5.6-sol"
         ? {
             ...policy,
-            defaultProviderType: "vm0" as const,
+            defaultProviderType: "built-in" as const,
             credentialScope: "org" as const,
             modelProviderId: null,
           }
@@ -1634,7 +1590,7 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 
-  it("rejects canonical built-in policy write input", async () => {
+  it("accepts legacy policy input and emits the canonical provider type", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
 
@@ -1644,7 +1600,7 @@ describe("GET/PUT /api/model-policies", () => {
           {
             model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
             isDefault: true,
-            defaultProviderType: "built-in",
+            defaultProviderType: "vm0",
             credentialScope: "org",
             modelProviderId: null,
           },
@@ -1652,8 +1608,15 @@ describe("GET/PUT /api/model-policies", () => {
       }),
     );
 
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      policies: [
+        {
+          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          defaultProviderType: "built-in",
+        },
+      ],
+    });
   });
 
   it("rejects removed model policy updates", async () => {

@@ -4,7 +4,7 @@ import {
   DESKTOP_PRODUCTS,
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
-import { MODEL_PROVIDER_WRITE_TYPE_IDS } from "@okouai/api-contracts/contracts/model-provider-types";
+import { MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   PUBLIC_BRANDS,
   type PublicBrand,
@@ -1020,9 +1020,11 @@ export function discoverPersistedSemanticLegacyIdentities(
   const candidates: LegacyCatalogCandidate[] = [];
 
   const legacyProvider =
-    "vm0" satisfies (typeof MODEL_PROVIDER_WRITE_TYPE_IDS)[number];
-  if (!contractIncludes(MODEL_PROVIDER_WRITE_TYPE_IDS, legacyProvider)) {
-    throw new Error("Model provider write contract no longer declares vm0");
+    "vm0" satisfies (typeof MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS)[number];
+  if (!contractIncludes(MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS, legacyProvider)) {
+    throw new Error(
+      "Model provider write-input contract no longer accepts vm0",
+    );
   }
   const providerMembers = surfaces
     .filter((surface) => {

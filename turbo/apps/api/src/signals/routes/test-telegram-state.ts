@@ -1329,7 +1329,7 @@ async function seedModelPoliciesForAction(
       orgId: required.org_id!,
       model: "claude-sonnet-5",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,
@@ -1337,7 +1337,7 @@ async function seedModelPoliciesForAction(
     {
       orgId: required.org_id!,
       model: "claude-opus-4-8",
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,
@@ -1345,7 +1345,7 @@ async function seedModelPoliciesForAction(
     {
       orgId: required.org_id!,
       model: "deepseek-v4-flash",
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,

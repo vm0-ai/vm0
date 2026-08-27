@@ -89,7 +89,7 @@ function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
     model: policy.model,
     isDefault: policy.isDefault,
     defaultProviderType: isBuiltInModelProviderType(policy.defaultProviderType)
-      ? "vm0"
+      ? "built-in"
       : policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
@@ -106,7 +106,7 @@ function applyProviderRouteToPolicies(
   const providerType: ModelProviderWriteType = isBuiltInModelProviderType(
     provider.type,
   )
-    ? "vm0"
+    ? "built-in"
     : provider.type;
   const updates = policies.map((policy) => {
     const update = toOrgModelPolicyUpdate(policy);

@@ -3,6 +3,7 @@ import {
   getAuthMethodsForType,
   getFrameworkForType,
   getModelProviderPresentationLabel,
+  normalizeModelProviderWriteType,
   getSecretNameForType,
   getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
@@ -59,10 +60,11 @@ function modelProviderResponse(row: {
   }
 
   const authMethod = row.authMethod ?? null;
+  const type = normalizeModelProviderWriteType(parsed.data);
   return {
     id: row.id,
-    type: parsed.data,
-    framework: getFrameworkForType(parsed.data),
+    type,
+    framework: getFrameworkForType(type),
     secretName: row.secretName,
     authMethod,
     secretNames: authMethod
@@ -311,6 +313,7 @@ function toModelProviderInfo(params: {
   createdAt: Date;
   updatedAt: Date;
 }): ModelProviderInfo {
+  const type = normalizeModelProviderWriteType(params.type);
   const authMethod = params.authMethod ?? null;
   const secretNames =
     params.secretNames !== undefined
@@ -322,8 +325,8 @@ function toModelProviderInfo(params: {
   return {
     id: params.id,
     userId: params.userId,
-    type: params.type,
-    framework: getFrameworkForType(params.type),
+    type,
+    framework: getFrameworkForType(type),
     secretName: params.secretName ?? null,
     authMethod,
     secretNames,
@@ -372,14 +375,15 @@ function toModelProviderInfoFromRow(args: {
 }
 
 /**
- * Reject vm0 on personal-tier callers — vm0 is org-only per Epic #11868.
+ * Reject the built-in provider on personal-tier callers — it is org-only per
+ * Epic #11868.
  * Returns BadRequestResponse so the route handler emits 400 without throwing.
  */
-function assertVm0OrgOnly(
+function assertBuiltInOrgOnly(
   type: ModelProviderWriteType,
   userId: string,
 ): BadRequestResponse | null {
-  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
+  if (type === "built-in" && userId !== ORG_SENTINEL_USER_ID) {
     return badRequestMessage(
       `${getModelProviderPresentationLabel(type)} provider is org-only and cannot be configured per-user`,
     );
@@ -587,9 +591,9 @@ export const upsertUserModelProvider$ = command(
     | BadRequestResponse
     | { readonly provider: ModelProviderInfo; readonly created: boolean }
   > => {
-    const vm0 = assertVm0OrgOnly(args.type, args.userId);
-    if (vm0) {
-      return vm0;
+    const builtIn = assertBuiltInOrgOnly(args.type, args.userId);
+    if (builtIn) {
+      return builtIn;
     }
 
     if (hasAuthMethods(args.type)) {
@@ -1038,9 +1042,9 @@ export const upsertOrgNoSecretModelProvider$ = command(
     | BadRequestResponse
     | { readonly provider: ModelProviderInfo; readonly created: boolean }
   > => {
-    const vm0 = assertVm0OrgOnly(args.type, ORG_SENTINEL_USER_ID);
-    if (vm0) {
-      return vm0;
+    const builtIn = assertBuiltInOrgOnly(args.type, ORG_SENTINEL_USER_ID);
+    if (builtIn) {
+      return builtIn;
     }
 
     const writeDb = set(writeDb$);
