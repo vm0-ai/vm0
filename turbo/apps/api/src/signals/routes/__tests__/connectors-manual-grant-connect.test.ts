@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_TYPE_APP,
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
 } from "@okouai/api-contracts/contracts/client-headers";
@@ -62,6 +63,13 @@ function cliAuthHeaders() {
   return {
     ...authHeaders(),
     [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
+  };
+}
+
+function appAuthHeaders() {
+  return {
+    ...authHeaders(),
+    [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
   };
 }
 
@@ -366,7 +374,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     );
   });
 
-  it("connects a first-time manual grant connector with connector-owned state", async () => {
+  it("preserves App single-account manual grants with connector-owned state", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -380,7 +388,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "single-account" },
           values: { apiKey: " sk-test\n" },
         },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: appAuthHeaders(),
       }),
       [200],
     );
