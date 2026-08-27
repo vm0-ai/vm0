@@ -111,7 +111,10 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
                 "MOCK_CODEX_APP_SERVER_SCENARIO",
                 "runtime-turn-started-before-steer",
             )
-            .env(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1")
+            .env(
+                guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                "1",
+            )
             .env(
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 "1",

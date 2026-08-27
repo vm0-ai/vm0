@@ -24,7 +24,10 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
         // happy path returns successfully, it returned before the reap
         // deadline could fire. sigkill grace is unused on this path.
         common::setup_env(&mock, tmp.path(), "@exit-after-result", 60, 1)?;
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "2");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "2",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;
