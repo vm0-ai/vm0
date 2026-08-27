@@ -34,9 +34,10 @@ use drain_override_cleanup::{DrainOverrideReloadPolicy, reconcile_drain_restart_
 use gate::{ActiveJobsGateOps, check_active_jobs_gate};
 use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use systemctl::{
-    SystemdUnitEnablement, journalctl_logs_status, read_unit_enablement, restore_unit_enablement,
-    run_systemctl,
+    BoundedSystemctlQuery, SystemdUnitEnablement, is_unit_active_bounded_query,
+    journalctl_logs_status, read_unit_enablement, restore_unit_enablement, run_systemctl,
 };
+use unit_config::read_unit_config_path_bounded;
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -599,6 +600,34 @@ async fn readiness_base_dir(
     readiness_base_dir_from_live_instances(unit, config_path, &instances)
 }
 
+fn wait_running_timeout_error(
+    timeout_secs: u64,
+    unit: &RunnerServiceUnit,
+    last_observation: &str,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "timed out waiting {timeout_secs}s for {} to reach running (last observation: {last_observation})",
+        unit.unit_name()
+    ))
+}
+
+fn wait_running_remaining(
+    deadline: TokioInstant,
+    timeout_secs: u64,
+    unit: &RunnerServiceUnit,
+    last_observation: &str,
+) -> RunnerResult<TokioDuration> {
+    let remaining = deadline.saturating_duration_since(TokioInstant::now());
+    if remaining.is_zero() {
+        return Err(wait_running_timeout_error(
+            timeout_secs,
+            unit,
+            last_observation,
+        ));
+    }
+    Ok(remaining)
+}
+
 async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     if args.timeout_secs == 0 {
         return Err(RunnerError::Internal(
@@ -607,18 +636,48 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     }
 
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    let config_path = read_unit_config_path(&unit).await?.ok_or_else(|| {
-        RunnerError::Internal(format!(
-            "{} does not select a runner --config path",
-            unit.unit_name()
-        ))
-    })?;
-    let home = HomePaths::new()?;
     let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
     let mut last_observation = "not checked".to_string();
+    let home = HomePaths::new()?;
+    let config_path = match read_unit_config_path_bounded(
+        &unit,
+        wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?,
+    )
+    .await?
+    {
+        BoundedSystemctlQuery::Completed(Some(config_path)) => config_path,
+        BoundedSystemctlQuery::Completed(None) => {
+            return Err(RunnerError::Internal(format!(
+                "{} does not select a runner --config path",
+                unit.unit_name()
+            )));
+        }
+        BoundedSystemctlQuery::TimedOut => {
+            return Err(wait_running_timeout_error(
+                args.timeout_secs,
+                &unit,
+                &last_observation,
+            ));
+        }
+    };
 
     loop {
-        if !is_unit_active(&unit).await? {
+        let active = match is_unit_active_bounded_query(
+            &unit,
+            wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?,
+        )
+        .await?
+        {
+            BoundedSystemctlQuery::Completed(active) => active,
+            BoundedSystemctlQuery::TimedOut => {
+                return Err(wait_running_timeout_error(
+                    args.timeout_secs,
+                    &unit,
+                    &last_observation,
+                ));
+            }
+        };
+        if !active {
             return Err(RunnerError::Internal(format!(
                 "{} is not active while waiting for running (last observation: {})",
                 unit.unit_name(),
@@ -626,65 +685,88 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
             )));
         }
 
-        match readiness_base_dir(&unit, &config_path, &home).await? {
-            Some(base_dir) => match status_file::read_as::<StatusForReadiness>(&base_dir).await {
-                Ok(Some(status)) => match status.mode.as_str() {
-                    "running" => {
-                        println!("{}", status.max_concurrent);
-                        return Ok(());
+        let base_dir =
+            match tokio::time::timeout_at(deadline, readiness_base_dir(&unit, &config_path, &home))
+                .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(wait_running_timeout_error(
+                        args.timeout_secs,
+                        &unit,
+                        &last_observation,
+                    ));
+                }
+            };
+        match base_dir {
+            Some(base_dir) => {
+                let status = match tokio::time::timeout_at(
+                    deadline,
+                    status_file::read_as::<StatusForReadiness>(&base_dir),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        return Err(wait_running_timeout_error(
+                            args.timeout_secs,
+                            &unit,
+                            &last_observation,
+                        ));
                     }
-                    "starting" => {
-                        last_observation = "mode=starting".to_string();
+                };
+                match status {
+                    Ok(Some(status)) => match status.mode.as_str() {
+                        "running" => {
+                            println!("{}", status.max_concurrent);
+                            return Ok(());
+                        }
+                        "starting" => {
+                            last_observation = "mode=starting".to_string();
+                        }
+                        "draining" | "stopping" | "stopped" => {
+                            return Err(RunnerError::Internal(format!(
+                                "{} reported mode={} while waiting for running",
+                                unit.unit_name(),
+                                status.mode
+                            )));
+                        }
+                        mode => {
+                            return Err(RunnerError::Internal(format!(
+                                "{} reported unknown mode {:?} while waiting for running",
+                                unit.unit_name(),
+                                mode
+                            )));
+                        }
+                    },
+                    Ok(None) => {
+                        last_observation =
+                            format!("{} missing", status_file::path(&base_dir).display());
                     }
-                    "draining" | "stopping" | "stopped" => {
+                    Err(StatusFileReadError::Read { path, error }) => {
                         return Err(RunnerError::Internal(format!(
-                            "{} reported mode={} while waiting for running",
-                            unit.unit_name(),
-                            status.mode
+                            "read {} while waiting for {} to run: {error}",
+                            path.display(),
+                            unit.unit_name()
                         )));
                     }
-                    mode => {
+                    Err(StatusFileReadError::ParseJson { path, error }) => {
                         return Err(RunnerError::Internal(format!(
-                            "{} reported unknown mode {:?} while waiting for running",
-                            unit.unit_name(),
-                            mode
+                            "parse {} while waiting for {} to run: {error}",
+                            path.display(),
+                            unit.unit_name()
                         )));
                     }
-                },
-                Ok(None) => {
-                    last_observation =
-                        format!("{} missing", status_file::path(&base_dir).display());
                 }
-                Err(StatusFileReadError::Read { path, error }) => {
-                    return Err(RunnerError::Internal(format!(
-                        "read {} while waiting for {} to run: {error}",
-                        path.display(),
-                        unit.unit_name()
-                    )));
-                }
-                Err(StatusFileReadError::ParseJson { path, error }) => {
-                    return Err(RunnerError::Internal(format!(
-                        "parse {} while waiting for {} to run: {error}",
-                        path.display(),
-                        unit.unit_name()
-                    )));
-                }
-            },
+            }
             None => {
                 last_observation = "live runner instance record missing".to_string();
             }
         }
 
-        let now = TokioInstant::now();
-        if now >= deadline {
-            return Err(RunnerError::Internal(format!(
-                "timed out waiting {}s for {} to reach running (last observation: {})",
-                args.timeout_secs,
-                unit.unit_name(),
-                last_observation
-            )));
-        }
-        tokio::time::sleep(std::cmp::min(TokioDuration::from_secs(1), deadline - now)).await;
+        let remaining =
+            wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?;
+        tokio::time::sleep(std::cmp::min(TokioDuration::from_secs(1), remaining)).await;
     }
 }
 
@@ -725,19 +807,65 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant as StdInstant, SystemTime};
 
     use clap::Parser;
 
     use super::*;
     use crate::paths::RootfsPaths;
+    use crate::process::read_process_stat;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
     const TEST_ROOTFS_HASH: &str =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TEST_SNAPSHOT_HASH: &str =
         "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+    const WAIT_RUNNING_SCENARIO_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO";
+    const WAIT_RUNNING_PID_PATH_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH";
+    const WAIT_RUNNING_COUNT_PATH_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH";
+    const WAIT_RUNNING_CHILD_TEST: &str =
+        "cmd::service::tests::wait_running_systemctl_timeout_child";
+    const FAKE_WAIT_RUNNING_SYSTEMCTL: &str = r#"#!/bin/sh
+record_identity_and_stall() {
+  starttime=$(awk '{print $22}' "/proc/$$/stat")
+  printf '%s %s\n' "$$" "$starttime" > "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp"
+  mv "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp" "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH"
+  while :; do :; done
+}
+
+if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "config-query" ]; then
+  record_identity_and_stall
+fi
+
+if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ]; then
+  printf '%s\n' '[Service]' 'ExecStart=/usr/local/bin/runner start --config /does/not/exist/runner.yaml'
+  exit 0
+fi
+
+if [ "$1" = "show" ] && [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "active-query" ]; then
+  count=0
+  if [ -r "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH" ]; then
+    IFS= read -r count < "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH"
+  fi
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH.tmp"
+  mv "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH.tmp" "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH"
+  if [ "$count" -eq 1 ]; then
+    printf '%s\n' 'LoadState=loaded' 'ActiveState=active'
+    exit 0
+  fi
+  record_identity_and_stall
+fi
+
+printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
+exit 2
+"#;
 
     fn parse_service_args(subcommand: &str, env: &str) -> ServiceArgs {
         let cli = crate::Cli::try_parse_from([
@@ -756,6 +884,134 @@ mod tests {
             panic!("expected service command");
         };
         args
+    }
+
+    fn parse_wait_running_args(timeout_secs: u64) -> ServiceArgs {
+        let timeout_secs = timeout_secs.to_string();
+        let cli = crate::Cli::try_parse_from([
+            "runner",
+            "service",
+            "wait-running",
+            "--name",
+            "test",
+            "--timeout-secs",
+            &timeout_secs,
+        ])
+        .unwrap();
+        let crate::Command::Service(args) = cli.command else {
+            panic!("expected service command");
+        };
+        args
+    }
+
+    #[tokio::test]
+    async fn wait_running_bounds_initial_systemctl_query() {
+        run_wait_running_timeout_scenario("config-query").await;
+    }
+
+    #[tokio::test]
+    async fn wait_running_bounds_active_systemctl_query_and_preserves_observation() {
+        run_wait_running_timeout_scenario("active-query").await;
+    }
+
+    async fn run_wait_running_timeout_scenario(scenario: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_systemctl = dir.path().join("systemctl");
+        std::fs::write(&fake_systemctl, FAKE_WAIT_RUNNING_SYSTEMCTL).unwrap();
+        let mut permissions = std::fs::metadata(&fake_systemctl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&fake_systemctl, permissions).unwrap();
+
+        let pid_path = dir.path().join("stalled-process");
+        let count_path = dir.path().join("show-count");
+        let path = format!(
+            "{}:{}",
+            dir.path().display(),
+            std::env::var("PATH").expect("test process PATH must be set")
+        );
+        run_ignored_child_test(
+            WAIT_RUNNING_CHILD_TEST,
+            (WAIT_RUNNING_SCENARIO_ENV, scenario),
+            &[
+                ("PATH", Some(&path)),
+                (
+                    WAIT_RUNNING_PID_PATH_ENV,
+                    Some(utf8_path(pid_path.as_path())),
+                ),
+                (
+                    WAIT_RUNNING_COUNT_PATH_ENV,
+                    Some(utf8_path(count_path.as_path())),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    fn utf8_path(path: &Path) -> &str {
+        path.to_str().expect("temporary path must be UTF-8")
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by wait-running systemctl timeout tests"]
+    async fn wait_running_systemctl_timeout_child() {
+        let Ok(scenario) = std::env::var(WAIT_RUNNING_SCENARIO_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((WAIT_RUNNING_SCENARIO_ENV, &scenario)) {
+            return;
+        }
+
+        let timeout_secs = match scenario.as_str() {
+            "config-query" => 1,
+            "active-query" => 2,
+            unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
+        };
+        let started = StdInstant::now();
+        let error = run_service(parse_wait_running_args(timeout_secs))
+            .await
+            .unwrap_err()
+            .to_string();
+        let elapsed = started.elapsed();
+
+        assert!(
+            error.contains(&format!(
+                "timed out waiting {timeout_secs}s for vm0-runner-test to reach running"
+            )),
+            "unexpected error: {error}"
+        );
+        let expected_observation = match scenario.as_str() {
+            "config-query" => "last observation: not checked",
+            "active-query" => "last observation: live runner instance record missing",
+            unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
+        };
+        assert!(
+            error.contains(expected_observation),
+            "unexpected error: {error}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(timeout_secs * 1_000 - 100),
+            "wait-running returned before its budget: {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(timeout_secs + 2),
+            "wait-running exceeded its cleanup margin: {elapsed:?}"
+        );
+
+        let identity = std::fs::read_to_string(
+            std::env::var(WAIT_RUNNING_PID_PATH_ENV).expect("stalled process path must be set"),
+        )
+        .unwrap();
+        let (pid, starttime) = identity
+            .trim()
+            .split_once(' ')
+            .expect("stalled process identity must contain pid and starttime");
+        let pid = pid.parse::<u32>().unwrap();
+        let starttime = starttime.parse::<u64>().unwrap();
+        assert!(
+            !matches!(read_process_stat(pid).await, Some(stat) if stat.starttime == starttime),
+            "stalled systemctl process {pid}/{starttime} was not reaped"
+        );
     }
 
     #[tokio::test]

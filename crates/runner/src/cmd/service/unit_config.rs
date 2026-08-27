@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::error::RunnerResult;
 
@@ -10,6 +11,20 @@ pub(crate) async fn read_unit_config_path(
 ) -> RunnerResult<Option<PathBuf>> {
     let content = super::systemctl::cat_unit_content(unit).await?;
     Ok(parse_unit_config_path(&content))
+}
+
+pub(super) async fn read_unit_config_path_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<super::systemctl::BoundedSystemctlQuery<Option<PathBuf>>> {
+    match super::systemctl::cat_unit_content_bounded(unit, duration).await? {
+        super::systemctl::BoundedSystemctlQuery::Completed(content) => Ok(
+            super::systemctl::BoundedSystemctlQuery::Completed(parse_unit_config_path(&content)),
+        ),
+        super::systemctl::BoundedSystemctlQuery::TimedOut => {
+            Ok(super::systemctl::BoundedSystemctlQuery::TimedOut)
+        }
+    }
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
