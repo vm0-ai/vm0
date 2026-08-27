@@ -43,7 +43,7 @@ const RECHECK_DELAY: Duration = Duration::from_secs(3);
 /// Total latency also includes the bounded I/O performed during each recheck.
 const RECHECK_MAX_ATTEMPTS: u32 = 3;
 
-/// Maximum number of runner reports built or rechecked concurrently.
+/// Maximum number of doctor I/O operations performed concurrently.
 const DOCTOR_IO_CONCURRENCY: usize = 4;
 
 const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
@@ -433,6 +433,8 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
     let home = HomePaths::new()?;
+
+    // Phase 2: Resolve the selected service or discover installed services
     let (config_path_filter, installed_services) =
         discover_services(args.name.as_deref(), Path::new(SYSTEMD_SYSTEM_DIR)).await?;
 
