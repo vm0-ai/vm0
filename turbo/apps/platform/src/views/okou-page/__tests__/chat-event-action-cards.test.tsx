@@ -2158,14 +2158,13 @@ describe("chat event action cards", () => {
     let draftRequests = 0;
     let oauthStartRequests = 0;
 
-    context.mocks.data.connectors([
-      connectedConnector({
-        slug: "gmail",
-        authMethod: "oauth",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "authorization_expired_or_revoked",
-      }),
-    ]);
+    const gmailConnection = connectedConnector({
+      slug: "gmail",
+      authMethod: "oauth",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
+    context.mocks.data.connectors([gmailConnection]);
     context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       catalogRequests += 1;
       return respond(200, {
@@ -2202,9 +2201,13 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(
       connectorOauthStartContract.start,
-      ({ params, respond }) => {
+      ({ body, params, respond }) => {
         oauthStartRequests += 1;
         expect(params.connectorSlug).toBe("gmail");
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId: gmailConnection.id,
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/oauth",
         });
@@ -2283,11 +2286,12 @@ describe("chat event action cards", () => {
     reconnectRequired = false;
     pauseReadyRefresh = true;
     context.mocks.data.connectors([
-      connectedConnector({
-        slug: "gmail",
-        authMethod: "oauth",
+      {
+        ...gmailConnection,
+        connectionStatus: "connected",
+        reconnectReason: null,
         updatedAt: "2026-01-01T00:00:01Z",
-      }),
+      },
     ]);
     triggerAblyEvent("connector:changed", {
       connectorSlug: "gmail",

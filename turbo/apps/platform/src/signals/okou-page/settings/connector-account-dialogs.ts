@@ -3,6 +3,7 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/cu
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAccountConnection,
+  ConnectorAccountSummary,
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
@@ -52,6 +53,7 @@ export function connectorAccountOptionsFor(
 
 export function defaultBuiltinConnectorAccountOptions(
   connector: PlatformConnectorCatalogStatusItem | undefined,
+  summary?: ConnectorAccountSummary,
 ): DefaultConnectorAccountMutationOptions | null {
   if (!connector) {
     return null;
@@ -65,9 +67,16 @@ export function defaultBuiltinConnectorAccountOptions(
           useDefaultConnectorProjection: true,
         };
   }
-  return connection.id
+  const summaryConnection = summary?.defaultConnection;
+  const connectionId =
+    connection.id ??
+    (summaryConnection?.target.kind === "builtin" &&
+    summaryConnection.target.connectorSlug === connector.slug
+      ? summaryConnection.id
+      : undefined);
+  return connectionId
     ? {
-        account: { intent: "reconnect", connectionId: connection.id },
+        account: { intent: "reconnect", connectionId },
         useDefaultConnectorProjection: true,
       }
     : null;
