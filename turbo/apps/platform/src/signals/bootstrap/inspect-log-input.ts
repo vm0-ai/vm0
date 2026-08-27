@@ -1,6 +1,5 @@
 import { state, computed, command } from "ccstate";
 import { onRef } from "../utils.ts";
-import { loadInspectLogFile$ } from "../activity-page/inspect-log-signals";
 import { detachedNavigateTo$ } from "../route";
 import { pathname } from "../location";
 import { ROUTES } from "../route-paths";
@@ -22,6 +21,9 @@ export const setInspectLogInput$ = onRef(
 
 export const handleInspectLogFileChange$ = command(
   async ({ set }, file: File, signal: AbortSignal) => {
+    const { loadInspectLogFile$ } =
+      await import("../activity-page/inspect-log-signals.ts");
+    signal.throwIfAborted();
     await set(loadInspectLogFile$, file, signal);
     if (pathname() !== "/activities/inspect") {
       set(detachedNavigateTo$, ROUTES.activityInspect);

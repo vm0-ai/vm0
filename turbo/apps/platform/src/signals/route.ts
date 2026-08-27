@@ -15,6 +15,8 @@ import {
 import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-conversion-milestones.ts";
+import { showAppSkeleton$ } from "./app-skeleton.ts";
+import { clearPage$ } from "./react-router.ts";
 
 const L = logger("Route");
 
@@ -66,9 +68,23 @@ export const replacePathSilently$ = command(
   },
 );
 
+export type RouteSetup = Command<Promise<void> | void, [AbortSignal]>;
+
+export type RouteSetupLoader = () => Promise<RouteSetup>;
+
+export function lazyRouteSetup(load: RouteSetupLoader): RouteSetup {
+  return command(async ({ set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+    set(clearPage$);
+    const setup = await load();
+    signal.throwIfAborted();
+    await set(setup, signal);
+  });
+}
+
 interface Route {
   path: string;
-  setup: Command<Promise<void> | void, [AbortSignal]>;
+  setup: RouteSetup;
   analytics?: boolean;
 }
 

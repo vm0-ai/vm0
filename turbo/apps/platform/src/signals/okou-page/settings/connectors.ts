@@ -64,6 +64,7 @@ import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
+import { isStandaloneMode } from "../../standalone-mode.ts";
 import { i18n } from "../../../i18n/index.ts";
 import {
   singleAccountConnectorMutation,
@@ -2036,18 +2037,6 @@ export const completeConnectorExternalCodeAndSettle$ = command(
     }
   },
 );
-
-// ---------------------------------------------------------------------------
-// Standalone mode detection
-// ---------------------------------------------------------------------------
-
-/**
- * Returns true when the app is running as an installed PWA (standalone display mode).
- * In standalone mode, window.open() with popup features is blocked by iOS Safari.
- */
-export function isStandaloneMode(): boolean {
-  return window.matchMedia("(display-mode: standalone)").matches;
-}
 
 const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = IN_VITEST ? 10 : 250;
 

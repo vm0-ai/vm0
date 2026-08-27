@@ -9,10 +9,13 @@ import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
+  lazyRouteSetup,
   setupPageWrapper,
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
+  searchParams$,
+  type RouteSetupLoader,
   type RouterPathParams,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
@@ -22,73 +25,27 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
-import { setupSlackConnectPage$ } from "./okou-page/slack-connect-page.ts";
-import { setupAgentPhoneConnectPage$ } from "./okou-page/agentphone-connect-page.ts";
-import { setupGithubConnectPage$ } from "./okou-page/github-connect-page.ts";
-import { setupTeamsConnectPage$ } from "./okou-page/teams-connect-page.ts";
-import { setupTelegramConnectPage$ } from "./okou-page/telegram-connect-page.ts";
-import { setupTelegramSettingsPage$ } from "./okou-page/telegram-settings-page.ts";
-import { setupFeishuSettingsPage$ } from "./okou-page/feishu-settings-page.ts";
-import { setupStrapiSettingsPage$ } from "./okou-page/strapi-settings-page.ts";
-import { setupFeishuOAuthCallbackPage$ } from "./okou-page/feishu-oauth-callback-page.ts";
-import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
-import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
-import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
-import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
-import { setupArtifactsPage$ } from "./artifacts-page/artifacts-page-setup.ts";
-import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
-import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
-import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
-import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
-import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
-import { setupHomePage$ } from "./okou-page/home-page-setup.ts";
-import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
-import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
-import {
-  setupOnboardingImageRunPage$,
-  setupOnboardingImageTemplatePage$,
-  setupOnboardingMakePage$,
-  setupOnboardingPresentationRunPage$,
-  setupOnboardingPresentationTemplatePage$,
-  setupOnboardingVideoRunPage$,
-  setupOnboardingVideoTemplatePage$,
-  setupOnboardingWorkflowPickerPage$,
-  setupOnboardingWorkflowRunPage$,
-} from "./onboarding/onboarding-page-setup.ts";
-import { setupIdeationPage$ } from "./okou-page/ideation-page-setup.ts";
-import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
-import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
-import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
-import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
-import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
-import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
-import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
-import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callback-page-setup.ts";
-import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
-import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
-import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import {
   setupSignInV2Page$,
   setupSignUpV2Page$,
 } from "./auth-v2-page-setup.ts";
-import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
-import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
-import { setupExportPage$ } from "./export-page/export-page-setup.ts";
-import { initSlackOrg$ as handleSlackRedirect$ } from "./okou-page/slack.ts";
+import { handleSlackRedirect$ } from "./bootstrap/slack-redirect.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import {
   hideAppSkeleton$,
   initBootstrapSkeleton$,
   startSkeletonCycling$,
 } from "./app-skeleton.ts";
-import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
-import { updatePage$ } from "./react-router.ts";
+import {
+  registerPageLayout$,
+  updatePage$,
+  pageLayouts$,
+  type PageLayout,
+  type PageLayoutComponent,
+} from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
-import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
-import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
 import {
   featureSwitch$,
   reloadFeatureSwitch$,
@@ -97,7 +54,6 @@ import {
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "./connection-diagnostics.ts";
-import { checkUnifiedSettingsParam$ } from "./okou-page/settings/settings-dialog.ts";
 import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
 import {
   initBootstrapPhaseTiming$,
@@ -143,6 +99,15 @@ function setupSettingsParamAfterStableRoute(
     if (get(pathname$) !== initialPathname) {
       return;
     }
+    if (!get(searchParams$).has("settings")) {
+      return;
+    }
+    const { checkUnifiedSettingsParam$ } =
+      await import("./okou-page/settings/settings-dialog.ts");
+    signal.throwIfAborted();
+    if (get(pathname$) !== initialPathname) {
+      return;
+    }
     await set(checkUnifiedSettingsParam$, signal);
   });
 }
@@ -153,10 +118,111 @@ function setupAuthSidebarPageWrapper(
   return setupAuthPageWrapper(setupSettingsParamAfterStableRoute(setupPage));
 }
 
+type AuthenticatedPageLayout = Exclude<PageLayout, "none">;
+
+async function loadPageLayout(
+  layout: AuthenticatedPageLayout,
+): Promise<PageLayoutComponent> {
+  if (layout === "sidebar") {
+    return (await import("../views/okou-page/sidebar-layout.tsx"))
+      .SidebarLayout;
+  }
+  return (await import("../views/okou-page/directed-shared.tsx"))
+    .MinimalSidebarLayout;
+}
+
+const ensurePageLayout$ = command(
+  async (
+    { get, set },
+    layout: AuthenticatedPageLayout,
+    signal: AbortSignal,
+  ) => {
+    if (get(pageLayouts$)[layout]) {
+      return;
+    }
+    const component = await loadPageLayout(layout);
+    signal.throwIfAborted();
+    set(registerPageLayout$, layout, component);
+  },
+);
+
+function loadAuthenticatedRouteSetup(
+  load: RouteSetupLoader,
+  layout?: AuthenticatedPageLayout,
+): RouteSetupLoader {
+  return async () => {
+    const [setup, shortcuts] = await Promise.all([
+      load(),
+      import("./okou-page/global-keyboard-shortcuts.ts"),
+    ]);
+    return command(async ({ set }, signal: AbortSignal) => {
+      if (layout) {
+        await set(ensurePageLayout$, layout, signal);
+      }
+      set(shortcuts.setupGlobalKeyboardShortcuts$, signal);
+      await set(setup, signal);
+    });
+  };
+}
+
+function setupLazyAuthPage(
+  load: RouteSetupLoader,
+  layout?: AuthenticatedPageLayout,
+) {
+  return setupAuthPageWrapper(
+    lazyRouteSetup(loadAuthenticatedRouteSetup(load, layout)),
+  );
+}
+
+function setupLazyAuthSidebarPage(load: RouteSetupLoader) {
+  return setupAuthSidebarPageWrapper(
+    lazyRouteSetup(loadAuthenticatedRouteSetup(load, "sidebar")),
+  );
+}
+
+function setupLazyAuthSettingsPage(load: RouteSetupLoader) {
+  return setupAuthSidebarPageWrapper(
+    lazyRouteSetup(loadAuthenticatedRouteSetup(load)),
+  );
+}
+
+function setupLazyAuthMinimalPage(load: RouteSetupLoader) {
+  return setupLazyAuthPage(load, "minimal");
+}
+
+const loadActivityRouteSetups = async () => {
+  return (await import("./route-setups/activity.ts")).getActivityRouteSetups();
+};
+const loadBrowserRouteSetups = async () => {
+  return (await import("./route-setups/browser.ts")).getBrowserRouteSetups();
+};
+const loadChatRouteSetups = async () => {
+  return (await import("./route-setups/chat.ts")).getChatRouteSetups();
+};
+const loadHomeRouteSetups = async () => {
+  return (await import("./route-setups/home.ts")).getHomeRouteSetups();
+};
+const loadMiscRouteSetups = async () => {
+  return (await import("./route-setups/misc.ts")).getMiscRouteSetups();
+};
+const loadOnboardingRouteSetups = async () => {
+  return (
+    await import("./route-setups/onboarding.ts")
+  ).getOnboardingRouteSetups();
+};
+const loadSettingsRouteSetups = async () => {
+  return (await import("./route-setups/settings.ts")).getSettingsRouteSetups();
+};
+const loadWorkflowRouteSetups = async () => {
+  return (await import("./route-setups/workflows.ts")).getWorkflowRouteSetups();
+};
+
 const ROUTE_CONFIG = [
   {
     path: ROUTES.sharedThread,
-    setup: setupSharedThreadPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadMiscRouteSetups()).setupSharedThreadPage$;
+    }),
     analytics: false,
   },
   {
@@ -195,216 +261,329 @@ const ROUTE_CONFIG = [
   // --- New routes ---
   {
     path: ROUTES.chat,
-    setup: setupAuthSidebarPageWrapper(setupChatPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadChatRouteSetups()).setupChatPage$;
+    }),
   },
   {
     path: ROUTES.browser,
-    setup: setupAuthPageWrapper(setupBrowserSessionPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadBrowserRouteSetups()).setupBrowserSessionPage$;
+    }),
   },
   {
     path: ROUTES.prompt,
-    setup: setupAuthPageWrapper(setupPromptPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadChatRouteSetups()).setupPromptPage$;
+    }),
   },
   {
     path: ROUTES.ideas,
-    setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadChatRouteSetups()).setupIdeationPage$;
+    }),
   },
   {
     path: ROUTES.computerUseAuthorize,
-    setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadBrowserRouteSetups())
+        .setupComputerUseAuthorizationPage$;
+    }),
   },
   {
     path: ROUTES.browserAuthorize,
-    setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadBrowserRouteSetups()).setupBrowserAuthorizationPage$;
+    }),
   },
   {
     path: ROUTES.bankingConnectReturnResult,
-    setup: setupBankingConnectReturnPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupBankingConnectReturnPage$;
+    }),
   },
   {
     path: ROUTES.bankingConnectReturn,
-    setup: setupBankingConnectReturnPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupBankingConnectReturnPage$;
+    }),
   },
   {
     path: ROUTES.connectorCallbackResult,
-    setup: setupConnectorCallbackPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupConnectorCallbackPage$;
+    }),
   },
   {
     path: ROUTES.feishuOAuthCallback,
-    setup: setupFeishuOAuthCallbackPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupFeishuOAuthCallbackPage$;
+    }),
   },
   {
     path: ROUTES.connectorCallback,
-    setup: setupConnectorCallbackPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupConnectorCallbackPage$;
+    }),
   },
   {
     path: ROUTES.connectorRedirecting,
-    setup: setupConnectorRedirectingPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadSettingsRouteSetups()).setupConnectorRedirectingPage$;
+    }),
   },
   {
     path: ROUTES.emailUnsubscribe,
-    setup: setupEmailUnsubscribePage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadMiscRouteSetups()).setupEmailUnsubscribePage$;
+    }),
   },
   {
     path: ROUTES.directedAuthorize,
-    setup: setupAuthPageWrapper(setupDirectedAuthorizePage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadSettingsRouteSetups()).setupDirectedAuthorizePage$;
+    }),
   },
   {
     path: ROUTES.directedConnect,
-    setup: setupAuthPageWrapper(setupDirectedConnectPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadSettingsRouteSetups()).setupDirectedConnectPage$;
+    }),
   },
   {
     path: ROUTES.connectors,
-    setup: setupAuthSidebarPageWrapper(setupConnectorsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadSettingsRouteSetups()).setupConnectorsPage$;
+    }),
   },
   {
     path: ROUTES.agentIdeas,
-    setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadChatRouteSetups()).setupIdeationPage$;
+    }),
   },
   {
     path: ROUTES.agentChat,
-    setup: setupAuthPageWrapper(setupAgentChatPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadChatRouteSetups()).setupAgentChatPage$;
+    }),
   },
   {
     path: ROUTES.agentPermissions,
-    setup: setupAuthPageWrapper(setupPermissionAllowPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadBrowserRouteSetups()).setupPermissionAllowPage$;
+    }),
   },
   {
     path: ROUTES.workflowDetail,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadWorkflowRouteSetups()).setupWorkflowDetailPage$;
+    }),
   },
   {
     path: ROUTES.workflowDetailAutomations,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadWorkflowRouteSetups()).setupWorkflowDetailPage$;
+    }),
   },
   {
     path: ROUTES.workflowDetailInstructions,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadWorkflowRouteSetups()).setupWorkflowDetailPage$;
+    }),
   },
   {
     path: ROUTES.workflowDetailInfo,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadWorkflowRouteSetups()).setupWorkflowDetailPage$;
+    }),
   },
   {
     path: ROUTES.workflows,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadWorkflowRouteSetups()).setupWorkflowsPage$;
+    }),
   },
   {
     path: ROUTES.agentDetail,
-    setup: setupAuthSidebarPageWrapper(setupAgentDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadHomeRouteSetups()).setupAgentDetailPage$;
+    }),
   },
   {
     path: ROUTES.agents,
-    setup: setupAuthSidebarPageWrapper(setupAgentsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadHomeRouteSetups()).setupAgentsPage$;
+    }),
   },
   {
     path: ROUTES.artifacts,
-    setup: setupAuthSidebarPageWrapper(setupArtifactsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadActivityRouteSetups()).setupArtifactsPage$;
+    }),
   },
   {
     path: ROUTES.settingsSlack,
-    setup: setupAuthSidebarPageWrapper(setupSlackConnectPage$),
+    setup: setupLazyAuthSettingsPage(async () => {
+      return (await loadSettingsRouteSetups()).setupSlackConnectPage$;
+    }),
   },
   {
     path: ROUTES.settingsTeams,
-    setup: setupAuthSidebarPageWrapper(setupTeamsConnectPage$),
+    setup: setupLazyAuthSettingsPage(async () => {
+      return (await loadSettingsRouteSetups()).setupTeamsConnectPage$;
+    }),
   },
   {
     path: ROUTES.settingsFeishu,
-    setup: setupAuthSidebarPageWrapper(setupFeishuSettingsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadSettingsRouteSetups()).setupFeishuSettingsPage$;
+    }),
   },
   {
     path: ROUTES.settingsStrapi,
-    setup: setupAuthSidebarPageWrapper(setupStrapiSettingsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadSettingsRouteSetups()).setupStrapiSettingsPage$;
+    }),
   },
   {
     path: ROUTES.settingsTelegram,
-    setup: setupAuthSidebarPageWrapper(setupTelegramSettingsPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadSettingsRouteSetups()).setupTelegramSettingsPage$;
+    }),
   },
   {
     path: ROUTES.githubConnect,
-    setup: setupAuthPageWrapper(setupGithubConnectPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadSettingsRouteSetups()).setupGithubConnectPage$;
+    }),
   },
   {
     path: ROUTES.telegramConnect,
-    setup: setupAuthPageWrapper(setupTelegramConnectPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadSettingsRouteSetups()).setupTelegramConnectPage$;
+    }),
   },
   {
     path: ROUTES.agentphoneConnect,
-    setup: setupAuthPageWrapper(setupAgentPhoneConnectPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadSettingsRouteSetups()).setupAgentPhoneConnectPage$;
+    }),
   },
   {
     path: ROUTES.activityInspect,
-    setup: setupAuthSidebarPageWrapper(setupActivityInspectPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadActivityRouteSetups()).setupActivityInspectPage$;
+    }),
   },
   {
     path: ROUTES.activityDetail,
-    setup: setupAuthSidebarPageWrapper(setupActivityDetailPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadActivityRouteSetups()).setupActivityDetailPage$;
+    }),
   },
   {
     path: ROUTES.works,
-    setup: setupAuthSidebarPageWrapper(setupWorksPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadActivityRouteSetups()).setupWorksPage$;
+    }),
   },
   {
     path: ROUTES.settings,
-    setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadSettingsRouteSetups()).setupPreferencesPage$;
+    }),
   },
   {
     path: ROUTES.lab,
-    setup: setupAuthSidebarPageWrapper(setupLabPage$),
+    setup: setupLazyAuthSidebarPage(async () => {
+      return (await loadMiscRouteSetups()).setupLabPage$;
+    }),
   },
   {
     path: ROUTES.exportData,
-    setup: setupAuthPageWrapper(setupExportPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadActivityRouteSetups()).setupExportPage$;
+    }),
   },
   {
     path: ROUTES.onboarding,
-    setup: setupAuthPageWrapper(setupOnboardingMakePage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups()).setupOnboardingMakePage$;
+    }),
   },
   {
     path: ROUTES.onboardingWorkflowPicker,
-    setup: setupAuthPageWrapper(setupOnboardingWorkflowPickerPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingWorkflowPickerPage$;
+    }),
   },
   {
     path: ROUTES.onboardingWorkflowRun,
-    setup: setupAuthPageWrapper(setupOnboardingWorkflowRunPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingWorkflowRunPage$;
+    }),
   },
   {
     path: ROUTES.onboardingPresentationTemplate,
-    setup: setupAuthPageWrapper(setupOnboardingPresentationTemplatePage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingPresentationTemplatePage$;
+    }),
   },
   {
     path: ROUTES.onboardingPresentationRun,
-    setup: setupAuthPageWrapper(setupOnboardingPresentationRunPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingPresentationRunPage$;
+    }),
   },
   {
     path: ROUTES.onboardingImageTemplate,
-    setup: setupAuthPageWrapper(setupOnboardingImageTemplatePage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingImageTemplatePage$;
+    }),
   },
   {
     path: ROUTES.onboardingImageRun,
-    setup: setupAuthPageWrapper(setupOnboardingImageRunPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups()).setupOnboardingImageRunPage$;
+    }),
   },
   {
     path: ROUTES.onboardingVideoTemplate,
-    setup: setupAuthPageWrapper(setupOnboardingVideoTemplatePage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups())
+        .setupOnboardingVideoTemplatePage$;
+    }),
   },
   {
     path: ROUTES.onboardingVideoRun,
-    setup: setupAuthPageWrapper(setupOnboardingVideoRunPage$),
+    setup: setupLazyAuthPage(async () => {
+      return (await loadOnboardingRouteSetups()).setupOnboardingVideoRunPage$;
+    }),
   },
   {
     path: ROUTES.signInToken,
-    setup: setupSignInTokenPage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadMiscRouteSetups()).setupSignInTokenPage$;
+    }),
   },
   {
     // Public route: opened from the Morning Brief email, no auth guard.
     path: ROUTES.morningBriefUnsubscribe,
-    setup: setupMorningBriefUnsubscribePage$,
+    setup: lazyRouteSetup(async () => {
+      return (await loadMiscRouteSetups()).setupMorningBriefUnsubscribePage$;
+    }),
   },
   {
     path: ROUTES.redeemCampaign,
-    setup: setupAuthPageWrapper(setupRedeemCampaignPage$),
+    setup: setupLazyAuthMinimalPage(async () => {
+      return (await loadSettingsRouteSetups()).setupRedeemCampaignPage$;
+    }),
   },
   {
     path: ROUTES.skeleton,
@@ -417,7 +596,13 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.home,
     setup: setupAuthPageWrapper(
-      setupSettingsParamAfterStableRoute(setupHomePage$),
+      setupSettingsParamAfterStableRoute(
+        lazyRouteSetup(
+          loadAuthenticatedRouteSetup(async () => {
+            return (await loadHomeRouteSetups()).setupHomePage$;
+          }, "sidebar"),
+        ),
+      ),
     ),
   },
 
@@ -524,7 +709,6 @@ export const bootstrap$ = command(
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
 
-      set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, initialLocaleLoadFailure, signal),

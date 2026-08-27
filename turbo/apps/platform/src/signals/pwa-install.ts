@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "./external/local-storage.ts";
-import { isStandaloneMode } from "./okou-page/settings/connectors.ts";
+import { isStandaloneMode } from "./standalone-mode.ts";
 
 /**
  * Detect Safari on iPhone or iPad.

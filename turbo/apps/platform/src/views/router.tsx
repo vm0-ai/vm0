@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { page$, pageLayout$ } from "../signals/react-router.ts";
+import { page$, pageLayout$, pageLayouts$ } from "../signals/react-router.ts";
 import {
   appSkeletonOverlayMounted$,
   appSkeletonVisible$,
@@ -9,8 +9,6 @@ import {
   unmountAppSkeletonOverlay$,
 } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./okou-page/app-skeleton.tsx";
-import { SidebarLayout } from "./okou-page/sidebar-layout.tsx";
-import { MinimalSidebarLayout } from "./okou-page/directed-shared.tsx";
 
 function PageSlot() {
   const page = useGet(page$);
@@ -29,13 +27,12 @@ function PageSlot() {
 
 function LayoutHost({ children }: { children: ReactNode }) {
   const layout = useGet(pageLayout$);
-  if (layout === "sidebar") {
-    return <SidebarLayout>{children}</SidebarLayout>;
+  const layouts = useGet(pageLayouts$);
+  if (layout === "none") {
+    return <>{children}</>;
   }
-  if (layout === "minimal") {
-    return <MinimalSidebarLayout>{children}</MinimalSidebarLayout>;
-  }
-  return <>{children}</>;
+  const Layout = layouts[layout];
+  return Layout ? <Layout>{children}</Layout> : null;
 }
 
 export function AppSkeletonOverlay() {

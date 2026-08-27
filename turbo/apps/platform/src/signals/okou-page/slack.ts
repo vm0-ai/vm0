@@ -152,30 +152,3 @@ export const watchSlackConnection$ = command(
     );
   },
 );
-
-export const initSlackOrg$ = command((_ctx) => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("updated") === "1") {
-    toast.success(
-      i18n.t(($) => {
-        return $.connectors.providerSettings.toasts.slackPermissionsUpdated;
-      }),
-    );
-    window.history.replaceState({}, "", window.location.pathname);
-  } else if (params.get("installed") === "1") {
-    toast.success(
-      i18n.t(($) => {
-        return $.connectors.providerSettings.toasts.slackInstalled;
-      }),
-    );
-    window.history.replaceState({}, "", window.location.pathname);
-  }
-  if (params.get("connected") === "1") {
-    toast.success(
-      i18n.t(($) => {
-        return $.connectors.providerSettings.toasts.slackConnected;
-      }),
-    );
-    window.history.replaceState({}, "", window.location.pathname);
-  }
-});

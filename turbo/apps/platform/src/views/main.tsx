@@ -8,7 +8,7 @@ import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
 import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
-import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
+import { loadAuthenticatedDaemons$ } from "../signals/bootstrap/authenticated-daemons-loader.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { handleInvitationRedirect$ } from "../signals/invitation-redirect.ts";
 import { handleBillingRedirect$ } from "../signals/okou-page/billing.ts";
@@ -60,7 +60,7 @@ export const setupRouter = (
       once: true,
     });
   }
-  detach(store.set(setupAuthenticatedDaemons$, signal), Reason.Daemon);
+  detach(store.set(loadAuthenticatedDaemons$, signal), Reason.Daemon);
   detach(
     store.set(listenForceUpgradeDialog$, signal),
     Reason.Daemon,

@@ -5,7 +5,8 @@ import { WorksPage } from "../../views/okou-page/works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
-import { initSlackOrg$, watchSlackConnection$ } from "../okou-page/slack.ts";
+import { handleSlackRedirect$ } from "../bootstrap/slack-redirect.ts";
+import { watchSlackConnection$ } from "../okou-page/slack.ts";
 import { watchTeamsConnection$ } from "../okou-page/teams.ts";
 import { watchGithubIntegration$ } from "../okou-page/github.ts";
 import {
@@ -52,7 +53,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     }),
   );
   set(initWorksRedirect$);
-  set(initSlackOrg$);
+  set(handleSlackRedirect$);
 
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line ccstate/no-detach-in-signals -- route-scoped realtime subscriptions run until the /works route signal aborts

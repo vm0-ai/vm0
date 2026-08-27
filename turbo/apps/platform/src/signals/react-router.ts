@@ -1,10 +1,16 @@
 import { command, computed, state } from "ccstate";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 
-type PageLayout = "sidebar" | "minimal" | "none";
+export type PageLayout = "sidebar" | "minimal" | "none";
+export type PageLayoutComponent = ComponentType<{ children: ReactNode }>;
+
+type RegisteredPageLayouts = Partial<
+  Record<Exclude<PageLayout, "none">, PageLayoutComponent>
+>;
 
 const internalLayout$ = state<PageLayout>("none");
 const internalPage$ = state<ReactNode | undefined>(undefined);
+const internalPageLayouts$ = state<RegisteredPageLayouts>({});
 
 export const pageLayout$ = computed((get) => {
   return get(internalLayout$);
@@ -12,6 +18,28 @@ export const pageLayout$ = computed((get) => {
 
 export const page$ = computed((get) => {
   return get(internalPage$);
+});
+
+export const pageLayouts$ = computed((get) => {
+  return get(internalPageLayouts$);
+});
+
+export const registerPageLayout$ = command(
+  (
+    { get, set },
+    layout: Exclude<PageLayout, "none">,
+    component: PageLayoutComponent,
+  ) => {
+    const layouts = get(internalPageLayouts$);
+    if (layouts[layout] === component) {
+      return;
+    }
+    set(internalPageLayouts$, { ...layouts, [layout]: component });
+  },
+);
+
+export const clearPage$ = command(({ set }) => {
+  set(internalPage$, undefined);
 });
 
 export const updatePage$ = command(

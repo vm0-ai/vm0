@@ -29,7 +29,6 @@ import {
   setAgentComposerContext$,
 } from "./agent-composer-signals.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
-import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
 import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -85,8 +84,6 @@ export const setupAgentChatPage$ = command(
         }),
     );
     set(setupAgentChatKeyboardShortcuts$, signal);
-
-    await set(checkUnifiedSettingsParam$, signal);
 
     const params = get(searchParams$);
     const prompt = params.get("prompt");

@@ -14,6 +14,8 @@ import {
 } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
+import { SidebarLayout } from "../views/okou-page/sidebar-layout.tsx";
+import { MinimalSidebarLayout } from "../views/okou-page/directed-shared.tsx";
 import {
   mockPushState,
   mockReplaceState,
@@ -30,6 +32,7 @@ import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
 import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
+import { registerPageLayout$ } from "../signals/react-router.ts";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -111,6 +114,15 @@ export async function setupPage(options: {
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
   withoutRender?: boolean;
 }) {
+  // Production resolves layouts at the matched route boundary. Tests import
+  // their components up front so Vitest's on-demand transform cost stays in
+  // module setup rather than consuming each page assertion's wait timeout.
+  options.context.store.set(registerPageLayout$, "sidebar", SidebarLayout);
+  options.context.store.set(
+    registerPageLayout$,
+    "minimal",
+    MinimalSidebarLayout,
+  );
   ensureTestLocalStorage();
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any

@@ -13,6 +13,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reportForceUpgradeRequired } from "../../../signals/force-upgrade.ts";
 import { setLocale$ } from "../../../signals/locale.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. Production
+// still resolves these modules only after matching a route.
+import "../../../signals/route-setups/home.ts";
+import "../../../signals/route-setups/workflows.ts";
+
 const context = testContext();
 
 beforeEach(async () => {
@@ -115,6 +120,46 @@ describe("link navigation", () => {
         "href",
         "mailto:contact@okou.ai",
       );
+    });
+  });
+
+  it("preserves the legacy team redirect through the lazy agents route", async () => {
+    mockAPIs();
+    detachedSetupPage({ context, path: "/team" });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+      expect(
+        screen.getByRole("heading", { level: 1, name: /agents/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("navigates across independently loaded route groups", async () => {
+    mockAPIs();
+    detachedSetupPage({ context, path: "/agents" });
+
+    await screen.findByRole("heading", { level: 1, name: /agents/i });
+    const workflowsLink = screen.getByText("Workflows").closest("a");
+    expect(workflowsLink).not.toBeNull();
+    fireEvent.click(workflowsLink!);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Workflows" }),
+      ).toBeInTheDocument();
+    });
+
+    const agentsLink = screen.getByText("Agents").closest("a");
+    expect(agentsLink).not.toBeNull();
+    fireEvent.click(agentsLink!);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+      expect(
+        screen.getByRole("heading", { level: 1, name: /agents/i }),
+      ).toBeInTheDocument();
     });
   });
 
