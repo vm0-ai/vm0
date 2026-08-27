@@ -85,6 +85,108 @@ async fn heartbeat_timeout_triggers_reconnect() {
 }
 
 #[tokio::test]
+async fn inbound_activity_refreshes_heartbeat_deadline() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let (step_tx, mut step_rx) = tokio::sync::mpsc::channel(1);
+    let (activity_sent_tx, activity_sent_rx) = tokio::sync::oneshot::channel();
+    let (sentinel_sent_tx, sentinel_sent_rx) = tokio::sync::oneshot::channel();
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    max_idle_interval_ms: 20_000,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        step_rx.recv().await.expect("activity step was dropped");
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        send_message(
+            &mut conn,
+            "ch",
+            "activity-before-original-deadline",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        activity_sent_tx.send(()).unwrap();
+
+        step_rx.recv().await.expect("sentinel step was dropped");
+        send_message(
+            &mut conn,
+            "ch",
+            "after-original-deadline",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        sentinel_sent_tx.send(()).unwrap();
+
+        let msg = expect_protocol_msg(&mut conn, "CLOSE after sentinel")
+            .await
+            .unwrap();
+        assert_eq!(msg.action, action::CLOSE);
+        expect_websocket_close_frame(&mut conn).await.unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.heartbeat_margin = Duration::from_secs(10);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    tokio::time::pause();
+
+    step_tx.send(()).await.unwrap();
+    activity_sent_rx.await.unwrap();
+    tokio::time::resume();
+    let event = expect_event(&mut sub, "activity before original heartbeat deadline")
+        .await
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(
+                msg.name.as_deref(),
+                Some("activity-before-original-deadline")
+            );
+        }
+        other => panic!("expected activity Message, got {other:?}"),
+    }
+    tokio::time::pause();
+
+    let event_before_sentinel = tokio::time::timeout(Duration::from_secs(21), sub.next()).await;
+    assert!(
+        event_before_sentinel.is_err(),
+        "expected no event after the original deadline, got {event_before_sentinel:?}"
+    );
+
+    step_tx.send(()).await.unwrap();
+    sentinel_sent_rx.await.unwrap();
+    tokio::time::resume();
+    let event = expect_event(&mut sub, "sentinel after original heartbeat deadline")
+        .await
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-original-deadline"));
+        }
+        other => panic!("expected sentinel Message, got {other:?}"),
+    }
+
+    sub.close_and_wait().await.unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test]
 async fn zero_max_idle_interval_disables_heartbeat_timeout() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
