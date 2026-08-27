@@ -251,6 +251,7 @@ async function expectExactFeishuMemberConnector(args: {
   readonly client: FeishuConnectClient;
   readonly installationId: string;
   readonly member: ApiTestUser;
+  readonly expectedOpenId: string;
 }): Promise<void> {
   const connected = await accept(
     args.client.getStatus({
@@ -279,8 +280,8 @@ async function expectExactFeishuMemberConnector(args: {
     installationId: args.installationId,
   });
   expect(memberConnection.feishu_member_connection).toMatchObject({
-    connector_external_id: "ou_oauth_user",
-    open_id: "ou_oauth_user",
+    connector_external_id: args.expectedOpenId,
+    open_id: args.expectedOpenId,
   });
   const memberConnectorId = requireValue(
     memberConnection.feishu_member_connection?.connector_id,
@@ -321,7 +322,7 @@ async function expectExactFeishuMemberConnector(args: {
     orgId,
     userId: args.member.userId,
     connectorId: memberConnectorId,
-    externalId: "ou_oauth_user",
+    externalId: args.expectedOpenId,
   });
 
   const foreignConnectorId = await seedConnectorStorageRow(context, {
@@ -2516,6 +2517,8 @@ describe("Feishu integration", () => {
       `${APP_ORIGIN}/connectors/feishu/callback`,
     ]);
 
+    const legacyReplacementOpenId = "ou_legacy_replacement_user";
+    oauthUserOpenId = legacyReplacementOpenId;
     clearConnectorInvalidationMocks();
     const legacyCallbackResponse = await oauthApp.request(
       `${feishuOauthContract.callback.path}?${new URLSearchParams({
@@ -2536,6 +2539,18 @@ describe("Feishu integration", () => {
       `${APP_ORIGIN}/connectors/feishu/callback`,
       `${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`,
     ]);
+    await expect(
+      readFeishuMemberConnectorState(context, {
+        orgId: requireValue(member.orgId, "Expected an organization"),
+        userId: member.userId,
+        installationId,
+      }),
+    ).resolves.toMatchObject({
+      feishu_member_connection: {
+        connector_id: linkedConnectorId,
+        open_id: legacyReplacementOpenId,
+      },
+    });
     await flushWaitUntilForTest();
 
     mocks.clerk.session(member.userId, member.orgId, member.orgRole);
@@ -2543,6 +2558,7 @@ describe("Feishu integration", () => {
       client,
       installationId,
       member,
+      expectedOpenId: legacyReplacementOpenId,
     });
     const connectedConnectorList = await accept(
       customConnectorClient.list({

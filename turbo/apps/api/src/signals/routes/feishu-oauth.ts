@@ -38,7 +38,7 @@ import {
 } from "../services/custom-connector-oauth2.service";
 import {
   ensureFeishuCustomConnector$,
-  resolveFeishuConnectorAccountMutation,
+  resolveFeishuConnectorAccountMutation as resolveFeishuAccountMutation,
 } from "../services/feishu-custom-connector.service";
 import {
   feishuBotOpenUrl,
@@ -648,7 +648,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!connectorId) {
     return jsonErrorResponse("Feishu connector not found");
   }
-  const account = await resolveFeishuConnectorAccountMutation(db, {
+  const account = await resolveFeishuAccountMutation(db, {
     installationId: state.installationId,
     userId: state.userId,
   });
@@ -753,6 +753,8 @@ const completeLegacyFeishuOAuth$ = command(
         query.responseMode,
       );
     }
+    const accountMutation = await resolveFeishuAccountMutation(db, state);
+    signal.throwIfAborted();
     const exchanged = await exchangeOAuthTokenAndUserInfo(
       {
         connector,
@@ -781,7 +783,7 @@ const completeLegacyFeishuOAuth$ = command(
         db,
         state: {
           ...state,
-          accountMutation: { intent: "add" },
+          accountMutation,
         },
         installation,
         connector,
