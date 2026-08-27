@@ -2013,15 +2013,19 @@ describe("managed SocialKit route", () => {
       [202],
     );
     await flushWaitUntilForTest();
-    const blocked = await reconcileSocialKitDownloadsForTest(context, [
-      created.body.downloadId,
-    ]);
+    const blocked = await reconcileSocialKitDownloadsForTest(
+      context,
+      [created.body.downloadId],
+      pricing.resolution,
+    );
     providerReady = true;
     mockNow(now() + 61_000);
 
-    const processed = await reconcileSocialKitDownloadsForTest(context, [
-      created.body.downloadId,
-    ]);
+    const processed = await reconcileSocialKitDownloadsForTest(
+      context,
+      [created.body.downloadId],
+      pricing.resolution,
+    );
     const completed = await accept(
       socialClient.getDownload({
         headers: authenticate(actor),
