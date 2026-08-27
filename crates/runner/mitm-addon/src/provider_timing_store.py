@@ -11,6 +11,8 @@ is acquired for incomplete context. Once a buffered-report lease is acquired, sa
 admission keeps the operations, context, and lease together for retry. Successful webhook admission
 transfers delivery ownership to ``usage.webhook``. The store then clears its pending state and
 releases the buffered lease.
+Retry-eligible run IDs are indexed in the pending subset of current LRU order so global retries do
+not visit completed or incomplete-context state.
 Eviction, explicit discard, and reset release any lease that remains locally retained.
 
 See ``codex_output_timing.py`` and ``claude_output_timing.py`` for provider usage, and
@@ -57,7 +59,8 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
     State creation and access maintain the run map's LRU order. Retained operations stay local until
     a complete reporting context and bounded webhook admission are available; queue saturation
     leaves the state and its buffered lease retained, while successful admission hands delivery to
-    ``usage.webhook``.
+    ``usage.webhook``. A bounded ordered index mirrors the retry-eligible subset of the run map, so
+    global retry cost and ordering depend only on current retryable work.
     """
 
     def __init__(
@@ -71,6 +74,7 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         self._log_type = log_type
         self._max_tracked_runs = max_tracked_runs
         self._run_states: OrderedDict[str, StateT] = OrderedDict()
+        self._retryable_run_ids: OrderedDict[str, None] = OrderedDict()
         self._lock = threading.Lock()
 
     @contextmanager
@@ -106,7 +110,8 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
             state = self._state_factory()
             self._run_states[run_id] = state
             if len(self._run_states) > self._max_tracked_runs:
-                _, evicted = self._run_states.popitem(last=False)
+                evicted_run_id, evicted = self._run_states.popitem(last=False)
+                self._retryable_run_ids.pop(evicted_run_id, None)
                 self._release_buffered_report_locked(evicted)
             return state
 
@@ -120,6 +125,8 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         alter pending operations, reporting context, or lease ownership.
         """
         self._run_states.move_to_end(run_id)
+        if run_id in self._retryable_run_ids:
+            self._retryable_run_ids.move_to_end(run_id)
 
     def discard_locked(self, run_id: str) -> None:
         """Discard a tracked run and release any retained buffered-report lease.
@@ -128,6 +135,7 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         discarded with its state; no delivery retry remains after this terminal removal.
         """
         state = self._run_states.pop(run_id)
+        self._retryable_run_ids.pop(run_id, None)
         self._release_buffered_report_locked(state)
 
     def admit_pending_locked(
@@ -154,6 +162,7 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         state.pending_context = context
         if state.buffered_report is None:
             state.buffered_report = usage.admit_buffered_report()
+        self._retryable_run_ids[run_id] = None
         self._admit_retained_locked(run_id, state)
 
     def retry_pending(self, flow: http.HTTPFlow, run_id: str) -> None:
@@ -173,12 +182,16 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
     def retry_all_pending(self) -> None:
         """Retry retained reports in current LRU order until admission is saturated.
 
-        This entry point acquires the store lock internally. Each successful admission clears that
-        run's retained operations, context, and buffered lease; the first rejected admission leaves
-        that run and all later runs for a future retry. This sweep does not touch LRU order.
+        This entry point acquires the store lock internally and visits only the ordered retryable
+        subset of retained run state. Each successful admission clears that run's retained
+        operations, context, buffered lease, and index membership; the first rejected admission
+        leaves that run first and all later runs for a future retry. This sweep does not touch LRU
+        order.
         """
         with self._lock:
-            for run_id, state in self._run_states.items():
+            while self._retryable_run_ids:
+                run_id = next(iter(self._retryable_run_ids))
+                state = self._run_states[run_id]
                 if not self._admit_retained_locked(run_id, state):
                     return
 
@@ -193,17 +206,22 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
             for state in self._run_states.values():
                 self._release_buffered_report_locked(state)
             self._run_states.clear()
+            self._retryable_run_ids.clear()
 
     def _admit_retained_locked(self, run_id: str, state: StateT) -> bool:
         """Admit retained state while the caller holds ``locked()``.
 
         Return ``False`` when bounded webhook admission is saturated and leave the retained state
-        unchanged. On success, clear the pending operations and context and release the buffered
-        lease after delivery ownership transfers to ``usage.webhook``.
+        and retry index unchanged. On success, clear retry membership, pending operations, and
+        context, then release the buffered lease after delivery ownership transfers to
+        ``usage.webhook``.
         """
         context = state.pending_context
         if not state.pending_operations or context is None:
-            return True
+            raise RuntimeError("retryable provider timing report had incomplete state")
+        lease = state.buffered_report
+        if lease is None:
+            raise RuntimeError("retryable provider timing report had no buffered owner")
         operations = [
             {
                 "ts": observed_at,
@@ -226,9 +244,7 @@ class ProviderTimingStore[StateT: ProviderTimingState]:
         ):
             return False
 
-        lease = state.buffered_report
-        if lease is None:
-            raise RuntimeError("admitted provider timing report had no buffered owner")
+        del self._retryable_run_ids[run_id]
         state.pending_operations.clear()
         state.pending_context = None
         state.buffered_report = None
