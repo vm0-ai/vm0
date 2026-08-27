@@ -1342,15 +1342,9 @@ describe("onboarding flow", () => {
     expect(canceled.searchParams.has("prompt")).toBeFalsy();
     expect(canceled.searchParams.has("onboarding_note")).toBeFalsy();
 
-    const previousVideoHeading = screen.getByRole("heading", {
-      name: "Customize your video",
-    });
     mockOnboardingNeeded();
     context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
       searchParams: canceled.searchParams,
-    });
-    await waitFor(() => {
-      expect(previousVideoHeading).not.toBeInTheDocument();
     });
     await expect(
       screen.findByRole("heading", { name: "Customize your video" }),

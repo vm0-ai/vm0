@@ -73,11 +73,24 @@ export type RouteSetup = Command<Promise<void> | void, [AbortSignal]>;
 export type RouteSetupLoader = () => Promise<RouteSetup>;
 
 export function lazyRouteSetup(load: RouteSetupLoader): RouteSetup {
-  return command(async ({ set }, signal: AbortSignal) => {
+  let loadedRoute:
+    | { readonly rootSignal: AbortSignal; readonly setup: RouteSetup }
+    | undefined;
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const rootSignal = get(rootSignal$);
+    if (loadedRoute?.rootSignal === rootSignal) {
+      await set(loadedRoute.setup, signal);
+      return;
+    }
     set(showAppSkeleton$);
     set(clearPage$);
     const setup = await load();
     signal.throwIfAborted();
+    rootSignal.throwIfAborted();
+    if (get(rootSignal$) !== rootSignal) {
+      throw new DOMException("Route setup root changed", "AbortError");
+    }
+    loadedRoute = { rootSignal, setup };
     await set(setup, signal);
   });
 }

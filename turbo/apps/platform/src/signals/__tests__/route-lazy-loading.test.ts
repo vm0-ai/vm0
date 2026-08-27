@@ -18,7 +18,7 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setRootSignal$ } from "../root-signal.ts";
-import { createDeferredPromise, isAbortError } from "../utils.ts";
+import { createDeferredPromise, isAbortError, resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -71,9 +71,21 @@ describe("lazy route setup", () => {
     expect(events).toStrictEqual(["load", "setup"]);
   });
 
-  it("propagates a rejected route import", async () => {
+  it("propagates a rejected route import and retries it later", async () => {
     installNavigation(ROUTES.agents);
     const importError = new Error("route import failed");
+    let loaderCalls = 0;
+    let setupCalls = 0;
+    const setup$ = command(() => {
+      setupCalls += 1;
+    });
+    const setup = lazyRouteSetup(() => {
+      loaderCalls += 1;
+      if (loaderCalls === 1) {
+        return Promise.reject(importError);
+      }
+      return Promise.resolve(setup$);
+    });
 
     await expect(
       context.store.set(
@@ -82,14 +94,18 @@ describe("lazy route setup", () => {
           {
             path: ROUTES.agents,
             analytics: false,
-            setup: lazyRouteSetup(() => {
-              return Promise.reject(importError);
-            }),
+            setup,
           },
         ],
         context.signal,
       ),
     ).rejects.toBe(importError);
+
+    await expect(
+      context.store.set(setup, context.signal),
+    ).resolves.toBeUndefined();
+    expect(loaderCalls).toBe(2);
+    expect(setupCalls).toBe(1);
   });
 
   it("keeps the skeleton visible until the selected route is ready", async () => {
@@ -199,22 +215,26 @@ describe("lazy route setup", () => {
     expect(pathname()).toBe(ROUTES.workflows);
   });
 
-  it("navigates repeatedly between independently loaded route groups", async () => {
+  it("reuses resolved route groups across repeated navigation", async () => {
     installNavigation(ROUTES.agents);
     const agentSignals: AbortSignal[] = [];
     const workflowSignals: AbortSignal[] = [];
+    const agentSetupPages: unknown[] = [];
     const secondAgentSetup = deferred<void>();
     const workflowSetup = deferred<void>();
     let agentLoaderCalls = 0;
     let workflowLoaderCalls = 0;
 
-    const agentSetup$ = command((_ctx, signal: AbortSignal) => {
+    const agentSetup$ = command(({ get, set }, signal: AbortSignal) => {
+      agentSetupPages.push(get(page$));
+      set(updatePage$, "agents");
       agentSignals.push(signal);
       if (agentSignals.length === 2) {
         secondAgentSetup.resolve(undefined);
       }
     });
-    const workflowSetup$ = command((_ctx, signal: AbortSignal) => {
+    const workflowSetup$ = command(({ set }, signal: AbortSignal) => {
+      set(updatePage$, "workflows");
       workflowSignals.push(signal);
       workflowSetup.resolve(undefined);
     });
@@ -249,8 +269,67 @@ describe("lazy route setup", () => {
     context.store.set(detachedNavigateTo$, ROUTES.agents);
     await secondAgentSetup.promise;
     expect(workflowSignals[0]?.aborted).toBeTruthy();
-    expect(agentLoaderCalls).toBe(2);
+    expect(agentLoaderCalls).toBe(1);
     expect(workflowLoaderCalls).toBe(1);
+    expect(agentSetupPages).toStrictEqual([undefined, "workflows"]);
     expect(pathname()).toBe(ROUTES.agents);
+  });
+
+  it("reloads a resolved route group for a new root lifecycle", async () => {
+    const resetRootSignal$ = resetSignal();
+    const firstRoot = context.store.set(resetRootSignal$, context.signal);
+    let loaderCalls = 0;
+    const setupSignals: AbortSignal[] = [];
+    const setup$ = command((_ctx, signal: AbortSignal) => {
+      setupSignals.push(signal);
+    });
+    const setup = lazyRouteSetup(() => {
+      loaderCalls += 1;
+      return Promise.resolve(setup$);
+    });
+
+    context.store.set(setRootSignal$, firstRoot);
+    await context.store.set(setup, firstRoot);
+
+    const secondRoot = context.store.set(resetRootSignal$, context.signal);
+    context.store.set(setRootSignal$, secondRoot);
+    await context.store.set(setup, secondRoot);
+
+    expect(loaderCalls).toBe(2);
+    expect(setupSignals).toStrictEqual([firstRoot, secondRoot]);
+  });
+
+  it("does not complete a pending import against a new root lifecycle", async () => {
+    const firstRoot = AbortSignal.any([context.signal]);
+    const loaderStarted = deferred<void>();
+    const releaseFirstLoader = deferred<RouteSetup>();
+    let loaderCalls = 0;
+    const setupSignals: AbortSignal[] = [];
+    const setup$ = command((_ctx, signal: AbortSignal) => {
+      setupSignals.push(signal);
+    });
+    const setup = lazyRouteSetup(async () => {
+      loaderCalls += 1;
+      if (loaderCalls === 1) {
+        loaderStarted.resolve(undefined);
+        return await releaseFirstLoader.promise;
+      }
+      return setup$;
+    });
+
+    context.store.set(setRootSignal$, firstRoot);
+    const pendingSetup = context.store.set(setup, firstRoot);
+    await loaderStarted.promise;
+
+    const secondRoot = AbortSignal.any([context.signal]);
+    context.store.set(setRootSignal$, secondRoot);
+    releaseFirstLoader.resolve(setup$);
+
+    await expect(pendingSetup).rejects.toSatisfy(isAbortError);
+    expect(setupSignals).toStrictEqual([]);
+
+    await context.store.set(setup, secondRoot);
+    expect(loaderCalls).toBe(2);
+    expect(setupSignals).toStrictEqual([secondRoot]);
   });
 });
