@@ -219,7 +219,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 "1",
             )
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(

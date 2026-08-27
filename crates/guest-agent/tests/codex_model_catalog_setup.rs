@@ -72,7 +72,7 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
             "codex-model-catalog-setup",
         )
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
         )
         .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")

@@ -123,7 +123,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
                 "1",
             )
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(

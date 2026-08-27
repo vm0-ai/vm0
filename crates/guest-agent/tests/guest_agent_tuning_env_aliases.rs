@@ -539,7 +539,10 @@ fn assert_conflict_precedes_private_file_consumption(
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
-    set_test_env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, &payload_path);
+    set_test_env(
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        &payload_path,
+    );
     set_test_env(pair.canonical, CANONICAL_CONFLICT_VALUE);
     set_test_env(pair.legacy, LEGACY_CONFLICT_VALUE);
 

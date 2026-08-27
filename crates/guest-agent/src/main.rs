@@ -1150,7 +1150,7 @@ mod tests {
                 test_runtime_dir(),
             );
             std::env::set_var(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 write_test_run_payload(prompt),
             );
         }

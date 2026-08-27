@@ -1131,7 +1131,7 @@ pub unsafe fn set_run_payload_file_env_for_test(
 ) -> Result<(), String> {
     let path = write_run_payload_file_for_test(runtime_dir, payload)?;
     unsafe {
-        std::env::set_var(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV, path);
     }
     Ok(())
 }
@@ -1151,7 +1151,7 @@ pub unsafe fn set_user_env_file_env_for_test(
         serde_json::to_vec(user_env).map_err(|error| format!("serialize user env: {error}"))?;
     std::fs::write(&path, bytes).map_err(|error| format!("write user env: {error}"))?;
     unsafe {
-        std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV, path);
     }
     Ok(())
 }

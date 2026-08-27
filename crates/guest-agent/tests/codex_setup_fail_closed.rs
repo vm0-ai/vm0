@@ -175,7 +175,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         )
         .env(guest_contracts::env::RUN_ID_ENV, args.run_id)
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,
         )
         .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")

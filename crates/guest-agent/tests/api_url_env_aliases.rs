@@ -368,9 +368,12 @@ fn assert_conflict_precedes_private_payload_consumption(tmp: &Path) -> TestResul
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
-    set_test_env(guest_contracts::env::USER_ENV_FILE_ENV, &user_env_path);
     set_test_env(
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+        &user_env_path,
+    );
+    set_test_env(
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         &run_payload_path,
     );
     set_test_env(guest_contracts::env::RUN_ID_ENV, "api-url-conflict");
