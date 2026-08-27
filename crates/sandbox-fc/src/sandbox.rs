@@ -3444,11 +3444,13 @@ fn idle_transition_error(
 
 /// Maximum time to wait for balloon inflation before pausing vCPUs.
 const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum time to wait for balloon deflation before reopening guest operations.
+const BALLOON_DEFLATE_TIMEOUT: Duration = BALLOON_SETTLE_TIMEOUT;
 /// Additional bounded wait when the balloon is still making progress and the
 /// guest reports enough unused memory to finish reclaiming safely.
 const BALLOON_SETTLE_PROGRESS_GRACE: Duration = Duration::from_secs(5);
-/// Fast-start poll intervals while waiting for balloon inflation.
-const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
+/// Fast-start poll intervals while waiting for a balloon lifecycle transition.
+const BALLOON_TRANSITION_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(25),
     Duration::from_millis(50),
     Duration::from_millis(100),
@@ -3457,8 +3459,8 @@ const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(200),
     Duration::from_millis(200),
 ];
-/// Maximum poll interval while waiting for balloon inflation.
-const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(200);
+/// Maximum poll interval while waiting for a balloon lifecycle transition.
+const BALLOON_TRANSITION_MAX_POLL: Duration = Duration::from_millis(200);
 /// Upper bound for accepting residual differences between requested and
 /// reported balloon size. Current 4 GiB production profiles commonly settle
 /// with low-hundreds MiB residuals when the guest reports little available
@@ -3788,7 +3790,7 @@ async fn wait_for_balloon_with_optional_handoff(
     let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
     let mut deadline = summary.started_at + settle_timeout;
     let mut progress_grace_used = false;
-    let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();
+    let mut fast_poll_intervals = BALLOON_TRANSITION_FAST_POLL_INTERVALS.into_iter();
     loop {
         if tokio::time::Instant::now() >= deadline {
             if !progress_grace_used && summary.can_extend_for_progress() {
@@ -3966,7 +3968,7 @@ async fn wait_for_balloon_with_optional_handoff(
 
         let poll_interval = fast_poll_intervals
             .next()
-            .unwrap_or(BALLOON_SETTLE_MAX_POLL);
+            .unwrap_or(BALLOON_TRANSITION_MAX_POLL);
         let next_poll = tokio::time::Instant::now() + poll_interval;
         let sleep = tokio::time::sleep_until(if next_poll < deadline {
             next_poll
@@ -3990,6 +3992,71 @@ async fn wait_for_balloon_with_optional_handoff(
             None => sleep.as_mut().await,
         }
     }
+}
+
+async fn wait_for_balloon_deflation(client: &ApiClient, log_id: &str) -> sandbox::Result<()> {
+    let started_at = tokio::time::Instant::now();
+    let deadline = started_at + BALLOON_DEFLATE_TIMEOUT;
+    let mut sample_count = 0_u32;
+    let mut last_target_mib = None;
+    let mut last_actual_mib = None;
+    let mut fast_poll_intervals = BALLOON_TRANSITION_FAST_POLL_INTERVALS.into_iter();
+
+    loop {
+        let stats = tokio::time::timeout_at(deadline, client.get_balloon_statistics())
+            .await
+            .map_err(|_| balloon_deflate_timeout_error(last_target_mib, last_actual_mib))?
+            .map_err(|error| {
+                idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    format!("balloon deflate statistics: {error}"),
+                )
+            })?;
+        sample_count = sample_count.saturating_add(1);
+        last_target_mib = Some(stats.target_mib);
+        last_actual_mib = Some(stats.actual_mib);
+
+        if stats.target_mib == 0 && stats.actual_mib == 0 {
+            info!(
+                id = %log_id,
+                target_mib = stats.target_mib,
+                actual_mib = stats.actual_mib,
+                elapsed_ms = duration_ms(started_at.elapsed()),
+                sample_count,
+                "balloon fully deflated, proceeding to active operations"
+            );
+            return Ok(());
+        }
+
+        // Deflation timing tests advance paused time only after a completed sample.
+        #[cfg(test)]
+        tracing::event!(tracing::Level::TRACE, "waiting for balloon deflation");
+
+        let poll_interval = fast_poll_intervals
+            .next()
+            .unwrap_or(BALLOON_TRANSITION_MAX_POLL);
+        let next_poll = tokio::time::Instant::now() + poll_interval;
+        tokio::time::sleep_until(next_poll.min(deadline)).await;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(balloon_deflate_timeout_error(
+                last_target_mib,
+                last_actual_mib,
+            ));
+        }
+    }
+}
+
+fn balloon_deflate_timeout_error(
+    last_target_mib: Option<u32>,
+    last_actual_mib: Option<u32>,
+) -> SandboxError {
+    idle_transition_error(
+        SandboxIdleTransition::Unpark,
+        format!(
+            "balloon deflate did not settle within {} ms (last target_mib: {last_target_mib:?}, last actual_mib: {last_actual_mib:?})",
+            duration_ms(BALLOON_DEFLATE_TIMEOUT)
+        ),
+    )
 }
 
 fn guest_memory_snapshot(snapshot: vsock_proto::MemorySnapshot) -> GuestMemorySnapshot {
@@ -4383,6 +4450,7 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
+        wait_for_balloon_deflation(&client, log_id).await?;
         *balloon_controller = Some(balloon::spawn(client, memory_mb, state_rx));
     }
 
