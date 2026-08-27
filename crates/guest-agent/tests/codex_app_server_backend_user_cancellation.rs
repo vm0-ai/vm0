@@ -29,24 +29,34 @@ async fn codex_app_server_user_cancellation_interrupts_hung_turn_start()
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let masker = SecretMasker::from_raw("");
     let cancellation = CancellationToken::new();
-    cancellation.cancel();
+    let execution = common::execute_cli_with_cancellation_for_runtime(
+        &runtime,
+        &masker,
+        common::spawn_dummy_heartbeat(),
+        cancellation.clone(),
+    );
+    tokio::pin!(execution);
+    let ready_file = tmp.path().join(common::MOCK_CODEX_TURN_START_READY_FILE);
+    tokio::select! {
+        result = &mut execution => {
+            return Err(format!("Codex execution ended before turn/start cancellation: {result:?}").into());
+        }
+        ready = common::wait_for_file_contains(
+            &ready_file,
+            common::MOCK_CODEX_TURN_START_READY_EVENT,
+            Duration::from_secs(5),
+        ) => ready?,
+    }
 
-    let result = tokio::time::timeout(
-        Duration::from_secs(10),
-        common::execute_cli_with_cancellation_for_runtime(
-            &runtime,
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            cancellation,
-        ),
-    )
-    .await
-    .map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "user cancellation did not interrupt the app-server request",
-        )
-    })??;
+    cancellation.cancel();
+    let result = tokio::time::timeout(Duration::from_secs(10), execution)
+        .await
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "user cancellation did not interrupt the app-server request",
+            )
+        })??;
 
     assert_eq!(result.exit_code, 1);
     let error = result
