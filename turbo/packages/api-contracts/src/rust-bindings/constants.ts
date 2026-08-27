@@ -16,6 +16,7 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
@@ -289,6 +290,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum serialized active-input control payload accepted by runner and guest process control.",
       "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "AGENT_EXECUTION_TIMEOUT_SECONDS",
+    value: rustU64(AGENT_EXECUTION_TIMEOUT_SECONDS),
+    rustDoc: [
+      "Maximum execution budget for one agent run, in seconds.",
+      "The runner enforces this deadline and the API includes it in the agent-facing system prompt.",
     ],
   },
   {
