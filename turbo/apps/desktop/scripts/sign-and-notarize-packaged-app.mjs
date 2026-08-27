@@ -84,7 +84,7 @@ await sign({
   app: options.appPath,
   batchCodesignCalls: true,
   identity: requiredEnvironmentVariable(
-    "VM0_DESKTOP_SIGNING_IDENTITY",
+    "OKOU_DESKTOP_SIGNING_IDENTITY",
     resolveDesktopSigningIdentityEnvironment(),
   ),
   identityValidation: true,

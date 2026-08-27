@@ -1026,7 +1026,7 @@ describe("packaged Desktop signing identity entry point", () => {
     ]);
     expectSigningIdentitySource(result, undefined);
     expect(result.process.stderr).toContain(
-      "VM0_DESKTOP_SIGNING_IDENTITY is required",
+      "OKOU_DESKTOP_SIGNING_IDENTITY is required",
     );
     expectNoSensitiveValueDisclosure(result);
   });
@@ -1046,7 +1046,7 @@ describe("packaged Desktop signing identity entry point", () => {
       expect(result.trace).toBe("");
       expectSigningIdentitySource(result, source);
       expect(result.process.stderr).toContain(
-        "VM0_DESKTOP_SIGNING_IDENTITY is required",
+        "OKOU_DESKTOP_SIGNING_IDENTITY is required",
       );
       expectNoSensitiveValueDisclosure(result);
     },
