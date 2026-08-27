@@ -408,7 +408,7 @@ function ChatThreadItemLink({
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <ChatThreadListPaneIcon signals={signals} />
-        <span className="min-w-0 truncate">
+        <span className="zero-nav-copy min-w-0 truncate">
           {title ??
             t(($) => {
               return $.chat.newChat;
@@ -674,7 +674,7 @@ function ChatThreads({
 
   if (threadCount === 0) {
     return (
-      <p className="px-2 py-2 text-xs text-muted-foreground leading-relaxed">
+      <p className="zero-nav-copy-muted px-2 py-2 text-xs text-muted-foreground leading-relaxed">
         {unreadOnly
           ? t(($) => {
               return $.chat.sidebar.noUnread;
@@ -906,7 +906,7 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+      <span className="zero-nav-copy-muted flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <ChevronRight

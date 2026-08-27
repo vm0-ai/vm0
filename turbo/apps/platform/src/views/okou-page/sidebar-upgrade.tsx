@@ -67,7 +67,7 @@ export function SidebarUpgradeCard() {
       style={{ borderRadius: "12px" }}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
+        <p className="zero-nav-copy text-sm font-medium text-foreground">
           {t(
             ($) => {
               return $.billing.sidebar.getPlan;
@@ -75,7 +75,7 @@ export function SidebarUpgradeCard() {
             { plan: nextLabel },
           )}
         </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">
+        <p className="zero-nav-copy-muted mt-0.5 text-[11px] text-muted-foreground">
           {t(($) => {
             return $.billing.sidebar.description;
           })}

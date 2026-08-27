@@ -412,7 +412,7 @@ function PinnedAgentGridCard({
         )}
       </span>
       <span
-        className={`w-full truncate text-center text-[11px] leading-tight ${
+        className={`zero-nav-copy w-full truncate text-center text-[11px] leading-tight ${
           isPrimarySelected ? "font-medium" : ""
         } ${isDragging ? "opacity-0" : ""}`}
       >
@@ -568,7 +568,7 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
+        <span className="zero-nav-copy-muted flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
           {t(($) => {
             return $.sidebar.pinnedAgents;
           })}
@@ -592,7 +592,7 @@ export function PinnedAgentListSection({
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <Plus size={18} />
             </span>
-            <span className="text-[11px] leading-tight">
+            <span className="zero-nav-copy-muted text-[11px] leading-tight">
               {t(($) => {
                 return $.sidebar.addPin;
               })}
@@ -615,7 +615,7 @@ export function PinnedAgentListSection({
           return setCollapsed(!collapsed);
         }}
       >
-        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+        <span className="zero-nav-copy-muted flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.sidebar.pinned;
           })}
@@ -709,7 +709,7 @@ export function PinnedAgentListSection({
                       alt={agent.displayName ?? agent.agentId}
                       className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                     />
-                    <span className="truncate">
+                    <span className="zero-nav-copy truncate">
                       {agent.displayName ?? agent.agentId}
                     </span>
                   </Link>
