@@ -96,7 +96,8 @@ class ModelJsonResponseInspection:
     """Combined usage and failure projections from one model JSON response.
 
     The projections are produced by the same bounded, response-scoped parser. Their consumers
-    are independent: disabling one projection does not change the result contract of the other.
+    are independently enabled: disabling one produces its documented disabled value without
+    suppressing the other projection.
 
     Attributes:
         usage: Protocol-specific normalized usage data, or ``None`` when usage inspection is
@@ -162,8 +163,8 @@ class ModelJsonResponseInspector:
         """Feed the next content-decoded JSON bytes for this response.
 
         Call this method repeatedly as response chunks arrive, before :meth:`finish`. If
-        :meth:`accepts_more_input` returns ``False``, the bounded parser has recorded a permanent
-        parse or work-limit error and later chunks cannot recover it.
+            :meth:`accepts_more_input` returns ``False``, the bounded parser has recorded a
+            permanent parse or configured-bound error and later chunks cannot recover it.
         """
         self._extractor.feed(chunk)
 
