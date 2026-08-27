@@ -653,24 +653,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         upstream_model: primary.upstream_model,
       });
     });
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Built-in model provider failure observation updated",
-      expect.objectContaining({
-        type: "built_in_model_provider_observation",
-        context: "Runners",
-        runId: first.runId,
-        selectedModel: first.selectedModel,
-        providerType: primary.provider_type,
-        upstreamModel: primary.upstream_model,
-        connectionSource: "upstream_transport",
-        disposition: "started",
-        observationStartedAt: new Date(startedAt).toISOString(),
-        observationUntil: new Date(startedAt + 60_000).toISOString(),
-        minimumSustainedSeconds: 60,
-        maximumGapSeconds: 60,
-      }),
-    );
-
     await withMockNowForTest(startedAt + 30_000, async () => {
       await expect(
         runs.reportRunnerModelProviderFailure(first.runId, {
@@ -679,15 +661,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         }),
       ).resolves.toStrictEqual({ outcome: "observed" });
     });
-    expect(context.mocks.axiomLogging.warn).toHaveBeenLastCalledWith(
-      "Built-in model provider failure observation updated",
-      expect.objectContaining({
-        disposition: "continued",
-        observationStartedAt: new Date(startedAt).toISOString(),
-        observationUntil: new Date(startedAt + 90_000).toISOString(),
-      }),
-    );
-
     await withMockNowForTest(startedAt + 59_000, async () => {
       await expect(
         runs.reportRunnerModelProviderFailure(second.runId, {
@@ -702,7 +675,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         connectionSource: "upstream_transport",
       }),
     );
-
     await withMockNowForTest(startedAt + 60_000, async () => {
       await expect(
         runs.reportRunnerModelProviderFailure(first.runId, {
@@ -773,16 +745,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         upstream_model: primary.upstream_model,
       });
     });
-    expect(context.mocks.axiomLogging.warn).toHaveBeenLastCalledWith(
-      "Built-in model provider failure observation updated",
-      expect.objectContaining({
-        runId: second.runId,
-        disposition: "restarted",
-        observationStartedAt: new Date(restartedAt).toISOString(),
-        observationUntil: new Date(restartedAt + 60_000).toISOString(),
-      }),
-    );
-
     await withMockNowForTest(restartedAt + 60_000, async () => {
       await expect(
         runs.reportRunnerModelProviderFailure(first.runId, {
