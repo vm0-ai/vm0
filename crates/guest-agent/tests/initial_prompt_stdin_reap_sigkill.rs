@@ -34,7 +34,7 @@ tail -f /dev/null
     let masker = SecretMasker::from_raw("");
     let checkpoints = [common::VirtualTimeCheckpoint::new(
         runtime.paths.system_log_file(),
-        "Claude stdin writer failed, SIGTERM",
+        "CLI stdin writer failed, SIGTERM",
         runtime.config.post_result_sigkill_grace,
     )];
 

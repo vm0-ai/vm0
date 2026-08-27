@@ -584,7 +584,7 @@ fn build_env_json_with_host_env_inner(
         sandbox_id.into(),
     );
     env.insert(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV.into(),
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(

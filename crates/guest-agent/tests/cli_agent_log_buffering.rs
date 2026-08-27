@@ -2,7 +2,7 @@
 
 mod common;
 
-use guest_agent::cli::ClaudeResultStatus;
+use guest_agent::cli::JsonlResultStatus;
 use std::time::Duration;
 
 const INIT_RECORD: &str = r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"00000000-0000-4000-8000-000000000001","tools":["Bash"],"model":"mock-claude"}"#;
@@ -32,8 +32,8 @@ async fn agent_log_flushes_exact_buffered_records_before_claude_run_returns()
 
     assert_eq!(execution.exit_code, common::CLEAN_EXIT);
     assert_eq!(
-        execution.claude_result.map(|result| result.status),
-        Some(ClaudeResultStatus::Success)
+        execution.jsonl_result.map(|result| result.status),
+        Some(JsonlResultStatus::Success)
     );
     let expected = format!("{payload}\n");
     assert_eq!(

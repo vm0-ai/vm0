@@ -59,7 +59,7 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
     assert_eq!(execution.exit_code, common::CLEAN_EXIT);
     assert!(execution.control_error.is_none());
     assert!(execution.cli_termination.is_none());
-    assert!(execution.claude_result.is_some());
+    assert!(execution.jsonl_result.is_some());
     let system_log = std::fs::read_to_string(system_log_path)?;
     assert_eq!(system_log.matches(AGENT_LOG_WARNING).count(), 1);
 

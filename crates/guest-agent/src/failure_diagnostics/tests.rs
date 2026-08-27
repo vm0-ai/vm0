@@ -910,6 +910,7 @@ fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
         for (framework, source) in [
             (AgentFramework::ClaudeCode, FailureDetailSource::Stderr),
             (AgentFramework::Codex, FailureDetailSource::ClaudeResult),
+            (AgentFramework::Pi, FailureDetailSource::PiResult),
         ] {
             let reason = super::classify_cli_failure_reason(framework, source, message);
 

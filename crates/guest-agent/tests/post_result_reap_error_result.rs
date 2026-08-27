@@ -3,7 +3,7 @@
 
 mod common;
 
-use guest_agent::cli::ClaudeResultStatus;
+use guest_agent::cli::JsonlResultStatus;
 use guest_contracts::diagnostics::{
     CliTerminationReason, CliTerminationSignal, FailureDetailSource,
 };
@@ -32,14 +32,14 @@ async fn post_result_reap_preserves_error_diagnostic() -> Result<(), Box<dyn std
     let result = result.expect("execute_cli returned Err");
     assert_eq!(result.exit_code, common::SIGTERM_EXIT);
     assert_eq!(
-        result.claude_result.map(|summary| summary.status),
-        Some(ClaudeResultStatus::Error)
+        result.jsonl_result.map(|summary| summary.status),
+        Some(JsonlResultStatus::Error)
     );
     assert_eq!(
         result
-            .post_result_cleanup_result
+            .post_result_cleanup_jsonl_result
             .map(|summary| summary.status),
-        Some(ClaudeResultStatus::Error)
+        Some(JsonlResultStatus::Error)
     );
 
     let diagnostic = result

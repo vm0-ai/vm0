@@ -82,8 +82,8 @@ fn guest_storage_manifest_runs_fixed_argv_env_and_stdin() {
         r#"
 [ "$1" = "--manifest-stdin" ]
 [ "$OKOU_RUN_ID" = "run-1" ]
-[ "$VM0_GUEST_RUNTIME_DIR" = "/run/vm0/runs/run-1" ]
-[ "${OKOU_GUEST_RUNTIME_DIR+x}" != x ]
+[ "$OKOU_GUEST_RUNTIME_DIR" = "/run/vm0/runs/run-1" ]
+[ "${VM0_GUEST_RUNTIME_DIR+x}" != x ]
 [ "$(cat)" = '{"storages":[]}' ]
 printf 'applied\n'
 printf 'helper stderr\n' >&2

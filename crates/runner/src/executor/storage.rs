@@ -30,7 +30,7 @@ pub(super) fn guest_download_env<'a>(
     [
         (guest_contracts::env::RUN_ID_ENV, run_id),
         (
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         ),
     ]

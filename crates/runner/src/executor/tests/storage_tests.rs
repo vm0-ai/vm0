@@ -82,14 +82,15 @@ fn guest_download_env_contains_run_identity_values() {
         [
             (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
             (
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 runtime_dir.as_str(),
             ),
         ]
     );
-    assert!(!env.iter().any(|(key, _)| {
-        *key == guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
-    }));
+    assert!(
+        !env.iter()
+            .any(|(key, _)| { *key == guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV })
+    );
 }
 
 #[tokio::test]
