@@ -91,6 +91,10 @@ import {
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
 
+// Keep the Chat -> Agents/Home route transform outside assertion timeouts.
+// Production must continue resolving this module lazily after route matching.
+import "../../../signals/route-setups/home.ts";
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
