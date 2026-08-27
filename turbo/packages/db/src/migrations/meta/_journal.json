@@ -1464,6 +1464,13 @@
       "when": 1787848958062,
       "tag": "1016_short_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 1017,
+      "version": "7",
+      "when": 1787858160467,
+      "tag": "1017_vengeful_nova",
+      "breakpoints": true
     }
   ]
 }

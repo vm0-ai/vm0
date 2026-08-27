@@ -19,9 +19,9 @@ import {
   getActiveOfficialWorkflow,
   installOfficialWorkflow$,
   listActiveOfficialWorkflows,
-  reconfigureOfficialWorkflow$,
   type OfficialWorkflowInstallResult,
 } from "../services/official-workflow-installation.service";
+import { reconcileOfficialWorkflowInstallation$ } from "../services/official-workflow-reconciliation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 const officialWorkflowReadAuth = {
@@ -182,18 +182,38 @@ const reconfigureInstallationInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const result = await set(
-      reconfigureOfficialWorkflow$,
+    const publicBrand =
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const reconciliation = await set(
+      reconcileOfficialWorkflowInstallation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         workflowId: params.workflowId,
-        blueprints: body.data.blueprints,
+        overrides: body.data.blueprints,
+        publicBrand,
       },
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       signal,
     );
     signal.throwIfAborted();
+    const result: OfficialWorkflowInstallResult =
+      reconciliation.kind === "current"
+        ? { kind: "ok", workflowId: reconciliation.workflowId }
+        : reconciliation.kind === "invalid" ||
+            reconciliation.kind === "needs-reconfiguration"
+          ? { kind: "bad-request", message: reconciliation.message }
+          : reconciliation.kind === "not-found"
+            ? {
+                kind: "not-found",
+                message: `Official Workflow installation not found: ${params.workflowId}`,
+              }
+            : {
+                kind: "conflict",
+                message:
+                  reconciliation.kind === "retry"
+                    ? reconciliation.message
+                    : "Official Workflow changed during reconfiguration; retry",
+              };
     if (result.kind !== "ok") {
       return mutationFailure(result);
     }
@@ -237,6 +257,7 @@ const uninstallInstallationInner$ = command(
         orgId: auth.orgId,
         workflowId: params.workflowId,
         allowOfficialInstallationDeletion: true,
+        serializeOfficialLifecycle: true,
       },
       signal,
     );
