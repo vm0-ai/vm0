@@ -654,7 +654,7 @@ function ConnectorCategoryRail({
   }
   const groupedCategoryIds = new Set<string>();
   return (
-    <aside className="sticky top-4 hidden max-h-[calc(100vh-2rem)] w-52 shrink-0 self-start overflow-y-auto pr-4 lg:block">
+    <aside className="sticky top-4 hidden max-h-[calc(100vh-2rem)] w-56 shrink-0 self-start overflow-y-auto pr-4 lg:block">
       <div className="mb-2 flex items-center gap-2 px-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Layers3 size={13} />
         {t(($) => {
