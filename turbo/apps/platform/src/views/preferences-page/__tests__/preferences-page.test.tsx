@@ -18,6 +18,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. Production
+// still resolves this module only after matching a settings route.
+import "../../../signals/route-setups/settings.ts";
+
 const context = testContext();
 const TEST_FRONTEND_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_FRONTEND_VERSION = "0.540.0";
