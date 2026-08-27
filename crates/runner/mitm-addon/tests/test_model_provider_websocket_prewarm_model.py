@@ -724,8 +724,8 @@ def test_generated_corpus_has_bounded_declared_coverage() -> None:
         )
     )
 
-    expected_prefix_trigger_pairs = {
-        (prefix, trigger)
+    expected_ambiguity_axes = {
+        (prefix, trigger, relation, terminal)
         for prefix in (
             "idle",
             "pending-normal",
@@ -735,12 +735,19 @@ def test_generated_corpus_has_bounded_declared_coverage() -> None:
             "retained-prewarm",
         )
         for trigger in _triggers_for_prefix(prefix)
+        for relation in _verification_relations(prefix)
+        for terminal in _TERMINAL_EVENTS
     }
-    actual_prefix_trigger_pairs = {
-        (case.axis("prefix"), case.axis("trigger")) for case in _AMBIGUITY_CASES
+    actual_ambiguity_axes = {
+        (
+            case.axis("prefix"),
+            case.axis("trigger"),
+            case.axis("relation"),
+            case.axis("terminal"),
+        )
+        for case in _AMBIGUITY_CASES
     }
-    assert actual_prefix_trigger_pairs == expected_prefix_trigger_pairs
-    assert {case.axis("terminal") for case in _AMBIGUITY_CASES} == set(_TERMINAL_EVENTS)
+    assert actual_ambiguity_axes == expected_ambiguity_axes
     assert {case.axis("relation") for case in _AMBIGUITY_CASES} == {
         "active",
         "retained",
