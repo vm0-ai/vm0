@@ -76,6 +76,8 @@ _MALFORMED_VALUES: dict[str, bytes] = {
 
 
 def _generated_index(case_index: int, salt: str, size: int) -> int:
+    # A stable hash provides reproducible choices without random.Random, which
+    # the add-on's security lint rejects through S311.
     payload = f"{_GENERATION_SEED}:{case_index}:{salt}".encode()
     digest = hashlib.sha256(payload).digest()
     return int.from_bytes(digest[:8]) % size
