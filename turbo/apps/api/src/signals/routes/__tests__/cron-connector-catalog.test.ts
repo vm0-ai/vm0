@@ -6387,23 +6387,29 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
+  it("accepts a full catalog at 32 MiB and rejects 32 MiB plus one with latest-valid retention", async () => {
     configureSource();
+    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(32 * 1024 * 1024);
+    const acceptedVersion = "2026-07-15.thirty-two-mib-limit";
+    const unpadded = buildRelease({
+      version: acceptedVersion,
+      mutateCatalog: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").description = "";
+      },
+    });
+    const descriptionBytes =
+      CONNECTOR_CATALOG_MAX_RAW_BYTES -
+      releaseCatalogBytes(unpadded).byteLength;
     const accepted = buildRelease({
-      version: "2026-07-15.sixteen-mib-limit",
+      version: acceptedVersion,
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+          descriptionBytes,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
-    );
-    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES,
-    );
+    expect(acceptedBytes.byteLength).toBe(CONNECTOR_CATALOG_MAX_RAW_BYTES);
     serveObjects(catalogObjects([accepted], accepted));
 
     expect((await syncCatalog()).body).toMatchObject({
@@ -6412,7 +6418,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-sixteen-mib-limit",
+      version: "2026-07-15.over-thirty-two-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
