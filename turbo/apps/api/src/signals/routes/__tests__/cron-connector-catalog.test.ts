@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
@@ -53,9 +54,11 @@ import {
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
+  installApiTestConnectorCatalog,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
+  readApiTestConnectorCatalogSnapshot,
   readApiTestConnectorCatalogRuntimeProjection,
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
@@ -140,6 +143,7 @@ const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
+const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
   "sha256:1bf96aab55b264a18add3139029db3f6502883ac97b16982d1fa4d668444bae7";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -1425,6 +1429,17 @@ function configureSource(): string {
   const bucket = `connector-catalog-test-${randomUUID()}`;
   mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
   return bucket;
+}
+
+function legacyConnectorCatalogSourceId(bucket: string): string {
+  const endpoint =
+    env("S3_ENDPOINT") ??
+    `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
+  return createHash("sha256")
+    .update(new URL(endpoint).origin)
+    .update("\0")
+    .update(bucket)
+    .digest("hex");
 }
 
 function setApiVersion(version: string): void {
@@ -6387,32 +6402,57 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
-    configureSource();
+  it("accepts 32 MiB in a rollback-isolated source generation and rejects 32 MiB plus one with latest-valid retention", async () => {
+    const bucket = configureSource();
+    const legacySourceId = legacyConnectorCatalogSourceId(bucket);
+    await installApiTestConnectorCatalog({
+      catalogVersion: "2026-07-14.rollback-compatible",
+      sourceId: legacySourceId,
+    });
+    const legacySnapshot =
+      await readApiTestConnectorCatalogSnapshot(legacySourceId);
+    expect(legacySnapshot.catalogRawSize).toBeLessThanOrEqual(
+      LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    );
+    const legacyRawBytes = gunzipSync(legacySnapshot.catalogGzip, {
+      maxOutputLength: LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    });
+    expect(legacyRawBytes.byteLength).toBe(legacySnapshot.catalogRawSize);
+    expect(digest(legacyRawBytes)).toBe(legacySnapshot.catalogDigest);
+
+    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(32 * 1024 * 1024);
+    const acceptedVersion = "2026-07-15.thirty-two-mib-limit";
+    const unpadded = buildRelease({
+      version: acceptedVersion,
+      mutateCatalog: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").description = "";
+      },
+    });
+    const descriptionBytes =
+      CONNECTOR_CATALOG_MAX_RAW_BYTES -
+      releaseCatalogBytes(unpadded).byteLength;
     const accepted = buildRelease({
-      version: "2026-07-15.sixteen-mib-limit",
+      version: acceptedVersion,
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+          descriptionBytes,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
-    );
-    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES,
-    );
+    expect(acceptedBytes.byteLength).toBe(CONNECTOR_CATALOG_MAX_RAW_BYTES);
     serveObjects(catalogObjects([accepted], accepted));
 
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: accepted.version },
     });
+    await expect(
+      readApiTestConnectorCatalogSnapshot(legacySourceId),
+    ).resolves.toStrictEqual(legacySnapshot);
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-sixteen-mib-limit",
+      version: "2026-07-15.over-thirty-two-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
@@ -6426,6 +6466,9 @@ describe("connector catalog rejection and latest-valid retention", () => {
         failureCode: "object-too-large",
       },
     });
+    await expect(
+      readApiTestConnectorCatalogSnapshot(legacySourceId),
+    ).resolves.toStrictEqual(legacySnapshot);
   });
 
   it("classifies unavailable and oversized objects before acceptance", async () => {
