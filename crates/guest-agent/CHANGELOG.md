@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.5...guest-agent-v0.82.6) (2026-08-27)
+
+
+### Refactoring
+
+* **rust:** make shared jsonl cli state backend-neutral ([#29895](https://github.com/vm0-ai/vm0/issues/29895)) ([0e0bc69](https://github.com/vm0-ai/vm0/commit/0e0bc69214f2717f37aa27064c1a1f5a1c8ae311))
+
 ## [0.82.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.4...guest-agent-v0.82.5) (2026-08-27)
 
 ## [0.82.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.3...guest-agent-v0.82.4) (2026-08-27)
