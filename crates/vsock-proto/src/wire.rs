@@ -101,6 +101,9 @@ pub const MSG_GUEST_STATE_RESTORE: u8 = 0x1A;
 /// Guest-to-host result of restoring snapshot-sensitive guest state.
 pub const MSG_GUEST_STATE_RESTORE_RESULT: u8 = 0x1B;
 
+/// Guest-to-host acknowledgement that an Agent adopted runtime placement.
+pub const MSG_EXEC_AGENT_READY: u8 = 0x1C;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -182,6 +185,7 @@ mod tests {
                 MSG_GUEST_STATE_RESTORE_RESULT,
                 0x1B,
             ),
+            ("MSG_EXEC_AGENT_READY", MSG_EXEC_AGENT_READY, 0x1C),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
 

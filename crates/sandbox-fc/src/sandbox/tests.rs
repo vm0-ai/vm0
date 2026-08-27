@@ -351,10 +351,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
         vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
     ));
 
-    let pid = 73;
-    let payload = vsock_proto::encode_exec_started(pid).unwrap();
-    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
-    guest.write_all(&response).await.unwrap();
+    send_agent_started_and_ready(&mut guest, start.seq, 73).await;
     let handle = start_task.await.unwrap();
 
     ExecProcessControlFixture {
@@ -517,6 +514,21 @@ async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     .unwrap();
     let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
     stream.write_all(&response).await.unwrap();
+}
+
+async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+    let started = vsock_proto::encode_exec_started(pid).unwrap();
+    let started = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, exec_seq, &started).unwrap();
+    stream.write_all(&started).await.unwrap();
+
+    let ready = vsock_proto::encode_exec_agent_ready(vsock_proto::ExecAgentReadyTiming {
+        containment_create_us: 11,
+        placement_broker_setup_us: 12,
+        shell_spawn_us: 13,
+        bootstrap_ready_wait_us: 14,
+    });
+    let ready = vsock_proto::encode(vsock_proto::MSG_EXEC_AGENT_READY, exec_seq, &ready).unwrap();
+    stream.write_all(&ready).await.unwrap();
 }
 
 fn monitored_cat_process() -> tokio::process::Child {
@@ -2403,14 +2415,18 @@ async fn start_agent_process_maps_to_agent_role_and_control_sink() {
             vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
         ));
 
-        let payload = vsock_proto::encode_exec_started(73).unwrap();
-        let response =
-            vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
-        guest.write_all(&response).await.unwrap();
+        send_agent_started_and_ready(&mut guest, start.seq, 73).await;
         start.seq
     };
     let (handle, exec_seq) = tokio::join!(start_agent, acknowledge_start);
-    let (process, _control) = handle.unwrap().into_parts();
+    let handle = handle.unwrap();
+    let timing = handle.start_timing();
+    assert_eq!(timing.containment_create, Duration::from_micros(11));
+    assert_eq!(timing.placement_broker_setup, Duration::from_micros(12));
+    assert_eq!(timing.shell_spawn, Duration::from_micros(13));
+    assert_eq!(timing.bootstrap_ready_wait, Duration::from_micros(14));
+    assert!(timing.ready_at >= timing.shell_started_at);
+    let (process, _control) = handle.into_parts();
 
     let payload = vsock_proto::encode_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 0 },

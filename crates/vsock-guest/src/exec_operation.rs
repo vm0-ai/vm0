@@ -56,9 +56,9 @@ use guest_contracts::process_containment::{
     TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
 };
 use vsock_proto::{
-    self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
-    ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTermination, ExecTimeoutPolicy,
-    MSG_ERROR, MSG_EXEC_STARTED,
+    self, ExecAgentReadyTiming, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy,
+    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTermination,
+    ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_AGENT_READY, MSG_EXEC_STARTED,
 };
 
 #[cfg(test)]
@@ -98,6 +98,7 @@ const EXEC_RESULT_MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 const EXEC_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
 const EXEC_DISCARDED_OUTPUT_LEN: usize = 1;
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
+const AGENT_READY_OBSERVATION_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Default)]
 pub(crate) struct ExecOperationRegistry {
@@ -696,6 +697,7 @@ impl ExecSetupWithStdout {
         self,
         stderr_handle: JoinHandle<()>,
         stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
+        stream_writer: Option<SharedExecStreamWriter>,
     ) -> RunningExec {
         let ExecSetupWithStdout {
             setup,
@@ -722,6 +724,7 @@ impl ExecSetupWithStdout {
             stdout_result_rx,
             stderr_handle,
             stderr_result_rx,
+            stream_writer,
             drain_cancel,
             drain_done_rx,
         }
@@ -744,17 +747,83 @@ struct RunningExec {
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
     stderr_handle: JoinHandle<()>,
     stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
+    stream_writer: Option<SharedExecStreamWriter>,
     drain_cancel: Arc<DrainCancellation>,
     drain_done_rx: mpsc::Receiver<()>,
 }
 
+#[derive(Clone, Copy)]
+struct AgentStartStages {
+    containment_create: Duration,
+    placement_broker_setup: Duration,
+    shell_spawn: Duration,
+    shell_spawned_at: Instant,
+}
+
+enum AgentReadyWaitOutcome {
+    Ready(ExecAgentReadyTiming),
+    Terminal,
+    Failed(String),
+}
+
 impl RunningExec {
+    fn wait_for_agent_ready(
+        &mut self,
+        stages: AgentStartStages,
+        connection_cancel: &AtomicBool,
+        exec_cancel: &AtomicBool,
+    ) -> AgentReadyWaitOutcome {
+        loop {
+            if connection_cancel.load(Ordering::Acquire) || exec_cancel.load(Ordering::Acquire) {
+                return AgentReadyWaitOutcome::Terminal;
+            }
+
+            let bootstrap_ready = match self.placement_bootstrap.as_ref() {
+                Some(bootstrap) => {
+                    match bootstrap.recv_ready_timeout(AGENT_READY_OBSERVATION_INTERVAL) {
+                        Ok(Ok(())) => true,
+                        Ok(Err(error)) => {
+                            return AgentReadyWaitOutcome::Failed(format!(
+                                "workload placement bootstrap failed: {error}"
+                            ));
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => false,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            return AgentReadyWaitOutcome::Failed(
+                                "workload placement bootstrap stopped before confirmation"
+                                    .to_owned(),
+                            );
+                        }
+                    }
+                }
+                None => true,
+            };
+            if bootstrap_ready {
+                return match exec_agent_ready_timing(stages) {
+                    Ok(timing) => AgentReadyWaitOutcome::Ready(timing),
+                    Err(error) => AgentReadyWaitOutcome::Failed(error.to_string()),
+                };
+            }
+
+            match self.child.try_wait() {
+                Ok(Some(_)) => return AgentReadyWaitOutcome::Terminal,
+                Ok(None) => {}
+                Err(error) => {
+                    return AgentReadyWaitOutcome::Failed(format!(
+                        "failed to observe Agent before readiness: {error}"
+                    ));
+                }
+            }
+        }
+    }
+
     fn finish(
         self,
         request: &ExecOperationWorkerRequest,
         completion: &ExecCompletion<'_>,
         connection_cancel: &AtomicBool,
         exec_cancel: &AtomicBool,
+        startup_failure: Option<&str>,
     ) {
         let RunningExec {
             child,
@@ -765,6 +834,7 @@ impl RunningExec {
             stdout_result_rx,
             stderr_handle,
             stderr_result_rx,
+            stream_writer,
             drain_cancel,
             drain_done_rx,
         } = self;
@@ -823,14 +893,47 @@ impl RunningExec {
             );
         }
 
-        let _ = stdout_handle.join();
-        let _ = stderr_handle.join();
-        let stdout_result = stdout_result_rx.recv().unwrap_or_default();
-        let stderr_result = stderr_result_rx.recv().unwrap_or_default();
+        let stdout_join_failed = stdout_handle.join().is_err();
+        let stderr_join_failed = stderr_handle.join().is_err();
+        let stdout_result = stdout_result_rx.recv().ok();
+        let stderr_result = stderr_result_rx.recv().ok();
+        let drains_incomplete = completed < 2
+            || stdout_join_failed
+            || stderr_join_failed
+            || stdout_result.is_none()
+            || stderr_result.is_none();
+        let stdout_settings = output_settings(request.stdout);
+        let stderr_settings = output_settings(request.stderr);
+        let stdout_result =
+            finalize_exec_drain_result(stdout_result, stdout_settings, drains_incomplete);
+        let stderr_result =
+            finalize_exec_drain_result(stderr_result, stderr_settings, drains_incomplete);
+        if drains_incomplete {
+            emit_exec_stream_truncation_markers(
+                stream_writer.as_ref(),
+                [
+                    (
+                        ExecOutputStream::Stdout,
+                        stdout_settings,
+                        stdout_result.stream_truncated,
+                    ),
+                    (
+                        ExecOutputStream::Stderr,
+                        stderr_settings,
+                        stderr_result.stream_truncated,
+                    ),
+                ],
+            );
+        }
 
         let containment_error = containment_result.as_ref().err().map(ToString::to_string);
-        let (termination, diagnostic) =
-            resolve_exec_result(outcome, request.lifecycle, containment_error.as_deref());
+        let (termination, diagnostic) = match startup_failure {
+            Some(diagnostic) => (
+                ExecTermination::StartFailed,
+                append_containment_cleanup_failure(diagnostic, containment_error.as_deref()),
+            ),
+            None => resolve_exec_result(outcome, request.lifecycle, containment_error.as_deref()),
+        };
         let containment_evidence = containment_result
             .as_ref()
             .ok()
@@ -858,6 +961,75 @@ impl RunningExec {
             captured_output(&stderr_result),
             &diagnostic,
         );
+    }
+}
+
+fn finalize_exec_drain_result(
+    result: Option<BoundedDrainResult>,
+    settings: OutputSettings,
+    drains_incomplete: bool,
+) -> BoundedDrainResult {
+    let mut result = result.unwrap_or_else(|| BoundedDrainResult {
+        captured: settings.capture_limit_bytes.map(|_| Vec::new()),
+        capture_truncated: false,
+        stream_truncated: false,
+    });
+    if drains_incomplete && result.captured.is_some() {
+        result.capture_truncated = true;
+    }
+    result
+}
+
+fn emit_exec_stream_truncation_markers(
+    stream_writer: Option<&SharedExecStreamWriter>,
+    streams: [(ExecOutputStream, OutputSettings, bool); 2],
+) {
+    let Some(stream_writer) = stream_writer else {
+        return;
+    };
+    let mut writer = match stream_writer.lock() {
+        Ok(writer) => writer,
+        Err(_) => {
+            log(
+                "ERROR",
+                "exec operation: terminal stream writer mutex poisoned",
+            );
+            return;
+        }
+    };
+    for (stream, settings, stream_truncated) in streams {
+        if settings.stream.is_none() || stream_truncated {
+            continue;
+        }
+        match writer.write_output(stream, &[], true) {
+            Ok(()) => {}
+            Err(ExecStreamWriteError::Encode(e)) => {
+                log(
+                    "ERROR",
+                    &format!(
+                        "exec operation: failed to encode terminal output truncation seq={} label={} process_class={} operation_kind={}: {e}",
+                        writer.seq,
+                        writer.label_preview,
+                        writer.process_class,
+                        writer.operation_kind,
+                    ),
+                );
+                return;
+            }
+            Err(ExecStreamWriteError::Write(e)) => {
+                log(
+                    "WARN",
+                    &format!(
+                        "exec operation: failed to send terminal output truncation seq={} label={} process_class={} operation_kind={}: {e}",
+                        writer.seq,
+                        writer.label_preview,
+                        writer.process_class,
+                        writer.operation_kind,
+                    ),
+                );
+                return;
+            }
+        }
     }
 }
 
@@ -1091,6 +1263,7 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
+    let containment_create = process_containment.create_elapsed();
     let workload_bootstrap =
         if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
             let expected_uid = match crate::user::shell_command_uid(request.sudo) {
@@ -1116,6 +1289,9 @@ fn run_exec_operation_worker<S>(
         } else {
             None
         };
+    let placement_broker_setup = workload_bootstrap
+        .as_ref()
+        .map_or(Duration::ZERO, WorkloadPlacementBootstrap::setup_elapsed);
     let env_refs = env_refs(&request.env);
     let mut env_with_control;
     let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
@@ -1132,6 +1308,7 @@ fn run_exec_operation_worker<S>(
     } else {
         env_refs.as_slice()
     };
+    let shell_spawn_started = Instant::now();
     let spawned = match spawn_shell_command_with_pipes(
         &request.command,
         effective_env,
@@ -1149,6 +1326,8 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
+    let shell_spawn = shell_spawn_started.elapsed();
+    let shell_spawned_at = Instant::now();
     let SpawnedShellCommand {
         child,
         env_script,
@@ -1250,16 +1429,16 @@ fn run_exec_operation_worker<S>(
         DrainWorker {
             stream: ExecOutputStream::Stderr,
             policy: stderr_settings,
-            stream_writer,
+            stream_writer: stream_writer.clone(),
             drain_cancel: setup.drain_cancel(),
             exec_cancel: exec_cancel.clone(),
             drain_done_tx: setup.drain_done_tx(),
         },
         spawner.clone(),
     );
-    let running = match stderr_spawn {
+    let mut running = match stderr_spawn {
         Ok((stderr_handle, stderr_result_rx)) => {
-            setup.into_running(stderr_handle, stderr_result_rx)
+            setup.into_running(stderr_handle, stderr_result_rx, stream_writer)
         }
         Err(e) => {
             setup.abort_wait_failed(
@@ -1271,7 +1450,68 @@ fn run_exec_operation_worker<S>(
         }
     };
 
-    running.finish(&request, &completion, &connection_cancel, &exec_cancel);
+    if request.role == ExecProcessRole::Agent {
+        let stages = AgentStartStages {
+            containment_create,
+            placement_broker_setup,
+            shell_spawn,
+            shell_spawned_at,
+        };
+        match running.wait_for_agent_ready(stages, &connection_cancel, &exec_cancel) {
+            AgentReadyWaitOutcome::Ready(timing) => {
+                if let Err(error) = send_exec_agent_ready(request.seq, timing, &writer) {
+                    log(
+                        "WARN",
+                        &format!(
+                            "exec operation: failed to send exec_agent_ready seq={} label={} process_class={} operation_kind={}: {error}",
+                            request.seq,
+                            truncate_command_preview(&request.label),
+                            request.process_class(),
+                            request.operation_kind(),
+                        ),
+                    );
+                    exec_cancel.store(true, Ordering::Release);
+                    running.finish(
+                        &request,
+                        &completion,
+                        &connection_cancel,
+                        &exec_cancel,
+                        None,
+                    );
+                    return;
+                }
+            }
+            AgentReadyWaitOutcome::Terminal => {
+                running.finish(
+                    &request,
+                    &completion,
+                    &connection_cancel,
+                    &exec_cancel,
+                    None,
+                );
+                return;
+            }
+            AgentReadyWaitOutcome::Failed(diagnostic) => {
+                exec_cancel.store(true, Ordering::Release);
+                running.finish(
+                    &request,
+                    &completion,
+                    &connection_cancel,
+                    &exec_cancel,
+                    Some(&diagnostic),
+                );
+                return;
+            }
+        }
+    }
+
+    running.finish(
+        &request,
+        &completion,
+        &connection_cancel,
+        &exec_cancel,
+        None,
+    );
 }
 
 fn validate_request(request: &ExecOperationWorkerRequest) -> Result<(), String> {
@@ -1715,6 +1955,43 @@ fn send_exec_started(seq: u32, pid: u32, writer: &GuestWriter) -> io::Result<()>
     let payload = vsock_proto::encode_exec_started(pid).map_err(to_io_error)?;
     let encoded = vsock_proto::encode(MSG_EXEC_STARTED, seq, &payload).map_err(to_io_error)?;
     writer.write_frame(&encoded)
+}
+
+fn send_exec_agent_ready(
+    seq: u32,
+    timing: ExecAgentReadyTiming,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    let payload = vsock_proto::encode_exec_agent_ready(timing);
+    let encoded = vsock_proto::encode(MSG_EXEC_AGENT_READY, seq, &payload).map_err(to_io_error)?;
+    writer.write_frame(&encoded)
+}
+
+fn exec_agent_ready_timing(stages: AgentStartStages) -> io::Result<ExecAgentReadyTiming> {
+    Ok(ExecAgentReadyTiming {
+        containment_create_us: duration_micros_u32(
+            stages.containment_create,
+            "containment creation",
+        )?,
+        placement_broker_setup_us: duration_micros_u32(
+            stages.placement_broker_setup,
+            "placement broker setup",
+        )?,
+        shell_spawn_us: duration_micros_u32(stages.shell_spawn, "shell spawn")?,
+        bootstrap_ready_wait_us: duration_micros_u32(
+            stages.shell_spawned_at.elapsed(),
+            "bootstrap ready wait",
+        )?,
+    })
+}
+
+fn duration_micros_u32(duration: Duration, stage: &str) -> io::Result<u32> {
+    u32::try_from(duration.as_micros()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Agent startup {stage} duration exceeds the wire limit"),
+        )
+    })
 }
 
 fn send_exec_result_after_lock<F>(
@@ -2220,6 +2497,7 @@ mod tests {
         let stderr = BoundedDrainResult {
             captured: Some(b"stderr".to_vec()),
             capture_truncated: true,
+            stream_truncated: false,
         };
 
         let message = exec_terminal_log_message(ExecTerminalLogMessageInput {

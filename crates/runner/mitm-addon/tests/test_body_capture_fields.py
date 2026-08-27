@@ -474,6 +474,42 @@ class TestAddCaptureFields:
         assert "response_body" not in entry
         assert entry["response_body_encoding"] == "binary"
 
+    def test_response_incomplete_zstd_frame_skips_body(self, real_flow):
+        compressed = zstandard.ZstdCompressor().compress(b"incomplete response body")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed[:-1],
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    def test_response_incomplete_trailing_zstd_frame_skips_body(self, real_flow):
+        compressor = zstandard.ZstdCompressor()
+        compressed = (
+            compressor.compress(b"first response frame")
+            + compressor.compress(b"incomplete trailing frame")[:-1]
+        )
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
     def test_response_zstd_concatenated_frames_capture_all_frames(self, real_flow):
         first = b"first response frame"
         second = b" and second response frame"

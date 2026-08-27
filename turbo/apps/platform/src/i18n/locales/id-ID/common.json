@@ -515,7 +515,6 @@
         "arrow": "Panah",
         "box": "Kotak",
         "pen": "Gambar",
-        "redact": "Sensor",
         "text": "Teks"
       },
       "undo": "Urungkan"
@@ -1085,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Gunakan proses masuk saat ini",
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -1115,6 +1113,7 @@
         "hidePassword": "Sembunyikan kata sandi",
         "identifierLabel": "Alamat email atau nama pengguna",
         "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "lastUsed": "Terakhir digunakan",
         "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
         "newPasswordLabel": "Kata sandi baru",
         "newPasswordSubtitle": "Untuk alasan keamanan, Anda harus mereset kata sandi.",

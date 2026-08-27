@@ -8948,6 +8948,7 @@ function ConnectorsPopoverButton({
                           actions={
                             showPermissionAction || accountAction ? (
                               <>
+                                {accountAction}
                                 {showPermissionAction ? (
                                   <PopoverClose asChild>
                                     <Button
@@ -8974,7 +8975,6 @@ function ConnectorsPopoverButton({
                                     </Button>
                                   </PopoverClose>
                                 ) : null}
-                                {accountAction}
                               </>
                             ) : null
                           }
@@ -10682,6 +10682,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   return (
     <AttachmentChips
       attachments={visibleAttachments}
+      onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {
         removeAttachment(attachment);
         notifyDraftChanged();

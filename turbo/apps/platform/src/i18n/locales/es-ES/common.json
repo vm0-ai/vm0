@@ -531,7 +531,6 @@
         "arrow": "Flecha",
         "box": "Rectángulo",
         "pen": "Dibujar",
-        "redact": "Ocultar",
         "text": "Texto"
       },
       "undo": "Deshacer"
@@ -1105,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar el inicio de sesión actual",
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -1135,6 +1133,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
         "newPasswordSubtitle": "Por razones de seguridad, se requiere restablecer su contraseña.",

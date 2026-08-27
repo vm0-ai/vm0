@@ -19,6 +19,10 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
+import {
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 
 import {
   click,
@@ -32,6 +36,7 @@ import {
   PRESENTATION_SHOWCASE_URL,
 } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
@@ -39,6 +44,26 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
+const { set$: setLastUsedAgentId$ } = localStorageSignals(
+  "zero.lastUsedAgentId",
+);
+
+function onboardingAgent(agentId: string): AgentResponse {
+  return {
+    agentId,
+    ownerId: "user_mock",
+    displayName: "Default agent",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
+  };
+}
 
 const MARKETING_PRESENTATION_PROMPT = [
   "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge.",
@@ -309,6 +334,34 @@ describe("onboarding flow", () => {
       });
     },
   );
+
+  it("opens product templates with the new workspace default agent", async () => {
+    context.store.set(setLastUsedAgentId$, STALE_AGENT_ID);
+    let firstAgentRoute: string | null = null;
+    context.mocks.api(agentsMainContract.list, ({ respond }) => {
+      const currentPath = pathname();
+      if (firstAgentRoute === null && currentPath.startsWith("/agents/")) {
+        firstAgentRoute = currentPath;
+      }
+      return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
+    });
+
+    await openMakePage();
+    chooseMakeOption("Generate a presentation");
+
+    await waitFor(() => {
+      expect(firstAgentRoute).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+    });
+    await waitFor(() => {
+      const presentationTab = queryAllByRoleFast("tab").find((candidate) => {
+        return (
+          candidate.textContent === "Presentation" &&
+          candidate.getAttribute("aria-selected") === "true"
+        );
+      });
+      expect(presentationTab).toBeInTheDocument();
+    });
+  });
 
   it("shows the website choice illustration", async () => {
     await openMakePage();

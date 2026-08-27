@@ -20,7 +20,7 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x1B`
+//! Non-error message types currently occupy the contiguous range `0x00..=0x1C`
 //! in allocation order. Existing values are stable wire assignments: do not
 //! renumber or reuse them. Allocate new non-error messages at the next unused
 //! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
@@ -57,6 +57,7 @@
 //! | 0x19 | G→H       | guest_storage_manifest_result | same payload as `exec_result`, with both streams captured and bounded to 1 MiB each |
 //! | 0x1A | H→G       | guest_state_restore | `[4B positive timeout_ms][8B unix_seconds][4B unix_nanoseconds][1B timezone_mode][2B timezone_len][timezone][256B entropy]` |
 //! | 0x1B | G→H       | guest_state_restore_result | same payload as `exec_result`, with empty stdout and stderr bounded to 64 KiB |
+//! | 0x1C | G→H       | exec_agent_ready | `[4B containment_create_us][4B placement_broker_setup_us][4B shell_spawn_us][4B bootstrap_ready_wait_us]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
@@ -204,15 +205,16 @@ pub use payloads::error::{decode_error, encode_error};
 pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
     DecodedExecStart, DecodedExecStarted, EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN,
-    ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
-    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecProcessRole,
+    ExecAgentReadyTiming, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy,
+    ExecControlStatus, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecProcessRole,
     ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES,
-    decode_exec_cancel, decode_exec_control, decode_exec_control_result, decode_exec_output,
-    decode_exec_result, decode_exec_start, decode_exec_started, encode_exec_cancel,
-    encode_exec_control, encode_exec_control_frame_into, encode_exec_control_result,
-    encode_exec_output, encode_exec_output_frame_into, encode_exec_result,
-    encode_exec_result_frame_into, encode_exec_start, encode_exec_start_with_expected_exit_codes,
-    encode_exec_started, validate_exec_control, validate_exec_process_contract,
+    decode_exec_agent_ready, decode_exec_cancel, decode_exec_control, decode_exec_control_result,
+    decode_exec_output, decode_exec_result, decode_exec_start, decode_exec_started,
+    encode_exec_agent_ready, encode_exec_cancel, encode_exec_control,
+    encode_exec_control_frame_into, encode_exec_control_result, encode_exec_output,
+    encode_exec_output_frame_into, encode_exec_result, encode_exec_result_frame_into,
+    encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
+    validate_exec_control, validate_exec_process_contract,
 };
 pub use payloads::guest_dns_readiness::{
     DecodedGuestDnsReadinessRequest, DecodedGuestDnsReadinessResult,
@@ -249,13 +251,13 @@ pub use payloads::write_file::{
 };
 pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
-    MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STATE_RESTORE,
-    MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST, MSG_GUEST_STORAGE_MANIFEST_RESULT,
-    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
-    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_AGENT_READY, MSG_EXEC_CANCEL,
+    MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START,
+    MSG_EXEC_STARTED, MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT,
+    MSG_GUEST_STATE_RESTORE, MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST,
+    MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
+    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

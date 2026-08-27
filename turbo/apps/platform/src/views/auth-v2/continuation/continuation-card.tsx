@@ -186,6 +186,7 @@ export function AuthV2ContinuationCard({
   return (
     <AuthV2Shell
       announcement={heading.description}
+      authBrand={authBrand}
       description={heading.description}
       focusKey={focusKey}
       title={heading.title}
