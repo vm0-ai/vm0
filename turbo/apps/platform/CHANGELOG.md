@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.803.3](https://github.com/vm0-ai/vm0/compare/app-v0.803.2...app-v0.803.3) (2026-08-27)
+
+
+### Refactoring
+
+* **platform:** use the agents list endpoint ([#29695](https://github.com/vm0-ai/vm0/issues/29695)) ([38a9a44](https://github.com/vm0-ai/vm0/commit/38a9a44b8fd694e5d1b875b47992547804f0b6a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.0
+    * @okouai/core bumped to 8.596.0
+
 ## [0.803.2](https://github.com/vm0-ai/vm0/compare/app-v0.803.1...app-v0.803.2) (2026-08-26)
 
 

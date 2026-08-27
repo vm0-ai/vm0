@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.501.0](https://github.com/vm0-ai/vm0/compare/api-v1.500.1...api-v1.501.0) (2026-08-27)
+
+
+### Features
+
+* **workflows:** add official workflow installations ([#29660](https://github.com/vm0-ai/vm0/issues/29660)) ([a22b7d6](https://github.com/vm0-ai/vm0/commit/a22b7d6bca5d3e67b82e31e9e2fcd1513abe5a7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.0
+    * @okouai/core bumped to 8.596.0
+    * @okouai/db bumped to 1.226.0
+
 ## [1.500.1](https://github.com/vm0-ai/vm0/compare/api-v1.500.0...api-v1.500.1) (2026-08-26)
 
 
