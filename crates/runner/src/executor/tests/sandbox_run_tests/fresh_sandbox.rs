@@ -1040,9 +1040,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
+    ctx.prompt = "p".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES);
     ctx.user_timezone = Some("Asia/Shanghai".into());
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
+        (
+            "LARGE_USER_ENV".into(),
+            "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+        ),
         (
             "OKOU_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
@@ -1130,6 +1135,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     }
     for key in [
         "CUSTOM_USER_ENV",
+        "LARGE_USER_ENV",
         "OKOU_APP_URL",
         "ZERO_APP_URL",
         "VM0_APP_URL",
@@ -1167,6 +1173,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("LARGE_USER_ENV").unwrap().len(),
+        vsock_proto::MAX_EXEC_STDIN_BYTES
+    );
     assert_eq!(
         user_env.get("OKOU_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"

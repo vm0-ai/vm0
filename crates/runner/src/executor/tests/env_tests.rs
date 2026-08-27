@@ -13,15 +13,14 @@ use super::super::cli_framework::{
 };
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_connector_account_context_file_path, guest_run_payload_file_path,
-    guest_user_env_file_path, is_runner_owned_env_key, validate_execution_context_before_sandbox,
-    validate_model_provider_env_placeholders, write_connector_account_context_file,
-    write_required_agent_files,
+    guest_connector_account_context_file_path, is_runner_owned_env_key,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
+    write_connector_account_context_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
+    build_env_for_test_with_host_env, context_with_env, minimal_context,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -1173,147 +1172,6 @@ fn build_env_json_user_vars_cannot_override_system() {
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
     assert!(!user_env.contains_key("VM0_PROMPT"));
-}
-
-#[tokio::test]
-async fn write_required_agent_files_uses_single_write_for_empty_user_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "test prompt".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let files = write_required_agent_files(&sandbox, run_id, &HashMap::new(), &payload)
-        .await
-        .unwrap();
-
-    assert!(files.user_env_file.is_none());
-    assert_eq!(
-        files.run_payload_file,
-        guest_run_payload_file_path(run_id).unwrap()
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_files_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, files.run_payload_file);
-    let decoded: guest_contracts::env::RunPayload =
-        serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, payload);
-}
-
-#[tokio::test]
-async fn write_required_agent_files_batches_user_env_before_run_payload() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([
-        ("CUSTOM_ENV".to_string(), "value".to_string()),
-        ("TZ".to_string(), "Asia/Shanghai".to_string()),
-    ]);
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "test prompt".to_string(),
-        secret_values: "secret".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let files = write_required_agent_files(&sandbox, run_id, &user_env, &payload)
-        .await
-        .unwrap();
-
-    let user_env_file = files.user_env_file.unwrap();
-    assert_eq!(user_env_file, guest_user_env_file_path(run_id).unwrap());
-    assert_eq!(
-        files.run_payload_file,
-        guest_run_payload_file_path(run_id).unwrap()
-    );
-    assert!(
-        user_env_file.ends_with(&format!(
-            "/{}/{}",
-            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
-            guest_contracts::env::USER_ENV_FILENAME
-        )),
-        "got: {user_env_file}"
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_file_calls().is_empty());
-    let batches = sandbox.private_write_files_calls();
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].files.len(), 2);
-    assert_eq!(batches[0].files[0].path, user_env_file);
-    let decoded: HashMap<String, String> =
-        serde_json::from_slice(&batches[0].files[0].content).unwrap();
-    assert_eq!(decoded, user_env);
-    assert_eq!(batches[0].files[1].path, files.run_payload_file);
-    let decoded: guest_contracts::env::RunPayload =
-        serde_json::from_slice(&batches[0].files[1].content).unwrap();
-    assert_eq!(decoded, payload);
-}
-
-#[tokio::test]
-async fn write_required_agent_files_batches_large_values_without_truncation() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-    let user_env_bytes = serde_json::to_vec(&user_env).unwrap();
-    assert!(user_env_bytes.len() > vsock_proto::MAX_EXEC_STDIN_BYTES);
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "y".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-        ..guest_contracts::env::RunPayload::default()
-    };
-    let run_payload_bytes = serde_json::to_vec(&payload).unwrap();
-    assert!(run_payload_bytes.len() > vsock_proto::MAX_EXEC_STDIN_BYTES);
-
-    let files = write_required_agent_files(&sandbox, run_id, &user_env, &payload)
-        .await
-        .unwrap();
-
-    assert_eq!(
-        files.user_env_file,
-        Some(guest_user_env_file_path(run_id).unwrap())
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_file_calls().is_empty());
-    let batches = sandbox.private_write_files_calls();
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].files.len(), 2);
-    assert_eq!(batches[0].files[0].content, user_env_bytes);
-    assert_eq!(batches[0].files[1].content, run_payload_bytes);
-}
-
-#[tokio::test]
-async fn write_required_agent_files_returns_private_batch_error() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_private_write_files_result(Err(sandbox_write_file_error(
-        "private batch write failed",
-    )));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "test prompt".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let err = write_required_agent_files(&sandbox, run_id, &user_env, &payload)
-        .await
-        .err()
-        .unwrap();
-    let message = err.to_string();
-
-    assert!(
-        message.contains("private batch write failed"),
-        "got: {message}"
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_file_calls().is_empty());
-    assert_eq!(sandbox.private_write_files_calls().len(), 1);
 }
 
 #[tokio::test]
