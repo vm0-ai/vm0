@@ -1308,7 +1308,8 @@ describe("zero attachment chips", () => {
     });
 
     const agentsLink = await waitFor(() => {
-      const link = screen.getByText("Agents").closest("a");
+      const rail = screen.getByTestId("labeled-nav-rail");
+      const link = within(rail).getByText("Agents").closest("a");
       if (!link) {
         throw new Error("Expected the Agents navigation link");
       }

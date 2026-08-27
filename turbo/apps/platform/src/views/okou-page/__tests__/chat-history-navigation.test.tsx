@@ -35,7 +35,6 @@ import {
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
-  linkByText,
   queryButtonByText,
   chatScrollContainer,
   chatComposerTextarea,
@@ -683,12 +682,17 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -771,16 +775,19 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
+    const sidebarScrollArea = within(chatList).getByTestId(
+      "sidebar-scroll-area",
+    );
     Object.defineProperties(sidebarScrollArea, {
       clientHeight: {
         configurable: true,
@@ -810,7 +817,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(screen.getByTestId("sidebar-scroll-area").scrollTop).toBe(
+      expect(sidebarScrollArea.scrollTop).toBe(
         CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
       );
     });
@@ -839,15 +846,25 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
-    const currentThreadLink = linkByText("Current keyboard thread");
+    const currentThreadLink = within(chatList)
+      .getByText("Current keyboard thread")
+      .closest("a");
+    if (!currentThreadLink) {
+      throw new Error("Current keyboard thread link not found");
+    }
     currentThreadLink.focus();
     expect(currentThreadLink).toHaveFocus();
     expect(

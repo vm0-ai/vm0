@@ -477,6 +477,15 @@ function PinAgentDialogContainer() {
   );
 }
 
+export function PinnedAgentDialogs() {
+  return (
+    <>
+      <AgentListDialogContainer />
+      <PinAgentDialogContainer />
+    </>
+  );
+}
+
 export function PinnedAgentListSection({
   layout = "vertical",
 }: {
@@ -600,8 +609,6 @@ export function PinnedAgentListSection({
           </button>
           {pinnedAgentCards.slice(4)}
         </div>
-        <AgentListDialogContainer />
-        <PinAgentDialogContainer />
       </div>
     );
   }
@@ -727,8 +734,6 @@ export function PinnedAgentListSection({
             })}
         </div>
       )}
-
-      <AgentListDialogContainer />
     </div>
   );
 }

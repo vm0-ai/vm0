@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -58,7 +58,9 @@ describe("link navigation", () => {
       expect(
         screen.queryByRole("heading", { name: "Page not found" }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText("Agents")).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("labeled-nav-rail")).getByText("Agents"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -145,7 +147,8 @@ describe("link navigation", () => {
     detachedSetupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
-      return screen.getByText("Agents").closest("a");
+      const rail = screen.getByTestId("labeled-nav-rail");
+      return within(rail).getByText("Agents").closest("a");
     });
     expect(link).not.toBeNull();
 

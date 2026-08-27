@@ -1,7 +1,5 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onboardingStatus$ } from "./onboarding.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { unreadAgentIds$ } from "../chat-page/chat-thread-indicators.ts";
@@ -34,25 +32,8 @@ export const pinnedAgentIds$ = computed(async (get) => {
   });
 });
 
-/**
- * Order the pinned surfaces render pinned agents in. Only the three-column nav
- * lets a user reorder the pinned grid, so without that switch the list keeps
- * the team order it had before drag reordering existed.
- */
-export const pinnedAgentRenderOrder$ = computed(async (get) => {
-  const ids = await get(pinnedAgentIds$);
-  if (get(featureSwitch$)[FeatureSwitchKey.ThreeColumnNav] ?? false) {
-    return ids;
-  }
-  const pinnedIds = new Set(ids);
-  return (await get(sortedAgents$))
-    .filter((a) => {
-      return pinnedIds.has(a.agentId);
-    })
-    .map((a) => {
-      return a.agentId;
-    });
-});
+/** Order pinned agents according to the user's saved preference. */
+export const pinnedAgentRenderOrder$ = pinnedAgentIds$;
 
 /** Pinned agent IDs resolved to full agent objects, in render order. */
 export const pinnedAgents$ = computed(async (get) => {

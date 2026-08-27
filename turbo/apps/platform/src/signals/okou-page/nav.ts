@@ -1,9 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
@@ -136,7 +134,7 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
 });
 
 export const setupGlobalKeyboardShortcuts$ = command(
-  ({ get, set }, signal: AbortSignal) => {
+  ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
         "mod+b": {
@@ -147,11 +145,6 @@ export const setupGlobalKeyboardShortcuts$ = command(
         },
         "mod+k": {
           allowInEditableTarget: true,
-          shouldHandle: () => {
-            return (
-              get(featureSwitch$)[FeatureSwitchKey.ThreeColumnNav] ?? false
-            );
-          },
           run: () => {
             set(openThreeColumnSearchDialog$);
           },

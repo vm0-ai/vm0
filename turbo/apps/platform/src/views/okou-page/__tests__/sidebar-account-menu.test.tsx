@@ -195,11 +195,25 @@ function expectVisibleText(text: string): void {
 }
 
 async function openAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Alex Rivera");
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
+  const accountButton = await waitFor(() => {
+    const rail = screen.queryByTestId("labeled-nav-rail");
+    if (rail) {
+      return within(rail).getByLabelText("Alex Rivera");
+    }
+
+    const minimalSidebar = document.querySelector(
+      "aside.zero-nav:not(.zero-nav-rail)",
+    );
+    if (!(minimalSidebar instanceof HTMLElement)) {
+      throw new Error("Account menu container not found");
+    }
+    const accountName = within(minimalSidebar).getByText("Alex Rivera");
+    const button = accountName.closest("button");
+    if (!button) {
+      throw new Error("Account menu trigger not found");
+    }
+    return button;
+  });
   click(accountButton);
   return screen.findByRole("menu");
 }
@@ -1191,18 +1205,7 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Open chat list menu")).toBeInTheDocument();
-    });
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
-
-    click(accountButton);
-
-    const menu = await screen.findByRole("menu");
+    const menu = await openAccountMenu();
     expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
     expect(
       within(menu).getByText("alex.rivera@example.test"),
@@ -1347,10 +1350,6 @@ describe("zero sidebar account menu", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Open chat list menu")).toBeInTheDocument();
-    });
-
     const menu = await openAccountMenu();
     click(within(menu).getByText("Settings"));
 
@@ -1366,7 +1365,8 @@ describe("zero sidebar account menu", () => {
     expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
     expect(document.body.style.pointerEvents).not.toBe("none");
 
-    await user.click(screen.getByLabelText("Open chat list menu"));
+    const chatList = await screen.findByTestId("chat-list-column");
+    await user.click(within(chatList).getByLabelText("Open chat list menu"));
     await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
   });
 
