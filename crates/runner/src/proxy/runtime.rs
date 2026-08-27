@@ -14,9 +14,9 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
 
-// Marker-bearing descendants can outlive their runner. Expansion Stage 1 keeps
-// both names so current runners can reconcile old launches and rollback runners
-// can reconcile current launches; removal remains gated by #28914.
+// Marker-bearing descendants can outlive their runner. Writer Stage 2 makes new
+// launches canonical-only while the legacy reader remains for crash leftovers
+// and rollback-window observation; removal remains gated by #28914.
 pub(super) const CANONICAL_RUNTIME_MARKER_ENV: &str = "OKOU_MITMDUMP_RUNTIME_DIR";
 pub(super) const LEGACY_RUNTIME_MARKER_ENV: &str = "VM0_MITMDUMP_RUNTIME_DIR";
 const CANONICAL_RUNTIME_MARKER_PREFIX: &[u8] = b"OKOU_MITMDUMP_RUNTIME_DIR=";
