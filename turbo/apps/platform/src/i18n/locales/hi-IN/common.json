@@ -1114,6 +1114,7 @@
         "hidePassword": "पासवर्ड छिपाएँ",
         "identifierLabel": "ईमेल पता या उपयोगकर्ता नाम",
         "identifierPlaceholder": "अपना ईमेल पता या उपयोगकर्ता नाम दर्ज करें",
+        "lastUsed": "अंतिम समय प्रयोग हुआ",
         "methodsHelpPrompt": "इनमें से कोई विकल्प नहीं है?",
         "newPasswordLabel": "नया पासवर्ड",
         "newPasswordSubtitle": "सुरक्षा कारणों से, आपका पासवर्ड रीसेट करना आवश्यक है।",

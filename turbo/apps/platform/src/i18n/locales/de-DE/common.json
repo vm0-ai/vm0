@@ -1114,6 +1114,7 @@
         "hidePassword": "Passwort ausblenden",
         "identifierLabel": "E-Mail-Adresse oder Benutzername",
         "identifierPlaceholder": "E-Mail-Adresse oder Benutzernamen eingeben",
+        "lastUsed": "Zuletzt verwendet",
         "methodsHelpPrompt": "Keine dieser Methoden verfügbar?",
         "newPasswordLabel": "Neues Passwort",
         "newPasswordSubtitle": "Es existiert bereits ein Konto mit einer nicht verifizierten E-Mail Adresse. Bitte setzen Sie Ihr Passwort zur Sicherheit zurück.",
