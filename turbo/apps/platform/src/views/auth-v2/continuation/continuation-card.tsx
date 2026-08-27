@@ -138,13 +138,15 @@ function OrganizationFooter({
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   const signingOut = restartLoadable.state === "loading";
   return (
-    <div className="flex items-center justify-center gap-1 text-sm">
-      <span>{copy.signedInAs(accountIdentifier)}</span>
+    <div className="flex w-full items-center justify-between gap-4 text-sm">
+      <span className="min-w-0 truncate">
+        {copy.signedInAs(accountIdentifier)}
+      </span>
       <Button
         aria-busy={signingOut}
         aria-label={copy.signOut}
         className={cn(
-          "h-auto w-fit p-0 text-sm leading-5",
+          "h-auto w-fit shrink-0 p-0 text-sm leading-5",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
         disabled={signingOut}
