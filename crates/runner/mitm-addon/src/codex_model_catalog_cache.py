@@ -88,7 +88,16 @@ _FIREWALL_NAME = "model-provider:codex-oauth-token"
 _CATALOG_HOST = "chatgpt.com"
 _CATALOG_PATH = "/backend-api/codex/models"
 _RESPONSES_PATH = "/backend-api/codex/responses"
+_CLIENT_VERSION_QUERY_NAME = "client_version"
 _MAX_CLIENT_VERSION_BYTES = 128
+_PERCENT_ENCODED_CHARACTERS_PER_BYTE = 3
+MAX_CATALOG_QUERY_FIELDS = 1
+# The name and value may encode every byte as %XX; the separating "=" stays literal.
+MAX_CATALOG_QUERY_BYTES = (
+    _PERCENT_ENCODED_CHARACTERS_PER_BYTE
+    * (len(_CLIENT_VERSION_QUERY_NAME.encode()) + _MAX_CLIENT_VERSION_BYTES)
+    + 1
+)
 _MAX_ETAG_BYTES = 512
 _MAX_CONTENT_TYPE_BYTES = 256
 _MAX_JSON_NESTING = 128
@@ -307,15 +316,23 @@ def _catalog_url(original_url: str) -> str | None:
     parsed = _split_expected_url(original_url)
     if parsed is None or parsed.path != _CATALOG_PATH:
         return None
+    raw_query = parsed.query
+    # Bound the allocation used to reconstruct mitmproxy's surrogate-escaped path bytes.
+    if (
+        len(raw_query) > MAX_CATALOG_QUERY_BYTES
+        or len(raw_query.encode("utf-8", "surrogateescape")) > MAX_CATALOG_QUERY_BYTES
+    ):
+        return None
     try:
         query = urllib.parse.parse_qsl(
-            parsed.query,
+            raw_query,
             keep_blank_values=True,
             strict_parsing=True,
+            max_num_fields=MAX_CATALOG_QUERY_FIELDS,
         )
     except ValueError:
         return None
-    if len(query) != 1 or query[0][0] != "client_version":
+    if len(query) != MAX_CATALOG_QUERY_FIELDS or query[0][0] != _CLIENT_VERSION_QUERY_NAME:
         return None
     client_version = query[0][1]
     if (
@@ -328,7 +345,7 @@ def _catalog_url(original_url: str) -> str | None:
     ):
         return None
     encoded_version = urllib.parse.quote(client_version, safe="")
-    return f"https://{_CATALOG_HOST}{_CATALOG_PATH}?client_version={encoded_version}"
+    return f"https://{_CATALOG_HOST}{_CATALOG_PATH}?{_CLIENT_VERSION_QUERY_NAME}={encoded_version}"
 
 
 def _is_catalog_path(original_url: str) -> bool:

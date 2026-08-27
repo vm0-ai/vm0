@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import urllib.parse
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -38,6 +39,12 @@ from tests.upstream_connection_helpers import mark_connected_tls_upstream
 class _DecodeGuardPrefetchMarker(bytes):
     def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
         raise AssertionError("Codex prefetch marker must not be decoded")
+
+
+def _set_catalog_query(flow: http.HTTPFlow, raw_query: str) -> None:
+    path = f"/backend-api/codex/models?{raw_query}"
+    flow.request.path = path
+    flow.metadata[metadata_keys.ORIGINAL_URL] = f"https://chatgpt.com{path}"
 
 
 async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
@@ -169,6 +176,100 @@ async def test_unsafe_catalog_requests_never_enter_cache(
     assert telemetry == {
         "model_catalog_cache_status": "model_catalog_bypass",
         "model_catalog_cache_bypass_reason": reason,
+    }
+
+
+async def test_fully_percent_encoded_maximum_catalog_query_reuses_canonical_cache(real_flow):
+    encoded_name = "".join(f"%{byte:02X}" for byte in b"client_version")
+    raw_query = f"{encoded_name}={'%61' * 128}"
+    assert len(raw_query.encode()) == catalog_cache.MAX_CATALOG_QUERY_BYTES
+
+    encoded_flow = catalog_flow(real_flow, version="a" * 128)
+    _set_catalog_query(encoded_flow, raw_query)
+    await install_catalog(encoded_flow)
+    catalog_cache.release_flow_state(encoded_flow)
+
+    canonical_flow = catalog_flow(real_flow, version="a" * 128)
+    await catalog_cache.prepare_request(canonical_flow, request_end_stream=True)
+
+    assert canonical_flow.response is not None
+    assert canonical_flow.response.content == CATALOG_BODY
+
+
+@pytest.mark.parametrize(
+    ("raw_query", "character_bounded"),
+    [
+        pytest.param(
+            "client_version="
+            + "a" * (catalog_cache.MAX_CATALOG_QUERY_BYTES - len("client_version=") + 1),
+            False,
+            id="characters",
+        ),
+        pytest.param(
+            "client_version="
+            + "é" * ((catalog_cache.MAX_CATALOG_QUERY_BYTES - len("client_version=")) // 2 + 1),
+            True,
+            id="utf8-bytes",
+        ),
+    ],
+)
+async def test_oversized_catalog_query_bypasses_before_pair_parsing(
+    real_flow,
+    raw_query: str,
+    character_bounded: bool,
+):
+    assert (len(raw_query) <= catalog_cache.MAX_CATALOG_QUERY_BYTES) is character_bounded
+    assert len(raw_query.encode()) > catalog_cache.MAX_CATALOG_QUERY_BYTES
+    flow = catalog_flow(real_flow)
+    _set_catalog_query(flow, raw_query)
+
+    with patch.object(
+        urllib.parse,
+        "parse_qsl",
+        side_effect=AssertionError("oversized catalog query must not be parsed"),
+    ):
+        await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.response is None
+    assert flow.request.path == f"/backend-api/codex/models?{raw_query}"
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_url",
+    }
+
+
+async def test_high_cardinality_catalog_query_bypasses_before_percent_decoding(real_flow):
+    raw_query = "&".join(["x="] * 64)
+    assert len(raw_query.encode()) <= catalog_cache.MAX_CATALOG_QUERY_BYTES
+    flow = catalog_flow(real_flow)
+    _set_catalog_query(flow, raw_query)
+    real_parse_qsl = urllib.parse.parse_qsl
+
+    with (
+        patch.object(urllib.parse, "parse_qsl", wraps=real_parse_qsl) as parse_qsl,
+        patch.object(
+            urllib.parse,
+            "unquote_plus",
+            side_effect=AssertionError("over-cardinality catalog query must not be decoded"),
+        ),
+    ):
+        await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    parse_qsl.assert_called_once_with(
+        raw_query,
+        keep_blank_values=True,
+        strict_parsing=True,
+        max_num_fields=catalog_cache.MAX_CATALOG_QUERY_FIELDS,
+    )
+    assert flow.response is None
+    assert flow.request.path == f"/backend-api/codex/models?{raw_query}"
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_url",
     }
 
 
