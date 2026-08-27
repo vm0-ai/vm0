@@ -570,27 +570,27 @@ describe("chat composer connector connection", () => {
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.click(screen.getByLabelText("Back"));
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.click(document.body);
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     const summaryReadsBeforeSelection = summaryReads;
     expect(screen.getByText("GitHub")).toBeVisible();
@@ -612,7 +612,7 @@ describe("chat composer connector connection", () => {
       "GitHub · Selected account: Work",
     );
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveClass("text-muted-foreground");
@@ -620,11 +620,11 @@ describe("chat composer connector connection", () => {
 
     await user.click(selectedWorkMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveFocus();
@@ -635,7 +635,7 @@ describe("chat composer connector connection", () => {
       expect(selectionWrites).toBe(2);
     });
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
     await expect(
@@ -650,7 +650,7 @@ describe("chat composer connector connection", () => {
       expect(selectionClears).toBe(1);
     });
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     await expect(
       screen.findByLabelText("GitHub · Using default account: Work"),
@@ -740,7 +740,7 @@ describe("chat composer connector connection", () => {
 
     await user.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(requestedSearches).toStrictEqual(["", "missing"]);
   });

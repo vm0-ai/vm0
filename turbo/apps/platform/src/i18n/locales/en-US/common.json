@@ -1938,7 +1938,7 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
-      "accountForThread": "Account for this thread",
+      "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
