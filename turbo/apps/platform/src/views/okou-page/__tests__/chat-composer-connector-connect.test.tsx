@@ -574,23 +574,23 @@ describe("chat composer connector connection", () => {
     ).resolves.toBeVisible();
     await user.click(screen.getByLabelText("Back"));
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.click(document.body);
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     const summaryReadsBeforeSelection = summaryReads;
     expect(screen.getByText("GitHub")).toBeVisible();
