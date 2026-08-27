@@ -2013,6 +2013,9 @@ describe("managed SocialKit route", () => {
       [202],
     );
     await flushWaitUntilForTest();
+    const blocked = await reconcileSocialKitDownloadsForTest(context, [
+      created.body.downloadId,
+    ]);
     providerReady = true;
     mockNow(now() + 61_000);
 
@@ -2027,6 +2030,7 @@ describe("managed SocialKit route", () => {
       [200],
     );
 
+    expect(blocked).toBe(0);
     expect(processed).toBe(1);
     expect(completed.body).toMatchObject({
       status: "completed",
