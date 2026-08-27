@@ -35,16 +35,6 @@ function useGermanLocale(): void {
   });
 }
 
-function linkByText(text: string): HTMLAnchorElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error(`Link not found: ${text}`);
-  }
-  return link;
-}
-
 function linkByLabel(label: string): HTMLAnchorElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
@@ -122,7 +112,7 @@ describe("auth v2 presentation", () => {
     expect(announcer).toHaveAttribute("aria-live", "polite");
   });
 
-  it("keeps password controls and fallback navigation in their accessible regions", async () => {
+  it("keeps password controls in their accessible region", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-up");
 
     detachedSetupPage({ context, path: "/v2/sign-up" });
@@ -133,11 +123,6 @@ describe("auth v2 presentation", () => {
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
-    const currentSignUpAction = linkByText("Use current sign-up");
-    expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
-    expect(
-      currentSignUpAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
@@ -190,10 +175,6 @@ describe("auth v2 presentation", () => {
       screen.getByRole("region", { name: "アカウントを作成" }),
     ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
-    expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
-      "href",
-      "/sign-up",
-    );
     expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");

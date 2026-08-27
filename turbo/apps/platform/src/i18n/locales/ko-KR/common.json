@@ -1151,7 +1151,6 @@
         "verify": "확인하기"
       },
       "signUp": {
-        "action": "현재 회원가입 사용",
         "alreadyHaveAccount": "계정이 있으신가요?",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",

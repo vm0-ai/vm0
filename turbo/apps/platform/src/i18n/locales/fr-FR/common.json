@@ -1171,7 +1171,6 @@
         "verify": "Vérifier"
       },
       "signUp": {
-        "action": "Utiliser l'inscription actuelle",
         "alreadyHaveAccount": "Vous avez déjà un compte ?",
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",

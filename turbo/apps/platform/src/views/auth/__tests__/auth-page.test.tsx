@@ -33,16 +33,6 @@ function okouBrandLink(): HTMLElement {
   return link;
 }
 
-function authV2ActionLink(name: string): HTMLAnchorElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === name;
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error("Auth v2 action link not found");
-  }
-  return link;
-}
-
 function authV2Button(name: string): HTMLButtonElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.trim() === name;
@@ -414,19 +404,16 @@ describe("app auth pages", () => {
   it.each([
     {
       documentTitle: "Sign in | VM0",
-      fallback: null,
       heading: "Sign in to VM0",
       path: "/v2/sign-in",
     },
     {
       documentTitle: "Sign up | VM0",
-      fallback: { action: "Use current sign-up", path: "/sign-up" },
       heading: "Create your account",
       path: "/v2/sign-up",
     },
     {
       documentTitle: "Sign up | VM0",
-      fallback: { action: "Use current sign-up", path: "/sign-up" },
       heading: "Create your account",
       path: "/v2/sign-up/verify-email-address",
     },
@@ -439,15 +426,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: routeCase.heading }),
     ).resolves.toBeVisible();
     expect(screen.getByTestId("app-auth-v2")).toBeVisible();
-    const fallbackLink = routeCase.fallback
-      ? authV2ActionLink(routeCase.fallback.action)
-      : null;
-    expect(fallbackLink?.textContent?.trim() ?? null).toBe(
-      routeCase.fallback?.action ?? null,
-    );
-    expect(fallbackLink?.getAttribute("href") ?? null).toBe(
-      routeCase.fallback?.path ?? null,
-    );
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(

@@ -1152,7 +1152,6 @@
         "verify": "Verify"
       },
       "signUp": {
-        "action": "Use current sign-up",
         "alreadyHaveAccount": "Already have an account?",
         "appleMethod": "Continue with Apple",
         "back": "Back",

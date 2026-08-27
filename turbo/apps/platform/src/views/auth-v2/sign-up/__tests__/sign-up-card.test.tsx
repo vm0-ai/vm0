@@ -197,7 +197,7 @@ describe("auth v2 sign-up flow", () => {
     expect(
       screen.getByRole("region", { name: "Create your account" }),
     ).toContainElement(signIn);
-    expect(roleElement("link", "Use current sign-up")).toBeDefined();
+    expect(signIn.getAttribute("href")).toMatch(/^\/v2\/sign-in(?:[?#]|$)/);
     const legalConsent = screen.getByRole("checkbox");
     expect(legalConsent).toBeVisible();
     await expect(
@@ -263,7 +263,6 @@ describe("auth v2 sign-up flow", () => {
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
     expect(roleElement("link", "Sign in")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.queryByText("Access restricted")).not.toBeInTheDocument();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,

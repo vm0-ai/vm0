@@ -37,7 +37,6 @@ export interface AuthV2SignUpCopy {
   readonly hidePassword: string;
   readonly lastNameLabel: string;
   readonly lastNamePlaceholder: string;
-  readonly legacySignUp: string;
   readonly legalPrivacyOnly: string;
   readonly legalRequired: string;
   readonly legalTermsAndPrivacy: string;
@@ -235,9 +234,6 @@ function signUpTerminalCopy(
     }),
     completeTitle: t(($) => {
       return $.auth.v2.signUp.completeTitle;
-    }),
-    legacySignUp: t(($) => {
-      return $.auth.v2.signUp.action;
     }),
     loading: t(($) => {
       return $.auth.loading;

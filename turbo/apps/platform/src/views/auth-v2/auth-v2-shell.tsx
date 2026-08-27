@@ -26,7 +26,6 @@ interface AuthV2ShellProps {
   readonly children: ReactNode;
   readonly description?: ReactNode;
   readonly focusKey: string;
-  readonly footer?: ReactNode;
   readonly headerDetail?: ReactNode;
   readonly title: ReactNode;
 }
@@ -38,7 +37,6 @@ export function AuthV2Shell({
   children,
   description,
   focusKey,
-  footer,
   headerDetail,
   title,
 }: AuthV2ShellProps) {
@@ -99,7 +97,6 @@ export function AuthV2Shell({
           </CardFooter>
         ) : null}
       </Card>
-      {footer ? <div className="space-y-1">{footer}</div> : null}
       <p
         aria-atomic="true"
         aria-live="polite"
