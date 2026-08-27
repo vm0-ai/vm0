@@ -117,7 +117,15 @@ const providerReadySchema = z.object({
   thumbnail: z.unknown().optional(),
 });
 
-const providerThumbnailSchema = z.url().max(4096);
+const providerThumbnailSchema = z
+  .url()
+  .max(4096)
+  .refine((value) => {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" && url.username === "" && url.password === ""
+    );
+  });
 
 function errorResponse(
   status: 502 | 503,
@@ -724,6 +732,11 @@ type ProviderReady = z.infer<typeof providerReadySchema>;
 
 function safeProviderResult(ready: ProviderReady) {
   const thumbnail = providerThumbnailSchema.safeParse(ready.thumbnail);
+  const safeThumbnail =
+    thumbnail.success &&
+    new URL(thumbnail.data).href !== new URL(ready.downloadUrl).href
+      ? thumbnail.data
+      : undefined;
   return {
     durationSeconds: ready.durationSeconds,
     fileSizeMB: ready.fileSizeMB,
@@ -731,7 +744,7 @@ function safeProviderResult(ready: ProviderReady) {
     ...(typeof ready.title === "string" && ready.title.length <= 1000
       ? { title: ready.title }
       : {}),
-    ...(thumbnail.success ? { thumbnail: thumbnail.data } : {}),
+    ...(safeThumbnail ? { thumbnail: safeThumbnail } : {}),
   };
 }
 

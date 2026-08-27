@@ -1675,7 +1675,11 @@ describe("managed SocialKit route", () => {
     expect(processing.body.status).toBe("processing");
     expect(completed.body).toMatchObject({
       status: "completed",
-      provider: { durationSeconds: 61, creditsCost: 2 },
+      provider: {
+        durationSeconds: 61,
+        creditsCost: 2,
+        thumbnail: "https://media.socialkit.test/thumbnail.jpg",
+      },
       billing: { quantity: 2, creditsCharged: 6 },
       artifact: {
         id: created.body.downloadId,
@@ -1980,7 +1984,7 @@ describe("managed SocialKit route", () => {
           quality: "720p",
           format: "mp4",
           title: { untrusted: true },
-          thumbnail: "not-a-url",
+          thumbnail: "https://media.socialkit.test/retry-download",
         });
       }),
       http.get("https://media.socialkit.test/retry-download", () => {
