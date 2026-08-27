@@ -160,6 +160,7 @@ function gmailPayload(
 interface GmailDraftTestState {
   exists: boolean;
   insufficientScope: boolean;
+  permissionDenied: boolean;
   unauthorized: boolean;
   draftReadCount: number;
   sendCount: number;
@@ -175,6 +176,7 @@ function mockGmailDraftApi(options?: {
   const state: GmailDraftTestState = {
     exists: true,
     insufficientScope: false,
+    permissionDenied: false,
     unauthorized: false,
     draftReadCount: 0,
     sendCount: 0,
@@ -209,6 +211,25 @@ function mockGmailDraftApi(options?: {
                   reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
                   domain: "googleapis.com",
                   metadata: { service: "gmail.googleapis.com" },
+                },
+              ],
+            },
+          },
+          { status: 403 },
+        );
+      }
+      if (state.permissionDenied) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              message: "The caller does not have permission.",
+              status: "PERMISSION_DENIED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                  reason: "PERMISSION_DENIED",
+                  domain: "googleapis.com",
                 },
               ],
             },
@@ -425,6 +446,29 @@ describe("POST /api/mail/drafts/link", () => {
     await expect(
       connectors.readConnectorBySlug(fixture.actor, "gmail"),
     ).resolves.toMatchObject({ connectionStatus: "reconnect-required" });
+  });
+
+  it("does not require reconnect for an unrelated Gmail permission denial", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    const gmail = mockGmailDraftApi();
+    gmail.permissionDenied = true;
+
+    await expect(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(gmail.draftReadCount).toBe(1);
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({ connectionStatus: "connected" });
   });
 
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {

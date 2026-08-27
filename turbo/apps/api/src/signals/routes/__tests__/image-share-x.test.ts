@@ -187,6 +187,28 @@ describe("POST /api/image-share/x", () => {
     expect(provider.createPostBodies).toStrictEqual([]);
   });
 
+  it("requires reconnect when X rejects an unknown grant", async () => {
+    await setupAuthenticatedXActor();
+    const provider = mockXImageShareProvider({ mediaStatus: 401 });
+
+    const response = await accept(
+      client().post({
+        headers: authHeaders(),
+        body: { imageUrl: IMAGE_URL },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "CONFLICT",
+        message: "Reconnect X to post images",
+      },
+    });
+    expect(provider.mediaUploadBodies).toHaveLength(1);
+    expect(provider.createPostBodies).toStrictEqual([]);
+  });
+
   it("preserves an explicit caption for an Okou request and records connector usage billing", async () => {
     const billing = createBillingMediaApi(context);
     const actor = await setupAuthenticatedXActor();
