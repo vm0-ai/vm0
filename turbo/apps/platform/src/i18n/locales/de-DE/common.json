@@ -2493,7 +2493,7 @@
       "access": {
         "add": "Zugriff hinzufügen",
         "manage": "Verwalten Sie den {{connector}}-Zugriff",
-        "summaryMany": "{{value}} Agents",
+        "summaryMany": "{{value}} Agenten",
         "unavailable": "Zugriff nicht verfügbar",
         "usedBy": "Verwendet von "
       },

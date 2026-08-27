@@ -2541,7 +2541,7 @@
       "access": {
         "add": "Aggiungi accesso",
         "manage": "Gestisci l'accesso {{connector}}",
-        "summaryMany": "{{value}} agent",
+        "summaryMany": "{{value}} agenti",
         "unavailable": "Accesso non disponibile",
         "usedBy": "Utilizzato da "
       },
