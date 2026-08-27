@@ -33,8 +33,14 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         );
         write_shared_run_payload_file_or_panic();
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
     }
     server
 });

@@ -77,8 +77,14 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
         )
         .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")
         .env("VM0_API_TOKEN", "")
-        .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
-        .env("VM0_SANDBOX_REUSE_RESULT", "reused")
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        )
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        )
         .env("OKOU_TEST_CODEX_HOME_DIR", &codex_home)
         .env(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
