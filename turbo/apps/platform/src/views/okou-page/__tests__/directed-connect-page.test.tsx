@@ -701,7 +701,7 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("starts permissioned OAuth before checking the target grant", async () => {
+  it("completes add against an older permissioned OAuth projection", async () => {
     let connected = false;
     const connectionId = crypto.randomUUID();
     let authorizationUpdates = 0;
@@ -733,18 +733,7 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [
-          {
-            ...connector,
-            connected,
-            ...(connected
-              ? {
-                  connectedAccountId: connectionId,
-                  connectedAccountUpdatedAt: "2026-01-01T00:00:01Z",
-                }
-              : {}),
-          },
-        ],
+        connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(

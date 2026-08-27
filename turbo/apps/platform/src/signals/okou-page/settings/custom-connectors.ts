@@ -584,10 +584,14 @@ function defaultCustomConnectorOAuthCompletion(args: {
     args.account?.intent === "reconnect"
       ? args.account.connectionId
       : args.expectedConnectionId;
+  const projectedAccountMatches =
+    args.connector?.connectedAccountId === connectionId ||
+    (args.account?.intent === "add" &&
+      args.connector?.connectedAccountId === undefined);
   const completed =
     connectionId !== null &&
     args.connector?.connected === true &&
-    args.connector.connectedAccountId === connectionId &&
+    projectedAccountMatches &&
     (args.account?.intent === "add"
       ? args.initialUpdatedAt === null
       : args.initialUpdatedAt !== undefined &&
