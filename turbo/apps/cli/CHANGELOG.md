@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.294.0](https://github.com/vm0-ai/vm0/compare/cli-v9.293.6...cli-v9.294.0) (2026-08-27)
+
+
+### Features
+
+* **cli:** make connector account intent explicit ([#29814](https://github.com/vm0-ai/vm0/issues/29814)) ([42e2ebd](https://github.com/vm0-ai/vm0/commit/42e2ebd17b62b3896fc733db8bfad6266827f76d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.376.0
+    * @okouai/core bumped to 8.598.0
+
 ## [9.293.6](https://github.com/vm0-ai/vm0/compare/cli-v9.293.5...cli-v9.293.6) (2026-08-27)
 
 

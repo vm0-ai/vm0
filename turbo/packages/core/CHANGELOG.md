@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.598.0](https://github.com/vm0-ai/vm0/compare/core-v8.597.0...core-v8.598.0) (2026-08-27)
+
+
+### Features
+
+* **core:** enable shared chat database for staff org ([#29813](https://github.com/vm0-ai/vm0/issues/29813)) ([4595f90](https://github.com/vm0-ai/vm0/commit/4595f906f136ce8d803556e66456222a240dd7f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.0
+
 ## [8.597.0](https://github.com/vm0-ai/vm0/compare/core-v8.596.2...core-v8.597.0) (2026-08-27)
 
 
