@@ -1084,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
