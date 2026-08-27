@@ -11,6 +11,8 @@ projects and from `lib/auth.ts`.
 - Trace, screenshot, and video recording: off
 - Blob and merged HTML report artifacts: off for this project; GitHub-redacted
   list output only
+- Route navigation and hard reload wait up to 15 seconds for ClerkJS bootstrap
+  readiness before ordinary UI assertions begin
 - Test identities: unique generation-scoped `+clerk_test` addresses
 - Verification code: Clerk's documented development code, `424242`
 - Cleanup: exact organizations then exact users after every test, followed by
@@ -23,6 +25,11 @@ addresses, and Clerk resource identifiers while preserving the Playwright exit
 status. The project does not persist captured stdout to a Playwright report
 artifact. Helpers and assertions do not log Clerk response bodies, user IDs,
 organization IDs, credentials, or testing-token URLs.
+
+A terminal bootstrap timeout reports only whether ClerkJS is absent or unloaded
+and the last Clerk request's method, masked pathname, and coarse status. Query
+strings, hosts, headers, bodies, and Clerk resource identifiers are removed
+before the diagnostic reaches workflow redaction.
 
 ## Deterministic browser coverage
 
