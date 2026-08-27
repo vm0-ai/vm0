@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.804.4](https://github.com/vm0-ai/vm0/compare/app-v0.804.3...app-v0.804.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* **platform:** release template rename focus on submit ([#29833](https://github.com/vm0-ai/vm0/issues/29833)) ([6733e19](https://github.com/vm0-ai/vm0/commit/6733e19df77385b6a4ff324bc206f7b6a1a524a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.2
+    * @okouai/core bumped to 8.598.2
+
 ## [0.804.3](https://github.com/vm0-ai/vm0/compare/app-v0.804.2...app-v0.804.3) (2026-08-27)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.502.3](https://github.com/vm0-ai/vm0/compare/api-v1.502.2...api-v1.502.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* **api:** keep observation rows inactive ([#29843](https://github.com/vm0-ai/vm0/issues/29843)) ([200c923](https://github.com/vm0-ai/vm0/commit/200c923bee36041205e2c873beee21e131c92aaa))
+
+
+### Refactoring
+
+* **api:** cut debug writers to canonical alias ([#29839](https://github.com/vm0-ai/vm0/issues/29839)) ([ebbc4d1](https://github.com/vm0-ai/vm0/commit/ebbc4d15416731b0ae7cdc3cd866da408d5a5876)), closes [#29824](https://github.com/vm0-ai/vm0/issues/29824)
+* **api:** remove singleton feishu account mutations ([#29826](https://github.com/vm0-ai/vm0/issues/29826)) ([3f1315a](https://github.com/vm0-ai/vm0/commit/3f1315a0fe83434378a83b3bee44a67a768703d6))
+* **github:** remove singleton connector mutations ([#29825](https://github.com/vm0-ai/vm0/issues/29825)) ([f0205c6](https://github.com/vm0-ai/vm0/commit/f0205c65603a33cf2143bef11840910bee61a248))
+* roll out managed socialkit ([#29821](https://github.com/vm0-ai/vm0/issues/29821)) ([401f2ca](https://github.com/vm0-ai/vm0/commit/401f2ca82bc38e2e5ca3693249bc0a90962ca104))
+
+
+### Performance Improvements
+
+* **api:** overlap runtime context reads ([#29834](https://github.com/vm0-ai/vm0/issues/29834)) ([c333012](https://github.com/vm0-ai/vm0/commit/c33301249196e219b86eb57a23694458f3f62ee0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.2
+    * @okouai/core bumped to 8.598.2
+    * @okouai/db bumped to 1.226.6
+
 ## [1.502.2](https://github.com/vm0-ai/vm0/compare/api-v1.502.1...api-v1.502.2) (2026-08-27)
 
 
