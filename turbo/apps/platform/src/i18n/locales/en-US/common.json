@@ -516,7 +516,6 @@
         "arrow": "Arrow",
         "box": "Box",
         "pen": "Draw",
-        "redact": "Redact",
         "text": "Text"
       },
       "undo": "Undo"

@@ -10682,6 +10682,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   return (
     <AttachmentChips
       attachments={visibleAttachments}
+      onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {
         removeAttachment(attachment);
         notifyDraftChanged();

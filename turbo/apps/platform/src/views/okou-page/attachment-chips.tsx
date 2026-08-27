@@ -1789,9 +1789,11 @@ function ComposerImagePreviewButton({
 
 function AttachmentChip({
   attachment,
+  onAnnotationChange,
   onRemove,
 }: {
   attachment: ChatAttachment;
+  onAnnotationChange: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -1827,7 +1829,14 @@ function AttachmentChip({
                       filename: attachment.filename,
                       url: previewUrl,
                       annotation,
-                      commit: setAnnotation,
+                      commit: (next) => {
+                        // Writing the signal alone leaves the marks on this
+                        // one in-memory object: nothing saves the draft, so a
+                        // reload — or a draft sync that swaps the attachment
+                        // out — loses every mark the user just drew.
+                        setAnnotation(next);
+                        onAnnotationChange();
+                      },
                     },
                   }
                 : {}),
@@ -1885,9 +1894,11 @@ function AttachmentChip({
 
 export function AttachmentChips({
   attachments,
+  onAnnotationChange,
   onRemove,
 }: {
   attachments: ChatAttachment[];
+  onAnnotationChange: () => void;
   onRemove: (attachment: ChatAttachment) => void;
 }) {
   return (
@@ -1895,6 +1906,7 @@ export function AttachmentChips({
       {attachments.map((a) => {
         return (
           <AttachmentChip
+            onAnnotationChange={onAnnotationChange}
             key={String(a.fileInfo$)}
             attachment={a}
             onRemove={() => {

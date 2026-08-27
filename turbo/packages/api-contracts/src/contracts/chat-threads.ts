@@ -81,10 +81,18 @@ const annotationInkSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
  * canvas at whatever zoom, and the flatten that renders at the image's native
  * resolution. `note` is the sentence the user attached to that mark; it is what
  * reaches the agent as text, separately from the pixels.
+ *
+ * `ordinal` is the number drawn on the mark and quoted back to the agent. It is
+ * stored rather than derived from position because deleting a mark must not
+ * renumber the ones the user has already talked about; the freed number is
+ * handed to the next new mark instead. Absent on marks saved before this.
  */
+const markOrdinalSchema = z.number().int().positive().optional();
+
 const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("box"),
     rect: annotationRectSchema,
     ink: annotationInkSchema,
@@ -92,6 +100,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
   }),
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("arrow"),
     from: annotationPointSchema,
     to: annotationPointSchema,
@@ -100,6 +109,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
   }),
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("pen"),
     points: z.array(annotationPointSchema),
     ink: annotationInkSchema,
@@ -107,6 +117,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
   }),
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("text"),
     at: annotationPointSchema,
     text: z.string(),
@@ -117,12 +128,14 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
   // make it read as a mark instead of as a state of the image.
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("highlight"),
     rect: annotationRectSchema,
     note: z.string().optional(),
   }),
   z.object({
     id: z.string(),
+    ordinal: markOrdinalSchema,
     shape: z.literal("redact"),
     rect: annotationRectSchema,
   }),
