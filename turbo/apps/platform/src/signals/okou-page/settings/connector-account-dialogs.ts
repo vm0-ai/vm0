@@ -16,15 +16,11 @@ import {
 } from "./connector-accounts.ts";
 
 export type ConnectorAccountConnectMode =
-  | {
-      readonly kind: "add";
-      readonly completionSource?: "default-projection";
-    }
+  | { readonly kind: "add" }
   | {
       readonly kind: "reconnect";
       readonly connectionId: string;
       readonly authMethod?: ConnectorAuthMethodId;
-      readonly completionSource?: "default-projection";
     };
 
 export interface ConnectorAccountMutationOptions {
@@ -56,12 +52,7 @@ export function connectorAccountOptionsFor(
   if (!account) {
     return {};
   }
-  return {
-    account,
-    ...(mode?.completionSource === "default-projection"
-      ? { useDefaultConnectorProjection: true as const }
-      : {}),
-  };
+  return { account };
 }
 
 export function defaultBuiltinConnectorAccountOptions(
