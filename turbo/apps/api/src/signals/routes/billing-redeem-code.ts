@@ -90,10 +90,9 @@ function getAtomUrl(): string | undefined {
   return undefined;
 }
 
-// Production deployment and local configuration still write only the legacy
-// alias. Remove it after #28914 retires every pre-reader API rollback target,
-// switches all writers to canonical-only, and observes zero legacy-only
-// resolutions through the supported rollback window.
+// Repository-owned deployment and local writers emit only the canonical alias.
+// Keep the dual reader and telemetry for external input and supported rollback
+// compatibility until #28914 retires the legacy alias after the rollback window.
 function resolveMachineSecretKey(): MachineSecretKeyResolution {
   const canonical = optionalEnv("OKOU_MACHINE_SECRET_KEY");
   const legacy = optionalEnv("VM0_MACHINE_SECRET_KEY");
