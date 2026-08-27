@@ -474,9 +474,8 @@ pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
 
 /// Canonical mock Claude binary path alias accepted by guest readers.
 ///
-/// Existing test/debug writers keep using [`MOCK_CLAUDE_PATH_ENV`] until the
-/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
+/// Repository-owned test/debug writers use this alias exclusively. Legacy
+/// [`MOCK_CLAUDE_PATH_ENV`] remains only for compatibility removal under #28914.
 pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 
 /// Optional test/debug override for the mock Codex binary path.
@@ -486,9 +485,8 @@ pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
 
 /// Canonical mock Codex binary path alias accepted by guest readers.
 ///
-/// Existing test/debug writers keep using [`MOCK_CODEX_PATH_ENV`] until the
-/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
+/// Repository-owned test/debug writers use this alias exclusively. Legacy
+/// [`MOCK_CODEX_PATH_ENV`] remains only for compatibility removal under #28914.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env

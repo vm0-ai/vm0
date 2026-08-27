@@ -1085,7 +1085,9 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
@@ -1170,7 +1172,10 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {
             std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
@@ -1301,7 +1306,10 @@ pub unsafe fn setup_env(
         clear_guest_agent_bootstrap_env_for_test();
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
             "VM0_POST_RESULT_SIGTERM_GRACE_SECS",

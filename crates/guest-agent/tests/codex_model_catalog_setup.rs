@@ -63,7 +63,10 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
         .env_clear()
         .env("CLI_AGENT_TYPE", "codex")
         .env("USE_MOCK_CODEX", "true")
-        .env("VM0_MOCK_CODEX_PATH", &recording_codex)
+        .env(
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+            &recording_codex,
+        )
         .env(
             guest_contracts::env::RUN_ID_ENV,
             "codex-model-catalog-setup",

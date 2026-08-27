@@ -99,7 +99,10 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env("OKOU_TEST_CODEX_HOME_DIR", home.join(".codex"))
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
-            .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
+            .env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                &mock_codex,
+            )
             .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
             .env(
                 "MOCK_CODEX_APP_SERVER_SCENARIO",
