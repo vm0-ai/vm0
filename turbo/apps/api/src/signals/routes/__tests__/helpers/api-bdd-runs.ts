@@ -52,6 +52,7 @@ import {
   setupRawAppRequestWithRoutes,
 } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { apiTestS3PresignedUrl } from "../../../../__tests__/mocks";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createDeferredPromise } from "../../../utils";
@@ -337,8 +338,10 @@ export function createRunsApi(context: TestContext) {
     },
 
     acceptStorageDownloads(): void {
-      context.mocks.s3.getSignedUrl.mockResolvedValue(
-        "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+      context.mocks.s3.getSignedUrl.mockImplementation(
+        (_client: unknown, command: unknown) => {
+          return Promise.resolve(apiTestS3PresignedUrl(command));
+        },
       );
     },
 
