@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.177.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.6...runner-rs-v0.177.0) (2026-08-27)
+
+
+### Features
+
+* expose agent run execution limit ([#29894](https://github.com/vm0-ai/vm0/issues/29894)) ([25013c9](https://github.com/vm0-ai/vm0/commit/25013c9b24785967397a652765ccea8c866c22b7))
+
+
+### Bug Fixes
+
+* **python:** report model provider connection sources ([#29889](https://github.com/vm0-ai/vm0/issues/29889)) ([e1c3877](https://github.com/vm0-ai/vm0/commit/e1c3877c8f3a8989f2fdd43d8a1553ed3365c5a5))
+* **runner:** bound legacy report retry deadline ([#29892](https://github.com/vm0-ai/vm0/issues/29892)) ([3ca5a65](https://github.com/vm0-ai/vm0/commit/3ca5a65196a7e7a3267a7b7afb794d1e0e03e0d4))
+* **rust:** fail closed on nbd owner lookup errors ([#29897](https://github.com/vm0-ai/vm0/issues/29897)) ([96f4511](https://github.com/vm0-ai/vm0/commit/96f451182cd012db06b0c615ee13fd2de0657a33))
+
+
+### Refactoring
+
+* **runner:** centralize service lock identity ([#29888](https://github.com/vm0-ai/vm0/issues/29888)) ([78f912b](https://github.com/vm0-ai/vm0/commit/78f912b86bedecbc82ae6acd719552e2bf1eb74f))
+
 ## [0.176.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.5...runner-rs-v0.176.6) (2026-08-27)
 
 

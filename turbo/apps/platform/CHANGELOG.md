@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.805.1](https://github.com/vm0-ai/vm0/compare/app-v0.805.0...app-v0.805.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **auth:** remove focus ring from error alerts ([#29878](https://github.com/vm0-ai/vm0/issues/29878)) ([da3369e](https://github.com/vm0-ai/vm0/commit/da3369e0933e807c3c5fc04b75af08430e01bedd))
+* **platform:** prevent stale page renders during navigation ([#29829](https://github.com/vm0-ai/vm0/issues/29829)) ([6e2af35](https://github.com/vm0-ai/vm0/commit/6e2af353876e6f06e0bc1d6e5aa715ceece443d5))
+
+
+### Refactoring
+
+* remove connector discovery feature switch ([#29885](https://github.com/vm0-ai/vm0/issues/29885)) ([011fcf8](https://github.com/vm0-ai/vm0/commit/011fcf8feaf50b34fa3e9d6c391e6c0a9cb4e3be))
+
+
+### Performance Improvements
+
+* **platform:** stabilize lazy chunk loading across deploys ([#29738](https://github.com/vm0-ai/vm0/issues/29738)) ([70a459a](https://github.com/vm0-ai/vm0/commit/70a459ae1b191bc520589692416bbe9e9fee65a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.377.0
+    * @okouai/core bumped to 8.599.1
+
 ## [0.805.0](https://github.com/vm0-ai/vm0/compare/app-v0.804.5...app-v0.805.0) (2026-08-27)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.504.0](https://github.com/vm0-ai/vm0/compare/api-v1.503.0...api-v1.504.0) (2026-08-27)
+
+
+### Features
+
+* expose agent run execution limit ([#29894](https://github.com/vm0-ai/vm0/issues/29894)) ([25013c9](https://github.com/vm0-ai/vm0/commit/25013c9b24785967397a652765ccea8c866c22b7))
+
+
+### Refactoring
+
+* **api:** cut codex service-tier writer to canonical alias ([#29890](https://github.com/vm0-ai/vm0/issues/29890)) ([1478093](https://github.com/vm0-ai/vm0/commit/1478093bcdbbbd40e6f0f7272f985b478e6732b7)), closes [#29886](https://github.com/vm0-ai/vm0/issues/29886) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* remove connector discovery feature switch ([#29885](https://github.com/vm0-ai/vm0/issues/29885)) ([011fcf8](https://github.com/vm0-ai/vm0/commit/011fcf8feaf50b34fa3e9d6c391e6c0a9cb4e3be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.377.0
+    * @okouai/core bumped to 8.599.1
+    * @okouai/db bumped to 1.226.9
+
 ## [1.503.0](https://github.com/vm0-ai/vm0/compare/api-v1.502.4...api-v1.503.0) (2026-08-27)
 
 
