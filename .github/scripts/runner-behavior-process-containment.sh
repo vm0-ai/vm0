@@ -1141,25 +1141,22 @@ for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
     fresh PoolMiss CacheMiss "$thread_id" "agent-ready-fresh-$index"
 done
 
-declare -a WORKSPACE_BENCHMARK_THREADS=()
-for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  thread_id=$(cat /proc/sys/kernel/random/uuid)
-  WORKSPACE_BENCHMARK_THREADS+=("$thread_id")
-  sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-    --chat-thread-id "$thread_id" \
-    --session-id "agent-ready-workspace-$index" \
-    --feature-flag sandboxReuse=true \
-    --prompt 'true' >/dev/null \
-    || fail "workspace-cache Agent-ready benchmark warmup failed"
-done
+WORKSPACE_BENCHMARK_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --chat-thread-id "$WORKSPACE_BENCHMARK_THREAD_ID" \
+  --session-id agent-ready-workspace \
+  --feature-flag sandboxReuse=true \
+  --prompt 'true' >/dev/null \
+  || fail "workspace-cache Agent-ready benchmark warmup failed"
 
-# A runner restart destroys its owned idle sandboxes while retaining promoted
-# workspace-cache images, so the measured turns cannot fall through to exact reuse.
-restart_agent_ready_benchmark_runner
-for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  thread_id=${WORKSPACE_BENCHMARK_THREADS[$((index - 1))]}
+for _ in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
+  # Restarting destroys the owned idle sandbox while retaining its promoted
+  # workspace-cache image, so every sample exercises the same cache-hit path
+  # without accumulating one full workspace image per requested sample.
+  restart_agent_ready_benchmark_runner
   record_agent_ready_benchmark_sample \
-    workspace-cache PoolMiss Reused "$thread_id" "agent-ready-workspace-$index"
+    workspace-cache PoolMiss Reused \
+    "$WORKSPACE_BENCHMARK_THREAD_ID" agent-ready-workspace
 done
 
 EXACT_REUSE_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
