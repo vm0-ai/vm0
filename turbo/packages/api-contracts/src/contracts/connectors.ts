@@ -149,6 +149,7 @@ export const connectorManualGrantContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
+      426: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Connect a connector with a manual grant",
