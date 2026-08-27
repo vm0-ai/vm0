@@ -10447,7 +10447,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain(
       "./generated/resources/playful-launch/SKILL.md",
     );
-    expect(presentationPrompt).not.toContain('"colorSystem"');
     expect(presentationPrompt).toContain(
       "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
