@@ -413,24 +413,21 @@ describe("app auth pages", () => {
 
   it.each([
     {
-      action: "Use current sign-in",
       documentTitle: "Sign in | VM0",
+      fallback: null,
       heading: "Sign in to VM0",
-      legacyPath: "/sign-in",
       path: "/v2/sign-in",
     },
     {
-      action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
+      fallback: { action: "Use current sign-up", path: "/sign-up" },
       heading: "Create your account",
-      legacyPath: "/sign-up",
       path: "/v2/sign-up",
     },
     {
-      action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
+      fallback: { action: "Use current sign-up", path: "/sign-up" },
       heading: "Create your account",
-      legacyPath: "/sign-up",
       path: "/v2/sign-up/verify-email-address",
     },
   ])("renders the auth v2 scaffold at $path", async (routeCase) => {
@@ -442,9 +439,15 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: routeCase.heading }),
     ).resolves.toBeVisible();
     expect(screen.getByTestId("app-auth-v2")).toBeVisible();
-    const actionLink = authV2ActionLink(routeCase.action);
-    expect(actionLink).toHaveTextContent(routeCase.action);
-    expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
+    const fallbackLink = routeCase.fallback
+      ? authV2ActionLink(routeCase.fallback.action)
+      : null;
+    expect(fallbackLink?.textContent?.trim() ?? null).toBe(
+      routeCase.fallback?.action ?? null,
+    );
+    expect(fallbackLink?.getAttribute("href") ?? null).toBe(
+      routeCase.fallback?.path ?? null,
+    );
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
@@ -467,11 +470,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: "Choose an organization" }),
     ).resolves.toBeVisible();
     expect(authV2Button("Continue with Route Organization")).toBeVisible();
-    expect(
-      queryAllByRoleFast("link").some((candidate) => {
-        return candidate.textContent?.trim() === "Use current sign-in";
-      }),
-    ).toBeFalsy();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(document.title).toBe("Sign in | VM0");
@@ -765,6 +763,38 @@ describe("app auth pages", () => {
     expect(getComputedStyle(link).height).toBe("36px");
     expect(getComputedStyle(link).width).toBe("100%");
     expect(getComputedStyle(link).borderStyle).toBe("solid");
+  });
+
+  it("presents Clerk page actions with the standard button and link treatment", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    clerkSurface.style.setProperty("--primary", "20, 99%, 47%");
+    clerkSurface.style.setProperty("--primary-foreground", "0, 0%, 100%");
+
+    const primaryAction = document.createElement("button");
+    primaryAction.className = "cl-formButtonPrimary";
+    primaryAction.type = "submit";
+    const primaryLabel = document.createElement("span");
+    primaryLabel.textContent = "Continue";
+    primaryAction.append(primaryLabel);
+
+    const footerAction = document.createElement("div");
+    footerAction.className = "cl-footerAction";
+    const footerLink = document.createElement("a");
+    footerLink.className = "cl-footerActionLink";
+    footerLink.href = "/sign-up";
+    footerLink.textContent = "Sign up";
+    footerAction.append(footerLink);
+    clerkSurface.append(primaryAction, footerAction);
+
+    expect(getComputedStyle(primaryAction).backgroundColor).toBe(
+      "hsl(20, 99%, 47%)",
+    );
+    expect(getComputedStyle(primaryLabel).color).toBe("hsl(0, 0%, 100%)");
+    expect(getComputedStyle(footerLink).textDecoration).toBe("none");
   });
 
   it("routes ad-attributed sign-up visits through onboarding", async () => {

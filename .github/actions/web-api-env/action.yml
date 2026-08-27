@@ -261,7 +261,6 @@ runs:
           fi
           if [[ -n "$machine_secret_key" ]]; then
             add_env OKOU_MACHINE_SECRET_KEY "$machine_secret_key"
-            add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
           fi
         fi
         # Inject the checked-out build commit explicitly so OTel / Sentry can

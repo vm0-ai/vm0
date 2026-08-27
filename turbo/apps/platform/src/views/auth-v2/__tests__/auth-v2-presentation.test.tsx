@@ -120,12 +120,6 @@ describe("auth v2 presentation", () => {
     const announcer = screen.getByTestId("auth-v2-announcer");
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
-
-    const currentSignInAction = linkByText("Use current sign-in");
-    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
-    expect(
-      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
   it("keeps password controls and fallback navigation in their accessible regions", async () => {

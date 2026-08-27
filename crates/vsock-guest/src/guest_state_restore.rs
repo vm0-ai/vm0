@@ -506,6 +506,7 @@ fn failed_output(
         stderr: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         diagnostic: truncate_utf8(diagnostic, MAX_DIAGNOSTIC_BYTES),
     }

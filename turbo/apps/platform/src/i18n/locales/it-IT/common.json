@@ -531,7 +531,6 @@
         "arrow": "Freccia",
         "box": "Rettangolo",
         "pen": "Disegna",
-        "redact": "Oscura",
         "text": "Testo"
       },
       "undo": "Annulla"
@@ -1105,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usa l'accesso attuale",
         "addAccount": "Aggiungi account",
         "appleMethod": "Continua con Apple",
         "back": "Indietro",

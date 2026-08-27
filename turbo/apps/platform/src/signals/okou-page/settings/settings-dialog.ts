@@ -159,6 +159,18 @@ export const openSettingsMemberUsagePacks$ = command(
   },
 );
 
+export const openSettingsUsagePackConfiguration$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const management = await get(usagePackManagementAsync$);
+    signal.throwIfAborted();
+    if (!management) {
+      set(openSettingsBillingPlans$);
+      return;
+    }
+    set(openSettingsMemberUsagePacks$, management);
+  },
+);
+
 export const openSettingsUsagePackUpgrade$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const management = await get(usagePackManagementAsync$);

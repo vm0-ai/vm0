@@ -516,7 +516,6 @@
         "arrow": "Pfeil",
         "box": "Rechteck",
         "pen": "Zeichnen",
-        "redact": "Schwärzen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -1086,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Aktuelle Anmeldung verwenden",
         "addAccount": "Konto hinzufügen",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",

@@ -516,7 +516,6 @@
         "arrow": "Arrow",
         "box": "Box",
         "pen": "Draw",
-        "redact": "Redact",
         "text": "Text"
       },
       "undo": "Undo"
@@ -1086,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",

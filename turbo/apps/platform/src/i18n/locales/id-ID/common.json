@@ -515,7 +515,6 @@
         "arrow": "Panah",
         "box": "Kotak",
         "pen": "Gambar",
-        "redact": "Sensor",
         "text": "Teks"
       },
       "undo": "Urungkan"
@@ -1085,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Gunakan proses masuk saat ini",
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
