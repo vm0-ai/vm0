@@ -13694,6 +13694,11 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    // The busy thread makes queue-first take the wait path, which builds this
+    // message's run input before re-checking admission and leaving it queued.
+    // Building is not using: reporting there would count the message again when
+    // it is really dispatched below.
+    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
