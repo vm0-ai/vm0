@@ -565,7 +565,6 @@ function buildAgentRunPlatformEnvironment(args: {
     ...(args.codexServiceTier
       ? {
           OKOU_CODEX_SERVICE_TIER: args.codexServiceTier,
-          VM0_CODEX_SERVICE_TIER: args.codexServiceTier,
         }
       : {}),
   };
