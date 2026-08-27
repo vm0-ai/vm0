@@ -23,7 +23,7 @@ import { pgTextDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
-import { settle } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
@@ -43,6 +43,24 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
 const oauthScopesSchema = z.array(z.string());
+const gmailErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        details: z
+          .array(
+            z
+              .object({
+                domain: z.string().optional(),
+                reason: z.string().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 interface GmailMessagePart {
   readonly partId: string;
@@ -231,6 +249,29 @@ class GmailAuthorizationError extends Error {
   }
 }
 
+async function gmailResponseRequiresReconnect(
+  response: Response,
+): Promise<boolean> {
+  if (response.status === 401) {
+    return true;
+  }
+  if (response.status !== 403) {
+    return false;
+  }
+  const parsed = gmailErrorResponseSchema.safeParse(
+    safeJsonParse(await response.text()),
+  );
+  return (
+    parsed.success &&
+    parsed.data.error.details?.some((detail) => {
+      return (
+        detail.domain === "googleapis.com" &&
+        detail.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT"
+      );
+    }) === true
+  );
+}
+
 interface MailAccess {
   readonly kind: "ok";
   readonly accessToken: string;
@@ -315,7 +356,7 @@ async function loadMailConnections(args: {
     }
     const { access } = accessResult;
     const runtimeMethod = access.runtimeMethod;
-    const persistedOauthScopes = row.oauthGrantedScopes ?? row.oauthScopes;
+    const persistedOauthScopes = row.oauthGrantedScopes;
     const oauthScopes = persistedOauthScopes
       ? oauthScopesSchema.parse(JSON.parse(persistedOauthScopes))
       : null;
@@ -332,10 +373,12 @@ async function loadMailConnections(args: {
         oauthScopes,
         stateRevision: row.stateRevision,
         storageVersion: access.storageVersion,
-        scopesReady: connectorAuthMethodHasRequiredScopes(
-          runtimeMethod.method,
-          oauthScopes,
-        ),
+        scopesReady:
+          oauthScopes === null ||
+          connectorAuthMethodHasRequiredScopes(
+            runtimeMethod.method,
+            oauthScopes,
+          ),
         tokenExpiresAt: row.tokenExpiresAt,
       },
     ];
@@ -762,7 +805,7 @@ async function gmailGetDraftResource(
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
-  if (response.status === 401) {
+  if (await gmailResponseRequiresReconnect(response)) {
     throw new GmailAuthorizationError();
   }
   if (response.status === 404) {
@@ -813,7 +856,7 @@ async function gmailSendLinkedDraft(
     },
     body: JSON.stringify({ id: args.gmailDraftId }),
   });
-  if (response.status === 401) {
+  if (await gmailResponseRequiresReconnect(response)) {
     throw new GmailAuthorizationError();
   }
   if (response.status === 404) {
@@ -840,7 +883,7 @@ async function gmailGetMessageResource(
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
-  if (response.status === 401) {
+  if (await gmailResponseRequiresReconnect(response)) {
     throw new GmailAuthorizationError();
   }
   if (response.status === 404) {
@@ -891,7 +934,7 @@ async function gmailGetAttachment(
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
-  if (response.status === 401) {
+  if (await gmailResponseRequiresReconnect(response)) {
     throw new GmailAuthorizationError();
   }
   if (response.status === 404) {
@@ -921,7 +964,7 @@ async function gmailDeleteDraft(
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
-  if (response.status === 401) {
+  if (await gmailResponseRequiresReconnect(response)) {
     throw new GmailAuthorizationError();
   }
   if (response.status !== 204 && response.status !== 404) {

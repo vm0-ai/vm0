@@ -216,6 +216,14 @@ const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
 const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+] as const;
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
@@ -232,6 +240,7 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
   "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
   "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
   "api_dispatch_pre_create_zero_web_chat_create_normal_run",
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
@@ -2139,6 +2148,9 @@ describe("CHAT-02: web chat send and client ids", () => {
       API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
+    expectNoApiDispatchActions(timingEvents, [
+      API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       ["api_dispatch_pre_create_agent_run"],
@@ -6462,6 +6474,8 @@ describe("CHAT-02: model-first provider policies", () => {
       [
         ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
         API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+        ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
+        API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
       ],
       "nested",
     );
@@ -10428,8 +10442,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       const colorToken = template.colorSystemId
         .replace("color-system:", "")
         .replaceAll("-", "_");
-      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+      expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
     }
+    expect(presentationPrompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
     expect(presentationPrompt).toContain(
       "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
@@ -10580,35 +10597,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, website.runId);
-
-    // The rollout keeps its rollback lever: an override back to off restores
-    // the pre-cutover renderer guidance without a deployment.
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.LatestWebsiteTemplates]: false },
-    );
-    const previousWebsite = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a campaign landing page with the pre-cutover template",
-      template: {
-        type: "website",
-        selection: { websiteTemplateId: websiteTemplate.id },
-      },
-    });
-    const previousWebsiteRun = await api.readRun(actor, previousWebsite.runId);
-    const previousWebsitePrompt = previousWebsiteRun.appendSystemPrompt ?? "";
-    expect(previousWebsitePrompt).toContain(
-      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
-    );
-    expect(previousWebsitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
-    );
-    expect(previousWebsitePrompt).toContain("resolve-images.mjs");
-    expect(previousWebsitePrompt).toContain(
-      "okou host <output-dir> --site <slug>",
-    );
-    await cancelChatRun(actor, previousWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {

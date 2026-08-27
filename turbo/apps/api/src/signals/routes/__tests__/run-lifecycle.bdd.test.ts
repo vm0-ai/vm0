@@ -23,7 +23,6 @@ import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -68,7 +67,6 @@ import {
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   installApiTestConnectorCatalog,
-  mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
@@ -5274,7 +5272,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ): Record<string, unknown> {
       return {
         runnerId: reuseRunnerId,
-        runnerName: "bdd-runner",
         group: runnerGroup,
         snapshotGeneration: 1,
         snapshotSequence: nextReuseSnapshotSequence(),
@@ -5304,15 +5301,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiError(missingSandboxStatesHeartbeat.body);
 
-    const canonicalHeartbeat = await api.requestRawHeartbeatRunner(
+    const overlapHeartbeat = await api.requestRawHeartbeatRunner(
       true,
       [200],
       rawHeartbeatBody({
+        runnerName: "v0.168.14",
         admittableProfiles: ["vm0/default"],
         heldSandboxStates: [],
       }),
     );
-    expect(canonicalHeartbeat.body).toStrictEqual({
+    expect(overlapHeartbeat.body).toStrictEqual({
       ok: true,
     });
     const invalidWorkspaceVersionHeartbeat =
@@ -9264,6 +9262,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   it("uses exact runtime projections and authoritative fallback for builtin sync", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-sync-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.updateFeatureSwitches(actor, {
@@ -9295,10 +9298,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     }
     expect(larkTarget.sourceId).toBe(connected.id);
 
-    onTestFinished(async () => {
-      mockApiTestConnectorProviderConfiguration();
-      await installApiTestConnectorCatalog();
-    });
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-runtime-sync-projection-${randomUUID()}`,
       runtimeProjection: true,
@@ -13940,33 +13939,9 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       expect(r2Claim.environment?.CLI_PKG_URL).toBe(
         `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
       );
-      expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-        "latest",
-      );
       await api.requestCancelRun(actor, r2Run.runId, [200]);
     },
   );
-
-  it("pins the pre-cutover Website release into opted-out run contexts", async () => {
-    const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.LatestWebsiteTemplates]: false,
-    });
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "use the pre-cutover Website template release",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
-      "previous",
-    );
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
 
   it("keeps direct-run execution config isolated from product execution", async () => {
     const appUrl = "https://app.writer-stop.example.test";
@@ -14298,7 +14273,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.environment?.OKOU_TOKEN,
       CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "latest",
     });
     for (const [key, value] of Object.entries(
       claim.platformEnvironment ?? {},

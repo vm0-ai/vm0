@@ -531,7 +531,6 @@
         "arrow": "Freccia",
         "box": "Rettangolo",
         "pen": "Disegna",
-        "redact": "Oscura",
         "text": "Testo"
       },
       "undo": "Annulla"
@@ -675,6 +674,7 @@
       "importedSlides_one": "{{count}} diapositiva",
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
+      "introVideo": "Video introduttivo",
       "multiAccent": "Multiaccento",
       "nextSlide": "Anteprima della diapositiva successiva",
       "noMatches": "Nessuna corrispondenza",
@@ -692,6 +692,7 @@
       "searchConnector": "Cerca modelli",
       "searchConnectors": "Cerca modelli",
       "selected": "Modello: {{title}}",
+      "selectIntroVideo": "Seleziona il modello di video introduttivo {{title}}",
       "selectStyle": "Seleziona lo stile {{style}}",
       "selectTemplate": "Seleziona il modello {{title}}",
       "selectVideo": "Seleziona il modello video {{title}}",
@@ -1103,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usa l'accesso attuale",
         "addAccount": "Aggiungi account",
         "appleMethod": "Continua con Apple",
         "back": "Indietro",
@@ -1133,6 +1133,7 @@
         "hidePassword": "Nascondi password",
         "identifierLabel": "Indirizzo email o nome utente",
         "identifierPlaceholder": "Inserisci il tuo indirizzo email o nome utente",
+        "lastUsed": "Ultimo utilizzo",
         "methodsHelpPrompt": "Non hai nessuna di queste opzioni?",
         "newPasswordLabel": "Nuova password",
         "newPasswordSubtitle": "Per motivi di sicurezza, è richiesto di resettare la tua password.",
@@ -1976,6 +1977,7 @@
       "available_one": "Connettori disponibili per la connessione ({{count}})",
       "available_many": "Connettori disponibili per la connessione ({{count}})",
       "available_other": "Connettori disponibili per la connessione ({{count}})",
+      "back": "Indietro",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
       "defaultAccountFor": "{{connector}} · Account predefinito in uso: {{account}}",
@@ -2298,6 +2300,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustrazione",
+        "introVideo": "Video introduttivo",
         "presentation": "Presentazione",
         "video": "Video",
         "website": "Sito web",

@@ -531,7 +531,6 @@
         "arrow": "Flecha",
         "box": "Rectángulo",
         "pen": "Dibujar",
-        "redact": "Ocultar",
         "text": "Texto"
       },
       "undo": "Deshacer"
@@ -675,6 +674,7 @@
       "importedSlides_one": "{{count}} diapositiva",
       "importedSlides_many": "{{count}} diapositivas",
       "importedSlides_other": "{{count}} diapositivas",
+      "introVideo": "Vídeo de introducción",
       "multiAccent": "Multiacentos",
       "nextSlide": "Vista previa de la diapositiva siguiente",
       "noMatches": "Sin coincidencias",
@@ -692,6 +692,7 @@
       "searchConnector": "Buscar plantillas",
       "searchConnectors": "Buscar plantillas",
       "selected": "Plantilla: {{title}}",
+      "selectIntroVideo": "Seleccionar plantilla de vídeo de introducción {{title}}",
       "selectStyle": "Selecciona el estilo {{style}}",
       "selectTemplate": "Seleccionar plantilla {{title}}",
       "selectVideo": "Seleccionar plantilla de vídeo {{title}}",
@@ -1103,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar el inicio de sesión actual",
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -1133,6 +1133,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
         "newPasswordSubtitle": "Por razones de seguridad, se requiere restablecer su contraseña.",
@@ -1976,6 +1977,7 @@
       "available_one": "Conectores disponibles para conectar ({{count}})",
       "available_many": "Conectores disponibles para conectar ({{count}})",
       "available_other": "Conectores disponibles para conectar ({{count}})",
+      "back": "Volver",
       "configurePermissions": "Configurar permisos de {{connectorName}}",
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
       "defaultAccountFor": "{{connector}} · Usando la cuenta predeterminada: {{account}}",
@@ -2298,6 +2300,7 @@
     "templates": {
       "categories": {
         "illustration": "Ilustración",
+        "introVideo": "Vídeo de introducción",
         "presentation": "Presentación",
         "video": "Vídeo",
         "website": "Sitio web",

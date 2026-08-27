@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { OfficialWorkflowParameterBinding } from "@okouai/api-contracts/contracts/official-workflow-bindings";
 import {
   chatRunFinishedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
@@ -63,9 +64,10 @@ import {
   workflowAutomations,
   workflowWebhookAutomations,
   workflows,
+  type WorkflowAutomationEventConfig,
   type WorkflowScheduleType,
 } from "@okouai/db/schema/workflow";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
@@ -133,9 +135,16 @@ import {
 import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
+import { readAcceptedOfficialWorkflowCatalog } from "./official-workflow-catalog-read.service";
+import {
+  OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
+  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
+  OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+} from "./official-workflow-constants";
 
 type AutomationRow = typeof workflowAutomations.$inferSelect;
 type WorkflowRow = typeof workflows.$inferSelect;
+
 type ChatRunFinishedAutomationEventType = Extract<
   WorkflowAutomationEventType,
   "chat-run-finished"
@@ -565,6 +574,20 @@ function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
     chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
+    official:
+      row.officialBlueprintKey === null ||
+      row.officialAppliedFingerprint === null ||
+      row.officialReconciliationStatus === null ||
+      row.officialParameterBindings === null ||
+      row.officialIntendedEnabled === null
+        ? null
+        : {
+            blueprintKey: row.officialBlueprintKey,
+            appliedFingerprint: row.officialAppliedFingerprint,
+            reconciliationStatus: row.officialReconciliationStatus,
+            intendedEnabled: row.officialIntendedEnabled,
+            parameterBindings: row.officialParameterBindings,
+          },
   };
 }
 
@@ -1140,6 +1163,18 @@ export async function listWorkspaceWorkflowAutomations(
     )
     .orderBy(asc(workflowAutomations.createdAt), asc(workflowAutomations.id));
 
+  const hasOfficialWorkflow = rows.some((row) => {
+    return row.workflow.officialDefinitionName !== null;
+  });
+  const acceptedCatalog = hasOfficialWorkflow
+    ? await readAcceptedOfficialWorkflowCatalog(db)
+    : null;
+  const officialLifecycleByName = new Map(
+    acceptedCatalog?.payload.definitions.map((definition) => {
+      return [definition.name, definition.lifecycle] as const;
+    }) ?? [],
+  );
+
   const entries = await Promise.all(
     rows.map(async (row): Promise<WorkflowAutomationsListEntry | null> => {
       const automation = await rowToPublicSummary(db, row.automation, {
@@ -1153,6 +1188,11 @@ export async function listWorkspaceWorkflowAutomations(
           workflow: row.workflow,
           agent: row.agent,
           member: args.member,
+          officialDefinitionLifecycle: row.workflow.officialDefinitionName
+            ? (officialLifecycleByName.get(
+                row.workflow.officialDefinitionName,
+              ) ?? "unavailable")
+            : undefined,
         }),
         automation,
       };
@@ -1226,6 +1266,10 @@ export async function listThreadBoundWorkflowAutomations(
         eq(workflowAutomations.orgId, args.orgId),
         eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
+        or(
+          isNull(workflows.officialDefinitionName),
+          eq(workflows.officialInstallationState, "installed"),
+        ),
       ),
     )
     .orderBy(asc(workflowAutomations.createdAt));
@@ -1467,7 +1511,14 @@ interface CreateWebhookEventAutomationInput {
   readonly autonomyBudget?: number;
 }
 
-type CreateAutomationInput =
+export interface OfficialAutomationCreationMetadata {
+  readonly definitionName: string;
+  readonly blueprintKey: string;
+  readonly appliedFingerprint: string;
+  readonly parameterBindings: readonly OfficialWorkflowParameterBinding[];
+}
+
+export type CreateAutomationInput = (
   | CreateScheduleAutomationInput
   | CreateChatRunFinishedEventAutomationInput
   | CreateGmailEventAutomationInput
@@ -1478,7 +1529,10 @@ type CreateAutomationInput =
   | CreateNotionEventAutomationInput
   | CreateStrapiEventAutomationInput
   | CreateStripeInvoicePaidEventAutomationInput
-  | CreateWebhookEventAutomationInput;
+  | CreateWebhookEventAutomationInput
+) & {
+  readonly officialInstallation?: OfficialAutomationCreationMetadata;
+};
 type CreateEventAutomationInput = Exclude<
   CreateAutomationInput,
   CreateScheduleAutomationInput
@@ -1509,6 +1563,12 @@ function automationCreateInputIsGithubWebhook(
   { readonly eventType: GithubWebhookAutomationEventType }
 > {
   return supportedGithubWebhookEventType(args.eventType);
+}
+
+function automationCreateInputIsGithub(
+  args: CreateEventAutomationInput,
+): args is CreateGithubEventAutomationInput {
+  return supportedGithubEventType(args.eventType);
 }
 
 function automationCreateInputIsGoogleCalendar(
@@ -2660,6 +2720,39 @@ const createEventAutomationForWorkflow$ = command(
   },
 );
 
+async function attachOfficialAutomationMetadata(
+  db: Db,
+  result: AutomationResult,
+  metadata: OfficialAutomationCreationMetadata | undefined,
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  if (result.kind !== "ok" || metadata === undefined) {
+    return result;
+  }
+  const [row] = await db
+    .update(workflowAutomations)
+    .set({
+      officialBlueprintKey: metadata.blueprintKey,
+      officialAppliedFingerprint: metadata.appliedFingerprint,
+      officialReconciliationStatus: "current",
+      officialParameterBindings: [...metadata.parameterBindings],
+      officialIntendedEnabled: true,
+      updatedAt: nowDate(),
+    })
+    .where(eq(workflowAutomations.id, result.summary.id))
+    .returning(workflowAutomationColumns());
+  signal.throwIfAborted();
+  if (!row) {
+    throw new Error("Failed to mark Official Workflow automation");
+  }
+  return {
+    kind: "ok",
+    summary: await rowToSummary(db, row, {
+      chatThreadId: result.summary.chatThreadId,
+    }),
+  };
+}
+
 export const createWorkflowAutomation$ = command(
   async (
     { set },
@@ -2672,12 +2765,31 @@ export const createWorkflowAutomation$ = command(
       orgId: args.orgId,
       member: args.member,
       workflowId: args.workflowId,
+      includeInstallingOfficial: args.officialInstallation !== undefined,
     });
     signal.throwIfAborted();
     if (!visible) {
       return { kind: "not-found" };
     }
     const { workflow } = visible;
+    if (
+      args.officialInstallation !== undefined &&
+      (workflow.officialDefinitionName !==
+        args.officialInstallation.definitionName ||
+        workflow.officialInstallationState !== "installing" ||
+        workflow.ownerUserId !== args.member.userId)
+    ) {
+      return { kind: "not-found" };
+    }
+    if (
+      workflow.officialDefinitionName !== null &&
+      args.officialInstallation === undefined
+    ) {
+      return {
+        kind: "conflict",
+        message: OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
+      };
+    }
 
     // The owning agent is derived from the workflow row (hard 1:N). The automation
     // owner must be able to run that agent for the scheduled run to fire.
@@ -2701,7 +2813,7 @@ export const createWorkflowAutomation$ = command(
     const workflowTitle = workflow.displayName ?? workflow.name;
 
     if (!automationCreateInputIsSchedule(args)) {
-      const result = await set(
+      const created = await set(
         createEventAutomationForWorkflow$,
         {
           db: writeDb,
@@ -2714,6 +2826,12 @@ export const createWorkflowAutomation$ = command(
         signal,
       );
       signal.throwIfAborted();
+      const result = await attachOfficialAutomationMetadata(
+        writeDb,
+        created,
+        args.officialInstallation,
+        signal,
+      );
       if (result.kind === "ok") {
         await publishThreadBoundWorkflowAutomationChanged(
           result.summary.ownerUserId,
@@ -2743,12 +2861,471 @@ export const createWorkflowAutomation$ = command(
       currentTime: now,
     });
     signal.throwIfAborted();
+    const attached = await attachOfficialAutomationMetadata(
+      writeDb,
+      { kind: "ok", summary },
+      args.officialInstallation,
+      signal,
+    );
+    if (attached.kind !== "ok") {
+      throw new Error("Failed to create Official Workflow automation");
+    }
     await publishThreadBoundWorkflowAutomationChanged(
-      summary.ownerUserId,
-      summary.chatThreadId,
+      attached.summary.ownerUserId,
+      attached.summary.chatThreadId,
     );
     signal.throwIfAborted();
-    return { kind: "ok", summary };
+    return attached;
+  },
+);
+
+export interface OfficialAutomationEventPreparation {
+  readonly eventConfig: WorkflowAutomationEventConfig;
+  readonly googleFormsSeedCursor?: string;
+  readonly strapiIntegrationId?: string;
+}
+
+export type OfficialAutomationEventPreparationResult =
+  | {
+      readonly kind: "ok";
+      readonly preparation: OfficialAutomationEventPreparation;
+    }
+  | AutomationActionFailure;
+
+interface PrepareOfficialAutomationReconfigurationInput {
+  readonly automationId: string;
+  readonly input: CreateAutomationInput;
+  readonly publicBrand: PublicBrand;
+}
+
+function preparedOfficialEvent(
+  eventConfig: WorkflowAutomationEventConfig,
+  extra?: Omit<OfficialAutomationEventPreparation, "eventConfig">,
+): OfficialAutomationEventPreparationResult {
+  return {
+    kind: "ok",
+    preparation: { eventConfig, ...extra },
+  };
+}
+
+async function prepareOfficialChatRunFinishedEvent(
+  db: Db,
+  input: CreateChatRunFinishedEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const [thread] = await db
+    .select({ userId: chatThreads.userId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, input.eventConfig.chatThreadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread || thread.userId !== input.member.userId) {
+    return {
+      kind: "bad-request",
+      message: `Chat thread not found: ${input.eventConfig.chatThreadId}`,
+    };
+  }
+  const automationThreadId = await loadWorkflowUserAutomationThreadId(db, {
+    orgId: input.orgId,
+    userId: input.member.userId,
+    workflowId: input.workflowId,
+  });
+  signal.throwIfAborted();
+  if (automationThreadId === input.eventConfig.chatThreadId) {
+    return {
+      kind: "bad-request",
+      message:
+        "A workflow cannot watch run-finished events from its own chat thread",
+    };
+  }
+  return preparedOfficialEvent(input.eventConfig);
+}
+
+async function prepareOfficialStrapiEvent(
+  db: Db,
+  input: CreateStrapiEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+      orgId: input.orgId,
+    })
+  ) {
+    return {
+      kind: "bad-request",
+      message: "Strapi workflow automations are not enabled",
+    };
+  }
+  const eventConfig = strapiEntryPublishedEventConfigSchema.parse(
+    input.eventConfig,
+  );
+  const [integration] = await db
+    .select({ id: strapiIntegrations.id })
+    .from(strapiIntegrations)
+    .where(
+      and(
+        eq(strapiIntegrations.id, eventConfig.integrationId),
+        eq(strapiIntegrations.orgId, input.orgId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return integration
+    ? preparedOfficialEvent(eventConfig, {
+        strapiIntegrationId: integration.id,
+      })
+    : {
+        kind: "bad-request",
+        message: "Select a Strapi integration from this organization",
+      };
+}
+
+async function prepareOfficialNotionEvent(
+  db: Db,
+  input: CreateNotionEventAutomationInput,
+  publicBrand: PublicBrand,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const config = input.eventConfig;
+  if (input.eventType === "notion-child-page-created") {
+    if (config.event !== "child_page_created") {
+      return {
+        kind: "bad-request",
+        message: "Unsupported Notion automation event config",
+      };
+    }
+    const prepared = await prepareNotionChildPageEventConfigForPersist(
+      db,
+      {
+        orgId: input.orgId,
+        userId: input.member.userId,
+        publicBrand,
+        eventConfig:
+          "parentPageUrl" in config
+            ? config
+            : {
+                provider: "notion",
+                event: "child_page_created",
+                parentPageUrl:
+                  config.parentPage.rawUrl ?? config.parentPage.url,
+              },
+      },
+      signal,
+    );
+    return prepared.kind === "ok"
+      ? preparedOfficialEvent(prepared.eventConfig)
+      : prepared;
+  }
+  if (input.eventType === "notion-database-item-created") {
+    if (config.event !== "database_item_created") {
+      return {
+        kind: "bad-request",
+        message: "Unsupported Notion automation event config",
+      };
+    }
+    const prepared = await prepareNotionDatabaseItemEventConfigForPersist(
+      db,
+      {
+        orgId: input.orgId,
+        userId: input.member.userId,
+        publicBrand,
+        eventConfig:
+          "databaseUrl" in config
+            ? config
+            : {
+                provider: "notion",
+                event: "database_item_created",
+                databaseUrl: config.dataSource.rawUrl ?? config.dataSource.url,
+              },
+      },
+      signal,
+    );
+    return prepared.kind === "ok"
+      ? preparedOfficialEvent(prepared.eventConfig)
+      : prepared;
+  }
+  if (config.event !== "page_content_updated") {
+    return {
+      kind: "bad-request",
+      message: "Unsupported Notion automation event config",
+    };
+  }
+  const eventConfig =
+    "scope" in config
+      ? config.scope.type === "page"
+        ? {
+            provider: "notion" as const,
+            event: "page_content_updated" as const,
+            pageUrl: config.scope.page.rawUrl ?? config.scope.page.url,
+          }
+        : {
+            provider: "notion" as const,
+            event: "page_content_updated" as const,
+            databaseUrl:
+              config.scope.dataSource.rawUrl ?? config.scope.dataSource.url,
+          }
+      : config;
+  const prepared = await prepareNotionPageContentUpdatedEventConfigForPersist(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      publicBrand,
+      eventConfig,
+    },
+    signal,
+  );
+  return prepared.kind === "ok"
+    ? preparedOfficialEvent(prepared.eventConfig)
+    : prepared;
+}
+
+async function prepareOfficialGmailEvent(
+  db: Db,
+  input: CreateGmailEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const prepared = await prepareGmailEventConfigForPersist(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      eventType: input.eventType,
+      eventConfig: input.eventConfig,
+    },
+    signal,
+  );
+  return prepared.kind === "ok"
+    ? preparedOfficialEvent(prepared.eventConfig)
+    : prepared;
+}
+
+async function prepareOfficialGithubEvent(
+  db: Db,
+  input: CreateGithubEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const prepared = await prepareGithubAutomationEventConfig(db, {
+    orgId: input.orgId,
+    eventType: input.eventType,
+    eventConfig: input.eventConfig,
+  });
+  signal.throwIfAborted();
+  return prepared.kind === "ok"
+    ? preparedOfficialEvent(prepared.eventConfig)
+    : prepared;
+}
+
+async function prepareOfficialGoogleFormsEvent(
+  db: Db,
+  input: CreateGoogleFormsEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  if (!("formUrl" in input.eventConfig)) {
+    return {
+      kind: "bad-request",
+      message: "formUrl is required for Google Forms response automations",
+    };
+  }
+  const prepared = await prepareGoogleFormsResponseEventConfigForPersist(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      eventConfig: input.eventConfig,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return prepared.kind === "ok"
+    ? preparedOfficialEvent(prepared.eventConfig, {
+        googleFormsSeedCursor: prepared.seedCursor,
+      })
+    : prepared;
+}
+
+function preserveGoogleFormsCursorForSameTarget(
+  currentConfig: unknown,
+  result: OfficialAutomationEventPreparationResult,
+): OfficialAutomationEventPreparationResult {
+  if (result.kind !== "ok") {
+    return result;
+  }
+  const current =
+    googleFormsResponseSubmittedEventConfigSchema.safeParse(currentConfig);
+  const next = googleFormsResponseSubmittedEventConfigSchema.safeParse(
+    result.preparation.eventConfig,
+  );
+  if (
+    !current.success ||
+    !next.success ||
+    current.data.form.id !== next.data.form.id
+  ) {
+    return result;
+  }
+  return preparedOfficialEvent(result.preparation.eventConfig);
+}
+
+async function prepareOfficialGoogleFormsReconfiguration(
+  db: Db,
+  input: CreateGoogleFormsEventAutomationInput,
+  currentConfig: unknown,
+  enabled: boolean,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  if (!enabled) {
+    return googleFormsWorkflowAutomationsDisabledResult();
+  }
+  return preserveGoogleFormsCursorForSameTarget(
+    currentConfig,
+    await prepareOfficialGoogleFormsEvent(db, input, signal),
+  );
+}
+
+async function prepareOfficialGoogleMeetEvent(
+  db: Db,
+  input: CreateGoogleMeetEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const eventConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
+    input.eventConfig,
+  );
+  const subscription =
+    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+      {
+        db,
+        orgId: input.orgId,
+        userId: input.member.userId,
+      },
+      signal,
+    );
+  signal.throwIfAborted();
+  return subscription.kind === "ok"
+    ? preparedOfficialEvent(eventConfig)
+    : { kind: "bad-request", message: subscription.message };
+}
+
+async function prepareOfficialStripeEvent(
+  db: Db,
+  input: CreateStripeInvoicePaidEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const readiness = await resolveStripeInvoicePaidAutomationBinding(
+    {
+      db,
+      orgId: input.orgId,
+      userId: input.member.userId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (readiness.kind === "bad_request") {
+    return { kind: "bad-request", message: readiness.message };
+  }
+  return preparedOfficialEvent(
+    stripeInvoicePaidEventConfigSchema.parse({
+      ...input.eventConfig,
+      ...readiness.binding,
+    }),
+  );
+}
+
+export const prepareOfficialAutomationReconfiguration$ = command(
+  async (
+    { get, set },
+    args: PrepareOfficialAutomationReconfigurationInput,
+    signal: AbortSignal,
+  ): Promise<OfficialAutomationEventPreparationResult> => {
+    const db = set(writeDb$);
+    const owned = await loadOwnedAutomation(db, {
+      orgId: args.input.orgId,
+      member: args.input.member,
+      automationId: args.automationId,
+    });
+    signal.throwIfAborted();
+    if ("kind" in owned) {
+      return owned;
+    }
+    const input = args.input;
+    const automation = owned.automation;
+    if (
+      automationCreateInputIsSchedule(input) ||
+      automation.kind !== "event" ||
+      automation.officialBlueprintKey === null ||
+      automation.workflowId !== input.workflowId ||
+      automation.eventType !== input.eventType
+    ) {
+      return {
+        kind: "conflict",
+        message: "Official Workflow Blueprint structure changed",
+      };
+    }
+    if (automationCreateInputIsChatRunFinished(input)) {
+      return await prepareOfficialChatRunFinishedEvent(db, input, signal);
+    }
+    if (automationCreateInputIsGmail(input)) {
+      return await prepareOfficialGmailEvent(db, input, signal);
+    }
+    if (automationCreateInputIsGithub(input)) {
+      return await prepareOfficialGithubEvent(db, input, signal);
+    }
+    if (automationCreateInputIsGoogleCalendar(input)) {
+      return preparedOfficialEvent(
+        parseGoogleCalendarEventConfig(input.eventType, input.eventConfig),
+      );
+    }
+    if (automationCreateInputIsGoogleForms(input)) {
+      const enabled = await get(
+        googleFormsWorkflowAutomationCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      return await prepareOfficialGoogleFormsReconfiguration(
+        db,
+        input,
+        automation.eventConfig,
+        enabled,
+        signal,
+      );
+    }
+    if (automationCreateInputIsGoogleMeet(input)) {
+      return await prepareOfficialGoogleMeetEvent(db, input, signal);
+    }
+    if (automationCreateInputIsNotion(input)) {
+      const enabled = await get(
+        notionWorkflowAutomationCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      return enabled
+        ? await prepareOfficialNotionEvent(db, input, args.publicBrand, signal)
+        : notionWorkflowAutomationsDisabledResult();
+    }
+    if (automationCreateInputIsStrapi(input)) {
+      return await prepareOfficialStrapiEvent(db, input, signal);
+    }
+    if (automationCreateInputIsStripeInvoicePaid(input)) {
+      const enabled = await get(
+        stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      return enabled
+        ? await prepareOfficialStripeEvent(db, input, signal)
+        : stripeInvoicePaidWorkflowAutomationsDisabledResult();
+    }
+    if (input.eventType === "webhook-received") {
+      return preparedOfficialEvent(
+        input.eventConfig ?? defaultWebhookReceivedEventConfig(),
+      );
+    }
+    return { kind: "not-found" };
   },
 );
 
@@ -3037,6 +3614,12 @@ export const updateWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
+    if (automation.officialBlueprintKey !== null) {
+      return {
+        kind: "conflict",
+        message: OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
+      };
+    }
 
     if (automation.kind === "event") {
       return await set(
@@ -3142,6 +3725,12 @@ export const runOwnedWorkflowAutomationNow$ = command(
       return owned;
     }
     const { automation } = owned;
+    if (automation.officialBlueprintKey !== null) {
+      return {
+        kind: "conflict",
+        message: OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
+      };
+    }
     if (
       automation.eventType === "strapi-entry-published" &&
       !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
@@ -3258,6 +3847,12 @@ export const deleteWorkflowAutomation$ = command(
     signal.throwIfAborted();
     if ("kind" in owned) {
       return owned;
+    }
+    if (owned.automation.officialBlueprintKey !== null) {
+      return {
+        kind: "conflict",
+        message: OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
+      };
     }
     const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
       orgId: owned.automation.orgId,
@@ -3439,18 +4034,147 @@ async function ensureEnabledAutomationEventWatch(
     : { kind: "bad-request", message: result.message };
 }
 
+function sameOptionalAutomationDate(
+  left: Date | null,
+  right: Date | null,
+): boolean {
+  return left === null || right === null
+    ? left === right
+    : left.getTime() === right.getTime();
+}
+
 async function restoreDisabledWorkflowAutomation(
   db: Db,
-  automation: AutomationRow,
+  previousAutomation: AutomationRow,
+  enabledAutomation: AutomationRow,
 ): Promise<void> {
-  await db
+  const officialReconciliationStatus =
+    previousAutomation.officialBlueprintKey === null
+      ? null
+      : previousAutomation.officialReconciliationStatus;
+  if (
+    previousAutomation.officialBlueprintKey !== null &&
+    officialReconciliationStatus === null
+  ) {
+    throw new Error("Official Workflow automation state is incomplete");
+  }
+  if (officialReconciliationStatus === null) {
+    await db
+      .update(workflowAutomations)
+      .set({
+        enabled: previousAutomation.enabled,
+        nextRunAt: previousAutomation.nextRunAt,
+        updatedAt: nowDate(),
+      })
+      .where(eq(workflowAutomations.id, previousAutomation.id));
+    return;
+  }
+  await db.transaction(async (tx) => {
+    const [current] = await tx
+      .select(workflowAutomationColumns())
+      .from(workflowAutomations)
+      .where(eq(workflowAutomations.id, previousAutomation.id))
+      .for("update")
+      .limit(1);
+    if (!current || current.officialReconciliationStatus !== "reconciling") {
+      return;
+    }
+    const stateUnchanged =
+      current.enabled === enabledAutomation.enabled &&
+      sameOptionalAutomationDate(
+        current.nextRunAt,
+        enabledAutomation.nextRunAt,
+      ) &&
+      current.officialIntendedEnabled ===
+        enabledAutomation.officialIntendedEnabled;
+    await tx
+      .update(workflowAutomations)
+      .set({
+        ...(stateUnchanged
+          ? {
+              enabled: previousAutomation.enabled,
+              nextRunAt: previousAutomation.nextRunAt,
+              officialIntendedEnabled:
+                previousAutomation.officialIntendedEnabled,
+            }
+          : {}),
+        officialReconciliationStatus,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(workflowAutomations.id, previousAutomation.id),
+          eq(workflowAutomations.officialReconciliationStatus, "reconciling"),
+        ),
+      );
+  });
+}
+
+function officialAutomationReconfigurationFailure(
+  automation: AutomationRow,
+): AutomationActionFailure | null {
+  return automation.officialBlueprintKey !== null &&
+    automation.officialReconciliationStatus === "reconciling"
+    ? {
+        kind: "conflict",
+        message: OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+      }
+    : null;
+}
+
+function officialAutomationLifecycleCondition(automation: AutomationRow) {
+  if (automation.officialBlueprintKey === null) {
+    return eq(workflowAutomations.id, automation.id);
+  }
+  if (automation.officialReconciliationStatus === null) {
+    throw new Error("Official Workflow automation state is incomplete");
+  }
+  return and(
+    eq(workflowAutomations.id, automation.id),
+    eq(workflowAutomations.updatedAt, automation.updatedAt),
+    eq(
+      workflowAutomations.officialReconciliationStatus,
+      automation.officialReconciliationStatus,
+    ),
+  );
+}
+
+async function finalizeEnabledOfficialAutomation(
+  db: Db,
+  previousAutomation: AutomationRow,
+  enabledAutomation: AutomationRow,
+  signal: AbortSignal,
+): Promise<AutomationRow> {
+  if (
+    previousAutomation.officialBlueprintKey === null ||
+    enabledAutomation.kind !== "event"
+  ) {
+    return enabledAutomation;
+  }
+  if (previousAutomation.officialReconciliationStatus === null) {
+    throw new Error("Official Workflow automation state is incomplete");
+  }
+  const [finalized] = await db
     .update(workflowAutomations)
     .set({
-      enabled: false,
-      nextRunAt: automation.nextRunAt,
+      officialReconciliationStatus:
+        previousAutomation.officialReconciliationStatus,
       updatedAt: nowDate(),
     })
-    .where(eq(workflowAutomations.id, automation.id));
+    .where(
+      and(
+        eq(workflowAutomations.id, enabledAutomation.id),
+        eq(workflowAutomations.officialReconciliationStatus, "reconciling"),
+      ),
+    )
+    .returning(workflowAutomationColumns());
+  signal.throwIfAborted();
+  if (!finalized) {
+    throw new Error(
+      "Official Workflow lifecycle reconciliation lost ownership",
+    );
+  }
+  return finalized;
 }
 
 async function ensureEnabledAutomationEventWatchWithRollback(
@@ -3462,35 +4186,60 @@ async function ensureEnabledAutomationEventWatchWithRollback(
   },
   signal: AbortSignal,
 ): Promise<AutomationActionFailure | null> {
-  const failure = await onRejection(
-    ensureEnabledAutomationEventWatch(
-      {
-        db: args.db,
-        automation: args.enabledAutomation,
-        hadConsumer: args.hadConsumer,
+  const rollback = async (): Promise<void> => {
+    const cleanupSignal = new AbortController().signal;
+    await onRejection(
+      (async () => {
+        await restoreDisabledWorkflowAutomation(
+          args.db,
+          args.previousAutomation,
+          args.enabledAutomation,
+        );
+        await reconcileAutomationEventWatches(
+          {
+            db: args.db,
+            automations: [args.enabledAutomation],
+          },
+          cleanupSignal,
+        );
+      })(),
+      async () => {
+        if (args.previousAutomation.officialBlueprintKey === null) {
+          return;
+        }
+        await args.db
+          .update(workflowAutomations)
+          .set({
+            officialReconciliationStatus: "failed",
+            updatedAt: nowDate(),
+          })
+          .where(
+            and(
+              eq(workflowAutomations.id, args.previousAutomation.id),
+              isNotNull(workflowAutomations.officialBlueprintKey),
+            ),
+          );
       },
-      signal,
-    ),
-    async () => {
-      await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
-    },
+    );
+  };
+  return await onRejection(
+    (async () => {
+      const failure = await ensureEnabledAutomationEventWatch(
+        {
+          db: args.db,
+          automation: args.enabledAutomation,
+          hadConsumer: args.hadConsumer,
+        },
+        signal,
+      );
+      if (failure) {
+        await rollback();
+      }
+      signal.throwIfAborted();
+      return failure;
+    })(),
+    rollback,
   );
-  signal.throwIfAborted();
-  if (!failure) {
-    return null;
-  }
-
-  await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
-  signal.throwIfAborted();
-  await reconcileAutomationEventWatches(
-    {
-      db: args.db,
-      automations: [args.enabledAutomation],
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-  return failure;
 }
 
 async function persistEnabledWorkflowAutomation(
@@ -3505,6 +4254,7 @@ async function persistEnabledWorkflowAutomation(
   signal: AbortSignal,
 ): Promise<
   | { readonly status: "team-required" }
+  | { readonly status: "conflict" }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
 > {
   return await db.transaction(async (tx) => {
@@ -3532,11 +4282,18 @@ async function persistEnabledWorkflowAutomation(
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
-        ...(args.inheritedAutonomyBudget === undefined
-          ? {}
-          : { autonomyBudget: args.inheritedAutonomyBudget }),
+        ...(args.automation.officialBlueprintKey !== null
+          ? {
+              officialIntendedEnabled: true,
+              ...(args.automation.kind === "event"
+                ? { officialReconciliationStatus: "reconciling" as const }
+                : {}),
+            }
+          : args.inheritedAutonomyBudget === undefined
+            ? {}
+            : { autonomyBudget: args.inheritedAutonomyBudget }),
       })
-      .where(eq(workflowAutomations.id, args.automation.id))
+      .where(officialAutomationLifecycleCondition(args.automation))
       .returning(workflowAutomationColumns());
     if (
       enabledRow &&
@@ -3548,8 +4305,85 @@ async function persistEnabledWorkflowAutomation(
         .set({ disabledReason: null, updatedAt: args.now })
         .where(eq(workflowWebhookAutomations.automationId, args.automation.id));
     }
-    return { status: "ok", row: enabledRow };
+    return !enabledRow && args.automation.officialBlueprintKey !== null
+      ? { status: "conflict" }
+      : { status: "ok", row: enabledRow };
   });
+}
+
+async function persistAndReconcileEnabledWorkflowAutomation(
+  db: Db,
+  args: {
+    readonly automation: AutomationRow;
+    readonly orgId: string;
+    readonly memberUserId: string;
+    readonly nextRunAt: Date | null;
+    readonly now: Date;
+    readonly inheritedAutonomyBudget?: number;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const watchHadConsumer = await enabledWatchHadConsumer(
+    { db, automation: args.automation },
+    signal,
+  );
+  const enabled = await persistEnabledWorkflowAutomation(
+    db,
+    {
+      automation: args.automation,
+      orgId: args.orgId,
+      nextRunAt: args.nextRunAt,
+      now: args.now,
+      inheritedAutonomyBudget: args.inheritedAutonomyBudget,
+    },
+    signal,
+  );
+  if (enabled.status === "team-required") {
+    signal.throwIfAborted();
+    return workflowWebhookTeamRequiredResult();
+  }
+  if (enabled.status === "conflict") {
+    signal.throwIfAborted();
+    return {
+      kind: "conflict",
+      message: OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+    };
+  }
+  if (!enabled.row) {
+    throw new Error("Failed to enable workflow automation");
+  }
+  const watchFailure = await ensureEnabledAutomationEventWatchWithRollback(
+    {
+      db,
+      previousAutomation: args.automation,
+      enabledAutomation: enabled.row,
+      hadConsumer: watchHadConsumer,
+    },
+    signal,
+  );
+  if (watchFailure) {
+    return watchFailure;
+  }
+  const row = await finalizeEnabledOfficialAutomation(
+    db,
+    args.automation,
+    enabled.row,
+    signal,
+  );
+  const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
+    orgId: row.orgId,
+    userId: row.ownerUserId,
+    workflowId: row.workflowId,
+  });
+  signal.throwIfAborted();
+  await publishThreadBoundWorkflowAutomationChanged(
+    args.memberUserId,
+    chatThreadId,
+  );
+  signal.throwIfAborted();
+  const summary = await rowToSummary(db, row, { chatThreadId });
+  signal.throwIfAborted();
+  return { kind: "ok", summary };
 }
 
 async function validateEventAutomationEnableReadiness(
@@ -3622,6 +4456,11 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
+    const reconfigurationFailure =
+      officialAutomationReconfigurationFailure(automation);
+    if (reconfigurationFailure) {
+      return reconfigurationFailure;
+    }
     const stripeFailure = await set(validateStripeFeature$, automation, signal);
     signal.throwIfAborted();
     if (stripeFailure) {
@@ -3675,8 +4514,6 @@ export const enableWorkflowAutomation$ = command(
             automation.lastRunAt,
           )
         : automation.nextRunAt;
-    const watchArgs = { db: writeDb, automation };
-    const watchHadConsumer = await enabledWatchHadConsumer(watchArgs, signal);
     if (automation.kind === "event") {
       const failure = await set(
         ensureEventAutomationCanBeEnabled$,
@@ -3693,52 +4530,18 @@ export const enableWorkflowAutomation$ = command(
         return failure;
       }
     }
-    const enabled = await persistEnabledWorkflowAutomation(
+    return await persistAndReconcileEnabledWorkflowAutomation(
       writeDb,
       {
         automation,
         orgId: args.orgId,
+        memberUserId: args.member.userId,
         nextRunAt,
         now,
         inheritedAutonomyBudget: args.inheritedAutonomyBudget,
       },
       signal,
     );
-    if (enabled.status === "team-required") {
-      signal.throwIfAborted();
-      return workflowWebhookTeamRequiredResult();
-    }
-    const row = enabled.row;
-    if (!row) {
-      throw new Error("Failed to enable workflow automation");
-    }
-    const watchFailure = await ensureEnabledAutomationEventWatchWithRollback(
-      {
-        db: writeDb,
-        previousAutomation: automation,
-        enabledAutomation: row,
-        hadConsumer: watchHadConsumer,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (watchFailure) {
-      return watchFailure;
-    }
-    const chatThreadId = await loadWorkflowUserAutomationThreadId(writeDb, {
-      orgId: row.orgId,
-      userId: row.ownerUserId,
-      workflowId: row.workflowId,
-    });
-    signal.throwIfAborted();
-    await publishThreadBoundWorkflowAutomationChanged(
-      args.member.userId,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
-    const summary = await rowToSummary(writeDb, row, { chatThreadId });
-    signal.throwIfAborted();
-    return { kind: "ok", summary };
   },
 );
 
@@ -3754,16 +4557,35 @@ export const disableWorkflowAutomation$ = command(
     if ("kind" in owned) {
       return owned;
     }
+    const reconfigurationFailure = officialAutomationReconfigurationFailure(
+      owned.automation,
+    );
+    if (reconfigurationFailure) {
+      return reconfigurationFailure;
+    }
     const now = nowDate();
     const nextRunAt =
       owned.automation.kind === "schedule" ? null : owned.automation.nextRunAt;
     const [row] = await writeDb
       .update(workflowAutomations)
-      .set({ enabled: false, nextRunAt, updatedAt: now })
-      .where(eq(workflowAutomations.id, owned.automation.id))
+      .set({
+        enabled: false,
+        nextRunAt,
+        updatedAt: now,
+        ...(owned.automation.officialBlueprintKey === null
+          ? {}
+          : { officialIntendedEnabled: false }),
+      })
+      .where(officialAutomationLifecycleCondition(owned.automation))
       .returning(workflowAutomationColumns());
     signal.throwIfAborted();
     if (!row) {
+      if (owned.automation.officialBlueprintKey !== null) {
+        return {
+          kind: "conflict",
+          message: OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+        };
+      }
       throw new Error("Failed to disable workflow automation");
     }
     await reconcileAutomationEventWatches(

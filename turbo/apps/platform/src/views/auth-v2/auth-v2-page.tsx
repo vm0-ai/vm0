@@ -38,6 +38,7 @@ export function AuthV2Page(props: AuthV2PageProps) {
         />
       ) : props.mode === "sign-in" ? (
         <AuthV2SignInCard
+          authBrand={props.platformContext.authBrand}
           navigation={props.platformContext.navigation}
           signals={props.signInSignals}
         />

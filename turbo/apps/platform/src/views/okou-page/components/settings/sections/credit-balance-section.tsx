@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/billing";
-import { ArrowRight, ChevronRight, Users } from "lucide-react";
+import { ArrowRight, ChevronRight, Loader2, Users } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -26,9 +27,13 @@ import {
 } from "../../org-manage/org-usage-tab.tsx";
 import { UserAvatar } from "../../../../components/avatar.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
+import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
 import { usagePackCreditsAsync$ } from "../../../../../signals/okou-page/billing.ts";
-import { setSettingsActiveSection$ } from "../../../../../signals/okou-page/settings/settings-dialog.ts";
+import {
+  openSettingsUsagePackConfiguration$,
+  setSettingsActiveSection$,
+} from "../../../../../signals/okou-page/settings/settings-dialog.ts";
 import {
   requestBuyCreditsScroll$,
   setBillingSubPage$,
@@ -40,6 +45,7 @@ import {
   usagePackMembersDialogOpen$,
 } from "../../../../../signals/okou-page/settings/personal-usage-record.ts";
 import { formatLocalizedNumber } from "../../../../../i18n/format.ts";
+import { detach, Reason } from "../../../../../signals/utils.ts";
 
 interface UsagePackSegment {
   readonly key: "purchased" | "bonus";
@@ -501,7 +507,38 @@ function UsagePackMemberBalancesDialog({
   );
 }
 
+function UsagePackCreditActions({
+  loading,
+  onConfigure,
+}: {
+  loading: boolean;
+  onConfigure: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="-mx-5 -mb-4 mt-4 flex items-center justify-end gap-3 border-t border-border px-5 py-[18px]">
+      <Button
+        type="button"
+        variant="default"
+        size="sm"
+        data-testid="usage-pack-credit-configure"
+        disabled={loading}
+        onClick={onConfigure}
+      >
+        {loading ? <Loader2 className="animate-spin" /> : null}
+        {t(($) => {
+          return $.billing.plans.usagePacks.configurePackages;
+        })}
+      </Button>
+    </div>
+  );
+}
+
 function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
+  const pageSignal = useGet(pageSignal$);
+  const [configureLoadable, openConfiguration] = useLoadableSet(
+    openSettingsUsagePackConfiguration$,
+  );
   const creditsLoadable = useLoadable(usagePackCreditsAsync$);
   if (creditsLoadable.state === "hasError") {
     return null;
@@ -538,6 +575,14 @@ function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
             totalCredits={data.totalCredits}
           />
           <UsagePackCreditDetails data={data} />
+          {isAdmin && data.hasUsagePack ? (
+            <UsagePackCreditActions
+              loading={configureLoadable.state === "loading"}
+              onConfigure={() => {
+                detach(openConfiguration(pageSignal), Reason.DomCallback);
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

@@ -459,9 +459,9 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         sandbox_prepared,
     } = hooks;
     // The gate intentionally starts before every fresh preparation stage and remains held through
-    // the real process spawn. Current production tails span both factory work and the later
-    // mount/restore/storage stages, so a narrower Firecracker-only gate would allow the same cohort
-    // to reconverge before api_to_spawn completes.
+    // the authenticated Agent-ready boundary. Current production tails span both factory work and
+    // the later mount/restore/storage/bootstrap stages, so a narrower Firecracker-only gate would
+    // allow the same cohort to reconverge before Agent readiness completes.
     let admission_started = Instant::now();
     let admission_lease = match config
         .pre_spawn_admission

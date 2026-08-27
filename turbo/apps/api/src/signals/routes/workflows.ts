@@ -83,6 +83,10 @@ import {
 import type { RouteEntry } from "../route-entry";
 import { sendNormalEvent$ } from "../services/chat-events.command";
 import type { Tx } from "../../lib/db-types";
+import {
+  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
+  OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE,
+} from "../services/official-workflow-constants";
 
 const log = logger("api:workflow-connector-readiness");
 
@@ -532,6 +536,9 @@ const connectorReadinessInner$ = command(
     if (!visible) {
       return workflowNotFound(params.workflowId);
     }
+    if (visible.workflow.officialDefinitionName !== null) {
+      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
+    }
 
     const detected = await settle(
       set(
@@ -598,6 +605,9 @@ const updateWorkflowInner$ = command(
     signal.throwIfAborted();
     if (!visible) {
       return workflowNotFound(params.workflowId);
+    }
+    if (visible.workflow.officialDefinitionName !== null) {
+      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
     }
 
     const permissionError = requireWorkflowPermission(
@@ -678,6 +688,11 @@ const deleteWorkflowInner$ = command(
     signal.throwIfAborted();
     if (!visible) {
       return workflowNotFound(params.workflowId);
+    }
+    if (visible.workflow.officialDefinitionName !== null) {
+      return conflict(
+        "Uninstall Official Workflows through the Official installation endpoint",
+      );
     }
 
     const permissionError = requireWorkflowPermission(
@@ -943,6 +958,9 @@ const copyWorkflowInner$ = command(
     if (!source) {
       return workflowNotFound(params.workflowId);
     }
+    if (source.workflow.officialDefinitionName !== null) {
+      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
+    }
 
     const targetAgent = await loadAgentForConfiguration(writeDb, {
       orgId: auth.orgId,
@@ -1070,6 +1088,9 @@ const prepareWorkflowChatThreadInner$ = command(
       return workflowNotFound(params.workflowId);
     }
     const { workflow, agent } = visible;
+    if (workflow.officialDefinitionName !== null) {
+      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
+    }
 
     if (agent.visibility === "private" && agent.owner !== auth.userId) {
       return forbidden("Only the private agent owner can chat with this agent");
@@ -1114,6 +1135,9 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return workflowNotFound(params.workflowId);
   }
   const { workflow, agent } = visible;
+  if (workflow.officialDefinitionName !== null) {
+    return conflict(OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE);
+  }
 
   // The workflow is run on its owning agent; the caller must be able to run
   // that agent (public agents are runnable by any member, private ones only by
@@ -1280,6 +1304,9 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return loaded;
   }
   const { workflow, agent } = loaded;
+  if (workflow.officialDefinitionName !== null) {
+    return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
+  }
 
   if (workflow.ownerUserId !== member.userId) {
     return forbidden("Only the workflow owner can publish this workflow");
@@ -1334,6 +1361,9 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if ("status" in loaded) {
     return loaded;
+  }
+  if (loaded.workflow.officialDefinitionName !== null) {
+    return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
   }
   const reviewError = requireAgentWritePermission(
     loaded.agent,

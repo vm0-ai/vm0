@@ -98,7 +98,7 @@ pub use exec_operation::{
     ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
     ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
     ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
-    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
+    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
@@ -354,7 +354,8 @@ impl VsockHost {
     /// Start a supervised exec operation and wait for its PID acknowledgement.
     ///
     /// `request.start_timeout` bounds both start-frame writing and waiting for
-    /// `MSG_EXEC_STARTED`. If it elapses after the complete start frame is
+    /// `MSG_EXEC_STARTED` for workloads or `MSG_EXEC_AGENT_READY` for Agents.
+    /// If it elapses after the complete start frame is
     /// written, the host sends `MSG_EXEC_CANCEL` before returning a timeout
     /// error. If the bounded cancel write also times out, the connection is
     /// poisoned. If the cancel write succeeds, the connection remains open but
@@ -365,6 +366,19 @@ impl VsockHost {
         request: SupervisedExecRequest<'_>,
     ) -> io::Result<SupervisedExecHandle> {
         exec_operation::start_supervised_exec_on_shared(&self.shared, request).await
+    }
+
+    /// Start a supervised process whose streamed stdout is delivered through
+    /// the sandbox process-output queue.
+    ///
+    /// The request must not stream stderr. When stdout streams, the returned
+    /// handle owns a bounded [`sandbox::ProcessOutputReceiver`] until it is
+    /// taken with [`SupervisedExecHandle::take_process_output_receiver`].
+    pub async fn start_supervised_process(
+        &self,
+        request: SupervisedExecRequest<'_>,
+    ) -> io::Result<SupervisedExecHandle> {
+        exec_operation::start_supervised_process_on_shared(&self.shared, request).await
     }
 
     /// Run a capture-only exec operation with default capture limits.

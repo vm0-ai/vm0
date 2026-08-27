@@ -28,17 +28,25 @@ pub struct SecretMasker {
 }
 
 impl SecretMasker {
-    /// Build a masker from an owned guest-agent config.
+    /// Build a masker from a guest-agent config.
+    ///
+    /// The config's `secret_values` field is parsed with [`Self::from_raw`], so
+    /// the same input format and silent omission rules apply.
     pub fn from_config(config: &env::GuestConfig) -> Self {
         Self::from_raw(&config.secret_values)
     }
 
-    /// Build a masker from a raw comma-separated base64-encoded secret string.
+    /// Build a masker from a raw, comma-separated string of Base64-encoded secrets.
     ///
-    /// For each secret of at least five UTF-8 bytes, the normal matcher stores
-    /// plain, base64-encoded, and percent-encoded variants. Diagnostic-only
-    /// multiline variants, including individual lines, use the same byte
-    /// threshold for bounded stderr masking.
+    /// Each component is trimmed before processing. Empty components, invalid
+    /// Base64, decoded values that are not valid UTF-8, decoded empty values,
+    /// and decoded values shorter than five UTF-8 bytes are ignored. These
+    /// omissions are silent: this constructor returns a masker without an
+    /// error or diagnostic, and only successfully decoded values of at least
+    /// five UTF-8 bytes are masked. For each eligible secret, the normal
+    /// matcher stores plain, Base64-encoded, and percent-encoded variants.
+    /// Diagnostic-only multiline variants, including individual lines, use the
+    /// same byte threshold for bounded stderr masking.
     pub fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
             return Self::empty();

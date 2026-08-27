@@ -49,8 +49,7 @@ const CURRENT_WEBSITE_TEMPLATE_ARCHIVE_VERSION_IDS = {
 // pre-cutover renderer packages, the renderer packages the direct-HTML cutover
 // replaced, and each later direct-HTML refresh. Released CLI contexts pinned to
 // any of those digests still resolve to their own immutable R2 versions. Remove
-// the switch only after #26672's rollout and run-context drain, then remove this
-// map under #26519 after the remaining rollback window closes.
+// this map under #26519 after the remaining rollback window closes.
 const PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:black-slabs": {
     "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3":

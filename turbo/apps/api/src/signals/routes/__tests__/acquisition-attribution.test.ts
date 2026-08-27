@@ -117,6 +117,41 @@ describe("POST /api/attribution/signup", () => {
     expect(response.status).toBe(401);
   });
 
+  it.each([
+    { label: "null", userId: null },
+    { label: "empty", userId: "" },
+  ] as const)(
+    "rejects an authenticated Clerk session with a $label user id",
+    async ({ userId }) => {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return { userId, orgId: null, orgRole: null };
+        },
+      });
+
+      const response = await accept(
+        client().recordSignup({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            attribution: {
+              vm0_source: "presentation",
+            },
+          },
+        }),
+        [401],
+      );
+
+      expect(response.body).toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+      expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+      expect(
+        context.mocks.clerk.users.updateUserMetadata,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it("writes first-touch attribution to Clerk private metadata", async () => {
     mockNow(new Date(RECORDED_AT_ISO));
     const userId = `user_${randomUUID()}`;

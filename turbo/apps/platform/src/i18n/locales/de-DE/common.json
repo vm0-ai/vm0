@@ -516,7 +516,6 @@
         "arrow": "Pfeil",
         "box": "Rechteck",
         "pen": "Zeichnen",
-        "redact": "Schwärzen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -656,6 +655,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
+      "introVideo": "Intro-Video",
       "multiAccent": "Multi-Akzent",
       "nextSlide": "Vorschau der nächsten Folie",
       "noMatches": "Keine Übereinstimmungen",
@@ -673,6 +673,7 @@
       "searchConnector": "Vorlagen suchen",
       "searchConnectors": "Vorlagen suchen",
       "selected": "Vorlage: {{title}}",
+      "selectIntroVideo": "Wählen Sie die Intro-Video-Vorlage {{title}} aus.",
       "selectStyle": "Stil auswählen {{style}}",
       "selectTemplate": "Wählen Sie die Vorlage {{title}} aus.",
       "selectVideo": "Wählen Sie die Videovorlage {{title}} aus.",
@@ -1084,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Aktuelle Anmeldung verwenden",
         "addAccount": "Konto hinzufügen",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
@@ -1114,6 +1114,7 @@
         "hidePassword": "Passwort ausblenden",
         "identifierLabel": "E-Mail-Adresse oder Benutzername",
         "identifierPlaceholder": "E-Mail-Adresse oder Benutzernamen eingeben",
+        "lastUsed": "Zuletzt verwendet",
         "methodsHelpPrompt": "Keine dieser Methoden verfügbar?",
         "newPasswordLabel": "Neues Passwort",
         "newPasswordSubtitle": "Es existiert bereits ein Konto mit einer nicht verifizierten E-Mail Adresse. Bitte setzen Sie Ihr Passwort zur Sicherheit zurück.",
@@ -1945,6 +1946,7 @@
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
+      "back": "Zurück",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
       "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",
@@ -2254,6 +2256,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustration",
+        "introVideo": "Intro-Video",
         "presentation": "Präsentation",
         "video": "Video",
         "website": "Webseite",

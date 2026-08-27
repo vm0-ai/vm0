@@ -112,6 +112,7 @@ import {
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
+  type ChatThreadEventTransaction,
 } from "./chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
@@ -437,7 +438,6 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly introVideoTemplatesEnabled: boolean;
-  readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
@@ -1063,10 +1063,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.IntroVideoTemplates,
       context,
     ),
-    latestWebsiteTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.LatestWebsiteTemplates,
-      context,
-    ),
     latestPresentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.LatestPresentationTemplates,
       context,
@@ -1100,8 +1096,6 @@ function resolveSelectedTemplateContext(
       explicit: runtimeBody.primaryTemplate,
       explicitTemplates: runtimeBody.templates,
       introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
       latestPresentationTemplatesEnabled:
         featureSwitches.latestPresentationTemplatesEnabled,
       presentationTemplatesEnabled:
@@ -1138,8 +1132,6 @@ async function validateGenerationTemplatePrompt(
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
       introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
       latestPresentationTemplatesEnabled:
         featureSwitches.latestPresentationTemplatesEnabled,
       presentationTemplatesEnabled:
@@ -1691,8 +1683,9 @@ async function resolveThread(params: {
   };
 }
 
-function appendUnassociatedUserMessage(params: {
+interface AppendUnassociatedUserMessageParams {
   readonly db: Db;
+  readonly timing?: ApiDispatchTimingCollector;
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -1706,116 +1699,170 @@ function appendUnassociatedUserMessage(params: {
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly publicBrand: PublicBrand;
-}): Promise<ClientEventIdResolution> {
-  return params.db.transaction(async (tx) => {
-    await tx
-      .update(chatThreads)
-      .set({
-        draftUserMessage: null,
-        draftAttachments: null,
-      })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
+}
 
-    const explicitId = params.clientEventId ?? undefined;
-    const fileMetadata = params.attachFileMetadata;
-    const event: NewChatEvent = {
-      ...(explicitId ? { id: explicitId } : {}),
-      chatThreadId: params.threadId,
-      eventType: "input.prompt",
-      userMessage: params.userMessage,
-      runId: null,
-      ...(params.triggerSource === "web"
-        ? {
-            contextType: "web",
-            contextId: webChatPublicBrandContextId(params.publicBrand),
-          }
-        : {}),
-      ...(params.triggerSource === "agent" && params.agentRunSource
-        ? {
-            agentRunContext: {
-              sourceRunId: params.agentRunSource.runId,
-              sourceChatThreadId: params.agentRunSource.threadId,
-              sourceAgentId: params.agentRunSource.agentId,
-            },
-          }
-        : {}),
-    };
-    const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event)
-      : await insertChatEvent(tx, event, "id");
-    if (inserted) {
-      await registerCanonicalWebInputAssets(tx, {
-        chatThreadId: params.threadId,
-        userId: params.userId,
-        orgId: params.orgId,
-        files: fileMetadata ?? [],
-      });
-      if (params.touchThreadSort) {
-        await touchChatThreadLastMessageAt(
-          tx,
-          params.threadId,
-          inserted.createdAt,
-          params.chatThreadSortEventId,
-        );
-      }
-      return {
-        kind: "queued",
-        createdAt: inserted.createdAt,
-        inserted: true,
-        messageId: inserted.id,
-      };
-    }
-    if (!explicitId) {
-      throw new Error("Failed to insert unassociated user message");
-    }
-    const [existing] = await tx
-      .select({
-        chatThreadId: chatEvents.chatThreadId,
-        threadUserId: chatThreads.userId,
-        eventType: chatEvents.eventType,
-        content: canonicalChatEventContent(),
-        runId: chatEvents.runId,
-        revokesEventId: chatEvents.revokesEventId,
-        error: canonicalChatEventError(),
-        eventCreatedAt: chatEvents.createdAt,
-        runStatus: agentRuns.status,
-        runCreatedAt: agentRuns.createdAt,
-        replacementEventId: replacementChatEvent.id,
-        replacementRunId: replacementChatEvent.runId,
-        replacementError: canonicalChatEventError(replacementChatEvent.payload),
-        replacementRunStatus: replacementAgentRun.status,
-        replacementRunCreatedAt: replacementAgentRun.createdAt,
-      })
-      .from(chatEvents)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .leftJoin(
-        agentRuns,
-        and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
-      )
-      .leftJoin(
-        replacementChatEvent,
-        eq(replacementChatEvent.revokesEventId, chatEvents.id),
-      )
-      .leftJoin(
-        replacementAgentRun,
-        and(
-          eq(replacementAgentRun.id, replacementChatEvent.runId),
-          ne(replacementChatEvent.eventType, "control.interrupt"),
-        ),
-      )
-      .where(eq(chatEvents.id, explicitId))
-      .limit(1);
-    const resolution = resolveExistingClientEventIdRow(existing, {
-      threadId: params.threadId,
-      userId: params.userId,
-    });
-    return resolution.kind === "available" ? { kind: "conflict" } : resolution;
+async function resolveExistingUnassociatedClientEventId(
+  tx: ChatThreadEventTransaction,
+  params: AppendUnassociatedUserMessageParams,
+  explicitId: string,
+): Promise<ClientEventIdResolution> {
+  const [existing] = await tx
+    .select({
+      chatThreadId: chatEvents.chatThreadId,
+      threadUserId: chatThreads.userId,
+      eventType: chatEvents.eventType,
+      content: canonicalChatEventContent(),
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      error: canonicalChatEventError(),
+      eventCreatedAt: chatEvents.createdAt,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+      replacementEventId: replacementChatEvent.id,
+      replacementRunId: replacementChatEvent.runId,
+      replacementError: canonicalChatEventError(replacementChatEvent.payload),
+      replacementRunStatus: replacementAgentRun.status,
+      replacementRunCreatedAt: replacementAgentRun.createdAt,
+    })
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(
+      agentRuns,
+      and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
+    )
+    .leftJoin(
+      replacementChatEvent,
+      eq(replacementChatEvent.revokesEventId, chatEvents.id),
+    )
+    .leftJoin(
+      replacementAgentRun,
+      and(
+        eq(replacementAgentRun.id, replacementChatEvent.runId),
+        ne(replacementChatEvent.eventType, "control.interrupt"),
+      ),
+    )
+    .where(eq(chatEvents.id, explicitId))
+    .limit(1);
+  const resolution = resolveExistingClientEventIdRow(existing, {
+    threadId: params.threadId,
+    userId: params.userId,
   });
+  return resolution.kind === "available" ? { kind: "conflict" } : resolution;
+}
+
+async function appendUnassociatedUserMessageTransaction(
+  tx: ChatThreadEventTransaction,
+  params: AppendUnassociatedUserMessageParams,
+): Promise<ClientEventIdResolution> {
+  await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+    "nested",
+    () => {
+      return tx
+        .update(chatThreads)
+        .set({
+          draftUserMessage: null,
+          draftAttachments: null,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, params.threadId),
+            eq(chatThreads.userId, params.userId),
+          ),
+        );
+    },
+  );
+
+  const explicitId = params.clientEventId ?? undefined;
+  const fileMetadata = params.attachFileMetadata;
+  const event: NewChatEvent = {
+    ...(explicitId ? { id: explicitId } : {}),
+    chatThreadId: params.threadId,
+    eventType: "input.prompt",
+    userMessage: params.userMessage,
+    runId: null,
+    ...(params.triggerSource === "web"
+      ? {
+          contextType: "web",
+          contextId: webChatPublicBrandContextId(params.publicBrand),
+        }
+      : {}),
+    ...(params.triggerSource === "agent" && params.agentRunSource
+      ? {
+          agentRunContext: {
+            sourceRunId: params.agentRunSource.runId,
+            sourceChatThreadId: params.agentRunSource.threadId,
+            sourceAgentId: params.agentRunSource.agentId,
+          },
+        }
+      : {}),
+  };
+  const inserted = await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+    "nested",
+    () => {
+      return params.revokesEventId
+        ? replaceChatEvent(tx, params.revokesEventId, event)
+        : insertChatEvent(tx, event, "id");
+    },
+  );
+  if (inserted) {
+    await measureApiDispatchTiming(
+      params.timing,
+      "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+      "nested",
+      () => {
+        return registerCanonicalWebInputAssets(tx, {
+          chatThreadId: params.threadId,
+          userId: params.userId,
+          orgId: params.orgId,
+          files: fileMetadata ?? [],
+        });
+      },
+    );
+    if (params.touchThreadSort) {
+      await measureApiDispatchTiming(
+        params.timing,
+        "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort",
+        "nested",
+        () => {
+          return touchChatThreadLastMessageAt(
+            tx,
+            params.threadId,
+            inserted.createdAt,
+            params.chatThreadSortEventId,
+          );
+        },
+      );
+    }
+    return {
+      kind: "queued",
+      createdAt: inserted.createdAt,
+      inserted: true,
+      messageId: inserted.id,
+    };
+  }
+  if (!explicitId) {
+    throw new Error("Failed to insert unassociated user message");
+  }
+  return await resolveExistingUnassociatedClientEventId(tx, params, explicitId);
+}
+
+function appendUnassociatedUserMessage(
+  params: AppendUnassociatedUserMessageParams,
+): Promise<ClientEventIdResolution> {
+  return measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+    "nested",
+    () => {
+      return params.db.transaction((tx) => {
+        return appendUnassociatedUserMessageTransaction(tx, params);
+      });
+    },
+  );
 }
 
 async function clearThreadDraft(
@@ -2680,6 +2727,7 @@ const prepareNormalSend$ = command(
 
 async function queueUnassociatedNormalEvent(params: {
   readonly prepared: PreparedNormalSend;
+  readonly timing?: ApiDispatchTimingCollector;
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly touchThreadSort: boolean;
@@ -2694,6 +2742,7 @@ async function queueUnassociatedNormalEvent(params: {
 }> {
   const resolution = await appendUnassociatedUserMessage({
     db: params.prepared.db,
+    timing: params.timing,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
     orgId: params.orgId,
@@ -3577,6 +3626,7 @@ const sendQueueFirstNormalEvent$ = command(
       async () => {
         return await queueUnassociatedNormalEvent({
           prepared,
+          timing: args.timing,
           body: prepared.body,
           userId: args.userId,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(

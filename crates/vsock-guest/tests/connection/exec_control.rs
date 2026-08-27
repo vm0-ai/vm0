@@ -145,6 +145,8 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         },
     );
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);
+    let ready = read_exec_agent_ready(&mut host_stream, target_seq);
+    assert!(ready.shell_spawn_us > 0);
     let pid = child_guard.read_pid();
     assert_eq!(
         read_exec_stdout_output(&mut host_stream, target_seq),

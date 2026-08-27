@@ -3395,13 +3395,7 @@ mod tests {
             client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
-        JobTelemetry::new(
-            http,
-            RunId::nil(),
-            "test-token".to_string(),
-            "test-runner".to_string(),
-            None,
-        )
+        JobTelemetry::new(http, RunId::nil(), "test-token".to_string(), None)
     }
 
     fn assert_op(ops: &[(String, bool, Option<String>)], action_type: &str, success: bool) {

@@ -412,10 +412,11 @@ impl RunnerSpawnTiming {
         }
     }
 
-    pub(super) fn record_spawn_success_at(
+    pub(super) fn record_agent_ready_success_at(
         mut self,
         telemetry: &mut JobTelemetry,
         spawned_at: Instant,
+        ready_at: Instant,
     ) {
         telemetry.record(
             "runner_executor_start_to_spawn",
@@ -427,6 +428,20 @@ impl RunnerSpawnTiming {
             telemetry.record(
                 "runner_claim_to_spawn",
                 pre_spawn_timing.elapsed_at(spawned_at),
+                true,
+                None,
+            );
+        }
+        telemetry.record(
+            "runner_executor_start_to_agent_ready",
+            ready_at.saturating_duration_since(self.executor_started_at),
+            true,
+            None,
+        );
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing.as_ref() {
+            telemetry.record(
+                "runner_claim_to_agent_ready",
+                pre_spawn_timing.elapsed_at(ready_at),
                 true,
                 None,
             );
@@ -477,11 +492,13 @@ pub(super) fn record_api_latency(
     }
 }
 
-pub(super) fn record_api_to_spawn(
+pub(super) fn record_api_startup_boundaries(
     context: &ExecutionContext,
     telemetry: &mut JobTelemetry,
     sandbox_reuse_result: SandboxReuseResult,
     workspace_reuse_result: WorkspaceReuseResult,
+    shell_started_at: Instant,
+    agent_ready_at: Instant,
 ) {
     let runner_startup_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
         RunnerStartupPath::Sandbox
@@ -490,16 +507,57 @@ pub(super) fn record_api_to_spawn(
     } else {
         RunnerStartupPath::Cold
     };
-    if let Some(duration) = api_latency_duration("api_to_spawn", context) {
+    let observed_at = Instant::now();
+    let observed_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    if let Some(duration) = api_latency_duration_at(
+        "api_to_spawn",
+        context,
+        shell_started_at,
+        observed_at,
+        observed_ms,
+    ) {
         telemetry.record_api_to_spawn(duration, runner_startup_path, sandbox_reuse_result);
+    }
+    if let Some(duration) = api_latency_duration_at(
+        "api_to_agent_ready",
+        context,
+        agent_ready_at,
+        observed_at,
+        observed_ms,
+    ) {
+        telemetry.record_api_to_agent_ready(duration, runner_startup_path, sandbox_reuse_result);
     }
     telemetry.finish_runner_pre_spawn_attribution();
 }
 
+fn api_latency_duration_at(
+    action_type: &str,
+    context: &ExecutionContext,
+    completed_at: Instant,
+    observed_at: Instant,
+    observed_ms: u64,
+) -> Option<Duration> {
+    let completed_ago = observed_at.saturating_duration_since(completed_at);
+    let completed_ago_ms = completed_ago
+        .as_secs()
+        .saturating_mul(1_000)
+        .saturating_add(u64::from(completed_ago.subsec_millis()));
+    let completed_ms = observed_ms.saturating_sub(completed_ago_ms);
+    api_latency_duration_from_ms(action_type, context, completed_ms)
+}
+
 fn api_latency_duration(action_type: &str, context: &ExecutionContext) -> Option<Duration> {
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    api_latency_duration_from_ms(action_type, context, now_ms)
+}
+
+fn api_latency_duration_from_ms(
+    action_type: &str,
+    context: &ExecutionContext,
+    completed_ms: u64,
+) -> Option<Duration> {
     if let Some(api_start_ms) = context.api_start_time {
-        let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-        if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, now_ms) {
+        if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, completed_ms) {
             return Some(duration);
         } else {
             warn_invalid_api_start_time_once(action_type, context, api_start_ms);

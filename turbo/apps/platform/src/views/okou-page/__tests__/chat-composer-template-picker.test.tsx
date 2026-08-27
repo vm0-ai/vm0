@@ -51,6 +51,7 @@ import {
   SUGGESTED_THREAD_ID,
   linkByText,
   tabByText,
+  queryTabByText,
   presentationTemplateGridScrollContainer,
   mockActiveTemplateThread,
   mockAgent,
@@ -574,7 +575,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("keeps the intro-video placeholder out of the picker while switched off", async () => {
+  it("keeps the intro-video category out of the picker while switched off", async () => {
     const user = userEvent.setup({ delay: null });
     const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -588,13 +589,15 @@ describe("chat composer templates", () => {
     });
 
     await user.click(await screen.findByLabelText("Template"));
+    expect(queryTabByText("Intro video")).toBeNull();
+
     await user.click(tabByText("Video"));
     expect(
-      screen.queryByLabelText(`Select video template ${template.title}`),
+      screen.queryByLabelText(`Select intro video template ${template.title}`),
     ).not.toBeInTheDocument();
   });
 
-  it("selects Interview as a switched-on intro-video template", async () => {
+  it("selects Interview from its own intro-video category", async () => {
     const user = userEvent.setup({ delay: null });
     const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
@@ -614,9 +617,17 @@ describe("chat composer templates", () => {
     });
 
     await user.click(await screen.findByLabelText("Template"));
+
+    // The video category keeps text-to-video presets only; intro videos own
+    // their own category rather than sharing that grid.
     await user.click(tabByText("Video"));
+    expect(
+      screen.queryByLabelText(`Select intro video template ${template.title}`),
+    ).not.toBeInTheDocument();
+
+    await user.click(tabByText("Intro video"));
     const select = await screen.findByLabelText(
-      `Select video template ${template.title}`,
+      `Select intro video template ${template.title}`,
     );
     expect(
       select.closest("[class*='aspect-']")?.querySelector("video"),

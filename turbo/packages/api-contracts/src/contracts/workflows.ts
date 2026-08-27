@@ -3,6 +3,10 @@ import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { publicConnectorCatalogIconSchema } from "./connector-catalog";
+import {
+  officialWorkflowBlueprintKeySchema,
+  officialWorkflowParameterBindingSchema,
+} from "./official-workflow-bindings";
 
 const c = initContract();
 
@@ -775,6 +779,24 @@ const workflowAutomationSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
+  // P1 is backend-only. Keep the additive field optional until P4 can raise
+  // the app/API compatibility floor after retained pre-P1 APIs are gone.
+  official: z
+    .object({
+      blueprintKey: officialWorkflowBlueprintKeySchema,
+      appliedFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      reconciliationStatus: z.enum([
+        "current",
+        "reconciling",
+        "needs_reconfiguration",
+        "failed",
+      ]),
+      intendedEnabled: z.boolean(),
+      parameterBindings: z.array(officialWorkflowParameterBindingSchema),
+    })
+    .strict()
+    .nullable()
+    .optional(),
 });
 
 export const workflowScheduleAutomationSummarySchema =
@@ -1494,6 +1516,18 @@ export const workflowSummarySchema = z.object({
   createdAt: z.string().datetime(),
   canManage: z.boolean(),
   canPublish: z.boolean(),
+  // P1 is backend-only. Keep the additive field optional until P4 can raise
+  // the app/API compatibility floor after retained pre-P1 APIs are gone.
+  official: z
+    .object({
+      definitionName: workflowNameSchema,
+      installationState: z.enum(["installing", "installed"]),
+      definitionLifecycle: z.enum(["active", "retired", "unavailable"]),
+      readOnly: z.literal(true),
+    })
+    .strict()
+    .nullable()
+    .optional(),
   shadowedBy: z
     .object({
       id: z.string().uuid(),
@@ -1677,6 +1711,7 @@ export const workflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Delete a workflow",
   },
@@ -1707,6 +1742,7 @@ export const workflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Get or create the shared chat thread for a workflow",
   },
@@ -1740,6 +1776,7 @@ export const workflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       413: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -1891,6 +1928,7 @@ export const workflowAutomationsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Delete a workflow automation",
   },
@@ -1922,6 +1960,7 @@ export const workflowAutomationsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Disable a workflow automation",
   },

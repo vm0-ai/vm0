@@ -1,10 +1,21 @@
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    ExecControlStatus, ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTermination,
-    ExecTimeoutPolicy,
+    ExecAgentReadyTiming, ExecControlStatus, ExecOutputPolicy, ExecOutputStream, ExecProcessRole,
+    ExecTermination, ExecTimeoutPolicy,
 };
+
+/// Host-observed shell and optional Agent-ready timing for a supervised start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SupervisedExecStartTiming {
+    /// Monotonic host instant when `MSG_EXEC_STARTED` was received.
+    pub shell_started_at: Instant,
+    /// Monotonic host instant when `MSG_EXEC_AGENT_READY` was received.
+    pub agent_ready_at: Option<Instant>,
+    /// Guest-reported component timing at Agent ready.
+    pub agent_ready: Option<ExecAgentReadyTiming>,
+}
 
 /// Owned terminal stdout or stderr representation selected by the requested
 /// [`ExecOutputPolicy`](vsock_proto::ExecOutputPolicy).

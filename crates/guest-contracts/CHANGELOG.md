@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.0...guest-contracts-v0.12.1) (2026-08-27)
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.23...guest-contracts-v0.12.0) (2026-08-26)
 
 

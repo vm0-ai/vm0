@@ -13,19 +13,35 @@ the raw value. Existing configuration files without `hostname` continue to
 load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
-Those lifecycle identities continue to use the version-shaped `name`, such as
-`v0.174.0`. During the compatibility window, sandbox telemetry sends all of:
+Systemd suffixes and versioned binary/Runner directories remain explicit
+release lifecycle identities. Live processes are selected by their exact
+config path and process identity, and rolling log files use the release
+compiled into the Runner binary. Current Runner binaries send optional
+canonical `runnerHostname` from configuration and canonical `runnerVersion`
+compiled into the binary. They no longer send legacy `runnerName` in
+heartbeats or sandbox telemetry. Current API revisions no longer declare,
+persist, or map that field. During deployment overlap, an extra `runnerName`
+from an older Runner payload is tolerated but discarded before request
+handling.
 
-- legacy `runnerName`, retaining its version-shaped value;
-- optional canonical `runnerHostname` from configuration; and
-- canonical `runnerVersion` compiled into the Runner binary.
+The version-shaped YAML `name` remains an optional local compatibility field
+while retained Runner binaries and operator automation still require it.
+Current production configuration continues writing it, but current runtime,
+readiness, and doctor selection do not use it as process identity.
+
+Operational queries and alerts should use `runner_hostname` and
+`runner_version`. A bounded historical fallback may use `runner_name` only for
+records that lack the canonical dimensions from before the cutover. Never
+interpret `runner_name` as a hostname.
 
 Runner Axiom warning/error events similarly include optional
-`runner_hostname` and required `runner_version`. Deploy the compatible API
-receiver before deploying a Runner that produces these fields. Canary the
-Runner and verify claim snapshots, telemetry/Axiom dimensions, distinct
-hostnames on two hosts running one version, and retained-version rollback
-before relying on canonical attribution in presentation code.
+`runner_hostname` and required `runner_version`. The rollout order is compatible
+API and nullable heartbeat storage, Runner producer cutover, then logical API
+receiver removal. Retain the nullable physical column until all serving and
+rollback API revisions that reference it have retired. Canary each transition
+and verify claim snapshots, telemetry/Axiom dimensions, distinct hostnames on
+two hosts running one version, and retained-version rollback. Remove any
+historical query fallback only after its bounded observation window expires.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses

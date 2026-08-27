@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.804.1](https://github.com/vm0-ai/vm0/compare/app-v0.804.0...app-v0.804.1) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.597.0
+
+## [0.804.0](https://github.com/vm0-ai/vm0/compare/app-v0.803.4...app-v0.804.0) (2026-08-27)
+
+
+### Features
+
+* **platform:** add usage pack configuration action ([#29747](https://github.com/vm0-ai/vm0/issues/29747)) ([6074c9b](https://github.com/vm0-ai/vm0/commit/6074c9b69b84bb0385601ee22a3a90ddb0e6bd3b))
+* **platform:** give intro-video templates their own picker category ([#29718](https://github.com/vm0-ai/vm0/issues/29718)) ([6476f2a](https://github.com/vm0-ai/vm0/commit/6476f2adb887bd3b60457a426edb000e09270e60))
+
+
+### Bug Fixes
+
+* **auth:** align clerk page action styling ([#29730](https://github.com/vm0-ai/vm0/issues/29730)) ([a6a6b4e](https://github.com/vm0-ai/vm0/commit/a6a6b4e251eb1d61be8605ddb6138aa99f21700f))
+* **auth:** harden Clerk identity and signup attribution ([#29732](https://github.com/vm0-ai/vm0/issues/29732)) ([13c15e9](https://github.com/vm0-ai/vm0/commit/13c15e9089c8a8aa7dd3001db3f78ab51cd90fe6)), closes [#29711](https://github.com/vm0-ai/vm0/issues/29711)
+* **auth:** restore v2 login parity ([#29734](https://github.com/vm0-ai/vm0/issues/29734)) ([bde9a4d](https://github.com/vm0-ai/vm0/commit/bde9a4d912c198382fe1eaa13a162e0c3fd8bdbf))
+* **platform:** clear stale agent after onboarding ([#29726](https://github.com/vm0-ai/vm0/issues/29726)) ([376758f](https://github.com/vm0-ai/vm0/commit/376758fe5d16e54b8aecf380818c2bc0ee13c474))
+* **platform:** fit the annotated image and keep the marks on the draft ([#29702](https://github.com/vm0-ai/vm0/issues/29702)) ([7bb820c](https://github.com/vm0-ai/vm0/commit/7bb820c5fbe47607cb216e57a495a870c98861d5))
+* **platform:** place account action before permissions ([#29725](https://github.com/vm0-ai/vm0/issues/29725)) ([dd4b659](https://github.com/vm0-ai/vm0/commit/dd4b6595a88206f49f85073dc91990dde0dd5ae4))
+* **platform:** prevent growth entry layout shift ([#29723](https://github.com/vm0-ai/vm0/issues/29723)) ([af45f6d](https://github.com/vm0-ai/vm0/commit/af45f6dff6f48f88e3e2ef0b68d64c419f80ea5f))
+* **platform:** update initial document title once ([#29737](https://github.com/vm0-ai/vm0/issues/29737)) ([9a0a6cf](https://github.com/vm0-ai/vm0/commit/9a0a6cf813f85f977d615d9f6043170e91990c5f))
+* remove legacy sign-in fallback from auth v2 ([#29735](https://github.com/vm0-ai/vm0/issues/29735)) ([fe7a110](https://github.com/vm0-ai/vm0/commit/fe7a110f9169e0587a97ca7f9d3c05f9c88d1c7d))
+
+
+### Refactoring
+
+* remove composerFlatFeedbackNote feature switch ([#29721](https://github.com/vm0-ai/vm0/issues/29721)) ([897515d](https://github.com/vm0-ai/vm0/commit/897515d2e90822674b61d3a65074afc3f36c7496))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.2
+    * @okouai/core bumped to 8.596.2
+
+## [0.803.4](https://github.com/vm0-ai/vm0/compare/app-v0.803.3...app-v0.803.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* align permission controls across scrollbar gutter ([#29675](https://github.com/vm0-ai/vm0/issues/29675)) ([e94cd19](https://github.com/vm0-ai/vm0/commit/e94cd19ae112db48a783d8154b7fd0d88cbfef99))
+* **platform:** use chat terminology for account selector ([#29686](https://github.com/vm0-ai/vm0/issues/29686)) ([7435737](https://github.com/vm0-ai/vm0/commit/74357375c1f9e95db3fb07e855e42f9f6d1733ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+
+## [0.803.3](https://github.com/vm0-ai/vm0/compare/app-v0.803.2...app-v0.803.3) (2026-08-27)
+
+
+### Refactoring
+
+* **platform:** use the agents list endpoint ([#29695](https://github.com/vm0-ai/vm0/issues/29695)) ([38a9a44](https://github.com/vm0-ai/vm0/commit/38a9a44b8fd694e5d1b875b47992547804f0b6a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.0
+    * @okouai/core bumped to 8.596.0
+
 ## [0.803.2](https://github.com/vm0-ai/vm0/compare/app-v0.803.1...app-v0.803.2) (2026-08-26)
 
 

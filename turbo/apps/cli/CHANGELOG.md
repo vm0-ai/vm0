@@ -1,5 +1,49 @@
 # Changelog
 
+## [9.293.6](https://github.com/vm0-ai/vm0/compare/cli-v9.293.5...cli-v9.293.6) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.597.0
+
+## [9.293.5](https://github.com/vm0-ai/vm0/compare/cli-v9.293.4...cli-v9.293.5) (2026-08-27)
+
+
+### Refactoring
+
+* roll out the latest website templates and remove their feature switch ([#29442](https://github.com/vm0-ai/vm0/issues/29442)) ([7ef1518](https://github.com/vm0-ai/vm0/commit/7ef1518aff0eacf8e8b83f6421e515ad12088998))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.375.2
+    * @okouai/core bumped to 8.596.2
+
+## [9.293.4](https://github.com/vm0-ai/vm0/compare/cli-v9.293.3...cli-v9.293.4) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+
+## [9.293.3](https://github.com/vm0-ai/vm0/compare/cli-v9.293.2...cli-v9.293.3) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.375.0
+    * @okouai/core bumped to 8.596.0
+
 ## [9.293.2](https://github.com/vm0-ai/vm0/compare/cli-v9.293.1...cli-v9.293.2) (2026-08-26)
 
 

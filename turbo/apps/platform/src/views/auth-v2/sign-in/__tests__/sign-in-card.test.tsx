@@ -23,6 +23,8 @@ import {
   type MockedSignInResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { ROUTES } from "../../../../signals/route-paths.ts";
+import { detachedNavigateTo$ } from "../../../../signals/route.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
 import { renderedIdentityEditPresentation } from "../../__tests__/auth-v2-button-style-assertions.ts";
@@ -146,6 +148,13 @@ async function waitForRoleElement(
     throw new Error(`Expected ${role} named ${name}`);
   }
   return element;
+}
+
+function navigateToLegacySignIn(): void {
+  // These cases exercise teardown after address-bar navigation. JSDOM cannot
+  // perform a document navigation, and the removed fallback leaves no rendered
+  // control for this transition, so invoke the production router command.
+  context.store.set(detachedNavigateTo$, ROUTES.signIn);
 }
 
 function expectFieldErrorAssociation(
@@ -456,7 +465,6 @@ describe("auth v2 sign-in flow", () => {
 
     await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
     const editIdentifier = await waitForRoleElement(
       "button",
       "Edit identifier",
@@ -517,6 +525,7 @@ describe("auth v2 sign-in flow", () => {
       googleOAuth: true,
       passkey: true,
     });
+    context.mocks.browser.webAuthn({ platformAuthenticatorResult: true });
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [
       passwordFactor(),
@@ -664,6 +673,20 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
+  it("marks Google's last authentication strategy", async () => {
+    mockAuthV2Capabilities({
+      appleOAuth: true,
+      googleOAuth: true,
+      lastAuthenticationStrategy: "oauth_google",
+    });
+    setupSignInPage({ status: "needs_identifier" });
+
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(within(google).getByText("Last used")).toBeVisible();
+    expect(within(apple).queryByText("Last used")).not.toBeInTheDocument();
+  });
+
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=oauth";
     const authSearch = new URLSearchParams({
@@ -689,8 +712,6 @@ describe("auth v2 sign-in flow", () => {
       );
     });
     expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith({
-      continueSignIn: true,
-      continueSignUp: false,
       redirectUrl: `/v2/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
       redirectUrlComplete: redirectUrl,
       strategy: "oauth_google",
@@ -855,7 +876,7 @@ describe("auth v2 sign-in flow", () => {
       throw new Error("Expected Google One Tap callbacks to be registered");
     }
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -912,7 +933,7 @@ describe("auth v2 sign-in flow", () => {
     });
     await expect(screen.findByRole("alert")).resolves.toBeVisible();
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -950,12 +971,104 @@ describe("auth v2 sign-in flow", () => {
 
   it.each([
     {
+      name: "an insecure context",
+      webAuthn: { secureContext: false },
+    },
+    {
+      name: "a missing PublicKeyCredential API",
+      webAuthn: { publicKeyCredential: false },
+    },
+    {
+      name: "a missing credentials container",
+      webAuthn: { credentials: false },
+    },
+  ] as const)(
+    "suppresses passkey and preserves alternate methods for $name",
+    async ({ webAuthn }) => {
+      context.mocks.browser.webAuthn(webAuthn);
+      mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
+      setupSignInPage({
+        status: "needs_first_factor",
+        supportedFirstFactors: [
+          passwordFactor(),
+          emailCodeFactor(),
+          googleOAuthFactor(),
+          passkeyFactor(),
+        ],
+      });
+
+      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+        "Passkeys are not supported on this device.",
+      );
+      expect(
+        roleElement("button", "Sign in with your passkey"),
+      ).toBeUndefined();
+      for (const method of [
+        "Continue with Google",
+        "Email code to p***@example.com",
+        "Sign in with your password",
+      ]) {
+        await expect(
+          waitForRoleElement("button", method),
+        ).resolves.toBeEnabled();
+      }
+
+      fireEvent.click(
+        await waitForRoleElement("button", "Sign in with your password"),
+      );
+      await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
+    },
+  );
+
+  it.each([
+    {
+      name: "a missing optional capability check",
+      webAuthn: {},
+    },
+    {
+      name: "a negative optional capability result",
+      webAuthn: { platformAuthenticatorResult: false },
+    },
+    {
+      name: "a rejected optional capability check",
+      webAuthn: { platformAuthenticatorResult: "error" as const },
+    },
+    {
+      name: "a confirmed platform authenticator",
+      webAuthn: { platformAuthenticatorResult: true },
+    },
+  ] as const)(
+    "settles $name without conservatively blocking passkey",
+    async ({ webAuthn }) => {
+      context.mocks.browser.webAuthn(webAuthn);
+      mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
+      setupSignInPage({ status: "needs_identifier" });
+
+      await expect(
+        waitForRoleElement("button", "Sign in with your passkey"),
+      ).resolves.toBeEnabled();
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
+
+  it.each([
+    {
       clerkError: {
         code: "passkey_retrieval_cancelled",
         message: "The passkey request was cancelled.",
       },
       expectedMessage: "Passkey verification was cancelled or timed out.",
       name: "user cancellation",
+      suppressPasskey: false,
+    },
+    {
+      clerkError: new DOMException(
+        "The passkey request was cancelled.",
+        "AbortError",
+      ),
+      expectedMessage: "Passkey verification was cancelled or timed out.",
+      name: "a native AbortError cancellation",
+      suppressPasskey: false,
     },
     {
       clerkError: {
@@ -964,6 +1077,48 @@ describe("auth v2 sign-in flow", () => {
       },
       expectedMessage: "Passkeys are not supported on this device.",
       name: "an unavailable device",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: {
+        code: "passkey_pa_not_supported",
+        message: "Platform authenticator is not supported.",
+      },
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "Clerk's singular platform-authenticator code",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: {
+        code: "passkeys_pa_not_supported",
+        message: "Platform authenticator is not supported.",
+      },
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "Clerk's plural platform-authenticator code",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new Error(
+        "Resident credentials or empty 'allowCredentials' lists are not supported at this time.",
+      ),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "the resident-credentials production error",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new Error("Error connecting to Web Authentication service."),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "the Web Authentication service production error",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new DOMException(
+        "The runtime cannot start Web Authentication.",
+        "NotSupportedError",
+      ),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "a native NotSupportedError",
+      suppressPasskey: true,
     },
     {
       clerkError: {
@@ -973,15 +1128,22 @@ describe("auth v2 sign-in flow", () => {
       expectedMessage:
         "This action couldn't be completed. Please try again later or contact support if this persists.",
       name: "a verification error",
+      suppressPasskey: false,
     },
-  ])("keeps another enabled method available after $name", async (testCase) => {
+  ])("settles $name and keeps alternate methods usable", async (testCase) => {
+    context.mocks.browser.webAuthn({ platformAuthenticatorResult: true });
     mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
     mockedClerk.signInAuthenticateWithPasskey.mockRejectedValue(
       testCase.clerkError,
     );
     setupSignInPage({
       status: "needs_first_factor",
-      supportedFirstFactors: [googleOAuthFactor(), passkeyFactor()],
+      supportedFirstFactors: [
+        passwordFactor(),
+        emailCodeFactor(),
+        googleOAuthFactor(),
+        passkeyFactor(),
+      ],
     });
 
     const passkey = await waitForRoleElement(
@@ -996,9 +1158,20 @@ describe("auth v2 sign-in flow", () => {
     );
     expect(screen.queryByText(testCase.clerkError.message)).toBeNull();
     expect(mockedClerk.signInAuthenticateWithPasskey).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(roleElement("button", "Sign in with your passkey")).toBe(
+        testCase.suppressPasskey ? undefined : passkey,
+      );
+    });
     const google = await waitForRoleElement("button", "Continue with Google");
-    expect(google).toBeVisible();
-    expect(passkey).toBeVisible();
+    for (const method of [
+      google,
+      await waitForRoleElement("button", "Email code to p***@example.com"),
+      await waitForRoleElement("button", "Sign in with your password"),
+    ]) {
+      expect(method).toBeVisible();
+      expect(method).toBeEnabled();
+    }
 
     fireEvent.click(google);
     await waitFor(() => {
@@ -1521,7 +1694,7 @@ describe("auth v2 sign-in flow", () => {
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "route-secret" } });
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -1755,7 +1928,6 @@ describe("auth v2 sign-in flow", () => {
       waitForRoleElement("link", "Email support"),
     ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));

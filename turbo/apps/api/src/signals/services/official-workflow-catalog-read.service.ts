@@ -57,7 +57,7 @@ function acceptedRevisionFromRow(
 
 export async function readAcceptedOfficialWorkflowCatalog(
   db: ReadonlyDb,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<AcceptedOfficialWorkflowCatalog | null> {
   const [row] = await db
     .select({
@@ -79,7 +79,7 @@ export async function readAcceptedOfficialWorkflowCatalog(
       ),
     )
     .limit(1);
-  signal.throwIfAborted();
+  signal?.throwIfAborted();
   if (!row) {
     return null;
   }
@@ -92,7 +92,7 @@ export async function readAcceptedOfficialWorkflowCatalog(
 export async function readAcceptedOfficialWorkflowDefinition(
   db: ReadonlyDb,
   name: string,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<OfficialWorkflowAcceptedDefinition | null> {
   const catalog = await readAcceptedOfficialWorkflowCatalog(db, signal);
   return (
@@ -105,7 +105,7 @@ export async function readAcceptedOfficialWorkflowDefinition(
 export async function readAcceptedOfficialWorkflowRevision(
   db: ReadonlyDb,
   args: { readonly name: string; readonly revision: string },
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<OfficialWorkflowAcceptedRevision | null> {
   const [row] = await db
     .select({
@@ -146,7 +146,7 @@ export async function readAcceptedOfficialWorkflowRevision(
       ),
     )
     .limit(1);
-  signal.throwIfAborted();
+  signal?.throwIfAborted();
   if (!row) {
     return null;
   }
@@ -155,7 +155,7 @@ export async function readAcceptedOfficialWorkflowRevision(
 
 export async function readAllAcceptedOfficialWorkflowRevisions(
   db: ReadonlyDb,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<readonly OfficialWorkflowAcceptedRevision[]> {
   const rows = await db
     .select({
@@ -195,7 +195,7 @@ export async function readAllAcceptedOfficialWorkflowRevisions(
       asc(officialWorkflowDefinitionRevisions.definitionName),
       asc(officialWorkflowDefinitionRevisions.revision),
     );
-  signal.throwIfAborted();
+  signal?.throwIfAborted();
   return rows.map((row) => {
     if (
       row.verifiedStorageId !== row.storageId ||

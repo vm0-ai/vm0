@@ -63,6 +63,7 @@ pub(crate) struct BoundedStreamConfig {
 pub(crate) struct BoundedDrainResult {
     pub(crate) captured: Option<Vec<u8>>,
     pub(crate) capture_truncated: bool,
+    pub(crate) stream_truncated: bool,
 }
 
 /// Drain `pipe` until EOF or `cancel` is set, calling `on_chunk` for each
@@ -229,6 +230,7 @@ where
     BoundedDrainResult {
         captured,
         capture_truncated,
+        stream_truncated,
     }
 }
 
@@ -451,6 +453,7 @@ mod tests {
 
         assert_eq!(result.captured, None);
         assert!(!result.capture_truncated);
+        assert!(!result.stream_truncated);
     }
 
     #[test]
@@ -516,6 +519,7 @@ mod tests {
 
         assert_eq!(result.captured, Some(input));
         assert!(!result.capture_truncated);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(stream_limit, false), (0, true)]);
     }
 
@@ -543,6 +547,7 @@ mod tests {
 
         assert_eq!(result.captured, Some(b"abcdef".to_vec()));
         assert!(!result.capture_truncated);
+        assert!(result.stream_truncated);
         assert_eq!(
             chunks,
             vec![
@@ -577,6 +582,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(!result.stream_truncated);
         assert_eq!(
             chunks,
             vec![(b"ab".to_vec(), false), (b"cd".to_vec(), false)]
@@ -606,6 +612,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(Vec::new(), true)]);
     }
 
@@ -632,6 +639,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(Vec::new(), true)]);
     }
 
@@ -660,5 +668,6 @@ mod tests {
         assert_eq!(chunks, vec![(b"ab".to_vec(), false)]);
         assert_eq!(result.captured, Some(b"abcdef".to_vec()));
         assert!(!result.capture_truncated);
+        assert!(!result.stream_truncated);
     }
 }

@@ -1,5 +1,5 @@
 {
-  "id": "bdfccabe-e522-45f7-9b97-a0e1a65e8e31",
+  "id": "1e96160f-c6ce-4a9e-a54b-ca2c4b3fb1bc",
   "prevId": "c1c04cf5-68cd-4afc-96bd-c12d743e2a3a",
   "version": "7",
   "dialect": "postgresql",
@@ -5680,28 +5680,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "chat_events_output_tool_thread_seq_idx": {
-          "name": "chat_events_output_tool_thread_seq_idx",
-          "columns": [
-            {
-              "expression": "chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "seq_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"chat_events\".\"event_type\" = 'output.tool'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -27682,6 +27660,36 @@
           "notNull": true,
           "default": 10
         },
+        "official_blueprint_key": {
+          "name": "official_blueprint_key",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_applied_fingerprint": {
+          "name": "official_applied_fingerprint",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_reconciliation_status": {
+          "name": "official_reconciliation_status",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_parameter_bindings": {
+          "name": "official_parameter_bindings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_intended_enabled": {
+          "name": "official_intended_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -27743,6 +27751,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_zero_workflow_automations_official_blueprint_unique": {
+          "name": "idx_zero_workflow_automations_official_blueprint_unique",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "official_blueprint_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"zero_workflow_automations\".\"official_blueprint_key\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -27771,6 +27801,10 @@
         "zero_workflow_automations_autonomy_budget_check": {
           "name": "zero_workflow_automations_autonomy_budget_check",
           "value": "\"zero_workflow_automations\".\"autonomy_budget\" BETWEEN 0 AND 10"
+        },
+        "zero_workflow_automations_official_binding_check": {
+          "name": "zero_workflow_automations_official_binding_check",
+          "value": "(\n          \"zero_workflow_automations\".\"official_blueprint_key\" IS NULL\n          AND \"zero_workflow_automations\".\"official_applied_fingerprint\" IS NULL\n          AND \"zero_workflow_automations\".\"official_reconciliation_status\" IS NULL\n          AND \"zero_workflow_automations\".\"official_parameter_bindings\" IS NULL\n          AND \"zero_workflow_automations\".\"official_intended_enabled\" IS NULL\n        ) OR (\n          \"zero_workflow_automations\".\"official_blueprint_key\" IS NOT NULL\n          AND \"zero_workflow_automations\".\"official_applied_fingerprint\" ~ '^[0-9a-f]{64}$'\n          AND \"zero_workflow_automations\".\"official_reconciliation_status\" IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')\n          AND jsonb_typeof(\"zero_workflow_automations\".\"official_parameter_bindings\") = 'array'\n          AND \"zero_workflow_automations\".\"official_intended_enabled\" IS NOT NULL\n        )"
         }
       },
       "isRLSEnabled": false
@@ -28342,6 +28376,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "official_definition_name": {
+          "name": "official_definition_name",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_installation_state": {
+          "name": "official_installation_state",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -28508,7 +28554,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "zero_workflows_official_installation_check": {
+          "name": "zero_workflows_official_installation_check",
+          "value": "(\n          \"zero_workflows\".\"official_definition_name\" IS NULL\n          AND \"zero_workflows\".\"official_installation_state\" IS NULL\n        ) OR (\n          \"zero_workflows\".\"official_definition_name\" IS NOT NULL\n          AND \"zero_workflows\".\"official_installation_state\" IN ('installing', 'installed')\n          AND \"zero_workflows\".\"official_definition_name\" = \"zero_workflows\".\"name\"\n          AND \"zero_workflows\".\"visibility\" = 'private'\n          AND \"zero_workflows\".\"instruction\" IS NULL\n          AND \"zero_workflows\".\"display_name\" IS NULL\n          AND \"zero_workflows\".\"description\" IS NULL\n        )"
+        }
+      },
       "isRLSEnabled": false
     }
   },

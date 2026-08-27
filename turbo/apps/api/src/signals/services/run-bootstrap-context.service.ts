@@ -13,7 +13,7 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { workflows } from "@okouai/db/schema/workflow";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -304,6 +304,7 @@ async function queryAgentRunWorkflowCandidates(
       and(
         eq(workflows.orgId, args.orgId),
         eq(workflows.agentId, args.agentId),
+        isNull(workflows.officialDefinitionName),
         or(
           eq(workflows.visibility, "public"),
           eq(workflows.ownerUserId, args.userId),

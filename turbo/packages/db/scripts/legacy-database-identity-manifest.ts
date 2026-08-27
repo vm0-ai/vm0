@@ -146,6 +146,11 @@ const workflowIdentities = [
     sources: SNAPSHOT_AND_CATALOG,
   },
   {
+    key: "index:public.idx_zero_workflow_automations_official_blueprint_unique",
+    kind: "index",
+    sources: SNAPSHOT_AND_CATALOG,
+  },
+  {
     key: "index:public.idx_zero_workflow_automations_org",
     kind: "index",
     sources: SNAPSHOT_AND_CATALOG,
@@ -266,6 +271,11 @@ const workflowIdentities = [
     sources: SNAPSHOT_AND_CATALOG,
   },
   {
+    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_official_binding_check",
+    kind: "constraint",
+    sources: SNAPSHOT_AND_CATALOG,
+  },
+  {
     key: "constraint:public.zero_workflow_automations.zero_workflow_automations_schedule_config_check",
     kind: "constraint",
     sources: SNAPSHOT_AND_CATALOG,
@@ -302,6 +312,11 @@ const workflowIdentities = [
   },
   {
     key: "constraint:public.zero_workflows.zero_workflows_agent_id_agents_id_fk",
+    kind: "constraint",
+    sources: SNAPSHOT_AND_CATALOG,
+  },
+  {
+    key: "constraint:public.zero_workflows.zero_workflows_official_installation_check",
     kind: "constraint",
     sources: SNAPSHOT_AND_CATALOG,
   },

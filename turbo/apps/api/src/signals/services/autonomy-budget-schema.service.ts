@@ -39,6 +39,12 @@ export function workflowAutomationColumns() {
     lastRunId: workflowAutomations.lastRunId,
     consecutiveFailures: workflowAutomations.consecutiveFailures,
     autonomyBudget: workflowAutomations.autonomyBudget,
+    officialBlueprintKey: workflowAutomations.officialBlueprintKey,
+    officialAppliedFingerprint: workflowAutomations.officialAppliedFingerprint,
+    officialReconciliationStatus:
+      workflowAutomations.officialReconciliationStatus,
+    officialParameterBindings: workflowAutomations.officialParameterBindings,
+    officialIntendedEnabled: workflowAutomations.officialIntendedEnabled,
     createdAt: workflowAutomations.createdAt,
     updatedAt: workflowAutomations.updatedAt,
   };

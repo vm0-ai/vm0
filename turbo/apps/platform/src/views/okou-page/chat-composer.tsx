@@ -34,9 +34,11 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowUp,
   Bolt,
   Check,
+  Clapperboard,
   Download,
   Globe,
   Image as ImageIcon,
@@ -1301,35 +1303,46 @@ function VideoTemplateCard({
 
 function VideoTemplateGrid({
   items,
-  introVideoItems,
   value,
   onSelect,
-  onSelectIntroVideo,
 }: {
   items: readonly VideoTemplateItem[];
-  introVideoItems: readonly IntroVideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoTemplateItem) => void;
-  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {introVideoItems.map((item) => {
-        return (
-          <IntroVideoTemplateCard
-            key={item.id}
-            item={item}
-            selected={isSelectedIntroVideoTemplate(item, value)}
-            onSelect={onSelectIntroVideo}
-          />
-        );
-      })}
       {items.map((item) => {
         return (
           <VideoTemplateCard
             key={item.id}
             item={item}
             selected={isSelectedVideoTemplate(item, value)}
+            onSelect={onSelect}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function IntroVideoTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: readonly IntroVideoTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: IntroVideoTemplateItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <IntroVideoTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedIntroVideoTemplate(item, value)}
             onSelect={onSelect}
           />
         );
@@ -1390,7 +1403,7 @@ function IntroVideoTemplateCard({
           type="button"
           aria-label={t(
             ($) => {
-              return $.artifacts.templates.selectVideo;
+              return $.artifacts.templates.selectIntroVideo;
             },
             { title: item.title },
           )}
@@ -4712,6 +4725,7 @@ function resolveTemplatePickerCategory({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasIntroVideoTab,
   hasAvatarTab,
   hasWorkflowTab,
 }: {
@@ -4719,6 +4733,7 @@ function resolveTemplatePickerCategory({
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasIntroVideoTab: boolean;
   hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
 }): string {
@@ -4732,6 +4747,9 @@ function resolveTemplatePickerCategory({
   }
   if (hasVideoTab) {
     categories.push("video");
+  }
+  if (hasIntroVideoTab) {
+    categories.push("intro-video");
   }
   if (hasAvatarTab) {
     categories.push("avatar");
@@ -4748,6 +4766,7 @@ function TemplatePickerCategoryNav({
   hasPptTab,
   hasIllustrationTab,
   hasVideoTab,
+  hasIntroVideoTab,
   hasAvatarTab,
   hasWorkflowTab,
   onChange,
@@ -4756,6 +4775,7 @@ function TemplatePickerCategoryNav({
   hasPptTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
+  hasIntroVideoTab: boolean;
   hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
@@ -4798,6 +4818,15 @@ function TemplatePickerCategoryNav({
         return $.artifacts.kinds.video;
       }),
       Icon: Video,
+    });
+  }
+  if (hasIntroVideoTab) {
+    categoryOptions.push({
+      value: "intro-video",
+      label: t(($) => {
+        return $.artifacts.templates.introVideo;
+      }),
+      Icon: Clapperboard,
     });
   }
   if (hasAvatarTab) {
@@ -6358,10 +6387,7 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const introVideoTemplatesEnabled = useGet(introVideoTemplatesEnabled$);
-  const introVideoItems = introVideoTemplatesEnabled
-    ? INTRO_VIDEO_TEMPLATE_ITEMS
-    : [];
+  const hasIntroVideoTab = useGet(introVideoTemplatesEnabled$);
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
@@ -6462,6 +6488,7 @@ function TemplatePickerDialog({
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasIntroVideoTab,
     hasAvatarTab,
     hasWorkflowTab,
   });
@@ -6750,6 +6777,7 @@ function TemplatePickerDialog({
               hasPptTab={hasPptTab}
               hasIllustrationTab={hasIllustrationTab}
               hasVideoTab={hasVideoTab}
+              hasIntroVideoTab={hasIntroVideoTab}
               hasAvatarTab={hasAvatarTab}
               hasWorkflowTab={hasWorkflowTab}
               onChange={handleCategoryChange}
@@ -6778,13 +6806,14 @@ function TemplatePickerDialog({
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
                 hasVideoTab={hasVideoTab}
+                hasIntroVideoTab={hasIntroVideoTab}
                 hasAvatarTab={hasAvatarTab}
                 hasWorkflowTab={hasWorkflowTab}
                 pptItems={presentationItems}
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
-                introVideoItems={introVideoItems}
+                introVideoItems={INTRO_VIDEO_TEMPLATE_ITEMS}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6837,6 +6866,7 @@ function TemplatePickerCategoryContent({
   selectedCategory,
   hasPptTab,
   hasVideoTab,
+  hasIntroVideoTab,
   hasAvatarTab,
   hasWorkflowTab,
   pptItems,
@@ -6869,6 +6899,7 @@ function TemplatePickerCategoryContent({
   selectedCategory: string;
   hasPptTab: boolean;
   hasVideoTab: boolean;
+  hasIntroVideoTab: boolean;
   hasAvatarTab: boolean;
   hasWorkflowTab: boolean;
   pptItems: readonly PresentationTemplateItem[];
@@ -6995,13 +7026,30 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 || introVideoItems.length > 0 ? (
+        {videoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
-            introVideoItems={introVideoItems}
             value={value}
             onSelect={onSelectVideo}
-            onSelectIntroVideo={onSelectIntroVideo}
+          />
+        ) : (
+          <TemplateEmptyPanel />
+        )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "intro-video" && hasIntroVideoTab) {
+    return (
+      <div
+        data-intro-video-template-grid-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
+      >
+        {introVideoItems.length > 0 ? (
+          <IntroVideoTemplateGrid
+            items={introVideoItems}
+            value={value}
+            onSelect={onSelectIntroVideo}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -7124,7 +7172,7 @@ function selectedComposerTemplateAttachment(
     return {
       type: "intro-video",
       title: introVideoItem.title,
-      category: "video",
+      category: "intro-video",
     };
   }
   const workflowItem = selectedWorkflowTemplateItem(value);
@@ -7330,11 +7378,13 @@ function TemplatePickerButton({
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
   const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
+  const hasIntroVideoTab = useGet(introVideoTemplatesEnabled$);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
     hasIllustrationTab,
     hasVideoTab,
+    hasIntroVideoTab,
     hasAvatarTab,
     hasWorkflowTab,
   });
@@ -8471,10 +8521,23 @@ function ComposerConnectorAccountMenuContent({
 
   return (
     <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
-        {t(($) => {
-          return $.chat.connectors.accountForThread;
-        })}
+      <div className="flex h-12 shrink-0 items-center gap-0.5 border-b border-border/60 pl-1.5 pr-2 text-sm font-medium text-foreground">
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-xs"
+          aria-label={t(($) => {
+            return $.chat.connectors.back;
+          })}
+          onClick={closeMenu}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+        </Button>
+        <span className="min-w-0 flex-1 truncate">
+          {t(($) => {
+            return $.chat.connectors.accountForThread;
+          })}
+        </span>
       </div>
       {showSearch ? (
         <div className="shrink-0 border-b border-border/50 px-3 py-2">
@@ -8635,6 +8698,7 @@ function ConnectorsPopoverButton({
   const accountSummariesLoadable = useLastLoadable(
     signals.connector.accounts.summaryByTarget$,
   );
+  const accountMenuOpen = useGet(signals.connector.accounts.menuOpen$);
   const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
   const search = connectorUi.popoverSearch;
@@ -8739,7 +8803,20 @@ function ConnectorsPopoverButton({
   };
 
   return (
-    <Popover onOpenChange={handleOpenChange}>
+    <Popover
+      onOpenChange={(open, eventDetails) => {
+        if (
+          !open &&
+          accountMenuOpen &&
+          eventDetails.reason === "outside-press"
+        ) {
+          eventDetails.cancel();
+          closeAccountMenu();
+          return;
+        }
+        handleOpenChange(open);
+      }}
+    >
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <PopoverTrigger asChild>
@@ -8871,30 +8948,33 @@ function ConnectorsPopoverButton({
                           actions={
                             showPermissionAction || accountAction ? (
                               <>
-                                {showPermissionAction ? (
-                                  <Button
-                                    showTooltip
-                                    type="button"
-                                    onClick={() => {
-                                      updateConnectorUi({
-                                        permissionConnectorSlug: connector.slug,
-                                      });
-                                    }}
-                                    aria-label={t(
-                                      ($) => {
-                                        return $.chat.connectors
-                                          .configurePermissions;
-                                      },
-                                      { connectorName: connector.label },
-                                    )}
-                                    variant="quiet"
-                                    size="icon-2xs"
-                                    className="shrink-0"
-                                  >
-                                    <SlidersHorizontal size={15} />
-                                  </Button>
-                                ) : null}
                                 {accountAction}
+                                {showPermissionAction ? (
+                                  <PopoverClose asChild>
+                                    <Button
+                                      showTooltip
+                                      type="button"
+                                      onClick={() => {
+                                        updateConnectorUi({
+                                          permissionConnectorSlug:
+                                            connector.slug,
+                                        });
+                                      }}
+                                      aria-label={t(
+                                        ($) => {
+                                          return $.chat.connectors
+                                            .configurePermissions;
+                                        },
+                                        { connectorName: connector.label },
+                                      )}
+                                      variant="quiet"
+                                      size="icon-2xs"
+                                      className="shrink-0"
+                                    >
+                                      <SlidersHorizontal size={15} />
+                                    </Button>
+                                  </PopoverClose>
+                                ) : null}
                               </>
                             ) : null
                           }
@@ -10602,6 +10682,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   return (
     <AttachmentChips
       attachments={visibleAttachments}
+      onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {
         removeAttachment(attachment);
         notifyDraftChanged();

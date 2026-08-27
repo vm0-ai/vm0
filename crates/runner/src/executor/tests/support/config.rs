@@ -25,7 +25,6 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
 
     ExecutorConfig {
         api_url: "http://localhost:9999".into(),
-        runner_name: "test-runner".into(),
         runner_hostname: None,
         registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
         http: crate::http::HttpClient::new(HttpClientConfig {
@@ -119,7 +118,6 @@ pub(in crate::executor::tests) fn test_telemetry(
         config.http.clone(),
         ctx.run_id,
         ctx.sandbox_token.clone(),
-        config.runner_name.clone(),
         config.runner_hostname.clone(),
     )
 }

@@ -1,5 +1,86 @@
 # Changelog
 
+## [1.502.0](https://github.com/vm0-ai/vm0/compare/api-v1.501.2...api-v1.502.0) (2026-08-27)
+
+
+### Features
+
+* enable latest presentation templates globally ([#29756](https://github.com/vm0-ai/vm0/issues/29756)) ([f73de6b](https://github.com/vm0-ai/vm0/commit/f73de6b84b45462993f77c896e300549bd47b77d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.597.0
+    * @okouai/db bumped to 1.226.3
+
+## [1.501.2](https://github.com/vm0-ai/vm0/compare/api-v1.501.1...api-v1.501.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **auth:** harden Clerk identity and signup attribution ([#29732](https://github.com/vm0-ai/vm0/issues/29732)) ([13c15e9](https://github.com/vm0-ai/vm0/commit/13c15e9089c8a8aa7dd3001db3f78ab51cd90fe6)), closes [#29711](https://github.com/vm0-ai/vm0/issues/29711)
+* **connectors:** handle unknown oauth grants ([#29787](https://github.com/vm0-ai/vm0/issues/29787)) ([fcc6ca8](https://github.com/vm0-ai/vm0/commit/fcc6ca834cd281991dbfeb3d2ca22954e45d076c))
+
+
+### Refactoring
+
+* **api:** cut over machine secret writers to canonical alias ([#29731](https://github.com/vm0-ai/vm0/issues/29731)) ([5c93b0b](https://github.com/vm0-ai/vm0/commit/5c93b0b0da590e293c881c90c53fd000497c8d6d))
+* **api:** stop legacy runner name handling ([#29785](https://github.com/vm0-ai/vm0/issues/29785)) ([5396b0e](https://github.com/vm0-ai/vm0/commit/5396b0e18377e475a4dee0c7bd140dbe7026a640))
+* roll out the latest website templates and remove their feature switch ([#29442](https://github.com/vm0-ai/vm0/issues/29442)) ([7ef1518](https://github.com/vm0-ai/vm0/commit/7ef1518aff0eacf8e8b83f6421e515ad12088998))
+
+
+### Performance Improvements
+
+* **api:** reduce workflow queue probes ([#29800](https://github.com/vm0-ai/vm0/issues/29800)) ([b5803f0](https://github.com/vm0-ai/vm0/commit/b5803f0f3f48cb9baa7e231d3e925e116e4afa08))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.2
+    * @okouai/core bumped to 8.596.2
+    * @okouai/db bumped to 1.226.2
+
+## [1.501.1](https://github.com/vm0-ai/vm0/compare/api-v1.501.0...api-v1.501.1) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** stop emitting legacy runner name ([#29680](https://github.com/vm0-ai/vm0/issues/29680)) ([e8bec5e](https://github.com/vm0-ai/vm0/commit/e8bec5ebcecd3e2e3b4b7af5a89cfb9aed804b60))
+
+
+### Performance Improvements
+
+* **api:** attribute web queue-first enqueue transaction ([#29682](https://github.com/vm0-ai/vm0/issues/29682)) ([07f859a](https://github.com/vm0-ai/vm0/commit/07f859a9bd2149d274f31d100892fa2a26328f16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+    * @okouai/db bumped to 1.226.1
+
+## [1.501.0](https://github.com/vm0-ai/vm0/compare/api-v1.500.1...api-v1.501.0) (2026-08-27)
+
+
+### Features
+
+* **workflows:** add official workflow installations ([#29660](https://github.com/vm0-ai/vm0/issues/29660)) ([a22b7d6](https://github.com/vm0-ai/vm0/commit/a22b7d6bca5d3e67b82e31e9e2fcd1513abe5a7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.0
+    * @okouai/core bumped to 8.596.0
+    * @okouai/db bumped to 1.226.0
+
 ## [1.500.1](https://github.com/vm0-ai/vm0/compare/api-v1.500.0...api-v1.500.1) (2026-08-26)
 
 
