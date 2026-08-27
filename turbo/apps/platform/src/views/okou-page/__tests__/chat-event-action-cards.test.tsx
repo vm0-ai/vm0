@@ -162,7 +162,7 @@ function mockConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
   // Register the dynamic slug route first so the subsequently registered
-  // static /status route takes precedence in runtime MSW handlers.
+  // static routes take precedence in runtime MSW handlers.
   context.mocks.api(connectorCatalogContract.get, ({ params, respond }) => {
     const connector = connectors.find((candidate) => {
       return candidate.slug === params.connectorSlug;
@@ -175,6 +175,12 @@ function mockConnectorCatalogStatus(
   });
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
+  });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+    });
   });
 }
 
@@ -668,7 +674,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const loadingCard = await screen.findByTestId(
@@ -1804,7 +1809,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const displayedCopyElement = await screen.findByText(displayedCopy);
@@ -1942,7 +1946,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2037,7 +2040,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2835,7 +2837,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2881,7 +2882,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000011",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const userMessage = await screen.findByText(
@@ -2990,7 +2990,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000012",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");

@@ -49,13 +49,12 @@ impl ConfigFixture {
     }
 
     fn yaml(&self, body: &str) -> String {
-        self.yaml_with_identity("test", "test/group", body)
+        self.yaml_with_group("test/group", body)
     }
 
-    fn yaml_with_identity(&self, name: &str, group: &str, body: &str) -> String {
+    fn yaml_with_group(&self, group: &str, body: &str) -> String {
         format!(
             r#"
-name: {name}
 group: {group}
 base_dir: {base_dir}
 ca_dir: {ca_dir}
@@ -305,8 +304,7 @@ async fn diagnostic_config_read_rejects_oversized_file() {
 #[tokio::test]
 async fn load_config_with_profiles() {
     let fixture = ConfigFixture::new().await;
-    let yaml = fixture.yaml_with_identity(
-        "test-runner",
+    let yaml = fixture.yaml_with_group(
         "vm0/prod",
         &format!(
             r#"
@@ -331,7 +329,6 @@ server:
     );
 
     let config = fixture.load_config(&yaml, true).await.unwrap();
-    assert_eq!(config.name.as_deref(), Some("test-runner"));
     assert_eq!(config.hostname, None);
     assert_eq!(config.profiles.len(), 1);
     let default = &config.profiles["vm0/default"];
@@ -353,19 +350,6 @@ async fn load_preserves_optional_hostname() {
 
     let config = fixture.load_config(&yaml, true).await.unwrap();
 
-    assert_eq!(config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
-}
-
-#[tokio::test]
-async fn load_accepts_missing_legacy_name() {
-    let fixture = ConfigFixture::new().await;
-    let yaml = fixture
-        .yaml_with_default_profile("hostname: prod-1.aws.vm3.ai\n")
-        .replacen("name: test\n", "", 1);
-
-    let config = fixture.load_config(&yaml, true).await.unwrap();
-
-    assert_eq!(config.name, None);
     assert_eq!(config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
 }
 
@@ -1152,7 +1136,6 @@ async fn generate_then_load_round_trip() {
     let fixture = ConfigFixture::new().await;
     let runner_dir = fixture.path().join("my-runner");
     let config = RunnerConfig {
-        name: Some("test-runner".into()),
         hostname: Some("prod-1.aws.vm3.ai".into()),
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),
@@ -1212,7 +1195,6 @@ async fn generate_tightens_existing_runner_dir_and_config_file() {
     std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
     let config = RunnerConfig {
-        name: Some("test-runner".into()),
         hostname: None,
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),
@@ -1253,7 +1235,6 @@ async fn load_resolves_relative_paths() {
 
     let yaml = format!(
         r#"
-name: test
 group: test/group
 base_dir: my-runner
 ca_dir: artifacts
@@ -1291,7 +1272,6 @@ fn factory_config_resolves_paths() {
     let home = HomePaths::with_root(dir.path().to_path_buf());
 
     let config = RunnerConfig {
-        name: Some("test".into()),
         hostname: None,
         group: "test/group".into(),
         base_dir: dir.path().join("runner"),
@@ -1324,7 +1304,6 @@ async fn idle_pool_config_round_trip() {
     let fixture = ConfigFixture::new().await;
     let runner_dir = fixture.path().join("my-runner");
     let config = RunnerConfig {
-        name: Some("test-runner".into()),
         hostname: None,
         group: "vm0/prod".into(),
         base_dir: runner_dir.clone(),

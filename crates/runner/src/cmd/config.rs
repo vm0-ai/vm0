@@ -24,9 +24,6 @@ pub struct ConfigArgs {
     #[arg(long, required = true)]
     snapshot_hash: Vec<String>,
 
-    /// Legacy release-shaped Runner name retained for compatibility
-    #[arg(long)]
-    name: String,
     /// Canonical physical hostname used for diagnostic attribution
     #[arg(long)]
     hostname: Option<String>,
@@ -138,7 +135,6 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);
     let runner_config = RunnerConfig {
-        name: Some(args.name),
         hostname: args.hostname,
         group: args.group,
         base_dir: runner_dir.clone(),
@@ -182,7 +178,6 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
             hostname: None,
             group: "vm0/test".into(),
             runner_dirname: dirname.into(),
@@ -463,7 +458,6 @@ mod tests {
         assert_eq!(profile.snapshot_hash, snapshot_hash);
         assert_eq!(profile.rootfs_disk_mb, 12288);
         assert_eq!(profile.workspace_disk_mb, 16384);
-        assert_eq!(runner_config.name.as_deref(), Some("test"));
         assert_eq!(runner_config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
     }
 
@@ -472,7 +466,6 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
             hostname: None,
             group: "vm0/test".into(),
             runner_dirname: "runner-01".into(),

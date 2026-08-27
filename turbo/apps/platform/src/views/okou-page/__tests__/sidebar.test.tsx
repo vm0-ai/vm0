@@ -1,11 +1,12 @@
 import {
+  act,
   cleanup,
   fireEvent,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   chatSearchContract,
@@ -45,7 +46,7 @@ import {
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { setChatPageImageModelSelection$ } from "../../../signals/okou-page/chat-page.ts";
 import {
@@ -3221,6 +3222,43 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the new-chat rail responsive across consecutive clicks", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(
+      within(screen.getByTestId("chat-list-column")).getByText(
+        "Existing conversation",
+      ),
+    ).toBeInTheDocument();
+    const newChatLink = within(rail).getByLabelText("New chat");
+    click(newChatLink);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+    click(
+      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("New chat"),
+    );
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+  });
+
   it("hides only the three-column chat list and keeps search available", async () => {
     prepareDefaultAgent();
 
@@ -3462,6 +3500,10 @@ describe("zero sidebar", () => {
   });
 
   it("searches workflows and artifacts in the three-column spotlight", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn<HTMLElement["scrollIntoView"]>(),
+    });
     prepareAgents();
     mockSidebarThreadStory([
       createThread(RESEARCH_THREAD_ID, "Launch notes", {
@@ -3528,7 +3570,7 @@ describe("zero sidebar", () => {
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       return respond(200, {
         artifacts:
-          query.keyword === "launch"
+          query.keyword === "launch" || query.kind === "video"
             ? [
                 {
                   id: ARTIFACT_ID,
@@ -3620,6 +3662,12 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
     click(within(dialog).getByText("launch-demo.mp4"));
 
+    await waitFor(() => {
+      expect(pathname()).toBe("/artifacts");
+      const params = new URLSearchParams(search());
+      expect(params.get("tab")).toBe("video");
+      expect(params.get("artifact")).toBe(ARTIFACT_ID);
+    });
     await expect(
       screen.findByLabelText("Video preview for launch-demo.mp4"),
     ).resolves.toHaveAttribute(
@@ -3631,6 +3679,17 @@ describe("zero sidebar", () => {
       expect(
         screen.queryByLabelText("Video preview for launch-demo.mp4"),
       ).not.toBeInTheDocument();
+      expect(pathname()).toBe("/artifacts");
+      const params = new URLSearchParams(search());
+      expect(params.get("tab")).toBe("video");
+      expect(params.has("artifact")).toBeFalsy();
+    });
+
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
 
     const searchEvent = new KeyboardEvent("keydown", {

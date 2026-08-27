@@ -496,8 +496,6 @@ mod tests {
                 "rootfs-hash",
                 "--snapshot-hash",
                 "snapshot-hash",
-                "--name",
-                "runner-test",
                 "--group",
                 "vm0/test",
                 "--runner-dirname",
@@ -525,8 +523,6 @@ mod tests {
                 "rootfs-hash",
                 "--snapshot-hash",
                 "snapshot-hash",
-                "--name",
-                "runner-test",
                 "--group",
                 "vm0/test",
                 "--runner-dirname",
@@ -553,11 +549,7 @@ mod tests {
     fn runner_hostname_partial_read_preserves_valid_value() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("runner.yaml");
-        std::fs::write(
-            &config_path,
-            "name: v0.174.0\nhostname: prod-1.aws.vm3.ai\n",
-        )
-        .unwrap();
+        std::fs::write(&config_path, "hostname: prod-1.aws.vm3.ai\n").unwrap();
 
         assert_eq!(
             runner_hostname_from_config(&config_path).as_deref(),
@@ -569,10 +561,10 @@ mod tests {
     fn runner_hostname_partial_read_omits_missing_or_invalid_value() {
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("runner.yaml");
-        std::fs::write(&config_path, "name: v0.174.0\n").unwrap();
+        std::fs::write(&config_path, "group: vm0/test\n").unwrap();
         assert_eq!(runner_hostname_from_config(&config_path), None);
 
-        std::fs::write(&config_path, "name: v0.174.0\nhostname: ''\n").unwrap();
+        std::fs::write(&config_path, "hostname: ''\n").unwrap();
         assert_eq!(runner_hostname_from_config(&config_path), None);
     }
 

@@ -25,6 +25,9 @@ interface VM0PreBundleCopy {
     ariaLabel: string;
     messages: string[];
   };
+  preloadRecovery: {
+    message: string;
+  };
   metadata: {
     description: string;
     title: string;

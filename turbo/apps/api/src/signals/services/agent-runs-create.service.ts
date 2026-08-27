@@ -1,5 +1,6 @@
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import {
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_WORKING_DIR,
@@ -264,6 +265,17 @@ function buildAgentIdentityPrompt(
   return parts.length > 0 ? `# Agent Identity\n${parts.join("\n")}` : null;
 }
 
+function buildExecutionTimeLimitPrompt(): string {
+  const executionHours = AGENT_EXECUTION_TIMEOUT_SECONDS / (60 * 60);
+  const executionHourUnit = executionHours === 1 ? "hour" : "hours";
+  return [
+    "# Execution Time Limit",
+    "",
+    `A single agent run has a maximum execution time of ${executionHours} ${executionHourUnit}.`,
+    "Plan and prioritize the work so you can complete the most important in-scope tasks and provide a final response before the run ends.",
+  ].join("\n");
+}
+
 function buildIntegrationToolsPrompt(
   triggerSource: TriggerSource,
 ): readonly string[] {
@@ -477,6 +489,7 @@ function buildAppendSystemPrompt(args: {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
   return [
     identity,
+    buildExecutionTimeLimitPrompt(),
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -565,7 +578,6 @@ function buildAgentRunPlatformEnvironment(args: {
     ...(args.codexServiceTier
       ? {
           OKOU_CODEX_SERVICE_TIER: args.codexServiceTier,
-          VM0_CODEX_SERVICE_TIER: args.codexServiceTier,
         }
       : {}),
   };

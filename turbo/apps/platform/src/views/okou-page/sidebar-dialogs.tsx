@@ -1332,7 +1332,7 @@ interface SpotlightSearchResultsProps {
   readonly showNoResults: boolean;
   readonly onSelectChatThread: (threadId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
-  readonly onSelectArtifact: (artifactId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }
 
 interface SpotlightQueryResult {
@@ -1509,7 +1509,7 @@ function SpotlightSearchResults({
                   key={artifact.id}
                   artifact={artifact}
                   onSelect={() => {
-                    return onSelectArtifact(artifact.id);
+                    return onSelectArtifact(artifact);
                   }}
                 />
               );
@@ -1561,7 +1561,7 @@ export function ThreeColumnSearchDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onSelectChatThread: (threadId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
-  readonly onSelectArtifact: (artifactId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
@@ -1643,9 +1643,9 @@ export function ThreeColumnSearchDialog({
     onOpenChange(false);
     onSelectWorkflow(workflowId);
   };
-  const selectArtifact = (artifactId: string) => {
+  const selectArtifact = (artifact: ThreeColumnArtifactSearchItem) => {
     onOpenChange(false);
-    onSelectArtifact(artifactId);
+    onSelectArtifact(artifact);
   };
 
   return (

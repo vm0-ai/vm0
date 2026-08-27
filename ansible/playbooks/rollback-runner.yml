@@ -69,11 +69,11 @@
   become: true
 
   vars:
-    runner_name: "v{{ runner_version }}"
+    runner_release: "v{{ runner_version }}"
     runner_group: vm0/production
     data_dir: /var/lib/vm0-runner
-    bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
-    runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
+    bin_dir: "{{ data_dir }}/bin/{{ runner_release }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_release }}"
 
   tasks:
     # ========================================
@@ -116,7 +116,7 @@
     # Subsequent phases dispatch on `target_state` and short-circuit at the
     # first sufficient action.
     - name: Probe target ActiveState
-      command: systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value
+      command: systemctl show vm0-runner-{{ runner_release }}.service --property=ActiveState --value
       register: tgt_active
       changed_when: false
 
@@ -222,7 +222,7 @@
     # become ready in-place or is already running.
     - name: Attempt resume from Draining
       when: target_state == "draining"
-      command: "{{ bin_dir }}/runner service resume --name {{ runner_name }}"
+      command: "{{ bin_dir }}/runner service resume --name {{ runner_release }}"
       failed_when: false
 
     - name: Re-read target status.json after resume
@@ -276,7 +276,7 @@
     # SIGKILL.
     - name: Wait for target to go inactive
       when: target_state in ["stopping", "stopped"]
-      command: systemctl is-active --quiet vm0-runner-{{ runner_name }}.service
+      command: systemctl is-active --quiet vm0-runner-{{ runner_release }}.service
       register: wait_inactive
       retries: 60
       delay: 2
@@ -397,22 +397,11 @@
         --profile vm0/default
         --rootfs-hash {{ default_rootfs_hash }}
         --snapshot-hash {{ default_snapshot_hash }}
-        --name {{ runner_name }}
+        --hostname {{ inventory_hostname | quote }}
         --group {{ runner_group }}
-        --runner-dirname {{ runner_name }}
+        --runner-dirname {{ runner_release }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
-
-    # Write the additive YAML field after invoking the retained target binary.
-    # Older Serde readers ignore this field, while an older CLI would reject a
-    # new command-line option.
-    - name: Persist canonical runner hostname
-      when: not (skip_install | default(false))
-      lineinfile:
-        path: "{{ runner_dir }}/runner.yaml"
-        regexp: "^hostname:"
-        insertafter: "^name:"
-        line: "hostname: {{ inventory_hostname | to_json }}"
       tags:
         - runner-config-attribution
 
@@ -441,26 +430,26 @@
           when: not (skip_install | default(false))
           command: >
             {{ bin_dir }}/runner service install
-            --name {{ runner_name }}
+            --name {{ runner_release }}
             --config {{ runner_dir }}/runner.yaml
             {% if sentry_dsn is defined and sentry_dsn %}
             --env SENTRY_DSN={{ sentry_dsn }}
             {% endif %}
 
         - name: Wait for target runner readiness
-          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_name }} --timeout-secs 120"
+          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_release }} --timeout-secs 120"
           changed_when: false
 
         - name: Verify target runner health
-          command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+          command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"
       rescue:
         - name: Stop failed target runner service with runner cleanup
-          command: "{{ bin_dir }}/runner service stop --name {{ runner_name }} --force --cleanup failed-start"
+          command: "{{ bin_dir }}/runner service stop --name {{ runner_release }} --force --cleanup failed-start"
 
         - name: Fail rollback after target runner readiness failure
           fail:
             msg: >-
-              Runner {{ runner_name }} failed readiness or health checks and
+              Runner {{ runner_release }} failed readiness or health checks and
               was stopped to avoid leaving a non-admitting service running.
 
     # ========================================
@@ -503,13 +492,13 @@
     - name: Drain non-target runners (graceful)
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
       loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
-      when: item != runner_name and rollback_mode == "graceful"
+      when: item != runner_release and rollback_mode == "graceful"
       failed_when: false
 
     - name: Stop non-target runners (emergency)
       command: "{{ bin_dir }}/runner service stop --name {{ item }} --force"
       loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
-      when: item != runner_name and rollback_mode == "emergency"
+      when: item != runner_release and rollback_mode == "emergency"
       failed_when: false
 
     # ========================================
@@ -521,4 +510,4 @@
       include_tasks: ../tasks/garbage-collect-runner.yml
 
     - name: Verify runner health after cleanup
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"

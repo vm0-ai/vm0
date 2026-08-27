@@ -5018,6 +5018,7 @@ describe("CHAT-02: model-first provider policies", () => {
     let previousSectionIndex = -1;
     for (const section of [
       "# Agent Identity",
+      "# Execution Time Limit",
       "# Agent Tools",
       "# Current User Info",
       "# Current Integration",
@@ -6925,9 +6926,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(fastClaim.claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
     expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
-      environment.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(environment.OPENAI_API_KEY).toBeTruthy();
     expect(environment.CHATGPT_ACCESS_TOKEN).toBeUndefined();
     await cancelChatRun(actor, fast.runId, fastClaim.sandboxHeaders);
@@ -7125,9 +7124,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
-      environment.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(
       (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBe("priority");

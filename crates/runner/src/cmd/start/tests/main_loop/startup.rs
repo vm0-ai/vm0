@@ -220,7 +220,6 @@ done
     let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: dir.path().join("runner.yaml"),
         base_dir: dir.path().join("base"),
-        runner_name: Some("test-runner".into()),
         runner_group: "vm0/test".into(),
         subcommand: "start".into(),
     };

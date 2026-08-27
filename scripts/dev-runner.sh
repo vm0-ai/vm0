@@ -50,14 +50,14 @@ source "$ENV_FILE"
 HOST="${RUNNER_LOCAL_HOST:?RUNNER_LOCAL_HOST not set in $ENV_FILE}"
 SSH_USER="${RUNNER_LOCAL_USER:-ubuntu}"
 
-# --- Runner name from RUNNER_DEFAULT_GROUP ---
+# --- Opaque local service suffix from RUNNER_DEFAULT_GROUP ---
 RUNNER_GROUP="${RUNNER_DEFAULT_GROUP:?RUNNER_DEFAULT_GROUP not set in $ENV_FILE}"
 # vm0/local-alice-macbook -> alice-macbook
-RUNNER_NAME="${RUNNER_GROUP##*/}"
+RUNNER_SERVICE_SUFFIX="${RUNNER_GROUP##*/}"
 
-REMOTE_BIN_DIR="/var/lib/vm0-runner/bin/${RUNNER_NAME}"
+REMOTE_BIN_DIR="/var/lib/vm0-runner/bin/${RUNNER_SERVICE_SUFFIX}"
 RUNNER_BIN="sudo $REMOTE_BIN_DIR/runner"
-RUNNER_DIR="/var/lib/vm0-runner/runners/$RUNNER_NAME"
+RUNNER_DIR="/var/lib/vm0-runner/runners/$RUNNER_SERVICE_SUFFIX"
 
 CF_SSH="$SCRIPT_DIR/cf-ssh.sh"
 SSH_KEY="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
@@ -109,8 +109,8 @@ cmd_deploy() {
   RUNNER_SECRET="${OFFICIAL_RUNNER_SECRET:?OFFICIAL_RUNNER_SECRET not set in $ENV_FILE}"
   TARGET=$(select_runner_target)
   # alice-macbook -> https://tunnel-alice-macbook-www.vm7.ai
-  API_URL="https://tunnel-${RUNNER_NAME#local-}-www.vm7.ai"
-  log "Runner: $RUNNER_NAME (group: $RUNNER_GROUP, api: $API_URL)"
+  API_URL="https://tunnel-${RUNNER_SERVICE_SUFFIX#local-}-www.vm7.ai"
+  log "Runner service: $RUNNER_SERVICE_SUFFIX (group: $RUNNER_GROUP, api: $API_URL)"
 
   runner_guest_binaries_load
   local guest_cargo_args=()
@@ -136,7 +136,7 @@ cmd_deploy() {
   # Stop old service before uploading (avoids "Text file busy").
   # Try --force first (new runner), fall back to no-flag (old runner).
   log "Stopping old service..."
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME" || true
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_SERVICE_SUFFIX --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_SERVICE_SUFFIX" || true
 
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
@@ -185,9 +185,9 @@ cmd_deploy() {
   log "Generating config..."
   ssh_cmd "$RUNNER_BIN config \
     $CONFIG_ARGS \
-    --name $RUNNER_NAME \
+    --hostname $HOST \
     --group $RUNNER_GROUP \
-    --runner-dirname $RUNNER_NAME \
+    --runner-dirname $RUNNER_SERVICE_SUFFIX \
     --api-url $API_URL \
     --token vm0_official_${RUNNER_SECRET}"
 
@@ -199,19 +199,19 @@ cmd_deploy() {
     LOCAL_FLAG="--local"
     MOCK_FLAG="--env USE_MOCK_CLAUDE=true"
   fi
-  ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
+  ssh_cmd "$RUNNER_BIN service start --name $RUNNER_SERVICE_SUFFIX \
     --config $RUNNER_DIR/runner.yaml $LOCAL_FLAG $MOCK_FLAG"
 
   log "Waiting for Runner readiness..."
-  ssh_cmd "$RUNNER_BIN service wait-running --name $RUNNER_NAME --timeout-secs 120" >/dev/null
+  ssh_cmd "$RUNNER_BIN service wait-running --name $RUNNER_SERVICE_SUFFIX --timeout-secs 120" >/dev/null
 
-  log "Done! Runner $RUNNER_NAME deployed to $HOST"
+  log "Done! Runner service $RUNNER_SERVICE_SUFFIX deployed to $HOST"
 }
 
 cmd_submit() {
   PROFILE="${2:?Usage: $0 submit <profile> <prompt>}"
   PROMPT="${3:?Usage: $0 submit <profile> <prompt>}"
-  log "Submitting job to $RUNNER_NAME (profile: $PROFILE, prompt: $PROMPT)..."
+  log "Submitting job through runner service $RUNNER_SERVICE_SUFFIX (profile: $PROFILE, prompt: $PROMPT)..."
   # Use printf %q to safely escape the prompt for remote shell
   ESCAPED_PROMPT=$(printf '%q' "$PROMPT")
   ssh_cmd "$RUNNER_BIN local submit --group $RUNNER_GROUP --profile $PROFILE --prompt $ESCAPED_PROMPT --timeout 120"
@@ -232,12 +232,12 @@ cmd_exec() {
 }
 
 cmd_remove() {
-  log "Removing runner $RUNNER_NAME from $HOST..."
+  log "Removing runner service $RUNNER_SERVICE_SUFFIX from $HOST..."
 
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME" || true
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_SERVICE_SUFFIX --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_SERVICE_SUFFIX" || true
   ssh_cmd "sudo rm -rf $REMOTE_BIN_DIR $RUNNER_DIR"
 
-  log "Done! Runner $RUNNER_NAME removed from $HOST"
+  log "Done! Runner service $RUNNER_SERVICE_SUFFIX removed from $HOST"
 }
 
 # --- Main ---

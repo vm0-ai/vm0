@@ -9,4 +9,4 @@
       - --keep-latest
       - "6"
       - --protect-version
-      - "{{ runner_name }}"
+      - "{{ runner_release }}"

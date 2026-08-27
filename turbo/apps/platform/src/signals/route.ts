@@ -4,6 +4,7 @@ import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
+import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import {
   bestEffort,
@@ -26,6 +27,7 @@ import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-
 const L = logger("Route");
 
 const reloadPathname$ = state(0);
+const internalHistoryState$ = state<unknown>(window.history.state);
 
 export const pathname$ = computed((get) => {
   get(reloadPathname$);
@@ -37,10 +39,15 @@ export const searchParams$ = computed((get) => {
   return new URLSearchParams(search());
 });
 
+export const historyState$ = computed((get) => {
+  return get(internalHistoryState$);
+});
+
 export const updateSearchParams$ = command(
-  ({ set }, searchParams: URLSearchParams) => {
+  ({ set }, searchParams: URLSearchParams, historyState: unknown = {}) => {
     const str = searchParams.toString();
-    pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    pushState(historyState, "", `${pathname()}${str ? `?${str}` : ""}`);
+    set(internalHistoryState$, historyState);
     set(reloadPathname$, (x) => {
       return x + 1;
     });
@@ -48,9 +55,10 @@ export const updateSearchParams$ = command(
 );
 
 export const replaceSearchParams$ = command(
-  ({ set }, searchParams: URLSearchParams) => {
+  ({ set }, searchParams: URLSearchParams, historyState: unknown = {}) => {
     const str = searchParams.toString();
-    replaceState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    replaceState(historyState, "", `${pathname()}${str ? `?${str}` : ""}`);
+    set(internalHistoryState$, historyState);
     set(reloadPathname$, (x) => {
       return x + 1;
     });
@@ -67,6 +75,7 @@ export const replacePathSilently$ = command(
     const newPath = generateRouterPath(pathnameTemplate, pathParams);
     const searchStr = searchParams?.toString();
     replaceState({}, "", `${newPath}${searchStr ? `?${searchStr}` : ""}`);
+    set(internalHistoryState$, {});
     set(reloadPathname$, (x) => {
       return x + 1;
     });
@@ -81,14 +90,10 @@ interface Route {
 
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
 
-const currentRoute$ = computed((get) => {
-  const config = get(internalRouteConfig$);
-  if (!config) {
-    return null;
-  }
-
-  const currentPath = get(pathname$);
-
+function findRoute(
+  config: readonly Route[],
+  currentPath: string,
+): Route | null {
   for (const route of config) {
     const matcher = match(route.path, { decode: decodeURIComponent });
     const result = matcher(currentPath);
@@ -98,7 +103,26 @@ const currentRoute$ = computed((get) => {
   }
 
   return null;
+}
+
+const currentRoute$ = computed((get) => {
+  const config = get(internalRouteConfig$);
+  if (!config) {
+    return null;
+  }
+
+  return findRoute(config, get(pathname$));
 });
+
+const clearPageForRouteBoundary$ = command(
+  ({ get, set }, nextPathname: string) => {
+    const config = get(internalRouteConfig$);
+    const nextRoute = config ? findRoute(config, nextPathname) : null;
+    if (get(currentRoute$) !== nextRoute) {
+      set(clearPage$);
+    }
+  },
+);
 
 export const pathParams$ = computed((get) => {
   const currentRoute = get(currentRoute$);
@@ -162,6 +186,7 @@ const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
       return x + 1;
     });
     pushState({}, "", "/");
+    set(internalHistoryState$, {});
   }
 });
 
@@ -172,7 +197,9 @@ export const initRoutes$ = command(
 
     window.addEventListener(
       "popstate",
-      onDomEventFn(async () => {
+      onDomEventFn(async (event: PopStateEvent) => {
+        set(internalHistoryState$, event.state);
+        set(clearPageForRouteBoundary$, pathname());
         set(reloadPathname$, (x) => {
           return x + 1;
         });
@@ -209,12 +236,14 @@ const navigate$ = command(
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
+    set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
       replaceState({}, "", newPath);
     } else {
       pushState({}, "", newPath);
       set(markNavigationPushState$);
     }
+    set(internalHistoryState$, {});
     set(reloadPathname$, (x) => {
       return x + 1;
     });

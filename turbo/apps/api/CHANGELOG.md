@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.504.0](https://github.com/vm0-ai/vm0/compare/api-v1.503.0...api-v1.504.0) (2026-08-27)
+
+
+### Features
+
+* expose agent run execution limit ([#29894](https://github.com/vm0-ai/vm0/issues/29894)) ([25013c9](https://github.com/vm0-ai/vm0/commit/25013c9b24785967397a652765ccea8c866c22b7))
+
+
+### Refactoring
+
+* **api:** cut codex service-tier writer to canonical alias ([#29890](https://github.com/vm0-ai/vm0/issues/29890)) ([1478093](https://github.com/vm0-ai/vm0/commit/1478093bcdbbbd40e6f0f7272f985b478e6732b7)), closes [#29886](https://github.com/vm0-ai/vm0/issues/29886) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* remove connector discovery feature switch ([#29885](https://github.com/vm0-ai/vm0/issues/29885)) ([011fcf8](https://github.com/vm0-ai/vm0/commit/011fcf8feaf50b34fa3e9d6c391e6c0a9cb4e3be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.377.0
+    * @okouai/core bumped to 8.599.1
+    * @okouai/db bumped to 1.226.9
+
+## [1.503.0](https://github.com/vm0-ai/vm0/compare/api-v1.502.4...api-v1.503.0) (2026-08-27)
+
+
+### Features
+
+* report generation template usage to axiom ([#29823](https://github.com/vm0-ai/vm0/issues/29823)) ([fd6e791](https://github.com/vm0-ai/vm0/commit/fd6e791529b7b2ef0d99d8d3f46aaa6b552704d2))
+
+
+### Bug Fixes
+
+* **connectors:** preserve oauth scope grant semantics ([#29884](https://github.com/vm0-ai/vm0/issues/29884)) ([d0e1904](https://github.com/vm0-ai/vm0/commit/d0e190422af860a47cb22613ff05623d18ac09cc))
+* **platform:** hide create workspace after limit reached ([#29841](https://github.com/vm0-ai/vm0/issues/29841)) ([72b37b4](https://github.com/vm0-ai/vm0/commit/72b37b48f06ada9e8c7ef18470924d7aea3db5d5))
+
+
+### Refactoring
+
+* **api:** cut preview job-reference writer to canonical alias ([#29869](https://github.com/vm0-ai/vm0/issues/29869)) ([75de2f2](https://github.com/vm0-ai/vm0/commit/75de2f2b9bf9c51aa5cbf9b7c250277652699dd2)), closes [#29865](https://github.com/vm0-ai/vm0/issues/29865)
+
+
+### Performance Improvements
+
+* **runner:** observe default seed baseline stability ([#29862](https://github.com/vm0-ai/vm0/issues/29862)) ([eca3635](https://github.com/vm0-ai/vm0/commit/eca36351ec7cf90aea1368f025bef26e1500714c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.3
+    * @okouai/connectors bumped to 1.210.5
+    * @okouai/core bumped to 8.599.0
+    * @okouai/db bumped to 1.226.8
+
 ## [1.502.4](https://github.com/vm0-ai/vm0/compare/api-v1.502.3...api-v1.502.4) (2026-08-27)
 
 

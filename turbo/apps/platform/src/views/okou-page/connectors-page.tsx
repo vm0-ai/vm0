@@ -17,7 +17,6 @@ import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/co
 import type {
   PublicConnectorCatalogCategoryMetadata,
   PublicConnectorCatalogDiscoveryResponse,
-  PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
@@ -875,18 +874,12 @@ function connectorLabelForSlug(
 }
 
 function effectiveConnectorCatalogCount(
-  catalogStatusLoadable: Loadable<
-    | PublicConnectorCatalogDiscoveryResponse
-    | PublicConnectorCatalogStatusResponse
-  >,
+  catalogStatusLoadable: Loadable<PublicConnectorCatalogDiscoveryResponse>,
 ): number | null {
   if (catalogStatusLoadable.state !== "hasData") {
     return null;
   }
-  if ("totalConnectorCount" in catalogStatusLoadable.data) {
-    return catalogStatusLoadable.data.totalConnectorCount;
-  }
-  return catalogStatusLoadable.data.connectors.length;
+  return catalogStatusLoadable.data.totalConnectorCount;
 }
 
 interface SettingsConnectorCardProps {
