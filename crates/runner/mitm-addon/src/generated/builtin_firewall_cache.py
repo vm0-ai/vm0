@@ -7,4 +7,4 @@ Do not edit by hand; regenerate with
 from typing import Final
 
 BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: Final[int] = 1
-BUILTIN_FIREWALL_CATALOG_MAX_BYTES: Final[int] = 16_777_216
+BUILTIN_FIREWALL_CATALOG_MAX_BYTES: Final[int] = 33_554_432

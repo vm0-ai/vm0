@@ -6387,20 +6387,19 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
+  it("accepts catalogs above 16 MiB through 32 MiB and reads the stored snapshot", async () => {
     configureSource();
+    const previousMaxRawBytes = 16 * 1024 * 1024;
     const accepted = buildRelease({
-      version: "2026-07-15.sixteen-mib-limit",
+      version: "2026-07-15.above-sixteen-mib-limit",
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+          previousMaxRawBytes,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
-    );
+    expect(acceptedBytes.byteLength).toBeGreaterThan(previousMaxRawBytes);
     expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
       CONNECTOR_CATALOG_MAX_RAW_BYTES,
     );
@@ -6410,9 +6409,31 @@ describe("connector catalog rejection and latest-valid retention", () => {
       outcome: "accepted",
       active: { catalogVersion: accepted.version },
     });
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const acceptedCatalog = await accept(
+      diagnosticsClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(acceptedCatalog.body.connectors).toContainEqual(
+      expect.objectContaining({ slug: accepted.connectorSlug }),
+    );
+  });
+
+  it("rejects catalogs above 32 MiB and retains the latest valid catalog", async () => {
+    configureSource();
+    const accepted = buildRelease({
+      version: "2026-07-15.latest-valid-before-oversized",
+    });
+    serveObjects(catalogObjects([accepted], accepted));
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: accepted.version },
+    });
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-sixteen-mib-limit",
+      version: "2026-07-15.over-thirty-two-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));

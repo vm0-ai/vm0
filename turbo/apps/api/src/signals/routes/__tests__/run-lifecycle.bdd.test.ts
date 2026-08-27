@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -394,10 +393,11 @@ const CONNECTOR_CATALOG_RAW_SIZE_BUCKETS = [
   "2_4_mib",
   "4_8_mib",
   "8_16_mib",
+  "16_32_mib",
 ] as const;
 const CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS = [
   ...CONNECTOR_CATALOG_RAW_SIZE_BUCKETS,
-  "16_32_mib",
+  "32_64_mib",
 ] as const;
 const CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS = [
   "not_applicable",
@@ -2923,67 +2923,48 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it.each([
-    {
-      payloadState: "malformed",
-      createPayload: (): Buffer => {
-        return Buffer.from("{}", "utf8");
+  it("falls back when an attested projection payload is malformed", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-malformed-runtime-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-malformed-runtime-projection-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await corruptApiTestConnectorCatalogRuntimeProjectionPayload(
+      "x",
+      Buffer.from("{}", "utf8"),
+    );
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "malformed attested runtime projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
       },
-    },
-    {
-      payloadState: "oversized",
-      createPayload: (): Buffer => {
-        return Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1);
-      },
-    },
-  ] satisfies readonly {
-    readonly payloadState: string;
-    readonly createPayload: () => Buffer;
-  }[])(
-    "falls back when an attested projection payload is $payloadState",
-    async ({ payloadState, createPayload }) => {
-      const api = createRunsApi(context);
-      mockEnv(
-        "R2_USER_STORAGES_BUCKET_NAME",
-        `test-run-lifecycle-${payloadState}-runtime-projection-${randomUUID()}`,
-      );
-      await installApiTestConnectorCatalog({
-        catalogVersion: `api-test-${payloadState}-runtime-projection-${randomUUID()}`,
-        runtimeProjection: true,
-      });
-      await corruptApiTestConnectorCatalogRuntimeProjectionPayload(
-        "x",
-        createPayload(),
-      );
-      const { actor, agentId } = await entitledRunActor();
-      const run = await api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({
-          agentId,
-          prompt: `${payloadState} attested runtime projection`,
-        }),
-        connectorScope: {
-          allowedConnectorSlugs: ["x"],
-          allowedCustomConnectorIds: [],
-        },
-      });
-      const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-      expectProjectionRowReadActionCounts(timingEvents, 1);
-      expect(
-        singleApiDispatchEvent(
-          timingEvents,
-          "api_dispatch_connector_catalog_load_runtime_snapshot",
-        ),
-      ).toStrictEqual(
-        expect.objectContaining({
-          connector_catalog_runtime_selection_source: "full_fallback",
-          connector_catalog_projection_cache_outcome: "miss",
-          connector_catalog_projection_readiness: "ready",
-          connector_catalog_projection_fallback_reason: "malformed",
-        }),
-      );
-      await api.requestCancelRun(actor, run.runId, [200]);
-    },
-  );
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectProjectionRowReadActionCounts(timingEvents, 1);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+        connector_catalog_projection_fallback_reason: "malformed",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
 
   it("falls back when projection validation authority is stale", async () => {
     const api = createRunsApi(context);

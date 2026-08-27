@@ -528,6 +528,8 @@ describe("Rust constant bindings", () => {
   });
 
   it("renders deterministic Rust constants for the supported registry", () => {
+    expect(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).toBe(32 * 1024 * 1024);
+
     const firstRender = renderRustConstants(rustConstantBindings);
     const secondRender = renderRustConstants(rustConstantBindings);
 
