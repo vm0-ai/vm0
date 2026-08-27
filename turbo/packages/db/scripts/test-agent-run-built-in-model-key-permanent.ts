@@ -109,9 +109,7 @@ async function validateCanonicalRuntimeCallers(): Promise<void> {
       "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
       "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
       "turbo/apps/api/src/signals/services/agent-run-metadata-write.service.ts",
-      "turbo/apps/api/src/signals/services/agent-webhook-complete.service.ts",
       "turbo/apps/api/src/signals/services/built-in-model-provider-failure.service.ts",
-      "turbo/apps/api/src/signals/services/run-cancel.service.ts",
       "turbo/apps/api/src/test-fixtures/agent-runs.ts",
     ],
   );

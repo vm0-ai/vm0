@@ -1,5 +1,5 @@
 {
-  "id": "c6f8f688-84d1-462b-881e-2cb9084379a3",
+  "id": "1d40e74f-71a0-496d-9b38-d14b87d7efda",
   "prevId": "b4cc98bc-7b06-44e8-b88e-bcdabd65d27f",
   "version": "7",
   "dialect": "postgresql",
@@ -4867,9 +4867,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connection_observation_run_id": {
-          "name": "connection_observation_run_id",
-          "type": "uuid",
+        "connection_observation_started_at": {
+          "name": "connection_observation_started_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -4897,7 +4897,7 @@
       "checkConstraints": {
         "built_in_model_cooldown_observation_pair_check": {
           "name": "built_in_model_cooldown_observation_pair_check",
-          "value": "(\"built_in_model_candidate_cooldown\".\"connection_observation_run_id\" IS NULL AND \"built_in_model_candidate_cooldown\".\"connection_observation_until\" IS NULL) OR (\"built_in_model_candidate_cooldown\".\"connection_observation_run_id\" IS NOT NULL AND \"built_in_model_candidate_cooldown\".\"connection_observation_until\" IS NOT NULL)"
+          "value": "(\"built_in_model_candidate_cooldown\".\"connection_observation_started_at\" IS NULL AND \"built_in_model_candidate_cooldown\".\"connection_observation_until\" IS NULL) OR (\"built_in_model_candidate_cooldown\".\"connection_observation_started_at\" IS NOT NULL AND \"built_in_model_candidate_cooldown\".\"connection_observation_until\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

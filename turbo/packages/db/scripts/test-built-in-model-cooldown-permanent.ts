@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 interface CooldownRow {
-  readonly connectionObservationRunId?: string | null;
+  readonly connectionObservationStartedAt?: Date | null;
   readonly connectionObservationUntil?: Date | null;
   readonly providerType: string;
   readonly selectedModel: string;
@@ -52,7 +52,7 @@ async function readFixture(
         "provider_type" AS "providerType",
         "upstream_model" AS "upstreamModel",
         "unavailable_until" AS "unavailableUntil",
-        "connection_observation_run_id" AS "connectionObservationRunId",
+        "connection_observation_started_at" AS "connectionObservationStartedAt",
         "connection_observation_until" AS "connectionObservationUntil"
       FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
@@ -120,8 +120,8 @@ async function assertCanonicalSchema(client: Client): Promise<void> {
     },
     {
       characterMaximumLength: null,
-      columnName: "connection_observation_run_id",
-      dataType: "uuid",
+      columnName: "connection_observation_started_at",
+      dataType: "timestamp without time zone",
       isNullable: "YES",
     },
     {
@@ -286,8 +286,8 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
 
 async function validateObservationStatements(client: Client): Promise<void> {
   const inactiveDeadline = new Date("1970-01-01T00:00:00.000Z");
+  const observationStartedAt = new Date("2026-08-25T08:00:00.000Z");
   const observationUntil = new Date("2026-08-25T09:00:00.000Z");
-  const observationRunId = "00000000-0000-4000-8000-000000000001";
 
   await assert.rejects(
     client.query(
@@ -297,7 +297,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
           "provider_type",
           "upstream_model",
           "unavailable_until",
-          "connection_observation_run_id"
+          "connection_observation_started_at"
         )
         VALUES ($1, $2, $3, $4, $5)
       `,
@@ -306,7 +306,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
         fixture.observation.providerType,
         fixture.observation.upstreamModel,
         inactiveDeadline,
-        observationRunId,
+        observationStartedAt,
       ],
     ),
     { code: "23514" },
@@ -319,7 +319,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
         "provider_type",
         "upstream_model",
         "unavailable_until",
-        "connection_observation_run_id",
+        "connection_observation_started_at",
         "connection_observation_until"
       )
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -329,7 +329,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
       fixture.observation.providerType,
       fixture.observation.upstreamModel,
       inactiveDeadline,
-      observationRunId,
+      observationStartedAt,
       observationUntil,
     ],
   );
@@ -339,8 +339,39 @@ async function validateObservationStatements(client: Client): Promise<void> {
       providerType: fixture.observation.providerType,
       upstreamModel: fixture.observation.upstreamModel,
       unavailableUntil: inactiveDeadline,
-      connectionObservationRunId: observationRunId,
+      connectionObservationStartedAt: observationStartedAt,
       connectionObservationUntil: observationUntil,
+    },
+  ]);
+
+  const restartedAt = new Date("2026-08-25T10:00:00.000Z");
+  const restartedUntil = new Date("2026-08-25T10:01:00.000Z");
+  await client.query(
+    `
+      UPDATE "built_in_model_candidate_cooldown"
+      SET
+        "connection_observation_started_at" = $1,
+        "connection_observation_until" = $2
+      WHERE "selected_model" = $3
+        AND "provider_type" = $4
+        AND "upstream_model" = $5
+    `,
+    [
+      restartedAt,
+      restartedUntil,
+      fixture.observation.selectedModel,
+      fixture.observation.providerType,
+      fixture.observation.upstreamModel,
+    ],
+  );
+  assert.deepEqual(await readFixture(client, fixture.observation), [
+    {
+      selectedModel: fixture.observation.selectedModel,
+      providerType: fixture.observation.providerType,
+      upstreamModel: fixture.observation.upstreamModel,
+      unavailableUntil: inactiveDeadline,
+      connectionObservationStartedAt: restartedAt,
+      connectionObservationUntil: restartedUntil,
     },
   ]);
 
@@ -348,7 +379,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
     `
       UPDATE "built_in_model_candidate_cooldown"
       SET
-        "connection_observation_run_id" = NULL,
+        "connection_observation_started_at" = NULL,
         "connection_observation_until" = NULL
       WHERE "selected_model" = $1
         AND "provider_type" = $2
@@ -366,7 +397,7 @@ async function validateObservationStatements(client: Client): Promise<void> {
       providerType: fixture.observation.providerType,
       upstreamModel: fixture.observation.upstreamModel,
       unavailableUntil: inactiveDeadline,
-      connectionObservationRunId: null,
+      connectionObservationStartedAt: null,
       connectionObservationUntil: null,
     },
   ]);

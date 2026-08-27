@@ -1,3 +1,0 @@
-ALTER TABLE "built_in_model_candidate_cooldown" ADD COLUMN "connection_observation_run_id" uuid;--> statement-breakpoint
-ALTER TABLE "built_in_model_candidate_cooldown" ADD COLUMN "connection_observation_until" timestamp;--> statement-breakpoint
-ALTER TABLE "built_in_model_candidate_cooldown" ADD CONSTRAINT "built_in_model_cooldown_observation_pair_check" CHECK (("built_in_model_candidate_cooldown"."connection_observation_run_id" IS NULL AND "built_in_model_candidate_cooldown"."connection_observation_until" IS NULL) OR ("built_in_model_candidate_cooldown"."connection_observation_run_id" IS NOT NULL AND "built_in_model_candidate_cooldown"."connection_observation_until" IS NOT NULL));

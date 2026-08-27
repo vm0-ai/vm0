@@ -4,7 +4,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
-import { runStatusSchema } from "@okouai/api-contracts/contracts/runs";
 
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -24,11 +23,6 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { drainOrgQueue$ } from "./agent-run-lifecycle.service";
-import {
-  logBuiltInModelProviderFailureTransition,
-  reconcileBuiltInModelProviderFailureObservation,
-  type BuiltInModelProviderFailureTransition,
-} from "./built-in-model-provider-failure.service";
 
 const L = logger("RunCancel");
 
@@ -44,7 +38,6 @@ export interface CancelRunResult {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly runnerCancellationMode: RunnerCancellationMode;
   readonly alreadyCancelled: boolean;
-  readonly providerFailureTransition?: BuiltInModelProviderFailureTransition;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -86,10 +79,7 @@ export const cancelRun$ = command(
     const apiStartTime = args.apiStartTime ?? now();
     const writeDb = set(writeDb$);
 
-    const result:
-      | NotFoundResponse
-      | RunNotCancellableResponse
-      | CancelRunResult = await writeDb.transaction(async (tx) => {
+    const result = await writeDb.transaction(async (tx) => {
       const [run] = await tx
         .select({
           id: agentRuns.id,
@@ -101,11 +91,6 @@ export const cancelRun$ = command(
           chatThreadId: agentRuns.chatThreadId,
           cancellationRecoveryCompleted:
             agentRuns.cancellationRecoveryCompleted,
-          modelProvider: agentRuns.modelProvider,
-          selectedModel: agentRuns.selectedModel,
-          modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-          modelRuntimeModel: agentRuns.modelRuntimeModel,
-          builtInModelKeyId: agentRuns.builtInModelKeyId,
         })
         .from(agentRuns)
         .where(
@@ -161,12 +146,6 @@ export const cancelRun$ = command(
         .delete(runnerJobQueue)
         .where(eq(runnerJobQueue.runId, args.runId));
 
-      const providerFailureTransition =
-        await reconcileBuiltInModelProviderFailureObservation(tx, {
-          run: { ...run, status: runStatusSchema.parse(run.status) },
-          terminalStatus: "cancelled",
-        });
-
       return {
         apiStartTime,
         runId: args.runId,
@@ -179,19 +158,9 @@ export const cancelRun$ = command(
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
-        ...(providerFailureTransition ? { providerFailureTransition } : {}),
       };
     });
     signal.throwIfAborted();
-
-    if (
-      "alreadyCancelled" in result &&
-      result.providerFailureTransition !== undefined
-    ) {
-      logBuiltInModelProviderFailureTransition(
-        result.providerFailureTransition,
-      );
-    }
 
     return result;
   },
