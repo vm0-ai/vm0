@@ -20,8 +20,10 @@ import { onRef, setLoop, settle, withCleanup } from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
+  discoverAuthV2PasskeyCapability,
   type AuthV2ExistingAccount,
   type AuthV2ExternalCapabilities,
+  type AuthV2PasskeyCapability,
   recoverAuthV2OAuth,
   requestGoogleOneTapCredential,
   startAuthV2OAuth,
@@ -236,6 +238,7 @@ interface SignInFlowAtoms {
   readonly pendingFactorId$: State<string | null>;
   readonly password$: State<string>;
   readonly passwordRecovery$: State<boolean>;
+  readonly passkeyCapability$: State<AuthV2PasskeyCapability>;
   readonly resendRemainingSeconds$: State<number>;
   readonly selectedFactor$: State<AuthV2SignInFactor | null>;
   readonly signOutOfOtherSessions$: State<boolean>;
@@ -286,6 +289,7 @@ function oauthFactor(
 function discoverFactors(
   factors: readonly SignInFirstFactor[] | null,
   lastUsedOAuthStrategy: AuthV2OAuthStrategy | null,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
     return { factors: [], unknownStrategies: [] };
@@ -313,7 +317,9 @@ function discoverFactors(
     } else if (isAuthV2OAuthStrategy(factor.strategy)) {
       discovered.push(oauthFactor(factor.strategy, lastUsedOAuthStrategy));
     } else if (factor.strategy === "passkey") {
-      discovered.push({ id: "passkey", kind: "passkey" });
+      if (passkeyCapability !== "unavailable") {
+        discovered.push({ id: "passkey", kind: "passkey" });
+      }
     } else {
       unknownStrategies.push(factor.strategy);
     }
@@ -347,12 +353,13 @@ function discoverClientTrustFactors(
 
 function entryFactors(
   capabilities: AuthV2ExternalCapabilities,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): readonly AuthV2SignInFactor[] {
   const factors: AuthV2SignInFactor[] = [];
   for (const strategy of capabilities.oauthStrategies) {
     factors.push(oauthFactor(strategy, capabilities.lastUsedOAuthStrategy));
   }
-  if (capabilities.passkey) {
+  if (capabilities.passkey && passkeyCapability !== "unavailable") {
     factors.push({ id: "passkey", kind: "passkey" });
   }
   return factors;
@@ -361,6 +368,7 @@ function entryFactors(
 function snapshotSignInResource(
   resource: SignInResource,
   capabilities: AuthV2ExternalCapabilities,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): SignInResourceSnapshot {
   // The legacy resource is the stable low-level API used by this app. Clerk
   // exposes transferability on its future view, so keep that SDK detail
@@ -371,6 +379,7 @@ function snapshotSignInResource(
       : discoverFactors(
           resource.supportedFirstFactors,
           capabilities.lastUsedOAuthStrategy,
+          passkeyCapability,
         );
   const factorsWithExternalOAuth =
     resource.status === "needs_client_trust"
@@ -389,7 +398,7 @@ function snapshotSignInResource(
         ];
   const factors =
     resource.status === "needs_identifier" || resource.status === null
-      ? entryFactors(capabilities)
+      ? entryFactors(capabilities, passkeyCapability)
       : factorsWithExternalOAuth;
   return {
     clerkStatus: resource.status,
@@ -464,6 +473,32 @@ function clerkErrorField(
   return fallbackField;
 }
 
+function passkeyErrorCode(
+  clerkCode: string | undefined,
+  errorName: string | undefined,
+  errorMessage: string | undefined,
+): "passkey-cancelled" | "passkey-unavailable" | null {
+  if (
+    errorName === "AbortError" ||
+    clerkCode === "passkey_retrieval_cancelled" ||
+    clerkCode === "passkey_operation_aborted"
+  ) {
+    return "passkey-cancelled";
+  }
+  if (
+    errorName === "NotSupportedError" ||
+    errorMessage ===
+      "Resident credentials or empty 'allowCredentials' lists are not supported at this time." ||
+    errorMessage === "Error connecting to Web Authentication service." ||
+    clerkCode === "passkey_not_supported" ||
+    clerkCode === "passkey_pa_not_supported" ||
+    clerkCode === "passkeys_pa_not_supported"
+  ) {
+    return "passkey-unavailable";
+  }
+  return null;
+}
+
 function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
@@ -476,7 +511,14 @@ function normalizeClerkError(
     : null;
   const normalizedError = apiError ?? error;
   const clerkCode = stringProperty(normalizedError, "code");
-  if (!apiError && !clerkCode) {
+  const errorName = stringProperty(normalizedError, "name");
+  const errorMessage = stringProperty(normalizedError, "message");
+  const normalizedPasskeyCode = passkeyErrorCode(
+    clerkCode,
+    errorName,
+    errorMessage,
+  );
+  if (!apiError && !clerkCode && !normalizedPasskeyCode) {
     return { code: "unknown", field: fallbackField };
   }
   const code =
@@ -484,17 +526,12 @@ function normalizeClerkError(
     (clerkCode?.toLowerCase().includes("expired") === true ||
       clerkCode?.toLowerCase().includes("timeout") === true)
       ? "code-expired"
-      : clerkCode === "passkey_retrieval_cancelled" ||
-          clerkCode === "passkey_operation_aborted"
-        ? "passkey-cancelled"
-        : clerkCode === "passkey_not_supported" ||
-            clerkCode === "passkey_pa_not_supported"
-          ? "passkey-unavailable"
-          : clerkCode === "not_allowed_access"
-            ? "access-not-allowed"
-            : clerkCode === "user_banned"
-              ? "user-banned"
-              : "clerk";
+      : (normalizedPasskeyCode ??
+        (clerkCode === "not_allowed_access"
+          ? "access-not-allowed"
+          : clerkCode === "user_banned"
+            ? "user-banned"
+            : "clerk"));
   return {
     ...(clerkCode ? { clerkCode } : {}),
     code,
@@ -756,6 +793,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const methodChooser$ = state(false);
   const pendingFactorId$ = state<string | null>(null);
   const passwordRecovery$ = state(false);
+  const passkeyCapability$ = state<AuthV2PasskeyCapability>("unknown");
   const resendRemainingSeconds$ = state(0);
   const code$ = state("");
   const newPassword$ = state("");
@@ -789,6 +827,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     pendingFactorId$,
     password$,
     passwordRecovery$,
+    passkeyCapability$,
     resendRemainingSeconds$,
     selectedFactor$,
     signOutOfOtherSessions$,
@@ -872,6 +911,7 @@ function createCommitResourceCommand(
       const snapshot = snapshotSignInResource(
         resource,
         get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
       );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
@@ -945,6 +985,7 @@ function createResourceCommands(
       const snapshot = snapshotSignInResource(
         resource,
         get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
       );
       const clientTrustFactor = snapshot.factors.find((factor) => {
         return factor.kind === "client-trust-email-code";
@@ -988,7 +1029,25 @@ function createResourceCommands(
           "Loaded Clerk instance did not provide a client resource",
         );
       }
-      set(atoms.capabilities$, discoverAuthV2ExternalCapabilities(clerk));
+      const capabilities = discoverAuthV2ExternalCapabilities(clerk);
+      set(atoms.capabilities$, capabilities);
+      const passkeyOffered =
+        capabilities.passkey ||
+        clerk.client.signIn.supportedFirstFactors?.some((factor) => {
+          return factor.strategy === "passkey";
+        }) === true;
+      const detectedPasskeyCapability = passkeyOffered
+        ? await discoverAuthV2PasskeyCapability()
+        : "unknown";
+      signal.throwIfAborted();
+      const passkeyCapability =
+        get(atoms.passkeyCapability$) === "unavailable"
+          ? "unavailable"
+          : detectedPasskeyCapability;
+      set(atoms.passkeyCapability$, passkeyCapability);
+      if (passkeyOffered && passkeyCapability === "unavailable") {
+        set(atoms.error$, { code: "passkey-unavailable", field: "general" });
+      }
 
       if (dependencies.isOAuthCallbackRoute) {
         const recovery = await settle(
@@ -1276,15 +1335,21 @@ function createFactorSelectionCommand(
         return;
       }
       if (factor.kind === "passkey") {
-        const authentication = await settle(
+        const [authentication] = await Promise.allSettled([
           resource.authenticateWithPasskey({ flow: "discoverable" }),
-          signal,
-        );
-        if (!authentication.ok) {
-          set(
-            atoms.error$,
-            normalizeClerkError(authentication.error, "general"),
+        ]);
+        signal.throwIfAborted();
+        if (authentication.status === "rejected") {
+          const normalizedError = normalizeClerkError(
+            authentication.reason,
+            "general",
           );
+          set(atoms.error$, normalizedError);
+          if (normalizedError.code === "passkey-unavailable") {
+            set(atoms.passkeyCapability$, "unavailable");
+            await set(applyResource$, resource, signal);
+            signal.throwIfAborted();
+          }
           return;
         }
         await set(applyResource$, authentication.value, signal);
@@ -1594,7 +1659,10 @@ function createEntryNavigationCommands(
     set(atoms.snapshot$, {
       clerkStatus: "needs_identifier",
       createdSessionId: null,
-      factors: entryFactors(get(atoms.capabilities$)),
+      factors: entryFactors(
+        get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
+      ),
       firstFactorVerificationStatus: null,
       firstFactorVerificationStrategy: null,
       identifier: null,

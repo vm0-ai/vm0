@@ -20,6 +20,8 @@ export interface AuthV2ExternalCapabilities {
   readonly passkey: boolean;
 }
 
+export type AuthV2PasskeyCapability = "available" | "unavailable" | "unknown";
+
 export interface AuthV2ExistingAccount {
   readonly displayName: string;
   readonly identifier: string | null;
@@ -171,6 +173,31 @@ export function discoverAuthV2ExternalCapabilities(
     oauthStrategies,
     passkey,
   };
+}
+
+export async function discoverAuthV2PasskeyCapability(): Promise<AuthV2PasskeyCapability> {
+  if (
+    window.isSecureContext === false ||
+    typeof PublicKeyCredential !== "function" ||
+    !navigator.credentials ||
+    typeof navigator.credentials.get !== "function"
+  ) {
+    return "unavailable";
+  }
+
+  if (
+    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable !==
+    "function"
+  ) {
+    return "unknown";
+  }
+
+  const [availability] = await Promise.allSettled([
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(),
+  ]);
+  return availability.status === "fulfilled" && availability.value
+    ? "available"
+    : "unknown";
 }
 
 export function discoverAuthV2ExistingAccounts(
