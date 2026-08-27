@@ -8,12 +8,6 @@ setup() {
     runner_e2e_require_environment
     runner_e2e_setup_test
     CUSTOM_CONNECTOR_ID=""
-
-    local feature_switches
-    feature_switches="$(runner_api_curl "/api/feature-switches")"
-    jq -e '.effectiveSwitches.connectorAccounts == true' \
-        <<<"$feature_switches" \
-        >/dev/null
 }
 
 teardown() {
