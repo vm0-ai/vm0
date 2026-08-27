@@ -470,23 +470,11 @@ pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 /// Optional test/debug override for the mock Claude binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
-pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
-
-/// Canonical mock Claude binary path alias accepted by guest readers.
-///
-/// Repository-owned test/debug writers use this alias exclusively. Legacy
-/// [`MOCK_CLAUDE_PATH_ENV`] remains only for compatibility removal under #28914.
 pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 
 /// Optional test/debug override for the mock Codex binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
-pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
-
-/// Canonical mock Codex binary path alias accepted by guest readers.
-///
-/// Repository-owned test/debug writers use this alias exclusively. Legacy
-/// [`MOCK_CODEX_PATH_ENV`] remains only for compatibility removal under #28914.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
@@ -663,9 +651,7 @@ mod tests {
             CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             "OKOU_POST_RESULT_SIGKILL_GRACE_SECS"
         );
-        assert_eq!(MOCK_CLAUDE_PATH_ENV, "VM0_MOCK_CLAUDE_PATH");
         assert_eq!(CANONICAL_MOCK_CLAUDE_PATH_ENV, "OKOU_MOCK_CLAUDE_PATH");
-        assert_eq!(MOCK_CODEX_PATH_ENV, "VM0_MOCK_CODEX_PATH");
         assert_eq!(CANONICAL_MOCK_CODEX_PATH_ENV, "OKOU_MOCK_CODEX_PATH");
     }
 

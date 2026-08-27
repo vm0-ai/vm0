@@ -19,25 +19,22 @@ const CHILD_TIMEOUT: Duration = Duration::from_secs(15);
 
 const API_URL_VALUE: &str = "http://api-url-value-must-not-leak.example.test";
 const API_TOKEN_VALUE: &str = "api-token-value-must-not-leak";
-const MOCK_CLAUDE_PATH_VALUE: &str = "/mock-claude-path-value-must-not-leak";
-const MOCK_CODEX_PATH_VALUE: &str = "/mock-codex-path-value-must-not-leak";
 const SANDBOX_ID_VALUE: &str = "sandbox-id-value-must-not-leak";
 const SANDBOX_REUSE_VALUE: &str = "sandbox-reuse-value-must-not-leak";
 const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
 
-const SOURCE_EVENT_FAMILIES: [&str; 7] = [
+const SOURCE_EVENT_FAMILIES: [&str; 6] = [
     "api_url_env_source",
     "private_payload_file_env_source",
     "api_token_env_source",
     "agent_execution_timeout_env_source",
     "guest_agent_tuning_env_source",
-    "mock_binary_path_env_source",
     "run_metadata_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 16] = [
+const SOURCE_EVENTS: [(&str, &str); 14] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -94,14 +91,6 @@ const SOURCE_EVENTS: [(&str, &str); 16] = [
         "agent_execution_timeout_env_source",
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
     ),
-    (
-        "mock_binary_path_env_source",
-        guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-    ),
-    (
-        "mock_binary_path_env_source",
-        guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-    ),
 ];
 
 struct PrivateFiles {
@@ -151,8 +140,6 @@ fn assert_value_free(text: &str, runtime_dir: &Path) {
     for value in [
         API_URL_VALUE,
         API_TOKEN_VALUE,
-        MOCK_CLAUDE_PATH_VALUE,
-        MOCK_CODEX_PATH_VALUE,
         SANDBOX_ID_VALUE,
         SANDBOX_REUSE_VALUE,
         WORKSPACE_REUSE_VALUE,
@@ -218,14 +205,6 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
         .env(
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             "41",
-        )
-        .env(
-            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-            MOCK_CLAUDE_PATH_VALUE,
-        )
-        .env(
-            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-            MOCK_CODEX_PATH_VALUE,
         )
         .env(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
@@ -296,8 +275,6 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert!(runtime.config.user_env.is_empty());
     assert_eq!(runtime.config.api_url, API_URL_VALUE);
     assert_eq!(runtime.config.api_token, API_TOKEN_VALUE);
-    assert_eq!(runtime.config.mock_claude_path, MOCK_CLAUDE_PATH_VALUE);
-    assert_eq!(runtime.config.mock_codex_path, MOCK_CODEX_PATH_VALUE);
     println!("{CHILD_MARKER}");
     Ok(())
 }
