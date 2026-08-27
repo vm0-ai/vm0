@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
-    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxOperation,
+    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
+    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory, SandboxId,
+    SandboxInitializationPhase, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdNetlinkConnectStage, SandboxOperation, SandboxOperationReason,
     SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -1445,13 +1445,11 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
     let config = test_executor_config(dir.path()).await;
     let concurrency = RunnerPreSpawnConcurrency::default();
     let overrides = std::sync::Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_process_stdout_chunks(vec![
-        ProcessOutputChunk {
-            bytes: Vec::new(),
-            truncated: false,
-        };
-        ProcessOutputMode::DEFAULT_QUEUE_CAPACITY + 1
-    ]);
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Guest,
+        message: "agent spawn failed".into(),
+    });
     let factory = MockSandboxFactory::with_overrides(overrides);
 
     let cancel = tokio_util::sync::CancellationToken::new();

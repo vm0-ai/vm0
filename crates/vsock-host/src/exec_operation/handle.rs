@@ -3,6 +3,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use sandbox::ProcessOutputReceiver;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Instant};
 use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL};
@@ -657,6 +658,7 @@ pub struct SupervisedExecHandle {
     pub(in crate::exec_operation) start_timing: SupervisedExecStartTiming,
     pub(in crate::exec_operation) cancel_handle_taken: bool,
     pub(in crate::exec_operation) stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    pub(in crate::exec_operation) process_output_rx: Option<ProcessOutputReceiver>,
     pub(in crate::exec_operation) control: Option<ExecControlHandle>,
 }
 
@@ -767,11 +769,18 @@ impl SupervisedExecHandle {
         self.stream_rx.take()
     }
 
+    /// Take the bounded process stdout receiver for sandbox process operations.
+    pub fn take_process_output_receiver(&mut self) -> Option<ProcessOutputReceiver> {
+        self.process_output_rx.take()
+    }
+
     fn clear_unclaimed_stream_sender(&mut self) {
         let Some(route_id) = self.wait_core.active_route_id() else {
             return;
         };
-        if self.stream_rx.take().is_some() {
+        let event_stream_unclaimed = self.stream_rx.take().is_some();
+        let process_output_unclaimed = self.process_output_rx.take().is_some();
+        if event_stream_unclaimed || process_output_unclaimed {
             clear_exec_operation_stream_sender(self.wait_core.shared(), route_id);
         }
     }

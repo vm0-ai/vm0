@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use sandbox::{ProcessOutputChunk, ProcessOutputMode};
+use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
 use sandbox_mock::MockLifecycleGate;
 
 use super::support::{
@@ -190,14 +190,11 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_process_stdout_chunks(
-        (0..=ProcessOutputMode::DEFAULT_QUEUE_CAPACITY)
-            .map(|_| ProcessOutputChunk {
-                bytes: Vec::new(),
-                truncated: false,
-            })
-            .collect(),
-    );
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Guest,
+        message: "agent spawn failed".into(),
+    });
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let mut ctx = minimal_context();
     let mut archive_server = spawn_storage_archive_server(b"cache-archive").await;
