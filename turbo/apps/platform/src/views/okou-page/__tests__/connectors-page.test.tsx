@@ -1579,17 +1579,13 @@ describe("connectors page", () => {
     });
   });
 
-  it("keeps retained agent access revocable after the last account is removed", async () => {
+  it("shows the connector description after the last account is removed", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000001";
-    const supportAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
     context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
       return respond(200, { summaries: [] });
     });
-    context.mocks.data.agents([
-      listAgent(researchAgentId, "Research"),
-      listAgent(supportAgentId, "Support"),
-    ]);
+    context.mocks.data.agents([listAgent(researchAgentId, "Research")]);
     context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
         enabledConnectorSlugs: params.id === researchAgentId ? ["github"] : [],
@@ -1605,28 +1601,18 @@ describe("connectors page", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await waitFor(() => {
+    await waitFor(() => {
       const githubCard = connectorCardByLabel("GitHub");
-      expect(within(githubCard).getByText("No accounts")).toBeInTheDocument();
       expect(
-        within(githubCard).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Research");
-      return githubCard;
+        within(githubCard).getByTestId("connector-help-text"),
+      ).toHaveTextContent(
+        "Connect your GitHub account to access repositories and GitHub features.",
+      );
+      expect(within(githubCard).queryByText("No accounts")).toBeNull();
+      expect(
+        within(githubCard).queryByTestId("connector-card-agent-access"),
+      ).toBeNull();
     });
-    const connectButton = within(card).getByLabelText("Connect GitHub");
-    const manageAccess = within(card).getByLabelText("Manage GitHub access");
-    expect(connectButton).not.toContainElement(manageAccess);
-    click(manageAccess);
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage GitHub access",
-    });
-    expect(
-      within(dialog).getByLabelText("Revoke GitHub access for Research"),
-    ).toBeEnabled();
-    expect(
-      within(dialog).getByLabelText("Authorize GitHub access for Support"),
-    ).toHaveAttribute("aria-disabled", "true");
   });
 
   it("names the exact account after a feature-on manual account addition", async () => {

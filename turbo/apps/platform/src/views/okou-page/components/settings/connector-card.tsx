@@ -66,7 +66,6 @@ type AccountsConnectorCardProps = {
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly summary: ConnectorAccountSummary | undefined;
   readonly summaryStatus: ConnectorAccountSummaryStatus;
-  readonly showCatalogDescription: boolean;
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
   readonly manageAccess?: ReactNode;
@@ -469,7 +468,6 @@ function AccountsConnectorCard({
   connector,
   summary,
   summaryStatus,
-  showCatalogDescription,
   busy,
   connect,
   manageAccess,
@@ -477,8 +475,7 @@ function AccountsConnectorCard({
 }: AccountsConnectorCardProps) {
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
-  const showDescription =
-    summaryStatus === "ready" && accountCount === 0 && showCatalogDescription;
+  const showDescription = summaryStatus === "ready" && accountCount === 0;
   const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
   const canConnect = summaryStatus === "ready" && accountCount === 0 && !busy;
   const canActivate = canManage || canConnect;
