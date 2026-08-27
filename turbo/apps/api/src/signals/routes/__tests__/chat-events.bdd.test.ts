@@ -33,6 +33,7 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
@@ -1182,11 +1183,16 @@ async function verifyPiToolActivityLifecycle(args: {
   }
 
   expect(
-    (await chat.listThreadEventRows(args.actor, args.threadId)).filter(
-      (row) => {
-        return row.eventType === "output.tool";
-      },
-    ),
+    (
+      await chat.listThreadEventRows(
+        args.actor,
+        args.threadId,
+        { lastEventId: null, lastSeqId: 0 },
+        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      )
+    ).filter((row) => {
+      return row.eventType === "output.tool";
+    }),
   ).toHaveLength(0);
   await updateFeatureSwitchesForUser(
     context,
@@ -1197,7 +1203,12 @@ async function verifyPiToolActivityLifecycle(args: {
     },
   );
   const piToolRows = (
-    await chat.listThreadEventRows(args.actor, args.threadId)
+    await chat.listThreadEventRows(
+      args.actor,
+      args.threadId,
+      { lastEventId: null, lastSeqId: 0 },
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+    )
   ).filter((row) => {
     return row.eventType === "output.tool";
   });
@@ -1315,7 +1326,12 @@ async function verifyPiToolActivityLifecycle(args: {
     expect(serializedPiToolRows).not.toContain(forbidden);
   }
   const refreshedPiToolRows = (
-    await chat.listThreadEventRows(args.actor, args.threadId)
+    await chat.listThreadEventRows(
+      args.actor,
+      args.threadId,
+      { lastEventId: null, lastSeqId: 0 },
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+    )
   ).filter((row) => {
     return row.eventType === "output.tool";
   });
