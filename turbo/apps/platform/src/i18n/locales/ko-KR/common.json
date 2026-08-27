@@ -1083,7 +1083,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "현재 로그인 사용",
         "addAccount": "계정 추가",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",

@@ -45,7 +45,6 @@ export interface AuthV2SignInCopy {
   readonly helpTitle: string;
   readonly identifierLabel: string;
   readonly identifierPlaceholder: string;
-  readonly legacySignIn: string;
   readonly loading: string;
   readonly methodsHelpPrompt: string;
   readonly newPasswordLabel: string;
@@ -323,9 +322,6 @@ function signInTerminalCopy(
     }),
     helpTitle: t(($) => {
       return $.auth.v2.signIn.helpTitle;
-    }),
-    legacySignIn: t(($) => {
-      return $.auth.v2.signIn.action;
     }),
     loading: t(($) => {
       return $.auth.loading;

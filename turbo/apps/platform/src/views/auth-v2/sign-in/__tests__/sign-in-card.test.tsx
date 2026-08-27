@@ -23,6 +23,8 @@ import {
   type MockedSignInResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { ROUTES } from "../../../../signals/route-paths.ts";
+import { detachedNavigateTo$ } from "../../../../signals/route.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
 import { renderedIdentityEditPresentation } from "../../__tests__/auth-v2-button-style-assertions.ts";
@@ -146,6 +148,18 @@ async function waitForRoleElement(
     throw new Error(`Expected ${role} named ${name}`);
   }
   return element;
+}
+
+function expectNoLegacySignInLink(): void {
+  expect(
+    queryAllByRoleFast("link").some((candidate) => {
+      return candidate.getAttribute("href") === "/sign-in";
+    }),
+  ).toBeFalsy();
+}
+
+function navigateToLegacySignIn(): void {
+  context.store.set(detachedNavigateTo$, ROUTES.signIn);
 }
 
 function expectFieldErrorAssociation(
@@ -456,7 +470,7 @@ describe("auth v2 sign-in flow", () => {
 
     await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
+    expectNoLegacySignInLink();
     const editIdentifier = await waitForRoleElement(
       "button",
       "Edit identifier",
@@ -855,7 +869,7 @@ describe("auth v2 sign-in flow", () => {
       throw new Error("Expected Google One Tap callbacks to be registered");
     }
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -912,7 +926,7 @@ describe("auth v2 sign-in flow", () => {
     });
     await expect(screen.findByRole("alert")).resolves.toBeVisible();
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -1521,7 +1535,7 @@ describe("auth v2 sign-in flow", () => {
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "route-secret" } });
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -1755,7 +1769,7 @@ describe("auth v2 sign-in flow", () => {
       waitForRoleElement("link", "Email support"),
     ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
+    expectNoLegacySignInLink();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));

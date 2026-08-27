@@ -114,11 +114,11 @@ describe("auth v2 presentation", () => {
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
 
-    const currentSignInAction = linkByText("Use current sign-in");
-    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
     expect(
-      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
+      queryAllByRoleFast("link").some((candidate) => {
+        return candidate.getAttribute("href") === "/sign-in";
+      }),
+    ).toBeFalsy();
   });
 
   it("keeps password controls and fallback navigation in their accessible regions", async () => {

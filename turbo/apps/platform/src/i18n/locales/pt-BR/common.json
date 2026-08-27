@@ -1103,7 +1103,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar o login atual",
         "addAccount": "Adicionar conta",
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",
