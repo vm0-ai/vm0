@@ -214,6 +214,12 @@ function mockCatalog(
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+    });
+  });
 }
 
 function createMockAuthWindow(): Window {
@@ -1547,7 +1553,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const dialog = await openAddConnectorsDialog(user);

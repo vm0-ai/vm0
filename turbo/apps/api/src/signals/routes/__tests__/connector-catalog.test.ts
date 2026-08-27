@@ -500,30 +500,8 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("hides connector discovery when its feature switch is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context, routes: connectorCatalogRoutes })(
-      connectorCatalogContract,
-    );
-    const response = await accept(
-      client.discovery({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("returns bounded featured connectors and searches only slug or label", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ConnectorDiscovery]: true,
-    });
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
       connectorCatalogContract,
