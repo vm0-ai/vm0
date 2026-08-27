@@ -809,6 +809,9 @@ body {
 .zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy-muted {
   color: hsl(var(--zero-nav-muted-foreground));
 }
+.zero-app[data-gradient-color-themes] .group:hover .zero-nav-copy-muted-hover {
+  color: hsl(var(--zero-nav-foreground));
+}
 .zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
   background-color: hsl(var(--zero-nav-rail));
 }

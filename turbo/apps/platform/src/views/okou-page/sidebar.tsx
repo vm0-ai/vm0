@@ -446,7 +446,7 @@ function ExpandedManageSection() {
           return setManageCollapsed(!manageCollapsed);
         }}
       >
-        <span className="zero-nav-copy-muted flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.appShell.sidebar.manage;
           })}

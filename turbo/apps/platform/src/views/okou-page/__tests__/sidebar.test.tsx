@@ -3300,6 +3300,41 @@ describe("zero sidebar", () => {
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
+    expect(document.querySelector(".zero-app")).not.toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+  });
+
+  it("applies the themed copy hierarchy to three-column navigation", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.GradientColorThemes]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    const list = screen.getByTestId("chat-list-column");
+    const app = document.querySelector(".zero-app");
+
+    expect(app).toHaveAttribute("data-gradient-color-themes");
+    expect(app).toHaveAttribute("data-color-theme");
+    expect(within(rail).getByText("New")).toHaveClass("zero-nav-copy");
+    expect(within(rail).getByText("Connectors")).toHaveClass(
+      "zero-nav-copy-muted",
+    );
+    expect(within(list).getByText("Chat")).toHaveClass("zero-nav-copy");
+    expect(within(list).getByText("Pinned agents")).toHaveClass(
+      "zero-nav-copy-muted",
+    );
+    expect(within(list).getByText("Chats with Zero")).toHaveClass(
+      "zero-nav-copy-muted",
+      "zero-nav-copy-muted-hover",
+    );
   });
 
   it("hides only the three-column chat list and keeps search available", async () => {

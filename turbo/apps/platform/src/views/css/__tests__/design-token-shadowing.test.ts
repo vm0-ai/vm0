@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readGlobalCss, readUiGlobalCss } from "./global-css.ts";
+import { readCssRule, readGlobalCss, readUiGlobalCss } from "./global-css.ts";
 
 /**
  * The platform re-declares `--color-*` names that `@okouai/ui` already defines.
@@ -53,5 +53,28 @@ describe("design token shadowing", () => {
     });
 
     expect(stateTokens).toStrictEqual([]);
+  });
+
+  it("keeps the themed navigation hierarchy and hover copy feature-gated", () => {
+    const css = readGlobalCss();
+
+    expect(
+      readCssRule(css, ".zero-app[data-gradient-color-themes] .zero-nav"),
+    ).toContain("--color-sidebar-border: hsl(var(--border) / 0.5)");
+    expect(
+      readCssRule(
+        css,
+        ".zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy",
+      ),
+    ).toContain("color: hsl(var(--zero-nav-foreground))");
+    expect(
+      readCssRule(
+        css,
+        ".zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy-muted",
+      ),
+    ).toContain("color: hsl(var(--zero-nav-muted-foreground))");
+    expect(css.replace(/\s+/g, " ")).toContain(
+      ".zero-app[data-gradient-color-themes] .group:hover .zero-nav-copy-muted-hover { color: hsl(var(--zero-nav-foreground));",
+    );
   });
 });
