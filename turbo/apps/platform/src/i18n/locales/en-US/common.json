@@ -5349,6 +5349,7 @@
       "viewSource": "Diagram source"
     },
     "notFound": {
+      "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }

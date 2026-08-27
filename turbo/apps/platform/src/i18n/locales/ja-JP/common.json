@@ -5349,6 +5349,7 @@
       "viewSource": "図のソース"
     },
     "notFound": {
+      "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
     }
