@@ -34,9 +34,10 @@ function mockAPIs(): void {
 
 describe("link navigation", () => {
   it("renders the not found page for unknown routes", async () => {
+    mockAPIs();
     detachedSetupPage({ context, path: "/missing-platform-route" });
 
-    await waitFor(() => {
+    const homeLink = await waitFor(() => {
       const homeLink = queryAllByRoleFast("link").find((link) => {
         return link.textContent?.trim() === "Back to home";
       });
@@ -48,7 +49,16 @@ describe("link navigation", () => {
         screen.getByText("The page you are looking for does not exist."),
       ).toBeInTheDocument();
       expect(homeLink).toHaveAttribute("href", "/");
-      expect(homeLink).toHaveAttribute("data-slot", "button");
+      return homeLink;
+    });
+
+    fireEvent.click(homeLink!);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Page not found" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Agents")).toBeInTheDocument();
     });
   });
 
