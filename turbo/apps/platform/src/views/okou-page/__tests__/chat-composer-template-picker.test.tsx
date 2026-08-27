@@ -4772,20 +4772,32 @@ describe("chat composer templates", () => {
       ).toBe(remainingCard);
     });
 
-    // Once a successful catalog response confirms the deletion, its local
-    // tombstone is retired. A later authoritative response therefore wins
-    // instead of being hidden for the rest of the app session.
+    // A stale catalog response may finish after the delete refresh. The delete
+    // is permanent, so it must not resurrect the card or its preview cache.
     holdCatalogRefresh = false;
-    catalog = [deletedTemplate, remainingTemplate];
+    const refreshedRemainingTemplate = {
+      ...remainingTemplate,
+      title: "Keep this deck refreshed",
+      updatedAt: "2026-08-21T02:43:59.522Z",
+    };
+    catalog = [deletedTemplate, refreshedRemainingTemplate];
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
       expect(catalogRequestCount).toBe(3);
+      expect(screen.getByText("Keep this deck refreshed")).toBeInTheDocument();
       expect(
         dialog.querySelector(
           `[data-imported-presentation-template="${deletedTemplate.id}"]`,
         ),
-      ).toBeInTheDocument();
+      ).not.toBeInTheDocument();
     });
+    expect(
+      dialog.querySelector(
+        `[data-imported-presentation-template="${remainingTemplate.id}"]`,
+      ),
+    ).toBe(remainingCard);
+    expect(remainingCover).toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(187);
   });
 
   it("imports an uploaded deck as an ordinary chat message", async () => {

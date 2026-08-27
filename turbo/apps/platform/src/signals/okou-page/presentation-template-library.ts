@@ -30,6 +30,11 @@ interface ImportedPresentationTemplateDetailResolver {
 }
 
 const presentationTemplatesVersion$ = state(0);
+/**
+ * A successful local delete permanently removes the database row. Keep its ID
+ * hidden for the rest of this app session so an older in-flight catalog cannot
+ * resurrect either the card or its preview cache.
+ */
 const deletedPresentationTemplateIds$ = state<ReadonlySet<string>>(new Set());
 const importedPresentationTemplateDeletedIds$ = computed((get) => {
   return get(deletedPresentationTemplateIds$);
@@ -74,40 +79,17 @@ const refreshPresentationTemplates$ = command(({ get, set }) => {
   set(presentationTemplatesVersion$, get(presentationTemplatesVersion$) + 1);
 });
 
-const reconcileDeletedPresentationTemplateIds$ = command(
-  ({ get, set }, templates: readonly PresentationTemplateSummary[]): void => {
-    const deletedTemplateIds = get(deletedPresentationTemplateIds$);
-    if (deletedTemplateIds.size === 0) {
-      return;
-    }
-    const catalogTemplateIds = new Set(
-      templates.map((template) => {
-        return template.id;
-      }),
-    );
-    const pendingDeletedTemplateIds = new Set(
-      [...deletedTemplateIds].filter((templateId) => {
-        return catalogTemplateIds.has(templateId);
-      }),
-    );
-    if (pendingDeletedTemplateIds.size !== deletedTemplateIds.size) {
-      set(deletedPresentationTemplateIds$, pendingDeletedTemplateIds);
-    }
-  },
-);
-
-const refreshAndReconcilePresentationTemplates$ = command(
+const refreshAndLoadPresentationTemplates$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     set(refreshPresentationTemplates$);
-    const catalog = await get(importedPresentationTemplateCatalog$);
+    await get(importedPresentationTemplateCatalog$);
     signal.throwIfAborted();
-    set(reconcileDeletedPresentationTemplateIds$, catalog.templates);
   },
 );
 
 const refreshPresentationTemplatesFromRealtime$ = command(
   async ({ set }, signal: AbortSignal): Promise<boolean> => {
-    await set(refreshAndReconcilePresentationTemplates$, signal);
+    await set(refreshAndLoadPresentationTemplates$, signal);
     return false;
   },
 );
@@ -298,16 +280,21 @@ function createCachedImportedPresentationTemplateCatalog$(
   catalog$: Computed<Promise<ImportedPresentationTemplateCatalog>>,
   cache: ImportedPresentationTemplateCache,
   previewUrlsVersion$: State<number>,
+  deletedTemplateIds$: State<ReadonlySet<string>>,
 ) {
   return computed(
     async (get): Promise<CachedImportedPresentationTemplateCatalog> => {
       get(previewUrlsVersion$);
+      const deletedTemplateIds = get(deletedTemplateIds$);
       const catalog = await get(catalog$);
+      const retainedTemplates = catalog.templates.filter((template) => {
+        return !deletedTemplateIds.has(template.id);
+      });
       return {
         ...catalog,
         templates: synchronizeImportedPresentationTemplateCache(
           cache,
-          catalog.templates,
+          retainedTemplates,
         ),
       };
     },
@@ -463,7 +450,7 @@ function createImportedPresentationTemplateUrlRefreshSignals(
           now() - catalog.loadedAtMs >=
           PRESENTATION_TEMPLATE_CATALOG_REVALIDATE_AGE_MS
         ) {
-          await set(refreshAndReconcilePresentationTemplates$, signal);
+          await set(refreshAndLoadPresentationTemplates$, signal);
         }
         return;
       }
@@ -490,7 +477,7 @@ function createImportedPresentationTemplateUrlRefreshSignals(
           return !resolvedPreviewAssetIds.has(previewAssetId);
         })
       ) {
-        await set(refreshAndReconcilePresentationTemplates$, signal);
+        await set(refreshAndLoadPresentationTemplates$, signal);
         return;
       }
       const referencedPreviewAssetIds =
@@ -619,6 +606,7 @@ export function createImportedPresentationTemplateSignals() {
     importedPresentationTemplateCatalog$,
     cache,
     internalPreviewUrlsVersion$,
+    deletedPresentationTemplateIds$,
   );
   const internalUpdatedTemplates$ = state<
     readonly PresentationTemplateSummary[]
@@ -701,7 +689,7 @@ export function createImportedPresentationTemplateSignals() {
       set(internalPreviewSlideIndex$, 0);
       set(internalRequestedTemplateId$, null);
       set(internalCardHover$, null);
-      await set(refreshAndReconcilePresentationTemplates$, signal);
+      await set(refreshAndLoadPresentationTemplates$, signal);
     },
   );
 
