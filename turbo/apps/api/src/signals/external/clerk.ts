@@ -434,8 +434,13 @@ export async function authenticateClerkSession(
   }
 
   const auth = requestState.toAuth();
+  const userId: unknown = auth.userId;
+  if (typeof userId !== "string" || userId.length === 0) {
+    return null;
+  }
+
   return {
-    userId: auth.userId,
+    userId,
     orgId: auth.orgId ?? null,
     orgRole: auth.orgRole ?? null,
   };

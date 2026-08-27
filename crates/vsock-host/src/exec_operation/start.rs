@@ -19,8 +19,8 @@ use super::handle::{
 };
 use super::state::{
     ExecOperationLifecycle, ExecOperationRegistration, ExecOperationRegistrationInput,
-    ExecOperationTracking, output_policy_streams, register_exec_operation_start,
-    stream_queue_capacity_for,
+    ExecOperationTracking, ExecStreamQueueKind, output_policy_streams,
+    register_exec_operation_start, stream_queue_capacity_for,
 };
 use super::types::{
     ExecCaptureRequest, ExecOperationRequest, ExecOperationResult, ExecStreamRequest,
@@ -129,6 +129,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
         diagnostic,
         result_rx,
         stream_rx,
+        process_output_rx: _,
         mut registration_guard,
         tracks_normal_operation,
     } = register_exec_operation_start(
@@ -138,6 +139,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
             stdout: request.stdout,
             stderr: request.stderr,
             stream_queue_capacity,
+            stream_queue_kind: ExecStreamQueueKind::Events,
             lifecycle: ExecOperationLifecycle::OneShot,
             role: ExecProcessRole::Workload,
             tracking,
@@ -175,6 +177,26 @@ pub(crate) async fn start_supervised_exec_on_shared(
     start_supervised_exec_on_shared_with_after_start_write(shared, request, ready(())).await
 }
 
+pub(crate) async fn start_supervised_process_on_shared(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+) -> io::Result<SupervisedExecHandle> {
+    if output_policy_streams(request.stderr) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "supervised process output requires non-streaming stderr",
+        ));
+    }
+    start_supervised_exec_on_shared_with_stream_queue_kind(
+        shared,
+        request,
+        ready(()),
+        EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+        ExecStreamQueueKind::ProcessOutput,
+    )
+    .await
+}
+
 pub(in crate::exec_operation) async fn start_supervised_exec_on_shared_with_after_start_write<F>(
     shared: &Arc<Shared>,
     request: SupervisedExecRequest<'_>,
@@ -199,6 +221,26 @@ pub(in crate::exec_operation) async fn start_supervised_exec_on_shared_with_afte
     request: SupervisedExecRequest<'_>,
     after_start_write: F,
     start_timeout_cancel_write_timeout: Duration,
+) -> io::Result<SupervisedExecHandle>
+where
+    F: Future<Output = ()>,
+{
+    start_supervised_exec_on_shared_with_stream_queue_kind(
+        shared,
+        request,
+        after_start_write,
+        start_timeout_cancel_write_timeout,
+        ExecStreamQueueKind::Events,
+    )
+    .await
+}
+
+async fn start_supervised_exec_on_shared_with_stream_queue_kind<F>(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+    after_start_write: F,
+    start_timeout_cancel_write_timeout: Duration,
+    stream_queue_kind: ExecStreamQueueKind,
 ) -> io::Result<SupervisedExecHandle>
 where
     F: Future<Output = ()>,
@@ -246,6 +288,7 @@ where
         diagnostic,
         result_rx,
         stream_rx,
+        process_output_rx,
         mut registration_guard,
         tracks_normal_operation,
     } = register_exec_operation_start(
@@ -255,6 +298,7 @@ where
             stdout: request.stdout,
             stderr: request.stderr,
             stream_queue_capacity,
+            stream_queue_kind,
             lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
                 start_tx: Some(start_tx),
                 role: request.role,
@@ -364,6 +408,7 @@ where
         start_timing,
         cancel_handle_taken: false,
         stream_rx,
+        process_output_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {
             shared: Arc::clone(shared),
             target_route_id: route_id,

@@ -970,6 +970,8 @@ pub enum ProcessOutputMode {
         /// This bounds host buffering for delivered chunks. It is not a
         /// guarantee that a slow caller applies backpressure to the guest; host
         /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
+        /// The queue retains at most this many chunks; the next valid chunk
+        /// closes delivery and marks the process exit as overflowed.
         queue_capacity: usize,
         /// Optional captured stderr byte limit retained in [`ProcessExit`].
         ///

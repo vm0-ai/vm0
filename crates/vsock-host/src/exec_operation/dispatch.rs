@@ -2,7 +2,6 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::sync::mpsc;
 use vsock_proto::{
     BorrowedRawMessage, ExecCapturedOutput, ExecControlStatus, ExecOutputStream, MSG_ERROR,
     MSG_EXEC_AGENT_READY, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
@@ -11,10 +10,12 @@ use vsock_proto::{
 
 use crate::{ConnectionState, Shared, normal_operation_transition_error};
 
-use super::state::{ExecCaptureState, ExecOperation, ExecOperationLifecycle};
+use super::state::{
+    ExecCaptureState, ExecOperation, ExecOperationLifecycle, ExecStreamTryReserveError,
+};
 use super::types::{
     ExecControlAck, ExecControlGuestStatus, ExecControlOutcome, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput, SupervisedExecStartTiming,
+    ExecOwnedCapturedOutput, SupervisedExecStartTiming,
 };
 use super::{exec_operation_guest_error, exec_operation_protocol_error};
 
@@ -118,15 +119,6 @@ fn owned_captured_output(output: ExecCapturedOutput<'_>) -> ExecOwnedCapturedOut
     }
 }
 
-fn owned_output_event(output: vsock_proto::DecodedExecOutput<'_>) -> ExecOutputEvent {
-    ExecOutputEvent {
-        stream: output.stream,
-        output_seq: output.output_seq,
-        chunk: output.chunk.to_vec(),
-        truncated: output.truncated,
-    }
-}
-
 #[cfg(test)]
 fn run_exec_output_before_copy_hook(shared: &Arc<Shared>) {
     let hook = shared
@@ -206,12 +198,12 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             if let Some(tx) = operation.stream_tx.clone() {
                 match tx.try_reserve_owned() {
                     Ok(permit) => Some((permit, decoded)),
-                    Err(mpsc::error::TrySendError::Full(tx)) => {
+                    Err(ExecStreamTryReserveError::Full(tx)) => {
                         operation.stream_overflowed = true;
                         senders_to_drop = Some((operation.stream_tx.take(), tx));
                         None
                     }
-                    Err(mpsc::error::TrySendError::Closed(tx)) => {
+                    Err(ExecStreamTryReserveError::Closed(tx)) => {
                         senders_to_drop = Some((operation.stream_tx.take(), tx));
                         None
                     }
@@ -229,7 +221,6 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
         #[cfg(test)]
         run_exec_output_before_copy_hook(shared);
 
-        let event = owned_output_event(decoded);
         {
             let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             // Channel identity rejects a replacement operation after sequence
@@ -243,7 +234,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
                 false
             };
             if sender_matches {
-                Some(permit.send(event))
+                Some(permit.send(decoded))
             } else {
                 None
             }

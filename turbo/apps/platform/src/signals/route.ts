@@ -5,7 +5,14 @@ import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { detach, onDomEventFn, Reason, resetSignal, settle } from "./utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+  resetSignal,
+  settle,
+} from "./utils.ts";
 import { logger } from "./log.ts";
 import {
   capturePageView,
@@ -134,8 +141,11 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
   // completes cleanly. The command early-returns when there is nothing to
   // record, so this only performs network work on the first qualifying load.
+  // Attribution is best-effort so a final failure after auth recovery cannot
+  // reject the route load; the command only persists its dedupe marker after a
+  // successful record, allowing a later route to retry.
   if (currentRoute.analytics !== false) {
-    await set(recordSignupAttribution$, signal);
+    await bestEffort(set(recordSignupAttribution$, signal), signal);
     await settle(set(bootstrapGoogleAdsConversionMilestones$, signal), signal);
   }
 });

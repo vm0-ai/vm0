@@ -188,6 +188,33 @@ pub(super) async fn start_supervised_exec_fixture(
     start_pending_supervised_exec(request).await.started().await
 }
 
+pub(super) async fn start_supervised_process_fixture(
+    request: SupervisedExecRequest<'static>,
+) -> StartedSupervisedExec {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.start_supervised_process(request).await })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let control = vsock_proto::decode_exec_start(&msg.payload)
+        .unwrap()
+        .control;
+    let start = SupervisedExecStartFrame { msg, control };
+    send_exec_started(&mut guest, start.seq(), 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    StartedSupervisedExec {
+        host,
+        guest,
+        start,
+        handle,
+    }
+}
+
 pub(super) async fn start_control_supervised_exec_fixture(
     command: &'static str,
 ) -> StartedControlSupervisedExec {
