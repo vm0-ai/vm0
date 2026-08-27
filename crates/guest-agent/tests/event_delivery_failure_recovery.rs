@@ -158,7 +158,10 @@ async fn run_event_failure_case(
                 guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
                 &mock_codex,
             )
-            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                THREAD_ID,
+            )
             .env("MOCK_CODEX_APP_SERVER_SCENARIO", mock_scenario)
             .env(
                 guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
