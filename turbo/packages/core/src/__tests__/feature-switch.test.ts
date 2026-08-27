@@ -144,9 +144,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
 
@@ -179,9 +176,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ManagedSocialKit]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
   });
@@ -198,22 +192,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
-  });
-
-  it("should enable the composer flat feedback note for the staff org only", () => {
-    const staffStates = getAllFeatureStates({
-      email: "ethan@vm0.ai",
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-    expect(staffStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(true);
-
-    const otherOrgStates = getAllFeatureStates({
-      email: "bingjie@vm0.ai",
-      orgId: "org_nonexistent",
-    });
-    expect(otherOrgStates[FeatureSwitchKey.ComposerFlatFeedbackNote]).toBe(
-      false,
-    );
   });
 
   it("should apply overrides to enable disabled features", () => {
