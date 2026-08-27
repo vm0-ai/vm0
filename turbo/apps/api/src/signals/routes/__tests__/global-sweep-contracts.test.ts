@@ -1,4 +1,4 @@
-import { beforeEach, describe, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
@@ -9,6 +9,7 @@ import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-a
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { modelStatsRoutes } from "../model-stats";
 import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
+import { cronReconcileSocialKitDownloadRoutes } from "../cron-reconcile-socialkit-downloads";
 import { cronSyncSkillsRoutes } from "../cron-sync-skills";
 import {
   expectGlobalSweepMissingAuth,
@@ -52,6 +53,15 @@ describe("production-global sweep route contracts", () => {
       context,
       cronReconcileBillingEntitlementsRoutes,
       "/api/cron/reconcile-billing-entitlements",
+    );
+  });
+
+  it("rejects SocialKit download reconciliation without authorization", async () => {
+    expect.hasAssertions();
+    await expectGlobalSweepMissingAuth(
+      context,
+      cronReconcileSocialKitDownloadRoutes,
+      "/api/cron/reconcile-socialkit-downloads",
     );
   });
 
