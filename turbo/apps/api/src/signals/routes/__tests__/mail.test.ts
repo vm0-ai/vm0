@@ -361,6 +361,39 @@ describe("POST /api/mail/drafts/link", () => {
     expect(gmail.draftReadCount).toBe(0);
   });
 
+  it("reports a missing Gmail grant without marking a linked draft for reconnect", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+    mockGmailConnectorOAuth({
+      accessToken: "gmail-mail-card-token",
+      email: "sender@example.com",
+      scopes: [],
+    });
+    const start = await connectors.startOauth(fixture.actor, "gmail", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Gmail OAuth state");
+    }
+    await connectors.completeOauthCallback("gmail", {
+      code: "zero-mail-partial-grant-code",
+      state,
+    });
+
+    const response = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Gmail access does not include permission to manage mail drafts",
+    );
+    expect(gmail.draftReadCount).toBe(1);
+  });
+
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();

@@ -194,6 +194,7 @@ interface MailAccessTokenSuccess {
 interface MailAccessTokenFailure {
   readonly kind: "error";
   readonly message: string;
+  readonly reason: "permission" | "unavailable";
 }
 
 type MailAccessTokenResult = MailAccessTokenSuccess | MailAccessTokenFailure;
@@ -238,6 +239,11 @@ interface MailAccess {
   readonly kind: "ok";
   readonly accessToken: string;
   readonly connection: MailConnection;
+}
+
+interface MailAccessFailure extends MailDraftErrorResult {
+  readonly kind: "conflict";
+  readonly reason: "permission" | "unavailable";
 }
 
 function linkResult(mailDraftId: string): MailDraftLinkResult {
@@ -456,7 +462,11 @@ async function resolveMailAccessToken(
   signal: AbortSignal,
 ): Promise<MailAccessTokenResult> {
   if (args.connection.needsReconnect) {
-    return { kind: "error", message: "Reconnect Gmail before continuing" };
+    return {
+      kind: "error",
+      message: "Reconnect Gmail before continuing",
+      reason: "unavailable",
+    };
   }
   const grantedScopes = new Set(args.connection.oauthScopes ?? []);
   if (
@@ -464,14 +474,22 @@ async function resolveMailAccessToken(
       return !grantedScopes.has(scope);
     })
   ) {
-    return { kind: "error", message: GMAIL_MAIL_PERMISSION_ERROR };
+    return {
+      kind: "error",
+      message: GMAIL_MAIL_PERMISSION_ERROR,
+      reason: "permission",
+    };
   }
   const accessTokenValueRef = connectorCredentialRuntimeValueRef(
     args.connection,
     GMAIL_ACCESS_TOKEN_ENV,
   );
   if (accessTokenValueRef === null) {
-    return { kind: "error", message: "Reconnect Gmail before continuing" };
+    return {
+      kind: "error",
+      message: "Reconnect Gmail before continuing",
+      reason: "unavailable",
+    };
   }
   const values = await loadConnectorCredentialValues({
     connection: args.connection,
@@ -501,11 +519,19 @@ async function resolveMailAccessToken(
     signal,
   );
   if (refreshed.kind === "configuration-unavailable") {
-    return { kind: "error", message: "Gmail OAuth is not configured" };
+    return {
+      kind: "error",
+      message: "Gmail OAuth is not configured",
+      reason: "unavailable",
+    };
   }
   return refreshed.kind === "ok"
     ? { kind: "ok", accessToken: refreshed.accessToken }
-    : { kind: "error", message: "Reconnect Gmail before continuing" };
+    : {
+        kind: "error",
+        message: "Reconnect Gmail before continuing",
+        reason: "unavailable",
+      };
 }
 
 function decodeHeader(value: string): string {
@@ -1041,6 +1067,13 @@ function reconnectDraftResult(row: MailDraftRow): MailDraftResult {
   );
 }
 
+function mailDraftAccessFailureResult(
+  row: MailDraftRow,
+  failure: MailAccessFailure,
+): MailDraftMutationResult {
+  return failure.reason === "permission" ? failure : reconnectDraftResult(row);
+}
+
 async function connectionForRow(args: {
   readonly db: ReadonlyDb;
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -1080,10 +1113,14 @@ async function accessForRow(
     readonly row: MailDraftRow;
   },
   signal: AbortSignal,
-): Promise<MailAccess | MailDraftErrorResult> {
+): Promise<MailAccess | MailAccessFailure> {
   const connection = await connectionForRow(args);
   if (!connection) {
-    return { kind: "conflict", message: "Reconnect Gmail before continuing" };
+    return {
+      kind: "conflict",
+      message: "Reconnect Gmail before continuing",
+      reason: "unavailable",
+    };
   }
   const access = await resolveMailAccessToken(
     {
@@ -1097,7 +1134,7 @@ async function accessForRow(
   );
   return access.kind === "ok"
     ? { ...access, connection }
-    : { kind: "conflict", message: access.message };
+    : { kind: "conflict", message: access.message, reason: access.reason };
 }
 
 async function persistLinkedDraft(args: {
@@ -1223,8 +1260,11 @@ async function getMailDraft(
       args.row.id,
       responseDraft({ row: args.row, details: null, detailAvailable: false }),
     );
-    if (access.kind !== "ok" || !sentGmailMessageId) {
-      return access.kind === "ok" ? stored : reconnectDraftResult(args.row);
+    if (access.kind !== "ok") {
+      return mailDraftAccessFailureResult(args.row, access);
+    }
+    if (!sentGmailMessageId) {
+      return stored;
     }
     let sent: GmailSentValue | null = null;
     const sentResult = await runGmailOperation(
@@ -1272,7 +1312,7 @@ async function getMailDraft(
       : stored;
   }
   if (access.kind !== "ok") {
-    return reconnectDraftResult(args.row);
+    return mailDraftAccessFailureResult(args.row, access);
   }
   const gmailResult = await runGmailOperation(
     {
