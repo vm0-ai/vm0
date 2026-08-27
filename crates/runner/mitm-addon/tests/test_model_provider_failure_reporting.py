@@ -449,6 +449,10 @@ def test_source_aware_400_retries_once_with_legacy_body(
         f"Bearer {id(model_provider_failure_api)}",
         f"Bearer {id(model_provider_failure_api)}",
     ]
+    assert [request.body for request in requests] == [
+        b'{"failureKind":"connection","connectionSource":"upstream_transport"}',
+        b'{"failureKind":"connection"}',
+    ]
     assert _report_omissions(proxy_log_path) == []
 
 
