@@ -1942,6 +1942,7 @@
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
+      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
       "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",

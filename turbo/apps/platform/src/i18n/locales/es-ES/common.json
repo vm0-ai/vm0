@@ -1976,6 +1976,7 @@
       "available_one": "Conectores disponibles para conectar ({{count}})",
       "available_many": "Conectores disponibles para conectar ({{count}})",
       "available_other": "Conectores disponibles para conectar ({{count}})",
+      "back": "Volver",
       "configurePermissions": "Configurar permisos de {{connectorName}}",
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
       "defaultAccountFor": "{{connector}} · Usando la cuenta predeterminada: {{account}}",
