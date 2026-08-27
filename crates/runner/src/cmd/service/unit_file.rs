@@ -369,7 +369,7 @@ mod tests {
         let suffix = "a".repeat(crate::runner_dirname::MAX_NAME_BYTES);
         let unit = RunnerServiceUnit::from_suffix(&suffix).unwrap();
         let unit_file = unit.service_name().to_string();
-        let service_lock = format!("service-{}.lock", unit.unit_name());
+        let service_lock = unit.lock_file_name().to_string();
         let current_staging = format!(
             "{unit_file}{UNIT_STAGING_MARKER}{}.{}.{}",
             u32::MAX,

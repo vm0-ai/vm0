@@ -1,3 +1,4 @@
+use crate::cmd::service::RunnerServiceUnit;
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
@@ -36,7 +37,7 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         // deleting a version that another process is installing or uninstalling.
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
-        if name.starts_with("service-")
+        if RunnerServiceUnit::is_lock_file_name(name)
             || entry.path() == home.systemd_daemon_reload_lock()
             || is_base_dir_lock_name(name)
         {
@@ -63,14 +64,18 @@ mod tests {
     use crate::cmd::gc::test_support::test_home;
 
     #[tokio::test]
-    async fn gc_orphaned_locks_preserves_service_locks() {
+    async fn gc_orphaned_locks_preserves_service_lock_namespace() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
-        let service_lock = locks_dir.join("service-vm0-runner-v1.0.0.lock");
+        let service_lock = RunnerServiceUnit::from_suffix("v1.0.0")
+            .unwrap()
+            .lock_path(&home);
+        let historical_service_lock = locks_dir.join("service-vm0-runner-OLD_NAME.lock");
         let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
         std::fs::write(&service_lock, "").unwrap();
+        std::fs::write(&historical_service_lock, "").unwrap();
         std::fs::write(&stale_lock, "").unwrap();
 
         let report = gc_orphaned_locks(&home, false).await.unwrap();
@@ -79,7 +84,11 @@ mod tests {
         assert_eq!(report.freed_bytes, 0);
         assert!(
             service_lock.exists(),
-            "service locks must survive orphaned lock cleanup"
+            "canonical service locks must survive orphaned lock cleanup"
+        );
+        assert!(
+            historical_service_lock.exists(),
+            "historical service lock names must remain protected during rolling upgrades"
         );
         assert!(
             !stale_lock.exists(),
