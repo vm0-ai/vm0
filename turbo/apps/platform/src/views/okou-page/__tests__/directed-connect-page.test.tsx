@@ -548,6 +548,7 @@ describe("directed connector connect page", () => {
 
   it("reconnects the exact default OAuth custom connector account", async () => {
     const connectionId = crypto.randomUUID();
+    const siblingConnectionId = crypto.randomUUID();
     let connectedAccountUpdatedAt = "2026-01-01T00:00:00Z";
     let grants: AgentCustomConnectorGrant[] = [];
     const connector = customConnector({
@@ -592,6 +593,7 @@ describe("directed connector connect page", () => {
         connectedAccountUpdatedAt = "2026-01-01T00:00:01Z";
         return respond(200, {
           authorizationUrl: "https://acme.test/oauth/reconnect",
+          connectionId: siblingConnectionId,
         });
       },
     );

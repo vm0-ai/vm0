@@ -2141,6 +2141,12 @@ function createConnectorOAuthAuthCodeChangedCommand(
       return false;
     }
     if (current) {
+      if (
+        account.intent === "reconnect" &&
+        current.id !== account.connectionId
+      ) {
+        return false;
+      }
       // initialUpdatedAt === null means the connector didn't exist on the first
       // fetch; any subsequent appearance signals completion.
       const connectionChanged =
@@ -2169,12 +2175,16 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
     { get },
     connectorSlug: ConnectorSlug,
     authMethod: ConnectorAuthMethodId,
+    connectionId: string | null,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { connectors } = await get(connectors$);
     signal.throwIfAborted();
     return connectors.some((connector) => {
-      return connectorMatchesAuthMethod(connector, connectorSlug, authMethod);
+      return (
+        connectorMatchesAuthMethod(connector, connectorSlug, authMethod) &&
+        (connectionId === null || connector.id === connectionId)
+      );
     });
   },
 );
@@ -2423,6 +2433,11 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
         defaultConnectorProjectionMatchesAuthMethod$,
         connectorSlug,
         method.id,
+        options.useDefaultConnectorProjection
+          ? account.intent === "reconnect"
+            ? account.connectionId
+            : expectedConnectionId
+          : null,
         signal,
       ));
     if (isConnected) {

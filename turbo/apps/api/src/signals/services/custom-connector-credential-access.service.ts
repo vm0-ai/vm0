@@ -88,6 +88,11 @@ interface ConnectedCustomConnectorConnection {
   readonly storageVersion: number;
 }
 
+interface ConnectedCustomConnectorAccount {
+  readonly id: string;
+  readonly updatedAt: Date;
+}
+
 export type CustomConnectorCredentialAccess =
   | { readonly kind: "absent" }
   | {
@@ -633,30 +638,18 @@ export async function loadConnectedCustomConnectorConnections(
   return connectedConnections;
 }
 
-export function customConnectorDefinitionConnectedAccountId(args: {
+export function customConnectorDefinitionConnectedAccount(args: {
   readonly connectedConnections: ReadonlyMap<
     string,
     ConnectedCustomConnectorConnection
   >;
   readonly definition: CustomConnectorCredentialDefinition;
-}): string | null {
+}): ConnectedCustomConnectorAccount | null {
   const connection = args.connectedConnections.get(args.definition.id);
   const current =
     connection?.authMode === args.definition.authMode &&
     connection.storageVersion === args.definition.storageVersion;
-  return current ? connection.id : null;
-}
-
-export function customConnectorDefinitionConnectedAccountUpdatedAt(args: {
-  readonly connectedConnections: ReadonlyMap<
-    string,
-    ConnectedCustomConnectorConnection
-  >;
-  readonly definition: CustomConnectorCredentialDefinition;
-}): Date | null {
-  const connection = args.connectedConnections.get(args.definition.id);
-  const current =
-    connection?.authMode === args.definition.authMode &&
-    connection.storageVersion === args.definition.storageVersion;
-  return current ? connection.updatedAt : null;
+  return current
+    ? { id: connection.id, updatedAt: connection.updatedAt }
+    : null;
 }

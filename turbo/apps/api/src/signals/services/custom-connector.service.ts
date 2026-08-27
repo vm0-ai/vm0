@@ -60,8 +60,7 @@ import {
 import { deleteConnectorSelectionsForCustomConnectorDefinition } from "./connector-credential-storage-write.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
-  customConnectorDefinitionConnectedAccountId,
-  customConnectorDefinitionConnectedAccountUpdatedAt,
+  customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
@@ -2502,18 +2501,15 @@ export function getCustomConnectorResponse(args: {
         userId: args.userId,
       }),
     ]);
+    const connectedAccount = customConnectorDefinitionConnectedAccount({
+      connectedConnections,
+      definition: connector,
+    });
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      connectedAccountId: customConnectorDefinitionConnectedAccountId({
-        connectedConnections,
-        definition: connector,
-      }),
-      connectedAccountUpdatedAt:
-        customConnectorDefinitionConnectedAccountUpdatedAt({
-          connectedConnections,
-          definition: connector,
-        }),
+      connectedAccountId: connectedAccount?.id ?? null,
+      connectedAccountUpdatedAt: connectedAccount?.updatedAt,
     });
   });
 }

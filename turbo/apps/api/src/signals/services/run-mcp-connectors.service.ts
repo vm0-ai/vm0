@@ -11,8 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { db$ } from "../external/db";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
-  customConnectorDefinitionConnectedAccountId,
-  customConnectorDefinitionConnectedAccountUpdatedAt,
+  customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
@@ -82,18 +81,15 @@ export function runMcpConnectorList(args: {
     ]);
 
     return rows.map(({ connector }) => {
+      const connectedAccount = customConnectorDefinitionConnectedAccount({
+        connectedConnections,
+        definition: connector,
+      });
       const response = serialiseCustomConnector({
         row: normaliseCustomConnectorRow(connector),
         valueMarkers,
-        connectedAccountId: customConnectorDefinitionConnectedAccountId({
-          connectedConnections,
-          definition: connector,
-        }),
-        connectedAccountUpdatedAt:
-          customConnectorDefinitionConnectedAccountUpdatedAt({
-            connectedConnections,
-            definition: connector,
-          }),
+        connectedAccountId: connectedAccount?.id ?? null,
+        connectedAccountUpdatedAt: connectedAccount?.updatedAt,
       });
       if (response.kind !== "mcp") {
         throw new Error("Run MCP connector query returned a non-MCP connector");

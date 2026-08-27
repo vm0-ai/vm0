@@ -581,8 +581,9 @@ function defaultCustomConnectorOAuthCompletion(args: {
   readonly initialUpdatedAt: string | null | undefined;
 }): CustomConnectorOAuthCompletion {
   const connectionId =
-    args.expectedConnectionId ??
-    (args.account?.intent === "reconnect" ? args.account.connectionId : null);
+    args.account?.intent === "reconnect"
+      ? args.account.connectionId
+      : args.expectedConnectionId;
   const completed =
     connectionId !== null &&
     args.connector?.connected === true &&
