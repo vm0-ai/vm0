@@ -82,14 +82,10 @@ interface Route {
 
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
 
-const currentRoute$ = computed((get) => {
-  const config = get(internalRouteConfig$);
-  if (!config) {
-    return null;
-  }
-
-  const currentPath = get(pathname$);
-
+function findRoute(
+  config: readonly Route[],
+  currentPath: string,
+): Route | null {
   for (const route of config) {
     const matcher = match(route.path, { decode: decodeURIComponent });
     const result = matcher(currentPath);
@@ -99,7 +95,26 @@ const currentRoute$ = computed((get) => {
   }
 
   return null;
+}
+
+const currentRoute$ = computed((get) => {
+  const config = get(internalRouteConfig$);
+  if (!config) {
+    return null;
+  }
+
+  return findRoute(config, get(pathname$));
 });
+
+const clearPageForRouteBoundary$ = command(
+  ({ get, set }, nextPathname: string) => {
+    const config = get(internalRouteConfig$);
+    const nextRoute = config ? findRoute(config, nextPathname) : null;
+    if (get(currentRoute$) !== nextRoute) {
+      set(clearPage$);
+    }
+  },
+);
 
 export const pathParams$ = computed((get) => {
   const currentRoute = get(currentRoute$);
@@ -174,7 +189,7 @@ export const initRoutes$ = command(
     window.addEventListener(
       "popstate",
       onDomEventFn(async () => {
-        set(clearPage$);
+        set(clearPageForRouteBoundary$, pathname());
         set(reloadPathname$, (x) => {
           return x + 1;
         });
@@ -211,7 +226,7 @@ const navigate$ = command(
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
-    set(clearPage$);
+    set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
       replaceState({}, "", newPath);
     } else {
