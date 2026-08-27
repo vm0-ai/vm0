@@ -2497,6 +2497,7 @@
         "manage": "Verwalten Sie den {{connector}}-Zugriff",
         "usedBy": "Verwendet von "
       },
+      "allCategories": "Alle Integrationen",
       "categories": {
         "ai": {
           "label": "KI",
@@ -2552,6 +2553,7 @@
         }
       },
       "categoriesAria": "Integration-Kategorien",
+      "category": "Kategorie",
       "description": "Verbinden Sie Dienste von Drittanbietern, damit Ihre Agenten sie nutzen können.",
       "descriptionWithCount": "Verbinden Sie {{value}} Dienste, damit Ihre Agenten sie nutzen können.",
       "empty": {
@@ -2572,8 +2574,14 @@
       "iconUnavailable": "Integrationssymbol nicht verfügbar",
       "newConnector": "Neue Integration",
       "noConnectorsAlt": "Keine Integrationen",
-      "otherCategory": "Andere",
+      "results": "{{shown}} von {{total}} Integrationen werden angezeigt",
+      "resultsLoaded": "{{shown}} Integrationen werden angezeigt",
       "search": "Finden Sie Integrationen",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "Integrationen sortieren",
+        "recommended": "Empfohlen"
+      },
       "tabs": {
         "builtin": "Eingebaut",
         "custom": "Benutzerdefiniert"

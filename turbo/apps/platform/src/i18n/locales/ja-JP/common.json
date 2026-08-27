@@ -2489,6 +2489,7 @@
         "manage": "{{connector}} アクセスを管理する",
         "usedBy": "使用者 "
       },
+      "allCategories": "すべてのコネクター",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2544,6 +2545,7 @@
         }
       },
       "categoriesAria": "コネクタのカテゴリ",
+      "category": "カテゴリー",
       "description": "エージェントが使用できるようにサードパーティのサービスを接続します。",
       "descriptionWithCount": "エージェントが使用できる{{value}}個のサービスを接続します。",
       "empty": {
@@ -2564,8 +2566,14 @@
       "iconUnavailable": "コネクタアイコンが使用不可",
       "newConnector": "新しいコネクタ",
       "noConnectorsAlt": "コネクターなし",
-      "otherCategory": "その他",
+      "results": "{{total}} 件中 {{shown}} 件のコネクターを表示",
+      "resultsLoaded": "{{shown}} 件のコネクターを表示",
       "search": "コネクターを検索",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "コネクターを並べ替え",
+        "recommended": "おすすめ"
+      },
       "tabs": {
         "builtin": "内蔵",
         "custom": "カスタム"

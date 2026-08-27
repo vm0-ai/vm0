@@ -2497,6 +2497,7 @@
         "manage": "{{connector}} पहुंच प्रबंधित करें",
         "usedBy": "द्वारा उपयोग किया जाता है"
       },
+      "allCategories": "सभी कनेक्टर",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2552,6 +2553,7 @@
         }
       },
       "categoriesAria": "कनेक्टर श्रेणियां",
+      "category": "श्रेणी",
       "description": "अपने एजेंटों के उपयोग के लिए तृतीय-पक्ष सेवाओं को कनेक्ट करें।",
       "descriptionWithCount": "अपने एजेंटों के उपयोग के लिए {{value}} सेवाओं को कनेक्ट करें।",
       "empty": {
@@ -2572,8 +2574,14 @@
       "iconUnavailable": "कनेक्टर आइकन अनुपलब्ध",
       "newConnector": "नया कनेक्टर",
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
-      "otherCategory": "अन्य",
+      "results": "{{total}} में से {{shown}} कनेक्टर दिखाए जा रहे हैं",
+      "resultsLoaded": "{{shown}} कनेक्टर दिखाए गए",
       "search": "कनेक्टर खोजें",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "कनेक्टर क्रमबद्ध करें",
+        "recommended": "अनुशंसित"
+      },
       "tabs": {
         "builtin": "बिल्ट-इन",
         "custom": "कस्टम"

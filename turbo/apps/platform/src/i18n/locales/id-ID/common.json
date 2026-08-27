@@ -2489,6 +2489,7 @@
         "manage": "Kelola akses {{connector}}",
         "usedBy": "Digunakan oleh "
       },
+      "allCategories": "Semua konektor",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2544,6 +2545,7 @@
         }
       },
       "categoriesAria": "Kategori konektor",
+      "category": "Kategori",
       "description": "Hubungkan layanan pihak ketiga agar agen Anda dapat menggunakannya.",
       "descriptionWithCount": "Hubungkan {{value}} layanan agar agen Anda dapat menggunakannya.",
       "empty": {
@@ -2564,8 +2566,14 @@
       "iconUnavailable": "Ikon konektor tidak tersedia",
       "newConnector": "Konektor baru",
       "noConnectorsAlt": "Tidak ada konektor",
-      "otherCategory": "Lainnya",
+      "results": "Menampilkan {{shown}} dari {{total}} konektor",
+      "resultsLoaded": "{{shown}} konektor ditampilkan",
       "search": "Cari konektor",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "Urutkan konektor",
+        "recommended": "Direkomendasikan"
+      },
       "tabs": {
         "builtin": "Bawaan",
         "custom": "Kustom"

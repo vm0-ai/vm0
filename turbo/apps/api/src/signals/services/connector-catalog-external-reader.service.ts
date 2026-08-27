@@ -136,6 +136,11 @@ interface ExternalCatalogStatusArgs extends ExternalBrandedCatalogReadArgs {
 
 interface ExternalCatalogDiscoveryArgs extends ExternalCatalogStatusArgs {
   readonly keyword: string | undefined;
+  readonly category: string | undefined;
+  readonly connection: "connected" | "not-connected" | undefined;
+  readonly sort: "recommended" | "alphabetical" | undefined;
+  readonly cursor: string | undefined;
+  readonly limit: number | undefined;
 }
 
 export interface ConnectorCatalogReferenceMetadata {
@@ -990,30 +995,35 @@ function connectorMatchesKeyword(
 function featuredEffectiveConnectors(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
+  return recommendedEffectiveConnectors(effective).slice(
+    0,
+    CONNECTOR_DISCOVERY_LIMIT,
+  );
+}
+
+function recommendedEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
   const bySlug = new Map(
     effective.map((entry) => {
       return [entry.connector.slug, entry];
     }),
   );
-  const featured = FEATURED_CONNECTOR_SLUGS.flatMap((slug) => {
+  const recommended = FEATURED_CONNECTOR_SLUGS.flatMap((slug) => {
     const entry = bySlug.get(slug);
     return entry ? [entry] : [];
   });
-  const selectedSlugs = new Set(
-    featured.map((entry) => {
+  const recommendedSlugs = new Set(
+    recommended.map((entry) => {
       return entry.connector.slug;
     }),
   );
-  for (const entry of effective) {
-    if (featured.length >= CONNECTOR_DISCOVERY_LIMIT) {
-      break;
-    }
-    if (!selectedSlugs.has(entry.connector.slug)) {
-      featured.push(entry);
-      selectedSlugs.add(entry.connector.slug);
-    }
-  }
-  return featured;
+  return [
+    ...recommended,
+    ...effective.filter((entry) => {
+      return !recommendedSlugs.has(entry.connector.slug);
+    }),
+  ];
 }
 
 function searchEffectiveConnectors(
@@ -1033,25 +1043,73 @@ function searchEffectiveConnectors(
 
 function discoveryEffectiveConnectors(
   effective: readonly EffectiveConnector[],
-  args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
+  args: Pick<
+    ExternalCatalogDiscoveryArgs,
+    "category" | "connection" | "connections" | "keyword" | "sort"
+  >,
 ): EffectiveConnector[] {
-  if (args.keyword?.trim()) {
-    return searchEffectiveConnectors(effective, args.keyword);
-  }
+  const normalizedKeyword = args.keyword?.trim().toLowerCase();
   const connectedSlugs = new Set(
     args.connections.map((connection) => {
       return connection.response.slug;
     }),
   );
-  const connected = effective.filter((entry) => {
+  const matches = effective.filter((entry) => {
+    if (
+      normalizedKeyword &&
+      !connectorMatchesKeyword(entry, normalizedKeyword)
+    ) {
+      return false;
+    }
+    if (args.category && entry.connector.category !== args.category) {
+      return false;
+    }
+    if (
+      args.connection === "connected" &&
+      !connectedSlugs.has(entry.connector.slug)
+    ) {
+      return false;
+    }
+    if (
+      args.connection === "not-connected" &&
+      connectedSlugs.has(entry.connector.slug)
+    ) {
+      return false;
+    }
+    return true;
+  });
+  if (args.sort === "alphabetical") {
+    return [...matches].sort((a, b) => {
+      return (
+        a.connector.label.localeCompare(b.connector.label) ||
+        a.connector.slug.localeCompare(b.connector.slug)
+      );
+    });
+  }
+  const recommended = recommendedEffectiveConnectors(matches);
+  if (normalizedKeyword || args.connection) {
+    return recommended;
+  }
+  const connected = recommended.filter((entry) => {
     return connectedSlugs.has(entry.connector.slug);
   });
   return [
     ...connected,
-    ...featuredEffectiveConnectors(effective).filter((entry) => {
+    ...recommended.filter((entry) => {
       return !connectedSlugs.has(entry.connector.slug);
     }),
   ];
+}
+
+function categoryConnectorCounts(
+  effective: readonly EffectiveConnector[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const entry of effective) {
+    counts[entry.connector.category] =
+      (counts[entry.connector.category] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export async function searchExternalConnectorCatalog(
@@ -1125,9 +1183,18 @@ export async function discoverExternalPublicConnectorCatalogStatus(
     catalog,
     featureStates: args.featureStates,
   });
+  const categoryCountConnectors = discoveryEffectiveConnectors(effective, {
+    ...args,
+    category: undefined,
+    sort: "recommended",
+  });
+  const matching = discoveryEffectiveConnectors(effective, args);
+  const offset = Number(args.cursor ?? "0");
+  const limit = args.limit ?? CONNECTOR_DISCOVERY_LIMIT;
+  const page = matching.slice(offset, offset + limit);
   const read = connectorCatalogStatusRead({
     catalog,
-    effective: discoveryEffectiveConnectors(effective, args),
+    effective: page,
     connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
     publicBrand: args.publicBrand,
@@ -1136,7 +1203,14 @@ export async function discoverExternalPublicConnectorCatalogStatus(
     ...read,
     status: {
       ...read.status,
+      categoryMetadata: categoryMetadataForConnectors(catalog, effective),
       totalConnectorCount: effective.length,
+      matchingConnectorCount: matching.length,
+      categoryConnectorCounts: categoryConnectorCounts(categoryCountConnectors),
+      nextCursor:
+        offset + page.length < matching.length
+          ? String(offset + page.length)
+          : null,
     },
   };
 }

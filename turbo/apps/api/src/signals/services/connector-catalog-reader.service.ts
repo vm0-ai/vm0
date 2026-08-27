@@ -80,6 +80,11 @@ export async function discoverPublicConnectorCatalogStatus(
   args: BrandedConnectorCatalogReadArgs & {
     readonly connections: readonly ConnectorCatalogConnection[];
     readonly keyword: string | undefined;
+    readonly category: string | undefined;
+    readonly connection: "connected" | "not-connected" | undefined;
+    readonly sort: "recommended" | "alphabetical" | undefined;
+    readonly cursor: string | undefined;
+    readonly limit: number | undefined;
   },
 ): Promise<PublicConnectorCatalogDiscoveryResponse> {
   const read = await discoverExternalPublicConnectorCatalogStatus({

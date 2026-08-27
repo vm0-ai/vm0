@@ -517,7 +517,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns bounded featured connectors and searches only slug or label", async () => {
+  it("paginates connector discovery and searches only slug or label", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
@@ -539,6 +539,53 @@ describe("GET /api/connector-catalog", () => {
     expect(featured.body.connectors.length).toBeLessThanOrEqual(100);
     expect(featured.body.totalConnectorCount).toBeGreaterThanOrEqual(
       featured.body.connectors.length,
+    );
+    expect(featured.body.matchingConnectorCount).toBe(
+      featured.body.totalConnectorCount,
+    );
+    expect(featured.body.categoryConnectorCounts).toBeDefined();
+
+    const firstPage = await accept(
+      client.discovery({ query: { limit: 2 }, headers }),
+      [200],
+    );
+    expect(firstPage.body.connectors).toHaveLength(2);
+    expect(firstPage.body.nextCursor).toBe("2");
+    const secondPage = await accept(
+      client.discovery({
+        query: { limit: 2, cursor: firstPage.body.nextCursor ?? "" },
+        headers,
+      }),
+      [200],
+    );
+    expect(secondPage.body.connectors).toHaveLength(2);
+    expect(
+      firstPage.body.connectors.some((connector) => {
+        return secondPage.body.connectors.some((candidate) => {
+          return candidate.slug === connector.slug;
+        });
+      }),
+    ).toBeFalsy();
+
+    const category = featured.body.categoryMetadata?.categories.find(
+      (candidate) => {
+        return (featured.body.categoryConnectorCounts?.[candidate.id] ?? 0) > 0;
+      },
+    );
+    expect(category).toBeDefined();
+    const categoryPage = await accept(
+      client.discovery({
+        query: { category: category?.id, limit: 2 },
+        headers,
+      }),
+      [200],
+    );
+    expect(categoryPage.body.connectors.length).toBeGreaterThan(0);
+    for (const connector of categoryPage.body.connectors) {
+      expect(connector.category).toBe(category?.id);
+    }
+    expect(categoryPage.body.matchingConnectorCount).toBe(
+      featured.body.categoryConnectorCounts?.[category?.id ?? ""],
     );
 
     const labelOrSlugSearch = await accept(

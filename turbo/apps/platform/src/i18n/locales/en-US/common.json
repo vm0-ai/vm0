@@ -2489,6 +2489,7 @@
         "manage": "Manage {{connector}} access",
         "usedBy": "Used by "
       },
+      "allCategories": "All connectors",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2544,6 +2545,7 @@
         }
       },
       "categoriesAria": "Connector categories",
+      "category": "Category",
       "description": "Connect third-party services for your agents to use.",
       "descriptionWithCount": "Connect {{value}} services for your agents to use.",
       "empty": {
@@ -2564,8 +2566,14 @@
       "iconUnavailable": "Connector icon unavailable",
       "newConnector": "New connector",
       "noConnectorsAlt": "No connectors",
-      "otherCategory": "Other",
+      "results": "Showing {{shown}} of {{total}} connectors",
+      "resultsLoaded": "{{shown}} connectors shown",
       "search": "Find connectors",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "Sort connectors",
+        "recommended": "Recommended"
+      },
       "tabs": {
         "builtin": "Built-in",
         "custom": "Custom"

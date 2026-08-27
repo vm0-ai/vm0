@@ -2545,6 +2545,7 @@
         "manage": "Gestionar el acceso a {{connector}}",
         "usedBy": "Utilizado por"
       },
+      "allCategories": "Todos los conectores",
       "categories": {
         "ai": {
           "label": "IA",
@@ -2600,6 +2601,7 @@
         }
       },
       "categoriesAria": "Categorías de conectores",
+      "category": "Categoría",
       "description": "Conecta servicios de terceros para que tus agentes los utilicen.",
       "descriptionWithCount": "Conecta {{value}} servicios para que tus agentes los utilicen.",
       "empty": {
@@ -2620,8 +2622,14 @@
       "iconUnavailable": "Icono del conector no disponible",
       "newConnector": "Nuevo conector",
       "noConnectorsAlt": "Sin conectores",
-      "otherCategory": "Otro",
+      "results": "Mostrando {{shown}} de {{total}} conectores",
+      "resultsLoaded": "{{shown}} conectores mostrados",
       "search": "Buscar conectores",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "Ordenar conectores",
+        "recommended": "Recomendados"
+      },
       "tabs": {
         "builtin": "Integrados",
         "custom": "Personalizado"

@@ -647,36 +647,33 @@ describe("connectors page", () => {
     });
   });
 
-  it("lets users browse connectors by grouped categories", async () => {
+  it("lets users filter the connector directory by category", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("connector-category-engineering-team-execution"),
-      ).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
-    const engineeringSection = screen.getByTestId(
+    const engineeringCategory = await screen.findByTestId(
       "connector-category-engineering-team-execution",
     );
-    const engineeringLabels = within(engineeringSection)
-      .getAllByTestId("connector-card-label")
-      .map((element) => {
-        return element.textContent;
-      });
-    expect(engineeringLabels[0]).toBe("GitHub");
-    expect(engineeringLabels).toContain("Asana");
+    expect(screen.getByTestId("connector-category-all")).toHaveTextContent(
+      /\d/u,
+    );
 
-    const aiGroup = screen.getByTestId("connector-category-ai");
-    const engineeringGroup = screen.getByTestId(
-      "connector-category-engineering-team-execution",
+    click(engineeringCategory);
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(screen.queryByText("OpenAI")).not.toBeInTheDocument();
+    });
+    expect(search()).toContain("category=engineering-team-execution");
+    expect(screen.getByTestId("connector-result-count")).toHaveTextContent(
+      /Showing \d+ of \d+ connectors/u,
     );
-    expect(
-      aiGroup.compareDocumentPosition(engineeringGroup) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
   });
 
   it("uses bounded discovery for featured browsing and server search", async () => {
@@ -734,6 +731,72 @@ describe("connectors page", () => {
     expect(
       screen.getByText("Connect 1,234 services for your agents to use."),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Cmd\+K|⌘K/u)).not.toBeInTheDocument();
+  });
+
+  it("loads additional connector directory pages on demand", async () => {
+    mockConnectors([]);
+    const connectors = Array.from({ length: 30 }, (_, index) => {
+      const number = String(index + 1).padStart(2, "0");
+      return publicStatusItem({
+        connectorSlug: `directory-${number}`,
+        label: `Directory ${number}`,
+        category: "data-automation-infrastructure",
+        authMethods: [],
+      });
+    });
+    const cursors: (string | undefined)[] = [];
+    context.mocks.api(
+      connectorCatalogContract.discovery,
+      ({ query, respond }) => {
+        cursors.push(query.cursor);
+        const offset = Number(query.cursor ?? "0");
+        const limit = query.limit ?? 100;
+        const page = connectors.slice(offset, offset + limit);
+        return respond(200, {
+          connectors: page,
+          categoryMetadata: {
+            categories: [
+              {
+                id: "data-automation-infrastructure",
+                label: "Data, Automation, and Infrastructure",
+                menuLabel: "Data and Automation",
+                groupId: null,
+              },
+            ],
+            groups: [],
+          },
+          totalConnectorCount: connectors.length,
+          matchingConnectorCount: connectors.length,
+          categoryConnectorCounts: {
+            "data-automation-infrastructure": connectors.length,
+          },
+          nextCursor:
+            offset + page.length < connectors.length
+              ? String(offset + page.length)
+              : null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
+
+    await expect(
+      screen.findByText("Showing 24 of 30 connectors"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByTestId("connector-card-label")).toHaveLength(24);
+
+    click(buttonByText("Load more"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("connector-card-label")).toHaveLength(30);
+      expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    });
+    expect(cursors).toStrictEqual([undefined, "24"]);
   });
 
   it("shows the full connector catalog size in the page description", async () => {
@@ -889,9 +952,7 @@ describe("connectors page", () => {
     expect(
       screen.getByPlaceholderText("Buscar conectores"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Engenharia e execução da equipe"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Engenharia")).toBeInTheDocument();
 
     const metaAdsCard = connectorCardByLabel("Meta Ads");
     expect(
@@ -986,23 +1047,13 @@ describe("connectors page", () => {
     detachedSetupPage({ context, path: "/connectors" });
 
     await expect(
-      screen.findByRole("heading", {
-        name: "Geração de imagens e vídeos",
-      }),
-    ).resolves.toBeInTheDocument();
+      screen.findByTestId("connector-category-ai-image-video"),
+    ).resolves.toHaveTextContent("Imagens e vídeos");
     expect(
-      screen.getByRole("heading", { name: "Voz e áudio" }),
-    ).toBeInTheDocument();
+      screen.getByTestId("connector-category-ai-voice-audio"),
+    ).toHaveTextContent("Voz e áudio");
     expect(
-      screen.getByRole("heading", {
-        name: "Memória, rastreamento e avaliação",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("connector-category-menu-ai-image-video"),
-    ).toHaveTextContent("Imagens e vídeos");
-    expect(
-      screen.getByTestId("connector-category-menu-ai-memory-tracing-eval"),
+      screen.getByTestId("connector-category-ai-memory-tracing-eval"),
     ).toHaveTextContent("Memória e avaliação");
   });
 
@@ -1110,16 +1161,11 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    const partnerSection = await screen.findByTestId(
+    const partnerCategory = await screen.findByTestId(
       "connector-category-partner-apps",
     );
-    expect(
-      within(partnerSection).getByText("Partner Apps"),
-    ).toBeInTheDocument();
+    expect(partnerCategory).toHaveTextContent("Partners");
     expect(queryConnectorCardByLabel("Public GitHub")).toBeInTheDocument();
-    expect(
-      screen.getByTestId("connector-category-menu-partner-apps"),
-    ).toHaveTextContent("Partners");
   });
 
   it("does not render duplicate connector sections for duplicate category metadata", async () => {
@@ -1163,12 +1209,10 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    const partnerSection = await screen.findByTestId(
+    const partnerCategory = await screen.findByTestId(
       "connector-category-partner-apps",
     );
-    expect(
-      within(partnerSection).getByText("Partner Apps"),
-    ).toBeInTheDocument();
+    expect(partnerCategory).toHaveTextContent("Partners");
     expect(
       screen.queryByText("Duplicate Partner Apps"),
     ).not.toBeInTheDocument();
@@ -1274,13 +1318,12 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    const fallbackSection = await screen.findByTestId(
-      "connector-category-legacy-category",
-    );
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("Fallback GitHub")).toBeInTheDocument();
+    });
     expect(
-      within(fallbackSection).getByText("Legacy Category"),
-    ).toBeInTheDocument();
-    expect(queryConnectorCardByLabel("Fallback GitHub")).toBeInTheDocument();
+      screen.queryByTestId("connector-category-legacy-category"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not show reconnect reason help on the connection expired badge", async () => {
@@ -2392,25 +2435,23 @@ describe("connectors page", () => {
     expect(within(dialog).getByText(addedScopes[0])).toBeInTheDocument();
   });
 
-  it("navigates connector categories and opens a connector from the keyboard", async () => {
+  it("filters connector categories and opens a connector", async () => {
     mockConnectors([]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("connector-category-menu-ai"),
+        screen.getByTestId("connector-category-ai-general-models"),
       ).toBeInTheDocument();
     });
 
-    click(screen.getByTestId("connector-category-menu-ai"));
-    click(screen.getByTestId("connector-category-menu-ai-general-models"));
     click(
-      screen.getByTestId("connector-category-menu-engineering-team-execution"),
+      screen.getByTestId("connector-category-data-automation-infrastructure"),
     );
 
     const axiomCard = await screen.findByLabelText("Connect Axiom");
-    fireEvent.keyDown(axiomCard, { key: " ", code: "Space" });
+    click(axiomCard);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Axiom" })).toBeInTheDocument();

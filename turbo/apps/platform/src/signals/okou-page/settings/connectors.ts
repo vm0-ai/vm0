@@ -34,12 +34,13 @@ import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@okouai/api-co
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnectionStatus,
+  PublicConnectorCatalogDiscoveryQuery,
   PublicConnectorCatalogIcon,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
+  createRelatedConnectorCatalog,
   connectors$,
   deleteConnector$,
-  relatedConnectorCatalog,
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
@@ -410,6 +411,11 @@ export function matchesConnectorSearch(
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
+const CONNECTORS_CATEGORY_PARAM = "category";
+const CONNECTORS_SORT_PARAM = "sort";
+const CONNECTOR_CATALOG_PAGE_SIZE = 24;
+
+export type ConnectorCatalogSort = "recommended" | "alphabetical";
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
 // status, or the connectors a given agent is authorized to use.
@@ -442,26 +448,64 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
-export const connectorCatalogDiscovery$ =
-  relatedConnectorCatalog(connectorsSearch$);
+export const connectorsCategory$ = computed((get) => {
+  return get(searchParams$).get(CONNECTORS_CATEGORY_PARAM);
+});
+
+export const connectorsSort$ = computed((get): ConnectorCatalogSort => {
+  return get(searchParams$).get(CONNECTORS_SORT_PARAM) === "alphabetical"
+    ? "alphabetical"
+    : "recommended";
+});
+
+const connectorCatalogDiscoveryQuery$ = computed(
+  (get): PublicConnectorCatalogDiscoveryQuery => {
+    const keyword = get(connectorsSearch$).trim();
+    const category = get(connectorsCategory$);
+    const filter = get(connectorsConnectionFilter$);
+    return {
+      limit: CONNECTOR_CATALOG_PAGE_SIZE,
+      sort: get(connectorsSort$),
+      ...(keyword ? { keyword } : {}),
+      ...(category ? { category } : {}),
+      ...(filter.kind === "connected" || filter.kind === "not-connected"
+        ? { connection: filter.kind }
+        : {}),
+    };
+  },
+);
+
+const connectorCatalogPaging = createRelatedConnectorCatalog(
+  connectorCatalogDiscoveryQuery$,
+);
+
+export const connectorCatalogDiscovery$ = connectorCatalogPaging.catalog$;
+export const loadMoreConnectorCatalog$ = connectorCatalogPaging.loadMore$;
 
 export const relatedCatalogItems$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogDiscovery$);
   const items = [...connectors];
 
-  // Sort connected connectors to the top of the list
-  items.sort((a, b) => {
-    if (a.connected === b.connected) {
-      return 0;
-    }
-    return a.connected ? -1 : 1;
-  });
+  if (get(connectorsSort$) === "alphabetical") {
+    items.sort((a, b) => {
+      return a.label.localeCompare(b.label) || a.slug.localeCompare(b.slug);
+    });
+  } else {
+    // Keep connected connectors at the top of the recommended directory.
+    items.sort((a, b) => {
+      if (a.connected === b.connected) {
+        return 0;
+      }
+      return a.connected ? -1 : 1;
+    });
+  }
 
   return items;
 });
 
 export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
+  const category = get(connectorsCategory$);
   const effectiveFilter = get(connectorsConnectionFilter$);
 
   const agentEnabledSlugs =
@@ -476,6 +520,9 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const relatedCatalogItems = await get(relatedCatalogItems$);
   return relatedCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
+      return false;
+    }
+    if (category && connector.category !== category) {
       return false;
     }
     if (effectiveFilter.kind === "connected") {
@@ -500,6 +547,30 @@ export const setConnectorsSearch$ = command(({ get, set }, value: string) => {
   }
   set(replaceSearchParams$, params);
 });
+
+export const setConnectorsCategory$ = command(
+  ({ get, set }, category: string | null) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (category) {
+      params.set(CONNECTORS_CATEGORY_PARAM, category);
+    } else {
+      params.delete(CONNECTORS_CATEGORY_PARAM);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const setConnectorsSort$ = command(
+  ({ get, set }, sort: ConnectorCatalogSort) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (sort === "recommended") {
+      params.delete(CONNECTORS_SORT_PARAM);
+    } else {
+      params.set(CONNECTORS_SORT_PARAM, sort);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
 
 export const setConnectorsConnectionFilter$ = command(
   ({ get, set }, value: ConnectorsConnectionFilter) => {

@@ -415,20 +415,53 @@ export const apiConnectorsHandlers = [
   mockApi(connectorCatalogContract.discovery, ({ query, respond }) => {
     const allConnectors = mockConnectorCatalogStatus();
     const keyword = query.keyword?.trim().toLowerCase();
-    const connectors = keyword
-      ? allConnectors
-          .filter((connector) => {
-            return (
-              connector.slug.toLowerCase().includes(keyword) ||
-              connector.label.toLowerCase().includes(keyword)
-            );
-          })
-          .slice(0, 100)
-      : allConnectors.slice(0, 100);
+    const categoryCandidates = allConnectors.filter((connector) => {
+      if (
+        keyword &&
+        !connector.slug.toLowerCase().includes(keyword) &&
+        !connector.label.toLowerCase().includes(keyword)
+      ) {
+        return false;
+      }
+      if (query.connection === "connected" && !connector.connected) {
+        return false;
+      }
+      if (query.connection === "not-connected" && connector.connected) {
+        return false;
+      }
+      return true;
+    });
+    const categoryConnectorCounts = Object.fromEntries(
+      testConnectorCatalogCategoryMetadata.categories.map((category) => {
+        return [
+          category.id,
+          categoryCandidates.filter((connector) => {
+            return connector.category === category.id;
+          }).length,
+        ];
+      }),
+    );
+    const matching = categoryCandidates.filter((connector) => {
+      return !query.category || connector.category === query.category;
+    });
+    if (query.sort === "alphabetical") {
+      matching.sort((a, b) => {
+        return a.label.localeCompare(b.label) || a.slug.localeCompare(b.slug);
+      });
+    }
+    const offset = Number(query.cursor ?? "0");
+    const limit = query.limit ?? 100;
+    const connectors = matching.slice(offset, offset + limit);
     return respond(200, {
       connectors,
       categoryMetadata: testConnectorCatalogCategoryMetadata,
       totalConnectorCount: allConnectors.length,
+      matchingConnectorCount: matching.length,
+      categoryConnectorCounts,
+      nextCursor:
+        offset + connectors.length < matching.length
+          ? String(offset + connectors.length)
+          : null,
     });
   }),
 

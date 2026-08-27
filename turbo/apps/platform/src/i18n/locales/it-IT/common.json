@@ -2545,6 +2545,7 @@
         "manage": "Gestisci l'accesso {{connector}}",
         "usedBy": "Utilizzato da "
       },
+      "allCategories": "Tutti i connettori",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2600,6 +2601,7 @@
         }
       },
       "categoriesAria": "Categorie di connettori",
+      "category": "Categoria",
       "description": "Connetti servizi di terze parti affinché i tuoi agenti possano utilizzarli.",
       "descriptionWithCount": "Connetti {{value}} servizi affinché i tuoi agenti possano utilizzarli.",
       "empty": {
@@ -2620,8 +2622,14 @@
       "iconUnavailable": "Icona del connettore non disponibile",
       "newConnector": "Nuovo connettore",
       "noConnectorsAlt": "Nessun connettore",
-      "otherCategory": "Altro",
+      "results": "Visualizzazione di {{shown}} connettori su {{total}}",
+      "resultsLoaded": "{{shown}} connettori visualizzati",
       "search": "Trova connettori",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "Ordina connettori",
+        "recommended": "Consigliati"
+      },
       "tabs": {
         "builtin": "Integrato",
         "custom": "Personalizzato"

@@ -11,7 +11,16 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
+import {
+  ArrowUpDown,
+  Check,
+  ChevronDown,
+  Filter,
+  Layers3,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
@@ -42,8 +51,13 @@ import {
   connectorsConnectionFilter$,
   disconnectConnector$,
   filteredConnectorCatalogItems$,
+  loadMoreConnectorCatalog$,
+  connectorsCategory$,
+  connectorsSort$,
+  setConnectorsCategory$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
+  setConnectorsSort$,
   selectedConnectorSlug$,
   setSelectedConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
@@ -54,17 +68,9 @@ import {
   setScopeReviewConnectorSlug$,
   getAvailableStatusAuthCodeAuthMethod,
   getConnectorStatusAuthMethod,
+  type ConnectorCatalogSort,
   type ConnectorsConnectionFilter,
 } from "../../signals/okou-page/settings/connectors.ts";
-import {
-  activeConnectorCategoryId$,
-  attachConnectorCategoryScrollTracking$,
-  getConnectorCategorySectionId,
-  groupConnectorsByCategory,
-  resetActiveConnectorCategory$,
-  scrollToConnectorCategory,
-  type ConnectorCategoryGroup,
-} from "../../signals/okou-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
@@ -265,177 +271,19 @@ function localizeConnectorCategoryMetadata(
   if (!metadata) {
     return undefined;
   }
+  const categoryIds = new Set<string>();
   return {
-    categories: metadata.categories.map((category) => {
-      return { ...category, ...connectorCategoryTranslation(category.id) };
+    categories: metadata.categories.flatMap((category) => {
+      if (categoryIds.has(category.id)) {
+        return [];
+      }
+      categoryIds.add(category.id);
+      return [{ ...category, ...connectorCategoryTranslation(category.id) }];
     }),
     groups: metadata.groups.map((group) => {
       return { ...group, ...connectorCategoryTranslation(group.id) };
     }),
   };
-}
-
-// Callback ref that attaches scroll tracking while enabled. Each call returns
-// a fresh ref callback; React only invokes it when the underlying element
-// changes, so listeners are registered on mount and cleaned up on unmount.
-function useScrollTrackingRef(
-  enabled: boolean,
-  attach: (el: HTMLElement) => () => void,
-  resetActive: () => void,
-) {
-  let cleanup: (() => void) | null = null;
-  return (el: HTMLDivElement | null) => {
-    if (cleanup) {
-      cleanup();
-      cleanup = null;
-    }
-    if (el && enabled) {
-      cleanup = attach(el);
-    } else {
-      resetActive();
-    }
-  };
-}
-
-function ConnectorCategoryMenu({
-  activeCategoryId,
-  groups,
-}: {
-  activeCategoryId: string | null;
-  groups: readonly ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
-}) {
-  const { t } = useTranslation();
-  if (groups.length <= 1) {
-    return null;
-  }
-
-  return (
-    <aside className="pointer-events-none fixed right-6 top-[28vh] z-20 hidden w-44 min-[1332px]:block">
-      <nav
-        aria-label={t(($) => {
-          return $.connectors.catalog.categoriesAria;
-        })}
-        className="group pointer-events-auto ml-auto flex max-h-[68vh] w-6 flex-col gap-3 overflow-x-hidden overflow-y-auto rounded-xl border border-transparent bg-transparent px-1 py-2 transition-all duration-150 hover:w-44 hover:border-border/60 hover:bg-popover hover:shadow-lg focus-within:w-44 focus-within:border-border/60 focus-within:bg-popover focus-within:shadow-lg 2xl:ml-0 2xl:w-full 2xl:overflow-y-auto 2xl:rounded-none 2xl:border-transparent 2xl:px-0 2xl:py-0 2xl:pb-3 2xl:pl-5 2xl:hover:w-full 2xl:hover:border-transparent 2xl:hover:bg-transparent 2xl:hover:shadow-none 2xl:focus-within:w-full 2xl:focus-within:border-transparent 2xl:focus-within:bg-transparent 2xl:focus-within:shadow-none"
-      >
-        {groups.flatMap((group) => {
-          if (group.kind === "group") {
-            const isActiveChild = group.sections.some((section) => {
-              return activeCategoryId === section.category;
-            });
-            return [
-              <ConnectorCategoryMenuItem
-                key={group.id}
-                activeState={
-                  activeCategoryId === group.id
-                    ? "current"
-                    : isActiveChild
-                      ? "ancestor"
-                      : null
-                }
-                depth="parent"
-                label={group.label}
-                menuLabel={group.menuLabel}
-                targetId={group.id}
-                onClick={() => {
-                  scrollToConnectorCategory(group.id);
-                }}
-              />,
-              ...group.sections.map((section) => {
-                return (
-                  <ConnectorCategoryMenuItem
-                    key={section.category}
-                    activeState={
-                      activeCategoryId === section.category ? "current" : null
-                    }
-                    depth="child"
-                    label={section.label}
-                    menuLabel={section.menuLabel}
-                    targetId={section.category}
-                    onClick={() => {
-                      scrollToConnectorCategory(section.category);
-                    }}
-                  />
-                );
-              }),
-            ];
-          }
-
-          const section = group.sections[0];
-          return [
-            <ConnectorCategoryMenuItem
-              key={section.category}
-              activeState={
-                activeCategoryId === section.category ? "current" : null
-              }
-              depth="parent"
-              label={section.label}
-              menuLabel={section.menuLabel}
-              targetId={section.category}
-              onClick={() => {
-                scrollToConnectorCategory(section.category);
-              }}
-            />,
-          ];
-        })}
-      </nav>
-    </aside>
-  );
-}
-
-function ConnectorCategoryMenuItem({
-  activeState,
-  depth,
-  label,
-  menuLabel,
-  targetId,
-  onClick,
-}: {
-  activeState: "current" | "ancestor" | null;
-  depth: "parent" | "child";
-  label: string;
-  menuLabel: string;
-  targetId: string;
-  onClick: () => void;
-}) {
-  const isChild = depth === "child";
-  const lineClass =
-    activeState === "current"
-      ? isChild
-        ? "ml-1 w-3 bg-foreground/70 group-hover/item:bg-foreground/80"
-        : "w-4 bg-foreground/70 group-hover/item:bg-foreground/80"
-      : activeState === "ancestor"
-        ? "w-4 bg-muted-foreground/55 group-hover/item:bg-foreground/60"
-        : isChild
-          ? "ml-1 w-3 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50"
-          : "w-4 bg-muted-foreground/20 group-hover:bg-muted-foreground/35 group-hover/item:bg-foreground/50";
-
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-current={activeState === "current" ? "true" : undefined}
-      data-testid={`connector-category-menu-${targetId}`}
-      title={label}
-      className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-all duration-150 group-hover:h-5 group-focus-within:h-5 2xl:group-hover:h-3 2xl:group-focus-within:h-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
-        activeState === "current"
-          ? isChild
-            ? "text-[11px] text-foreground hover:text-foreground"
-            : "text-xs font-medium text-foreground hover:text-foreground"
-          : isChild
-            ? "text-[11px] text-muted-foreground/70 hover:text-foreground"
-            : "text-xs font-medium text-muted-foreground hover:text-foreground"
-      }`}
-      onClick={onClick}
-    >
-      <span
-        aria-hidden="true"
-        className={`block h-0.5 rounded-sm transition-all duration-150 group-hover:opacity-0 group-focus-within:opacity-0 2xl:group-hover:opacity-100 2xl:group-focus-within:opacity-100 ${lineClass}`}
-      />
-      <span className="absolute left-0 top-1/2 block -translate-y-1/2 translate-x-1 whitespace-nowrap opacity-0 transition-all duration-150 group-hover:left-3 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:left-3 group-focus-within:translate-x-0 group-focus-within:opacity-100 2xl:left-7 2xl:group-hover:left-7 2xl:group-focus-within:left-7">
-        {menuLabel}
-      </span>
-    </button>
-  );
 }
 
 function ConnectorFilterSectionLabel({
@@ -507,7 +355,7 @@ function ConnectorFilterDropdown({
           aria-label={t(($) => {
             return $.connectors.catalog.filters.aria;
           })}
-          className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
+          className="zero-btn-morandi h-10 shrink-0 gap-1.5 rounded-lg border"
         >
           <Filter size={14} className="" />
           {activeAgent && (
@@ -598,129 +446,387 @@ function ConnectorFilterDropdown({
   );
 }
 
-function ConnectorsToolbarActions({
-  activeTab,
+function ConnectorSortDropdown({
+  value,
+  onChange,
+}: {
+  readonly value: ConnectorCatalogSort;
+  readonly onChange: (value: ConnectorCatalogSort) => void;
+}) {
+  const { t } = useTranslation();
+  const label =
+    value === "alphabetical"
+      ? t(($) => {
+          return $.connectors.catalog.sort.alphabetical;
+        })
+      : t(($) => {
+          return $.connectors.catalog.sort.recommended;
+        });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t(($) => {
+            return $.connectors.catalog.sort.aria;
+          })}
+          className="zero-btn-morandi h-10 shrink-0 gap-1.5 rounded-lg border"
+        >
+          <ArrowUpDown size={14} />
+          <span>{label}</span>
+          <ChevronDown size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <ConnectorFilterOption
+          active={value === "recommended"}
+          onSelect={() => {
+            onChange("recommended");
+          }}
+        >
+          {t(($) => {
+            return $.connectors.catalog.sort.recommended;
+          })}
+        </ConnectorFilterOption>
+        <ConnectorFilterOption
+          active={value === "alphabetical"}
+          onSelect={() => {
+            onChange("alphabetical");
+          }}
+        >
+          {t(($) => {
+            return $.connectors.catalog.sort.alphabetical;
+          })}
+        </ConnectorFilterOption>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ConnectorDirectoryToolbar({
   search,
   setSearch,
-  showAccessManagement,
   connectionFilter,
   agents,
   setConnectionFilter,
-  isAdmin,
-  onCreateCustom,
+  sort,
+  setSort,
 }: {
-  readonly activeTab: "builtin" | "custom";
   readonly search: string;
   readonly setSearch: (value: string) => void;
-  readonly showAccessManagement: boolean;
   readonly connectionFilter: ConnectorsConnectionFilter;
   readonly agents: readonly AgentResponse[];
   readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
-  readonly isAdmin: boolean;
-  readonly onCreateCustom: () => void;
+  readonly sort: ConnectorCatalogSort;
+  readonly setSort: (value: ConnectorCatalogSort) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2">
-      {activeTab === "builtin" && (
-        <div className="relative w-40 sm:w-52">
-          <Search
-            size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-          />
-          <Input
-            type="text"
-            placeholder={t(($) => {
-              return $.connectors.catalog.search;
-            })}
-            value={search}
-            onChange={(e) => {
-              return setSearch(e.target.value);
-            }}
-            className="pl-9 pr-3"
-          />
-        </div>
-      )}
-      {activeTab === "builtin" && showAccessManagement && (
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="relative min-w-0 flex-1">
+        <Search
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        />
+        <Input
+          type="text"
+          aria-label={t(($) => {
+            return $.connectors.catalog.search;
+          })}
+          placeholder={t(($) => {
+            return $.connectors.catalog.search;
+          })}
+          value={search}
+          onChange={(event) => {
+            return setSearch(event.target.value);
+          }}
+          className="h-10 rounded-lg pl-9 pr-3"
+        />
+      </div>
+      <div className="flex items-center gap-2">
         <ConnectorFilterDropdown
           value={connectionFilter}
           agents={agents}
           onChange={setConnectionFilter}
         />
-      )}
-      {activeTab === "custom" && isAdmin && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-          onClick={onCreateCustom}
-        >
-          <Plus size={14} />
-          {t(($) => {
-            return $.connectors.catalog.newConnector;
-          })}
-        </Button>
-      )}
+        <ConnectorSortDropdown value={sort} onChange={setSort} />
+      </div>
     </div>
   );
 }
 
-function ConnectorCategoryGroupSection({
-  group,
-  renderCard,
+function CustomConnectorAction({
+  isAdmin,
+  onCreate,
 }: {
-  group: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>;
-  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
+  readonly isAdmin: boolean;
+  readonly onCreate: () => void;
 }) {
-  if (group.kind === "group") {
-    return (
-      <section
-        key={group.id}
-        id={getConnectorCategorySectionId(group.id)}
-        className="scroll-mt-6 flex flex-col gap-4"
-        data-testid={`connector-category-${group.id}`}
+  const { t } = useTranslation();
+  if (!isAdmin) {
+    return null;
+  }
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+      onClick={onCreate}
+    >
+      <Plus size={14} />
+      {t(($) => {
+        return $.connectors.catalog.newConnector;
+      })}
+    </Button>
+  );
+}
+
+function categoryCountTotal(
+  categoryCounts: Readonly<Record<string, number>>,
+): number {
+  return Object.values(categoryCounts).reduce((total, count) => {
+    return total + count;
+  }, 0);
+}
+
+function ConnectorCategoryButton({
+  categoryId,
+  label,
+  count,
+  selected,
+  nested = false,
+  onSelect,
+}: {
+  readonly categoryId: string | null;
+  readonly label: string;
+  readonly count: number;
+  readonly selected: boolean;
+  readonly nested?: boolean;
+  readonly onSelect: (categoryId: string | null) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      data-testid={
+        categoryId
+          ? `connector-category-${categoryId}`
+          : "connector-category-all"
+      }
+      className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+        nested ? "pl-5" : ""
+      } ${
+        selected
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      }`}
+      onClick={() => {
+        onSelect(categoryId);
+      }}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <span
+        className={`shrink-0 text-xs tabular-nums ${
+          selected ? "text-background/70" : "text-muted-foreground/70"
+        }`}
       >
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {group.label}
-        </h2>
-        <div className="flex flex-col gap-5">
-          {group.sections.map((section) => {
+        {formatLocalizedNumber(count)}
+      </span>
+    </button>
+  );
+}
+
+function ConnectorCategoryRail({
+  metadata,
+  categoryCounts,
+  selectedCategory,
+  onSelect,
+}: {
+  readonly metadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly categoryCounts: Readonly<Record<string, number>>;
+  readonly selectedCategory: string | null;
+  readonly onSelect: (categoryId: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  if (!metadata) {
+    return null;
+  }
+  const groupedCategoryIds = new Set<string>();
+  return (
+    <aside className="sticky top-4 hidden max-h-[calc(100vh-2rem)] w-52 shrink-0 self-start overflow-y-auto pr-4 lg:block">
+      <div className="mb-2 flex items-center gap-2 px-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Layers3 size={13} />
+        {t(($) => {
+          return $.connectors.catalog.category;
+        })}
+      </div>
+      <nav
+        aria-label={t(($) => {
+          return $.connectors.catalog.categoriesAria;
+        })}
+        className="flex flex-col gap-0.5"
+      >
+        <ConnectorCategoryButton
+          categoryId={null}
+          label={t(($) => {
+            return $.connectors.catalog.allCategories;
+          })}
+          count={categoryCountTotal(categoryCounts)}
+          selected={selectedCategory === null}
+          onSelect={onSelect}
+        />
+        {metadata.groups.map((group) => {
+          const categories = metadata.categories.filter((category) => {
             return (
-              <div
-                key={section.category}
-                id={getConnectorCategorySectionId(section.category)}
-                className="scroll-mt-6 flex flex-col gap-3"
-                data-testid={`connector-category-${section.category}`}
-              >
-                <h3 className="text-xs font-medium text-muted-foreground/80">
-                  {section.label}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {section.connectors.map(renderCard)}
-                </div>
-              </div>
+              category.groupId === group.id &&
+              ((categoryCounts[category.id] ?? 0) > 0 ||
+                selectedCategory === category.id)
             );
+          });
+          for (const category of categories) {
+            groupedCategoryIds.add(category.id);
+          }
+          if (categories.length === 0) {
+            return null;
+          }
+          const groupCount = categories.reduce((total, category) => {
+            return total + (categoryCounts[category.id] ?? 0);
+          }, 0);
+          return (
+            <div key={group.id} className="mt-2">
+              <div
+                data-testid={`connector-category-group-${group.id}`}
+                className="flex items-center justify-between gap-3 px-2.5 py-1.5 text-xs font-medium text-muted-foreground"
+              >
+                <span>{group.menuLabel}</span>
+                <span className="tabular-nums text-muted-foreground/60">
+                  {formatLocalizedNumber(groupCount)}
+                </span>
+              </div>
+              {categories.map((category) => {
+                return (
+                  <ConnectorCategoryButton
+                    key={category.id}
+                    categoryId={category.id}
+                    label={category.menuLabel}
+                    count={categoryCounts[category.id] ?? 0}
+                    selected={selectedCategory === category.id}
+                    nested
+                    onSelect={onSelect}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
+        <div className="mt-2 flex flex-col gap-0.5">
+          {metadata.categories.flatMap((category) => {
+            const count = categoryCounts[category.id] ?? 0;
+            if (
+              groupedCategoryIds.has(category.id) ||
+              (count === 0 && selectedCategory !== category.id)
+            ) {
+              return [];
+            }
+            return [
+              <ConnectorCategoryButton
+                key={category.id}
+                categoryId={category.id}
+                label={category.menuLabel}
+                count={count}
+                selected={selectedCategory === category.id}
+                onSelect={onSelect}
+              />,
+            ];
           })}
         </div>
-      </section>
-    );
-  }
+      </nav>
+    </aside>
+  );
+}
 
-  const section = group.sections[0];
+function ConnectorCategoryDropdown({
+  metadata,
+  categoryCounts,
+  selectedCategory,
+  onSelect,
+}: {
+  readonly metadata: PublicConnectorCatalogCategoryMetadata | undefined;
+  readonly categoryCounts: Readonly<Record<string, number>>;
+  readonly selectedCategory: string | null;
+  readonly onSelect: (categoryId: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  if (!metadata) {
+    return null;
+  }
+  const selectedLabel = selectedCategory
+    ? (metadata.categories.find((category) => {
+        return category.id === selectedCategory;
+      })?.menuLabel ??
+      t(($) => {
+        return $.connectors.catalog.allCategories;
+      }))
+    : t(($) => {
+        return $.connectors.catalog.allCategories;
+      });
   return (
-    <section
-      key={section.category}
-      id={getConnectorCategorySectionId(section.category)}
-      className="scroll-mt-6 flex flex-col gap-3"
-      data-testid={`connector-category-${section.category}`}
-    >
-      <h2 className="text-sm font-medium text-muted-foreground">
-        {section.label}
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {section.connectors.map(renderCard)}
-      </div>
-    </section>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 w-full justify-between rounded-lg border lg:hidden"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Layers3 size={14} />
+            <span className="truncate">{selectedLabel}</span>
+          </span>
+          <ChevronDown size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="max-h-[min(420px,var(--available-height))] w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+      >
+        <ConnectorFilterOption
+          active={selectedCategory === null}
+          onSelect={() => {
+            onSelect(null);
+          }}
+        >
+          <span className="flex-1">
+            {t(($) => {
+              return $.connectors.catalog.allCategories;
+            })}
+          </span>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatLocalizedNumber(categoryCountTotal(categoryCounts))}
+          </span>
+        </ConnectorFilterOption>
+        {metadata.categories.flatMap((category) => {
+          const count = categoryCounts[category.id] ?? 0;
+          if (count === 0 && selectedCategory !== category.id) {
+            return [];
+          }
+          return [
+            <ConnectorFilterOption
+              key={category.id}
+              active={selectedCategory === category.id}
+              onSelect={() => {
+                onSelect(category.id);
+              }}
+            >
+              <span className="flex-1 truncate">{category.menuLabel}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {formatLocalizedNumber(count)}
+              </span>
+            </ConnectorFilterOption>,
+          ];
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -762,15 +868,13 @@ function ConnectorAccessButton({
 
 function renderBuiltinList({
   loadingState,
-  grouped,
-  filteredCount,
+  connectors,
   renderCard,
   search,
   connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  grouped: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
-  filteredCount: number;
+  connectors: readonly PlatformConnectorCatalogStatusItem[];
   renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
   search: string;
   connectionFilter: ConnectorsConnectionFilter;
@@ -799,7 +903,7 @@ function renderBuiltinList({
     );
   }
 
-  if (filteredCount === 0) {
+  if (connectors.length === 0) {
     const trimmedSearch = search.trim();
     const base =
       connectionFilter.kind === "connected"
@@ -849,15 +953,11 @@ function renderBuiltinList({
     );
   }
 
-  return grouped.map((group) => {
-    return (
-      <ConnectorCategoryGroupSection
-        key={group.id}
-        group={group}
-        renderCard={renderCard}
-      />
-    );
-  });
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {connectors.map(renderCard)}
+    </div>
+  );
 }
 
 function connectorLabelForSlug(
@@ -887,6 +987,116 @@ function effectiveConnectorCatalogCount(
     return catalogStatusLoadable.data.totalConnectorCount;
   }
   return catalogStatusLoadable.data.connectors.length;
+}
+
+function effectiveMatchingConnectorCount(
+  catalogStatusLoadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
+): number | null {
+  if (catalogStatusLoadable.state !== "hasData") {
+    return null;
+  }
+  if (
+    "totalConnectorCount" in catalogStatusLoadable.data &&
+    catalogStatusLoadable.data.matchingConnectorCount !== undefined
+  ) {
+    return catalogStatusLoadable.data.matchingConnectorCount;
+  }
+  return null;
+}
+
+function effectiveConnectorCategoryCounts(
+  catalogStatusLoadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
+): Record<string, number> {
+  if (catalogStatusLoadable.state !== "hasData") {
+    return {};
+  }
+  if (
+    "totalConnectorCount" in catalogStatusLoadable.data &&
+    catalogStatusLoadable.data.categoryConnectorCounts
+  ) {
+    return catalogStatusLoadable.data.categoryConnectorCounts;
+  }
+  const counts: Record<string, number> = {};
+  for (const connector of catalogStatusLoadable.data.connectors) {
+    counts[connector.category] = (counts[connector.category] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function loadedConnectorItems(
+  loadable: Loadable<PlatformConnectorCatalogStatusItem[]>,
+): readonly PlatformConnectorCatalogStatusItem[] {
+  return loadable.state === "hasData" ? loadable.data : [];
+}
+
+function localizedCategoryMetadata(
+  loadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
+): PublicConnectorCatalogCategoryMetadata | undefined {
+  return localizeConnectorCategoryMetadata(
+    loadable.state === "hasData" ? loadable.data.categoryMetadata : undefined,
+  );
+}
+
+function selectedConnectorFromItems(
+  connectors: readonly PlatformConnectorCatalogStatusItem[],
+  connectorSlug: ConnectorSlug | null,
+): PlatformConnectorCatalogStatusItem | undefined {
+  if (!connectorSlug) {
+    return undefined;
+  }
+  return connectors.find((connector) => {
+    return connector.slug === connectorSlug;
+  });
+}
+
+function connectorCatalogHasMore(
+  loadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
+): boolean {
+  return (
+    loadable.state === "hasData" &&
+    "totalConnectorCount" in loadable.data &&
+    Boolean(loadable.data.nextCursor)
+  );
+}
+
+function connectorDirectoryResultSummary(args: {
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly matchingConnectorCount: number | null;
+  readonly shownConnectorCount: number;
+}): string {
+  const shown = formatLocalizedNumber(args.shownConnectorCount);
+  if (
+    args.connectionFilter.kind === "agent" ||
+    args.matchingConnectorCount === null
+  ) {
+    return i18n.t(
+      ($) => {
+        return $.connectors.catalog.resultsLoaded;
+      },
+      { shown },
+    );
+  }
+  return i18n.t(
+    ($) => {
+      return $.connectors.catalog.results;
+    },
+    {
+      shown,
+      total: formatLocalizedNumber(args.matchingConnectorCount),
+    },
+  );
 }
 
 interface SettingsConnectorCardProps {
@@ -924,7 +1134,7 @@ function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
         });
   return (
     <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-      <div className="mx-auto w-full max-w-[900px]">
+      <div className="mx-auto w-full max-w-[1180px]">
         <div className="min-w-0 hidden md:block">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">
             {t(($) => {
@@ -1028,50 +1238,43 @@ export function ConnectorsPage() {
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
-  const activeCategoryId = useGet(activeConnectorCategoryId$);
-  const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
-  const resetActiveCategory = useSet(resetActiveConnectorCategory$);
-  const categoryTrackingEnabled =
-    activeTab === "builtin" && filteredCatalogItemsLoadable.state === "hasData";
-  const scrollContainerRef = useScrollTrackingRef(
-    categoryTrackingEnabled,
-    attachScrollTracking,
-    resetActiveCategory,
-  );
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
   const connectionFilter = useGet(connectorsConnectionFilter$);
   const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
+  const selectedCategory = useGet(connectorsCategory$);
+  const setCategory = useSet(setConnectorsCategory$);
+  const sort = useGet(connectorsSort$);
+  const setSort = useSet(setConnectorsSort$);
+  const [loadMoreLoadable, loadMore] = useLoadableSet(
+    loadMoreConnectorCatalog$,
+  );
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
-  const filteredConnectors =
-    filteredCatalogItemsLoadable.state === "hasData"
-      ? filteredCatalogItemsLoadable.data
-      : [];
+  const filteredConnectors = loadedConnectorItems(filteredCatalogItemsLoadable);
   const connectorCatalogCount = effectiveConnectorCatalogCount(
     catalogStatusLoadable,
   );
-  const categoryMetadata = localizeConnectorCategoryMetadata(
-    catalogStatusLoadable.state === "hasData"
-      ? catalogStatusLoadable.data.categoryMetadata
-      : undefined,
+  const matchingConnectorCount = effectiveMatchingConnectorCount(
+    catalogStatusLoadable,
   );
-  const allConnectors =
-    relatedCatalogItemsLoadable.state === "hasData"
-      ? relatedCatalogItemsLoadable.data
-      : [];
-  const selectedConnector = selectedConnectorSlug
-    ? allConnectors.find((connector) => {
-        return connector.slug === selectedConnectorSlug;
-      })
-    : undefined;
+  const categoryCounts = effectiveConnectorCategoryCounts(
+    catalogStatusLoadable,
+  );
+  const categoryMetadata = localizedCategoryMetadata(catalogStatusLoadable);
+  const allConnectors = loadedConnectorItems(relatedCatalogItemsLoadable);
+  const selectedConnector = selectedConnectorFromItems(
+    allConnectors,
+    selectedConnectorSlug,
+  );
   const managedConnectorLabel = connectorLabelForSlug(
     allConnectors,
     managedConnectorSlug,
   );
   const disconnecting = disconnectLoadable.state === "loading";
+  const hasMore = connectorCatalogHasMore(catalogStatusLoadable);
 
   const connectHandlers = (
     connector: PlatformConnectorCatalogStatusItem,
@@ -1217,43 +1420,28 @@ export function ConnectorsPage() {
     );
   };
 
-  const grouped = groupConnectorsByCategory(
-    filteredConnectors,
-    categoryMetadata,
-    t(($) => {
-      return $.connectors.catalog.otherCategory;
-    }),
-  );
-
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
-    grouped,
-    filteredCount: filteredConnectors.length,
+    connectors: filteredConnectors,
     renderCard,
     search,
     connectionFilter,
   });
+  const resultSummary = connectorDirectoryResultSummary({
+    connectionFilter,
+    matchingConnectorCount,
+    shownConnectorCount: filteredConnectors.length,
+  });
   return (
-    <div
-      ref={scrollContainerRef}
-      className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
-    >
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
       <ConnectorCatalogHeader
         connectorCatalogCountEnabled={connectorCatalogCountEnabled}
         connectorCatalogCount={connectorCatalogCount}
       />
 
-      <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
-        <div className="relative mx-auto w-full max-w-[900px]">
-          {activeTab === "builtin" &&
-            filteredCatalogItemsLoadable.state === "hasData" && (
-              <ConnectorCategoryMenu
-                activeCategoryId={activeCategoryId}
-                groups={grouped}
-              />
-            )}
-
-          <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
+      <main className="flex-1 px-4 pb-16 pt-3 sm:px-6">
+        <div className="relative mx-auto w-full max-w-[1180px]">
+          <div className="flex min-w-0 w-full flex-col gap-5">
             <div className="flex items-center justify-between gap-3">
               <Tabs
                 value={activeTab}
@@ -1274,20 +1462,79 @@ export function ConnectorsPage() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <ConnectorsToolbarActions
-                activeTab={activeTab}
-                search={search}
-                setSearch={setSearch}
-                showAccessManagement
-                connectionFilter={connectionFilter}
-                agents={agents}
-                setConnectionFilter={setConnectionFilter}
-                isAdmin={isAdmin}
-                onCreateCustom={openCreateCustom}
-              />
+              {activeTab === "custom" && (
+                <CustomConnectorAction
+                  isAdmin={isAdmin}
+                  onCreate={openCreateCustom}
+                />
+              )}
             </div>
 
-            {activeTab === "builtin" && builtinList}
+            {activeTab === "builtin" && (
+              <>
+                <ConnectorDirectoryToolbar
+                  search={search}
+                  setSearch={setSearch}
+                  connectionFilter={connectionFilter}
+                  agents={agents}
+                  setConnectionFilter={setConnectionFilter}
+                  sort={sort}
+                  setSort={setSort}
+                />
+                <div className="flex items-start gap-6">
+                  <ConnectorCategoryRail
+                    metadata={categoryMetadata}
+                    categoryCounts={categoryCounts}
+                    selectedCategory={selectedCategory}
+                    onSelect={setCategory}
+                  />
+                  <section className="flex min-w-0 flex-1 flex-col gap-4">
+                    <ConnectorCategoryDropdown
+                      metadata={categoryMetadata}
+                      categoryCounts={categoryCounts}
+                      selectedCategory={selectedCategory}
+                      onSelect={setCategory}
+                    />
+                    {filteredCatalogItemsLoadable.state === "hasData" && (
+                      <p
+                        className="text-sm text-muted-foreground"
+                        data-testid="connector-result-count"
+                      >
+                        {resultSummary}
+                      </p>
+                    )}
+                    {builtinList}
+                    {hasMore && (
+                      <div className="flex justify-center pt-3">
+                        <Button
+                          variant="outline"
+                          className="zero-btn-morandi min-w-36 rounded-lg border"
+                          disabled={loadMoreLoadable.state === "loading"}
+                          onClick={() => {
+                            detach(
+                              loadMore(signal),
+                              Reason.DomCallback,
+                              "connector catalog paging",
+                            );
+                          }}
+                        >
+                          {loadMoreLoadable.state === "loading" && (
+                            <Loader2 size={15} className="animate-spin" />
+                          )}
+                          {loadMoreLoadable.state === "loading"
+                            ? t(($) => {
+                                return $.connectors.accounts.loadingMore;
+                              })
+                            : t(($) => {
+                                return $.connectors.accounts.loadMore;
+                              })}
+                        </Button>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </>
+            )}
 
             {activeTab === "custom" && <CustomConnectorsPanel />}
           </div>

@@ -2489,6 +2489,7 @@
         "manage": "{{connector}} 접근 권한 관리",
         "usedBy": "사용 중 "
       },
+      "allCategories": "모든 커넥터",
       "categories": {
         "ai": {
           "label": "AI",
@@ -2544,6 +2545,7 @@
         }
       },
       "categoriesAria": "커넥터 카테고리",
+      "category": "카테고리",
       "description": "에이전트가 사용할 수 있도록 타사 서비스를 연결하세요.",
       "descriptionWithCount": "에이전트가 사용할 수 있도록 {{value}}개의 서비스를 연결하세요.",
       "empty": {
@@ -2564,8 +2566,14 @@
       "iconUnavailable": "커넥터 아이콘을 사용할 수 없습니다",
       "newConnector": "새 커넥터",
       "noConnectorsAlt": "커넥터 없음",
-      "otherCategory": "기타",
+      "results": "커넥터 {{total}}개 중 {{shown}}개 표시",
+      "resultsLoaded": "커넥터 {{shown}}개 표시",
       "search": "커넥터 찾기",
+      "sort": {
+        "alphabetical": "A–Z",
+        "aria": "커넥터 정렬",
+        "recommended": "추천"
+      },
       "tabs": {
         "builtin": "내장",
         "custom": "사용자 지정"
