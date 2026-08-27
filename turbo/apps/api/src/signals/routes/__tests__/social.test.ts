@@ -1592,6 +1592,7 @@ describe("managed SocialKit route", () => {
           data: {
             jobId: providerJobId,
             status: "ready",
+            platform: "youtube",
             downloadUrl: "https://media.socialkit.test/download-1",
             durationSeconds: 61,
             fileSizeMB: "1.5 MB",
@@ -1902,6 +1903,7 @@ describe("managed SocialKit route", () => {
         return HttpResponse.json({
           jobId: providerJobId,
           status: "ready",
+          platform: "youtube",
           downloadUrl: "https://media.socialkit.test/retry-download",
           durationSeconds: 61,
           fileSizeMB: 1,
@@ -2090,6 +2092,67 @@ describe("managed SocialKit route", () => {
     expect(failed.body.error).toMatchObject({
       billed: false,
       retryable: false,
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("rejects a ready response for a different platform without billing", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-platform-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "facebook",
+          downloadUrl: "https://media.socialkit.test/wrong-platform",
+          durationSeconds: 60,
+          fileSizeMB: "1 MB",
+          creditsCost: 1,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const failed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(failed.body).toMatchObject({
+      status: "provider_failed",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_INVALID_DOWNLOAD_RESPONSE",
+        billed: false,
+        retryable: false,
+      },
     });
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });

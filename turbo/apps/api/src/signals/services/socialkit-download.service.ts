@@ -3,6 +3,7 @@ import { v5 as uuidv5 } from "uuid";
 import {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   socialKitDownloadFormatSchema,
+  socialKitDownloadPlatformSchema,
   socialKitDownloadQualitySchema,
   socialKitDownloadResponseSchema,
   type SocialKitDownloadRequest,
@@ -104,6 +105,7 @@ const providerFileSizeMbSchema = z.union([
 const providerReadySchema = z.object({
   jobId: z.string().min(1).max(512),
   status: z.literal("ready"),
+  platform: socialKitDownloadPlatformSchema,
   downloadUrl: z.url().max(8192),
   durationSeconds: z.number().int().positive(),
   fileSizeMB: providerFileSizeMbSchema,
@@ -496,6 +498,7 @@ function readyMetadataIsValid(
   const maximumCredits = Math.max(1, Math.ceil(job.request.maxDuration / 60));
   return !(
     ready.jobId !== job.providerJobId ||
+    ready.platform !== job.request.platform ||
     ready.format !== job.request.format ||
     ready.durationSeconds > job.request.maxDuration ||
     ready.creditsCost !== expectedCredits ||
