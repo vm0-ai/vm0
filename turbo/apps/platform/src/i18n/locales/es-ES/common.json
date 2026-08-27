@@ -1104,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar el inicio de sesión actual",
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",

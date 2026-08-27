@@ -1,11 +1,7 @@
-import { Button } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2Navigation } from "../../../signals/auth-v2/navigation.ts";
 import type { AuthV2SignInSignals } from "../../../signals/auth-v2/sign-in-flow.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
-import { Link } from "../../router/link.tsx";
-import { AUTH_V2_LINK_ACTION_CLASS } from "../auth-v2-action-styles.ts";
 import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
@@ -61,26 +57,6 @@ export function AuthV2SignInCard({
       }
       description={description}
       focusKey={focusKey}
-      footer={
-        <div className="flex justify-center">
-          <Button
-            asChild
-            className={AUTH_V2_LINK_ACTION_CLASS}
-            size="sm"
-            variant="link"
-          >
-            <Link
-              pathname={ROUTES.signIn}
-              options={{
-                hash: location.hash,
-                searchParams: new URLSearchParams(location.search),
-              }}
-            >
-              {copy.legacySignIn}
-            </Link>
-          </Button>
-        </div>
-      }
       headerDetail={
         showsIdentifierPreview ? (
           <AuthV2IdentityPreview
