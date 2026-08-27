@@ -1,5 +1,4 @@
 {
-    "crates/vsock-test": "Integration-test harness, not a production release target",
     "turbo/packages/api-services": "Unshipped package with no workspace consumer",
     "turbo/packages/eslint-config": "Development-only lint configuration",
     "turbo/packages/eslint-rules": "Development-only lint rules",

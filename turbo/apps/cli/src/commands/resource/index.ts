@@ -19,13 +19,11 @@ import {
   type PresentationRunbookArchiveVersion,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
-  type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
 
 import { getRegistryResourceDownload } from "../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { presentationRunbookArchiveVersionFromEnvironment } from "../shared/presentation-runbook-archive-version";
-import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
@@ -49,7 +47,6 @@ function candidateIds(id: string): readonly string[] {
 
 export function findRegistryResourceForPull(
   id: string,
-  websiteTemplateArchiveVersion: WebsiteTemplateArchiveVersion = "latest",
   presentationRunbookArchiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PullableRegistryEntry | undefined {
   for (const candidate of candidateIds(id)) {
@@ -65,7 +62,7 @@ export function findRegistryResourceForPull(
         candidate,
         presentationRunbookArchiveVersion,
       ) ??
-      findWebsiteTemplateResource(candidate, websiteTemplateArchiveVersion);
+      findWebsiteTemplateResource(candidate);
     if (entry) {
       return entry;
     }
@@ -120,7 +117,6 @@ export const resourceCommand = new Command()
         withErrorHandler(async (id: string, options: PullOptions) => {
           const entry = findRegistryResourceForPull(
             id,
-            websiteTemplateArchiveVersionFromEnvironment(),
             presentationRunbookArchiveVersionFromEnvironment(),
           );
           if (!entry) {

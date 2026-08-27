@@ -23,8 +23,11 @@ import { assistantName$ } from "./branding.ts";
 
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
-const { get$: lastUsedAgentIdRaw$, set$: setLastUsedAgentIdRaw$ } =
-  localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
+const {
+  get$: lastUsedAgentIdRaw$,
+  set$: setLastUsedAgentIdRaw$,
+  clear$: clearLastUsedAgentIdRaw$,
+} = localStorageSignals(LAST_USED_AGENT_STORAGE_KEY);
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(onboardingStatus$);
@@ -102,6 +105,10 @@ const lastUsedAgentId$ = computed((get) => {
 
 export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
   set(setLastUsedAgentIdRaw$, agentId);
+});
+
+export const clearLastUsedAgentId$ = command(({ set }) => {
+  set(clearLastUsedAgentIdRaw$);
 });
 
 const internalReloadAgents$ = state(0);

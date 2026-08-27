@@ -135,7 +135,6 @@ function generationTemplateTypeLabel(
  */
 interface GenerationTemplatePromptOptions {
   readonly introVideoTemplatesEnabled?: boolean;
-  readonly latestWebsiteTemplatesEnabled?: boolean;
   readonly latestPresentationTemplatesEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
@@ -165,10 +164,7 @@ export function buildGenerationTemplatePrompt(
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "website") {
-    return buildWebsiteGenerationTemplatePrompt(
-      generationTemplate,
-      options.latestWebsiteTemplatesEnabled === true,
-    );
+    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
   }
 
   return buildPresentationGenerationTemplatePrompt(
@@ -361,7 +357,6 @@ function buildPresentationRunbookPrompt(
 
 function buildWebsiteGenerationTemplatePrompt(
   generationTemplate: WebsiteGenerationTemplateInput,
-  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const item = findWebsiteTemplateItem(
     generationTemplate.selection.websiteTemplateId,
@@ -370,25 +365,17 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const packageId = latestWebsiteTemplatesEnabled
-    ? item.templateId
-    : `${item.templateId}-v2`;
-  const pkg = findWebsiteTemplatePackage(packageId);
+  const pkg = findWebsiteTemplatePackage(item.templateId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  return buildWebsiteTemplatePackagePrompt(
-    item,
-    pkg,
-    latestWebsiteTemplatesEnabled,
-  );
+  return buildWebsiteTemplatePackagePrompt(item, pkg);
 }
 
 function buildWebsiteTemplatePackagePrompt(
   item: WebsiteTemplateItem,
   pkg: WebsiteTemplatePackage,
-  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const packageDir = `./generated/resources/${pkg.slug}`;
 
@@ -407,20 +394,12 @@ function buildWebsiteTemplatePackagePrompt(
       "When you produce a website from the user's request:",
       `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
-      ...(latestWebsiteTemplatesEnabled
-        ? [
-            `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
-            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
-            `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
-            "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
-            "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
-            "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
-          ]
-        : [
-            `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
-            `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
-            "- Host the finished static website: okou host <output-dir> --site <slug>",
-          ]),
+      `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
+      "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
+      `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
+      "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
+      "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
+      "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
       "- Return the hosted website URL and keep the generated static site as the final deliverable.",
     ].join("\n"),

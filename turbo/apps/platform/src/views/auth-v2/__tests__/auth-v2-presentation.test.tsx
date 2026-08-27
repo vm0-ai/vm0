@@ -7,7 +7,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -108,17 +111,15 @@ describe("auth v2 presentation", () => {
     ).toHaveAccessibleDescription(
       "Select the account with which you wish to continue.",
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
     expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
 
     const announcer = screen.getByTestId("auth-v2-announcer");
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
-
-    const currentSignInAction = linkByText("Use current sign-in");
-    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
-    expect(
-      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
   it("keeps password controls and fallback navigation in their accessible regions", async () => {
@@ -162,6 +163,10 @@ describe("auth v2 presentation", () => {
       "src",
       platformVm0LogoImg,
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoImg,
+    );
 
     await user.keyboard("{Enter}");
 
@@ -189,6 +194,7 @@ describe("auth v2 presentation", () => {
       "href",
       "/sign-up",
     );
+    expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");
   });

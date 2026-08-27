@@ -515,7 +515,6 @@
         "arrow": "Panah",
         "box": "Kotak",
         "pen": "Gambar",
-        "redact": "Sensor",
         "text": "Teks"
       },
       "undo": "Urungkan"
@@ -655,6 +654,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
+      "introVideo": "Video intro",
       "multiAccent": "Multi-aksen",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",
@@ -672,6 +672,7 @@
       "searchConnector": "Cari templat",
       "searchConnectors": "Cari templat",
       "selected": "Templat: {{title}}",
+      "selectIntroVideo": "Pilih template video intro {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
       "selectVideo": "Pilih template video {{title}}",
@@ -1083,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Gunakan proses masuk saat ini",
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -1113,6 +1113,7 @@
         "hidePassword": "Sembunyikan kata sandi",
         "identifierLabel": "Alamat email atau nama pengguna",
         "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "lastUsed": "Terakhir digunakan",
         "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
         "newPasswordLabel": "Kata sandi baru",
         "newPasswordSubtitle": "Untuk alasan keamanan, Anda harus mereset kata sandi.",
@@ -2251,6 +2252,7 @@
     "templates": {
       "categories": {
         "illustration": "Ilustrasi",
+        "introVideo": "Video intro",
         "presentation": "Presentasi",
         "video": "Video",
         "website": "Situs web",

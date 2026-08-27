@@ -308,12 +308,25 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestConnectionSource",
+        rustDoc: ["Source of an eligible connection failure."],
+        variants: {
+          provider_response: ["The provider returned a connection failure."],
+          upstream_transport: [
+            "The runner observed an upstream transport failure.",
+          ],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: [
           "Request body for reporting a built-in model provider failure.",
         ],
         fields: {
           failureKind: ["Normalized eligible provider failure kind."],
+          connectionSource: [
+            "Optional source for connection failures; omitted by legacy runners.",
+          ],
           retryAfterSeconds: [
             "Optional bounded provider retry delay in seconds.",
           ],

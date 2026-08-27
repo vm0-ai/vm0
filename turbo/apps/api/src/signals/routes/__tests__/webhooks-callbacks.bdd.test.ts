@@ -2077,13 +2077,13 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
-  it("attributes sandbox operations to stable legacy and canonical runner dimensions", async () => {
+  it("attributes sandbox operations to canonical runner dimensions across overlap", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,
     );
 
     context.mocks.axiom.sdkIngest.mockClear();
-    await api.requestAgentTelemetry(
+    await api.requestAgentTelemetryUnchecked(
       {
         runId,
         runnerName: "v0.168.14",
@@ -2092,7 +2092,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         sandboxOperations: [
           {
             ts: nowDate().toISOString(),
-            action_type: "runner_name_attribution",
+            action_type: "runner_attribution_overlap",
             duration_ms: 12,
             success: true,
             runner_pre_spawn_concurrency_bucket: "3_4",
@@ -2109,14 +2109,19 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
       [
         expect.objectContaining({
           run_id: runId,
-          op_type: "runner_name_attribution",
-          runner_name: "v0.168.14",
+          op_type: "runner_attribution_overlap",
           runner_hostname: "prod-1.aws.vm3.ai",
           runner_version: "0.168.14",
           runner_pre_spawn_concurrency_bucket: "3_4",
         }),
       ],
     );
+    const overlapEvents: unknown =
+      context.mocks.axiom.sdkIngest.mock.calls[0]?.[1];
+    if (!Array.isArray(overlapEvents) || !isUnknownRecord(overlapEvents[0])) {
+      throw new Error("Expected one overlap runner telemetry event");
+    }
+    expect(overlapEvents[0]).not.toHaveProperty("runner_name");
 
     context.mocks.axiom.sdkIngest.mockClear();
     await api.requestAgentTelemetry(
@@ -2158,43 +2163,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     }
     const canonicalEvent = canonicalEvents[0];
     expect(canonicalEvent).not.toHaveProperty("runner_name");
-
-    context.mocks.axiom.sdkIngest.mockClear();
-    await api.requestAgentTelemetry(
-      {
-        runId,
-        runnerName: "v0.168.16",
-        sandboxOperations: [
-          {
-            ts: nowDate().toISOString(),
-            action_type: "legacy_runner_name_attribution",
-            duration_ms: 6,
-            success: true,
-          },
-        ],
-      },
-      headers,
-      [200],
-    );
-    await flushWaitUntilForTest();
-
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
-      "vm0-sandbox-op-log-dev",
-      [
-        expect.objectContaining({
-          op_type: "legacy_runner_name_attribution",
-          runner_name: "v0.168.16",
-        }),
-      ],
-    );
-    const legacyEvents: unknown =
-      context.mocks.axiom.sdkIngest.mock.calls[0]?.[1];
-    if (!Array.isArray(legacyEvents) || !isUnknownRecord(legacyEvents[0])) {
-      throw new Error("Expected one legacy runner telemetry event");
-    }
-    const legacyEvent = legacyEvents[0];
-    expect(legacyEvent).not.toHaveProperty("runner_hostname");
-    expect(legacyEvent).not.toHaveProperty("runner_version");
   });
 
   it("rejects malformed, unauthenticated, mismatched, and missing-run sandbox reports", async () => {

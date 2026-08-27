@@ -32,3 +32,30 @@ uv run --no-sync python -m pytest tests/test_update_x_tlds.py
 
 For a local or reproducible source file, pass `--source-file` to the updater instead
 of fetching IANA. The same generated-module and integrity-pin review applies.
+
+# Chat Completions extractor benchmark
+
+The [Chat Completions extractor benchmark](benchmark_openai_chat_completions_usage.py)
+compares the cost of constructing a selective JSON extractor for each event with the cost of
+resetting and reusing one extractor. Run it from the repository root with the addon's locked uv
+environment:
+
+```bash
+cd crates/runner/mitm-addon
+PYTHONPATH=src uv run --no-sync python scripts/benchmark_openai_chat_completions_usage.py
+```
+
+The benchmark uses this representative usage-free Chat Completions delta payload:
+
+```json
+{"id":"chatcmpl_1","object":"chat.completion.chunk","choices":[{"delta":{"content":"x"}}]}
+```
+
+Each fresh cycle constructs an extractor, feeds the payload, and finishes the document. Each reused
+cycle resets the existing extractor before feeding and finishing the same payload. The script runs
+10,000 cycles per repeat for five repeats, reports the median duration for each path, and reports a
+speedup ratio calculated as fresh duration divided by reused duration.
+
+The timings are informational and machine-dependent microbenchmark results, not an end-to-end
+parser benchmark or a fixed CI pass/fail threshold. For before-and-after comparisons, use the same
+Python and dependency environment, hardware, and similar system conditions where possible.

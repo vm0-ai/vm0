@@ -29,7 +29,7 @@ use guest_contracts::process_containment::{
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
-const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const WORKLOAD_BOOTSTRAP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(debug_assertions)]
 const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
 
@@ -210,14 +210,17 @@ impl WorkloadContainment {
         tool_endpoint_source: CgroupPlacementEnvSource,
     ) -> io::Result<Self> {
         let stream = process_control_ipc::connect_abstract(endpoint)?;
-        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_READ_TIMEOUT))?;
+        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
+        stream.set_write_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
-        Self::adopt(
+        let containment = Self::adopt(
             placement,
             tool_endpoint,
             workload_endpoint_source,
             tool_endpoint_source,
-        )
+        )?;
+        process_control_ipc::write_workload_placement_confirmation(&stream)?;
+        Ok(containment)
     }
 
     fn adopt(

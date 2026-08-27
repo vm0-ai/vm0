@@ -531,7 +531,6 @@
         "arrow": "Flèche",
         "box": "Rectangle",
         "pen": "Dessiner",
-        "redact": "Masquer",
         "text": "Texte"
       },
       "undo": "Annuler"
@@ -675,6 +674,7 @@
       "importedSlides_one": "{{count}} diapositive",
       "importedSlides_many": "{{count}} diapositives",
       "importedSlides_other": "{{count}} diapositives",
+      "introVideo": "Vidéo d'intro",
       "multiAccent": "Multi-accents",
       "nextSlide": "Aperçu de la diapositive suivante",
       "noMatches": "Aucun résultat",
@@ -692,6 +692,7 @@
       "searchConnector": "Rechercher des modèles",
       "searchConnectors": "Rechercher des modèles",
       "selected": "Modèle : {{title}}",
+      "selectIntroVideo": "Sélectionner le modèle de vidéo d'intro {{title}}",
       "selectStyle": "Sélectionner le style {{style}}",
       "selectTemplate": "Sélectionner le modèle {{title}}",
       "selectVideo": "Sélectionner le modèle vidéo {{title}}",
@@ -1103,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Utiliser la connexion actuelle",
         "addAccount": "Ajouter un compte",
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",
@@ -1133,6 +1133,7 @@
         "hidePassword": "Masquer le mot de passe",
         "identifierLabel": "Adresse e-mail ou nom d'utilisateur",
         "identifierPlaceholder": "Saisissez votre adresse e-mail ou votre nom d'utilisateur",
+        "lastUsed": "Utilisé la dernière fois",
         "methodsHelpPrompt": "Vous n’avez aucune de ces options ?",
         "newPasswordLabel": "Nouveau mot de passe",
         "newPasswordSubtitle": "Pour des raisons de sécurité, il est nécessaire de réinitialiser votre mot de passe.",
@@ -2299,6 +2300,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustration",
+        "introVideo": "Vidéo d'intro",
         "presentation": "Présentation",
         "video": "Vidéo",
         "website": "Site web",

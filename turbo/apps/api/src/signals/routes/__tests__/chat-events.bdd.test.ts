@@ -10442,8 +10442,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       const colorToken = template.colorSystemId
         .replace("color-system:", "")
         .replaceAll("-", "_");
-      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+      expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
     }
+    expect(presentationPrompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
     expect(presentationPrompt).toContain(
       "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
@@ -10594,35 +10597,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, website.runId);
-
-    // The rollout keeps its rollback lever: an override back to off restores
-    // the pre-cutover renderer guidance without a deployment.
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.LatestWebsiteTemplates]: false },
-    );
-    const previousWebsite = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a campaign landing page with the pre-cutover template",
-      template: {
-        type: "website",
-        selection: { websiteTemplateId: websiteTemplate.id },
-      },
-    });
-    const previousWebsiteRun = await api.readRun(actor, previousWebsite.runId);
-    const previousWebsitePrompt = previousWebsiteRun.appendSystemPrompt ?? "";
-    expect(previousWebsitePrompt).toContain(
-      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
-    );
-    expect(previousWebsitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
-    );
-    expect(previousWebsitePrompt).toContain("resolve-images.mjs");
-    expect(previousWebsitePrompt).toContain(
-      "okou host <output-dir> --site <slug>",
-    );
-    await cancelChatRun(actor, previousWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {

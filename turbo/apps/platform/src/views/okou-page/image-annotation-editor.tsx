@@ -3,7 +3,6 @@ import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
-  EyeOff,
   Minus,
   Pencil,
   Plus,
@@ -50,7 +49,9 @@ import {
   setAnnotationStroke$,
   setAnnotationDrag$,
   setAnnotationTool$,
+  markOrdinal,
   moveAnnotationMarkRect$,
+  nextMarkOrdinal,
   resetAnnotationZoom$,
   undoAnnotation$,
   zoomAnnotation$,
@@ -69,7 +70,6 @@ const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
   { tool: "arrow", icon: ArrowUpRight },
   { tool: "pen", icon: Pencil },
   { tool: "text", icon: Type },
-  { tool: "redact", icon: EyeOff },
 ];
 
 /**
@@ -85,7 +85,6 @@ const TOOL_SHORTCUTS: Readonly<Record<string, AnnotationTool | undefined>> = {
   a: "arrow",
   d: "pen",
   t: "text",
-  r: "redact",
 };
 
 function clamp01(value: number): number {
@@ -118,9 +117,6 @@ function buildMark(
     case "box": {
       return dragged ? { id, shape: "box", rect, ink } : null;
     }
-    case "redact": {
-      return dragged ? { id, shape: "redact", rect } : null;
-    }
     case "arrow": {
       return dragged
         ? { id, shape: "arrow", from: stroke.from, to: stroke.to, ink }
@@ -141,7 +137,7 @@ function noteOf(mark: ImageAnnotationMark): string {
   if (mark.shape === "text") {
     return mark.text;
   }
-  if (mark.shape === "redact") {
+  if (mark.shape === "highlight" || mark.shape === "redact") {
     return "";
   }
   return mark.note ?? "";
@@ -187,11 +183,6 @@ function useToolLabel(): (tool: AnnotationTool) => string {
       case "text": {
         return t(($) => {
           return $.artifacts.annotation.tools.text;
-        });
-      }
-      case "redact": {
-        return t(($) => {
-          return $.artifacts.annotation.tools.redact;
         });
       }
     }
@@ -736,11 +727,7 @@ const RESIZE_CORNERS = ["tl", "tr", "bl", "br"] as const;
 type ResizeCorner = (typeof RESIZE_CORNERS)[number];
 
 function rectOf(mark: ImageAnnotationMark) {
-  if (
-    mark.shape === "box" ||
-    mark.shape === "redact" ||
-    mark.shape === "highlight"
-  ) {
+  if (mark.shape === "box") {
     return mark.rect;
   }
   if (mark.shape === "text") {
@@ -871,54 +858,60 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-5">
-      <div
-        ref={bindSurface}
-        onPointerDown={handlers.onPointerDown}
-        onPointerMove={(event) => {
-          handlers.onPointerMove(event, moveRect);
-        }}
-        onPointerUp={handlers.onPointerUp}
-        style={{ touchAction: "none", width: `${zoom * 100}%` }}
-        className="relative max-w-none shrink-0 cursor-crosshair select-none"
-        data-testid="image-annotation-surface"
-      >
-        <img
-          src={url}
-          alt={filename}
-          draggable={false}
-          className="block w-full rounded-lg object-contain"
-        />
-        {annotation.marks.map((mark, index) => {
-          return (
-            <MarkShape
-              key={mark.id}
-              mark={mark}
-              ordinal={index + 1}
-              aspect={aspect}
-              selected={mark.id === selectedId}
-              onSelect={() => {
-                selectMark(mark.id);
-              }}
-              onGrab={(event) => {
-                grabMark(mark, event);
-              }}
-            />
-          );
-        })}
-        {selectedMark && (
-          <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
-        )}
-        {selectedMark && selectedMark.shape !== "redact" && (
-          <MarkNotePopover mark={selectedMark} />
-        )}
-        {preview && (
-          <MarkShape
-            mark={preview}
-            ordinal={annotation.marks.length + 1}
-            aspect={aspect}
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5">
+        <div
+          ref={bindSurface}
+          onPointerDown={handlers.onPointerDown}
+          onPointerMove={(event) => {
+            handlers.onPointerMove(event, moveRect);
+          }}
+          onPointerUp={handlers.onPointerUp}
+          style={{ touchAction: "none" }}
+          className="relative shrink-0 cursor-crosshair select-none"
+          data-testid="image-annotation-surface"
+        >
+          <img
+            src={url}
+            alt={filename}
+            draggable={false}
+            // The fit bounds are the stage's own box, so 100% zoom shows the
+            // whole image and zooming grows the layout box the stage scrolls.
+            style={{
+              maxWidth: `calc(min(880px, 88vw) * ${zoom})`,
+              maxHeight: `calc(min(520px, 62vh) * ${zoom})`,
+            }}
+            className="block rounded-lg object-contain"
           />
-        )}
+          {annotation.marks.map((mark, index) => {
+            return (
+              <MarkShape
+                key={mark.id}
+                mark={mark}
+                ordinal={markOrdinal(mark, index)}
+                aspect={aspect}
+                selected={mark.id === selectedId}
+                onSelect={() => {
+                  selectMark(mark.id);
+                }}
+                onGrab={(event) => {
+                  grabMark(mark, event);
+                }}
+              />
+            );
+          })}
+          {selectedMark && (
+            <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
+          )}
+          {selectedMark && <MarkNotePopover mark={selectedMark} />}
+          {preview && (
+            <MarkShape
+              mark={preview}
+              ordinal={nextMarkOrdinal(annotation.marks)}
+              aspect={aspect}
+            />
+          )}
+        </div>
       </div>
       <ZoomControls />
       <ToolPill />

@@ -79,6 +79,47 @@ async fn start_process_emits_queued_stdout_chunks() {
 }
 
 #[tokio::test]
+async fn process_stream_capacity_overflow_retains_one_chunk_and_marks_exit() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_start_process_stdout_chunks(vec![
+        ProcessOutputChunk {
+            bytes: b"first".to_vec(),
+            truncated: false,
+        },
+        ProcessOutputChunk {
+            bytes: b"second".to_vec(),
+            truncated: false,
+        },
+    ]);
+    let sandbox = MockSandbox::with_overrides("test", overrides);
+    let mut handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::Stream {
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+                queue_capacity: 1,
+                stderr_capture_limit_bytes: None,
+            },
+        })
+        .await
+        .unwrap();
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
+
+    let exit = sandbox
+        .wait_process(handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    assert!(exit.stream_overflowed);
+    assert_eq!(stdout_rx.recv().await.unwrap().bytes, b"first");
+    assert!(stdout_rx.recv().await.is_none());
+}
+
+#[tokio::test]
 async fn start_agent_process_returns_mandatory_control_handle() {
     let runtime = MockSandboxRuntime::new();
     let factory = runtime.create_factory(test_factory_config()).await.unwrap();
@@ -707,7 +748,7 @@ async fn wait_process_drops_unclaimed_stdout_receiver_before_waiting() {
         Some(stdout_rx),
         None,
         GuestProcessWaiter::new(|_timeout| {
-            Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
+            Box::pin(async { Ok(ProcessExit::new(1, 0, Vec::new(), Vec::new())) })
         }),
     );
 

@@ -5,16 +5,17 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
-    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxId, SandboxInitializationPhase, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxOperation,
+    CopyFileOptions, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
+    SandboxCreateObserver, SandboxCreateStage, SandboxError, SandboxFactory, SandboxId,
+    SandboxInitializationPhase, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdNetlinkConnectStage, SandboxOperation, SandboxOperationReason,
     SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
 use super::super::telemetry::{
-    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_reuse_result,
+    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_startup_boundaries,
+    record_reuse_result,
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, FinalizingHandoffOutcome, NewSandboxDispatch,
@@ -56,7 +57,7 @@ fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
 }
 
 #[test]
-fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
+fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
     for (reuse_result, workspace_reuse_result, expected_path) in [
         (
             SandboxReuseResult::Reused,
@@ -75,23 +76,35 @@ fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
         ),
     ] {
         let mut context = minimal_context();
-        context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+        context.api_start_time =
+            Some((chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(1_000));
         let mut telemetry = new_telemetry();
 
-        record_api_to_spawn(
+        let agent_ready_at = Instant::now();
+        let shell_started_at = agent_ready_at - Duration::from_millis(1);
+        record_api_startup_boundaries(
             &context,
             &mut telemetry,
             reuse_result,
             workspace_reuse_result,
+            shell_started_at,
+            agent_ready_at,
         );
 
         let operations = telemetry.pending_ops_with_runner_startup_snapshot();
-        let [operation] = operations.as_slice() else {
-            panic!("expected one api_to_spawn operation, got {operations:?}");
+        let [spawn, ready] = operations.as_slice() else {
+            panic!("expected API spawn and ready operations, got {operations:?}");
         };
-        assert_eq!(operation.action_type, "api_to_spawn");
-        assert_eq!(operation.runner_startup_path, Some(expected_path));
-        assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
+        assert_eq!(spawn.action_type, "api_to_spawn");
+        assert_eq!(ready.action_type, "api_to_agent_ready");
+        for operation in [spawn, ready] {
+            assert_eq!(operation.runner_startup_path, Some(expected_path));
+            assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
+        }
+        let durations = telemetry.pending_ops_with_duration_snapshot();
+        assert_eq!(durations[0].0, "api_to_spawn");
+        assert_eq!(durations[1].0, "api_to_agent_ready");
+        assert!(durations[1].1 > durations[0].1);
     }
 }
 
@@ -788,6 +801,8 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
+        "runner_executor_start_to_agent_ready",
+        "runner_claim_to_agent_ready",
         "runner_claim_finalizing_handoff",
         "runner_fresh_sandbox_prepare",
         "runner_fresh_sandbox_factory_create",
@@ -797,6 +812,11 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_user_env_write",
         "runner_agent_env_build",
         "runner_agent_start_process",
+        "runner_agent_start_to_ready",
+        "runner_agent_containment_create",
+        "runner_agent_placement_broker_setup",
+        "runner_agent_shell_spawn",
+        "runner_agent_bootstrap_ready_wait",
         "sandbox_reuse_miss",
         "sandbox_create",
         "workspace_drive_mount",
@@ -901,6 +921,7 @@ async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membersh
             "runner_fresh_sandbox_prepare",
             "runner_agent_start_process",
             "api_to_spawn",
+            "api_to_agent_ready",
         ] {
             assert_pre_spawn_concurrency_bucket(&telemetry, action, Some(expected_bucket));
         }
@@ -934,6 +955,11 @@ async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membersh
     assert_pre_spawn_concurrency_bucket(
         &baseline_telemetry,
         "api_to_spawn",
+        Some(RunnerPreSpawnConcurrencyBucket::One),
+    );
+    assert_pre_spawn_concurrency_bucket(
+        &baseline_telemetry,
+        "api_to_agent_ready",
         Some(RunnerPreSpawnConcurrencyBucket::One),
     );
 }
@@ -1238,11 +1264,18 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
+        "runner_executor_start_to_agent_ready",
+        "runner_claim_to_agent_ready",
         "runner_reused_sandbox_prepare",
         "runner_guest_state_restore",
         "runner_user_env_write",
         "runner_agent_env_build",
         "runner_agent_start_process",
+        "runner_agent_start_to_ready",
+        "runner_agent_containment_create",
+        "runner_agent_placement_broker_setup",
+        "runner_agent_shell_spawn",
+        "runner_agent_bootstrap_ready_wait",
         "sandbox_reuse_hit",
         "agent_execute",
     ] {
@@ -1412,13 +1445,11 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
     let config = test_executor_config(dir.path()).await;
     let concurrency = RunnerPreSpawnConcurrency::default();
     let overrides = std::sync::Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_process_stdout_chunks(vec![
-        ProcessOutputChunk {
-            bytes: Vec::new(),
-            truncated: false,
-        };
-        ProcessOutputMode::DEFAULT_QUEUE_CAPACITY + 1
-    ]);
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Guest,
+        message: "agent spawn failed".into(),
+    });
     let factory = MockSandboxFactory::with_overrides(overrides);
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -1450,6 +1481,9 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
     assert_lacks_api_claim_timing(&telemetry);
     assert_lacks_action(&telemetry, "runner_executor_start_to_spawn");
     assert_lacks_action(&telemetry, "runner_claim_to_spawn");
+    assert_lacks_action(&telemetry, "runner_executor_start_to_agent_ready");
+    assert_lacks_action(&telemetry, "runner_claim_to_agent_ready");
+    assert_lacks_action(&telemetry, "runner_agent_start_to_ready");
     assert_pre_spawn_concurrency_bucket(
         &telemetry,
         "runner_agent_start_process",
@@ -1481,6 +1515,11 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
     assert_pre_spawn_concurrency_bucket(
         &recovery_telemetry,
         "api_to_spawn",
+        Some(RunnerPreSpawnConcurrencyBucket::One),
+    );
+    assert_pre_spawn_concurrency_bucket(
+        &recovery_telemetry,
+        "api_to_agent_ready",
         Some(RunnerPreSpawnConcurrencyBucket::One),
     );
 }

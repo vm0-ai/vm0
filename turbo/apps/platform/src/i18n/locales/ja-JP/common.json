@@ -515,7 +515,6 @@
         "arrow": "矢印",
         "box": "矩形",
         "pen": "手描き",
-        "redact": "塗りつぶし",
         "text": "テキスト"
       },
       "undo": "元に戻す"
@@ -655,6 +654,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
+      "introVideo": "イントロビデオ",
       "multiAccent": "マルチアクセント",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
@@ -672,6 +672,7 @@
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",
+      "selectIntroVideo": "イントロビデオ テンプレート {{title}} を選択してください",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
@@ -1083,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1113,6 +1113,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",
@@ -2251,6 +2252,7 @@
     "templates": {
       "categories": {
         "illustration": "イラストレーション",
+        "introVideo": "イントロビデオ",
         "presentation": "プレゼンテーション",
         "video": "ビデオ",
         "website": "ウェブサイト",

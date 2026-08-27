@@ -59,12 +59,6 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
-export const composerFlatFeedbackNoteEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ComposerFlatFeedbackNote] ?? false
-  );
-});
-
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

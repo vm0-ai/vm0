@@ -66,6 +66,7 @@ export interface MockedAuthV2Capabilities {
   readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
+  readonly lastAuthenticationStrategy?: "oauth_apple" | "oauth_google" | null;
   readonly passkey?: boolean;
 }
 
@@ -160,6 +161,7 @@ let internalMockedAuthV2Capabilities: Required<MockedAuthV2Capabilities> = {
   appleOAuth: false,
   googleOAuth: false,
   googleOneTapClientId: null,
+  lastAuthenticationStrategy: null,
   passkey: false,
 };
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
@@ -350,6 +352,7 @@ export function mockAuthV2Capabilities(
     appleOAuth: capabilities.appleOAuth ?? false,
     googleOAuth: capabilities.googleOAuth ?? false,
     googleOneTapClientId: capabilities.googleOneTapClientId ?? null,
+    lastAuthenticationStrategy: capabilities.lastAuthenticationStrategy ?? null,
     passkey: capabilities.passkey ?? false,
   };
 }
@@ -519,6 +522,7 @@ function clearMockedAuth() {
     appleOAuth: false,
     googleOAuth: false,
     googleOneTapClientId: null,
+    lastAuthenticationStrategy: null,
     passkey: false,
   };
   internalMockedGoogleOneTapCredential = null;
@@ -1109,6 +1113,9 @@ export const mockedClerk = {
   signUpReload,
   signUpAuthenticateWithRedirect,
   client: {
+    get lastAuthenticationStrategy() {
+      return internalMockedAuthV2Capabilities.lastAuthenticationStrategy;
+    },
     get sessions() {
       return internalMockedClientSessions;
     },

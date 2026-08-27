@@ -1253,7 +1253,6 @@ describe("runner resume session contract", () => {
   it("accepts ordered heartbeat snapshots", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1281,12 +1280,6 @@ describe("runner resume session contract", () => {
             reusableSandbox: { profile: "vm0/default" },
           },
         ],
-      }).success,
-    ).toBe(true);
-    expect(
-      heartbeatBodySchema.safeParse({
-        ...heartbeat,
-        runnerName: undefined,
       }).success,
     ).toBe(true);
     expect(
@@ -1323,7 +1316,6 @@ describe("runner resume session contract", () => {
   it("requires canonical heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1363,7 +1355,6 @@ describe("runner resume session contract", () => {
   it("bounds profile-qualified workspace cache heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,

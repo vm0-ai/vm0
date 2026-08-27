@@ -8,8 +8,8 @@ use vsock_proto::{
 
 use super::super::super::support::{
     assert_connection_accepts_exec_operation, normal_operation_readiness, operation_count,
-    read_guest_message, send_exec_output, send_exec_result, send_exec_started,
-    setup_host_and_guest,
+    read_guest_message, send_discarded_exec_result, send_exec_output, send_exec_result,
+    send_exec_started, setup_host_and_guest,
 };
 use super::super::start_capture_operation;
 use super::support::{
@@ -49,6 +49,106 @@ async fn supervised_exec_returns_handle_after_exec_started() {
         normal_operation_readiness(&started.host),
         NormalOperationReadiness::Idle
     );
+}
+
+#[tokio::test]
+async fn supervised_agent_waits_for_ready_after_started_and_accepts_output() {
+    let mut pending = start_pending_supervised_exec(SupervisedExecRequest {
+        role: vsock_proto::ExecProcessRole::Agent,
+        control: crate::SupervisedExecControl::Enabled { sink: true },
+        ..supervised_stream_request("agent-ready")
+    })
+    .await;
+    let start_seq = pending.start.seq();
+
+    pending.send_started(321).await;
+    pending.assert_waiting_for_agent_ready();
+    send_exec_output(
+        &mut pending.guest,
+        start_seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"bootstrap output",
+        false,
+    )
+    .await;
+    pending.assert_waiting_for_agent_ready();
+
+    pending.send_agent_ready().await;
+    let mut started = pending.wait_start_result().await;
+    let mut handle = started.start_result.unwrap();
+    assert_eq!(handle.pid(), 321);
+    let timing = handle.start_timing();
+    assert!(timing.agent_ready_at.unwrap() >= timing.shell_started_at);
+    assert_eq!(
+        timing.agent_ready.unwrap(),
+        vsock_proto::ExecAgentReadyTiming {
+            containment_create_us: 1,
+            placement_broker_setup_us: 2,
+            shell_spawn_us: 3,
+            bootstrap_ready_wait_us: 4,
+        }
+    );
+    let event = handle.take_stream_receiver().unwrap().recv().await.unwrap();
+    assert_eq!(event.chunk, b"bootstrap output");
+
+    send_discarded_exec_result(
+        &mut started.guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervised_agent_terminal_before_ready_fails_start_and_releases_operation() {
+    let mut pending = start_pending_supervised_exec(SupervisedExecRequest {
+        role: vsock_proto::ExecProcessRole::Agent,
+        control: crate::SupervisedExecControl::Enabled { sink: true },
+        ..supervised_request("agent-exits-before-ready")
+    })
+    .await;
+    let start_seq = pending.start.seq();
+
+    pending.send_started(322).await;
+    pending.assert_waiting_for_agent_ready();
+    send_exec_result(
+        &mut pending.guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 7 },
+        b"",
+        b"bootstrap failed",
+    )
+    .await;
+
+    let finished = pending.wait_start_result().await;
+    let error = match finished.start_result {
+        Ok(_) => panic!("Agent start must fail when the child exits before readiness"),
+        Err(error) => error,
+    };
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    assert_eq!(error.to_string(), "bootstrap failed");
+    assert_eq!(operation_count(&finished.host), 0);
+}
+
+#[tokio::test]
+async fn supervised_workload_rejects_agent_ready() {
+    let mut pending = start_pending_supervised_exec(supervised_request("workload-ready")).await;
+    let start_seq = pending.start.seq();
+
+    pending.send_started(323).await;
+    let mut started = pending.wait_start_result().await;
+    let handle = started.start_result.unwrap();
+    super::super::super::support::send_exec_agent_ready(&mut started.guest, start_seq).await;
+
+    started
+        .host
+        .wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    let error = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]

@@ -7,6 +7,7 @@ import type { FormEvent, ReactNode } from "react";
 import type {
   AuthV2SignInError,
   AuthV2SignInErrorField,
+  AuthV2SignInFactor,
   AuthV2SignInSignals,
   AuthV2SignInState,
 } from "../../../signals/auth-v2/sign-in-flow.ts";
@@ -60,6 +61,47 @@ function FactorActionContent({
     <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
   ) : (
     children
+  );
+}
+
+function OAuthFactorButton({
+  busy,
+  copy,
+  disabled,
+  factor,
+  onSelect,
+}: {
+  readonly busy: boolean;
+  readonly copy: AuthV2SignInCopy;
+  readonly disabled: boolean;
+  readonly factor: Extract<AuthV2SignInFactor, { kind: "oauth" }>;
+  readonly onSelect: (factorId: string) => void;
+}) {
+  const actionLabel = signInFactorLabel(factor, copy);
+  return (
+    <Button
+      aria-busy={busy}
+      aria-label={actionLabel}
+      className="relative w-full border border-border bg-transparent text-sm hover:bg-muted"
+      disabled={disabled}
+      type="button"
+      variant="outline"
+      onClick={() => {
+        onSelect(factor.id);
+      }}
+    >
+      <FactorActionContent busy={busy}>
+        <AuthV2OAuthIcon strategy={factor.strategy} />
+        {factor.strategy === "oauth_apple"
+          ? copy.appleProvider
+          : copy.googleProvider}
+      </FactorActionContent>
+      {factor.lastUsed ? (
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm">
+          {copy.lastUsed}
+        </span>
+      ) : null}
+    </Button>
   );
 }
 
@@ -315,28 +357,16 @@ function IdentifierStep({
           )}
         >
           {oauthFactors.map((factor) => {
-            const actionLabel = signInFactorLabel(factor, copy);
             const busy = selectingFactorId === factor.id;
             return (
-              <Button
-                aria-busy={busy}
-                aria-label={actionLabel}
-                className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+              <OAuthFactorButton
+                busy={busy}
+                copy={copy}
                 disabled={operationPending}
+                factor={factor}
                 key={factor.id}
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  handleSelectFactor(factor.id);
-                }}
-              >
-                <FactorActionContent busy={busy}>
-                  <AuthV2OAuthIcon strategy={factor.strategy} />
-                  {factor.strategy === "oauth_apple"
-                    ? copy.appleProvider
-                    : copy.googleProvider}
-                </FactorActionContent>
-              </Button>
+                onSelect={handleSelectFactor}
+              />
             );
           })}
         </div>
@@ -486,28 +516,16 @@ function ChooseFactorStep({
             )}
           >
             {oauthFactors.map((factor) => {
-              const actionLabel = signInFactorLabel(factor, copy);
               const busy = selectingFactorId === factor.id;
               return (
-                <Button
-                  aria-busy={busy}
-                  aria-label={actionLabel}
-                  className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+                <OAuthFactorButton
+                  busy={busy}
+                  copy={copy}
                   disabled={selectLoadable.state === "loading"}
+                  factor={factor}
                   key={factor.id}
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    handleSelectFactor(factor.id);
-                  }}
-                >
-                  <FactorActionContent busy={busy}>
-                    <AuthV2OAuthIcon strategy={factor.strategy} />
-                    {factor.strategy === "oauth_apple"
-                      ? copy.appleProvider
-                      : copy.googleProvider}
-                  </FactorActionContent>
-                </Button>
+                  onSelect={handleSelectFactor}
+                />
               );
             })}
           </div>
@@ -700,28 +718,16 @@ function PasswordRecoveryStep({
                 )}
               >
                 {factors.oauthFactors.map((factor) => {
-                  const actionLabel = signInFactorLabel(factor, copy);
                   const busy = selectingFactorId === factor.id;
                   return (
-                    <Button
-                      aria-busy={busy}
-                      aria-label={actionLabel}
-                      className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+                    <OAuthFactorButton
+                      busy={busy}
+                      copy={copy}
                       disabled={selecting}
+                      factor={factor}
                       key={factor.id}
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        handleSelectFactor(factor.id);
-                      }}
-                    >
-                      <FactorActionContent busy={busy}>
-                        <AuthV2OAuthIcon strategy={factor.strategy} />
-                        {factor.strategy === "oauth_apple"
-                          ? copy.appleProvider
-                          : copy.googleProvider}
-                      </FactorActionContent>
-                    </Button>
+                      onSelect={handleSelectFactor}
+                    />
                   );
                 })}
               </div>

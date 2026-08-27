@@ -1978,14 +1978,15 @@ def done():
     executor. It also performs a final JSONL marker observation and joins the
     marker watcher before the JSONL writer stops. Any retryable usage outcome
     retained by completed workers is then retried synchronously.
-    Auth.base forwarding does not need to finish running work during shutdown,
-    so its worker shutdown stops new forwards and best-effort closes active
-    upstream sockets without waiting for slow upstream responses. JSONL writer
-    shutdown is also bounded and best-effort; if it times out, process shutdown
-    continues with accepted log entries possibly still pending. After joining
-    the usage executor, retained billing and diagnostic work is drained through
-    synchronous delivery. Model-provider failure delivery stops admission and
-    receives one bounded drain window.
+    Auth.base forwarding does not need to finish running work during shutdown.
+    Its `wait=False` worker shutdown closes admission, wakes or terminates
+    affected forwards, cancels pending futures, and best-effort aborts active
+    upstream work without joining daemon workers or waiting for slow upstream
+    responses. JSONL writer shutdown is also bounded and best-effort; if it times
+    out, process shutdown continues with accepted log entries possibly still
+    pending. After joining the usage executor, retained billing and diagnostic
+    work is drained through synchronous delivery. Model-provider failure delivery
+    stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
