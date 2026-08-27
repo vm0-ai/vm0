@@ -31,25 +31,25 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "http://127.0.0.1:1",
         );
         std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "300");
-        for (canonical, legacy) in [
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            std::env::var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV)?,
+        );
+        for (legacy, canonical) in [
             (
-                guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            ),
-            (
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             ),
             (
-                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
                 guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
             ),
             (
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ),
         ] {
-            std::env::set_var(canonical, std::env::var(legacy)?);
+            std::env::set_var(legacy, std::env::var(canonical)?);
         }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
         std::env::set_var(

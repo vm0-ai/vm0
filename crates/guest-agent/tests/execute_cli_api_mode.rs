@@ -26,8 +26,14 @@ unsafe fn setup_api_env(
             mock_path,
         );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
-        std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");
-        std::env::set_var("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "3",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "1",
+        );
         let run_id = std::env::current_exe()
             .ok()
             .as_deref()
