@@ -1085,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1115,6 +1114,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",

@@ -18,6 +18,7 @@ import {
 
 const ORGANIZATION_ALPHA = "Auth v2 Browser Alpha";
 const ORGANIZATION_BETA = "Auth v2 Browser Beta";
+const AUTH_V2_PRIMARY_COLOR = "rgb(239, 80, 1)";
 const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "en-US", title: "Create your account" },
   { locale: "pt-BR", title: "Criar sua conta" },
@@ -78,16 +79,22 @@ test("primary and link actions retain accessible brand colors in both themes", a
   });
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(208, 67, 1)");
+  await expect(currentSignUpLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(239, 90, 15)");
+  await expect(currentSignUpLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",

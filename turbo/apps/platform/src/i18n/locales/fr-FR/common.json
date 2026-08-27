@@ -1104,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Utiliser la connexion actuelle",
         "addAccount": "Ajouter un compte",
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",
@@ -1134,6 +1133,7 @@
         "hidePassword": "Masquer le mot de passe",
         "identifierLabel": "Adresse e-mail ou nom d'utilisateur",
         "identifierPlaceholder": "Saisissez votre adresse e-mail ou votre nom d'utilisateur",
+        "lastUsed": "Utilisé la dernière fois",
         "methodsHelpPrompt": "Vous n’avez aucune de ces options ?",
         "newPasswordLabel": "Nouveau mot de passe",
         "newPasswordSubtitle": "Pour des raisons de sécurité, il est nécessaire de réinitialiser votre mot de passe.",

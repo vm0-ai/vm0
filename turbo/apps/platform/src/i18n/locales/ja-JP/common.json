@@ -1084,7 +1084,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1114,6 +1113,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",

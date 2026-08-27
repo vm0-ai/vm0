@@ -949,8 +949,22 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_test_connector_rejects_mismatched_existing_binding(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+@pytest.mark.parametrize(
+    ("binding_host", "binding_port"),
+    [
+        pytest.param("api.github.com", 443, id="host-mismatch"),
+        pytest.param("api.vm0.ai", 8443, id="port-mismatch"),
+    ],
+)
+async def test_test_connector_rejects_mismatched_existing_binding_after_verified_tls(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+    binding_host: str,
+    binding_port: int,
 ):
     reg_path = _write_test_oauth_registry(tmp_path)
     flow = real_flow(
@@ -964,15 +978,23 @@ async def test_test_connector_rejects_mismatched_existing_binding(
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
-    flow.server_conn.state = connection.ConnectionState.OPEN
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("api.vm0.ai", 443),
+        peername=("203.0.113.10", 443),
+    )
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.github.com",
-        port=443,
+        host=binding_host,
+        port=binding_port,
         kinds=frozenset(("api_allow",)),
         original_address=("203.0.113.10", 443),
     )
+    original_binding = upstream_destination_binding.binding_snapshot_for_tests()[
+        flow.server_conn.id
+    ]
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
@@ -987,8 +1009,7 @@ async def test_test_connector_rejects_mismatched_existing_binding(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.github.com"
-    assert binding.kinds == frozenset(("api_allow",))
+    assert binding == original_binding
 
 
 async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypass(

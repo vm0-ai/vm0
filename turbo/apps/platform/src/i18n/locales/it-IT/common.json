@@ -1104,7 +1104,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usa l'accesso attuale",
         "addAccount": "Aggiungi account",
         "appleMethod": "Continua con Apple",
         "back": "Indietro",
@@ -1134,6 +1133,7 @@
         "hidePassword": "Nascondi password",
         "identifierLabel": "Indirizzo email o nome utente",
         "identifierPlaceholder": "Inserisci il tuo indirizzo email o nome utente",
+        "lastUsed": "Ultimo utilizzo",
         "methodsHelpPrompt": "Non hai nessuna di queste opzioni?",
         "newPasswordLabel": "Nuova password",
         "newPasswordSubtitle": "Per motivi di sicurezza, è richiesto di resettare la tua password.",

@@ -1,6 +1,8 @@
 import {
   billingStatusContract,
+  billingUsagePackCatalogContract,
   billingUsagePackCreditsContract,
+  billingUsagePackManagementContract,
   type UsagePackCreditsResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import {
@@ -333,6 +335,11 @@ describe("personal usage settings", () => {
     expect(screen.queryByText("Team usage")).toBeNull();
     expect(screen.queryByText("Today")).toBeNull();
     expect(screen.queryByText("Quarterly planning chat")).toBeNull();
+    expect(
+      queryAllByRoleFast("button", card).some((button) => {
+        return button.textContent?.trim() === "Configure member packages";
+      }),
+    ).toBeFalsy();
 
     await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
     await expect(
@@ -450,6 +457,92 @@ describe("personal usage settings", () => {
         }),
       ).toBeFalsy();
     });
+  });
+
+  it("opens member package configuration from admin usage pack credits", async () => {
+    const user = userEvent.setup();
+    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+    context.mocks.data.orgMembers({
+      name: "Test Org",
+      role: "admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      members: [
+        {
+          userId: "test-user-123",
+          email: "linghan@example.com",
+          firstName: "Linghan",
+          lastName: "Hu",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+    });
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        creditGrants: [],
+        hasUsagePack: true,
+        memberCredits: [],
+      });
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00.000Z",
+        allocations: [
+          {
+            id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
+            memberId: "test-user-123",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00.000Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, {
+        usagePacks: [
+          {
+            usagePackUsd: 20,
+            priceUsd: 20,
+            purchasedCredits: 20_000,
+            bonusCredits: 400,
+            totalCredits: 20_400,
+          },
+        ],
+      });
+    });
+
+    await openUsageSettings();
+
+    const card = await screen.findByTestId("usage-pack-credit-card");
+    const configureButton = queryAllByRoleFast("button", card).find(
+      (button) => {
+        return button.textContent?.trim() === "Configure member packages";
+      },
+    );
+    if (!configureButton) {
+      throw new Error("Configure member packages button not found");
+    }
+    await user.click(configureButton);
+
+    const configureDialog = await screen.findByRole("dialog", {
+      name: "Configure member packages",
+    });
+    expect(
+      within(configureDialog).getByText("Step 2 of 3"),
+    ).toBeInTheDocument();
+    expect(
+      within(configureDialog).getByRole("combobox", {
+        name: "Usage for Test User",
+      }),
+    ).toHaveTextContent("20,400 credits · 2% off");
   });
 
   it("shows every member's usage pack balance to an admin", async () => {

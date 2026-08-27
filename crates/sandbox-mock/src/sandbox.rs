@@ -1152,7 +1152,18 @@ impl Sandbox for MockSandbox {
         let process = self
             .start_process_with_contract(&request.process, operation, true)
             .await?;
-        GuestAgentProcessHandle::try_from_process(process)
+        let ready_at = Instant::now();
+        GuestAgentProcessHandle::try_from_process(
+            process,
+            GuestAgentStartTiming {
+                shell_started_at: ready_at,
+                ready_at,
+                containment_create: Duration::ZERO,
+                placement_broker_setup: Duration::ZERO,
+                shell_spawn: Duration::ZERO,
+                bootstrap_ready_wait: Duration::ZERO,
+            },
+        )
     }
 
     async fn wait_process(

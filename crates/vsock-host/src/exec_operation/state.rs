@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
 use vsock_proto::{
@@ -18,7 +19,8 @@ use super::diagnostics::{
 };
 use super::frame::remove_pending_exec_control;
 use super::types::{
-    ExecControlOutcome, ExecOperationResult, ExecOutputEvent, exec_control_status_error,
+    ExecControlOutcome, ExecOperationResult, ExecOutputEvent, SupervisedExecStartTiming,
+    exec_control_status_error,
 };
 use super::{
     DEFAULT_EXEC_STREAM_CAPACITY, EXEC_OPERATION_CLOSE_ACTIVE_LOG_LIMIT, MAX_EXEC_STREAM_CAPACITY,
@@ -234,7 +236,14 @@ pub(in crate::exec_operation) struct ExecOperation {
 pub(in crate::exec_operation) enum ExecOperationLifecycle {
     OneShot,
     SupervisedAwaitingStart {
-        start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+        start_tx: Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
+        role: ExecProcessRole,
+        control_nonce: Option<ExecControlNonce>,
+    },
+    SupervisedAwaitingAgentReady {
+        start_tx: Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
+        pid: u32,
+        shell_started_at: Instant,
         control_nonce: Option<ExecControlNonce>,
     },
     SupervisedStarted {
@@ -260,7 +269,8 @@ pub(in crate::exec_operation) enum ExecOperationNormalTracking {
 pub(in crate::exec_operation) struct TerminalExecOperation {
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
-    pub(in crate::exec_operation) start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+    pub(in crate::exec_operation) start_tx:
+        Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
     pub(in crate::exec_operation) log_lifecycle: ExecTerminalLogLifecycle,
     pub(in crate::exec_operation) stream_overflowed: bool,
     pub(in crate::exec_operation) host_cancel_requested: bool,
@@ -270,7 +280,9 @@ impl ExecOperation {
     pub(in crate::exec_operation) fn allows_output(&self) -> bool {
         matches!(
             self.lifecycle,
-            ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. }
+            ExecOperationLifecycle::OneShot
+                | ExecOperationLifecycle::SupervisedAwaitingAgentReady { .. }
+                | ExecOperationLifecycle::SupervisedStarted { .. }
         )
     }
 
@@ -314,7 +326,8 @@ impl ExecOperation {
                 "exec control is not supported by this operation",
             )),
             ExecOperationLifecycle::OneShot
-            | ExecOperationLifecycle::SupervisedAwaitingStart { .. } => {
+            | ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+            | ExecOperationLifecycle::SupervisedAwaitingAgentReady { .. } => {
                 Err(exec_control_status_error(
                     ExecControlStatus::Inactive,
                     "exec operation is not active",
@@ -335,7 +348,8 @@ impl ExecOperation {
         } = self;
         let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
         let start_tx = match lifecycle {
-            ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => start_tx,
+            ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. }
+            | ExecOperationLifecycle::SupervisedAwaitingAgentReady { start_tx, .. } => start_tx,
             ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. } => {
                 None
             }
