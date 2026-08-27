@@ -37,6 +37,9 @@ export const CANONICAL_PI_SESSION_DIR = `${PI_AGENT_DIR}/sessions/--home-user-wo
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES = 1024 * 1024;
+// Shared by the runner's enforced deadline and the agent-facing system prompt
+// so the documented execution budget cannot drift from runtime behavior.
+export const AGENT_EXECUTION_TIMEOUT_SECONDS = 2 * 60 * 60;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";

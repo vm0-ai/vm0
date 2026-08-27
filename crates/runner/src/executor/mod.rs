@@ -72,13 +72,13 @@ use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
 use api_contracts::generated::constants::runners::{
-    RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+    AGENT_EXECUTION_TIMEOUT_SECONDS, RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
 use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
 /// Maximum guest-side runtime budget for a single agent process (2 hours).
-const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+const JOB_TIMEOUT: Duration = Duration::from_secs(AGENT_EXECUTION_TIMEOUT_SECONDS);
 /// Exit code used when the runner's job timeout stops an agent process.
 const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE;
 /// Bounded best-effort window after the execution budget for recovery

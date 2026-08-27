@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
@@ -35,6 +36,12 @@ import {
 } from "../runners";
 import { runRunnerContract } from "../run-routes";
 import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
+
+describe("agent execution timing contract", () => {
+  it("keeps one run bounded to two hours", () => {
+    expect(AGENT_EXECUTION_TIMEOUT_SECONDS).toBe(2 * 60 * 60);
+  });
+});
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
