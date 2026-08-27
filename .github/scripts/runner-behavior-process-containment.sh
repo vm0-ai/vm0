@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+AGENT_READY_BENCHMARK_SOURCE="${SCRIPT_DIR}/runner-behavior-agent-ready-benchmark-remote.sh"
 REMOTE="${METAL_USER}@${HOST}"
 SVC="${JOB_REF}-process-containment"
 GROUP="vm0/process-containment-${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
 GROUP_DIR="/var/lib/vm0-runner/groups/vm0/process-containment-${JOB_REF}"
+AGENT_READY_BENCHMARK_WORKER="${RUNNER_DIR}/agent-ready-benchmark.sh"
 
 echo "=== Cleaning stale process-containment runner state ==="
 ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
@@ -39,10 +42,24 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --api-url https://not-a-real-server.test \
   --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
+echo "=== Staging Agent-ready benchmark worker ==="
+# shellcheck disable=SC2029
+ssh "$REMOTE" "sudo tee '${AGENT_READY_BENCHMARK_WORKER}' >/dev/null \
+  && sudo chmod 0755 '${AGENT_READY_BENCHMARK_WORKER}'" \
+  < "$AGENT_READY_BENCHMARK_SOURCE"
+
 echo "=== Running process-containment test ==="
-ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" <<'REMOTE_SCRIPT'
+ssh "$REMOTE" bash -s -- \
+  "${BIN_DIR}" \
+  "${SVC}" \
+  "${GROUP}" \
+  "${RUNNER_DIR}" \
+  "${GROUP_DIR}" \
+  "${AGENT_READY_BENCHMARK_WORKER}" \
+  "${AGENT_READY_BENCHMARK_SAMPLES:-3}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
+AGENT_READY_BENCHMARK_WORKER=$6; AGENT_READY_BENCHMARK_SAMPLES=$7
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-process-containment-session"
 CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
@@ -969,6 +986,13 @@ printf '%s\n' "$LOGS" \
 if grep -F 'process control latency exceeded calibrated bound' <<<"$LOGS" >/dev/null; then
   fail "process control exceeded the calibrated 750ms bound under pressure"
 fi
+
+echo "--- Benchmark: Guest Agent ready boundary ---"
+sudo "$AGENT_READY_BENCHMARK_WORKER" \
+  "$BIN_DIR" \
+  "$GROUP" \
+  "$INVOCATION_ID" \
+  "$AGENT_READY_BENCHMARK_SAMPLES"
 
 echo "PASS: detached user/root descendants were reclaimed"
 echo "PASS: mixed-identity leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"

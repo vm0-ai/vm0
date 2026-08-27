@@ -446,7 +446,7 @@ function ExpandedManageSection() {
           return setManageCollapsed(!manageCollapsed);
         }}
       >
-        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.appShell.sidebar.manage;
           })}
@@ -484,7 +484,7 @@ function ExpandedManageSection() {
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
-                  <span className="truncate">{label}</span>
+                  <span className="zero-nav-copy truncate">{label}</span>
                 </Link>
               );
             },
@@ -566,7 +566,7 @@ function ExpandedFooter() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="truncate flex-1">{label}</span>
+                <span className="zero-nav-copy flex-1 truncate">{label}</span>
                 {id === "works" && slackScopeMismatch && (
                   <span
                     data-testid="slack-scope-mismatch-indicator"
@@ -669,7 +669,9 @@ function LabeledRailLink({
       </span>
       <span
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
-          isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/60"
+          isActive
+            ? "zero-nav-copy text-sidebar-foreground"
+            : "zero-nav-copy-muted text-sidebar-foreground/60"
         }`}
       >
         {caption}
@@ -757,7 +759,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
+      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
@@ -866,7 +868,7 @@ function ChatListColumn() {
       className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
     >
       <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-        <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
+        <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
           })}

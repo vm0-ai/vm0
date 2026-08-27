@@ -76,6 +76,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import {
   API_TEST_CONNECTOR_CATALOG,
   apiTestConnectorCatalogValidationAuthority,
@@ -629,6 +630,18 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function templateUsageEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
+    const events = call[1];
+    if (!Array.isArray(events)) {
+      return [];
+    }
+    return events.filter(isRecord).filter((event) => {
+      return event.type === "template_used";
+    });
+  });
 }
 
 function sandboxOperationEvents(): readonly Record<string, unknown>[] {
@@ -4794,9 +4807,7 @@ interface PiCheckpointS3Command {
   };
 }
 
-function piCheckpointObjectKey(
-  candidate: PiCheckpointS3Command,
-): string | undefined {
+function piS3ObjectKey(candidate: PiCheckpointS3Command): string | undefined {
   const bucket = candidate.input?.Bucket;
   const key = candidate.input?.Key;
   return typeof bucket === "string" && typeof key === "string"
@@ -4808,7 +4819,7 @@ function mockPiPutObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "PutObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4827,7 +4838,7 @@ function mockPiGetObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "GetObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4877,22 +4888,60 @@ function mockPiCheckpointObjectStore(): Map<string, Buffer> {
   return objects;
 }
 
-function latestStoredArchive(): Buffer {
+const PI_RESOURCE_ARCHIVE_DOWNLOAD_URL =
+  "https://r2.example.com/storage/archive.tar.gz";
+
+function uploadedPiS3Object(objectKey: string): Buffer | undefined {
   for (const [command] of [...context.mocks.s3.send.mock.calls].reverse()) {
-    const candidate = command as {
-      readonly constructor?: { readonly name?: string };
-      readonly input?: { readonly Body?: unknown; readonly Key?: unknown };
-    };
+    const candidate = command as PiCheckpointS3Command;
     if (
       candidate.constructor?.name === "PutObjectCommand" &&
-      typeof candidate.input?.Key === "string" &&
-      candidate.input.Key.endsWith("/archive.tar.gz") &&
-      candidate.input.Body instanceof Uint8Array
+      piS3ObjectKey(candidate) === objectKey
     ) {
+      if (!(candidate.input?.Body instanceof Uint8Array)) {
+        throw new Error(
+          `Expected uploaded Pi S3 object bytes for ${objectKey}`,
+        );
+      }
       return Buffer.from(candidate.input.Body);
     }
   }
-  throw new Error("Expected an uploaded Storage archive fixture");
+  return undefined;
+}
+
+function piS3Object(objectKey: string): Buffer {
+  const uploaded = uploadedPiS3Object(objectKey);
+  if (uploaded) {
+    return uploaded;
+  }
+  const bucketPrefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/`;
+  const seeded = objectKey.startsWith(bucketPrefix)
+    ? seededSystemSkillArchive(objectKey.slice(bucketPrefix.length))
+    : undefined;
+  if (seeded) {
+    return seeded;
+  }
+  throw new Error(`Expected Pi S3 object ${objectKey}`);
+}
+
+function mockPiResourceArchiveDownloads(unavailable = false): void {
+  server.use(
+    http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+      if (unavailable) {
+        return HttpResponse.json(
+          { error: "archive unavailable" },
+          { status: 503 },
+        );
+      }
+      const objectKey = new URL(request.url).searchParams.get("object");
+      if (!objectKey) {
+        throw new Error("Expected Pi resource archive object identity");
+      }
+      return new HttpResponse(piS3Object(objectKey), {
+        headers: { "content-type": "application/gzip" },
+      });
+    }),
+  );
 }
 
 function occurrences(haystack: string, needle: string): number {
@@ -5144,14 +5193,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const discoveryArchive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(discoveryArchive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
@@ -5310,14 +5352,9 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.PiLoop]: true },
     );
-    const archive = latestStoredArchive();
+    mockPiResourceArchiveDownloads();
     const consumedAgentEvents: Record<string, unknown>[] = [];
     server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
       http.post(
         "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
         async ({ request }) => {
@@ -5442,19 +5479,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId: actor.orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return failResource
-            ? HttpResponse.json(
-                { error: "archive unavailable" },
-                { status: 503 },
-              )
-            : new HttpResponse(archive, {
-                headers: { "content-type": "application/gzip" },
-              });
-        }),
-      );
+      mockPiResourceArchiveDownloads(failResource);
       let modelCalls = 0;
       server.use(
         http.post("https://api.deepseek.com/responses", () => {
@@ -5512,14 +5537,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.PiLoop]: true },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
@@ -5613,14 +5631,7 @@ describe("CHAT-02: model-first provider policies", () => {
         [FeatureSwitchKey.ChatToolActivity]: true,
       },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
@@ -7260,14 +7271,7 @@ describe("CHAT-02: model-first provider policies", () => {
           modelProviderId: null,
         },
       ]);
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(archive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
@@ -10442,8 +10446,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       const colorToken = template.colorSystemId
         .replace("color-system:", "")
         .replaceAll("-", "_");
-      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+      expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
     }
+    expect(presentationPrompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
     expect(presentationPrompt).toContain(
       "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
@@ -11002,6 +11009,223 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(claim.environment?.[INTRO_VIDEO_TEMPLATES_ENABLED_ENV]).toBe("1");
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
+
+  it("reports one template usage per template that reached the prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      template: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "normal-send",
+        orgId: actor.orgId,
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+        templateSlug: style.slug,
+        templateSource: "builtin",
+        userId: actor.userId,
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports every template on a multi-template message with its position", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
+    if (!first || !second) {
+      throw new Error("Expected two registered illustration styles");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "draw both",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Draw " },
+            {
+              type: "template",
+              titleSnapshot: first.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: first.illustrationStyleId },
+              },
+            },
+            { type: "text", text: " then " },
+            {
+              type: "template",
+              titleSnapshot: second.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: second.illustrationStyleId },
+              },
+            },
+          ],
+        },
+      },
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the multi-template send to be accepted");
+    }
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: first.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: second.illustrationStyleId,
+        templateIndex: 1,
+        templateRole: "inline",
+      }),
+    ]);
+    const { runId } = sent.body;
+    if (runId) {
+      await cancelChatRun(actor, runId);
+    }
+  }, 60_000);
+
+  it("reports an avatar selection as avatar rather than video", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "introduce the product",
+      template: {
+        type: "video",
+        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCategory: "avatar",
+        templateId: avatarTemplateStylePresetId(1),
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input template usage",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "restyle it mid-run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: style.illustrationStyleId },
+              },
+            },
+          ],
+        },
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    context.mocks.axiom.ingest.mockClear();
+
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected the templated active input to be reserved");
+    }
+    // The same open delivery is rematerialized on retrieval, which must not
+    // count the steered prompt a second time.
+    await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "active-input",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("reports no usage for a selection the prompt builder rejected", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered intro-video template");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    // The switch is off for this actor, so the selection never becomes guidance.
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "turn this interview into a video",
+        userMessage: userMessageWithTemplate(
+          "turn this interview into a video",
+          {
+            type: "intro-video",
+            selection: { templateId: template.id },
+          },
+        ),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(templateUsageEvents()).toStrictEqual([]);
+  }, 60_000);
 
   it("resolves attachment metadata in ordered waves of four", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -13465,6 +13689,11 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    // The busy thread makes queue-first take the wait path, which builds this
+    // message's run input before re-checking admission and leaving it queued.
+    // Building is not using: reporting there would count the message again when
+    // it is really dispatched below.
+    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -13502,6 +13731,19 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    // Exactly one event: the send left the message queued, so only the claim
+    // that created this run reports it.
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "queued-claim",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
 
     await expect
       .poll(() => {

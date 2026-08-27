@@ -1077,6 +1077,7 @@
         "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
         "secondFactorTitle": "Additional verification required",
         "selectOrganization": "Continue with {{organizationName}}",
+        "signedInAs": "Signed in as {{identifier}}",
         "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
         "unsupportedTitle": "Sign-in step unavailable"
       },
@@ -1085,7 +1086,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1115,6 +1115,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
@@ -1152,7 +1153,6 @@
         "verify": "Verify"
       },
       "signUp": {
-        "action": "Use current sign-up",
         "alreadyHaveAccount": "Already have an account?",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -5349,6 +5349,7 @@
       "viewSource": "Diagram source"
     },
     "notFound": {
+      "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }

@@ -4,7 +4,6 @@ import type {
   CustomConnectorResponse,
   CustomConnectorValueInput,
 } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   Button,
   Dialog,
@@ -35,8 +34,9 @@ import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import {
-  connectorAccountMutationFor as accountMutationFor,
+  connectorAccountOptionsFor,
   type ConnectorAccountConnectMode,
+  type ConnectorAccountMutationOptions,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 interface CustomConnectorConnectionSubmission {
@@ -148,7 +148,10 @@ function CredentialFields({
   });
 }
 
-function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
+function useCustomConnectorConnectionSubmitters(
+  agentId: string | undefined,
+  accountOptions: ConnectorAccountMutationOptions,
+) {
   const [valuesLoadable, submitValues] = useLoadableSet(
     setCustomConnectorValues$,
   );
@@ -167,38 +170,62 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
   const [accountOAuthLoadable, submitAccountOAuth2] = useLoadableSet(
     connectCustomConnectorAccountOAuth2$,
   );
+  const account = accountOptions.account;
+  const usesDefaultProjection =
+    accountOptions.useDefaultConnectorProjection === true;
+  const managesAccount = account !== undefined && !usesDefaultProjection;
 
   const submitDeclaredValues = async (
     args: {
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly account?: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (args.account) {
-      return await submitAccountValues(
-        { id: args.id, values: args.values, account: args.account },
+    if (managesAccount && account) {
+      return await submitAccountValues({ ...args, account }, signal);
+    }
+    if (agentId) {
+      return await submitAgentValues(
+        { ...args, agentId, ...(account ? { account } : {}) },
         signal,
       );
     }
-    if (agentId) {
-      return await submitAgentValues({ ...args, agentId }, signal);
-    }
-    return await submitValues(args, signal);
+    return await submitValues(
+      { ...args, ...(account ? { account } : {}) },
+      signal,
+    );
   };
   const submitOAuth = async (
     connectorId: string,
-    account: ConnectorAccountMutationIntent | undefined,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (account) {
+    if (managesAccount && account) {
       return await submitAccountOAuth2({ id: connectorId, account }, signal);
     }
     if (agentId) {
-      return await submitAgentOAuth2({ id: connectorId, agentId }, signal);
+      return await submitAgentOAuth2(
+        {
+          id: connectorId,
+          agentId,
+          ...(account ? { account } : {}),
+          ...(usesDefaultProjection
+            ? { useDefaultConnectorProjection: true as const }
+            : {}),
+        },
+        signal,
+      );
     }
-    return await submitOAuth2(connectorId, signal);
+    return await submitOAuth2(
+      {
+        id: connectorId,
+        ...(account ? { account } : {}),
+        ...(usesDefaultProjection
+          ? { useDefaultConnectorProjection: true as const }
+          : {}),
+      },
+      signal,
+    );
   };
 
   return {
@@ -265,6 +292,7 @@ interface CustomConnectorConnectDialogProps {
   readonly agentId?: string;
   readonly onClose?: () => void;
   readonly onSuccess?: (connectionId: string | null) => void | Promise<void>;
+  readonly accountOptions?: ConnectorAccountMutationOptions;
   readonly accountMode?: ConnectorAccountConnectMode;
 }
 
@@ -323,6 +351,7 @@ export function CustomConnectorConnectDialog({
   agentId,
   onClose,
   onSuccess,
+  accountOptions,
   accountMode,
 }: CustomConnectorConnectDialogProps) {
   const { t } = useTranslation();
@@ -330,10 +359,11 @@ export function CustomConnectorConnectDialog({
   const setField = useSet(setCustomConnectorConnectField$);
   const resetForm = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
+  const resolvedAccountOptions =
+    accountOptions ?? connectorAccountOptionsFor(accountMode);
   const { submitting, submitDeclaredValues, submitOAuth } =
-    useCustomConnectorConnectionSubmitters(agentId);
+    useCustomConnectorConnectionSubmitters(agentId, resolvedAccountOptions);
   const signal = useGet(pageSignal$);
-  const accountMutation = accountMutationFor(accountMode);
   const oauth = connector.authMode === "oauth";
   const values = declaredValuesFromForm(connector, form.values);
   const submittedKeys = new Set(
@@ -374,11 +404,8 @@ export function CustomConnectorConnectDialog({
     detach(
       (async () => {
         const result = oauth
-          ? await submitOAuth(connector.id, accountMutation, signal)
-          : await submitDeclaredValues(
-              { id: connector.id, values, account: accountMutation },
-              signal,
-            );
+          ? await submitOAuth(connector.id, signal)
+          : await submitDeclaredValues({ id: connector.id, values }, signal);
         if (!result.connected) {
           return;
         }

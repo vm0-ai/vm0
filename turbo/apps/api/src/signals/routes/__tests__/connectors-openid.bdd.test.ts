@@ -373,6 +373,7 @@ describe("Steam OpenID connector", () => {
       externalId: STEAM_ID,
       externalUsername: STEAM_ID,
       connectionStatus: "connected",
+      oauthScopes: [],
     });
   });
 

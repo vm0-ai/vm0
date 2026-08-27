@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.805.0](https://github.com/vm0-ai/vm0/compare/app-v0.804.5...app-v0.805.0) (2026-08-27)
+
+
+### Features
+
+* **platform:** redesign the not-found page ([#29850](https://github.com/vm0-ai/vm0/issues/29850)) ([62babba](https://github.com/vm0-ai/vm0/commit/62babbae1d1630a8ff9de85371bb9298f4abe6b3))
+
+
+### Bug Fixes
+
+* **platform:** hide create workspace after limit reached ([#29841](https://github.com/vm0-ai/vm0/issues/29841)) ([72b37b4](https://github.com/vm0-ai/vm0/commit/72b37b48f06ada9e8c7ef18470924d7aea3db5d5))
+
+
+### Performance Improvements
+
+* **platform:** trim eager clerk localization and posthog code ([#29750](https://github.com/vm0-ai/vm0/issues/29750)) ([6b16c7e](https://github.com/vm0-ai/vm0/commit/6b16c7eb565482598ca9c2f6f9a98271e960448c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.3
+    * @okouai/connectors bumped to 1.210.5
+    * @okouai/core bumped to 8.599.0
+
+## [0.804.5](https://github.com/vm0-ai/vm0/compare/app-v0.804.4...app-v0.804.5) (2026-08-27)
+
+
+### Bug Fixes
+
+* **platform:** clarify color theme navigation hierarchy ([#29724](https://github.com/vm0-ai/vm0/issues/29724)) ([70b7b4f](https://github.com/vm0-ai/vm0/commit/70b7b4fa877b5d17c340d1d91392dd35251b59a1))
+
+
+### Performance Improvements
+
+* **platform:** enable name-preserving identifier mangling ([#29728](https://github.com/vm0-ai/vm0/issues/29728)) ([2ce53ca](https://github.com/vm0-ai/vm0/commit/2ce53ca93f3140e5a61339b7061c8a43d668ec28))
+
+## [0.804.4](https://github.com/vm0-ai/vm0/compare/app-v0.804.3...app-v0.804.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* **platform:** release template rename focus on submit ([#29833](https://github.com/vm0-ai/vm0/issues/29833)) ([6733e19](https://github.com/vm0-ai/vm0/commit/6733e19df77385b6a4ff324bc206f7b6a1a524a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.2
+    * @okouai/core bumped to 8.598.2
+
+## [0.804.3](https://github.com/vm0-ai/vm0/compare/app-v0.804.2...app-v0.804.3) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.1
+    * @okouai/core bumped to 8.598.1
+
+## [0.804.2](https://github.com/vm0-ai/vm0/compare/app-v0.804.1...app-v0.804.2) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.0
+    * @okouai/core bumped to 8.598.0
+
+## [0.804.1](https://github.com/vm0-ai/vm0/compare/app-v0.804.0...app-v0.804.1) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.597.0
+
+## [0.804.0](https://github.com/vm0-ai/vm0/compare/app-v0.803.4...app-v0.804.0) (2026-08-27)
+
+
+### Features
+
+* **platform:** add usage pack configuration action ([#29747](https://github.com/vm0-ai/vm0/issues/29747)) ([6074c9b](https://github.com/vm0-ai/vm0/commit/6074c9b69b84bb0385601ee22a3a90ddb0e6bd3b))
+* **platform:** give intro-video templates their own picker category ([#29718](https://github.com/vm0-ai/vm0/issues/29718)) ([6476f2a](https://github.com/vm0-ai/vm0/commit/6476f2adb887bd3b60457a426edb000e09270e60))
+
+
+### Bug Fixes
+
+* **auth:** align clerk page action styling ([#29730](https://github.com/vm0-ai/vm0/issues/29730)) ([a6a6b4e](https://github.com/vm0-ai/vm0/commit/a6a6b4e251eb1d61be8605ddb6138aa99f21700f))
+* **auth:** harden Clerk identity and signup attribution ([#29732](https://github.com/vm0-ai/vm0/issues/29732)) ([13c15e9](https://github.com/vm0-ai/vm0/commit/13c15e9089c8a8aa7dd3001db3f78ab51cd90fe6)), closes [#29711](https://github.com/vm0-ai/vm0/issues/29711)
+* **auth:** restore v2 login parity ([#29734](https://github.com/vm0-ai/vm0/issues/29734)) ([bde9a4d](https://github.com/vm0-ai/vm0/commit/bde9a4d912c198382fe1eaa13a162e0c3fd8bdbf))
+* **platform:** clear stale agent after onboarding ([#29726](https://github.com/vm0-ai/vm0/issues/29726)) ([376758f](https://github.com/vm0-ai/vm0/commit/376758fe5d16e54b8aecf380818c2bc0ee13c474))
+* **platform:** fit the annotated image and keep the marks on the draft ([#29702](https://github.com/vm0-ai/vm0/issues/29702)) ([7bb820c](https://github.com/vm0-ai/vm0/commit/7bb820c5fbe47607cb216e57a495a870c98861d5))
+* **platform:** place account action before permissions ([#29725](https://github.com/vm0-ai/vm0/issues/29725)) ([dd4b659](https://github.com/vm0-ai/vm0/commit/dd4b6595a88206f49f85073dc91990dde0dd5ae4))
+* **platform:** prevent growth entry layout shift ([#29723](https://github.com/vm0-ai/vm0/issues/29723)) ([af45f6d](https://github.com/vm0-ai/vm0/commit/af45f6dff6f48f88e3e2ef0b68d64c419f80ea5f))
+* **platform:** update initial document title once ([#29737](https://github.com/vm0-ai/vm0/issues/29737)) ([9a0a6cf](https://github.com/vm0-ai/vm0/commit/9a0a6cf813f85f977d615d9f6043170e91990c5f))
+* remove legacy sign-in fallback from auth v2 ([#29735](https://github.com/vm0-ai/vm0/issues/29735)) ([fe7a110](https://github.com/vm0-ai/vm0/commit/fe7a110f9169e0587a97ca7f9d3c05f9c88d1c7d))
+
+
+### Refactoring
+
+* remove composerFlatFeedbackNote feature switch ([#29721](https://github.com/vm0-ai/vm0/issues/29721)) ([897515d](https://github.com/vm0-ai/vm0/commit/897515d2e90822674b61d3a65074afc3f36c7496))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.375.2
+    * @okouai/core bumped to 8.596.2
+
 ## [0.803.4](https://github.com/vm0-ai/vm0/compare/app-v0.803.3...app-v0.803.4) (2026-08-27)
 
 

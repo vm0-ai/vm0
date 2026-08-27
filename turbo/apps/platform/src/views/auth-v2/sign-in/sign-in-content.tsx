@@ -7,6 +7,7 @@ import type { FormEvent, ReactNode } from "react";
 import type {
   AuthV2SignInError,
   AuthV2SignInErrorField,
+  AuthV2SignInFactor,
   AuthV2SignInSignals,
   AuthV2SignInState,
 } from "../../../signals/auth-v2/sign-in-flow.ts";
@@ -14,11 +15,13 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { UserAvatar } from "../../components/avatar.tsx";
 import {
   AUTH_V2_LINK_ACTION_CLASS,
   AUTH_V2_PRIMARY_ACTION_CLASS,
 } from "../auth-v2-action-styles.ts";
 import { AuthV2Divider } from "../auth-v2-divider.tsx";
+import { AuthV2ChoiceRow } from "../auth-v2-choice-row.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
 import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
 import { AuthV2OAuthIcon } from "../auth-v2-oauth-icon.tsx";
@@ -60,6 +63,47 @@ function FactorActionContent({
     <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
   ) : (
     children
+  );
+}
+
+function OAuthFactorButton({
+  busy,
+  copy,
+  disabled,
+  factor,
+  onSelect,
+}: {
+  readonly busy: boolean;
+  readonly copy: AuthV2SignInCopy;
+  readonly disabled: boolean;
+  readonly factor: Extract<AuthV2SignInFactor, { kind: "oauth" }>;
+  readonly onSelect: (factorId: string) => void;
+}) {
+  const actionLabel = signInFactorLabel(factor, copy);
+  return (
+    <Button
+      aria-busy={busy}
+      aria-label={actionLabel}
+      className="relative w-full border border-border bg-transparent text-sm hover:bg-muted"
+      disabled={disabled}
+      type="button"
+      variant="outline"
+      onClick={() => {
+        onSelect(factor.id);
+      }}
+    >
+      <FactorActionContent busy={busy}>
+        <AuthV2OAuthIcon strategy={factor.strategy} />
+        {factor.strategy === "oauth_apple"
+          ? copy.appleProvider
+          : copy.googleProvider}
+      </FactorActionContent>
+      {factor.lastUsed ? (
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm">
+          {copy.lastUsed}
+        </span>
+      ) : null}
+    </Button>
   );
 }
 
@@ -315,28 +359,16 @@ function IdentifierStep({
           )}
         >
           {oauthFactors.map((factor) => {
-            const actionLabel = signInFactorLabel(factor, copy);
             const busy = selectingFactorId === factor.id;
             return (
-              <Button
-                aria-busy={busy}
-                aria-label={actionLabel}
-                className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+              <OAuthFactorButton
+                busy={busy}
+                copy={copy}
                 disabled={operationPending}
+                factor={factor}
                 key={factor.id}
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  handleSelectFactor(factor.id);
-                }}
-              >
-                <FactorActionContent busy={busy}>
-                  <AuthV2OAuthIcon strategy={factor.strategy} />
-                  {factor.strategy === "oauth_apple"
-                    ? copy.appleProvider
-                    : copy.googleProvider}
-                </FactorActionContent>
-              </Button>
+                onSelect={handleSelectFactor}
+              />
             );
           })}
         </div>
@@ -404,43 +436,57 @@ function ChooseSessionStep({
     );
   };
   return (
-    <div className="space-y-4">
-      <FlowErrorAlert copy={copy} signals={signals} />
-      <div className="space-y-2">
+    <div>
+      <div className="empty:hidden px-10 pt-6">
+        <FlowErrorAlert copy={copy} signals={signals} />
+      </div>
+      <div className="divide-y divide-border">
         {state.accounts.map((account) => {
+          const secondary =
+            account.identifier && account.identifier !== account.displayName
+              ? account.identifier
+              : undefined;
           return (
-            <Button
-              className="h-auto w-full justify-start py-3"
+            <AuthV2ChoiceRow
+              actionLabel={
+                secondary
+                  ? `${account.displayName}, ${secondary}`
+                  : account.displayName
+              }
+              busy={false}
               disabled={selectionLoadable.state === "loading"}
               key={account.sessionId}
-              type="button"
-              variant="outline"
-              onClick={() => {
+              leading={
+                <UserAvatar
+                  imageUrl={account.imageUrl}
+                  initial={account.displayName.charAt(0).toUpperCase()}
+                  name={account.displayName}
+                  size="md"
+                />
+              }
+              onSelect={() => {
                 selectAccount(account.sessionId);
               }}
-            >
-              <span className="min-w-0 text-left">
-                <span className="block truncate">{account.displayName}</span>
-                {account.identifier &&
-                account.identifier !== account.displayName ? (
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {account.identifier}
-                  </span>
-                ) : null}
-              </span>
-            </Button>
+              primary={account.displayName}
+              secondary={secondary}
+            />
           );
         })}
       </div>
-      <Button
-        className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
-        disabled={selectionLoadable.state === "loading"}
-        type="button"
-        variant="ghost"
-        onClick={useAnotherAccount}
-      >
-        {copy.addAccount}
-      </Button>
+      <div className="flex justify-center border-t border-border px-10 py-4">
+        <Button
+          className={cn(
+            "h-auto w-fit p-0 text-sm leading-5",
+            AUTH_V2_LINK_ACTION_CLASS,
+          )}
+          disabled={selectionLoadable.state === "loading"}
+          type="button"
+          variant="link"
+          onClick={useAnotherAccount}
+        >
+          {copy.addAccount}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -486,28 +532,16 @@ function ChooseFactorStep({
             )}
           >
             {oauthFactors.map((factor) => {
-              const actionLabel = signInFactorLabel(factor, copy);
               const busy = selectingFactorId === factor.id;
               return (
-                <Button
-                  aria-busy={busy}
-                  aria-label={actionLabel}
-                  className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+                <OAuthFactorButton
+                  busy={busy}
+                  copy={copy}
                   disabled={selectLoadable.state === "loading"}
+                  factor={factor}
                   key={factor.id}
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    handleSelectFactor(factor.id);
-                  }}
-                >
-                  <FactorActionContent busy={busy}>
-                    <AuthV2OAuthIcon strategy={factor.strategy} />
-                    {factor.strategy === "oauth_apple"
-                      ? copy.appleProvider
-                      : copy.googleProvider}
-                  </FactorActionContent>
-                </Button>
+                  onSelect={handleSelectFactor}
+                />
               );
             })}
           </div>
@@ -700,28 +734,16 @@ function PasswordRecoveryStep({
                 )}
               >
                 {factors.oauthFactors.map((factor) => {
-                  const actionLabel = signInFactorLabel(factor, copy);
                   const busy = selectingFactorId === factor.id;
                   return (
-                    <Button
-                      aria-busy={busy}
-                      aria-label={actionLabel}
-                      className="w-full border border-border bg-transparent text-sm hover:bg-muted"
+                    <OAuthFactorButton
+                      busy={busy}
+                      copy={copy}
                       disabled={selecting}
+                      factor={factor}
                       key={factor.id}
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        handleSelectFactor(factor.id);
-                      }}
-                    >
-                      <FactorActionContent busy={busy}>
-                        <AuthV2OAuthIcon strategy={factor.strategy} />
-                        {factor.strategy === "oauth_apple"
-                          ? copy.appleProvider
-                          : copy.googleProvider}
-                      </FactorActionContent>
-                    </Button>
+                      onSelect={handleSelectFactor}
+                    />
                   );
                 })}
               </div>

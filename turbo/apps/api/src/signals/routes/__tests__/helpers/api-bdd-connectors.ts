@@ -274,7 +274,11 @@ export function mockCustomConnectorOAuth2Provider(
 }
 
 export function mockGitHubConnectorOAuth(
-  options: { readonly userId?: number } = {},
+  options: {
+    readonly userId?: number;
+    readonly login?: string;
+    readonly email?: string | null;
+  } = {},
 ): void {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
@@ -292,8 +296,11 @@ export function mockGitHubConnectorOAuth(
     http.get(GITHUB_USER_URL, () => {
       return HttpResponse.json({
         id: options.userId ?? 42,
-        login: "bdd-github-user",
-        email: "bdd-github@example.test",
+        login: options.login ?? "bdd-github-user",
+        email:
+          options.email === undefined
+            ? "bdd-github@example.test"
+            : options.email,
       });
     }),
   );
@@ -837,7 +844,7 @@ interface TestOAuthDeviceConnectorProviderOptions {
   readonly deviceCode?: string;
   readonly interval?: number;
   readonly expiresIn?: number;
-  readonly tokenScope?: string;
+  readonly tokenScope?: string | null;
   readonly tokenBehavior?: "ok" | "emptyJson";
 }
 
@@ -950,7 +957,9 @@ export function mockTestOAuthDeviceConnectorProvider(
         access_token: `test-device-access:${deviceCode}`,
         token_type: "Bearer",
         expires_in: 3600,
-        scope: options.tokenScope ?? "read",
+        ...(options.tokenScope === null
+          ? {}
+          : { scope: options.tokenScope ?? "read" }),
       });
     }),
   );
@@ -1055,7 +1064,6 @@ export function mockBase44OAuthProvider(): Base44OAuthProviderRecorder {
         refresh_token: "base44-refresh-token",
         token_type: "Bearer",
         expires_in: 3600,
-        scope: "apps:read apps:write offline",
       });
     }),
     http.get(BASE44_USERINFO_URL, ({ request }) => {
@@ -1482,6 +1490,23 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listBuiltinConnectorAccounts(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+    ): Promise<readonly ConnectorAccountConnection[]> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: { kind: "builtin", connectorSlug, limit: 100 },
+        }),
+        [200],
+      );
+      return response.body.connections;
     },
 
     async listCustomConnectorAccounts(

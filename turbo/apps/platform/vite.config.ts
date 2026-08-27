@@ -40,11 +40,12 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Open-source project: compress and strip whitespace, but keep
-        // original identifiers readable (no name mangling).
+        // Mangle identifiers for smaller bundles while preserving runtime
+        // function and class names for framework semantics and diagnostics.
+        keepNames: true,
         minify: {
           compress: true,
-          mangle: false,
+          mangle: true,
           codegen: true,
         },
       },

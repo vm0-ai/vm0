@@ -117,6 +117,7 @@ const publicConnectorCatalogConnectionStatusSchema = z.enum([
 ]);
 
 const publicConnectorCatalogConnectionSchema = z.object({
+  id: z.uuid().optional(),
   authMethod: connectorAuthMethodIdSchema,
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.6...process-control-ipc-v0.3.7) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
 ## [0.3.6](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.5...process-control-ipc-v0.3.6) (2026-08-24)
 
 

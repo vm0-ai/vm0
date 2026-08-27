@@ -166,8 +166,8 @@ describe("auth v2 platform localization ownership", () => {
     }
 
     const v1Localization = Object.values(v1LocalizationSources).join("\n");
-    expect(v1Localization).toContain("@clerk/localizations");
     expect(v1Localization).toContain("getClerkLocalization");
+    expect(v1Localization).toContain("clerkLocalizationForLocale");
 
     const v1Provider = Object.values(v1ProviderSources).join("\n");
     expect(v1Provider).toContain('from "../auth/clerk-localization.ts"');

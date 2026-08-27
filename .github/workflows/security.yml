@@ -306,6 +306,7 @@ jobs:
             .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
+            .github/scripts/tests/runner-behavior-agent-ready-benchmark-test.sh \
             .github/scripts/tests/runner-behavior-durable-test.sh \
             .github/scripts/tests/validate-desktop-migration-policy-test.sh \
             e2e/scripts/ensure-stripe-cli.sh \

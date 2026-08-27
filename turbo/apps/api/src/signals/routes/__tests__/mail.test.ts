@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +28,7 @@ import {
   seedBuiltinThreadConnectorSelection,
   seedCustomConnectorRuntimeConnectors,
   seedCustomThreadConnectorSelection,
+  setBuiltinOAuthScopeFacts,
   setConnectorDefaultState,
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
@@ -40,6 +42,7 @@ const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
 const mocks = createRouteMocks(context);
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_DRAFT_ID = "r-test-draft";
 const GMAIL_THREAD_ID = "gmail-thread-id";
 const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
@@ -156,6 +159,8 @@ function gmailPayload(
 
 interface GmailDraftTestState {
   exists: boolean;
+  insufficientScope: boolean;
+  permissionDenied: boolean;
   unauthorized: boolean;
   draftReadCount: number;
   sendCount: number;
@@ -170,6 +175,8 @@ function mockGmailDraftApi(options?: {
 }): GmailDraftTestState {
   const state: GmailDraftTestState = {
     exists: true,
+    insufficientScope: false,
+    permissionDenied: false,
     unauthorized: false,
     draftReadCount: 0,
     sendCount: 0,
@@ -189,6 +196,45 @@ function mockGmailDraftApi(options?: {
         return HttpResponse.json(
           { error: { message: "Invalid Credentials" } },
           { status: 401 },
+        );
+      }
+      if (state.insufficientScope) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              message: "Request had insufficient authentication scopes.",
+              status: "PERMISSION_DENIED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                  reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                  domain: "googleapis.com",
+                  metadata: { service: "gmail.googleapis.com" },
+                },
+              ],
+            },
+          },
+          { status: 403 },
+        );
+      }
+      if (state.permissionDenied) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              message: "The caller does not have permission.",
+              status: "PERMISSION_DENIED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                  reason: "PERMISSION_DENIED",
+                  domain: "googleapis.com",
+                },
+              ],
+            },
+          },
+          { status: 403 },
         );
       }
       if (!state.exists) {
@@ -314,7 +360,117 @@ async function linkDraft(
   );
 }
 
+async function setGmailOAuthScopeFacts(
+  fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+  oauthGrantedScopes: readonly string[] | null,
+): Promise<void> {
+  await setBuiltinOAuthScopeFacts(context, {
+    orgId: fixture.actor.orgId ?? "",
+    userId: fixture.actor.userId,
+    connectorSlug: "gmail",
+    oauthScopes: [GMAIL_MODIFY_SCOPE],
+    oauthGrantedScopes,
+  });
+}
+
 describe("POST /api/mail/drafts/link", () => {
+  it("uses a healthy Gmail connection with unknown historical grants", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    await connectors.updateFeatureSwitches(fixture.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const gmail = mockGmailDraftApi();
+
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({
+      oauthScopes: null,
+      connectionStatus: "connected",
+    });
+    await expect(
+      connectors.listBuiltinConnectorAccounts(fixture.actor, "gmail"),
+    ).resolves.toMatchObject([
+      {
+        oauthScopes: null,
+        connectionStatus: "connected",
+      },
+    ]);
+    await expect(linkDraft(fixture)).resolves.toMatchObject({ status: 200 });
+    expect(gmail.draftReadCount).toBe(1);
+  });
+
+  it("rejects a known-insufficient Gmail grant before provider access", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, []);
+    const gmail = mockGmailDraftApi();
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Connect and authorize Gmail for this agent first",
+    );
+    expect(gmail.draftReadCount).toBe(0);
+  });
+
+  it("requires reconnect when Gmail reports an insufficient token scope", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    const gmail = mockGmailDraftApi();
+    gmail.insufficientScope = true;
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Reconnect Gmail before continuing",
+    );
+    expect(gmail.draftReadCount).toBe(1);
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({ connectionStatus: "reconnect-required" });
+  });
+
+  it("does not require reconnect for an unrelated Gmail permission denial", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    const gmail = mockGmailDraftApi();
+    gmail.permissionDenied = true;
+
+    await expect(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(gmail.draftReadCount).toBe(1);
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({ connectionStatus: "connected" });
+  });
+
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();

@@ -129,6 +129,11 @@ const builtInModelProviderFailureKindSchema = z.enum([
   "connection",
 ]);
 
+const builtInModelProviderConnectionSourceSchema = z.enum([
+  "provider_response",
+  "upstream_transport",
+]);
+
 const BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
 
 /**
@@ -560,6 +565,7 @@ export const storageMountEntrySchema = z
     archiveUrl: z.string().optional(),
     archiveSize: archiveSizeSchema.optional(),
     empty: z.boolean().optional(),
+    baselineCandidate: z.literal(true).optional(),
     instructionsTargetFilename: z.string().optional(),
     missingRootPolicy: artifactMissingRootPolicySchema.optional(),
     writeback: z.boolean().optional(),
@@ -589,6 +595,13 @@ export const storageMountEntrySchema = z
         code: z.ZodIssueCode.custom,
         path: ["instructionsTargetFilename"],
         message: "instructionsTargetFilename is not valid for writeback mounts",
+      });
+    }
+    if (writeback && mount.baselineCandidate === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["baselineCandidate"],
+        message: "baselineCandidate is not valid for writeback mounts",
       });
     }
     if (!writeback && mount.missingRootPolicy !== undefined) {
@@ -1175,6 +1188,7 @@ export const runnersModelProviderFailuresContract = c.router({
     body: z
       .object({
         failureKind: builtInModelProviderFailureKindSchema,
+        connectionSource: builtInModelProviderConnectionSourceSchema.optional(),
         retryAfterSeconds: z
           .number()
           .int()
@@ -1182,11 +1196,20 @@ export const runnersModelProviderFailuresContract = c.router({
           .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
           .optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((body, context) => {
+        if (body.connectionSource && body.failureKind !== "connection") {
+          context.addIssue({
+            code: "custom",
+            path: ["connectionSource"],
+            message: "connectionSource requires failureKind connection",
+          });
+        }
+      }),
     responses: {
       200: z
         .object({
-          outcome: z.enum(["recorded", "ignored"]),
+          outcome: z.enum(["recorded", "observed", "ignored"]),
         })
         .strict(),
       400: apiErrorSchema,
@@ -1320,7 +1343,6 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 export const heartbeatBodySchema = z
   .object({
     runnerId: z.uuid(),
-    runnerName: z.string().optional(),
     group: runnerGroupSchema,
     snapshotGeneration: runnerHeartbeatGenerationSchema,
     snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

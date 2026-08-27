@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.246](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.245...vsock-test-v0.9.246) (2026-08-27)
+
+## [0.9.245](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.244...vsock-test-v0.9.245) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ci:** validate release candidates before fast path ([#29689](https://github.com/vm0-ai/vm0/issues/29689)) ([16f3c0b](https://github.com/vm0-ai/vm0/commit/16f3c0b22cb836b259f4451fe51d6db4d5136253)), closes [#29687](https://github.com/vm0-ai/vm0/issues/29687)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.9.244](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.243...vsock-test-v0.9.244) (2026-08-26)
 
 ## [0.9.243](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.242...vsock-test-v0.9.243) (2026-08-26)

@@ -4,7 +4,10 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 
-use process_control_ipc::receive_workload_placement;
+use process_control_ipc::{
+    read_workload_placement_confirmation, receive_workload_placement,
+    write_workload_placement_confirmation,
+};
 
 const WORKLOAD_PLACEMENT_MARKER: u8 = 0x57;
 const RECEIVER_ANCILLARY_BUFFER_WORDS: usize = 8;
@@ -101,8 +104,14 @@ fn assert_raw_rights_sender_round_trips() -> io::Result<()> {
     let expected = placement.metadata()?;
     let (sender, receiver) = UnixStream::pair()?;
 
-    send_rights(&sender, WORKLOAD_PLACEMENT_MARKER, &[placement.as_raw_fd()])?;
+    let send = std::thread::spawn(move || {
+        send_rights(&sender, WORKLOAD_PLACEMENT_MARKER, &[placement.as_raw_fd()])?;
+        read_workload_placement_confirmation(&sender)
+    });
     let received = std::fs::File::from(receive_workload_placement(&receiver)?);
+    write_workload_placement_confirmation(&receiver)?;
+    send.join()
+        .map_err(|_| io::Error::other("workload placement sender panicked"))??;
     let actual = received.metadata()?;
 
     assert_eq!(actual.dev(), expected.dev());

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.37.256](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.255...sandbox-fc-v0.37.256) (2026-08-27)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** guard balloon deflation after unpark ([#29840](https://github.com/vm0-ai/vm0/issues/29840)) ([604d2f8](https://github.com/vm0-ai/vm0/commit/604d2f8c44c87ed576b63b12460c4176343fe994))
+
+## [0.37.255](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.254...sandbox-fc-v0.37.255) (2026-08-27)
+
+## [0.37.254](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.253...sandbox-fc-v0.37.254) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
 ## [0.37.253](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.252...sandbox-fc-v0.37.253) (2026-08-26)
 
 

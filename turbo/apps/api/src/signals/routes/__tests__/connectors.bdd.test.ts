@@ -62,7 +62,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
   setConnectorDefaultState,
-  setLegacyBuiltinOAuthScopes,
+  setBuiltinOAuthScopeFacts,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
@@ -865,7 +865,9 @@ describe("CONN-02: OAuth device authorization", () => {
   });
 
   it("starts and completes a device authorization session, with state visible through connector APIs", async () => {
-    mockTestOAuthDeviceConnectorProvider();
+    const provider = mockTestOAuthDeviceConnectorProvider({
+      tokenScope: "read provider-added",
+    });
 
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -896,6 +898,7 @@ describe("CONN-02: OAuth device authorization", () => {
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
     });
+    expect(provider.deviceCodeBodies[0]?.get("scope")).toBe("read");
 
     const otherActor = bdd.user({ orgId: actor.orgId });
     const crossUserPoll = await connectorsApi.requestDeviceAuthPoll(
@@ -922,7 +925,7 @@ describe("CONN-02: OAuth device authorization", () => {
       slug: "test-oauth-device",
       authMethod: "oauth",
       connectionStatus: "connected",
-      oauthScopes: ["read"],
+      oauthScopes: ["read", "provider-added"],
     });
 
     const readBack = await connectorsApi.readConnectorBySlug(
@@ -935,6 +938,32 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(connectorBySlug(listed.connectors, "test-oauth-device")?.id).toBe(
       poll.connector.id,
     );
+
+    mockTestOAuthDeviceConnectorProvider({ tokenScope: "" });
+    const emptyReconnect = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: poll.connector.id },
+    );
+    const emptyPoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      emptyReconnect.sessionId,
+      emptyReconnect.sessionToken,
+    );
+    expect(emptyPoll.status).toBe("complete");
+    if (emptyPoll.status !== "complete") {
+      throw new Error(
+        `Expected explicit-empty device auth, received ${emptyPoll.status}`,
+      );
+    }
+    expect(emptyPoll.connector).toMatchObject({
+      id: poll.connector.id,
+      connectionStatus: "connected",
+      oauthScopes: [],
+    });
 
     const removedReconnect = await connectorsApi.startDeviceAuth(
       actor,
@@ -2048,7 +2077,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
-    ).resolves.toMatchObject({ connected: true });
+    ).resolves.toMatchObject({
+      connected: true,
+      connectedAccountId: connected.connectedAccountId,
+      connectedAccountUpdatedAt: expect.any(String),
+    });
 
     const parent = await readCustomConnectorCredentialStorageParent(context, {
       orgId: admin.orgId ?? "",
@@ -6242,18 +6275,27 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       storedScopes: ["read"],
     });
 
-    await setLegacyBuiltinOAuthScopes(context, {
+    await setBuiltinOAuthScopeFacts(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
       connectorSlug: "test-oauth",
       oauthScopes: ["read", "legacy-write"],
+      oauthGrantedScopes: null,
     });
     await expect(
       connectorsApi.readConnectorBySlug(actor, "test-oauth"),
     ).resolves.toMatchObject({
       id: supplemental.id,
-      oauthScopes: ["read", "legacy-write"],
+      oauthScopes: null,
       connectionStatus: "connected",
+    });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "test-oauth"),
+    ).resolves.toStrictEqual({
+      addedScopes: [],
+      removedScopes: ["legacy-write"],
+      currentScopes: ["read"],
+      storedScopes: ["read", "legacy-write"],
     });
 
     const omittedProvider = mockTestOAuthAuthCodeProvider({

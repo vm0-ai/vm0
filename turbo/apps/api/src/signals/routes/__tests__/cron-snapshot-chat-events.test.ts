@@ -392,6 +392,46 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
+  it("continues the redacted tail without recreating a retired full pointer", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Retired full snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `retired-full-prefix-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const initialRedactedHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    await deleteChatEventSnapshotHead(context, threadId, "full");
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `retired-full-tail-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+
+    const refreshedRedactedHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    expect(refreshedRedactedHead.last_seq_id).toBeGreaterThan(
+      initialRedactedHead.last_seq_id,
+    );
+    await expect(
+      readChatEventSnapshotHead(context, threadId, "full"),
+    ).rejects.toThrow("missing snapshot head");
+    expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
   it("upgrades one migrated V5 head into both V6 projections", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {

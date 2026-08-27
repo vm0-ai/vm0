@@ -112,7 +112,6 @@ export function startAuthV2OAuthSignUp(
   strategy: AuthV2OAuthStrategy,
 ): Promise<void> {
   return resource.authenticateWithRedirect({
-    continueSignIn: false,
     continueSignUp: false,
     ...(legalAccepted ? { legalAccepted: true } : {}),
     redirectUrl: navigation.href(

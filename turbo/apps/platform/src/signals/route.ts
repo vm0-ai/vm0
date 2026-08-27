@@ -6,6 +6,7 @@ import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import {
+  bestEffort,
   detach,
   onDomEventFn,
   onRejection,
@@ -261,11 +262,17 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     capturePageView();
   }
   // Record first-touch signup attribution as part of the route-load lifecycle.
-  // Attribution belongs to the app root rather than the route transition.
-  // The command early-returns when there is nothing to record, so this only
-  // performs network work on the first qualifying load.
+  // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
+  // route load aborts the previous `routeSignal` via resetRouteSignal$, and
+  // binding here would reject the superseded load with AbortError. The parent
+  // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
+  // completes cleanly. The command early-returns when there is nothing to
+  // record, so this only performs network work on the first qualifying load.
+  // Attribution is best-effort so a final failure after auth recovery cannot
+  // reject the route load; the command only persists its dedupe marker after a
+  // successful record, allowing a later route to retry.
   if (currentRoute.analytics !== false) {
-    await set(recordSignupAttribution$, signal);
+    await bestEffort(set(recordSignupAttribution$, signal), signal);
     await settle(set(bootstrapGoogleAdsConversionMilestones$, signal), signal);
   }
 });

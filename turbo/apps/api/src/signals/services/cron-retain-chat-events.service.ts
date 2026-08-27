@@ -18,12 +18,18 @@ import {
 import { timestampWithoutTimeZone } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { tryLockChatEventRetention } from "./chat-event-retention-lock.service";
+import {
+  cleanChatToolActivity,
+  skippedChatToolActivityCleanupStats,
+  type ChatToolActivityCleanupScope,
+  type ChatToolActivityCleanupStats,
+} from "./chat-tool-activity-cleanup.service";
 
 const CHAT_EVENT_RETENTION_DAYS = 30;
 const CHAT_EVENT_RETENTION_DELETE_LIMIT = 2500;
 const CHAT_EVENT_RETENTION_SCAN_LIMIT = 5000;
 
-export interface ChatEventRetentionStats {
+export interface ChatEventRetentionStats extends ChatToolActivityCleanupStats {
   readonly cutoff: string;
   readonly scanLimit: number;
   readonly deleteLimit: number;
@@ -41,9 +47,7 @@ export interface ChatEventRetentionStats {
   readonly durationMs: number;
 }
 
-type ChatEventRetentionScope =
-  | { readonly kind: "global" }
-  | { readonly kind: "fixtures"; readonly chatThreadIds: readonly string[] };
+type ChatEventRetentionScope = ChatToolActivityCleanupScope;
 
 type ChatEventRetentionDb = Pick<Db, "execute" | "transaction">;
 
@@ -105,16 +109,6 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
         event.*,
         CASE
           WHEN NOT EXISTS (
-              SELECT 1
-              FROM ${chatEventSnapshots} snapshot
-              WHERE snapshot.chat_thread_id = event.chat_thread_id
-                AND snapshot.archive_schema_version
-                  = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-                AND snapshot.projection = 'full'
-                AND snapshot.last_seq_id >= event.seq_id
-                AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
-            )
-            OR NOT EXISTS (
               SELECT 1
               FROM ${chatEventSnapshots} snapshot
               WHERE snapshot.chat_thread_id = event.chat_thread_id
@@ -225,6 +219,9 @@ function retainChatEventsSql(
         event.created_at
       FROM ${chatEvents} event
       WHERE event.created_at < ${cutoff}::timestamp
+        -- Tool rows have a stronger per-thread maximum-coverage gate and are
+        -- owned exclusively by the bounded cleanup in this transaction.
+        AND event.event_type <> 'output.tool'
         AND ${retentionScopePredicate(scope)}
       ORDER BY event.created_at ASC, event.id ASC
       LIMIT ${CHAT_EVENT_RETENTION_SCAN_LIMIT}
@@ -251,17 +248,8 @@ async function hasMoreRetainableRows(
          AND watermark.indexed_seq_id >= event.seq_id
         LEFT JOIN ${agentRuns} run ON run.id = event.run_id
         WHERE event.created_at < ${cutoff}::timestamp
+          AND event.event_type <> 'output.tool'
           AND ${retentionScopePredicate(scope)}
-          AND EXISTS (
-            SELECT 1
-            FROM ${chatEventSnapshots} snapshot
-            WHERE snapshot.chat_thread_id = event.chat_thread_id
-              AND snapshot.archive_schema_version
-                = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-              AND snapshot.projection = 'full'
-              AND snapshot.last_seq_id >= event.seq_id
-              AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
-          )
           AND EXISTS (
             SELECT 1
             FROM ${chatEventSnapshots} snapshot
@@ -325,6 +313,7 @@ async function retainChatEventBatch(
     signal.throwIfAborted();
     if (!acquired) {
       return {
+        ...skippedChatToolActivityCleanupStats(scope),
         cutoff: cutoffDate.toISOString(),
         scanLimit: CHAT_EVENT_RETENTION_SCAN_LIMIT,
         deleteLimit: CHAT_EVENT_RETENTION_DELETE_LIMIT,
@@ -342,6 +331,8 @@ async function retainChatEventBatch(
       };
     }
 
+    const toolCleanup = await cleanChatToolActivity(tx, scope, signal);
+    signal.throwIfAborted();
     const rows = await executeRawRows(
       tx,
       retainChatEventsSql(cutoff, scope),
@@ -355,6 +346,7 @@ async function retainChatEventBatch(
     const hasMore = await hasMoreRetainableRows(tx, cutoff, scope);
     signal.throwIfAborted();
     return {
+      ...toolCleanup,
       cutoff: cutoffDate.toISOString(),
       scanLimit: CHAT_EVENT_RETENTION_SCAN_LIMIT,
       deleteLimit: CHAT_EVENT_RETENTION_DELETE_LIMIT,

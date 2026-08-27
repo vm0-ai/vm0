@@ -421,6 +421,12 @@ async function mutateModelStatsState(
       const result = await aggregateModelStats(db, signal, {
         processedAt: new Date(body.processed_at),
         scope: aggregationScope(body),
+        ...(body.cleanup_batch_size === undefined
+          ? {}
+          : { cleanupBatchSize: body.cleanup_batch_size }),
+        ...(body.cleanup_max_batches === undefined
+          ? {}
+          : { cleanupMaxBatches: body.cleanup_max_batches }),
       });
       return {
         status: 200 as const,

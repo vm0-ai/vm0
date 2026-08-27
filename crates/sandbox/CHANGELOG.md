@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.56](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.55...sandbox-v0.19.56) (2026-08-27)
+
+
+### Documentation
+
+* **rust:** make SandboxId contract provider-neutral ([#29852](https://github.com/vm0-ai/vm0/issues/29852)) ([74114a7](https://github.com/vm0-ai/vm0/commit/74114a7a29b92fa61a47b378a27b43b07163e4ac))
+
+## [0.19.55](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.54...sandbox-v0.19.55) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
 ## [0.19.54](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.53...sandbox-v0.19.54) (2026-08-26)
 
 

@@ -905,12 +905,17 @@ async function runClaimedSession(
     session: args.session,
     connectorSlug: args.resolvedMethod.connectorSlug,
   });
+  const requestedScopes = deviceRequestedOauthScopes(
+    args.session.oauthRequestedScopes,
+    args.resolvedMethod,
+  );
   const pollResult = await pollConnectorDeviceAuthorizationWithMethod({
     connectorSlug: args.resolvedMethod.connectorSlug,
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     authClient: args.authClient,
     deviceCode: providerState.deviceCode,
+    scopes: requestedScopes,
     ...(providerState.pollState === undefined
       ? {}
       : { pollState: providerState.pollState }),

@@ -17,6 +17,8 @@ export interface AuthV2ContinuationCopy {
   readonly secondFactorDescription: string;
   readonly secondFactorTitle: string;
   readonly selectOrganization: (organizationName: string) => string;
+  readonly signedInAs: (identifier: string) => string;
+  readonly signOut: string;
   readonly unsupportedDescription: string;
   readonly unsupportedTitle: string;
 }
@@ -79,6 +81,17 @@ export function useAuthV2ContinuationCopy(
         { organizationName },
       );
     },
+    signedInAs: (identifier) => {
+      return t(
+        ($) => {
+          return $.auth.v2.continuation.signedInAs;
+        },
+        { identifier },
+      );
+    },
+    signOut: t(($) => {
+      return $.settings.accountMenu.signOut;
+    }),
     unsupportedDescription: t(($) => {
       return $.auth.v2.continuation.unsupportedDescription;
     }),

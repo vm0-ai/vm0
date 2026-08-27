@@ -1076,6 +1076,7 @@
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "signedInAs": "Masuk sebagai {{identifier}}",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },
@@ -1084,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Gunakan proses masuk saat ini",
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -1114,6 +1114,7 @@
         "hidePassword": "Sembunyikan kata sandi",
         "identifierLabel": "Alamat email atau nama pengguna",
         "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "lastUsed": "Terakhir digunakan",
         "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
         "newPasswordLabel": "Kata sandi baru",
         "newPasswordSubtitle": "Untuk alasan keamanan, Anda harus mereset kata sandi.",
@@ -1151,7 +1152,6 @@
         "verify": "Verifikasi"
       },
       "signUp": {
-        "action": "Gunakan pendaftaran saat ini",
         "alreadyHaveAccount": "Sudah punya akun?",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -5349,6 +5349,7 @@
       "viewSource": "Sumber diagram"
     },
     "notFound": {
+      "action": "Kembali ke beranda",
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
     }

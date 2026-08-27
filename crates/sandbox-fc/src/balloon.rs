@@ -33,6 +33,20 @@ const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 pub(crate) const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Fast-start polling while a post-unpark controller protects the lifecycle's
+/// target-zero deflation from reactive policy. The cumulative 975 ms window
+/// covers the observed approximately 0.79-second deflation before normal
+/// polling resumes.
+const UNPARK_DEFLATE_FAST_POLL_INTERVALS: [Duration; 8] = [
+    Duration::from_millis(25),
+    Duration::from_millis(50),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(200),
+    Duration::from_millis(200),
+];
 /// How often to emit balloon status logs (in ticks).
 /// 12 ticks × 5s = 60s.
 const STATUS_INTERVAL_TICKS: u64 = 12;
@@ -41,10 +55,20 @@ pub(crate) struct ControllerHandle {
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
+enum ControllerStartup {
+    Active,
+    AwaitUnparkDeflation { log_id: String },
+}
+
 impl ControllerHandle {
-    fn spawn(client: ApiClient, memory_mb: u32, state_rx: watch::Receiver<SandboxState>) -> Self {
+    fn spawn(
+        client: ApiClient,
+        memory_mb: u32,
+        state_rx: watch::Receiver<SandboxState>,
+        startup: ControllerStartup,
+    ) -> Self {
         Self {
-            task: Some(tokio::spawn(run_loop(client, memory_mb, state_rx))),
+            task: Some(tokio::spawn(run_loop(client, memory_mb, state_rx, startup))),
         }
     }
 
@@ -97,16 +121,46 @@ pub(crate) fn spawn(
     memory_mb: u32,
     state_rx: watch::Receiver<SandboxState>,
 ) -> ControllerHandle {
-    ControllerHandle::spawn(client, memory_mb, state_rx)
+    ControllerHandle::spawn(client, memory_mb, state_rx, ControllerStartup::Active)
 }
 
-async fn run_loop(client: ApiClient, memory_mb: u32, mut state_rx: watch::Receiver<SandboxState>) {
+/// Spawn the controller after unpark without putting physical balloon
+/// deflation on the run-start critical path.
+///
+/// The task observes exact target-zero convergence in the background before
+/// entering normal reactive policy, so contradictory statistics from the
+/// in-flight lifecycle transition cannot reverse the deflation request.
+pub(crate) fn spawn_after_unpark_deflation(
+    client: ApiClient,
+    memory_mb: u32,
+    state_rx: watch::Receiver<SandboxState>,
+    log_id: String,
+) -> ControllerHandle {
+    ControllerHandle::spawn(
+        client,
+        memory_mb,
+        state_rx,
+        ControllerStartup::AwaitUnparkDeflation { log_id },
+    )
+}
+
+async fn run_loop(
+    client: ApiClient,
+    memory_mb: u32,
+    mut state_rx: watch::Receiver<SandboxState>,
+    startup: ControllerStartup,
+) {
     let max_inflate = memory_mb.saturating_sub(MIN_GUEST_MIB);
     if max_inflate == 0 {
         info!(
             memory_mb,
             MIN_GUEST_MIB, "balloon controller disabled: memory_mb <= MIN_GUEST_MIB"
         );
+        return;
+    }
+    if let ControllerStartup::AwaitUnparkDeflation { log_id } = startup
+        && !wait_for_unpark_deflation(&client, &mut state_rx, &log_id).await
+    {
         return;
     }
     let mut interval = tokio::time::interval(POLL_INTERVAL);
@@ -121,6 +175,53 @@ async fn run_loop(client: ApiClient, memory_mb: u32, mut state_rx: watch::Receiv
             _ = wait_for_crash_or_stop(&mut state_rx) => {
                 return;
             }
+        }
+    }
+}
+
+async fn wait_for_unpark_deflation(
+    client: &ApiClient,
+    state_rx: &mut watch::Receiver<SandboxState>,
+    log_id: &str,
+) -> bool {
+    let started_at = tokio::time::Instant::now();
+    let mut sample_count = 0_u32;
+    let mut fast_poll_intervals = UNPARK_DEFLATE_FAST_POLL_INTERVALS.into_iter();
+
+    loop {
+        let stats = tokio::select! {
+            stats = client.get_balloon_statistics() => stats,
+            () = wait_for_crash_or_stop(state_rx) => return false,
+        };
+        let poll_interval = match stats {
+            Ok(stats) => {
+                sample_count = sample_count.saturating_add(1);
+                if stats.target_mib == 0 && stats.actual_mib == 0 {
+                    info!(
+                        id = %log_id,
+                        target_mib = stats.target_mib,
+                        actual_mib = stats.actual_mib,
+                        elapsed_ms = started_at.elapsed().as_millis(),
+                        sample_count,
+                        "balloon deflation completed after unpark"
+                    );
+                    return true;
+                }
+                fast_poll_intervals.next().unwrap_or(POLL_INTERVAL)
+            }
+            Err(error) => {
+                warn!(
+                    id = %log_id,
+                    %error,
+                    "balloon deflation status unavailable after unpark"
+                );
+                POLL_INTERVAL
+            }
+        };
+
+        tokio::select! {
+            () = tokio::time::sleep(poll_interval) => {}
+            () = wait_for_crash_or_stop(state_rx) => return false,
         }
     }
 }
@@ -418,6 +519,61 @@ mod tests {
     #[tokio::test]
     async fn spawn_exits_when_state_crashed() {
         assert_spawn_exits_on_state(SandboxState::Crashed).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unpark_deflation_guard_retries_statistics_errors_without_patching() {
+        let mut api = MockFirecrackerApi::with_responses([
+            MockResponse::bad_request_fault("statistics unavailable"),
+            MockResponse::ok_body(
+                r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#,
+            ),
+        ]);
+        let client = ApiClient::new(api.socket_path()).unwrap();
+        let (_state_tx, mut state_rx) = watch::channel(SandboxState::Running);
+        let guard = tokio::spawn(async move {
+            wait_for_unpark_deflation(&client, &mut state_rx, "test-unpark-retry").await
+        });
+
+        let first_request = api.next_request().await;
+        assert_firecracker_request(&first_request, "GET", "/balloon/statistics");
+        tokio::task::yield_now().await;
+        tokio::time::advance(POLL_INTERVAL).await;
+
+        let second_request = api.next_request().await;
+        assert_firecracker_request(&second_request, "GET", "/balloon/statistics");
+        assert!(
+            guard.await.unwrap(),
+            "exact deflation should release the guard"
+        );
+        assert!(
+            api.drain_requests().is_empty(),
+            "the startup guard must never patch balloon policy"
+        );
+    }
+
+    #[tokio::test]
+    async fn controller_after_unpark_deflation_exits_when_sandbox_stops() {
+        let (mut api, _bind_tx) = MockFirecrackerApi::deferred_repeating(
+            MockResponse::internal_error_raw("unused response"),
+        );
+        let client = ApiClient::new(api.socket_path()).unwrap();
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        let controller = spawn_after_unpark_deflation(
+            client,
+            MIN_GUEST_MIB + 1,
+            state_rx,
+            "test-unpark-stop".into(),
+        );
+
+        tokio::task::yield_now().await;
+        state_tx.send(SandboxState::Stopped).unwrap();
+
+        await_controller_exit(controller, "post-unpark controller after stop").await;
+        assert!(
+            api.drain_requests().is_empty(),
+            "cancellation must not issue a policy request"
+        );
     }
 
     #[tokio::test]

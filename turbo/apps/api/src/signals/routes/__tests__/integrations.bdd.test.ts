@@ -5875,7 +5875,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     await expect(
       readConnectorOAuthAccountMutation(context, state),
     ).resolves.toMatchObject({
-      account_mutation: { intent: "single-account" },
+      account_mutation: { intent: "add" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
 

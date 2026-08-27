@@ -22,6 +22,21 @@ export const orgContract = c.router({
     },
     summary: "Get current org",
   },
+  createdCount: {
+    method: "GET",
+    path: "/api/org/created-count",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        createdOrganizationsCount: z.number().int().nonnegative(),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get current user's created organization count",
+  },
   update: {
     method: "PUT",
     path: "/api/org",

@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.176.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.5...runner-rs-v0.176.6) (2026-08-27)
+
+
+### Bug Fixes
+
+* **runner:** await multipart upload cancellation ([#29863](https://github.com/vm0-ai/vm0/issues/29863)) ([29c46bb](https://github.com/vm0-ai/vm0/commit/29c46bb8fbac252a78f30399106a8c8372541789))
+
+
+### Performance Improvements
+
+* **python:** reuse bounded aws request classification ([#29868](https://github.com/vm0-ai/vm0/issues/29868)) ([325fe42](https://github.com/vm0-ai/vm0/commit/325fe42a89b9425afbb528f562a476f72d740e71))
+* **runner:** observe default seed baseline stability ([#29862](https://github.com/vm0-ai/vm0/issues/29862)) ([eca3635](https://github.com/vm0-ai/vm0/commit/eca36351ec7cf90aea1368f025bef26e1500714c))
+* **runner:** reuse workspace cache snapshot for heartbeats ([#29864](https://github.com/vm0-ai/vm0/issues/29864)) ([40f5b99](https://github.com/vm0-ai/vm0/commit/40f5b99ac7c2f1651531f9c8769d4e6db9fd2d82))
+
+## [0.176.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.4...runner-rs-v0.176.5) (2026-08-27)
+
+
+### Documentation
+
+* **runner:** document firewall auth cache ownership generations ([#29853](https://github.com/vm0-ai/vm0/issues/29853)) ([5f21b13](https://github.com/vm0-ai/vm0/commit/5f21b13adf3b11f9d119007d13c4fcb1eff835b9))
+
+## [0.176.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.3...runner-rs-v0.176.4) (2026-08-27)
+
+## [0.176.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.2...runner-rs-v0.176.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* **python:** reject incomplete zstd capture bodies ([#29713](https://github.com/vm0-ai/vm0/issues/29713)) ([afceba9](https://github.com/vm0-ai/vm0/commit/afceba9e79c878e7492eb4fff38934e5b75019f1))
+* **runner:** preserve records on inconclusive procfs reads ([#29760](https://github.com/vm0-ai/vm0/issues/29760)) ([9801832](https://github.com/vm0-ai/vm0/commit/9801832251802aa48b56408f0c2626566a6c0d55))
+
+
+### Documentation
+
+* **mitm-addon:** document auth.base worker shutdown contract ([#29712](https://github.com/vm0-ai/vm0/issues/29712)) ([f39c657](https://github.com/vm0-ai/vm0/commit/f39c6577d222c273bb49685bb5405f89b896a612))
+* **mitm-addon:** document Chat Completions benchmark usage ([#29755](https://github.com/vm0-ai/vm0/issues/29755)) ([cdd7fd2](https://github.com/vm0-ai/vm0/commit/cdd7fd2f750e927cfc2fdd89ad9af9de15e2e015))
+* **python:** document shared model json inspection contract ([#29793](https://github.com/vm0-ai/vm0/issues/29793)) ([0bbf2b9](https://github.com/vm0-ai/vm0/commit/0bbf2b93720fb8ad5829bd2240b4ec5d63ad6d6a))
+
+
+### Refactoring
+
+* **runner:** decouple local identity from config name ([#29797](https://github.com/vm0-ai/vm0/issues/29797)) ([482c364](https://github.com/vm0-ai/vm0/commit/482c364db4b7c816dddad4de51bac72a196b5d05))
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
+
+### Performance Improvements
+
+* **python:** avoid repeated unicode hostname normalization ([#29715](https://github.com/vm0-ai/vm0/issues/29715)) ([05c6ef5](https://github.com/vm0-ai/vm0/commit/05c6ef506b4aeb65ea9f2200741d6ffa22ca079c))
+* **python:** cache normalized platform api destination ([#29780](https://github.com/vm0-ai/vm0/issues/29780)) ([f7c8bea](https://github.com/vm0-ai/vm0/commit/f7c8bea65b355f7e9d3f13123e8d2e416476b2ef))
+* **python:** retry only pending provider timing states ([#29795](https://github.com/vm0-ai/vm0/issues/29795)) ([9e1da45](https://github.com/vm0-ai/vm0/commit/9e1da455a5f9affbbde9f2ee1366dfcc9b16a18b))
+
 ## [0.176.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.1...runner-rs-v0.176.2) (2026-08-27)
 
 

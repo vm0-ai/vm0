@@ -41,12 +41,11 @@ function reportResolution(state: PreviewJobRefAliasState): void {
   logAliasResolutionInfo(log, PREVIEW_JOB_REF_ALIAS_RESOLUTION_EVENT, fields);
 }
 
-// The preview deployment action intentionally emits equal-dual aliases so old
-// API rollback targets keep the legacy input while current APIs exercise the
-// canonical reader. Cut the writer to canonical-only only after every eligible
-// API can read the canonical key; remove the legacy reader separately after
-// bounded evidence shows zero legacy-only or equal-dual resolutions through the
-// supported rollback window.
+// The repository-owned preview action now emits only OKOU_PREVIEW_JOB_REF.
+// This dual reader and value-free source telemetry remain for old
+// checkout/rerun visibility, active old-preview compatibility, and external
+// legacy input. Remove them only in a later #28914 cleanup after those sources
+// and the supported rollback window are proven drained.
 function resolveStripePreviewJobRef(): string | null {
   if (env("ENV") !== "preview") {
     return null;

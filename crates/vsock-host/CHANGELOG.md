@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.17.100](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.99...vsock-host-v0.17.100) (2026-08-27)
+
+## [0.17.99](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.98...vsock-host-v0.17.99) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
 ## [0.17.98](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.97...vsock-host-v0.17.98) (2026-08-26)
 
 

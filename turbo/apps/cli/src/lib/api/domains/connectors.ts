@@ -6,6 +6,7 @@ import type {
 import {
   CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
   connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
   type ConnectorAccountConnection,
   type ConnectorAccountInspectionResult,
   type ConnectorAccountSelection,
@@ -64,6 +65,11 @@ type ConnectorAccountConnectionsResult =
       readonly connections: readonly ConnectorAccountConnection[];
     }
   | { readonly state: "unavailable" };
+
+export type ConnectorManualGrantAccountMutation = Extract<
+  ConnectorAccountMutationIntent,
+  { intent: "add" | "reconnect" }
+>;
 
 export async function listConnectorAccountConnections(
   target: ConnectorAccountTarget,
@@ -248,6 +254,7 @@ export async function getConnector(
 export async function connectConnectorManualGrant(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
+  account: ConnectorManualGrantAccountMutation,
   values: Record<string, string>,
 ): Promise<Connector> {
   const config = await getClientConfig();
@@ -256,7 +263,7 @@ export async function connectConnectorManualGrant(
   const result = await client.connect({
     params: { connectorSlug },
     body: {
-      account: { intent: "single-account" },
+      account,
       authMethod,
       values,
     },

@@ -175,6 +175,10 @@ import {
 } from "../../signals/chat-page/chat-goal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import {
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
   openImageLightbox$ as openAttachmentImageLightbox$,
@@ -5564,20 +5568,37 @@ function ChatConnectorActionConnectModal() {
         (candidate.kind === "http" || mcpEnabled)
       );
     });
-    return connector ? (
+    const accountOptions = connector
+      ? defaultCustomConnectorAccountOptions(connector)
+      : null;
+    return connector && accountOptions ? (
       <CustomConnectorConnectDialog
         connector={connector}
         agentId={active.agentId}
+        accountOptions={accountOptions}
         onClose={close}
         onSuccess={onSuccess}
       />
     ) : null;
   }
 
+  const accountOptions = defaultBuiltinConnectorAccountOptions(
+    active.catalogItem,
+  );
+  if (!accountOptions) {
+    return null;
+  }
+  const reconnectAuthMethod =
+    accountOptions.account.intent === "reconnect"
+      ? active.catalogItem.connection?.authMethod
+      : undefined;
+
   return (
     <ConnectModal
       item={active.catalogItem}
       agentId={active.agentId}
+      accountOptions={accountOptions}
+      reconnectAuthMethod={reconnectAuthMethod}
       onClose={close}
       onSuccess={onSuccess}
     />

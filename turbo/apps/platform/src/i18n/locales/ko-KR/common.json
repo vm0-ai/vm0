@@ -1076,6 +1076,7 @@
         "secondFactorDescription": "이 로그인에는 이 페이지에서 지원하지 않는 추가 확인 단계가 필요합니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "secondFactorTitle": "추가 확인 필요",
         "selectOrganization": "{{organizationName}}(으)로 계속",
+        "signedInAs": "{{identifier}}(으)로 로그인됨",
         "unsupportedDescription": "계정에서 이 페이지가 지원하지 않는 인증 단계를 반환했습니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "unsupportedTitle": "로그인 단계를 사용할 수 없음"
       },
@@ -1084,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "현재 로그인 사용",
         "addAccount": "계정 추가",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",
@@ -1114,6 +1114,7 @@
         "hidePassword": "비밀번호 숨기기",
         "identifierLabel": "이메일 주소 혹은 아이디",
         "identifierPlaceholder": "이메일 주소 또는 사용자 이름을 입력하세요",
+        "lastUsed": "최근 사용",
         "methodsHelpPrompt": "이 방법들을 사용할 수 없나요?",
         "newPasswordLabel": "새 비밀번호",
         "newPasswordSubtitle": "보안을 위해 비밀번호를 재설정해야 해요.",
@@ -1151,7 +1152,6 @@
         "verify": "확인하기"
       },
       "signUp": {
-        "action": "현재 회원가입 사용",
         "alreadyHaveAccount": "계정이 있으신가요?",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",
@@ -5349,6 +5349,7 @@
       "viewSource": "다이어그램 소스"
     },
     "notFound": {
+      "action": "홈으로 돌아가기",
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"
     }

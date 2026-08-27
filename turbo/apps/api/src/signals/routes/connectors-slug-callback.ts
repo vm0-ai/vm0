@@ -596,6 +596,9 @@ const completeOAuthCallback$ = command(
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        matchExistingExternalIdentity:
+          args.resolvedMethod.connectorSlug === "github" &&
+          args.account.intent === "add",
         insertConnectionId: args.insertConnectionId,
       },
       signal,

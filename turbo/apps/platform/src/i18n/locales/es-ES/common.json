@@ -1096,6 +1096,7 @@
         "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "secondFactorTitle": "Se requiere verificación adicional",
         "selectOrganization": "Continuar con {{organizationName}}",
+        "signedInAs": "Sesión iniciada como {{identifier}}",
         "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "unsupportedTitle": "Paso de inicio de sesión no disponible"
       },
@@ -1104,7 +1105,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar el inicio de sesión actual",
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -1134,6 +1134,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
         "newPasswordSubtitle": "Por razones de seguridad, se requiere restablecer su contraseña.",
@@ -1171,7 +1172,6 @@
         "verify": "Verificar"
       },
       "signUp": {
-        "action": "Usar el registro actual",
         "alreadyHaveAccount": "¿Ya tienes una cuenta?",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -5416,6 +5416,7 @@
       "viewSource": "Código del diagrama"
     },
     "notFound": {
+      "action": "Volver al inicio",
       "description": "La página que buscas no existe.",
       "title": "Página no encontrada"
     }

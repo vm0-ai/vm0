@@ -10,6 +10,7 @@ import {
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
+import { setupPage } from "../../__tests__/page-helper.ts";
 import {
   dateFromIso,
   isoFromNowMs,
@@ -196,12 +197,14 @@ describe("signup attribution Google Ads conversion", () => {
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
     const gtag = installGtagMock();
     let recordedAttribution: AdAttributionMetadata | undefined;
+    let attributionRequests = 0;
     mockSignedInUser();
     storePaidSignupAttribution();
     setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
     context.mocks.api(
       acquisitionAttributionContract.recordSignup,
       ({ body, respond }) => {
+        attributionRequests += 1;
         recordedAttribution = body.attribution;
         return respond(200, { recorded: true });
       },
@@ -241,7 +244,43 @@ describe("signup attribution Google Ads conversion", () => {
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(attributionRequests).toBe(1);
     expect(gtag).toHaveBeenCalledTimes(2);
+  });
+
+  it("completes route setup after a final attribution failure and allows a later retry", async () => {
+    let attributionRequests = 0;
+    storePaidSignupAttribution();
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ respond }) => {
+        attributionRequests += 1;
+        if (attributionRequests <= 2) {
+          return respond(401, {
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Not authenticated",
+            },
+          });
+        }
+        return respond(200, { recorded: true });
+      },
+    );
+
+    await expect(
+      setupPage({
+        context,
+        path: "/_/skeleton",
+        withoutRender: true,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(attributionRequests).toBe(2);
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    expect(attributionRequests).toBe(3);
   });
 
   it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {
