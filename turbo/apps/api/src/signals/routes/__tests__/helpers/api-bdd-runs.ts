@@ -239,7 +239,6 @@ function runnerHeartbeatBody(
 ): RunnerHeartbeatBody {
   return {
     runnerId: args.runnerId ?? randomUUID(),
-    runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
     snapshotGeneration: args.snapshotGeneration ?? 1,
     snapshotSequence: args.snapshotSequence ?? 1,
