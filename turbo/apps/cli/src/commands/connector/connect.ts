@@ -1,8 +1,14 @@
-import { Command } from "commander";
+import {
+  connectorAccountDisplayNameSchema,
+  connectorAccountSelectionSchema,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import { Command, InvalidArgumentError, Option } from "commander";
 import chalk from "chalk";
 import {
   connectConnectorManualGrant,
+  getConnector,
   listConnectorCatalogStatus,
+  type ConnectorManualGrantAccountMutation,
 } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
@@ -12,13 +18,57 @@ import {
 } from "./public-catalog";
 
 interface ConnectOptions {
+  readonly accountName?: string;
+  readonly add?: boolean;
   readonly authMethod?: string;
-  readonly value?: readonly string[];
   readonly json?: boolean;
+  readonly reconnect?: string;
+  readonly value?: readonly string[];
 }
 
 function collectValue(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function parseAccountName(value: string): string {
+  const result = connectorAccountDisplayNameSchema.safeParse(value);
+  if (result.success) {
+    return result.data;
+  }
+  throw new InvalidArgumentError(
+    result.error.issues[0]?.message ?? "account name is invalid",
+  );
+}
+
+function parseReconnectConnectionId(value: string): string {
+  const result =
+    connectorAccountSelectionSchema.shape.connectionId.safeParse(value);
+  if (result.success) {
+    return result.data;
+  }
+  throw new InvalidArgumentError(
+    result.error.issues[0]?.message ?? "connection ID is invalid",
+  );
+}
+
+function resolveAccountMutation(
+  options: ConnectOptions,
+): ConnectorManualGrantAccountMutation | null {
+  if (options.accountName !== undefined && !options.add) {
+    throw new Error("--account-name requires --add");
+  }
+  if (options.add) {
+    return {
+      intent: "add",
+      ...(options.accountName === undefined
+        ? {}
+        : { displayName: options.accountName }),
+    };
+  }
+  if (options.reconnect !== undefined) {
+    return { intent: "reconnect", connectionId: options.reconnect };
+  }
+  return null;
 }
 
 function parseConnectorValues(rawValues: readonly string[] | undefined) {
@@ -56,6 +106,24 @@ export const connectCommand = new Command()
   .name("connect")
   .description("Connect a connector with manual grant values")
   .argument("<slug>", "Connector slug (e.g., zendesk)")
+  .addOption(
+    new Option("--add", "Create a new connector account").conflicts(
+      "reconnect",
+    ),
+  )
+  .addOption(
+    new Option(
+      "--reconnect <connection-id>",
+      "Reconnect one exact account ID from connector account list",
+    )
+      .conflicts("add")
+      .argParser(parseReconnectConnectionId),
+  )
+  .addOption(
+    new Option("--account-name <name>", "Name the account created with --add")
+      .conflicts("reconnect")
+      .argParser(parseAccountName),
+  )
   .option("--auth-method <method>", "Connector auth method to use")
   .option(
     "--value <name=value>",
@@ -64,8 +132,20 @@ export const connectCommand = new Command()
     [],
   )
   .option("--json", "Print the connector response as JSON")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  okou connector connect openai --value apiKey=...
+  okou connector connect openai --add --account-name Work --value apiKey=...
+  okou connector connect openai --reconnect <connection-id> --value apiKey=...
+
+Find connection IDs:
+  okou connector account list openai`,
+  )
   .action(
     withErrorHandler(async (connectorSlug: string, options: ConnectOptions) => {
+      const requestedAccount = resolveAccountMutation(options);
       const values = parseConnectorValues(options.value);
       const catalog = await listConnectorCatalogStatus();
       const connectorMetadata = findConnectorStatusItem(
@@ -84,9 +164,21 @@ export const connectCommand = new Command()
         connectorMetadata,
         options.authMethod,
       );
+      const existingConnector = requestedAccount
+        ? null
+        : await getConnector(connectorMetadata.slug);
+      const account: ConnectorManualGrantAccountMutation =
+        requestedAccount ??
+        (existingConnector
+          ? {
+              intent: "reconnect",
+              connectionId: existingConnector.id,
+            }
+          : { intent: "add" });
       const connector = await connectConnectorManualGrant(
         connectorMetadata.slug,
         authMethod.id,
+        account,
         values,
       );
 

@@ -126,10 +126,24 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("keeps account intent optional for installed CLI manual grants", () => {
+  it("accepts replacement and installed CLI manual grant requests", () => {
     expect(
       connectorManualGrantContract.connect.body.safeParse({
         authMethod: "api-token",
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        account: { intent: "add", displayName: "Work" },
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        account: { intent: "reconnect", connectionId },
         values: { apiKey: "test" },
       }).success,
     ).toBe(true);

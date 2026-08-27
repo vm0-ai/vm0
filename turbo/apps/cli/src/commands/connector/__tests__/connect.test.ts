@@ -19,9 +19,16 @@ import {
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
 
-function connectorResponse(connectorSlug: string, authMethod = "api-token") {
+const DEFAULT_CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
+const SIBLING_CONNECTION_ID = "22222222-2222-4222-8222-222222222222";
+
+function connectorResponse(
+  connectorSlug: string,
+  authMethod = "api-token",
+  id = "00000000-0000-4000-8000-000000000001",
+) {
   return {
-    id: "00000000-0000-4000-8000-000000000001",
+    id,
     slug: connectorSlug,
     authMethod,
     externalId: null,
@@ -47,6 +54,12 @@ describe("okou connector connect command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    connectCommand.setOptionValue("accountName", undefined);
+    connectCommand.setOptionValue("add", undefined);
+    connectCommand.setOptionValue("authMethod", undefined);
+    connectCommand.setOptionValue("json", undefined);
+    connectCommand.setOptionValue("reconnect", undefined);
+    connectCommand.setOptionValue("value", []);
   });
 
   afterEach(() => {
@@ -56,9 +69,17 @@ describe("okou connector connect command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("connects a connector with repeated value flags", async () => {
+  it("preserves first-connect syntax and sends explicit add", async () => {
     let receivedBody: unknown;
     server.use(
+      http.get("http://localhost:3000/api/connectors/:connectorSlug", () => {
+        return HttpResponse.json(
+          {
+            error: { message: "Connector not found", code: "NOT_FOUND" },
+          },
+          { status: 404 },
+        );
+      }),
       http.post(
         "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
@@ -83,7 +104,7 @@ describe("okou connector connect command", () => {
     ]);
 
     expect(receivedBody).toStrictEqual({
-      account: { intent: "single-account" },
+      account: { intent: "add" },
       authMethod: "api-token",
       values: {
         apiToken: "secret-token",
@@ -95,6 +116,94 @@ describe("okou connector connect command", () => {
     expect(output).toContain("Zendesk connected");
     expect(output).toContain("okou connector status zendesk");
     expect(output).not.toContain("secret-token");
+  });
+
+  it("preserves reconnect syntax and resolves the current default exactly", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.get(
+        "http://localhost:3000/api/connectors/:connectorSlug",
+        ({ params }) => {
+          return HttpResponse.json(
+            connectorResponse(
+              String(params.connectorSlug),
+              "api-token",
+              DEFAULT_CONNECTION_ID,
+            ),
+          );
+        },
+      ),
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        async ({ params, request }) => {
+          receivedBody = await request.json();
+          return HttpResponse.json(
+            connectorResponse(
+              String(params.connectorSlug),
+              "api-token",
+              DEFAULT_CONNECTION_ID,
+            ),
+          );
+        },
+      ),
+    );
+
+    await connectCommand.parseAsync([
+      "node",
+      "cli",
+      "openai",
+      "--value",
+      "apiKey=sk-updated",
+    ]);
+
+    expect(receivedBody).toStrictEqual({
+      account: {
+        intent: "reconnect",
+        connectionId: DEFAULT_CONNECTION_ID,
+      },
+      authMethod: "api-token",
+      values: { apiKey: "sk-updated" },
+    });
+  });
+
+  it("reconnects one explicitly selected sibling without resolving the default", async () => {
+    let defaultReadCount = 0;
+    let receivedBody: unknown;
+    server.use(
+      http.get("http://localhost:3000/api/connectors/:connectorSlug", () => {
+        defaultReadCount += 1;
+        return HttpResponse.json(connectorResponse("openai"));
+      }),
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        async ({ request }) => {
+          receivedBody = await request.json();
+          return HttpResponse.json(
+            connectorResponse("openai", "api-token", SIBLING_CONNECTION_ID),
+          );
+        },
+      ),
+    );
+
+    await connectCommand.parseAsync([
+      "node",
+      "cli",
+      "openai",
+      "--reconnect",
+      SIBLING_CONNECTION_ID,
+      "--value",
+      "apiKey=sk-sibling",
+    ]);
+
+    expect(defaultReadCount).toBe(0);
+    expect(receivedBody).toStrictEqual({
+      account: {
+        intent: "reconnect",
+        connectionId: SIBLING_CONNECTION_ID,
+      },
+      authMethod: "api-token",
+      values: { apiKey: "sk-sibling" },
+    });
   });
 
   it("connects with an explicit manual grant auth method", async () => {
@@ -115,6 +224,9 @@ describe("okou connector connect command", () => {
       "node",
       "cli",
       "openai",
+      "--add",
+      "--account-name",
+      " Work ",
       "--auth-method",
       "api-token",
       "--value",
@@ -122,7 +234,7 @@ describe("okou connector connect command", () => {
     ]);
 
     expect(receivedBody).toStrictEqual({
-      account: { intent: "single-account" },
+      account: { intent: "add", displayName: "Work" },
       authMethod: "api-token",
       values: {
         apiKey: "sk-test",
@@ -159,13 +271,14 @@ describe("okou connector connect command", () => {
       "node",
       "cli",
       connectorSlug,
+      "--add",
       "--value",
       "apiKey=secret-token",
     ]);
 
     expect(receivedType).toBe(connectorSlug);
     expect(receivedBody).toStrictEqual({
-      account: { intent: "single-account" },
+      account: { intent: "add" },
       authMethod,
       values: { apiKey: "secret-token" },
     });
@@ -187,6 +300,7 @@ describe("okou connector connect command", () => {
       "node",
       "cli",
       "openai",
+      "--add",
       "--value",
       "apiKey=sk-test",
       "--json",
@@ -201,7 +315,7 @@ describe("okou connector connect command", () => {
 
   it("fails with usage guidance when no values are provided", async () => {
     await expect(
-      connectCommand.parseAsync(["node", "cli", "openai"]),
+      connectCommand.parseAsync(["node", "cli", "openai", "--add"]),
     ).rejects.toThrow("process.exit called");
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
@@ -224,13 +338,105 @@ describe("okou connector connect command", () => {
     );
 
     await expect(
-      connectCommand.parseAsync(["node", "cli", "openai", "--value", "apiKey"]),
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--add",
+        "--value",
+        "apiKey",
+      ]),
     ).rejects.toThrow("process.exit called");
 
     expect(requestCalled).toBeFalsy();
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Invalid --value format");
     expect(errorOutput).toContain("Use --value NAME=VALUE");
+  });
+
+  it("rejects account names without an explicit add", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("openai"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--account-name",
+        "Work",
+        "--value",
+        "apiKey=sk-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "--account-name requires --add",
+    );
+  });
+
+  it("rejects conflicting add and reconnect choices", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("openai"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--add",
+        "--reconnect",
+        DEFAULT_CONNECTION_ID,
+        "--value",
+        "apiKey=sk-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
+  });
+
+  it("rejects malformed reconnect IDs before requests", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("openai"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--reconnect",
+        "not-a-uuid",
+        "--value",
+        "apiKey=sk-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
   });
 
   it("fails before the request when the selected auth method is not configured", async () => {
@@ -250,6 +456,7 @@ describe("okou connector connect command", () => {
         "node",
         "cli",
         "github",
+        "--add",
         "--auth-method",
         "api-token",
         "--value",
@@ -282,6 +489,7 @@ describe("okou connector connect command", () => {
         "node",
         "cli",
         "stripe",
+        "--add",
         "--auth-method",
         "oauth",
         "--value",
@@ -320,6 +528,7 @@ describe("okou connector connect command", () => {
         "node",
         "cli",
         "zendesk",
+        "--add",
         "--value",
         "apiToken=secret-token",
       ]),
@@ -353,6 +562,7 @@ describe("okou connector connect command", () => {
         "node",
         "cli",
         "zendesk",
+        "--add",
         "--value",
         "apiToken=secret-token",
       ]),
@@ -388,6 +598,7 @@ describe("okou connector connect command", () => {
         "node",
         "cli",
         "zendesk",
+        "--add",
         "--value",
         "apiToken=secret-token",
       ]),
@@ -398,6 +609,44 @@ describe("okou connector connect command", () => {
     expect(errorOutput).toContain(
       "409: Multiple connector accounts require an exact choice",
     );
+    expect(errorOutput).not.toContain("secret-token");
+  });
+
+  it("surfaces missing exact reconnects without retrying or printing secrets", async () => {
+    let requestCount = 0;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCount += 1;
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Connector account not found",
+                code: "NOT_FOUND",
+              },
+            },
+            { status: 404 },
+          );
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--reconnect",
+        SIBLING_CONNECTION_ID,
+        "--value",
+        "apiKey=secret-token",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCount).toBe(1);
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain("404: Connector account not found");
     expect(errorOutput).not.toContain("secret-token");
   });
 });
