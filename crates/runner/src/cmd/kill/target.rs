@@ -369,7 +369,6 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: dir.path().join("benchmark.yaml"),
                 base_dir: dir.path().join("benchmark-base"),
-                runner_name: Some("bench-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "benchmark".into(),
             },

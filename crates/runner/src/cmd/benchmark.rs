@@ -157,7 +157,6 @@ pub async fn run_benchmark(
         crate::live_runner_instances::LiveRunnerInstanceMetadata {
             config_path: registry_config_path,
             base_dir: base_dir_canonical,
-            runner_name: runner_config.name.clone(),
             runner_group: runner_config.group.clone(),
             subcommand: "benchmark".into(),
         },
