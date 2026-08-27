@@ -4,6 +4,7 @@ import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 
 const reloadOrg$ = state(0);
+const reloadCreatedOrganizationsCount$ = state(0);
 
 /**
  * Current user's default org.
@@ -21,6 +22,14 @@ export const org$ = computed(async (get) => {
   }
 
   return result.body;
+});
+
+export const createdOrganizationsCount$ = computed(async (get) => {
+  get(reloadCreatedOrganizationsCount$);
+  const createClient = get(apiClient$);
+  const client = createClient(orgContract);
+  const result = await accept(client.createdCount(), [200]);
+  return result.body.createdOrganizationsCount;
 });
 
 /**
@@ -45,6 +54,12 @@ export const isOrgAdmin$ = computed(async (get) => {
  */
 export const refreshOrg$ = command(({ set }) => {
   set(reloadOrg$, (x) => {
+    return x + 1;
+  });
+});
+
+export const refreshCreatedOrganizationsCount$ = command(({ set }) => {
+  set(reloadCreatedOrganizationsCount$, (x) => {
     return x + 1;
   });
 });

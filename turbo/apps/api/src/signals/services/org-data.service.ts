@@ -29,6 +29,7 @@ import {
 import {
   listAllOrganizationMemberships,
   listAllPendingOrganizationInvitations,
+  listAllUserOrganizationMemberships,
 } from "../external/clerk-organization-lists";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -189,6 +190,23 @@ interface OrgDetailArgs {
   readonly userId: string;
   readonly orgRole?: OrgRole;
 }
+
+export const createdOrganizationsCount$ = command(
+  async ({ get }, userId: string, signal: AbortSignal): Promise<number> => {
+    const client = get(clerk$);
+    const memberships = await listAllUserOrganizationMemberships(
+      client.users,
+      userId,
+      createClerkReadContext(),
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return memberships.filter((membership) => {
+      return membership.organization.createdBy === userId;
+    }).length;
+  },
+);
 
 export const orgDetail$ = command(
   async (

@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 
 import {
   click,
@@ -145,6 +146,9 @@ describe("zero org switcher", () => {
   });
 
   it("creates a new workspace from the org switcher menu", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 0 });
+    });
     context.mocks.data.org({
       id: "org_current",
       name: "Solo",
@@ -208,12 +212,15 @@ describe("zero org switcher", () => {
     });
   });
 
-  it("hides workspace creation after the user reaches the single-workspace limit", async () => {
+  it("hides workspace creation after reaching the limit while another workspace is active", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 1 });
+    });
     context.mocks.data.org({
       id: "org_current",
-      name: "Solo",
+      name: "Shared",
       role: "admin",
-      createdBy: "test-user-123",
+      createdBy: "other-user-456",
     });
 
     detachedSetupPage({
@@ -229,15 +236,22 @@ describe("zero org switcher", () => {
       org: {
         activeOrg: {
           id: "org_current",
-          name: "Solo",
-          slug: "solo",
+          name: "Shared",
+          slug: "shared",
         },
         memberships: [
           {
             id: "membership_current",
             organization: {
               id: "org_current",
-              name: "Solo",
+              name: "Shared",
+            },
+          },
+          {
+            id: "membership_owned",
+            organization: {
+              id: "org_owned",
+              name: "Owned",
             },
           },
         ],
@@ -245,7 +259,7 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      const label = screen.getByText("Solo");
+      const label = screen.getByText("Shared");
       const trigger = label.closest("button");
       if (!trigger) {
         throw new Error("Org switcher trigger not found");

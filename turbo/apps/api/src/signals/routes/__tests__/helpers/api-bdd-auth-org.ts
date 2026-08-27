@@ -828,6 +828,17 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async readCreatedOrganizationsCount(actor: ApiTestUser): Promise<number> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        orgContract,
+      );
+      const response = await accept(
+        client.createdCount({ headers: authenticate(actor) }),
+        [200],
+      );
+      return response.body.createdOrganizationsCount;
+    },
+
     async requestReadOrg(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
