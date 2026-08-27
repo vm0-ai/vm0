@@ -44,6 +44,7 @@ describe("chatEvents schema", () => {
       "revokes_event_id",
       "event_type",
       "payload",
+      "required_official_workflow_ids",
       "context_type",
       "context_id",
       "run_event_sequence_number",
@@ -53,6 +54,8 @@ describe("chatEvents schema", () => {
     ]);
     expect(chatEvents.payload.notNull).toBeFalsy();
     expect(chatEvents.payload.hasDefault).toBeFalsy();
+    expect(chatEvents.requiredOfficialWorkflowIds.notNull).toBeFalsy();
+    expect(chatEvents.requiredOfficialWorkflowIds.hasDefault).toBeFalsy();
     expect(
       config.indexes
         .map((index) => {
@@ -80,12 +83,30 @@ describe("chatEvents schema", () => {
       expect.arrayContaining([
         "chat_events_input_user_message_payload_check",
         "chat_events_input_payload_content_check",
+        "chat_events_official_workflow_queue_claim_check",
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
         "chat_events_goal_marker_payload_check",
         "chat_events_output_tool_payload_check",
       ]),
     );
+    const officialWorkflowQueueClaimCheck = config.checks.find((check) => {
+      return check.name === "chat_events_official_workflow_queue_claim_check";
+    });
+    expect(officialWorkflowQueueClaimCheck).toBeDefined();
+    if (!officialWorkflowQueueClaimCheck) {
+      throw new Error("Missing Official Workflow queue claim check");
+    }
+    const officialWorkflowQueueClaimSql = new PgDialect().sqlToQuery(
+      officialWorkflowQueueClaimCheck.value,
+    ).sql;
+    expect(officialWorkflowQueueClaimSql).toContain(
+      '"chat_events"."required_official_workflow_ids" IS NULL',
+    );
+    expect(officialWorkflowQueueClaimSql).toContain(
+      '"chat_events"."event_type" = \'input.prompt\'',
+    );
+    expect(officialWorkflowQueueClaimSql).toContain("cardinality");
     expect(checkNames).not.toEqual(
       expect.arrayContaining([
         "chat_events_input_user_message_check",

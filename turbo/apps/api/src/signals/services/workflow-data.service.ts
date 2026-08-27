@@ -589,6 +589,7 @@ export function workflowList(args: {
 export interface RunWorkflowRef {
   readonly name: string;
   readonly workflowId: string;
+  readonly officialDefinitionName: string | null;
 }
 
 export interface RunWorkflowSourceRow {
@@ -596,6 +597,7 @@ export interface RunWorkflowSourceRow {
   readonly name: string;
   readonly visibility: "public" | "private";
   readonly ownerUserId: string;
+  readonly officialDefinitionName: string | null;
   readonly createdAt: Date;
 }
 
@@ -620,7 +622,11 @@ export function workflowsForRunFromRows(
   const bySlug = new Map<string, RunWorkflowRef>();
   for (const row of prioritizedRows) {
     if (!bySlug.has(row.name)) {
-      bySlug.set(row.name, { name: row.name, workflowId: row.id });
+      bySlug.set(row.name, {
+        name: row.name,
+        workflowId: row.id,
+        officialDefinitionName: row.officialDefinitionName,
+      });
     }
   }
   return [...bySlug.values()];

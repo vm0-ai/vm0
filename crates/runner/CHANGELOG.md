@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.177.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.0...runner-rs-v0.177.1) (2026-08-27)
+
+
+### Documentation
+
+* **runner:** clarify storage cache GC accounting ([#29904](https://github.com/vm0-ai/vm0/issues/29904)) ([32b1012](https://github.com/vm0-ai/vm0/commit/32b10126b087b293d13f4afdba04d93fb5e66564))
+
+
+### Refactoring
+
+* **runner:** remove legacy config name contract ([#29893](https://github.com/vm0-ai/vm0/issues/29893)) ([eace6a3](https://github.com/vm0-ai/vm0/commit/eace6a3e439043f31c35dd4f48b85891107c423c))
+* **runtime:** cut guest runtime writers to canonical alias ([#29913](https://github.com/vm0-ai/vm0/issues/29913)) ([9a84d60](https://github.com/vm0-ai/vm0/commit/9a84d60ec8d14061f9f17d57e5fda48988b62753)), closes [#29909](https://github.com/vm0-ai/vm0/issues/29909) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **rust:** make shared jsonl cli state backend-neutral ([#29895](https://github.com/vm0-ai/vm0/issues/29895)) ([0e0bc69](https://github.com/vm0-ai/vm0/commit/0e0bc69214f2717f37aa27064c1a1f5a1c8ae311))
+
+
+### Performance Improvements
+
+* **runner:** bound doctor service discovery ([#29902](https://github.com/vm0-ai/vm0/issues/29902)) ([864931b](https://github.com/vm0-ai/vm0/commit/864931b67e3eda88440674c503acedf89d1194bf))
+
 ## [0.177.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.6...runner-rs-v0.177.0) (2026-08-27)
 
 

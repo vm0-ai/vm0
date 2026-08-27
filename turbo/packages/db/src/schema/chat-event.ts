@@ -77,6 +77,14 @@ export const chatEvents = pgTable(
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     payload: jsonb("payload").$type<ChatEventPayload>(),
     /**
+     * Server-owned authority for an Official Workflow prompt awaiting a Run.
+     * Keep it outside the strict public payload so an older API can continue
+     * reading and archiving the immutable event during a rolling deployment.
+     */
+    requiredOfficialWorkflowIds: uuid("required_official_workflow_ids")
+      .array()
+      .$type<readonly string[]>(),
+    /**
      * Input source discriminator and optional polymorphic context pointer.
      *
      * `web` identifies a source without a context row; current rows use reserved
@@ -231,6 +239,13 @@ export const chatEvents = pgTable(
         sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
           OR ${table.payload} IS NULL
           OR NOT (${table.payload} ? 'content')`,
+      ),
+      check(
+        "chat_events_official_workflow_queue_claim_check",
+        sql`${table.requiredOfficialWorkflowIds} IS NULL OR (
+          ${table.eventType} = 'input.prompt'
+          AND cardinality(${table.requiredOfficialWorkflowIds}) > 0
+        )`,
       ),
       check(
         "chat_events_goal_open_payload_check",

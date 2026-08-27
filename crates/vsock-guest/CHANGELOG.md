@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.116](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.115...vsock-guest-v0.19.116) (2026-08-27)
+
+
+### Refactoring
+
+* **runtime:** cut guest runtime writers to canonical alias ([#29913](https://github.com/vm0-ai/vm0/issues/29913)) ([9a84d60](https://github.com/vm0-ai/vm0/commit/9a84d60ec8d14061f9f17d57e5fda48988b62753)), closes [#29909](https://github.com/vm0-ai/vm0/issues/29909) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
 ## [0.19.115](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.114...vsock-guest-v0.19.115) (2026-08-27)
 
 

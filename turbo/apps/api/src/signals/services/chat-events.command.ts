@@ -92,7 +92,10 @@ import {
   type NewChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { webChatPublicBrandContextId } from "./web-chat-public-brand-context.service";
+import {
+  officialWorkflowQueueContextId,
+  webChatPublicBrandContextId,
+} from "./web-chat-public-brand-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
@@ -249,6 +252,7 @@ interface NormalSendArgs {
   readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
   readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
 }
 
 interface PreparedNormalSend {
@@ -1713,6 +1717,7 @@ interface AppendUnassociatedUserMessageParams {
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly publicBrand: PublicBrand;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
 }
 
 async function resolveExistingUnassociatedClientEventId(
@@ -1790,26 +1795,49 @@ async function appendUnassociatedUserMessageTransaction(
 
   const explicitId = params.clientEventId ?? undefined;
   const fileMetadata = params.attachFileMetadata;
+  if (params.requiredOfficialWorkflowIds?.length === 0) {
+    throw new Error("Official Workflow source claim cannot be empty");
+  }
+  if (
+    params.requiredOfficialWorkflowIds !== undefined &&
+    params.triggerSource === "agent" &&
+    params.agentRunSource === null
+  ) {
+    throw new Error("Official agent queue source is missing its source Run");
+  }
   const event: NewChatEvent = {
     ...(explicitId ? { id: explicitId } : {}),
     chatThreadId: params.threadId,
     eventType: "input.prompt",
     userMessage: params.userMessage,
     runId: null,
+    ...(params.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds: params.requiredOfficialWorkflowIds,
+        }),
     ...(params.triggerSource === "web"
       ? {
           contextType: "web",
-          contextId: webChatPublicBrandContextId(params.publicBrand),
+          contextId:
+            params.requiredOfficialWorkflowIds === undefined
+              ? webChatPublicBrandContextId(params.publicBrand)
+              : officialWorkflowQueueContextId(params.publicBrand),
         }
       : {}),
     ...(params.triggerSource === "agent" && params.agentRunSource
-      ? {
-          agentRunContext: {
-            sourceRunId: params.agentRunSource.runId,
-            sourceChatThreadId: params.agentRunSource.threadId,
-            sourceAgentId: params.agentRunSource.agentId,
-          },
-        }
+      ? params.requiredOfficialWorkflowIds === undefined
+        ? {
+            agentRunContext: {
+              sourceRunId: params.agentRunSource.runId,
+              sourceChatThreadId: params.agentRunSource.threadId,
+              sourceAgentId: params.agentRunSource.agentId,
+            },
+          }
+        : {
+            contextType: "agent_run",
+            contextId: officialWorkflowQueueContextId(params.publicBrand),
+          }
       : {}),
   };
   const inserted = await measureApiDispatchTiming(
@@ -2785,6 +2813,7 @@ async function queueUnassociatedNormalEvent(params: {
   readonly touchThreadSort: boolean;
   readonly orgId: string;
   readonly publicBrand: PublicBrand;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
 }): Promise<{
   readonly response:
     | CreatedChatEventResponse
@@ -2808,6 +2837,11 @@ async function queueUnassociatedNormalEvent(params: {
     triggerSource: params.prepared.triggerSource,
     agentRunSource: params.prepared.agentRunSource,
     publicBrand: params.publicBrand,
+    ...(params.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds: params.requiredOfficialWorkflowIds,
+        }),
   });
   if (resolution.kind === "queued" && resolution.inserted) {
     await publishThreadListChanged(params.userId);
@@ -3261,6 +3295,14 @@ function cliAgentTypeForRun(prepared: PreparedNormalSend) {
     : prepared.runConfiguration.providerAdmission.cliAgentType;
 }
 
+function requiredOfficialWorkflowRunArgs(
+  workflowIds: readonly string[] | undefined,
+) {
+  return workflowIds === undefined
+    ? {}
+    : { requiredOfficialWorkflowIds: workflowIds };
+}
+
 function buildCreateAgentRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -3348,6 +3390,7 @@ function buildCreateAgentRunArgs(params: {
     ...(args.agentRunPreCreateSource
       ? { agentRunPreCreateSource: args.agentRunPreCreateSource }
       : {}),
+    ...requiredOfficialWorkflowRunArgs(args.requiredOfficialWorkflowIds),
   };
 }
 
@@ -3695,6 +3738,11 @@ const sendQueueFirstNormalEvent$ = command(
           ),
           orgId: args.orgId,
           publicBrand: args.publicBrand,
+          ...(args.requiredOfficialWorkflowIds === undefined
+            ? {}
+            : {
+                requiredOfficialWorkflowIds: args.requiredOfficialWorkflowIds,
+              }),
         });
       },
     );

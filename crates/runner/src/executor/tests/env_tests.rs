@@ -453,11 +453,11 @@ fn build_env_json_required_keys() {
         "7200"
     );
     assert_eq!(
-        env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(!env.contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV));
+    assert!(!env.contains_key(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV));
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
@@ -796,14 +796,11 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
     );
     assert_eq!(
         bootstrap_env
-            .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(
-        !bootstrap_env
-            .contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-    );
+    assert!(!bootstrap_env.contains_key(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV));
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.504.1](https://github.com/vm0-ai/vm0/compare/api-v1.504.0...api-v1.504.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **api:** reject retired cli connector account intent ([#29905](https://github.com/vm0-ai/vm0/issues/29905)) ([5f1e9dd](https://github.com/vm0-ai/vm0/commit/5f1e9dd431dd393fd588812a10593bf2ad842ef8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.377.1
+    * @okouai/core bumped to 8.599.2
+    * @okouai/db bumped to 1.226.10
+
 ## [1.504.0](https://github.com/vm0-ai/vm0/compare/api-v1.503.0...api-v1.504.0) (2026-08-27)
 
 

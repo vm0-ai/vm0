@@ -1,5 +1,9 @@
 use std::thread;
 
+use guest_contracts::process_containment::{
+    CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+};
 use vsock_proto::{
     self, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy, ExecOutputPolicy,
     ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_EXEC_RESULT,
@@ -114,7 +118,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
     let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
     let command = format!(
-        "printf '%s' \"$$\" > '{}'; if [ \"${{VM0_PROCESS_CONTROL_ENDPOINT+x}}\" = x ]; then exit 42; fi; if [ \"${{OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}}\" = x ] || [ \"${{OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}}\" = x ]; then exit 43; fi; printf '%s' \"$OKOU_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
+        "printf '%s' \"$$\" > '{}'; if [ \"${{VM0_PROCESS_CONTROL_ENDPOINT+x}}\" = x ]; then exit 42; fi; if [ \"${{VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT-}}\" = stale-legacy-workload-endpoint ] || [ \"${{OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT-}}\" = stale-canonical-workload-endpoint ] || [ \"${{VM0_TOOL_CGROUP_PROCS_ENDPOINT-}}\" = stale-legacy-tool-endpoint ] || [ \"${{OKOU_TOOL_CGROUP_PROCS_ENDPOINT-}}\" = stale-canonical-tool-endpoint ]; then exit 43; fi; printf '%s' \"$OKOU_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
         pid_path.as_str()
     );
     let (handle, mut host_stream) = start_guest_connection();
@@ -132,6 +136,19 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
                 (
                     process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "stale-canonical-endpoint",
+                ),
+                (
+                    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+                    "stale-legacy-workload-endpoint",
+                ),
+                (
+                    CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                    "stale-canonical-workload-endpoint",
+                ),
+                (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
+                (
+                    CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                    "stale-canonical-tool-endpoint",
                 ),
             ],
             sudo: false,

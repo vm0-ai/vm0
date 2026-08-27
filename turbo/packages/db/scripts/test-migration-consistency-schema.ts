@@ -53,6 +53,7 @@ import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
+import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
@@ -4150,6 +4151,25 @@ async function addCurrentChatEventPayloadStorage(
     ALTER TABLE "chat_events"
     ADD COLUMN "payload" jsonb
   `);
+  await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+}
+
+async function addCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "required_official_workflow_ids" uuid[]
+  `);
+}
+
+async function removeCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "required_official_workflow_ids"
+  `);
 }
 
 async function addCurrentChatEventAdditiveStorage(
@@ -7605,6 +7625,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -7723,6 +7744,10 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         seqId: 10,
         threadId: fixture.threadId,
       });
+      // Migration 0910 intentionally asserts its historical exact column set.
+      // The private queue column arrived later, so remove the test-only current
+      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       await client.query(
         `
@@ -7750,6 +7775,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         client,
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
         `
@@ -7769,6 +7795,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "event_type",
         "id",
         "payload",
+        "required_official_workflow_ids",
         "revokes_event_id",
         "run_event_id",
         "run_event_sequence_number",
@@ -10924,6 +10951,7 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validatePermanentSlackPublicBrandState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -10947,6 +10975,7 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();

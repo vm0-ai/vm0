@@ -34,6 +34,7 @@ import type { z } from "zod";
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { now } from "../../lib/time";
+import { testOverride } from "../../lib/singleton";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -184,6 +185,7 @@ interface CreateAgentRunCommandArgs {
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly codexServiceTier?: CodexServiceTier;
   readonly agentRunMetadata?: AgentRunMetadata;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly agentRunModelPin?: AgentRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
@@ -202,6 +204,32 @@ interface CreateQueueFirstAgentRunCommandArgs extends Omit<
 type AnyCreateAgentRunCommandArgs =
   | CreateAgentRunCommandArgs
   | CreateQueueFirstAgentRunCommandArgs;
+
+export interface OfficialWorkflowBootstrapRequirement {
+  readonly workflowIds: readonly string[];
+  readonly queueFirstKind: QueueFirstRunAssociation["kind"] | null;
+  readonly workflowAutomationId: string | null;
+}
+
+type OfficialWorkflowBootstrapRequirementHook = (
+  requirement: OfficialWorkflowBootstrapRequirement,
+) => Promise<void>;
+
+const officialWorkflowBootstrapRequirementHook = testOverride<
+  OfficialWorkflowBootstrapRequirementHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setOfficialWorkflowBootstrapRequirementHookForTest(
+  hook: OfficialWorkflowBootstrapRequirementHook,
+): void {
+  officialWorkflowBootstrapRequirementHook.set(hook);
+}
+
+export function clearOfficialWorkflowBootstrapRequirementHookForTest(): void {
+  officialWorkflowBootstrapRequirementHook.clear();
+}
 
 function assertThreadBoundAgentRunHasQueueAssociation(
   args: AnyCreateAgentRunCommandArgs,
@@ -920,6 +948,7 @@ function buildZeroCreateAgentRunArgs(args: {
     enforceVm0Credits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
+    requiredOfficialWorkflowIds: command.requiredOfficialWorkflowIds,
     connectorScope: {
       allowedConnectorSlugs: args.allowedConnectorSlugs,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
@@ -1135,6 +1164,19 @@ const createAgentRunInternal$ = command(
 
     if (agent.visibility === "private" && agent.owner !== args.auth.userId) {
       return forbidden("Only the private agent owner can run this agent");
+    }
+
+    if (args.requiredOfficialWorkflowIds?.length) {
+      await officialWorkflowBootstrapRequirementHook.get()?.({
+        workflowIds: args.requiredOfficialWorkflowIds,
+        queueFirstKind:
+          "queueFirstAssociation" in args
+            ? args.queueFirstAssociation.kind
+            : null,
+        workflowAutomationId:
+          args.agentRunMetadata?.workflowAutomationId ?? null,
+      });
+      signal.throwIfAborted();
     }
 
     const {
