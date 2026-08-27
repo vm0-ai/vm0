@@ -97,9 +97,8 @@ function nextChatEventCursor(
   if (lastRow === undefined) {
     return cursor;
   }
-  // Old browser cache/new app and new app/old API fallback. Remove with
-  // #29362 after legacy caches rebuild, the V6 app floor is live, and the old
-  // API leaves rollback.
+  // V5/V6 cursor -> V7 worker and V7 worker -> V6 API fallback. Remove with
+  // #29362 after the V7 app floor, pinned-client drain, and API rollback gates.
   const projection =
     serverProjection ??
     ("projection" in cursor ? cursor.projection : undefined) ??
@@ -991,8 +990,8 @@ export class SharedDatabaseWorkerRuntime {
       );
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
-      // New app worker -> old API fallback. Remove with #29362 after the old
-      // API leaves rollback and the V6 app client-version floor is live.
+      // V7 App worker -> V6 API fallback. Remove with #29362 after the V6 API
+      // leaves serving/rollback and the V7 app client-version floor is live.
       loadNextPage =
         confirmColdStartTail ||
         (page.body.hasMore ?? pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT);
@@ -1066,8 +1065,8 @@ export class SharedDatabaseWorkerRuntime {
               const parsed: unknown = JSON.parse(line);
               return chatEventRowSchema.parse(parsed);
             });
-    // New app worker -> old API fallback. Remove with #29362 after the old API
-    // leaves rollback and the V6 app client-version floor is live.
+    // V7 App worker -> V6 API fallback. Remove with #29362 after the V6 API
+    // leaves serving/rollback and the V7 app client-version floor is live.
     return {
       rows,
       schemaVersion: versionedSnapshot.requestedVersion,

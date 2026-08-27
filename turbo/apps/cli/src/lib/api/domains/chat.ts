@@ -96,6 +96,10 @@ function isChatEventSchemaVersionAhead(response: {
   );
 }
 
+/**
+ * V7 pinned CLI -> V6 API rollback bridge. Remove with #29362 after the V6
+ * API leaves serving/rollback and V7 CLI contexts have drained.
+ */
 async function requestWithChatEventSchemaVersionFallback<
   T extends { readonly status: number; readonly body: unknown },
 >(

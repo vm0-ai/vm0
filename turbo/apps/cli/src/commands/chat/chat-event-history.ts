@@ -267,8 +267,8 @@ async function localHistoryState(args: {
       cursor = {
         lastEventId: row.id,
         lastSeqId: row.seqId,
-        // Old CLI cache -> new CLI fallback. Remove with #29362 after contexts
-        // created before the V6 package was selected have drained.
+        // V5/V6 CLI cache -> V7 CLI fallback. Remove with #29362 after contexts
+        // created before the V7 package was selected have drained.
         projection:
           ("projection" in cursor ? cursor.projection : undefined) ?? "full",
       };

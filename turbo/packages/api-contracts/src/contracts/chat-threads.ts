@@ -1859,8 +1859,8 @@ export const chatThreadEventsContract = c.router({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
         /**
-         * Old app/CLI -> new API fallback. Remove with #29362 after the V6 app
-         * floor is live and pre-V6 queued/claimed contexts have drained.
+         * V5/V6 app and CLI -> V7 API fallback. Remove with #29362 after the
+         * V7 app floor is live and V5/V6 queued or claimed contexts drain.
          */
         sinceProjection: chatEventSnapshotProjectionSchema.optional(),
         limit: z.coerce.number().min(1).max(50).default(50),

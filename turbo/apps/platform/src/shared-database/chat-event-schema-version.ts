@@ -41,7 +41,10 @@ function isSchemaVersionAhead(response: {
   );
 }
 
-/** Bounded V7 client -> V6 API rollback bridge. */
+/**
+ * V7 App -> V6 API rollback bridge. Remove with #29362 after the V6 API is no
+ * longer serving or retained for rollback.
+ */
 export async function requestWithChatEventSchemaVersionFallback<
   T extends { readonly status: number; readonly body: unknown },
 >(

@@ -427,6 +427,10 @@ function candidateCurrentSource(
   return resolved.source;
 }
 
+/**
+ * Persisted V5/V6 -> V7 backfill bridge. Remove with #29362 after canonical
+ * V7 coverage is stable, pending migrations stay at zero, and rollback closes.
+ */
 async function storedSnapshotSource(
   db: Db,
   candidate: SnapshotCandidate,
@@ -1564,6 +1568,10 @@ const collectR2SnapshotGarbage$ = command(
   },
 );
 
+/**
+ * Include V5/V6 physical coverage while V7 backfill converges. Remove the
+ * legacy joins with #29362 after V7 convergence and rollback/clients drain.
+ */
 async function loadSnapshotCandidates(
   db: Db,
   chatThreadIds: readonly string[] | null,

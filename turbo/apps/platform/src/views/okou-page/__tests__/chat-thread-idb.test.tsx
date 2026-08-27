@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -14,6 +15,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "../../../signals/external/chat-idb-schema.ts";
@@ -544,6 +546,13 @@ describe("okou chat thread IndexedDB fallback", () => {
         return runtimeDb.put(CHAT_EVENT_ROWS_STORE, row);
       }),
     );
+    await runtimeDb.put(CHAT_EVENT_CURSOR_STORE, {
+      threadId: THREAD_ID,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      lastEventId: cachedRows[1].id,
+      lastSeqId: cachedRows[1].seqId,
+      projection: "tool-redacted",
+    });
 
     const markReadStarted = context.mocks.deferred<void>();
     const releaseMarkRead = context.mocks.deferred<void>();

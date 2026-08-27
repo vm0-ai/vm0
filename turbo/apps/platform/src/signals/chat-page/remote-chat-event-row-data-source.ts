@@ -80,9 +80,8 @@ export const listRowsAfter$ = command(
       cursor,
       count: result.body.rows.length,
     });
-    // Old browser cache/new app and new app/old API fallback. Remove with
-    // #29362 after legacy caches rebuild, the V6 app floor is live, and the
-    // old API leaves rollback.
+    // V5/V6 cursor -> V7 App and V7 App -> V6 API fallback. Remove with #29362
+    // after the V7 app floor, pinned-client drain, and API rollback gates.
     const projection =
       result.body.projection ??
       ("projection" in cursor ? cursor.projection : undefined) ??
@@ -180,8 +179,8 @@ export const fetchChatEventSnapshotRows$ = command(
       count: rows.length,
       lastSeqId: download.body.lastSeqId,
     });
-    // New app -> old API fallback. Remove with #29362 after the old API leaves
-    // rollback and the V6 app client-version floor is live.
+    // V7 App -> V6 API fallback. Remove with #29362 after the V6 API leaves
+    // serving/rollback and the V7 app client-version floor is live.
     return {
       schemaVersion: versioned.requestedVersion,
       snapshot: {
