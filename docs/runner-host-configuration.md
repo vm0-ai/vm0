@@ -37,11 +37,12 @@ interpret `runner_name` as a hostname.
 Runner Axiom warning/error events similarly include optional
 `runner_hostname` and required `runner_version`. The rollout order is compatible
 API and nullable heartbeat storage, Runner producer cutover, then logical API
-receiver removal. Retain the nullable physical column until all serving and
-rollback API revisions that reference it have retired. Canary each transition
-and verify claim snapshots, telemetry/Axiom dimensions, distinct hostnames on
-two hosts running one version, and retained-version rollback. Remove any
-historical query fallback only after its bounded observation window expires.
+receiver removal, followed by physical state-column removal after pre-cutover
+serving API instances drained. The current schema no longer contains
+`runner_state.runner_name`. Canary each transition and verify claim snapshots,
+telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
+version. Remove any historical query fallback only after its bounded
+observation window expires.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
