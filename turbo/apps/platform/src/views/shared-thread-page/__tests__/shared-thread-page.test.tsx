@@ -77,11 +77,11 @@ describe("shared thread page", () => {
     ).toHaveLength(3);
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("button").find((button) => {
-        return button.getAttribute("aria-label") === "Share";
-      }),
-    ).toBeInTheDocument();
+    const shareButton = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Share";
+    });
+    expect(shareButton).toBeInTheDocument();
+    expect(shareButton?.parentElement).toHaveClass("gap-2");
     expect(
       screen.getByText("Make this conversation yours"),
     ).toBeInTheDocument();
