@@ -226,9 +226,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
-  WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
   type PresentationRunbookArchiveVersion,
-  type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
 import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import {
@@ -6283,17 +6281,6 @@ function storedConnectorRuntimeTargets(args: {
   ];
 }
 
-function websiteTemplateArchiveVersionForRun(
-  featureSwitchContext: FeatureSwitchContext,
-): WebsiteTemplateArchiveVersion {
-  return isFeatureEnabled(
-    FeatureSwitchKey.LatestWebsiteTemplates,
-    featureSwitchContext,
-  )
-    ? "latest"
-    : "previous";
-}
-
 function presentationRunbookArchiveVersionForRun(
   featureSwitchContext: FeatureSwitchContext,
 ): PresentationRunbookArchiveVersion {
@@ -6320,9 +6307,6 @@ function buildStoredPlatformEnvironment(args: {
     )
       ? "1"
       : "0",
-    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
-      args.featureSwitchContext,
-    ),
     [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
       presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
   };

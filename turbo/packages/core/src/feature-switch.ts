@@ -310,12 +310,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LatestWebsiteTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
-    enabled: true,
-  },
   [FeatureSwitchKey.LatestPresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
