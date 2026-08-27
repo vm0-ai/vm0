@@ -114,6 +114,41 @@ function executeMetadataEntrypoint(): void {
   executeEntrypointScript(window, document);
 }
 
+function executePreloadRecoveryEntrypoint(): () => void {
+  bindBootstrapStateToSignal();
+  const originalAddEventListener = window.addEventListener.bind(window);
+  let recoveryListener: EventListener | null = null;
+  const addEventListener = vi
+    .spyOn(window, "addEventListener")
+    .mockImplementation((type, listener, options) => {
+      originalAddEventListener(type, listener, options);
+      if (type === "vite:preloadError" && typeof listener === "function") {
+        recoveryListener = listener as EventListener;
+      }
+    });
+  const executeEntrypointScript = new Function(
+    "window",
+    `${getInlineScriptSource('"vite:preloadError"', "preload recovery")}
+//# sourceURL=platform-preload-recovery-entrypoint-test.js`,
+  ) as (windowObject: Window) => void;
+
+  executeEntrypointScript(window);
+  addEventListener.mockRestore();
+  if (recoveryListener === null) {
+    throw new Error("Preload recovery did not register its browser listener");
+  }
+  const registeredListener = recoveryListener;
+  return () => {
+    window.removeEventListener("vite:preloadError", registeredListener);
+  };
+}
+
+function preloadErrorEvent(): Event {
+  return Object.assign(new Event("vite:preloadError", { cancelable: true }), {
+    payload: new Error("Unable to preload a deployment asset"),
+  });
+}
+
 const context = testContext();
 
 function bindBootstrapStateToSignal(): void {
@@ -405,7 +440,44 @@ describe("bootstrap locale", () => {
       metadata: {
         title: "Zero — Tu compañero de IA de VM0",
       },
+      preloadRecovery: {
+        message: expect.stringContaining(
+          "Esta pestaña no pudo cargar parte de la aplicación",
+        ),
+      },
     });
+  });
+
+  it("keeps the bootstrapped page after localized preload recovery is cancelled", async () => {
+    context.mocks.browser.language("es");
+    const confirm = vi.fn<() => boolean>(() => {
+      return false;
+    });
+    vi.stubGlobal("confirm", confirm);
+    executeLocaleEntrypoint();
+    const removeRecovery = executePreloadRecoveryEntrypoint();
+    context.signal.addEventListener("abort", removeRecovery, { once: true });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    const firstError = preloadErrorEvent();
+    const repeatedError = preloadErrorEvent();
+    window.dispatchEvent(firstError);
+    window.dispatchEvent(repeatedError);
+
+    expect(firstError.defaultPrevented).toBeTruthy();
+    expect(repeatedError.defaultPrevented).toBeTruthy();
+    expect(document.documentElement.lang).toBe("es-ES");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Esta pestaña no pudo cargar parte de la aplicación",
+      ),
+    );
   });
 
   it("preserves edge metadata while applying the Okou browser brand", async () => {

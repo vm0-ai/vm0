@@ -3,11 +3,8 @@ use nix::fcntl::{Flock, FlockArg};
 use super::*;
 use crate::cmd::gc::test_support::test_home;
 
-fn test_version_service_unit_name(version: &str) -> String {
-    service::RunnerServiceUnit::from_suffix(version)
-        .unwrap()
-        .unit_name()
-        .to_string()
+fn test_version_service_unit(version: &str) -> service::RunnerServiceUnit {
+    service::RunnerServiceUnit::from_suffix(version).unwrap()
 }
 
 fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
@@ -256,8 +253,7 @@ async fn gc_versions_keeps_binary_config_and_lock_when_config_removal_fails() {
         "config removal failure must preserve the binary discovery anchor"
     );
     assert!(
-        home.service_lock(&test_version_service_unit_name(version))
-            .exists(),
+        test_version_service_unit(version).lock_path(&home).exists(),
         "partial cleanup must preserve its lifecycle lock"
     );
 }
@@ -268,7 +264,7 @@ async fn gc_versions_retries_config_only_cleanup_after_removal_failure() {
     let home = test_home(dir.path());
     let version = "v1.0.0";
     let version_config = home.runners_dir().join(version);
-    let service_lock = home.service_lock(&test_version_service_unit_name(version));
+    let service_lock = test_version_service_unit(version).lock_path(&home);
     std::fs::create_dir_all(&version_config).unwrap();
     age_version_past_gc_min_age(&home, version);
 
@@ -344,11 +340,11 @@ async fn gc_versions_skips_version_when_service_lock_is_held() {
     let bin_dir = home.bin_dir();
     let runners_dir = home.runners_dir();
     let version = "v1.0.0";
-    let unit = test_version_service_unit_name(version);
+    let unit = test_version_service_unit(version);
     std::fs::create_dir_all(bin_dir.join(version)).unwrap();
     std::fs::create_dir_all(runners_dir.join(version)).unwrap();
     age_version_past_gc_min_age(&home, version);
-    let _service_lock = lock::acquire(home.service_lock(&unit)).await.unwrap();
+    let _service_lock = lock::acquire(unit.lock_path(&home)).await.unwrap();
 
     let removed = gc_versions(&home, false, None, None).await.unwrap();
 
@@ -365,8 +361,8 @@ async fn gc_versions_dry_run() {
 
     std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
     age_version_past_gc_min_age(&home, "v1.0.0");
-    let unit = test_version_service_unit_name("v1.0.0");
-    let service_lock_path = home.service_lock(&unit);
+    let unit = test_version_service_unit("v1.0.0");
+    let service_lock_path = unit.lock_path(&home);
 
     let removed = gc_versions(&home, true, None, None).await.unwrap();
     assert_eq!(removed, ["v1.0.0"]);
@@ -404,8 +400,8 @@ async fn gc_versions_dry_run_preserves_existing_service_lock() {
 
     std::fs::create_dir_all(bin_dir.join(version)).unwrap();
     age_version_past_gc_min_age(&home, version);
-    let unit = test_version_service_unit_name(version);
-    let service_lock_path = home.service_lock(&unit);
+    let unit = test_version_service_unit(version);
+    let service_lock_path = unit.lock_path(&home);
     drop(lock::open_lock_file(&service_lock_path).unwrap());
 
     let removed = gc_versions(&home, true, None, None).await.unwrap();
@@ -424,12 +420,12 @@ async fn gc_versions_dry_run_skips_when_service_lock_is_held() {
     let bin_dir = home.bin_dir();
     let runners_dir = home.runners_dir();
     let version = "v1.0.0";
-    let unit = test_version_service_unit_name(version);
+    let unit = test_version_service_unit(version);
 
     std::fs::create_dir_all(bin_dir.join(version)).unwrap();
     std::fs::create_dir_all(runners_dir.join(version)).unwrap();
     age_version_past_gc_min_age(&home, version);
-    let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+    let lock_file = lock::open_lock_file(&unit.lock_path(&home)).unwrap();
     let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
 
     let removed = gc_versions(&home, true, None, None).await.unwrap();
@@ -453,13 +449,13 @@ async fn gc_versions_dry_run_skips_dangling_service_lock_symlink() {
     let bin_dir = home.bin_dir();
     let runners_dir = home.runners_dir();
     let version = "v1.0.0";
-    let unit = test_version_service_unit_name(version);
+    let unit = test_version_service_unit(version);
 
     std::fs::create_dir_all(bin_dir.join(version)).unwrap();
     std::fs::create_dir_all(runners_dir.join(version)).unwrap();
     age_version_past_gc_min_age(&home, version);
 
-    let service_lock_path = home.service_lock(&unit);
+    let service_lock_path = unit.lock_path(&home);
     std::fs::create_dir_all(home.locks_dir()).unwrap();
     std::os::unix::fs::symlink(dir.path().join("missing-lock-target"), &service_lock_path).unwrap();
 
@@ -654,8 +650,8 @@ async fn gc_versions_skips_when_service_lock_is_held() {
     std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
     age_version_past_gc_min_age(&home, "v1.0.0");
 
-    let unit = test_version_service_unit_name("v1.0.0");
-    let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+    let unit = test_version_service_unit("v1.0.0");
+    let lock_file = lock::open_lock_file(&unit.lock_path(&home)).unwrap();
     let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
 
     let removed = gc_versions(&home, false, None, None).await.unwrap();
@@ -680,8 +676,8 @@ async fn gc_versions_keeps_config_only_version_when_service_lock_is_held() {
     std::fs::create_dir_all(&version_config).unwrap();
     age_version_past_gc_min_age(&home, version);
 
-    let unit = test_version_service_unit_name(version);
-    let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+    let unit = test_version_service_unit(version);
+    let lock_file = lock::open_lock_file(&unit.lock_path(&home)).unwrap();
     let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
 
     let removed = gc_versions(&home, false, None, None).await.unwrap();
@@ -701,8 +697,8 @@ async fn gc_versions_removes_service_lock_after_version_removal() {
     std::fs::create_dir_all(bin_dir.join(version)).unwrap();
     std::fs::create_dir_all(runners_dir.join(version)).unwrap();
     age_version_past_gc_min_age(&home, version);
-    let unit = test_version_service_unit_name(version);
-    let service_lock_path = home.service_lock(&unit);
+    let unit = test_version_service_unit(version);
+    let service_lock_path = unit.lock_path(&home);
     drop(lock::open_lock_file(&service_lock_path).unwrap());
 
     let removed = gc_versions(&home, false, None, None).await.unwrap();
