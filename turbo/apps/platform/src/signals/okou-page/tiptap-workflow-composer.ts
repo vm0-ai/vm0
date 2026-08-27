@@ -27,7 +27,6 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { composerFlatFeedbackNoteEnabled$ } from "../external/feature-switch.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -569,103 +568,15 @@ function createFeedbackQuoteChip(): FeedbackQuoteChip {
   return { quoteDom, quoteText, removeButton };
 }
 
-function createFeedbackItemNodeView(
-  node: ProseMirrorNode,
-  removeFeedback: (id: number) => void,
-  localizedUi: Set<() => void>,
-): NodeView {
-  const dom = document.createElement("div");
-  dom.dataset.feedbackItem = "";
-
-  const { quoteDom, quoteText, removeButton } = createFeedbackQuoteChip();
-
-  const noteDom = document.createElement("div");
-  const placeholderDom = document.createElement("span");
-  placeholderDom.className =
-    "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
-    "leading-snug text-muted-foreground/40";
-  placeholderDom.setAttribute("aria-hidden", "true");
-  const contentDOM = document.createElement("div");
-  contentDOM.dataset.feedbackNote = "";
-  contentDOM.setAttribute("role", "textbox");
-  contentDOM.setAttribute("aria-multiline", "true");
-  noteDom.append(placeholderDom, contentDOM);
-  dom.append(quoteDom, noteDom);
-
-  let currentNode = node;
-  function localize(): void {
-    const removeLabel = i18n.t(($) => {
-      return $.chat.feedback.remove;
-    });
-    const placeholder = i18n.t(($) => {
-      return $.chat.feedback.placeholder;
-    });
-    removeButton.setAttribute("aria-label", removeLabel);
-    removeButton.title = removeLabel;
-    placeholderDom.textContent = placeholder;
-    contentDOM.setAttribute("aria-label", placeholder);
-  }
-  function render(nextNode: ProseMirrorNode): void {
-    const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-    // The top padding is breathing room for the dashed divider, so only the
-    // items that draw one get it. The first item keeps the editor's own pt-4.
-    dom.className = `flex flex-col gap-1.5 pb-1.5${
-      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
-    }`;
-    noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
-    placeholderDom.hidden = nodeText(nextNode).length > 0;
-    contentDOM.className =
-      "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
-      `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
-    quoteText.textContent = quote;
-  }
-  removeButton.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  removeButton.addEventListener("click", () => {
-    removeFeedback(feedbackItemNodeAttributes(currentNode).feedbackId);
-  });
-  localizedUi.add(localize);
-  localize();
-  render(currentNode);
-
-  return {
-    dom,
-    contentDOM,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type) {
-        return false;
-      }
-      currentNode = nextNode;
-      render(nextNode);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof globalThis.Node &&
-        quoteDom.contains(event.target)
-      );
-    },
-    ignoreMutation(mutation) {
-      return (
-        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
-      );
-    },
-    destroy() {
-      localizedUi.delete(localize);
-    },
-  };
-}
-
 /**
- * The flat quote block: the node view's dom IS the content element, so every
+ * The quote block's node view dom is the content element, so every
  * mutation anywhere in the block is visible to ProseMirror and its default
  * dirty-node redraw self-heals any damage the browser causes (#27787). The
  * quote chip and the placeholder are not part of this view at all — they are
  * a widget decoration, which ProseMirror renders non-editable, preserves
  * across redraws, and skips when re-parsing the DOM.
  */
-function createFlatFeedbackItemNodeView(
+function createFeedbackItemNodeView(
   node: ProseMirrorNode,
   localizedUi: Set<() => void>,
 ): NodeView {
@@ -740,7 +651,7 @@ function buildFeedbackItemChrome(
 
 // Rendered through ::before so an empty note never gains or loses real DOM
 // nodes: the placeholder text lives in an attribute and appears via CSS.
-const FLAT_PLACEHOLDER_PARAGRAPH_CLASS =
+const FEEDBACK_PLACEHOLDER_PARAGRAPH_CLASS =
   "before:pointer-events-none before:float-left before:h-0 " +
   "before:text-muted-foreground/40 before:content-[attr(data-placeholder)]";
 
@@ -786,7 +697,7 @@ function buildFeedbackChromeDecorations(
           childPosition + 1,
           childPosition + 1 + child.child(0).nodeSize,
           {
-            class: FLAT_PLACEHOLDER_PARAGRAPH_CLASS,
+            class: FEEDBACK_PLACEHOLDER_PARAGRAPH_CLASS,
             "data-placeholder": i18n.t(($) => {
               return $.chat.feedback.placeholder;
             }),
@@ -803,9 +714,6 @@ function createFeedbackChromePlugin(runtime: WorkflowComposerRuntime): Plugin {
     key: new PluginKey("feedbackItemChrome"),
     props: {
       decorations(state) {
-        if (!runtime.flatFeedbackNote) {
-          return DecorationSet.empty;
-        }
         return buildFeedbackChromeDecorations(state.doc, runtime);
       },
     },
@@ -1668,8 +1576,6 @@ interface WorkflowComposerRuntime {
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
-  /** Resolved ComposerFlatFeedbackNote switch, set while mounted. */
-  flatFeedbackNote: boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1835,16 +1741,7 @@ function createFeedbackItemNode(
     },
     addNodeView() {
       return ({ node }) => {
-        if (runtime.flatFeedbackNote) {
-          return createFlatFeedbackItemNodeView(node, runtime.localizedUi);
-        }
-        return createFeedbackItemNodeView(
-          node,
-          (id) => {
-            runtime.removeFeedback(id);
-          },
-          runtime.localizedUi,
-        );
+        return createFeedbackItemNodeView(node, runtime.localizedUi);
       };
     },
     addProseMirrorPlugins() {
@@ -2015,7 +1912,6 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.blur = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
-  runtime.flatFeedbackNote = false;
 }
 
 function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
@@ -2232,7 +2128,6 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
-      runtime.flatFeedbackNote = get(composerFlatFeedbackNoteEnabled$);
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2643,7 +2538,6 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
-    flatFeedbackNote: false,
   };
 }
 
