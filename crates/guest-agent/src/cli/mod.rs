@@ -84,8 +84,6 @@ const AGENT_LOG_BUFFER_BYTES: usize = 8 * 1024;
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CODEX_SERVICE_TIER_CANONICAL_ENV: &str = "OKOU_CODEX_SERVICE_TIER";
-const CODEX_SERVICE_TIER_LEGACY_ENV: &str = "VM0_CODEX_SERVICE_TIER";
-const CODEX_SERVICE_TIER_RESOLUTION_EVENT: &str = "codex_service_tier_environment_resolution";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
@@ -99,23 +97,6 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CodexServiceTierSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl CodexServiceTierSource {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical_only",
-            Self::LegacyOnly => "legacy_only",
-            Self::Dual => "dual",
-        }
-    }
-}
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -386,18 +367,6 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let codex_service_tier = if matches!(config.framework, env::Framework::Codex) {
-            resolve_codex_service_tier(&config.user_env)?
-        } else {
-            None
-        };
-        if let Some((_, source)) = codex_service_tier {
-            log_info!(
-                LOG_TAG,
-                "{CODEX_SERVICE_TIER_RESOLUTION_EVENT} source={}",
-                source.as_str()
-            );
-        }
         let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
@@ -446,7 +415,8 @@ impl<'a> CliRuntimeConfig<'a> {
             )),
             codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
-            codex_fast_mode: codex_service_tier.is_some_and(|(value, _)| value == "fast"),
+            codex_fast_mode: matches!(config.framework, env::Framework::Codex)
+                && user_env_value(&config.user_env, CODEX_SERVICE_TIER_CANONICAL_ENV) == "fast",
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
@@ -511,28 +481,6 @@ impl<'a> CliRuntimeConfig<'a> {
         let mut user_env = self.user_env.clone();
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
-    }
-}
-
-/// Stage 1 compatibility for the API-authored Codex service tier environment.
-/// Remove the legacy reader only after #28914 cuts the API writer over and
-/// observes zero legacy-only use through the supported rollback window.
-fn resolve_codex_service_tier(
-    user_env: &HashMap<String, String>,
-) -> Result<Option<(&str, CodexServiceTierSource)>, AgentError> {
-    match (
-        user_env.get(CODEX_SERVICE_TIER_CANONICAL_ENV),
-        user_env.get(CODEX_SERVICE_TIER_LEGACY_ENV),
-    ) {
-        (None, None) => Ok(None),
-        (Some(value), None) => Ok(Some((value, CodexServiceTierSource::CanonicalOnly))),
-        (None, Some(value)) => Ok(Some((value, CodexServiceTierSource::LegacyOnly))),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok(Some((canonical, CodexServiceTierSource::Dual)))
-        }
-        (Some(_), Some(_)) => Err(AgentError::Execution(format!(
-            "conflicting Codex service-tier environment keys: {CODEX_SERVICE_TIER_CANONICAL_ENV} and {CODEX_SERVICE_TIER_LEGACY_ENV}"
-        ))),
     }
 }
 
@@ -2330,24 +2278,23 @@ mod tests {
         }
     }
 
-    fn assert_codex_service_tier_resolution(
+    fn assert_codex_service_tier_fast_mode(
         user_env: HashMap<String, String>,
-        expected: Option<(&str, super::CodexServiceTierSource)>,
         expected_fast_mode: bool,
     ) {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        guest_common::log::clear_system_log_file();
-        assert_eq!(
-            super::resolve_codex_service_tier(&user_env).unwrap(),
-            expected
-        );
-
         let config = guest_config_for_agent_context(user_env);
         let paths =
             crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-resolution-test");
         let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
 
         assert_eq!(runtime.codex_fast_mode, expected_fast_mode);
+        let startup_configs = runtime.codex_startup_config_overrides();
+        for config in super::CODEX_FAST_MODE_STARTUP_CONFIGS {
+            assert_eq!(
+                startup_configs.contains(&config.to_string()),
+                expected_fast_mode
+            );
+        }
     }
 
     fn runtime_for_command_test<'a>(
@@ -2555,169 +2502,61 @@ mod tests {
     }
 
     #[test]
-    fn codex_service_tier_resolver_preserves_absence() {
-        assert_codex_service_tier_resolution(HashMap::new(), None, false);
-    }
-
-    #[test]
-    fn codex_service_tier_resolver_accepts_canonical_only() {
+    fn codex_service_tier_preserves_canonical_semantics() {
+        assert_codex_service_tier_fast_mode(HashMap::new(), false);
         for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
+            assert_codex_service_tier_fast_mode(
                 HashMap::from([(
                     super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
                     value.to_string(),
                 )]),
-                Some((value, super::CodexServiceTierSource::CanonicalOnly)),
                 expected_fast_mode,
             );
         }
     }
 
     #[test]
-    fn codex_service_tier_resolver_accepts_legacy_only() {
-        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
-                HashMap::from([(
-                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                    value.to_string(),
-                )]),
-                Some((value, super::CodexServiceTierSource::LegacyOnly)),
-                expected_fast_mode,
-            );
-        }
-    }
+    fn codex_service_tier_ignores_retired_alias() {
+        let retired_key = "VM0_CODEX_SERVICE_TIER";
+        assert_codex_service_tier_fast_mode(
+            HashMap::from([(retired_key.to_string(), "fast".to_string())]),
+            false,
+        );
 
-    #[test]
-    fn codex_service_tier_resolver_accepts_equal_dual() {
-        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
+        for (canonical, legacy, expected_fast_mode) in
+            [("fast", "priority", true), ("priority", "fast", false)]
+        {
+            assert_codex_service_tier_fast_mode(
                 HashMap::from([
                     (
                         super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                        value.to_string(),
+                        canonical.to_string(),
                     ),
-                    (
-                        super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                        value.to_string(),
-                    ),
+                    (retired_key.to_string(), legacy.to_string()),
                 ]),
-                Some((value, super::CodexServiceTierSource::Dual)),
                 expected_fast_mode,
             );
         }
     }
 
     #[test]
-    fn codex_service_tier_resolver_rejects_conflicting_dual_without_values() {
-        let canonical_value = "canonical-value-must-not-leak";
-        let legacy_value = "legacy-value-must-not-leak";
-        let user_env = HashMap::from([
-            (
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                canonical_value.to_string(),
-            ),
-            (
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                legacy_value.to_string(),
-            ),
-        ]);
-
-        let resolver_error = super::resolve_codex_service_tier(&user_env)
-            .expect_err("conflicting aliases must fail")
-            .to_string();
-        let config = guest_config_for_agent_context(user_env);
-        let paths =
-            crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-conflict-test");
-        let config_error = CliRuntimeConfig::from_config(&config, &paths, Instant::now())
-            .err()
-            .expect("conflicting aliases must fail before Codex startup")
-            .to_string();
-
-        assert_eq!(resolver_error, config_error);
-        assert!(
-            resolver_error.contains(super::CODEX_SERVICE_TIER_CANONICAL_ENV)
-                && resolver_error.contains(super::CODEX_SERVICE_TIER_LEGACY_ENV)
-        );
-        assert!(!resolver_error.contains(canonical_value));
-        assert!(!resolver_error.contains(legacy_value));
-    }
-
-    #[test]
-    fn codex_service_tier_resolution_log_is_fixed_shape_and_value_free() {
+    fn codex_service_tier_value_is_not_logged() {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
+        std::fs::File::create(&system_log_path).unwrap();
         let system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
         let paths = crate::paths::GuestPaths::from_runtime_dir(tmp.path());
-        let successful_cases = [
-            HashMap::from([(
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                "canonical-value-must-not-log".to_string(),
-            )]),
-            HashMap::from([(
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                "legacy-value-must-not-log".to_string(),
-            )]),
-            HashMap::from([
-                (
-                    super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                    "dual-value-must-not-log".to_string(),
-                ),
-                (
-                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                    "dual-value-must-not-log".to_string(),
-                ),
-            ]),
-        ];
-
-        for user_env in successful_cases {
-            let config = guest_config_for_agent_context(user_env);
-            CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
-        }
-        let absent_config = guest_config_for_agent_context(HashMap::new());
-        CliRuntimeConfig::from_config(&absent_config, &paths, Instant::now()).unwrap();
-        let conflict_config = guest_config_for_agent_context(HashMap::from([
-            (
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                "conflicting-canonical-value-must-not-log".to_string(),
-            ),
-            (
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                "conflicting-legacy-value-must-not-log".to_string(),
-            ),
-        ]));
-        assert!(CliRuntimeConfig::from_config(&conflict_config, &paths, Instant::now()).is_err());
+        let value = "canonical-value-must-not-log";
+        let config = guest_config_for_agent_context(HashMap::from([(
+            super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+            value.to_string(),
+        )]));
+        CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
 
         drop(system_log_guard);
         let system_log = std::fs::read_to_string(&system_log_path).unwrap();
-        let event_prefix = format!("[{}] ", super::LOG_TAG);
-        let evidence = system_log
-            .lines()
-            .filter(|line| line.contains(super::CODEX_SERVICE_TIER_RESOLUTION_EVENT))
-            .map(|line| {
-                line.rsplit_once(&event_prefix)
-                    .expect("resolution evidence must use the guest logger tag")
-                    .1
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            evidence,
-            [
-                "codex_service_tier_environment_resolution source=canonical_only",
-                "codex_service_tier_environment_resolution source=legacy_only",
-                "codex_service_tier_environment_resolution source=dual",
-            ]
-        );
-        for value in [
-            "canonical-value-must-not-log",
-            "legacy-value-must-not-log",
-            "dual-value-must-not-log",
-            "conflicting-canonical-value-must-not-log",
-            "conflicting-legacy-value-must-not-log",
-        ] {
-            assert!(!system_log.contains(value));
-        }
+        assert!(!system_log.contains(value));
     }
 
     #[test]
