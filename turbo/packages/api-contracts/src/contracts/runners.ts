@@ -123,21 +123,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-const builtInModelProviderFailureKindSchema = z.enum([
-  "authentication",
-  "billing",
-  "rate_limit",
-  "provider_unavailable",
-  "timeout",
-  "connection",
-]);
-
-const builtInModelProviderConnectionSourceSchema = z.enum([
+export const builtInModelProviderConnectionSourceSchema = z.enum([
   "provider_response",
   "upstream_transport",
 ]);
 
 const BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+const builtInModelProviderRetryAfterSecondsSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+  .optional();
 
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
@@ -1188,27 +1185,45 @@ export const runnersModelProviderFailuresContract = c.router({
     pathParams: z.object({
       runId: z.uuid(),
     }),
-    body: z
-      .object({
-        failureKind: builtInModelProviderFailureKindSchema,
-        connectionSource: builtInModelProviderConnectionSourceSchema.optional(),
-        retryAfterSeconds: z
-          .number()
-          .int()
-          .positive()
-          .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
-          .optional(),
-      })
-      .strict()
-      .superRefine((body, context) => {
-        if (body.connectionSource && body.failureKind !== "connection") {
-          context.addIssue({
-            code: "custom",
-            path: ["connectionSource"],
-            message: "connectionSource requires failureKind connection",
-          });
-        }
-      }),
+    body: z.discriminatedUnion("failureKind", [
+      z
+        .object({
+          failureKind: z.literal("authentication"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("billing"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("rate_limit"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("provider_unavailable"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("timeout"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("connection"),
+          connectionSource: builtInModelProviderConnectionSourceSchema,
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+    ]),
     responses: {
       200: z
         .object({

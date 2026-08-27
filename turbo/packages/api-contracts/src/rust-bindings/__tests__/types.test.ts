@@ -58,6 +58,11 @@ const expectedBindings = [
     direction: "request",
   },
   {
+    rustModulePath: ["runners", "runs", "model_provider_failures"],
+    rustTypeName: "RequestConnectionSource",
+    direction: "request",
+  },
+  {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
