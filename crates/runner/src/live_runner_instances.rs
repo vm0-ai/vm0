@@ -16,7 +16,8 @@ const LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES: u64 = 64 * 1024;
 pub(crate) struct LiveRunnerInstanceMetadata {
     pub config_path: PathBuf,
     pub base_dir: PathBuf,
-    pub runner_name: String,
+    /// Legacy release-shaped compatibility metadata.
+    pub runner_name: Option<String>,
     pub runner_group: String,
     pub subcommand: String,
 }
@@ -33,7 +34,8 @@ pub(crate) struct LiveRunnerInstance {
     pub starttime: u64,
     pub config_path: PathBuf,
     pub base_dir: PathBuf,
-    pub runner_name: String,
+    /// Legacy release-shaped compatibility metadata.
+    pub runner_name: Option<String>,
     pub runner_group: String,
     pub subcommand: String,
     pub started_at: String,
@@ -88,7 +90,8 @@ struct LiveRunnerInstanceRecord {
     euid: u32,
     config_path: PathBuf,
     base_dir: PathBuf,
-    runner_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runner_name: Option<String>,
     runner_group: String,
     subcommand: String,
     started_at: String,
@@ -217,10 +220,10 @@ async fn try_list_with_liveness(
     }
 
     instances.sort_by(|left, right| {
-        left.runner_name
-            .cmp(&right.runner_name)
+        left.config_path
+            .cmp(&right.config_path)
             .then_with(|| left.pid.cmp(&right.pid))
-            .then_with(|| left.config_path.cmp(&right.config_path))
+            .then_with(|| left.starttime.cmp(&right.starttime))
     });
     Ok(instances)
 }
@@ -274,7 +277,6 @@ pub(crate) async fn is_current(
     };
     Ok(record.config_path == instance.config_path
         && record.base_dir == instance.base_dir
-        && record.runner_name == instance.runner_name
         && record.runner_group == instance.runner_group
         && record.subcommand == instance.subcommand
         && record.started_at == instance.started_at)
@@ -851,7 +853,7 @@ mod tests {
             LiveRunnerInstanceMetadata {
                 config_path: self.root().join("runner.yaml"),
                 base_dir: self.root().join("base"),
-                runner_name: "test-runner".into(),
+                runner_name: Some("test-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             }
@@ -874,7 +876,7 @@ mod tests {
                 euid: current_euid(),
                 config_path: self.root().join("stale-runner.yaml"),
                 base_dir: self.root().join("stale-base"),
-                runner_name: "stale-runner".into(),
+                runner_name: Some("stale-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
                 started_at: TEST_STARTED_AT.into(),
@@ -893,7 +895,7 @@ mod tests {
                 euid: current_euid(),
                 config_path: self.root().join("other-runner.yaml"),
                 base_dir: self.root().join("other-base"),
-                runner_name: "other-runner".into(),
+                runner_name: Some("other-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
                 started_at: TEST_STARTED_AT.into(),
@@ -908,7 +910,7 @@ mod tests {
                 euid: current_euid(),
                 config_path: self.root().join("procfs-runner.yaml"),
                 base_dir: self.root().join("procfs-base"),
-                runner_name: "procfs-runner".into(),
+                runner_name: Some("procfs-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
                 started_at: TEST_STARTED_AT.into(),
@@ -954,6 +956,16 @@ mod tests {
         serde_json::to_vec_pretty(&value).unwrap()
     }
 
+    fn serialize_record_without_runner_name(record: &LiveRunnerInstanceRecord) -> Vec<u8> {
+        let mut value = serde_json::to_value(record).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("runner_name")
+            .unwrap();
+        serde_json::to_vec_pretty(&value).unwrap()
+    }
+
     #[tokio::test]
     async fn publish_writes_private_record_without_secret_fields() {
         let registry = TestRegistry::new();
@@ -968,6 +980,13 @@ mod tests {
         assert_eq!(record.pid, std::process::id());
         assert_eq!(record.euid, current_euid());
         assert_eq!(record.base_dir, registry.root().join("base"));
+
+        #[derive(Deserialize)]
+        struct LegacyRecord {
+            runner_name: String,
+        }
+        let legacy_record: LegacyRecord = serde_json::from_str(&content).unwrap();
+        assert_eq!(legacy_record.runner_name, "test-runner");
 
         #[cfg(unix)]
         {
@@ -1047,10 +1066,42 @@ mod tests {
         assert_eq!(instance.starttime, handle.identity.starttime);
         assert_eq!(instance.config_path, registry.root().join("runner.yaml"));
         assert_eq!(instance.base_dir, registry.root().join("base"));
-        assert_eq!(instance.runner_name, "test-runner");
+        assert_eq!(instance.runner_name.as_deref(), Some("test-runner"));
         assert_eq!(instance.runner_group, "vm0/test");
         assert_eq!(instance.subcommand, "start");
         assert!(!instance.started_at.is_empty());
+    }
+
+    #[tokio::test]
+    async fn try_list_accepts_record_without_legacy_runner_name() {
+        let registry = TestRegistry::new();
+        let handle = publish(&registry.home, registry.metadata()).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        crate::state_file::write_private_atomic(
+            &handle.path,
+            &serialize_record_without_runner_name(&record),
+        )
+        .await
+        .unwrap();
+
+        let instances = try_list(&registry.home).await.unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].runner_name, None);
+    }
+
+    #[tokio::test]
+    async fn publish_omits_absent_legacy_runner_name() {
+        let registry = TestRegistry::new();
+        let mut metadata = registry.metadata();
+        metadata.runner_name = None;
+
+        let handle = publish(&registry.home, metadata).await.unwrap();
+
+        let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(value.get("runner_name").is_none());
+        assert_eq!(try_list(&registry.home).await.unwrap()[0].runner_name, None);
     }
 
     #[cfg(unix)]
@@ -1070,9 +1121,12 @@ mod tests {
         assert_eq!(
             instances
                 .iter()
-                .map(|instance| instance.runner_name.as_str())
+                .map(|instance| instance.config_path.clone())
                 .collect::<Vec<_>>(),
-            ["other-runner", "test-runner"]
+            [
+                registry.root().join("other-runner.yaml"),
+                registry.root().join("runner.yaml"),
+            ]
         );
     }
 
@@ -1228,6 +1282,12 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
+
+        assert!(is_current(&registry.home, &instance).await.unwrap());
+
+        let mut record = read_valid_record(&handle.path).await.unwrap();
+        record.runner_name = None;
+        write_record(&handle.path, &record).await;
 
         assert!(is_current(&registry.home, &instance).await.unwrap());
 

@@ -208,7 +208,6 @@ fn build_mock_run_config_with_runtime(
     let config = RunConfig {
         runner: RunnerInfo {
             identity: test_runner_identity(),
-            name: "test".into(),
             group: "test-group".into(),
             profiles,
         },
