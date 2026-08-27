@@ -802,19 +802,9 @@ body {
     hsl(var(--border)) 70%,
     hsl(var(--ring))
   );
-  --color-state-hover: hsl(var(--ring) / 0.08);
-  --color-state-selected: hsl(var(--ring) / 0.14);
-  --color-state-selected-hover: hsl(var(--ring) / 0.18);
-  --color-state-pressed: hsl(var(--ring) / 0.2);
 }
 .zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
-  --color-sidebar: hsl(var(--zero-nav-rail));
-}
-:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] .zero-nav {
-  --color-state-hover: hsl(var(--ring) / 0.12);
-  --color-state-selected: hsl(var(--ring) / 0.2);
-  --color-state-selected-hover: hsl(var(--ring) / 0.24);
-  --color-state-pressed: hsl(var(--ring) / 0.27);
+  background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
