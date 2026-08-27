@@ -9,7 +9,6 @@ import {
   type WorkflowAutomationEventPayload,
 } from "./workflow-automation-context.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   buildWorkflowAutomationCallbacks,
   type AutomationRow,
 } from "./workflow-automation-launch.service";
@@ -55,19 +54,13 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
   return {
     prompt: workflowAutomationAgentPrompt(context),
     appendSystemPrompt: undefined,
-    callbacks:
-      eventType === "schedule"
-        ? buildWorkflowAutomationCallbacks(
-            args.automation,
-            args.agentId,
-            args.chatThreadId,
-            args.publicBrand,
-          )
-        : buildChatOnlyWorkflowAutomationCallbacks(
-            args.chatThreadId,
-            args.agentId,
-            args.publicBrand,
-          ),
+    callbacks: buildWorkflowAutomationCallbacks(
+      args.automation,
+      args.agentId,
+      args.chatThreadId,
+      args.publicBrand,
+      args.workflowName,
+    ),
     ...EVENT_POLICY[eventType],
     allowClaimedOnceScheduleAutomation: args.automation.scheduleType === "once",
   };

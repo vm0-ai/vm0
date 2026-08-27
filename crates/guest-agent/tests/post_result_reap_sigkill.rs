@@ -26,7 +26,10 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
         // timeout. SIGTERM is ignored, then the 1s SIGKILL grace completes
         // within the outer test bound.
         common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 60, 1)?;
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "1",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

@@ -45,7 +45,10 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             .duration_since(UNIX_EPOCH)?
             .as_millis()
             .saturating_sub(10_000);
-        std::env::set_var("VM0_API_START_TIME", api_start_time.to_string());
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+            api_start_time.to_string(),
+        );
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         common::set_run_payload_file_env_for_test(

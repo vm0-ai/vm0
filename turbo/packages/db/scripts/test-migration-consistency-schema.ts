@@ -54,6 +54,10 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
+import {
+  validateOfficialAutomationResultEmailMigration,
+  validateOfficialAutomationResultEmailSchema,
+} from "./test-official-automation-result-email-schema";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
@@ -10975,6 +10979,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateOfficialAutomationResultEmailMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateConnectorAuthorizationAccountMutationPresence();
@@ -11015,6 +11020,7 @@ async function main(): Promise<void> {
     await validatePermanentSlackPublicBrandState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
+    await validateOfficialAutomationResultEmailSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -11039,6 +11045,7 @@ async function main(): Promise<void> {
     await validatePermanentSlackPublicBrandState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
+    await validateOfficialAutomationResultEmailSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();

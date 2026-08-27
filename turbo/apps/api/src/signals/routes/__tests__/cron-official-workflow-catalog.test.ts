@@ -73,7 +73,7 @@ function scheduleBlueprint(
         timezone: { parameter: "time-zone" },
       },
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
@@ -85,7 +85,7 @@ function loopBlueprint(key: string): OfficialWorkflowBlueprint {
       kind: "schedule",
       schedule: { type: "loop", intervalSeconds: 3600 },
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
@@ -109,7 +109,7 @@ function calendarBlueprint(
             },
           }),
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
@@ -130,7 +130,7 @@ function chatRunFinishedBlueprint(
         runStatuses: [...runStatuses],
       },
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
@@ -745,7 +745,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
           blueprints: [
             {
               ...scheduleBlueprint("daily"),
-              runtime: { futureSetting: true },
+              runtime: { resultEmail: false, futureSetting: true },
             },
           ],
         },
@@ -754,6 +754,26 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(unknownRuntimeSetting.body.diagnostics).toContainEqual(
       expect.objectContaining({ code: "invalid-candidate" }),
     );
+
+    for (const runtime of [{}, { resultEmail: "yes" }]) {
+      const malformedRuntime = await syncCatalog({
+        schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
+        definitions: [
+          {
+            ...activeDefinition(name),
+            blueprints: [
+              {
+                ...scheduleBlueprint("daily"),
+                runtime,
+              },
+            ],
+          },
+        ],
+      });
+      expect(malformedRuntime.body.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "invalid-candidate" }),
+      );
+    }
 
     const nonCanonical = await syncCatalog(
       catalog([

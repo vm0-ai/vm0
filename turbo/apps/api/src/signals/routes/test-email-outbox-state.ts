@@ -3,6 +3,7 @@ import {
   type TestEmailOutboxStateActionBody,
 } from "@okouai/api-contracts/contracts/test-email-outbox-state";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { command } from "ccstate";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
@@ -27,8 +28,17 @@ const cleanupBody$ = bodyResultOf(testEmailOutboxStateContract.cleanup);
 function itemStateSelection() {
   return {
     id: emailOutbox.id,
+    from_address: emailOutbox.fromAddress,
+    to_addresses: emailOutbox.toAddresses,
+    subject: emailOutbox.subject,
+    headers: emailOutbox.headers,
+    public_brand: emailOutbox.publicBrand,
+    template: emailOutbox.template,
+    source_run_id: emailOutbox.sourceRunId,
+    source_workflow_automation_id: emailOutbox.sourceWorkflowAutomationId,
     status: emailOutbox.status,
     attempts: emailOutbox.attempts,
+    last_error: emailOutbox.lastError,
     resend_id: emailOutbox.resendId,
   };
 }
@@ -83,6 +93,50 @@ async function applyAction(
       return {
         status: 200 as const,
         body: { action: "find-item" as const, items },
+      };
+    }
+    case "find-source": {
+      const [items, claims] = await Promise.all([
+        db
+          .select(itemStateSelection())
+          .from(emailOutbox)
+          .where(
+            and(
+              eq(emailOutbox.sourceRunId, body.source_run_id),
+              eq(
+                emailOutbox.sourceWorkflowAutomationId,
+                body.source_workflow_automation_id,
+              ),
+            ),
+          )
+          .orderBy(asc(emailOutbox.createdAt)),
+        db
+          .select({
+            source_run_id: officialAutomationResultEmailClaims.runId,
+            source_workflow_automation_id:
+              officialAutomationResultEmailClaims.workflowAutomationId,
+            email_outbox_id: officialAutomationResultEmailClaims.emailOutboxId,
+          })
+          .from(officialAutomationResultEmailClaims)
+          .where(
+            and(
+              eq(officialAutomationResultEmailClaims.runId, body.source_run_id),
+              eq(
+                officialAutomationResultEmailClaims.workflowAutomationId,
+                body.source_workflow_automation_id,
+              ),
+            ),
+          )
+          .limit(1),
+      ]);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          action: "find-source" as const,
+          items,
+          claim: claims[0] ?? null,
+        },
       };
     }
     case "read-items": {
