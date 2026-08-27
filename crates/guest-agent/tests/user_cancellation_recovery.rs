@@ -211,11 +211,11 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 "runtime-turn-started-before-steer",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 "1",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 "1",
             )
             .env(

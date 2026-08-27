@@ -1321,14 +1321,17 @@ pub unsafe fn setup_env(
         );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
-            "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             sigterm_grace_secs.to_string(),
         );
         std::env::set_var(
-            "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             sigkill_grace_secs.to_string(),
         );
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "60");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "60",
+        );
         // Derive run_id from the test binary's filename (which cargo
         // hashes per target) so concurrently running integration-test
         // binaries don't collide on the run-scoped files that paths.rs

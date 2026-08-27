@@ -119,7 +119,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
                 "1",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 "1",
             )
             .env(
