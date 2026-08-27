@@ -252,19 +252,47 @@ async function observeTransportFailure(
 ): Promise<
   CooldownTransition | CooldownUnchangedTransition | ObservationTransition
 > {
-  const currentObservation =
+  const observationGapMs = TRANSPORT_FAILURE_MAXIMUM_GAP_SECONDS * 1000;
+  const hasObservation =
     args.row.connectionObservationStartedAt !== null &&
-    args.row.connectionObservationUntil !== null &&
-    args.row.connectionObservationUntil >= args.timestamp;
+    args.row.connectionObservationUntil !== null;
+  // The row stores the earliest receipt and latest receipt plus the maximum
+  // gap. Merge connected receipts in either lock order and ignore stale gaps.
+  if (
+    hasObservation &&
+    args.timestamp.getTime() + observationGapMs <
+      args.row.connectionObservationStartedAt.getTime()
+  ) {
+    return {
+      kind: "observation",
+      outcome: "observed",
+    };
+  }
+
+  const connectedObservation =
+    hasObservation &&
+    args.timestamp <= args.row.connectionObservationUntil &&
+    args.timestamp.getTime() + observationGapMs >=
+      args.row.connectionObservationStartedAt.getTime();
+  const observationStartedAt =
+    connectedObservation &&
+    args.row.connectionObservationStartedAt < args.timestamp
+      ? args.row.connectionObservationStartedAt
+      : args.timestamp;
+  const currentLatestAt = connectedObservation
+    ? new Date(args.row.connectionObservationUntil.getTime() - observationGapMs)
+    : args.timestamp;
+  const observationLatestAt =
+    currentLatestAt > args.timestamp ? currentLatestAt : args.timestamp;
 
   if (
-    currentObservation &&
-    args.timestamp.getTime() -
-      args.row.connectionObservationStartedAt.getTime() >=
+    connectedObservation &&
+    observationLatestAt.getTime() - observationStartedAt.getTime() >=
       TRANSPORT_FAILURE_MINIMUM_SECONDS * 1000
   ) {
     return await activateLockedRoute(tx, {
       ...args,
+      timestamp: observationLatestAt,
       failureKind: "connection",
       source: "upstream_transport",
       retryAfterSeconds: DEFAULT_COOLDOWN_SECONDS,
@@ -272,19 +300,9 @@ async function observeTransportFailure(
     });
   }
 
-  const observationStartedAt = currentObservation
-    ? args.row.connectionObservationStartedAt
-    : args.timestamp;
-  const receivedObservationUntil = new Date(
-    args.timestamp.getTime() + TRANSPORT_FAILURE_MAXIMUM_GAP_SECONDS * 1000,
+  const observationUntil = new Date(
+    observationLatestAt.getTime() + observationGapMs,
   );
-  // Independent requests can acquire the route lock in a different order from
-  // receipt, so an older receipt must not shorten the latest continuity window.
-  const observationUntil =
-    currentObservation &&
-    args.row.connectionObservationUntil > receivedObservationUntil
-      ? args.row.connectionObservationUntil
-      : receivedObservationUntil;
   await tx
     .update(builtInModelCandidateCooldown)
     .set({
