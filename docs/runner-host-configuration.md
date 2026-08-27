@@ -13,9 +13,11 @@ the raw value. Existing configuration files without `hostname` continue to
 load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
-Systemd suffixes and versioned binary/Runner directories remain explicit
-release lifecycle identities. Live processes are selected by their exact
-config path and process identity, and rolling log files use the release
+Systemd service suffixes are opaque local instance names. Production currently
+passes its explicit `runner_release` value as the service name and Runner
+directory name, but version logic uses `runner_release` directly and does not
+interpret a runner name as a version. Live processes are selected by their
+exact config path and process identity, and rolling log files use the release
 compiled into the Runner binary. Current Runner binaries send optional
 canonical `runnerHostname` from configuration and canonical `runnerVersion`
 compiled into the binary. They no longer send legacy `runnerName` in
@@ -24,11 +26,11 @@ persist, or map that field. During deployment overlap, an extra `runnerName`
 from an older Runner payload is tolerated but discarded before request
 handling.
 
-Current `runner.yaml` has no release-shaped `name` field. Repository automation
-writes `hostname` through `runner config`, while `--runner-dirname` and systemd
-service `--name` remain explicit release-lifecycle inputs. Live-runner records
-contain exact config/process metadata and no legacy runner name. Readiness and
-doctor select live processes by the unit's exact config path.
+Current `runner.yaml` has no legacy `name` field. Repository automation writes
+`hostname` through `runner config`, while `--runner-dirname` and systemd service
+`--name` remain opaque local lifecycle inputs. Live-runner records contain exact
+config/process metadata and no legacy runner name. Readiness and doctor select
+live processes by the unit's exact config path.
 
 Operational queries and alerts should use `runner_hostname` and
 `runner_version`. A bounded historical fallback may use `runner_name` only for
