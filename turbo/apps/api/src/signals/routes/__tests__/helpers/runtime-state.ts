@@ -349,6 +349,198 @@ export async function readLatestWorkflowAutomationRunFixture(
     : null;
 }
 
+export async function readOfficialWorkflowRunStateFixture(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["official_workflow_run_state"]>
+> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-state",
+    run_id: runId,
+  });
+  if (!("official_workflow_run_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunStateFixture missing official_workflow_run_state",
+    );
+  }
+  if (!response.official_workflow_run_state) {
+    throw new Error("Official Workflow Run is unavailable");
+  }
+  return response.official_workflow_run_state;
+}
+
+export async function readAgentRunFamilyCountsFixture(
+  context: TestContext,
+  agentId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["agent_run_family_counts"]>
+> {
+  const response = await postAction(context, {
+    action: "read-agent-run-family-counts",
+    agent_id: agentId,
+  });
+  if (!("agent_run_family_counts" in response)) {
+    throw new Error(
+      "readAgentRunFamilyCountsFixture missing agent_run_family_counts",
+    );
+  }
+  if (!response.agent_run_family_counts) {
+    throw new Error("Agent Run-family count is unavailable");
+  }
+  return response.agent_run_family_counts;
+}
+
+export async function readChatEventRowsAsPreviousApiFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["previous_api_chat_event_rows"]>
+> {
+  const response = await postAction(context, {
+    action: "read-chat-event-rows-as-previous-api",
+    thread_id: threadId,
+  });
+  if (!("previous_api_chat_event_rows" in response)) {
+    throw new Error(
+      "readChatEventRowsAsPreviousApiFixture missing previous_api_chat_event_rows",
+    );
+  }
+  return response.previous_api_chat_event_rows ?? [];
+}
+
+export async function corruptOfficialWorkflowRevisionPayloadFixture(
+  context: TestContext,
+  definitionName: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "corrupt-official-workflow-revision-payload",
+    definition_name: definitionName,
+  });
+}
+
+export async function setOfficialWorkflowAutomationAdmissionStateFixture(
+  context: TestContext,
+  automationId: string,
+  reconciliationStatus:
+    | "current"
+    | "reconciling"
+    | "needs_reconfiguration"
+    | "failed",
+  appliedFingerprint?: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-official-workflow-automation-admission-state",
+    automation_id: automationId,
+    reconciliation_status: reconciliationStatus,
+    ...(appliedFingerprint === undefined
+      ? {}
+      : { applied_fingerprint: appliedFingerprint }),
+  });
+}
+
+export async function retargetWorkflowAutomationFixture(
+  context: TestContext,
+  automationId: string,
+  workflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "retarget-workflow-automation",
+    automation_id: automationId,
+    workflow_id: workflowId,
+  });
+}
+
+export async function assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
+  context: TestContext,
+  automationId: string,
+  officialWorkflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "assert-official-workflow-automation-final-admission-rejected",
+    automation_id: automationId,
+    official_workflow_id: officialWorkflowId,
+  });
+}
+
+type OfficialWorkflowRunGateKind =
+  | "observation"
+  | "final-admission"
+  | "bootstrap-requirement";
+
+type OfficialWorkflowRunGateState = NonNullable<
+  TestRuntimeStateActionResponse["official_workflow_run_gate_state"]
+>;
+
+interface OfficialWorkflowRunGateFixture {
+  read(): Promise<OfficialWorkflowRunGateState>;
+  release(): Promise<void>;
+}
+
+async function readOfficialWorkflowRunGateStateFixture(
+  context: TestContext,
+): Promise<OfficialWorkflowRunGateState | null> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-gate-state",
+  });
+  if (!("official_workflow_run_gate_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunGateStateFixture missing gate state",
+    );
+  }
+  return response.official_workflow_run_gate_state ?? null;
+}
+
+export async function installOfficialWorkflowRunGateFixture(
+  context: TestContext,
+  gate: OfficialWorkflowRunGateKind,
+): Promise<OfficialWorkflowRunGateFixture> {
+  const held = postAction(context, {
+    action: "hold-official-workflow-run-gate",
+    gate,
+  }).then(
+    () => {
+      return { ok: true as const };
+    },
+    (error: unknown) => {
+      return { ok: false as const, error };
+    },
+  );
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    released = true;
+    await postAction(context, {
+      action: "release-official-workflow-run-gate",
+    });
+    const outcome = await held;
+    if (!outcome.ok && !context.signal.aborted) {
+      throw outcome.error;
+    }
+  };
+  onTestFinished(release);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const state = await readOfficialWorkflowRunGateStateFixture(context);
+    if (state?.gate === gate) {
+      return {
+        async read(): Promise<OfficialWorkflowRunGateState> {
+          const current =
+            await readOfficialWorkflowRunGateStateFixture(context);
+          if (!current || current.gate !== gate) {
+            throw new Error("Official Workflow Run gate is unavailable");
+          }
+          return current;
+        },
+        release,
+      };
+    }
+  }
+  await release();
+  throw new Error("Official Workflow Run gate did not become active");
+}
+
 export async function readThreadGoalAutonomyBudgetFixture(
   context: TestContext,
   threadId: string,

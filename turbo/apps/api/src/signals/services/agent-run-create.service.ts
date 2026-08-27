@@ -121,7 +121,10 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
+import type {
+  AgentRunLaunchSnapshot,
+  AgentRunOfficialWorkflowProvenance,
+} from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -166,6 +169,7 @@ import {
 } from "../../lib/db-structured-result";
 import {
   badRequestMessage,
+  conflict,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -213,10 +217,20 @@ import {
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
   prepareAgentRunStorage,
+  OfficialWorkflowArtifactResolutionError,
   type PreparedAgentRunStorage,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
+import type { RunWorkflowRef } from "./workflow-data.service";
+import {
+  acquireOfficialWorkflowRunCatalogAdmissionLock,
+  OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE,
+  OfficialWorkflowRunAdmissionError,
+  resolveOfficialWorkflowRunObservation,
+  validateOfficialWorkflowRunForInsert,
+  type OfficialWorkflowRunObservation,
+} from "./official-workflow-run.service";
 import { projectLegacyWritebackArtifacts } from "./storage-legacy-projection.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -535,6 +549,7 @@ interface AdditionalVolume {
   readonly mountPath: string;
   readonly system?: boolean;
   readonly baselineCandidate?: true;
+  readonly expectedStorageId?: string;
 }
 
 type AdditionalVolumeSources = readonly StorageManifestSource[] | undefined;
@@ -784,7 +799,8 @@ type FailedLaunchCommitResult =
       readonly createdAt: Date;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
     }
-  | QueueFirstRunClaimLost;
+  | QueueFirstRunClaimLost
+  | CreateRunErrorResult;
 
 export interface AgentRunModelPin {
   readonly modelProvider: string | null;
@@ -931,6 +947,7 @@ type CreateRunRouteResult =
   | ApiErrorResponse<400, "BAD_REQUEST">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
+  | ApiErrorResponse<409, "CONFLICT">
   | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
   | ApiErrorResponse<429, "CONCURRENT_RUN_LIMIT">
   | ApiErrorResponse<503, "PROVIDER_UNAVAILABLE">;
@@ -979,11 +996,9 @@ export interface CreateAgentRunArgs {
   readonly injectSkillVolumes?: {
     // Each workflow's volume is keyed by its id (storage name), while the skill
     // mounts at its slug. Slugs are not unique, so the id is required.
-    readonly workflows: readonly {
-      readonly name: string;
-      readonly workflowId: string;
-    }[];
+    readonly workflows: readonly RunWorkflowRef[];
   };
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly connectorScope: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly agentRunMetadata?: AgentRunMetadata;
@@ -1213,21 +1228,93 @@ function buildConnectorSkillVolumes(
   });
 }
 
-function buildWorkflowSkillVolumes(
-  workflows: readonly { readonly name: string; readonly workflowId: string }[],
+function mountedWorkflowRefs(
+  workflows: readonly RunWorkflowRef[],
+): readonly RunWorkflowRef[] {
+  return workflows.filter((workflow) => {
+    return !SEED_SKILLS.includes(workflow.name);
+  });
+}
+
+function officialWorkflowRunCandidates(
+  workflows: readonly RunWorkflowRef[],
   skillsRoot: string,
-): readonly AdditionalVolume[] {
-  return workflows
-    .filter((workflow) => {
-      return !SEED_SKILLS.includes(workflow.name);
+  requiredWorkflowIds: readonly string[],
+): readonly {
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly definitionName: string;
+  readonly mountPath: string;
+}[] {
+  for (const workflow of workflows) {
+    if (
+      workflow.officialDefinitionName !== null &&
+      SEED_SKILLS.includes(workflow.name)
+    ) {
+      throw new OfficialWorkflowRunAdmissionError();
+    }
+  }
+  const candidates = mountedWorkflowRefs(workflows).flatMap((workflow) => {
+    return workflow.officialDefinitionName === null
+      ? []
+      : [
+          {
+            workflowId: workflow.workflowId,
+            workflowName: workflow.name,
+            definitionName: workflow.officialDefinitionName,
+            mountPath: skillMountPath(skillsRoot, workflow.name),
+          },
+        ];
+  });
+  const candidateWorkflowIds = new Set(
+    candidates.map((candidate) => {
+      return candidate.workflowId;
+    }),
+  );
+  if (
+    new Set(requiredWorkflowIds).size !== requiredWorkflowIds.length ||
+    requiredWorkflowIds.some((workflowId) => {
+      return !candidateWorkflowIds.has(workflowId);
     })
-    .map((workflow) => {
+  ) {
+    throw new OfficialWorkflowRunAdmissionError();
+  }
+  return candidates;
+}
+
+function buildWorkflowSkillVolumes(
+  workflows: readonly RunWorkflowRef[],
+  skillsRoot: string,
+  officialWorkflowRun: OfficialWorkflowRunObservation | undefined,
+): readonly PreparedAdditionalVolume[] {
+  return mountedWorkflowRefs(workflows).map((workflow) => {
+    if (workflow.officialDefinitionName !== null) {
+      const definition = officialWorkflowRun?.definitions.find((candidate) => {
+        return candidate.workflowId === workflow.workflowId;
+      });
+      if (!definition) {
+        throw new OfficialWorkflowRunAdmissionError();
+      }
       return {
+        volume: {
+          name: definition.artifact.storageName,
+          version: definition.artifact.storageVersion,
+          mountPath: definition.mountPath,
+          system: true,
+          expectedStorageId: definition.artifact.storageId,
+        },
+        source: "official_workflow" as const,
+      };
+    }
+    return {
+      volume: {
         // The volume is keyed by the workflow id; it mounts at the slug.
         name: getCustomSkillStorageName(workflow.workflowId),
         mountPath: skillMountPath(skillsRoot, workflow.name),
-      };
-    });
+      },
+      source: "workflow_skill" as const,
+    };
+  });
 }
 
 function buildCustomConnectorSkillVolumes(
@@ -1252,6 +1339,7 @@ function buildInjectedSkillVolumes(
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
+    readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
   },
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] | undefined {
@@ -1281,10 +1369,11 @@ function buildInjectedSkillVolumes(
   ];
   return [
     ...systemSkillVolumes,
-    ...(prepareAdditionalVolumesWithSource(
-      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, skillsRoot),
-      "workflow_skill",
-    ) ?? []),
+    ...buildWorkflowSkillVolumes(
+      args.injectSkillVolumes.workflows,
+      skillsRoot,
+      args.officialWorkflowRun,
+    ),
   ];
 }
 
@@ -6144,6 +6233,9 @@ interface LaunchRunRowsArgs {
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
   readonly launchSnapshot: AgentRunLaunchSnapshot;
+  readonly officialWorkflowProvenance:
+    | AgentRunOfficialWorkflowProvenance
+    | undefined;
   readonly chatToolActivityEnabled: boolean;
   readonly error: string | undefined;
 }
@@ -6191,6 +6283,7 @@ function launchRunValues(
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
     launchSnapshot: args.launchSnapshot,
+    officialWorkflowProvenance: args.officialWorkflowProvenance ?? null,
     chatToolActivityEnabled: args.chatToolActivityEnabled,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
@@ -7121,6 +7214,8 @@ function preparedLaunchRowsArgs(args: {
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
     launchSnapshot: args.commit.context.launchSnapshot,
+    officialWorkflowProvenance:
+      args.commit.context.officialWorkflowRun?.provenance,
     chatToolActivityEnabled: args.commit.context.chatToolActivityEnabled,
     error: undefined,
   };
@@ -7515,74 +7610,115 @@ async function claimQueueFirstAssociationForLaunch(args: {
   });
 }
 
-async function commitFailedLaunch(args: {
+interface CommitFailedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
   readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly launch?: PreparedRunnerLaunch;
   readonly error: unknown;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<CreateRunSuccessResult | QueueFirstRunClaimLost> {
-  const message = runFailureMessage(args.error);
-  const committed = await args.db.transaction(
-    async (tx): Promise<FailedLaunchCommitResult> => {
-      await lockQueueFirstRunSourceForLaunch({
-        tx,
-        createArgs: args.createArgs,
-      });
-      const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
-        tx,
-        createArgs: args.createArgs,
-        sessionSnapshotState: "unvalidated",
-        timing: args.timing,
-      });
-      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
-        tx,
-        admission: queueFirstAdmission,
-        createArgs: args.createArgs,
-        identity: args.identity,
-        timing: args.timing,
-      });
-      if (queueFirstClaim?.kind === "lost") {
-        return { kind: "queue-first-claim-lost" };
-      }
-      const { createdAt } = await insertLaunchRunRows(tx, {
-        userId: args.createArgs.userId,
-        orgId: args.createArgs.orgId,
-        identity: args.identity,
-        status: "failed",
-        resolved: args.context.resolved,
-        body: args.context.body,
-        runStorageMounts: undefined,
-        sessionStorageMounts: undefined,
-        modelProvider: args.context.modelProvider,
-        agentRunModelPin: args.createArgs.agentRunModelPin,
-        selectedVideoModel: args.context.selectedVideoModel,
-        selectedImageModel: args.context.selectedImageModel,
-        callbackRows: args.callbackRows,
-        chatThreadId: args.createArgs.chatThreadId,
-        agentRunMetadata: args.createArgs.agentRunMetadata,
-        apiStartTime: args.createArgs.apiStartTime,
-        runnerGroup: undefined,
-        launchSnapshot: args.context.launchSnapshot,
-        chatToolActivityEnabled: args.context.chatToolActivityEnabled,
-        error: message,
-      });
-      if (queueFirstClaim) {
-        await recordQueueFirstFailedRun(tx, {
-          claim: queueFirstClaim,
-          runId: args.identity.runId,
-        });
-      }
-      return {
-        kind: "failed",
-        createdAt,
-        queueFirstClaim,
-      };
+}
+
+async function persistFailedLaunch(
+  tx: DbTransaction,
+  args: CommitFailedLaunchArgs,
+  message: string,
+): Promise<FailedLaunchCommitResult> {
+  await acquireOfficialWorkflowRunCatalogAdmissionLock(
+    tx,
+    args.context.officialWorkflowRun,
+  );
+  if (args.context.officialWorkflowRun) {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${args.createArgs.orgId}))`,
+    );
+  }
+  await lockQueueFirstRunSourceForLaunch({
+    tx,
+    createArgs: args.createArgs,
+  });
+  const officialAdmissionFailure = await validateOfficialWorkflowRunForInsert(
+    tx,
+    {
+      observation: args.context.officialWorkflowRun,
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      agentId: args.context.resolved.agentId,
+      automationId: args.createArgs.agentRunMetadata?.workflowAutomationId,
+      runStorageMounts: args.launch?.runStorageMounts,
+      allowMissingMountsForFailedRun: true,
     },
   );
+  if (officialAdmissionFailure) {
+    return conflict(officialAdmissionFailure.message);
+  }
+  const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+    tx,
+    createArgs: args.createArgs,
+    sessionSnapshotState: "unvalidated",
+    timing: args.timing,
+  });
+  const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+    tx,
+    admission: queueFirstAdmission,
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+  });
+  if (queueFirstClaim?.kind === "lost") {
+    return { kind: "queue-first-claim-lost" };
+  }
+  const { createdAt } = await insertLaunchRunRows(tx, {
+    userId: args.createArgs.userId,
+    orgId: args.createArgs.orgId,
+    identity: args.identity,
+    status: "failed",
+    resolved: args.context.resolved,
+    body: args.context.body,
+    runStorageMounts: args.launch?.runStorageMounts,
+    sessionStorageMounts: args.launch?.sessionStorageMounts,
+    modelProvider: args.context.modelProvider,
+    agentRunModelPin: args.createArgs.agentRunModelPin,
+    selectedVideoModel: args.context.selectedVideoModel,
+    selectedImageModel: args.context.selectedImageModel,
+    callbackRows: args.callbackRows,
+    chatThreadId: args.createArgs.chatThreadId,
+    agentRunMetadata: args.createArgs.agentRunMetadata,
+    apiStartTime: args.createArgs.apiStartTime,
+    runnerGroup: undefined,
+    launchSnapshot: args.context.launchSnapshot,
+    officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
+    chatToolActivityEnabled: args.context.chatToolActivityEnabled,
+    error: message,
+  });
+  if (queueFirstClaim) {
+    await recordQueueFirstFailedRun(tx, {
+      claim: queueFirstClaim,
+      runId: args.identity.runId,
+    });
+  }
+  return {
+    kind: "failed",
+    createdAt,
+    queueFirstClaim,
+  };
+}
 
+async function commitFailedLaunch(
+  args: CommitFailedLaunchArgs,
+): Promise<
+  CreateRunSuccessResult | CreateRunErrorResult | QueueFirstRunClaimLost
+> {
+  const message = runFailureMessage(args.error);
+  const committed = await args.db.transaction(async (tx) => {
+    return await persistFailedLaunch(tx, args, message);
+  });
+
+  if (isRouteError(committed)) {
+    return committed;
+  }
   if (committed.kind === "queue-first-claim-lost") {
     return committed;
   }
@@ -7893,6 +8029,21 @@ async function commitPreparedLaunchUnderLock(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  const officialAdmissionFailure = await validateOfficialWorkflowRunForInsert(
+    tx,
+    {
+      observation: args.context.officialWorkflowRun,
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      agentId: args.context.resolved.agentId,
+      automationId: args.createArgs.agentRunMetadata?.workflowAutomationId,
+      runStorageMounts: args.launch.runStorageMounts,
+      allowMissingMountsForFailedRun: false,
+    },
+  );
+  if (officialAdmissionFailure) {
+    return conflict(officialAdmissionFailure.message);
+  }
   const threadSessionValidation = await validateThreadSessionSnapshot(tx, {
     createArgs: args.createArgs,
     identity: args.identity,
@@ -7997,6 +8148,10 @@ async function commitPreparedLaunch(
       ...args.launch.runnerJobPayload,
       reuseKey: runnerReuseKey(args.createArgs.chatThreadId),
     });
+    await acquireOfficialWorkflowRunCatalogAdmissionLock(
+      tx,
+      args.context.officialWorkflowRun,
+    );
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -8122,6 +8277,7 @@ interface PreparedRunContext {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   /** Captured once and persisted; later event writers must not re-resolve it. */
@@ -8490,6 +8646,7 @@ function preparedRunAdditionalVolumes(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedAgentExecution;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): PreparedAdditionalVolumes {
   const bodyAdditionalVolumes = args.body.additionalVolumes;
   const injectedSkillVolumes = buildInjectedSkillVolumes(
@@ -8497,6 +8654,7 @@ function preparedRunAdditionalVolumes(args: {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
+      officialWorkflowRun: args.officialWorkflowRun,
     },
     args.skillsRoot,
   );
@@ -9110,6 +9268,7 @@ function prepareRunOutputMetadata(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedAgentExecution;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
@@ -9120,13 +9279,11 @@ function prepareRunOutputMetadata(args: {
     connectorScope: args.connectorScope,
     connectorCatalogSelection: args.connectorCatalogSelection,
     customConnectorContext: args.customConnectorContext,
-    skillsRoot:
-      args.piSandbox === undefined
-        ? frameworkSkillsMountPath(args.framework)
-        : PI_SKILLS_ROOT,
+    skillsRoot: skillsRootForRun(args.framework, args.piSandbox),
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
     resolved: args.resolved,
+    officialWorkflowRun: args.officialWorkflowRun,
   });
   const artifacts = artifactsForRun({
     resolved: args.resolved,
@@ -9139,6 +9296,15 @@ function prepareRunOutputMetadata(args: {
     additionalVolumeSources: additionalVolumes.sources,
     artifacts,
   };
+}
+
+function skillsRootForRun(
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+): string {
+  return piSandbox === undefined
+    ? frameworkSkillsMountPath(framework)
+    : PI_SKILLS_ROOT;
 }
 
 function isImageRecognitionAvailableForRun(args: {
@@ -9231,6 +9397,56 @@ function resolveCompatibleDirectResumeSession(args: {
     : args.resolved;
 }
 
+async function resolvePreparedOfficialWorkflowRun(
+  db: Db,
+  args: CreateAgentRunArgs,
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+  signal: AbortSignal,
+): Promise<OfficialWorkflowRunObservation | CreateRunErrorResult | undefined> {
+  const candidates = safeSync(() => {
+    return officialWorkflowRunCandidates(
+      args.injectSkillVolumes?.workflows ?? [],
+      skillsRootForRun(framework, piSandbox),
+      args.requiredOfficialWorkflowIds ?? [],
+    );
+  });
+  if ("error" in candidates) {
+    signal.throwIfAborted();
+    if (candidates.error instanceof OfficialWorkflowRunAdmissionError) {
+      return conflict(candidates.error.message);
+    }
+    throw candidates.error;
+  }
+  const resolved = await settle(
+    resolveOfficialWorkflowRunObservation(db, candidates.ok, signal),
+    signal,
+  );
+  if (resolved.ok) {
+    return resolved.value;
+  }
+  signal.throwIfAborted();
+  if (resolved.error instanceof OfficialWorkflowRunAdmissionError) {
+    return conflict(resolved.error.message);
+  }
+  throw resolved.error;
+}
+
+async function resolvePreparedMediaModels(
+  db: Db,
+  args: CreateAgentRunArgs,
+  signal: AbortSignal,
+) {
+  const models = await resolveMediaModelsForRun({
+    db,
+    orgId: args.orgId,
+    userId: args.userId,
+    chatThreadId: args.chatThreadId,
+  });
+  signal.throwIfAborted();
+  return models;
+}
+
 function prepareRunContext(
   input: PrepareRunContextInput,
   signal: AbortSignal,
@@ -9296,13 +9512,19 @@ function prepareRunContext(
       signal.throwIfAborted();
 
       const { selectedVideoModel, selectedImageModel } =
-        await resolveMediaModelsForRun({
-          db,
-          orgId: args.orgId,
-          userId: args.userId,
-          chatThreadId: args.chatThreadId,
-        });
+        await resolvePreparedMediaModels(db, args, signal);
+
+      const officialWorkflowRun = await resolvePreparedOfficialWorkflowRun(
+        db,
+        args,
+        runtimeContext.framework,
+        piSandbox,
+        signal,
+      );
       signal.throwIfAborted();
+      if (isRouteError(officialWorkflowRun)) {
+        return officialWorkflowRun;
+      }
 
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
@@ -9320,6 +9542,7 @@ function prepareRunContext(
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
               resolved,
+              officialWorkflowRun,
             }),
           );
         },
@@ -9339,6 +9562,7 @@ function prepareRunContext(
         artifacts: outputMetadata.artifacts,
         additionalVolumes: outputMetadata.additionalVolumes,
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
+        officialWorkflowRun,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
         chatToolActivityEnabled,
@@ -9582,6 +9806,7 @@ async function completeQueuePayloadLaunch(
       context: args.input.context,
       identity: args.identity,
       callbackRows: args.callbackRows,
+      launch: args.launch,
       error: encryptedQueuedParams.error,
       timing: args.input.timing,
     });
@@ -9658,6 +9883,11 @@ function createAtomicLaunchRun(
     );
     signal.throwIfAborted();
     if (!launchResult.ok) {
+      if (
+        launchResult.error instanceof OfficialWorkflowArtifactResolutionError
+      ) {
+        return conflict(OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE);
+      }
       return await commitFailedLaunch({
         db: input.db,
         createArgs: input.args,

@@ -230,6 +230,7 @@ import {
   userPresentationTemplateVolumes,
   type PresentationTemplateVolume,
 } from "./presentation-template-data.service";
+import { OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE } from "./official-workflow-run.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -492,7 +493,7 @@ type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
   admissionTime: number,
   signal: AbortSignal,
-) => Promise<CreatedQueuedRun | null>;
+) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
 
 interface ChatCallbackDependencies {
   readonly releaseBrowsersForRun: (
@@ -683,6 +684,7 @@ interface CreateQueuedChatRunInput {
   readonly threadId: string;
   readonly connectorSourceId?: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
   readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
@@ -995,6 +997,11 @@ function buildQueuedCreateAgentRunArgs(
       selectedModel: input.modelPin.selectedModel,
     },
     agentRunMetadata: { autonomyBudget: input.autonomyBudget },
+    ...(input.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds: input.requiredOfficialWorkflowIds,
+        }),
     ...(input.builtInModelRuntimeRoute
       ? { builtInModelRuntimeRoute: input.builtInModelRuntimeRoute }
       : {}),
@@ -3086,6 +3093,28 @@ function queuedMessageAdmissionFailure(
   }
 }
 
+function officialWorkflowQueuedMessageAdmissionFailure(
+  input: CreateQueuedChatRunInput,
+): WebQueuedMessageAdmissionFailure {
+  if (!input.requiredOfficialWorkflowIds?.length) {
+    throw new Error(
+      "Official Workflow queue admission conflict is missing its source claim",
+    );
+  }
+  return {
+    kind: "web_admission_failure",
+    orgId: input.orgId,
+    userId: input.userId,
+    threadId: input.threadId,
+    queuedMessage: input.queuedMessage,
+    publicBrand: input.publicBrand ?? "vm0",
+    error: {
+      code: "CONFLICT",
+      message: OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE,
+    },
+  };
+}
+
 function queuedMessagePrompt(args: {
   readonly launchMaterial: QueuedLaunchMaterial;
 }): string {
@@ -3340,6 +3369,12 @@ async function buildCreateQueuedChatRunInput(
     publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
+    ...(args.queuedMessage.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds:
+            args.queuedMessage.requiredOfficialWorkflowIds,
+        }),
     modelPin: modelRoute.modelPin,
     effectiveModelProvider: modelRoute.effectiveModelProvider,
     builtInModelRuntimeRoute: modelRoute.builtInModelRuntimeRoute,
@@ -3388,10 +3423,10 @@ async function appendAutoSentQueuedRunMarker(args: {
 async function createAutoSentQueuedRun(args: {
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<CreatedQueuedRun | null>;
+  ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   readonly runInput: CreateQueuedChatRunInput;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreatedQueuedRun | null> {
+}): Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null> {
   return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
@@ -3455,6 +3490,13 @@ function recordQueuedMessageAdmissionFailure(
   };
   if (failure.error.code === "INSUFFICIENT_CREDITS") {
     log.debug("Queued message rejected by current model admission", fields);
+    return;
+  }
+  if (failure.error.code === "CONFLICT") {
+    log.warn("Queued message rejected by permanent launch admission", {
+      ...fields,
+      error: failure.error.message,
+    });
     return;
   }
   log.warn("Queued message rejected because the model route is unavailable", {
@@ -4077,7 +4119,7 @@ interface AutoSendQueuedMessageArgs {
   readonly admissionTime: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<CreatedQueuedRun | null>;
+  ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   readonly db: Db;
   readonly chatThreadId: string;
   readonly userId: string;
@@ -4149,6 +4191,24 @@ function autoSendAdmissionBlocked(
   );
 }
 
+function autoSendAdmissionFailureArgs(
+  args: AutoSendQueuedMessageArgs,
+  failure: QueuedMessageAdmissionFailure,
+) {
+  return {
+    db: args.db,
+    failure,
+    formatError: args.formatIntegrationRunError,
+    deliverSlack: args.deliverSlackAdmissionFailure,
+    deliverFeishu: args.deliverFeishuAdmissionFailure,
+    clearFeishuThinking: args.clearFeishuThinkingReaction,
+    deliverTeams: args.deliverTeamsAdmissionFailure,
+    deliverTelegram: args.deliverTelegramAdmissionFailure,
+    deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
+    deliverGitHub: args.deliverGitHubAdmissionFailure,
+  };
+}
+
 /**
  * User-message half of the per-thread scheduler: when the thread has no
  * in-flight run, dispatch the oldest queued user message — whoever sent it.
@@ -4211,18 +4271,7 @@ async function autoSendQueuedMessageForThread(
   }
   if ("kind" in runInput) {
     await handleQueuedMessageAdmissionFailure(
-      {
-        db: args.db,
-        failure: runInput,
-        formatError: args.formatIntegrationRunError,
-        deliverSlack: args.deliverSlackAdmissionFailure,
-        deliverFeishu: args.deliverFeishuAdmissionFailure,
-        clearFeishuThinking: args.clearFeishuThinkingReaction,
-        deliverTeams: args.deliverTeamsAdmissionFailure,
-        deliverTelegram: args.deliverTelegramAdmissionFailure,
-        deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
-        deliverGitHub: args.deliverGitHubAdmissionFailure,
-      },
+      autoSendAdmissionFailureArgs(args, runInput),
       signal,
     );
     return;
@@ -4237,6 +4286,13 @@ async function autoSendQueuedMessageForThread(
         timing: args.timing,
       });
       if (!createdRun) {
+        return null;
+      }
+      if ("kind" in createdRun) {
+        await handleQueuedMessageAdmissionFailure(
+          autoSendAdmissionFailureArgs(args, createdRun),
+          signal,
+        );
         return null;
       }
       createdRunId = createdRun.runId;
@@ -4284,10 +4340,10 @@ async function createQueuedChatRun(
     readonly input: CreateQueuedChatRunInput;
     readonly createRun: (
       input: CreateQueuedChatRunInput,
-    ) => Promise<CreatedQueuedRun | null>;
+    ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   },
   signal: AbortSignal,
-): Promise<CreatedQueuedRun | null> {
+): Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null> {
   const created = await args.createRun(args.input);
   signal.throwIfAborted();
   return created;
@@ -5101,6 +5157,83 @@ function queuedChatDispatchFailedCallbacks(
   );
 }
 
+const createQueuedRunForChatCallback$ = command(
+  async (
+    { set },
+    input: {
+      readonly db: Db;
+      readonly dependencies: ChatCallbackDependencies;
+      readonly runInput: CreateQueuedChatRunInput;
+      readonly admissionTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null> => {
+    const dispatchFailedCallbacks = queuedChatDispatchFailedCallbacks(
+      input.dependencies,
+      input.runInput,
+      signal,
+    );
+    const createArgs = buildQueuedCreateAgentRunArgs(
+      input.runInput,
+      input.admissionTime,
+      dispatchFailedCallbacks,
+    );
+    const settledRunResult = await settle(
+      set(createQueueFirstAgentRun$, createArgs, signal),
+    );
+    signal.throwIfAborted();
+    if (!settledRunResult.ok) {
+      if (
+        isForeignKeyViolation(settledRunResult.error) &&
+        !(await chatThreadExists(input.db, input.runInput.threadId))
+      ) {
+        return null;
+      }
+      signal.throwIfAborted();
+      throw settledRunResult.error;
+    }
+    const runResult = settledRunResult.value;
+    if (isQueueFirstRunClaimLost(runResult)) {
+      signal.throwIfAborted();
+      log.warn("Auto-send lost the queued-message launch claim", {
+        threadId: input.runInput.threadId,
+        userMessageId: input.runInput.queuedMessage.id,
+      });
+      return null;
+    }
+    if (
+      input.runInput.requiredOfficialWorkflowIds !== undefined &&
+      runResult.status === 409 &&
+      runResult.body.error.code === "CONFLICT" &&
+      runResult.body.error.message === OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE
+    ) {
+      signal.throwIfAborted();
+      return officialWorkflowQueuedMessageAdmissionFailure(input.runInput);
+    }
+    if (runResult.status !== 201) {
+      signal.throwIfAborted();
+      log.warn("Auto-send failed to create run", {
+        threadId: input.runInput.threadId,
+        status: runResult.status,
+      });
+      return null;
+    }
+    if (!isCreatedQueuedRunStatus(runResult.body.status)) {
+      log.warn("Auto-send created run with unexpected status", {
+        threadId: input.runInput.threadId,
+        runId: runResult.body.runId,
+        status: runResult.body.status,
+      });
+      return null;
+    }
+    return {
+      runId: runResult.body.runId,
+      status: runResult.body.status,
+      claimedEventCreatedAt: runResult.queueFirstClaim.createdAt,
+    };
+  },
+);
+
 async function handleChatInternalCallback(
   args: {
     readonly db: Db;
@@ -5448,60 +5581,17 @@ const buildChatCallbackDependencies$ = command(
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
-      createQueuedRun: async (runInput, admissionTime, inputSignal) => {
-        const dispatchFailedCallbacks = queuedChatDispatchFailedCallbacks(
-          baseDependencies,
-          runInput,
+      createQueuedRun: (runInput, admissionTime, inputSignal) => {
+        return set(
+          createQueuedRunForChatCallback$,
+          {
+            db,
+            dependencies: baseDependencies,
+            runInput,
+            admissionTime,
+          },
           inputSignal,
         );
-        const createArgs = buildQueuedCreateAgentRunArgs(
-          runInput,
-          admissionTime,
-          dispatchFailedCallbacks,
-        );
-        const settledRunResult = await settle(
-          set(createQueueFirstAgentRun$, createArgs, inputSignal),
-        );
-        if (!settledRunResult.ok) {
-          if (
-            isForeignKeyViolation(settledRunResult.error) &&
-            !(await chatThreadExists(db, runInput.threadId))
-          ) {
-            return null;
-          }
-          inputSignal.throwIfAborted();
-          throw settledRunResult.error;
-        }
-        const runResult = settledRunResult.value;
-        if (isQueueFirstRunClaimLost(runResult)) {
-          inputSignal.throwIfAborted();
-          log.warn("Auto-send lost the queued-message launch claim", {
-            threadId: runInput.threadId,
-            userMessageId: runInput.queuedMessage.id,
-          });
-          return null;
-        }
-        if (runResult.status !== 201) {
-          inputSignal.throwIfAborted();
-          log.warn("Auto-send failed to create run", {
-            threadId: runInput.threadId,
-            status: runResult.status,
-          });
-          return null;
-        }
-        if (!isCreatedQueuedRunStatus(runResult.body.status)) {
-          log.warn("Auto-send created run with unexpected status", {
-            threadId: runInput.threadId,
-            runId: runResult.body.runId,
-            status: runResult.body.status,
-          });
-          return null;
-        }
-        return {
-          runId: runResult.body.runId,
-          status: runResult.body.status,
-          claimedEventCreatedAt: runResult.queueFirstClaim.createdAt,
-        };
       },
     };
     return dependencies;

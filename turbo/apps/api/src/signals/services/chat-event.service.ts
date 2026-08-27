@@ -236,8 +236,9 @@ type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content?: null;
-    readonly contextType?: "web";
+    readonly contextType?: "web" | "agent_run";
     readonly contextId?: string;
+    readonly requiredOfficialWorkflowIds?: readonly string[];
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -1050,6 +1051,10 @@ function canonicalChatEventValues(
           : undefined,
     eventType: values.eventType,
     payload: canonicalChatEventPayload(values),
+    requiredOfficialWorkflowIds:
+      "requiredOfficialWorkflowIds" in values
+        ? values.requiredOfficialWorkflowIds
+        : undefined,
     contextType,
     contextId,
     runEventSequenceNumber:

@@ -1,6 +1,3 @@
-export const OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE =
-  "Official Workflows are not executable until shared Definition execution is available";
-
 export const OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE =
   "Official Workflow content and structure are read-only";
 

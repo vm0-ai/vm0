@@ -52,11 +52,18 @@ import {
 import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
 import type { Tx } from "../../lib/db-types";
 import {
+  agentRunSourceAnnotation,
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./chat-user-message.service";
-import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
-import { webChatPublicBrandFromContextId } from "./web-chat-public-brand-context.service";
+import {
+  canonicalChatEventUserMessage,
+  parseCanonicalChatEventRequiredOfficialWorkflowIds,
+} from "./canonical-chat-event-read.service";
+import {
+  officialWorkflowQueueContextFromContextId,
+  webChatQueueContextFromContextId,
+} from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
 
@@ -140,6 +147,7 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly publicBrand: PublicBrand | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
@@ -251,6 +259,77 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   );
 }
 
+function resolveQueuedOfficialWorkflowContext(args: {
+  readonly contextType: QueuedUserMessageContextType;
+  readonly contextId: string | null;
+  readonly requiredOfficialWorkflowIds: readonly string[] | null;
+}) {
+  const webContext =
+    args.contextType === "web"
+      ? webChatQueueContextFromContextId(args.contextId)
+      : null;
+  const officialAgentContext =
+    args.contextType === "agent_run"
+      ? officialWorkflowQueueContextFromContextId(args.contextId)
+      : null;
+  const markerRequiresClaim =
+    webContext?.officialWorkflowClaimRequired === true ||
+    officialAgentContext !== null;
+  const hasClaim = args.requiredOfficialWorkflowIds !== null;
+  if (markerRequiresClaim !== hasClaim) {
+    throw new Error(
+      "Queued Official Workflow marker and source claim do not match",
+    );
+  }
+  if (hasClaim && !isWebChatContextType(args.contextType)) {
+    throw new Error(
+      `Queued ${args.contextType} input cannot carry an Official Workflow source claim`,
+    );
+  }
+  return { webContext, officialAgentContext };
+}
+
+async function loadQueuedSourceAutonomyBudget(
+  db: Db,
+  args: {
+    readonly userMessage: ChatEventUserMessage;
+    readonly sourceAutonomyBudget: number | null;
+    readonly officialAgentClaim: boolean;
+  },
+): Promise<number | null> {
+  if (!args.officialAgentClaim) {
+    return args.sourceAutonomyBudget;
+  }
+  const source = agentRunSourceAnnotation(args.userMessage);
+  if (!source) {
+    throw new Error(
+      "Queued Official agent input is missing its source Run annotation",
+    );
+  }
+  const [sourceRun] = await db
+    .select({ autonomyBudget: agentRuns.autonomyBudget })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, source.runId))
+    .limit(1);
+  return sourceRun?.autonomyBudget ?? null;
+}
+
+function queuedUserMessageAutonomyBudget(
+  contextType: QueuedUserMessageContextType,
+  sourceAutonomyBudget: number | null,
+): QueuedUserMessage["autonomyBudget"] {
+  if (contextType !== "agent_run") {
+    return { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET };
+  }
+  if (sourceAutonomyBudget === null) {
+    return {
+      kind: "unavailable",
+      message: "Agent source run no longer exists",
+    };
+  }
+  return childAutonomyBudget(sourceAutonomyBudget);
+}
+
 export async function loadNextUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
@@ -270,6 +349,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       userMessage: canonicalChatEventUserMessage(),
+      requiredOfficialWorkflowIds: chatEvents.requiredOfficialWorkflowIds,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
@@ -303,23 +383,36 @@ export async function loadNextUnclaimedQueuedUserMessage(
     throw new Error("Queued input event is missing userMessage");
   }
   const contextType = requiredQueuedUserMessageContextType(event.contextType);
-  const publicBrand =
-    contextType === "web"
-      ? webChatPublicBrandFromContextId(event.contextId)
-      : null;
-  const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
-    contextType !== "agent_run"
-      ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
-      : event.sourceAutonomyBudget === null
-        ? {
-            kind: "unavailable",
-            message: "Agent source run no longer exists",
-          }
-        : childAutonomyBudget(event.sourceAutonomyBudget);
-  return {
-    ...event,
+  const requiredOfficialWorkflowIds =
+    parseCanonicalChatEventRequiredOfficialWorkflowIds(
+      event.requiredOfficialWorkflowIds,
+    );
+  const { webContext, officialAgentContext } =
+    resolveQueuedOfficialWorkflowContext({
+      contextType,
+      contextId: event.contextId,
+      requiredOfficialWorkflowIds,
+    });
+  const sourceAutonomyBudget = await loadQueuedSourceAutonomyBudget(db, {
     userMessage: event.userMessage,
-    publicBrand,
+    sourceAutonomyBudget: event.sourceAutonomyBudget,
+    officialAgentClaim: officialAgentContext !== null,
+  });
+  const autonomyBudget = queuedUserMessageAutonomyBudget(
+    contextType,
+    sourceAutonomyBudget,
+  );
+  const { requiredOfficialWorkflowIds: _storedClaim, ...queuedEvent } = event;
+  return {
+    ...queuedEvent,
+    userMessage: event.userMessage,
+    ...(requiredOfficialWorkflowIds === null
+      ? {}
+      : {
+          requiredOfficialWorkflowIds,
+        }),
+    publicBrand:
+      webContext?.publicBrand ?? officialAgentContext?.publicBrand ?? null,
     contextType,
     autonomyBudget,
   };
