@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.177.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.1...runner-rs-v0.177.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **runner:** enforce wait-running deadline ([#29920](https://github.com/vm0-ai/vm0/issues/29920)) ([cd0b6fe](https://github.com/vm0-ai/vm0/commit/cd0b6fe6d1315617f0f1af381a33643cd04bd1aa))
+
+
+### Performance Improvements
+
+* **python:** bound codex catalog query parsing ([#29918](https://github.com/vm0-ai/vm0/issues/29918)) ([a0a061c](https://github.com/vm0-ai/vm0/commit/a0a061c7ffce34599c7a93d11a7997e6bff9d173))
+
 ## [0.177.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.0...runner-rs-v0.177.1) (2026-08-27)
 
 

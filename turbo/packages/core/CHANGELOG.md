@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.599.3](https://github.com/vm0-ai/vm0/compare/core-v8.599.2...core-v8.599.3) (2026-08-27)
+
+
+### Refactoring
+
+* remove three column nav feature switch ([#29900](https://github.com/vm0-ai/vm0/issues/29900)) ([b6f4b4b](https://github.com/vm0-ai/vm0/commit/b6f4b4b5b0117ba4f86f6428f04ecd4440639b61))
+
 ## [8.599.2](https://github.com/vm0-ai/vm0/compare/core-v8.599.1...core-v8.599.2) (2026-08-27)
 
 

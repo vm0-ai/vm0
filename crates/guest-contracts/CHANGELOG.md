@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.2...guest-contracts-v0.12.3) (2026-08-27)
+
+
+### Refactoring
+
+* **runtime:** cut root cgroup placement writers to canonical aliases ([#29917](https://github.com/vm0-ai/vm0/issues/29917)) ([ae935e6](https://github.com/vm0-ai/vm0/commit/ae935e632c1a1c1bee1bd3c014ca556370e59a4a))
+
 ## [0.12.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.1...guest-contracts-v0.12.2) (2026-08-27)
 
 

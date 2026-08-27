@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.107](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.106...desktop-v0.38.107) (2026-08-27)
+
+
+### Refactoring
+
+* **desktop:** cut signing identity writer to canonical alias ([#29925](https://github.com/vm0-ai/vm0/issues/29925)) ([ea1804c](https://github.com/vm0-ai/vm0/commit/ea1804cf7ff29bab342189daffe00599f8091940))
+
 ## [0.38.106](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.105...desktop-v0.38.106) (2026-08-27)
 
 
