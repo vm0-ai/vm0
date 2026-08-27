@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.597.0](https://github.com/vm0-ai/vm0/compare/core-v8.596.2...core-v8.597.0) (2026-08-27)
+
+
+### Features
+
+* enable latest presentation templates globally ([#29756](https://github.com/vm0-ai/vm0/issues/29756)) ([f73de6b](https://github.com/vm0-ai/vm0/commit/f73de6b84b45462993f77c896e300549bd47b77d))
+
 ## [8.596.2](https://github.com/vm0-ai/vm0/compare/core-v8.596.1...core-v8.596.2) (2026-08-27)
 
 
