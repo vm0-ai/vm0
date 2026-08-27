@@ -656,6 +656,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
+      "introVideo": "Intro video",
       "multiAccent": "Multi-accent",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
@@ -673,6 +674,7 @@
       "searchConnector": "Search templates",
       "searchConnectors": "Search templates",
       "selected": "Template: {{title}}",
+      "selectIntroVideo": "Select intro video template {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
       "selectVideo": "Select video template {{title}}",
@@ -2255,6 +2257,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustration",
+        "introVideo": "Intro video",
         "presentation": "Presentation",
         "video": "Video",
         "website": "Website",

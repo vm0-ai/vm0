@@ -940,9 +940,14 @@ function templateAttachmentTypeLabel(
       return $.chat.templates.categories.illustration;
     });
   }
-  if (type === "video" || type === "intro-video") {
+  if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "intro-video") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.introVideo;
     });
   }
   if (type === "avatar") {
