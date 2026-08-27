@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.502.2](https://github.com/vm0-ai/vm0/compare/api-v1.502.1...api-v1.502.2) (2026-08-27)
+
+
+### Refactoring
+
+* clean covered chat tool activity data ([#29698](https://github.com/vm0-ai/vm0/issues/29698)) ([04fa0f1](https://github.com/vm0-ai/vm0/commit/04fa0f19126e9aa46192daf0a7d4936788661afb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.1
+    * @okouai/core bumped to 8.598.1
+    * @okouai/db bumped to 1.226.5
+
 ## [1.502.1](https://github.com/vm0-ai/vm0/compare/api-v1.502.0...api-v1.502.1) (2026-08-27)
 
 
