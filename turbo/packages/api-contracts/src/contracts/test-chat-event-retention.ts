@@ -11,6 +11,13 @@ export const testChatEventRetentionContract = c.router({
     path: "/api/test/retain-chat-events",
     body: z.object({
       chat_thread_ids: z.array(z.uuid()).min(1).max(100),
+      tool_cleanup_thread_scan_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .optional(),
+      tool_cleanup_delete_limit: z.number().int().min(1).max(2500).optional(),
     }),
     responses: {
       200: cronRetainChatEventsResponseSchema,
