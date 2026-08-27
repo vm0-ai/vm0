@@ -23,6 +23,7 @@ import { db } from "../lib/db";
 import { nowDate } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";
 import { lockChatEventRetention } from "../signals/services/chat-event-retention-lock.service";
+import { cleanChatToolActivity } from "../signals/services/chat-tool-activity-cleanup.service";
 import {
   insertChatEvent,
   insertChatEvents,
@@ -456,7 +457,9 @@ export const readRetentionEvents$ = command(
     readonly {
       readonly id: string;
       readonly createdAt: Date;
+      readonly eventType: string;
       readonly revokesEventId: string | null;
+      readonly seqId: number;
     }[]
   > => {
     if (eventIds.length === 0) {
@@ -466,12 +469,64 @@ export const readRetentionEvents$ = command(
       .select({
         id: chatEvents.id,
         createdAt: chatEvents.createdAt,
+        eventType: chatEvents.eventType,
         revokesEventId: chatEvents.revokesEventId,
+        seqId: chatEvents.seqId,
       })
       .from(chatEvents)
       .where(inArray(chatEvents.id, [...eventIds]));
     signal.throwIfAborted();
     return rows;
+  },
+);
+
+export const readRetentionSnapshotHeads$ = command(
+  async (
+    { set },
+    chatThreadId: string,
+    signal: AbortSignal,
+  ): Promise<
+    readonly {
+      readonly archiveSchemaVersion: number;
+      readonly lastEventId: string;
+      readonly lastSeqId: number;
+      readonly objectKey: string;
+      readonly projection: ChatEventSnapshotProjection;
+    }[]
+  > => {
+    const rows = await set(writeDb$)
+      .select({
+        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastEventId: chatEventSnapshots.lastEventId,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        objectKey: chatEventSnapshots.objectKey,
+        projection: chatEventSnapshots.projection,
+      })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, chatThreadId));
+    signal.throwIfAborted();
+    return rows;
+  },
+);
+
+export const failRetentionToolCleanupAfterMutation$ = command(
+  async (
+    { set },
+    chatThreadIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(writeDb$).transaction(async (tx) => {
+      await cleanChatToolActivity(
+        tx,
+        {
+          kind: "fixtures",
+          chatThreadIds,
+          toolCleanupFailAfterMutation: true,
+        },
+        signal,
+      );
+    });
+    signal.throwIfAborted();
   },
 );
 
@@ -499,6 +554,41 @@ export async function holdChatEventRetentionLockFixture(
     await lockChatEventRetention(tx);
     started.resolve(undefined);
     await released.promise;
+  });
+  await started.promise;
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+  };
+}
+
+/** Hold the thread row lock while a stale writer's tool event is uncommitted. */
+export async function holdRetentionToolWriterFixture(
+  chatThreadId: string,
+  signal: AbortSignal,
+): Promise<{ readonly release: () => void; readonly done: Promise<string> }> {
+  const started = createDeferredPromise<void>(signal);
+  const released = createDeferredPromise<void>(signal);
+  const done = db().transaction(async (tx) => {
+    const inserted = await insertChatEvent(tx, {
+      chatThreadId,
+      eventType: "output.tool",
+      runId: randomUUID(),
+      toolUseId: `stale-writer-${randomUUID()}`,
+      action: "read",
+      status: "success",
+      summary: "Stale writer tool activity",
+    });
+    if (inserted === null) {
+      throw new Error("Expected stale writer tool event insertion");
+    }
+    started.resolve(undefined);
+    await released.promise;
+    return inserted.id;
   });
   await started.promise;
   return {

@@ -117,6 +117,9 @@ export const chatEvents = pgTable(
   (table) => {
     return [
       index("idx_chat_events_created_at_id").on(table.createdAt, table.id),
+      index("chat_events_output_tool_thread_seq_idx")
+        .on(table.chatThreadId, table.seqId)
+        .where(sql`${table.eventType} = 'output.tool'`),
       index("idx_chat_events_thread_created").on(
         table.chatThreadId,
         table.createdAt,
