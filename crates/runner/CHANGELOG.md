@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.176.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.4...runner-rs-v0.176.5) (2026-08-27)
+
+
+### Documentation
+
+* **runner:** document firewall auth cache ownership generations ([#29853](https://github.com/vm0-ai/vm0/issues/29853)) ([5f21b13](https://github.com/vm0-ai/vm0/commit/5f21b13adf3b11f9d119007d13c4fcb1eff835b9))
+
 ## [0.176.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.3...runner-rs-v0.176.4) (2026-08-27)
 
 ## [0.176.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.2...runner-rs-v0.176.3) (2026-08-27)

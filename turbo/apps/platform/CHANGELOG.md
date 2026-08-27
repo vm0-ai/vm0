@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.804.5](https://github.com/vm0-ai/vm0/compare/app-v0.804.4...app-v0.804.5) (2026-08-27)
+
+
+### Bug Fixes
+
+* **platform:** clarify color theme navigation hierarchy ([#29724](https://github.com/vm0-ai/vm0/issues/29724)) ([70b7b4f](https://github.com/vm0-ai/vm0/commit/70b7b4fa877b5d17c340d1d91392dd35251b59a1))
+
+
+### Performance Improvements
+
+* **platform:** enable name-preserving identifier mangling ([#29728](https://github.com/vm0-ai/vm0/issues/29728)) ([2ce53ca](https://github.com/vm0-ai/vm0/commit/2ce53ca93f3140e5a61339b7061c8a43d668ec28))
+
 ## [0.804.4](https://github.com/vm0-ai/vm0/compare/app-v0.804.3...app-v0.804.4) (2026-08-27)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.56](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.55...sandbox-v0.19.56) (2026-08-27)
+
+
+### Documentation
+
+* **rust:** make SandboxId contract provider-neutral ([#29852](https://github.com/vm0-ai/vm0/issues/29852)) ([74114a7](https://github.com/vm0-ai/vm0/commit/74114a7a29b92fa61a47b378a27b43b07163e4ac))
+
 ## [0.19.55](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.54...sandbox-v0.19.55) (2026-08-27)
 
 
