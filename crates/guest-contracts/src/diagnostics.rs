@@ -687,6 +687,8 @@ impl FailureReason {
 pub enum FailureDetailSource {
     /// The reason came from a Claude result payload.
     ClaudeResult,
+    /// The reason came from a Pi result payload.
+    PiResult,
     /// The reason came from a Codex compatibility JSONL event.
     CodexJsonl,
     /// The reason came from stderr output.
@@ -701,6 +703,7 @@ impl FailureDetailSource {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeResult => "claude_result",
+            Self::PiResult => "pi_result",
             Self::CodexJsonl => "codex_jsonl",
             Self::Stderr => "stderr",
             Self::FallbackExitCode => "fallback_exit_code",
@@ -892,6 +895,23 @@ mod tests {
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureDetailSource"], "claude_result");
         assert_eq!(json["failureReason"], "insufficient_credits");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_pi_result_source() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Pi,
+            PromptMetadata::from_prompt("debug Pi failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::PiResult);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureDetailSource"], "pi_result");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

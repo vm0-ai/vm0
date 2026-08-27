@@ -167,8 +167,8 @@ fi
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert_eq!(result.last_event_sequence, Some(15));
     assert_eq!(
-        result.claude_result.map(|summary| summary.status),
-        Some(guest_agent::cli::ClaudeResultStatus::Success)
+        result.jsonl_result.map(|summary| summary.status),
+        Some(guest_agent::cli::JsonlResultStatus::Success)
     );
     let mut delivered_events = Vec::new();
     for request in server.requests()? {

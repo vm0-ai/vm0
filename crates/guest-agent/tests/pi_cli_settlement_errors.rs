@@ -4,6 +4,7 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{AgentFramework, FailureDetailSource};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -123,8 +124,29 @@ fi
     std::env::set_current_dir(original_directory)?;
     assert_eq!(result.exit_code, 1);
     assert_eq!(
-        result.claude_result.map(|summary| summary.status),
-        Some(guest_agent::cli::ClaudeResultStatus::Error)
+        result.jsonl_result.map(|summary| summary.status),
+        Some(guest_agent::cli::JsonlResultStatus::Error)
+    );
+    let terminal_failure = guest_agent::failure_diagnostics::cli_nonzero_failure_for_config(
+        &runtime.config,
+        None,
+        &result,
+    );
+    assert_eq!(terminal_failure.diagnostic.framework, AgentFramework::Pi);
+    assert_eq!(
+        terminal_failure.diagnostic.failure_detail_source,
+        Some(FailureDetailSource::PiResult)
+    );
+    assert_eq!(terminal_failure.diagnostic.claude_num_turns, None);
+
+    let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
+    assert!(
+        system_log.contains("Pi JSONL failure result"),
+        "system log should attribute the result failure to Pi: {system_log}"
+    );
+    assert!(
+        !system_log.contains("Claude JSONL failure result"),
+        "system log should not attribute a Pi result failure to Claude: {system_log}"
     );
 
     let mut delivered_events = Vec::new();

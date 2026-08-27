@@ -49,7 +49,7 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
     // exit without a parsed `type=result` event would not validate the
     // reap arming/drain race this test exists to cover.
     assert!(
-        result.claude_result.is_some(),
+        result.jsonl_result.is_some(),
         "expected the mock type=result event to be observed before clean exit"
     );
 

@@ -910,6 +910,7 @@ fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
         for (framework, source) in [
             (AgentFramework::ClaudeCode, FailureDetailSource::Stderr),
             (AgentFramework::Codex, FailureDetailSource::ClaudeResult),
+            (AgentFramework::Pi, FailureDetailSource::PiResult),
         ] {
             let reason = super::classify_cli_failure_reason(framework, source, message);
 
@@ -924,6 +925,27 @@ fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
         );
 
         assert_eq!(reason, None, "message: {explanatory_message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_claude_signatures_from_pi_results() {
+    for message in [
+        "Failed to authenticate. API Error: 401 Invalid authentication credentials.",
+        "API Error: Overloaded",
+        "API Error: Stream idle timeout - no chunks received",
+        CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE,
+        CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+        CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+        "API Error: Claude's response exceeded the 32000 output token maximum.",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
     }
 }
 

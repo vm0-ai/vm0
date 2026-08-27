@@ -9,13 +9,13 @@
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
 //! - `provider_event_normalization`: provider semantic arrays before sequencing.
-//! - `claude`: Claude result parsing and tool tracking.
+//! - `claude`: Claude Code tool tracking.
+//! - `jsonl_result`: shared terminal result parsing for JSONL CLI backends.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` owns the Claude Code subprocess orchestration, while
-//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
-//! Pi uses the same JSONL subprocess lifecycle as Claude Code. Each path retains
-//! ownership of its process, event delivery, heartbeat races, and child
+//! `execute_cli` owns the shared Claude Code/Pi JSONL subprocess orchestration,
+//! while `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
+//! retains ownership of its process, event delivery, heartbeat races, and child
 //! reaping until completion.
 
 mod child_env;
@@ -33,15 +33,16 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
+mod jsonl_result;
 mod line_reader;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;
 mod termination;
 
-pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
 pub use codex_setup::setup_codex_for_config;
 pub use codex_startup::CodexStartupTiming;
+pub use jsonl_result::{JsonlResultStatus, JsonlResultSummary};
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -264,14 +265,14 @@ pub struct CliExecutionResult {
     /// Bounded event-delivery failure details, when delivery was terminally incomplete.
     pub event_delivery: Option<EventDeliveryDiagnostic>,
 
-    /// Claude Code's final result metadata, when a terminal result event was
-    /// observed. Codex uses its own event schema and leaves this unset.
-    pub claude_result: Option<ClaudeResultSummary>,
+    /// Final JSONL result metadata, when a terminal result event was observed.
+    /// Codex uses its own event schema and leaves this unset.
+    pub jsonl_result: Option<JsonlResultSummary>,
 
-    /// Claude Code result that armed post-result cleanup, when cleanup was
-    /// armed. This is intentionally separate from `claude_result` because late
-    /// drained stdout may contain another result event after cleanup starts.
-    pub post_result_cleanup_result: Option<ClaudeResultSummary>,
+    /// JSONL result that armed post-result cleanup, when cleanup was armed.
+    /// This is intentionally separate from `jsonl_result` because late drained
+    /// stdout may contain another result event after cleanup starts.
+    pub post_result_cleanup_jsonl_result: Option<JsonlResultSummary>,
 
     /// Best-effort, secret-masked terminal failure diagnostic parsed from the
     /// framework event stream.
@@ -1116,7 +1117,7 @@ async fn execute_cli_inner(
 
     let mut child = cmd.spawn()?;
 
-    let Some(claude_stdin) = child.stdin.take() else {
+    let Some(cli_stdin) = child.stdin.take() else {
         let _ = child.start_kill();
         return Err(AgentError::Execution("no stdin".into()));
     };
@@ -1146,14 +1147,14 @@ async fn execute_cli_inner(
         )
     });
     let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
-    let mut claude_stdin_write_handle = Some({
+    let mut stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
             if pi_execution {
                 pi_rpc::write_commands(
-                    claude_stdin,
+                    cli_stdin,
                     &run_id,
                     &prompt,
                     active_input,
@@ -1163,13 +1164,12 @@ async fn execute_cli_inner(
                 .await
             } else {
                 drop(pi_rpc_response_rx);
-                write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input)
-                    .await
+                write_claude_stream_json_to_stdin(cli_stdin, &run_id, &prompt, active_input).await
             }
         })
     });
 
-    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
+    // Stream CLI stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
@@ -1252,8 +1252,8 @@ async fn execute_cli_inner(
     let mut user_cancellation_handled = false;
     let mut pi_user_cancelled = false;
     let mut cli_exit_at: Option<Instant> = None;
-    let mut claude_result = None;
-    let mut post_result_cleanup_result = None;
+    let mut jsonl_result = None;
+    let mut post_result_cleanup_jsonl_result = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1330,12 +1330,12 @@ async fn execute_cli_inner(
                 );
             }
             stdin_write_result = async {
-                match claude_stdin_write_handle.as_mut() {
+                match stdin_write_handle.as_mut() {
                     Some(handle) => Some(handle.await),
                     None => std::future::pending().await,
                 }
-            }, if claude_stdin_write_handle.is_some() => {
-                claude_stdin_write_handle = None;
+            }, if stdin_write_handle.is_some() => {
+                stdin_write_handle = None;
                 match try_observe_cli_exit(
                     &mut child,
                     &mut cli_status,
@@ -1359,7 +1359,7 @@ async fn execute_cli_inner(
                         termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
                             error,
-                            ControlTerminationLog::ClaudeStdinWriterFailed { error: error_log },
+                            ControlTerminationLog::StdinWriterFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -1370,11 +1370,11 @@ async fn execute_cli_inner(
                         active_input_controller.close_terminal();
                         let error_log = error.to_string();
                         let control_error =
-                            AgentError::Execution(format!("Claude stdin writer task failed: {error_log}"));
+                            AgentError::Execution(format!("CLI stdin writer task failed: {error_log}"));
                         termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
                             control_error,
-                            ControlTerminationLog::ClaudeStdinWriterTaskFailed { error: error_log },
+                            ControlTerminationLog::StdinWriterTaskFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -1586,22 +1586,33 @@ async fn execute_cli_inner(
                                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                                 }
                             }
-                            // Print Claude Code final result to stdout if applicable.
+                            // Print the terminal JSONL result to stdout if applicable.
                             if is_terminal_result_event {
-                                let result_summary = ClaudeResultSummary::from_event(&event);
-                                claude_result = Some(result_summary);
+                                let result_summary = JsonlResultSummary::from_event(&event);
+                                jsonl_result = Some(result_summary);
                                 if let Some(diagnostic) =
-                                    events::masked_claude_failure_diagnostic(&event, masker)
+                                    events::masked_jsonl_result_failure_diagnostic(&event, masker)
                                 {
                                     let subtype = diagnostic.subtype.unwrap_or("unknown");
+                                    let (source, result_owner) = match runtime.framework {
+                                        env::Framework::ClaudeCode => {
+                                            (FailureDetailSource::ClaudeResult, "Claude")
+                                        }
+                                        env::Framework::Pi => {
+                                            (FailureDetailSource::PiResult, "Pi")
+                                        }
+                                        env::Framework::Codex => {
+                                            (FailureDetailSource::CodexJsonl, "Codex")
+                                        }
+                                    };
                                     let candidate = CliFailureDiagnostic {
                                         message: diagnostic.message,
-                                        source: FailureDetailSource::ClaudeResult,
+                                        source,
                                         failure_reason: None,
                                     };
                                     log_warn!(
                                         LOG_TAG,
-                                        "Claude JSONL failure result seq={} subtype={subtype}: {}",
+                                        "{result_owner} JSONL failure result seq={} subtype={subtype}: {}",
                                         event_pipeline.ingestor.current_sequence(),
                                         candidate.message
                                     );
@@ -1613,7 +1624,7 @@ async fn execute_cli_inner(
                                 {
                                     // Guest-agent stdout is captured as
                                     // system-stream logs, so mask before
-                                    // printing Claude's final result.
+                                    // printing the final result.
                                     println!("{}", masker.mask_string(result));
                                 }
                                 let active_input_idle =
@@ -1630,7 +1641,7 @@ async fn execute_cli_inner(
                                         termination_deadline.as_mut(),
                                     )
                                 {
-                                    post_result_cleanup_result = Some(result_summary);
+                                    post_result_cleanup_jsonl_result = Some(result_summary);
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
@@ -1923,27 +1934,24 @@ async fn execute_cli_inner(
 
     active_input_controller.close_terminal();
     let mut active_input_error = None;
-    if let Some(handle) = claude_stdin_write_handle.take() {
+    if let Some(handle) = stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     log_warn!(
                         LOG_TAG,
-                        "Claude stdin writer finished after CLI loop with error: {error}"
+                        "CLI stdin writer finished after CLI loop with error: {error}"
                     );
                     if active_input_controller.has_activity() {
                         active_input_error = Some(error);
                     }
                 }
                 Err(error) => {
-                    log_warn!(
-                        LOG_TAG,
-                        "Claude stdin writer failed after CLI loop: {error}"
-                    );
+                    log_warn!(LOG_TAG, "CLI stdin writer failed after CLI loop: {error}");
                     if active_input_controller.has_activity() {
                         active_input_error = Some(AgentError::Execution(format!(
-                            "Claude stdin writer task failed during active-input quiescence: {error}"
+                            "CLI stdin writer task failed during active-input quiescence: {error}"
                         )));
                     }
                 }
@@ -1960,21 +1968,21 @@ async fn execute_cli_inner(
                 Ok(Ok(Err(error))) => active_input_error = Some(error),
                 Ok(Err(error)) => {
                     active_input_error = Some(AgentError::Execution(format!(
-                        "Claude stdin writer task failed during active-input quiescence: {error}"
+                        "CLI stdin writer task failed during active-input quiescence: {error}"
                     )));
                 }
                 Err(_) => {
                     handle.abort();
                     let _ = handle.await;
                     active_input_error = Some(AgentError::Execution(
-                        "Claude stdin writer did not quiesce after terminal close".to_string(),
+                        "CLI stdin writer did not quiesce after terminal close".to_string(),
                     ));
                 }
             }
         } else {
             handle.abort();
             let _ = handle.await;
-            log_info!(LOG_TAG, "Stopped Claude stdin writer after CLI loop");
+            log_info!(LOG_TAG, "Stopped CLI stdin writer after CLI loop");
         }
     }
 
@@ -2034,8 +2042,7 @@ async fn execute_cli_inner(
         );
     }
     let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
-    if pi_execution
-        && claude_result.is_some_and(|result| result.status == ClaudeResultStatus::Error)
+    if pi_execution && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
     {
         exit_code = 1;
     }
@@ -2083,8 +2090,8 @@ async fn execute_cli_inner(
         stderr_lines: masked_stderr_lines,
         last_event_sequence: delivery_report.last_acknowledged_sequence,
         event_delivery: delivery_report.diagnostic,
-        claude_result,
-        post_result_cleanup_result,
+        jsonl_result,
+        post_result_cleanup_jsonl_result,
         failure_diagnostic,
         control_error,
         cli_termination,
