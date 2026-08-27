@@ -606,7 +606,7 @@ function CustomConnectorGrid({
       return;
     }
     if (connectsDirectlyWithOAuth(connector)) {
-      detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
+      detach(connectOAuth2({ id: connector.id }, signal), Reason.DomCallback);
       return;
     }
     openConnect(connector);
@@ -736,7 +736,7 @@ function CustomAccountDialogs({
           onReconnect={(account) => {
             openAccountConnect(managedAccounts, {
               kind: "reconnect",
-              account,
+              connectionId: account.id,
             });
           }}
         />

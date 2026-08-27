@@ -134,7 +134,9 @@ function threadArtifactFile(
   };
 }
 
-function googleDriveConnector(): ConnectorResponse {
+function googleDriveConnector(
+  overrides: Partial<ConnectorResponse> = {},
+): ConnectorResponse {
   return {
     id: "11111111-1111-4111-8111-111111111111",
     slug: "google-drive",
@@ -148,10 +150,13 @@ function googleDriveConnector(): ConnectorResponse {
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
+    ...overrides,
   };
 }
 
-function googleDriveCatalogStatus(): PublicConnectorCatalogStatusItem {
+function googleDriveCatalogStatus(
+  overrides: Partial<PublicConnectorCatalogStatusItem> = {},
+): PublicConnectorCatalogStatusItem {
   return {
     slug: "google-drive",
     label: "Google Drive",
@@ -187,6 +192,7 @@ function googleDriveCatalogStatus(): PublicConnectorCatalogStatusItem {
     tokenExpiresAt: null,
     singleAuthCodeAuthMethodId: "oauth",
     connectNotice: null,
+    ...overrides,
   };
 }
 
@@ -657,137 +663,173 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
-  it("connects Google Drive from an artifact with explicit compact account intent", async () => {
-    const user = userEvent.setup({ delay: null });
-    const markdownUrl =
-      "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-connect-notes.md";
-    const summary = catalogArtifact({ title: "drive-connect-notes.md" });
-    const artifactFiles = [
-      threadArtifactFile(markdownUrl, {
-        id: "artifact-drive-connect-notes",
-        filename: "drive-connect-notes.md",
-        googleDriveSync: { status: "disconnected" },
+  it.each([
+    {
+      intent: "add",
+      initialConnector: null,
+      catalogStatus: googleDriveCatalogStatus(),
+      account: { intent: "add" as const },
+    },
+    {
+      intent: "reconnect",
+      initialConnector: googleDriveConnector({
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
       }),
-    ];
-
-    setupArtifactCatalog(
-      [summary],
-      new Map([
-        [
-          summary.id,
-          catalogFileDetail({
-            contentType: "text/markdown",
-            filename: "drive-connect-notes.md",
-            fileId: "f0000000-0000-4000-a000-000000000004",
-            summary,
-            url: markdownUrl,
-          }),
-        ],
-      ]),
-    );
-    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
-      return respond(200, { connectors: [googleDriveCatalogStatus()] });
-    });
-    context.mocks.http.get(markdownUrl, () => {
-      return new Response("# Connect notes\n\nReady for Drive.", {
-        headers: { "Content-Type": "text/plain" },
-      });
-    });
-
-    let connectorConnected = false;
-    let agentAuthorized = false;
-    let oauthStarted = false;
-    let artifactSynced = false;
-    context.mocks.api(connectorsMainContract.list, ({ respond }) => {
-      return respond(200, {
-        connectors: connectorConnected ? [googleDriveConnector()] : [],
-        connectorProvidedBindings: [],
-      });
-    });
-    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
-      expect(params.id).toBe(AGENT_ID);
-      return respond(200, {
-        enabledConnectorSlugs: agentAuthorized ? ["google-drive"] : [],
-      });
-    });
-    context.mocks.api(userConnectorsContract.update, ({ never }) => {
-      return never();
-    });
-    const authWindow = context.mocks.browser.authWindow();
-    Object.defineProperty(authWindow, "location", {
-      value: { href: "" },
-      configurable: true,
-    });
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("google-drive");
-        expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+      catalogStatus: googleDriveCatalogStatus({
+        connected: true,
+        connectionStatus: "reconnect-required",
+        connection: {
+          id: googleDriveConnector().id,
           authMethod: "oauth",
-          agentId: AGENT_ID,
-          authorizeAgent: true,
-          callbackTarget: "app",
-        });
-        oauthStarted = true;
-        connectorConnected = true;
-        agentAuthorized = true;
-        authWindow.close();
-        return respond(200, {
-          authorizationUrl: "https://accounts.google.test/drive/authorize",
-        });
+          externalUsername: "drive-user",
+          externalEmail: "drive-user@example.com",
+          reconnectReason: "authorization_expired_or_revoked",
+        },
+      }),
+      account: {
+        intent: "reconnect" as const,
+        connectionId: googleDriveConnector().id,
       },
-    );
-    context.mocks.api(
-      chatThreadArtifactsContract.syncGoogleDrive,
-      ({ body, respond }) => {
-        expect(connectorConnected).toBeTruthy();
-        expect(agentAuthorized).toBeTruthy();
-        expect(body).toStrictEqual({
-          runId: "run-sidebar",
-          fileId: "artifact-drive-connect-notes",
+    },
+  ])(
+    "connects Google Drive from an artifact with explicit $intent intent",
+    async ({ initialConnector, catalogStatus, account }) => {
+      const user = userEvent.setup({ delay: null });
+      const markdownUrl =
+        "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-connect-notes.md";
+      const summary = catalogArtifact({ title: "drive-connect-notes.md" });
+      const artifactFiles = [
+        threadArtifactFile(markdownUrl, {
+          id: "artifact-drive-connect-notes",
+          filename: "drive-connect-notes.md",
+          googleDriveSync: { status: "disconnected" },
+        }),
+      ];
+
+      setupArtifactCatalog(
+        [summary],
+        new Map([
+          [
+            summary.id,
+            catalogFileDetail({
+              contentType: "text/markdown",
+              filename: "drive-connect-notes.md",
+              fileId: "f0000000-0000-4000-a000-000000000004",
+              summary,
+              url: markdownUrl,
+            }),
+          ],
+        ]),
+      );
+      context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+        return respond(200, { connectors: [catalogStatus] });
+      });
+      context.mocks.http.get(markdownUrl, () => {
+        return new Response("# Connect notes\n\nReady for Drive.", {
+          headers: { "Content-Type": "text/plain" },
         });
-        artifactFiles[0] = {
-          ...artifactFiles[0]!,
-          googleDriveSync: {
-            status: "synced",
+      });
+
+      let connectorConnected = false;
+      let agentAuthorized = false;
+      let oauthStarted = false;
+      let artifactSynced = false;
+      context.mocks.api(connectorsMainContract.list, ({ respond }) => {
+        return respond(200, {
+          connectors: connectorConnected
+            ? [googleDriveConnector()]
+            : initialConnector
+              ? [initialConnector]
+              : [],
+          connectorProvidedBindings: [],
+        });
+      });
+      context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, {
+          enabledConnectorSlugs: agentAuthorized ? ["google-drive"] : [],
+        });
+      });
+      context.mocks.api(userConnectorsContract.update, ({ never }) => {
+        return never();
+      });
+      const authWindow = context.mocks.browser.authWindow();
+      Object.defineProperty(authWindow, "location", {
+        value: { href: "" },
+        configurable: true,
+      });
+      context.mocks.browser.open(authWindow);
+      context.mocks.api(
+        connectorOauthStartContract.start,
+        ({ body, params, respond }) => {
+          expect(params.connectorSlug).toBe("google-drive");
+          expect(body).toStrictEqual({
+            account,
+            authMethod: "oauth",
+            agentId: AGENT_ID,
+            authorizeAgent: true,
+            callbackTarget: "app",
+          });
+          oauthStarted = true;
+          connectorConnected = true;
+          agentAuthorized = true;
+          authWindow.close();
+          return respond(200, {
+            authorizationUrl: "https://accounts.google.test/drive/authorize",
+          });
+        },
+      );
+      context.mocks.api(
+        chatThreadArtifactsContract.syncGoogleDrive,
+        ({ body, respond }) => {
+          expect(connectorConnected).toBeTruthy();
+          expect(agentAuthorized).toBeTruthy();
+          expect(body).toStrictEqual({
+            runId: "run-sidebar",
+            fileId: "artifact-drive-connect-notes",
+          });
+          artifactFiles[0] = {
+            ...artifactFiles[0]!,
+            googleDriveSync: {
+              status: "synced",
+              id: "drive-file-connect-notes",
+              name: "drive-connect-notes.md",
+              webViewLink: "https://drive.test/drive-connect-notes",
+            },
+          };
+          artifactSynced = true;
+          return respond(200, {
             id: "drive-file-connect-notes",
             name: "drive-connect-notes.md",
             webViewLink: "https://drive.test/drive-connect-notes",
-          },
-        };
-        artifactSynced = true;
-        return respond(200, {
-          id: "drive-file-connect-notes",
-          name: "drive-connect-notes.md",
-          webViewLink: "https://drive.test/drive-connect-notes",
-        });
-      },
-    );
+          });
+        },
+      );
 
-    setupChatThread({ artifactFiles });
-    await openCatalogArtifact("drive-connect-notes.md");
-    await screen.findByText("Ready for Drive.");
+      setupChatThread({ artifactFiles });
+      await openCatalogArtifact("drive-connect-notes.md");
+      await screen.findByText("Ready for Drive.");
 
-    await user.click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
-    });
-    await user.click(menuItemByText("Connect Google Drive"));
+      await user.click(screen.getByLabelText("Download artifact"));
+      await waitFor(() => {
+        expect(menuItemByText("Connect Google Drive")).toBeEnabled();
+      });
+      await user.click(menuItemByText("Connect Google Drive"));
 
-    await waitFor(() => {
-      expect(oauthStarted).toBeTruthy();
-    });
-    context.mocks.ably.trigger("connector:changed", {
-      connectorSlug: "google-drive",
-    });
+      await waitFor(() => {
+        expect(oauthStarted).toBeTruthy();
+      });
+      context.mocks.ably.trigger("connector:changed", {
+        connectorSlug: "google-drive",
+      });
 
-    await waitFor(() => {
-      expect(artifactSynced).toBeTruthy();
-      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
-    });
-  });
+      await waitFor(() => {
+        expect(artifactSynced).toBeTruthy();
+        expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+      });
+    },
+  );
 
   it("shows empty and unavailable CSV states from catalog details", async () => {
     const emptyCsvUrl =

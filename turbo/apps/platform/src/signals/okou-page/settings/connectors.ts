@@ -86,6 +86,7 @@ type PostConnectOptions = {
   readonly connectorLabel?: string;
   readonly agentId?: string;
   readonly account?: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection?: boolean;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
   readonly connectorIcon: PublicConnectorCatalogIcon;
@@ -2098,6 +2099,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
   account: ConnectorAccountMutationIntent,
+  useDefaultConnectorProjection: boolean,
 ) {
   // Snapshot taken on the first body invocation: `null` marks "no connector
   // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
@@ -2107,7 +2109,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
 
   return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
-    if (account.intent !== "single-account") {
+    if (!useDefaultConnectorProjection && account.intent !== "single-account") {
       const currentVersion = await readConnectorAccountMutationVersion(
         get(apiClient$),
         { kind: "builtin", connectorSlug },
@@ -2139,6 +2141,12 @@ function createConnectorOAuthAuthCodeChangedCommand(
       return false;
     }
     if (current) {
+      if (
+        account.intent === "reconnect" &&
+        current.id !== account.connectionId
+      ) {
+        return false;
+      }
       // initialUpdatedAt === null means the connector didn't exist on the first
       // fetch; any subsequent appearance signals completion.
       const connectionChanged =
@@ -2167,15 +2175,57 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
     { get },
     connectorSlug: ConnectorSlug,
     authMethod: ConnectorAuthMethodId,
+    connectionId: string | null,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { connectors } = await get(connectors$);
     signal.throwIfAborted();
     return connectors.some((connector) => {
-      return connectorMatchesAuthMethod(connector, connectorSlug, authMethod);
+      return (
+        connectorMatchesAuthMethod(connector, connectorSlug, authMethod) &&
+        (connectionId === null || connector.id === connectionId)
+      );
     });
   },
 );
+
+function getDefaultConnectorProjectionConnectionId(
+  account: ConnectorAccountMutationIntent,
+  expectedConnectionId: string | null,
+  useDefaultConnectorProjection: boolean,
+): string | null {
+  if (!useDefaultConnectorProjection) {
+    return null;
+  }
+  return account.intent === "reconnect"
+    ? account.connectionId
+    : expectedConnectionId;
+}
+
+function createExpectedConnectorConnectionAvailableCommand(
+  connectorSlug: ConnectorSlug,
+  expectedConnectionId: string | null,
+  useDefaultConnectorProjection: boolean,
+  onConnectorChanged$: ReturnType<
+    typeof createConnectorOAuthAuthCodeChangedCommand
+  >,
+) {
+  return command(
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+      if (useDefaultConnectorProjection) {
+        return await set(onConnectorChanged$, signal);
+      }
+      return expectedConnectionId
+        ? await connectorAccountConnectionExists(
+            get(apiClient$),
+            { kind: "builtin", connectorSlug },
+            expectedConnectionId,
+            signal,
+          )
+        : false;
+    },
+  );
+}
 
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
@@ -2337,18 +2387,13 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       oauthStart,
     } = args;
     const { authWindow, connectionId: expectedConnectionId } = oauthStart;
-    const expectedConnectionAvailable$ = command(
-      async ({ get }, sig: AbortSignal): Promise<boolean> => {
-        return expectedConnectionId
-          ? await connectorAccountConnectionExists(
-              get(apiClient$),
-              { kind: "builtin", connectorSlug },
-              expectedConnectionId,
-              sig,
-            )
-          : false;
-      },
-    );
+    const expectedConnectionAvailable$ =
+      createExpectedConnectorConnectionAvailableCommand(
+        connectorSlug,
+        expectedConnectionId,
+        options.useDefaultConnectorProjection ?? false,
+        onConnectorChanged$,
+      );
     const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
     const onMatchingConnectorChanged$ = command(
       async ({ set }, payload: unknown, sig: AbortSignal): Promise<boolean> => {
@@ -2402,7 +2447,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       if (!connectedAfterClose) {
         return false;
       }
-      if (!expectedConnected) {
+      if (!expectedConnected && !expectedConnectionId) {
         completedConnectionId = null;
       }
     } else if (!expectedConnectionId) {
@@ -2412,11 +2457,17 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
 
     set(reloadConnectors$);
     const isConnected =
-      account.intent !== "single-account" ||
+      (!options.useDefaultConnectorProjection &&
+        account.intent !== "single-account") ||
       (await set(
         defaultConnectorProjectionMatchesAuthMethod$,
         connectorSlug,
         method.id,
+        getDefaultConnectorProjectionConnectionId(
+          account,
+          expectedConnectionId,
+          options.useDefaultConnectorProjection ?? false,
+        ),
         signal,
       ));
     if (isConnected) {
@@ -2472,6 +2523,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           method.id,
           options.agentId,
           account,
+          options.useDefaultConnectorProjection ?? false,
         );
         const oauthStart = await set(
           openConnectorOAuthAuthCodeWindow$,

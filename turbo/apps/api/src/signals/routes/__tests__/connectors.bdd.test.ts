@@ -2048,7 +2048,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
-    ).resolves.toMatchObject({ connected: true });
+    ).resolves.toMatchObject({
+      connected: true,
+      connectedAccountId: connected.connectedAccountId,
+      connectedAccountUpdatedAt: expect.any(String),
+    });
 
     const parent = await readCustomConnectorCredentialStorageParent(context, {
       orgId: admin.orgId ?? "",

@@ -1015,7 +1015,7 @@ describe("onboarding flow", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {

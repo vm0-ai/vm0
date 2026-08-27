@@ -1227,7 +1227,7 @@ describe("chat composer connector connection", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
         });
         connected = true;
@@ -1342,7 +1342,11 @@ describe("chat composer connector connection", () => {
       connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-analytics");
-        expect(body.agentId).toBe(AGENT_ID);
+        expect(body).toMatchObject({
+          account: { intent: "add" },
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/analytics/authorize",
         });
@@ -1395,7 +1399,7 @@ describe("chat composer connector connection", () => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
