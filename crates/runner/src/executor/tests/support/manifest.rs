@@ -12,6 +12,7 @@ pub(in crate::executor::tests) fn api_storage(
         archive_url: archive_url.into(),
         vas_storage_name: name.into(),
         vas_version_id: version.into(),
+        baseline_candidate: false,
         instructions_target_filename: None,
         archive_size: None,
     }

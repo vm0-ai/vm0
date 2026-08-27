@@ -40,6 +40,7 @@ mod session_history_restore_plan;
 mod session_id;
 mod session_restore;
 mod storage;
+mod storage_baseline_observation;
 mod telemetry;
 mod workspace_session_history_materializer;
 
@@ -200,6 +201,7 @@ pub struct ExecutorConfig {
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub(crate) background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator,
     pub(crate) pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission,
+    pub(crate) storage_baseline_observer: storage_baseline_observation::StorageBaselineObserver,
     pub home: HomePaths,
     pub workspace_cache: Option<WorkspaceImageCache>,
 }
@@ -608,6 +610,9 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
+    config
+        .storage_baseline_observer
+        .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
@@ -716,6 +721,9 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
+    config
+        .storage_baseline_observer
+        .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);

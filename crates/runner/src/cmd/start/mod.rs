@@ -820,6 +820,7 @@ async fn run_start_with_home(
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill,
         pre_spawn_admission,
+        storage_baseline_observer: Default::default(),
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),

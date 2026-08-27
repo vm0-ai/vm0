@@ -923,12 +923,14 @@ describe("runner storage manifest contract", () => {
         versionId: "version-1",
         mountPath: "/workspace",
         archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: true,
       }),
     ).toMatchObject({
       name: "workspace",
       storageId: "storage-id-1",
       versionId: "version-1",
       mountPath: "/workspace",
+      baselineCandidate: true,
     });
 
     expect(
@@ -968,6 +970,21 @@ describe("runner storage manifest contract", () => {
         ...base,
         archiveUrl: "https://storage.example/workspace.tar.gz",
         missingRootPolicy: "fail",
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        empty: true,
+        writeback: true,
+        baselineCandidate: true,
       }).success,
     ).toBe(false);
     expect(
