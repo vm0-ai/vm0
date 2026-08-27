@@ -163,8 +163,8 @@ class ModelJsonResponseInspector:
         """Feed the next content-decoded JSON bytes for this response.
 
         Call this method repeatedly as response chunks arrive, before :meth:`finish`. If
-            :meth:`accepts_more_input` returns ``False``, the bounded parser has recorded a
-            permanent parse or configured-bound error and later chunks cannot recover it.
+        :meth:`accepts_more_input` returns ``False``, the bounded parser has recorded a
+        permanent parse or configured-bound error and later chunks cannot recover it.
         """
         self._extractor.feed(chunk)
 
