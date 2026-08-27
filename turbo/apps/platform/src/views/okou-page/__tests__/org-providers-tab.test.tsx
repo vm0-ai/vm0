@@ -28,6 +28,11 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. This file
+// exercises only the home route; production still resolves this module only
+// after matching a home route.
+import "../../../signals/route-setups/home.ts";
+
 const context = testContext();
 
 function staleCodexProvider(): ModelProviderResponse {
