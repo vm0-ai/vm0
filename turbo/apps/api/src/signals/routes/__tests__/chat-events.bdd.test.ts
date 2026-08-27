@@ -632,6 +632,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function templateUsageEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
+    const events = call[1];
+    if (!Array.isArray(events)) {
+      return [];
+    }
+    return events.filter(isRecord).filter((event) => {
+      return event.type === "template_used";
+    });
+  });
+}
+
 function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
     const dataset = call[0];
@@ -10998,6 +11010,223 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it("reports one template usage per template that reached the prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      template: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "normal-send",
+        orgId: actor.orgId,
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+        templateSlug: style.slug,
+        templateSource: "builtin",
+        userId: actor.userId,
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports every template on a multi-template message with its position", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
+    if (!first || !second) {
+      throw new Error("Expected two registered illustration styles");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "draw both",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Draw " },
+            {
+              type: "template",
+              titleSnapshot: first.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: first.illustrationStyleId },
+              },
+            },
+            { type: "text", text: " then " },
+            {
+              type: "template",
+              titleSnapshot: second.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: second.illustrationStyleId },
+              },
+            },
+          ],
+        },
+      },
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the multi-template send to be accepted");
+    }
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: first.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: second.illustrationStyleId,
+        templateIndex: 1,
+        templateRole: "inline",
+      }),
+    ]);
+    const { runId } = sent.body;
+    if (runId) {
+      await cancelChatRun(actor, runId);
+    }
+  }, 60_000);
+
+  it("reports an avatar selection as avatar rather than video", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "introduce the product",
+      template: {
+        type: "video",
+        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCategory: "avatar",
+        templateId: avatarTemplateStylePresetId(1),
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input template usage",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "restyle it mid-run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: style.illustrationStyleId },
+              },
+            },
+          ],
+        },
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    context.mocks.axiom.ingest.mockClear();
+
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected the templated active input to be reserved");
+    }
+    // The same open delivery is rematerialized on retrieval, which must not
+    // count the steered prompt a second time.
+    await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "active-input",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("reports no usage for a selection the prompt builder rejected", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered intro-video template");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    // The switch is off for this actor, so the selection never becomes guidance.
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "turn this interview into a video",
+        userMessage: userMessageWithTemplate(
+          "turn this interview into a video",
+          {
+            type: "intro-video",
+            selection: { templateId: template.id },
+          },
+        ),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(templateUsageEvents()).toStrictEqual([]);
+  }, 60_000);
+
   it("resolves attachment metadata in ordered waves of four", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -13460,6 +13689,11 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    // The busy thread makes queue-first take the wait path, which builds this
+    // message's run input before re-checking admission and leaving it queued.
+    // Building is not using: reporting there would count the message again when
+    // it is really dispatched below.
+    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -13497,6 +13731,19 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    // Exactly one event: the send left the message queued, so only the claim
+    // that created this run reports it.
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "queued-claim",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
 
     await expect
       .poll(() => {

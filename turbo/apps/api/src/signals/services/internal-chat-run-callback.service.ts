@@ -173,6 +173,8 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import { logTemplateUsage } from "../../lib/template-usage-log";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
@@ -679,6 +681,13 @@ interface CreateQueuedChatRunInput {
    * queued message selected and its sender may still access.
    */
   readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
+  /**
+   * The selections behind that guidance, reported once the run is created.
+   * Building this input does not commit to a run: admission is re-checked
+   * afterwards and can leave the message queued for a later attempt, which
+   * would report the same message twice.
+   */
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   readonly publicBrand?: PublicBrand;
   readonly threadId: string;
   readonly connectorSourceId?: string;
@@ -3149,6 +3158,7 @@ async function resolveQueuedMessageTemplateContext(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<{
   readonly generationTemplatePrompt: string;
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
 }> {
   const mountedUserPresentationTemplateIds =
@@ -3159,7 +3169,7 @@ async function resolveQueuedMessageTemplateContext(args: {
         args.userMessageProjection?.templates ?? [],
       ),
     });
-  const generationTemplatePrompt =
+  const generationTemplates =
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
@@ -3178,7 +3188,8 @@ async function resolveQueuedMessageTemplateContext(args: {
       mountedUserPresentationTemplateIds,
     });
   return {
-    generationTemplatePrompt,
+    generationTemplatePrompt: generationTemplates.prompt,
+    generationTemplateIdentities: generationTemplates.identities,
     presentationTemplateVolumes: userPresentationTemplateVolumes(
       mountedUserPresentationTemplateIds,
     ),
@@ -3304,15 +3315,18 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const { generationTemplatePrompt, presentationTemplateVolumes } =
-    await resolveQueuedMessageTemplateContext({
-      db: args.db,
-      orgId: args.agent.orgId,
-      userId: args.userId,
-      input: args,
-      userMessageProjection,
-      featureSwitchContext,
-    });
+  const {
+    generationTemplatePrompt,
+    generationTemplateIdentities,
+    presentationTemplateVolumes,
+  } = await resolveQueuedMessageTemplateContext({
+    db: args.db,
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    input: args,
+    userMessageProjection,
+    featureSwitchContext,
+  });
   const computerUseHostGrant =
     await resolveQueuedMessageComputerUseHostGrant(args);
   const prompt = queuedMessagePrompt({
@@ -3337,6 +3351,7 @@ async function buildCreateQueuedChatRunInput(
       computerUseHostGrant?.displayName ?? null,
     ),
     presentationTemplateVolumes,
+    generationTemplateIdentities,
     publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
@@ -4265,6 +4280,18 @@ async function autoSendQueuedMessageForThread(
     }),
   );
   if (run) {
+    // The run exists, which is what makes this a use. Building the input does
+    // not: admission is re-checked after it and can leave the message queued
+    // for a later attempt that reports the same message again.
+    logTemplateUsage(
+      {
+        dispatchPath: "queued-claim",
+        orgId: runInput.orgId,
+        userId,
+        chatThreadId: threadId,
+      },
+      runInput.generationTemplateIdentities,
+    );
     // Ingress channels never touch the web send route, so this is where their
     // threads get an eager title instead of waiting for the run to finish.
     scheduleChatThreadTitleGeneration({

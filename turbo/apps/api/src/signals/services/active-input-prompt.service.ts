@@ -9,6 +9,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
 import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
@@ -163,13 +164,27 @@ export type PendingActiveInputRow = Awaited<
   ReturnType<typeof pendingActiveInputRows>
 >[number];
 
+/**
+ * One pending active input, rendered for delivery.
+ *
+ * `templateIdentities` travels with the prompt rather than being reported here:
+ * materialization runs again whenever an open delivery is retrieved or a
+ * reservation retries, so reporting at this point would count one steered
+ * prompt several times. The caller reports it once, when the delivery row is
+ * created.
+ */
+export interface MaterializedActiveInputPrompt {
+  readonly prompt: string;
+  readonly templateIdentities: readonly GenerationTemplateIdentity[];
+}
+
 export async function materializePendingActiveInputPrompts(
   db: Db,
   candidates: readonly PendingActiveInputRow[],
   auth: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
-): Promise<Map<string, string> | null> {
-  const prompts = new Map<string, string>();
+): Promise<Map<string, MaterializedActiveInputPrompt> | null> {
+  const prompts = new Map<string, MaterializedActiveInputPrompt>();
   const featureSwitchContext = await loadUserFeatureSwitchContext(
     db,
     auth.orgId,
@@ -281,7 +296,7 @@ async function materializeActiveInputPrompt(
     readonly latestPresentationTemplatesEnabled: boolean;
     readonly presentationTemplatesEnabled: boolean;
   },
-): Promise<string> {
+): Promise<MaterializedActiveInputPrompt> {
   const userMessage = requiredUserMessageForEvent(
     args.event.eventType,
     args.event.userMessage,
@@ -296,7 +311,7 @@ async function materializeActiveInputPrompt(
       `${args.event.contextType} active input is missing launch material`,
     );
   }
-  const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+  const generationTemplates = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     introVideoTemplatesEnabled: args.introVideoTemplatesEnabled,
@@ -307,6 +322,7 @@ async function materializeActiveInputPrompt(
     // private template contributes no guidance rather than a dangling path.
     mountedUserPresentationTemplateIds: [],
   });
+  const generationTemplatePrompt = generationTemplates.prompt;
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [
     integration?.appendSystemPrompt ?? "",
@@ -319,5 +335,8 @@ async function materializeActiveInputPrompt(
   if (materialized.length === 0) {
     throw new Error("Active input event materialized to an empty prompt");
   }
-  return materialized;
+  return {
+    prompt: materialized,
+    templateIdentities: generationTemplates.identities,
+  };
 }
