@@ -712,7 +712,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });
@@ -788,7 +787,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });

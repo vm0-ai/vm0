@@ -668,7 +668,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const loadingCard = await screen.findByTestId(
@@ -1804,7 +1803,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const displayedCopyElement = await screen.findByText(displayedCopy);
@@ -1942,7 +1940,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2037,7 +2034,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2835,7 +2831,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2881,7 +2876,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000011",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const userMessage = await screen.findByText(
@@ -2990,7 +2984,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000012",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");

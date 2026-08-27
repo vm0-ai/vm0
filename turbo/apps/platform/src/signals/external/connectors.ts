@@ -4,10 +4,8 @@ import { connectorAccountsContract } from "@okouai/api-contracts/contracts/conne
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogDiscoveryResponse,
-  type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { apiClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
@@ -60,18 +58,8 @@ export const connectorCatalogStatusBySlug$ = computed(async (get) => {
 
 export function relatedConnectorCatalog(
   keyword$: Computed<string>,
-): Computed<
-  Promise<
-    | PublicConnectorCatalogDiscoveryResponse
-    | PublicConnectorCatalogStatusResponse
-  >
-> {
+): Computed<Promise<PublicConnectorCatalogDiscoveryResponse>> {
   return computed(async (get) => {
-    const featureStates = get(featureSwitch$);
-    if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
-      return await get(connectorCatalogStatus$);
-    }
-
     get(connectorsReloadVersion$);
     const keyword = get(keyword$).trim();
     const createClient = get(apiClient$);
@@ -89,13 +77,6 @@ export function connectorCatalogItemBySlug(
 ): Computed<Promise<PlatformConnectorCatalogStatusItem | null>> {
   return computed(async (get) => {
     get(connectorsReloadVersion$);
-    const featureStates = get(featureSwitch$);
-    if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
-      return (
-        (await get(connectorCatalogStatusBySlug$)).get(connectorSlug) ?? null
-      );
-    }
-
     const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
     const result = await accept(
