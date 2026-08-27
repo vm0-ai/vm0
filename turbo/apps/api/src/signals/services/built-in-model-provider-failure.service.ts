@@ -275,9 +275,16 @@ async function observeTransportFailure(
   const observationStartedAt = currentObservation
     ? args.row.connectionObservationStartedAt
     : args.timestamp;
-  const observationUntil = new Date(
+  const receivedObservationUntil = new Date(
     args.timestamp.getTime() + TRANSPORT_FAILURE_MAXIMUM_GAP_SECONDS * 1000,
   );
+  // Independent requests can acquire the route lock in a different order from
+  // receipt, so an older receipt must not shorten the latest continuity window.
+  const observationUntil =
+    currentObservation &&
+    args.row.connectionObservationUntil > receivedObservationUntil
+      ? args.row.connectionObservationUntil
+      : receivedObservationUntil;
   await tx
     .update(builtInModelCandidateCooldown)
     .set({

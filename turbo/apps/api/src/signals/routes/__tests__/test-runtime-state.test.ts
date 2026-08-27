@@ -826,6 +826,62 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     });
   });
 
+  it("preserves continuity when receipt timestamps serialize out of order", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 5, 5, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const transportFailure = {
+      failureKind: "connection",
+      connectionSource: "upstream_transport",
+    } as const;
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    await withMockNowForTest(startedAt + 59_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    // Independent requests can reach the exact-route lock out of receipt order.
+    await withMockNowForTest(startedAt + 30_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    await withMockNowForTest(startedAt + 100_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
   it("uses receipt time when a fifty-nine-second report waits for the route lock", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 5, 10, 0);
     const claimed = await createClaimedVm0Run();
