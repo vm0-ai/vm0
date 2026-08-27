@@ -151,6 +151,10 @@ import {
   type PresentationTemplateVolume,
 } from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import {
+  logTemplateUsage,
+  type TemplateUsageLogContext,
+} from "../../lib/template-usage-log";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -1087,21 +1091,23 @@ function resolveSelectedTemplateContext(
   runtimeBody: RuntimeNormalSendBody,
   featureSwitches: NormalSendFeatureSwitches,
   mountedUserPresentationTemplateIds: readonly string[],
+  usageContext: TemplateUsageLogContext,
 ): {
   readonly generationTemplatePrompt: string;
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
+  const resolved = resolveThreadGenerationTemplatePrompt({
+    explicit: runtimeBody.primaryTemplate,
+    explicitTemplates: runtimeBody.templates,
+    introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
+    latestPresentationTemplatesEnabled:
+      featureSwitches.latestPresentationTemplatesEnabled,
+    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
+    mountedUserPresentationTemplateIds,
+  });
+  logTemplateUsage(usageContext, resolved.identities);
   return {
-    generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.primaryTemplate,
-      explicitTemplates: runtimeBody.templates,
-      introVideoTemplatesEnabled: featureSwitches.introVideoTemplatesEnabled,
-      latestPresentationTemplatesEnabled:
-        featureSwitches.latestPresentationTemplatesEnabled,
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
-      mountedUserPresentationTemplateIds,
-    }),
+    generationTemplatePrompt: resolved.prompt,
     videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
@@ -2576,6 +2582,45 @@ function resolveTimedNormalSendAgentRunSource(
   );
 }
 
+function normalSendTemplateUsageContext(
+  args: NormalSendArgs,
+  thread: PreparedNormalSend["thread"],
+): TemplateUsageLogContext {
+  return {
+    dispatchPath: "normal-send",
+    orgId: args.orgId,
+    userId: args.userId,
+    chatThreadId: thread.threadId,
+    triggerSource: normalSendTriggerSource(args.auth),
+  };
+}
+
+/**
+ * Persist the explicit model and service-tier choices this send carried.
+ *
+ * Both writes settle the same decision — what the user pinned for this one
+ * message — and only the model selection is part of the prepared value, so they
+ * travel together rather than sitting inline among unrelated resolution steps.
+ */
+async function persistTimedExplicitSelections(
+  args: NormalSendArgs,
+  db: Db,
+  thread: PreparedNormalSend["thread"],
+  runConfiguration: PreparedNormalSend["runConfiguration"],
+  signal: AbortSignal,
+) {
+  const persistedExplicitSelection =
+    await maybePersistTimedExplicitModelFirstSelection(
+      args,
+      db,
+      runConfiguration.codexServiceTier,
+    );
+  signal.throwIfAborted();
+  await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
+  signal.throwIfAborted();
+  return persistedExplicitSelection;
+}
+
 function usesPi(
   args: NormalSendArgs,
   thread: PreparedNormalSend["thread"],
@@ -2675,16 +2720,15 @@ const prepareNormalSend$ = command(
         runtimeBody,
         featureSwitches,
         authorizedTemplates.userPresentationTemplateIds,
+        normalSendTemplateUsageContext(args, thread),
       );
-    const persistedExplicitSelection =
-      await maybePersistTimedExplicitModelFirstSelection(
-        args,
-        db,
-        runConfiguration.codexServiceTier,
-      );
-    signal.throwIfAborted();
-    await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
-    signal.throwIfAborted();
+    const persistedExplicitSelection = await persistTimedExplicitSelections(
+      args,
+      db,
+      thread,
+      runConfiguration,
+      signal,
+    );
     const computerAccess = await resolveTimedComputerAccess(args, db, thread);
     signal.throwIfAborted();
     if ("status" in computerAccess) {

@@ -173,6 +173,7 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import { logTemplateUsage } from "../../lib/template-usage-log";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
@@ -3159,7 +3160,7 @@ async function resolveQueuedMessageTemplateContext(args: {
         args.userMessageProjection?.templates ?? [],
       ),
     });
-  const generationTemplatePrompt =
+  const generationTemplates =
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
@@ -3177,8 +3178,17 @@ async function resolveQueuedMessageTemplateContext(args: {
       ),
       mountedUserPresentationTemplateIds,
     });
+  logTemplateUsage(
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.input.threadId,
+      dispatchPath: "queued-claim",
+    },
+    generationTemplates.identities,
+  );
   return {
-    generationTemplatePrompt,
+    generationTemplatePrompt: generationTemplates.prompt,
     presentationTemplateVolumes: userPresentationTemplateVolumes(
       mountedUserPresentationTemplateIds,
     ),

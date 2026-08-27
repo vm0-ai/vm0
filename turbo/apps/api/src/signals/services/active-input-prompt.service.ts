@@ -9,6 +9,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import { logTemplateUsage } from "../../lib/template-usage-log";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
 import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
@@ -296,7 +297,7 @@ async function materializeActiveInputPrompt(
       `${args.event.contextType} active input is missing launch material`,
     );
   }
-  const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+  const generationTemplates = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     introVideoTemplatesEnabled: args.introVideoTemplatesEnabled,
@@ -307,6 +308,17 @@ async function materializeActiveInputPrompt(
     // private template contributes no guidance rather than a dangling path.
     mountedUserPresentationTemplateIds: [],
   });
+  logTemplateUsage(
+    {
+      dispatchPath: "active-input",
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.event.chatThreadId,
+      contextType: args.event.contextType,
+    },
+    generationTemplates.identities,
+  );
+  const generationTemplatePrompt = generationTemplates.prompt;
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [
     integration?.appendSystemPrompt ?? "",

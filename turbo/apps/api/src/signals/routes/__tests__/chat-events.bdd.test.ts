@@ -631,6 +631,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function templateUsageEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
+    const events = call[1];
+    if (!Array.isArray(events)) {
+      return [];
+    }
+    return events.filter(isRecord).filter((event) => {
+      return event.type === "template_used";
+    });
+  });
+}
+
 function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
     const dataset = call[0];
@@ -11002,6 +11014,93 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(claim.environment?.[INTRO_VIDEO_TEMPLATES_ENABLED_ENV]).toBe("1");
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
+
+  it("reports one template usage per template that reached the prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      template: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "normal-send",
+        orgId: actor.orgId,
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+        templateSlug: style.slug,
+        templateSource: "builtin",
+        userId: actor.userId,
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports an avatar selection as avatar rather than video", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "introduce the product",
+      template: {
+        type: "video",
+        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCategory: "avatar",
+        templateId: avatarTemplateStylePresetId(1),
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports no usage for a selection the prompt builder rejected", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered intro-video template");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    // The switch is off for this actor, so the selection never becomes guidance.
+    const rejected = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "turn this interview into a video",
+        userMessage: userMessageWithTemplate(
+          "turn this interview into a video",
+          {
+            type: "intro-video",
+            selection: { templateId: template.id },
+          },
+        ),
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(templateUsageEvents()).toStrictEqual([]);
+  }, 60_000);
 
   it("resolves attachment metadata in ordered waves of four", async () => {
     const { actor, agentId } = await entitledChatActor();
