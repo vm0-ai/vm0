@@ -103,7 +103,10 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
                 guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
                 &mock_codex,
             )
-            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                THREAD_ID,
+            )
             .env(
                 "MOCK_CODEX_APP_SERVER_SCENARIO",
                 "runtime-turn-started-before-steer",
