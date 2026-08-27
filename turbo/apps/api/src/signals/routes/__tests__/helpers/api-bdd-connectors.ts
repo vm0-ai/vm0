@@ -1484,6 +1484,23 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async listBuiltinConnectorAccounts(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+    ): Promise<readonly ConnectorAccountConnection[]> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: { kind: "builtin", connectorSlug, limit: 100 },
+        }),
+        [200],
+      );
+      return response.body.connections;
+    },
+
     async listCustomConnectorAccounts(
       actor: ApiTestUser,
       connectorId: string,
