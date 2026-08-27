@@ -138,7 +138,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);
@@ -168,7 +167,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatToolActivity]).toBe(false);

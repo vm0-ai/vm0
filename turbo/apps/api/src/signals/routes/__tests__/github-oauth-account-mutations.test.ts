@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -60,9 +59,6 @@ describe("GitHub OAuth account mutation selection", () => {
   it("adds a new identity and refreshes the exact existing sibling", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
 
     await connectGithubAdd(actor, {
       code: "github-first-add",
@@ -130,9 +126,6 @@ describe("GitHub OAuth account mutation selection", () => {
   it("serializes concurrent callbacks for the same new identity", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     mockGitHubConnectorOAuth({ userId: 303, login: "github-concurrent" });
 
     const [first, second] = await Promise.all([
@@ -171,12 +164,6 @@ describe("GitHub OAuth account mutation selection", () => {
     await installApiTestConnectorCatalog();
     const firstActor = bdd.user();
     const secondActor = bdd.user();
-    await connectors.updateFeatureSwitches(firstActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
-    await connectors.updateFeatureSwitches(secondActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
 
     await connectGithubAdd(firstActor, {
       code: "github-first-owner",
@@ -211,9 +198,6 @@ describe("GitHub OAuth account mutation selection", () => {
   it("fails closed when historical rows duplicate an owned identity", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     await connectGithubAdd(actor, {
       code: "github-duplicate-first",
       displayName: "Duplicate first",
@@ -284,9 +268,6 @@ describe("GitHub OAuth account mutation selection", () => {
   it("uses the same exact-identity selection for GitHub App setup", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     await connectGithubAdd(actor, {
       code: "github-before-setup-first",
       displayName: "Before setup first",
@@ -339,9 +320,6 @@ describe("GitHub OAuth account mutation selection", () => {
     });
 
     const siblingActor = bdd.user();
-    await connectors.updateFeatureSwitches(siblingActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     await connectGithubAdd(siblingActor, {
       code: "github-before-setup-sibling",
       displayName: "Existing before setup",

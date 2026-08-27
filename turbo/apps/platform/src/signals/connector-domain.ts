@@ -21,6 +21,7 @@ export type PlatformWorkflowConnectorReadinessEntry =
 export type PlatformWorkflowConnectorReadinessResponse =
   WorkflowConnectorReadinessResponse;
 
-export const singleAccountConnectorMutation = {
-  intent: "single-account",
-} satisfies ConnectorAccountMutationIntent;
+export type PlatformConnectorAccountMutationIntent = Extract<
+  ConnectorAccountMutationIntent,
+  { readonly intent: "add" | "reconnect" }
+>;

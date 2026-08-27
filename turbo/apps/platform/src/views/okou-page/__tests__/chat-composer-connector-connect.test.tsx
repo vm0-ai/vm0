@@ -375,7 +375,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const composer = composerElementFrom(
@@ -482,7 +481,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -597,7 +595,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const composer = composerElementFrom(
@@ -778,7 +775,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const composer = composerElementFrom(
@@ -844,7 +840,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const input = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -1046,7 +1041,6 @@ describe("chat composer connector connection", () => {
       context,
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.CustomConnectorMcp]: true,
       },
     });
@@ -1100,7 +1094,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const composer = composerElementFrom(

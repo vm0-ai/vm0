@@ -4115,7 +4115,6 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await enableFeishuIntegration(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.OkouDebug]: true,
     });
     await connectFixtureUser(fixture);

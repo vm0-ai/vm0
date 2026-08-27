@@ -2697,12 +2697,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Weitere Optionen",
-      "statusConnected": "Verbunden",
       "toasts": {
         "connected": "Verbunden",
         "created": "Erstellt „{{connector}}“",
         "deleted": "Benutzerdefinierte Integration gelöscht",
-        "disconnected": "Getrennt",
         "updated": "Aktualisiert „{{connector}}“"
       },
       "updateConfirm": {
@@ -2755,14 +2753,6 @@
       "otherEndpointsDescription": "API-Endpunkte, denen keine der oben genannten Berechtigungen entspricht",
       "permissions": "Berechtigungen",
       "restore": "Wiederherstellen",
-      "scopeReview": {
-        "added": "Neue Berechtigungen",
-        "description": "Die erforderlichen Berechtigungen für diese Integration haben sich geändert. Prüfen Sie sie und stellen Sie die Verbindung erneut her, um die Änderung anzuwenden.",
-        "failed": "Bereichsänderungen konnten nicht geladen werden.",
-        "loading": "Bereichsänderungen werden geladen...",
-        "removed": "Berechtigungen entfernt",
-        "title": "{{connector}}-Berechtigungsaktualisierung"
-      },
       "selectAll": "Alles auswählen",
       "showMore_one": "Mehr anzeigen ({{count}})",
       "showMore_other": "Mehr anzeigen ({{count}})",
@@ -3249,8 +3239,7 @@
       "redirectTitle": "Weiterleitung zu {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} verbunden",
-      "disconnected": "{{connector}} getrennt"
+      "connected": "{{connector}} verbunden"
     }
   },
   "global": {

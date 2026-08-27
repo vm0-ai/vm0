@@ -6,8 +6,10 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import type {
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
+} from "../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   connectConnectorOAuthAuthCode$,
@@ -298,7 +300,7 @@ function runDirectedAuthorize(
         readonly connectorLabel?: string;
         readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
         readonly agentId?: string;
-        readonly account?: ConnectorAccountMutationIntent;
+        readonly account: PlatformConnectorAccountMutationIntent;
         readonly useDefaultConnectorProjection?: boolean;
       },
       signal: AbortSignal,
@@ -310,7 +312,7 @@ function runDirectedAuthorize(
         readonly options: {
           readonly connectorLabel?: string;
           readonly agentId?: string;
-          readonly account?: ConnectorAccountMutationIntent;
+          readonly account: PlatformConnectorAccountMutationIntent;
           readonly useDefaultConnectorProjection?: boolean;
         };
       },

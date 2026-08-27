@@ -9291,10 +9291,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
-
     const connected = await connectors.connectManualGrant(
       actor,
       "lark",
@@ -9411,9 +9407,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await installApiTestConnectorCatalog();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     const connected = await connectors.connectManualGrant(
       actor,
       "lark",
@@ -11614,9 +11607,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",

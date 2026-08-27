@@ -3,11 +3,13 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/cu
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAccountConnection,
-  ConnectorAccountMutationIntent,
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
-import type { PlatformConnectorCatalogStatusItem } from "../../connector-domain.ts";
+import type {
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
+} from "../../connector-domain.ts";
 import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import {
   connectorAccountDeletionImpact$,
@@ -24,21 +26,18 @@ export type ConnectorAccountConnectMode =
     };
 
 export interface ConnectorAccountMutationOptions {
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly useDefaultConnectorProjection?: true;
 }
 
 export interface DefaultConnectorAccountMutationOptions {
-  readonly account: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly useDefaultConnectorProjection: true;
 }
 
 export function connectorAccountMutationFor(
-  mode: ConnectorAccountConnectMode | undefined,
-): ConnectorAccountMutationIntent | undefined {
-  if (!mode) {
-    return undefined;
-  }
+  mode: ConnectorAccountConnectMode,
+): PlatformConnectorAccountMutationIntent {
   if (mode.kind === "reconnect") {
     return { intent: "reconnect", connectionId: mode.connectionId };
   }
@@ -46,13 +45,9 @@ export function connectorAccountMutationFor(
 }
 
 export function connectorAccountOptionsFor(
-  mode: ConnectorAccountConnectMode | undefined,
+  mode: ConnectorAccountConnectMode,
 ): ConnectorAccountMutationOptions {
-  const account = connectorAccountMutationFor(mode);
-  if (!account) {
-    return {};
-  }
-  return { account };
+  return { account: connectorAccountMutationFor(mode) };
 }
 
 export function defaultBuiltinConnectorAccountOptions(

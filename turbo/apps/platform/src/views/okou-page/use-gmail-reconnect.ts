@@ -7,6 +7,7 @@ import {
   connectFlowConnectorSlug$,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
@@ -18,15 +19,24 @@ export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
   const authMethod = connector
     ? getOnlyAvailableStatusBrowserAuthMethodDetail(connector)
     : null;
+  const accountOptions = defaultBuiltinConnectorAccountOptions(connector);
   const reconnecting = connectFlowConnectorSlug === "gmail";
 
   return {
     connectorIcon: connector?.icon,
     reconnecting,
     reconnectDisabled:
-      !connector || !authMethod || connectFlowConnectorSlug !== null,
+      !connector ||
+      !authMethod ||
+      !accountOptions ||
+      connectFlowConnectorSlug !== null,
     reconnect() {
-      if (!connector || !authMethod || connectFlowConnectorSlug !== null) {
+      if (
+        !connector ||
+        !authMethod ||
+        !accountOptions ||
+        connectFlowConnectorSlug !== null
+      ) {
         return;
       }
       detach(
@@ -39,6 +49,7 @@ export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
               authorizeVisibleAgents: true,
               connectorLabel: connector.label,
               connectorIcon: connector.icon,
+              ...accountOptions,
             },
           },
           signal,

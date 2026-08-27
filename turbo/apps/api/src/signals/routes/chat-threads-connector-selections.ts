@@ -1,7 +1,5 @@
 import { command, computed } from "ccstate";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -14,20 +12,10 @@ import {
   listChatThreadConnectorSelections,
   updateChatThreadConnectorSelection,
 } from "../services/chat-thread-connector-selection.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
-
-const connectorAccountsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const context = await get(userFeatureSwitchContext(auth.orgId, auth.userId));
-  return isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, context);
-});
 
 const getSelectionsInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(chatThreadConnectorSelectionContract.get));
   const result = await listChatThreadConnectorSelections(get(db$), {
     orgId: auth.orgId,
@@ -49,9 +37,6 @@ const getSelectionsInner$ = computed(async (get): Promise<unknown> => {
 const updateSelectionInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(
       pathParamsOf(chatThreadConnectorSelectionContract.update),
     );
@@ -84,9 +69,6 @@ const updateSelectionInner$ = command(
 const clearSelectionInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(
       pathParamsOf(chatThreadConnectorSelectionContract.clear),
     );

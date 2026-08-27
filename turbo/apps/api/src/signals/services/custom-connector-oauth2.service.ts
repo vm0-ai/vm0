@@ -68,7 +68,6 @@ import {
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
-import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -608,9 +607,7 @@ export const startCustomConnectorOAuth2$ = command(
         userId: args.userId,
         target: { kind: "custom", customConnectorId: connector.id },
         mutation: args.account,
-        allowSiblings:
-          !isIntegrationManagedCustomConnector(connector) &&
-          connectorAccountSiblingWritesEnabled(featureContext),
+        allowSiblings: !isIntegrationManagedCustomConnector(connector),
       });
       if (resolution.kind !== "ready") {
         return { resolution, connectionId: null };
@@ -892,10 +889,9 @@ export async function storeCustomConnectorOAuth2Connection(
       userId: args.userId,
       target: { kind: "custom", customConnectorId: args.connectorId },
       mutation: args.account,
-      allowSiblings:
-        !isIntegrationManagedCustomConnectorProviderAdapter(
-          contract.providerAdapter,
-        ) && connectorAccountSiblingWritesEnabled(args.featureContext),
+      allowSiblings: !isIntegrationManagedCustomConnectorProviderAdapter(
+        contract.providerAdapter,
+      ),
     });
     signal.throwIfAborted();
     if (resolution.kind !== "ready") {

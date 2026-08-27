@@ -1,9 +1,8 @@
 import { Buffer } from "node:buffer";
-import { generateKeyPairSync, sign as signData } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -15,7 +14,6 @@ import { server } from "../../../mocks/server";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
@@ -31,7 +29,7 @@ const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/google-workspace-events";
 const PUSH_SERVICE_ACCOUNT =
   "google-workspace-events-push@vm0-ai-488909.iam.gserviceaccount.com";
 const OIDC_CERT_KID = "google-workspace-events-test-key";
-const SUBSCRIPTION_NAME = "subscriptions/google-meet-test";
+const SUBSCRIPTION_NAME = `subscriptions/google-meet-${randomUUID()}`;
 const TRANSCRIPT_NAME = "conferenceRecords/123/transcripts/456";
 const oidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const oidcPublicKeyPem = oidcKeyPair.publicKey.export({
@@ -196,11 +194,6 @@ describe("POST /api/webhooks/google-workspace-events", () => {
       agentId: agent.agentId,
       name: "google-meet-transcript-workflow",
     });
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     await connectGoogleMeet(actor);
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});

@@ -2689,12 +2689,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "More options",
-      "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
-        "disconnected": "Disconnected",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2747,14 +2745,6 @@
       "otherEndpointsDescription": "API endpoints not matched by any permission above",
       "permissions": "Permissions",
       "restore": "Restore",
-      "scopeReview": {
-        "added": "New permissions",
-        "description": "The required permissions for this connector have changed. Please review and reconnect to apply the update.",
-        "failed": "Failed to load scope changes.",
-        "loading": "Loading scope changes...",
-        "removed": "Removed permissions",
-        "title": "{{connector}} permissions update"
-      },
       "selectAll": "Select all",
       "showMore_one": "Show more ({{count}})",
       "showMore_other": "Show more ({{count}})",
@@ -3241,8 +3231,7 @@
       "redirectTitle": "Redirecting to {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connected",
-      "disconnected": "{{connector}} disconnected"
+      "connected": "{{connector}} connected"
     }
   },
   "global": {

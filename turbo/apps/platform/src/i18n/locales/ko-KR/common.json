@@ -2689,12 +2689,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "추가 옵션",
-      "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
-        "disconnected": "연결 해제됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {
@@ -2747,14 +2745,6 @@
       "otherEndpointsDescription": "위 권한에 해당하지 않는 API 엔드포인트",
       "permissions": "권한",
       "restore": "복원",
-      "scopeReview": {
-        "added": "새 권한",
-        "description": "이 커넥터에 필요한 권한이 변경되었습니다. 업데이트를 적용하려면 검토 후 다시 연결하세요.",
-        "failed": "범위 변경 사항 로드 실패",
-        "loading": "범위 변경 사항 로드 중...",
-        "removed": "제거된 권한",
-        "title": "{{connector}} 권한 업데이트"
-      },
       "selectAll": "전체 선택",
       "showMore_one": "더 보기 ({{count}})",
       "showMore_other": "더 보기 ({{count}})",
@@ -3241,8 +3231,7 @@
       "redirectTitle": "{{connector}}로 리디렉션 중…"
     },
     "toasts": {
-      "connected": "{{connector}} 연결됨",
-      "disconnected": "{{connector}} 연결 해제됨"
+      "connected": "{{connector}} 연결됨"
     }
   },
   "global": {

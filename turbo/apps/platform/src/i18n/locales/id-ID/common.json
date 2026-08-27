@@ -2689,12 +2689,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
-      "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
-        "disconnected": "Terputus",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2747,14 +2745,6 @@
       "otherEndpointsDescription": "Endpoint API yang tidak cocok dengan izin di atas",
       "permissions": "Izin",
       "restore": "Pulihkan",
-      "scopeReview": {
-        "added": "Izin baru",
-        "description": "Izin yang diperlukan untuk konektor ini telah berubah. Tinjau dan sambungkan ulang untuk menerapkan pembaruan.",
-        "failed": "Gagal memuat perubahan scope.",
-        "loading": "Memuat perubahan scope...",
-        "removed": "Izin yang dihapus",
-        "title": "Pembaruan izin {{connector}}"
-      },
       "selectAll": "Pilih semua",
       "showMore_one": "Tampilkan lebih banyak ({{count}})",
       "showMore_other": "Tampilkan lebih banyak ({{count}})",
@@ -3241,8 +3231,7 @@
       "redirectTitle": "Mengarahkan ke {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} terhubung",
-      "disconnected": "{{connector}} terputus"
+      "connected": "{{connector}} terhubung"
     }
   },
   "global": {

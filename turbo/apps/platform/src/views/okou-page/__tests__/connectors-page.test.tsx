@@ -27,8 +27,6 @@ import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
   connectorOauthDeviceAuthSessionContract,
-  connectorScopeDiffContract,
-  connectorsMainContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
@@ -47,6 +45,7 @@ import type {
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -195,16 +194,6 @@ function applyUserConnectorUpdate(
   return [...body.enabledConnectorSlugs];
 }
 
-function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
-  return (
-    queryAllByRoleFast("button", container).find((button) => {
-      return (
-        button.getAttribute("aria-label") === "Why this connection expired"
-      );
-    }) ?? null
-  );
-}
-
 function listAgent(
   id: string,
   displayName: string,
@@ -303,6 +292,50 @@ function mockGitHubConnectorAccounts(
     });
   });
   return accounts;
+}
+
+function customConnectorAccountConnection(
+  connectorId: string,
+): ConnectorAccountConnection {
+  return {
+    id: "00000000-0000-4000-a000-000000000099",
+    target: { kind: "custom", customConnectorId: connectorId },
+    authMethod: "api",
+    displayName: null,
+    isDefault: true,
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    connectionStatus: "connected",
+    reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function mockCustomConnectorAccountSummary(
+  connectorId: string,
+  isConnected: () => boolean = () => {
+    return true;
+  },
+): void {
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    const account = customConnectorAccountConnection(connectorId);
+    return respond(200, {
+      summaries: isConnected()
+        ? [
+            {
+              target: account.target,
+              accountCount: 1,
+              attentionCount: 0,
+              defaultConnection: account,
+            },
+          ]
+        : [],
+    });
+  });
 }
 
 async function setupAwsExternalCodeConnection(): Promise<{
@@ -479,6 +512,7 @@ function mockCustomConnectorStory(): {
   });
 
   let connectors: CustomConnectorHttpResponse[] = [];
+  const connectedConnectorIds = new Set<string>();
   const createBodies: CreateCustomConnectorBody[] = [];
   const updateBodies: UpdateCustomConnectorBody[] = [];
 
@@ -501,10 +535,23 @@ function mockCustomConnectorStory(): {
     connectors = [...connectors, created];
     return respond(201, created);
   });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [...connectedConnectorIds].map((connectorId) => {
+        const account = customConnectorAccountConnection(connectorId);
+        return {
+          target: account.target,
+          accountCount: 1,
+          attentionCount: 0,
+          defaultConnection: account,
+        };
+      }),
+    });
+  });
   context.mocks.api(
     customConnectorValuesContract.set,
     ({ params, body, respond }) => {
-      expect(body.account).toStrictEqual({ intent: "single-account" });
+      expect(body.account).toStrictEqual({ intent: "add" });
       let updated: CustomConnectorHttpResponse | undefined;
       connectors = connectors.map((connector) => {
         if (connector.id !== params.id) {
@@ -523,27 +570,8 @@ function mockCustomConnectorStory(): {
       if (!updated) {
         throw new Error(`Expected custom connector ${params.id}`);
       }
+      connectedConnectorIds.add(params.id);
       return respond(200, updated);
-    },
-  );
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ body, respond }) => {
-      if (body.target.kind !== "custom") {
-        throw new Error("Expected a custom connector disconnect target");
-      }
-      const customConnectorId = body.target.customConnectorId;
-      connectors = connectors.map((connector) => {
-        return connector.id === customConnectorId
-          ? {
-              ...connector,
-              connected: false,
-              missingRequiredFields: ["secret"],
-              configuredFieldKeys: [],
-            }
-          : connector;
-      });
-      return respond(204);
     },
   );
   context.mocks.api(
@@ -863,17 +891,10 @@ describe("connectors page", () => {
     expect(screen.queryByText("HTTP 426")).not.toBeInTheDocument();
   });
 
-  it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
+  it("localizes the catalog and access management in Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
     const researchAgentId = "c0000000-0000-4000-a000-000000000001";
-    mockConnectors([
-      { connectorSlug: "github", externalUsername: "octocat" },
-      {
-        connectorSlug: "meta-ads",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "authorization_expired_or_revoked",
-      },
-    ]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.agents([listAgent(researchAgentId, "Research Agent")]);
     context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
@@ -897,15 +918,6 @@ describe("connectors page", () => {
     expect(
       screen.getByText("Engenharia e execução da equipe"),
     ).toBeInTheDocument();
-
-    const metaAdsCard = connectorCardByLabel("Meta Ads");
-    expect(
-      within(metaAdsCard).getByText("A conexão expirou"),
-    ).toBeInTheDocument();
-    click(within(metaAdsCard).getByLabelText("Mais opções"));
-    await waitFor(() => {
-      expect(menuItemByText("Reconectar")).toBeInTheDocument();
-    });
 
     click(
       within(connectorCardByLabel("GitHub")).getByLabelText(
@@ -1288,122 +1300,17 @@ describe("connectors page", () => {
     expect(queryConnectorCardByLabel("Fallback GitHub")).toBeInTheDocument();
   });
 
-  it("does not show reconnect reason help on the connection expired badge", async () => {
-    mockConnectors([
-      {
-        connectorSlug: "github",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "authorization_expired_or_revoked",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-    });
-
-    await waitFor(() => {
-      expect(
-        within(connectorCardByLabel("GitHub")).getByText("Connection expired"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      reconnectReasonHelpButton(connectorCardByLabel("GitHub")),
-    ).not.toBeInTheDocument();
-  });
-
-  it("omits standalone instructions from reconnect progress", async () => {
-    mockConnectors([
-      {
-        connectorSlug: "meta-ads",
-        connectionStatus: "reconnect-required",
-      },
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.browser.standaloneDisplayMode(true);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("meta-ads");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
-        expect(body.callbackTarget).toBe("app");
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/meta-ads/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
-
-    await waitFor(() => {
-      const card = connectorCardByLabel("Meta Ads");
-      expect(within(card).getByText("Connection expired")).toBeInTheDocument();
-      expect(queryButtonByText("Reconnect", card)).not.toBeInTheDocument();
-    });
-
-    click(
-      within(connectorCardByLabel("Meta Ads")).getByLabelText("More options"),
-    );
-
-    await waitFor(() => {
-      expect(menuItemByText("Reconnect")).toBeInTheDocument();
-    });
-    click(menuItemByText("Reconnect"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/meta-ads/authorize",
-      );
-    });
-    expect(
-      within(connectorCardByLabel("Meta Ads")).getByText("Connecting…"),
-    ).toBeInTheDocument();
-    expect(
-      within(connectorCardByLabel("Meta Ads")).queryByText(
-        "Switch back here after completing sign-in.",
-      ),
-    ).not.toBeInTheDocument();
-  });
-
-  it("disconnects a connected catalog connector from the options menu", async () => {
+  it("uses account management for connected catalog connectors by default", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    const disconnectTargets: unknown[] = [];
-    context.mocks.api(
-      connectorAccountsContract.disconnectSingleAccount,
-      ({ body, respond }) => {
-        disconnectTargets.push(body.target);
-        context.mocks.data.connectors([]);
-        return respond(204);
-      },
-    );
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: false },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+        within(connectorCardByLabel("GitHub")).getByLabelText(
+          "Manage GitHub accounts",
+        ),
       ).toBeInTheDocument();
     });
-
-    click(
-      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
-    );
-    click(menuItemByText("Disconnect"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
-    });
-    expect(disconnectTargets).toStrictEqual([
-      { kind: "builtin", connectorSlug: "github" },
-    ]);
   });
 
   it("distinguishes unavailable account summaries from no accounts", async () => {
@@ -1436,7 +1343,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1476,7 +1382,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1505,7 +1410,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     const connectAction = await screen.findByLabelText("Connect GitHub");
@@ -1565,7 +1469,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1601,7 +1504,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1630,7 +1532,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1703,7 +1604,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await screen.findByLabelText("Connect Ahrefs"));
@@ -1740,7 +1640,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -1803,7 +1702,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -1848,7 +1746,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -1930,7 +1827,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -2036,7 +1932,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -2112,7 +2007,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -2191,7 +2085,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -2300,7 +2193,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
@@ -2432,7 +2324,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await waitForButtonByAriaLabel("Manage Stripe accounts"));
@@ -2487,100 +2378,9 @@ describe("connectors page", () => {
     expect(exactReadCount).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps a connector connected when compact disconnect is ambiguous", async () => {
-    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
-    let disconnectCount = 0;
-    context.mocks.api(
-      connectorAccountsContract.disconnectSingleAccount,
-      ({ body, respond }) => {
-        disconnectCount += 1;
-        expect(body.target).toStrictEqual({
-          kind: "builtin",
-          connectorSlug: "github",
-        });
-        return respond(409, {
-          error: {
-            code: "CONFLICT",
-            message: "Choose an account before disconnecting",
-          },
-        });
-      },
-    );
-    detachedSetupPage({ context, path: "/connectors" });
-
-    const card = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    click(within(card).getByLabelText("More options"));
-    click(menuItemByText("Disconnect"));
-
-    await expect(
-      screen.findByText("Choose an account before disconnecting"),
-    ).resolves.toBeInTheDocument();
-    expect(within(card).getByText("@octocat")).toBeInTheDocument();
-    expect(disconnectCount).toBe(1);
-
-    click(within(card).getByLabelText("More options"));
-    expect(menuItemByText("Disconnect")).toBeInTheDocument();
-  });
-
-  it("moves scope review into the connector options menu", async () => {
-    const storedScopes = ["https://www.googleapis.com/auth/adwords"];
-    const addedScopes = [
-      "https://www.googleapis.com/auth/datamanager",
-      "https://www.googleapis.com/auth/userinfo.email",
-    ];
-    mockConnectors([
-      {
-        connectorSlug: "google-ads",
-        oauthScopes: storedScopes,
-      },
-    ]);
-    context.mocks.api(
-      connectorScopeDiffContract.getScopeDiff,
-      ({ params, respond }) => {
-        expect(params.connectorSlug).toBe("google-ads");
-        return respond(200, {
-          addedScopes,
-          removedScopes: [],
-          currentScopes: [...storedScopes, ...addedScopes],
-          storedScopes,
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-    });
-
-    await waitFor(() => {
-      const card = connectorCardByLabel("Google Ads");
-      expect(within(card).getByText("Update permissions")).toBeInTheDocument();
-      expect(
-        within(card).queryByText("Permissions update available"),
-      ).not.toBeInTheDocument();
-      expect(queryButtonByText("Review", card)).not.toBeInTheDocument();
-    });
-
-    click(
-      within(connectorCardByLabel("Google Ads")).getByLabelText("More options"),
-    );
-
-    await waitFor(() => {
-      expect(menuItemByText("Review permissions")).toBeInTheDocument();
-    });
-    click(menuItemByText("Review permissions"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Google Ads permissions update",
-    });
-    expect(within(dialog).getByText("New permissions")).toBeInTheDocument();
-    expect(within(dialog).getByText(addedScopes[0])).toBeInTheDocument();
-  });
-
   it("navigates connector categories and opens a connector from the keyboard", async () => {
     mockConnectors([]);
+    const user = userEvent.setup({ delay: null });
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -2597,7 +2397,8 @@ describe("connectors page", () => {
     );
 
     const axiomCard = await screen.findByLabelText("Connect Axiom");
-    fireEvent.keyDown(axiomCard, { key: " ", code: "Space" });
+    axiomCard.focus();
+    await user.keyboard(" ");
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Axiom" })).toBeInTheDocument();
@@ -3343,7 +3144,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await fill(
@@ -3516,7 +3316,7 @@ describe("connectors page", () => {
   it("ignores a null change before completing Stripe OAuth from a scoped event", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
-    let listedConnectors = mockConnectors([]);
+    mockConnectors([]);
     context.mocks.data.agents([
       listAgent(defaultAgentId, "Zero"),
       listAgent(researchAgentId, "Research Agent"),
@@ -3575,10 +3375,9 @@ describe("connectors page", () => {
       authorizedAgentIds.push(params.id);
       return respond(200, { enabledConnectorSlugs: ["stripe"] });
     });
-    let connectorListRequests = 0;
+    let stripeAccount: ConnectorAccountConnection | null = null;
     const catchUpObserved = context.mocks.deferred<void>();
-    context.mocks.api(connectorsMainContract.list, ({ respond }) => {
-      connectorListRequests += 1;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
       if (
         context.mocks.ably.hasSubscription("connector:changed") &&
         !catchUpObserved.settled()
@@ -3586,8 +3385,16 @@ describe("connectors page", () => {
         catchUpObserved.resolve();
       }
       return respond(200, {
-        connectors: listedConnectors,
-        connectorProvidedBindings: [],
+        summaries: stripeAccount
+          ? [
+              {
+                target: stripeAccount.target,
+                accountCount: 1,
+                attentionCount: 0,
+                defaultConnection: stripeAccount,
+              },
+            ]
+          : [],
       });
     });
 
@@ -3617,7 +3424,6 @@ describe("connectors page", () => {
       expect(within(dialog).getByText("Connecting...")).toBeInTheDocument();
     });
     await catchUpObserved.promise;
-    const requestsBeforeNull = connectorListRequests;
 
     context.mocks.ably.trigger("connector:changed", null);
     authWindow.close();
@@ -3631,7 +3437,6 @@ describe("connectors page", () => {
       ).not.toBeInTheDocument();
     });
     expect(authorizedAgentIds).toStrictEqual([]);
-    expect(connectorListRequests - requestsBeforeNull).toBe(1);
 
     const completionWindow = createMockAuthWindow();
     context.mocks.browser.open(completionWindow);
@@ -3646,17 +3451,32 @@ describe("connectors page", () => {
       ).toBeTruthy();
     });
 
-    listedConnectors = mockConnectors([
-      { connectorSlug: "stripe", authMethod: "oauth" },
-    ]);
+    stripeAccount = {
+      id: "00000000-0000-4000-a000-000000000002",
+      target: { kind: "builtin", connectorSlug: "stripe" },
+      authMethod: "oauth",
+      displayName: null,
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
     context.mocks.ably.trigger("connector:changed", {
       connectorSlug: "stripe",
     });
 
     await waitFor(() => {
-      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
+      expect(authorizedAgentIds).toStrictEqual([]);
       expect(
-        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+        within(connectorCardByLabel("Public Stripe")).getByLabelText(
+          "Manage Public Stripe accounts",
+        ),
       ).toBeInTheDocument();
       expect(
         context.mocks.ably.hasSubscription("connector:changed"),
@@ -3667,7 +3487,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("enables a no-auth connector for all visible agents without dialogs", async () => {
+  it("connects a no-auth account without changing agent access", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
@@ -3700,11 +3520,11 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authMethod).toBe("api");
-        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.authorizeAgent).toBeUndefined();
         expect(body.agentId).toBeUndefined();
-        return respond(200, {
+        const connector: ConnectorResponse = {
           id: crypto.randomUUID(),
           slug: params.connectorSlug,
           authMethod: body.authMethod,
@@ -3717,7 +3537,9 @@ describe("connectors page", () => {
           tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        };
+        context.mocks.data.connectors([connector]);
+        return respond(200, connector);
       },
     );
     const authorizedAgentIds: string[] = [];
@@ -3733,7 +3555,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(connectCount).toBe(1);
-      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
+      expect(authorizedAgentIds).toStrictEqual([]);
     });
     expect(openMock.calls).toHaveLength(0);
     expect(
@@ -3744,7 +3566,9 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+        within(connectorCardByLabel("Public Stripe")).getByLabelText(
+          "Manage Public Stripe accounts",
+        ),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Public catalog")).not.toBeInTheDocument();
@@ -3800,7 +3624,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await screen.findByLabelText("Connect Public Stripe"));
@@ -3945,7 +3768,9 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("Base44")).getByText("Connected"),
+        within(connectorCardByLabel("Base44")).getByLabelText(
+          "Manage Base44 accounts",
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -4008,7 +3833,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
@@ -4121,9 +3945,9 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         submitCount += 1;
         expect(params.connectorSlug).toBe("axiom");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         submittedValues = body.values;
-        return respond(200, {
+        const connector: ConnectorResponse = {
           id: crypto.randomUUID(),
           slug: "axiom",
           authMethod: body.authMethod,
@@ -4136,7 +3960,9 @@ describe("connectors page", () => {
           tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        };
+        context.mocks.data.connectors([connector]);
+        return respond(200, connector);
       },
     );
 
@@ -4166,7 +3992,9 @@ describe("connectors page", () => {
       expect(submittedValues).toStrictEqual({ apiToken: "xaat-test" });
       expect(submitCount).toBe(1);
       expect(
-        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+        within(connectorCardByLabel("Public Axiom")).getByLabelText(
+          "Manage Public Axiom accounts",
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -4235,7 +4063,7 @@ describe("connectors page", () => {
           },
         ];
         manualGrantConnectResponded = true;
-        return respond(200, {
+        const connectedConnector: ConnectorResponse = {
           id: crypto.randomUUID(),
           slug: "axiom",
           authMethod: body.authMethod,
@@ -4248,7 +4076,9 @@ describe("connectors page", () => {
           tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        };
+        context.mocks.data.connectors([connectedConnector]);
+        return respond(200, connectedConnector);
       },
     );
 
@@ -4294,7 +4124,10 @@ describe("connectors page", () => {
           connectorSlug: "axiom",
           authMethod: "api-token",
           inputValues: { apiToken: "xaat-test" },
-          options: { connectorLabel: "Public Axiom" },
+          options: {
+            account: { intent: "add" },
+            connectorLabel: "Public Axiom",
+          },
         },
         abortSignal,
       ),
@@ -4303,7 +4136,9 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(catalogStatusRequestCount).toBeGreaterThan(1);
       expect(
-        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+        within(connectorCardByLabel("Public Axiom")).getByLabelText(
+          "Manage Public Axiom accounts",
+        ),
       ).toBeInTheDocument();
       expect(connectorIconByLabel("Public Axiom")).toHaveAttribute(
         "src",
@@ -4418,6 +4253,7 @@ describe("connectors page", () => {
 
   it("connects manual-grant connectors without permission dialogs", async () => {
     mockConnectors([]);
+    const connectedConnectors: ConnectorResponse[] = [];
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorSlug: "axiom",
@@ -4467,9 +4303,9 @@ describe("connectors page", () => {
     context.mocks.api(
       connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(body.authorizeAgent).toBeTruthy();
+        expect(body.authorizeAgent).toBeUndefined();
         expect(body.agentId).toBeUndefined();
-        return respond(200, {
+        const connectedConnector: ConnectorResponse = {
           id: crypto.randomUUID(),
           slug: params.connectorSlug,
           authMethod: body.authMethod,
@@ -4482,7 +4318,10 @@ describe("connectors page", () => {
           tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
-        });
+        };
+        connectedConnectors.push(connectedConnector);
+        context.mocks.data.connectors(connectedConnectors);
+        return respond(200, connectedConnector);
       },
     );
     let authorizationUpdateCount = 0;
@@ -4512,7 +4351,9 @@ describe("connectors page", () => {
         screen.getByText("Public Axiom connected successfully"),
       ).toBeInTheDocument();
       expect(
-        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
+        within(connectorCardByLabel("Public Axiom")).getByLabelText(
+          "Manage Public Axiom accounts",
+        ),
       ).toBeInTheDocument();
     });
     expect(
@@ -4535,7 +4376,9 @@ describe("connectors page", () => {
         screen.getByText("Public Stripe connected successfully"),
       ).toBeInTheDocument();
       expect(
-        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+        within(connectorCardByLabel("Public Stripe")).getByLabelText(
+          "Manage Public Stripe accounts",
+        ),
       ).toBeInTheDocument();
     });
     expect(
@@ -4544,105 +4387,6 @@ describe("connectors page", () => {
     expect(authorizationUpdateCount).toBe(0);
     expect(
       screen.queryByText("Public Stripe enabled for 1 agent"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("authorizes every visible non-default agent after connecting", async () => {
-    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
-    const researchAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([]);
-    context.mocks.data.agents([
-      listAgent(defaultAgentId, "Zero"),
-      listAgent(researchAgentId, "Research Agent"),
-    ]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorSlug: "axiom",
-        label: "Public Axiom",
-        authMethods: [
-          {
-            id: "api-token",
-            label: "Public API Token",
-            description: null,
-            grantKind: "manual",
-            manualFields: [
-              {
-                id: "apiToken",
-                label: "Public API token",
-                required: true,
-                placeholder: "public-xaat",
-                inputType: "password",
-              },
-            ],
-            startOptions: [],
-          },
-        ],
-      }),
-    ]);
-    context.mocks.api(
-      connectorManualGrantContract.connect,
-      ({ body, params, respond }) => {
-        return respond(200, {
-          id: crypto.randomUUID(),
-          slug: params.connectorSlug,
-          authMethod: body.authMethod,
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          connectionStatus: "connected",
-          reconnectReason: null,
-          tokenExpiresAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      },
-    );
-    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledConnectorSlugs: [] });
-    });
-    const authorizedAgentIds: string[] = [];
-    context.mocks.api(
-      userConnectorsContract.update,
-      ({ body, params, respond }) => {
-        authorizedAgentIds.push(params.id);
-        expect(body).toStrictEqual({
-          enabledConnectorSlugs: ["axiom"],
-          operation: "add",
-        });
-        return respond(200, {
-          enabledConnectorSlugs: ["axiom"],
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
-    click(await screen.findByLabelText("Connect Public Axiom"));
-    const axiomDialog = await screen.findByRole("dialog", {
-      name: "Public Axiom",
-    });
-    await fill(
-      within(axiomDialog).getByPlaceholderText("public-xaat"),
-      "xaat-test",
-    );
-    click(buttonByText("Save", axiomDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Public Axiom connected successfully"),
-      ).toBeInTheDocument();
-      expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
-    });
-    expect(
-      within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("You've successfully connected with Public Axiom!"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Public Axiom enabled for 1 agent"),
     ).not.toBeInTheDocument();
   });
 
@@ -4669,7 +4413,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -4916,7 +4659,7 @@ describe("connectors page", () => {
     ]);
   });
 
-  it("keeps a disconnected custom connector manageable without loading agent access", async () => {
+  it("keeps a disconnected custom connector manageable with its agent access summary", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000031";
     const supportAgentId = "c0000000-0000-4000-a000-000000000032";
     const connector = customConnector({});
@@ -4950,23 +4693,23 @@ describe("connectors page", () => {
     await waitFor(() => {
       const card = connectorCardByLabel("Acme Search");
       expect(within(card).getByText("HTTP API")).toBeInTheDocument();
-      expect(within(card).getByText("Not connected")).toBeInTheDocument();
+      expect(within(card).getByText("No accounts")).toBeInTheDocument();
       expect(
         within(card).getByText("https://api.acme.test/v1/"),
       ).toBeInTheDocument();
       expect(
-        within(card).queryByTestId("connector-card-agent-access"),
-      ).not.toBeInTheDocument();
+        within(card).getByTestId("connector-card-agent-access"),
+      ).toHaveTextContent("Used by Research");
       expect(within(card).getByLabelText("Connect Acme Search").tagName).toBe(
         "BUTTON",
       );
     });
 
     click(screen.getByLabelText("More options"));
-    expect(menuItemByText("Connect")).toBeInTheDocument();
     expect(menuItemByText("Edit")).toBeInTheDocument();
     expect(menuItemByText("Delete")).toBeInTheDocument();
-    expect(agentAccessReads).toBe(0);
+    expect(queryMenuItemByText("Connect")).not.toBeInTheDocument();
+    expect(agentAccessReads).toBeGreaterThan(0);
   });
 
   it("selects and edits permissions for a custom connector from settings", async () => {
@@ -4978,6 +4721,7 @@ describe("connectors page", () => {
       configuredFieldKeys: ["secret"],
       permissionBundleRef: "builtin:feishu@1",
     });
+    mockCustomConnectorAccountSummary(connector.id);
     const accessByAgentId = new Map<string, AgentCustomConnectorGrants>([
       [researchAgentId, { grants: [] }],
       [supportAgentId, { grants: [] }],
@@ -5183,6 +4927,9 @@ describe("connectors page", () => {
       permissionBundleRef: "builtin:feishu@1",
     });
     let connected = false;
+    mockCustomConnectorAccountSummary(connector.id, () => {
+      return connected;
+    });
     let submittedValues: readonly {
       readonly key: string;
       readonly kind: "secret" | "variable";
@@ -5231,7 +4978,7 @@ describe("connectors page", () => {
     context.mocks.api(
       customConnectorValuesContract.set,
       ({ body, respond }) => {
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         submittedValues = body.values;
         connected = true;
         return respond(200, {
@@ -5257,7 +5004,9 @@ describe("connectors page", () => {
         { key: "secret", kind: "secret", value: "acme-secret" },
       ]);
       expect(
-        within(connectorCardByLabel("Acme Search")).getByText("Connected"),
+        within(connectorCardByLabel("Acme Search")).getByLabelText(
+          "Manage Acme Search accounts",
+        ),
       ).toBeInTheDocument();
     });
     expect(authorizationUpdates).toBe(0);
@@ -5368,7 +5117,7 @@ describe("connectors page", () => {
     expect(accountId).toHaveAttribute("type", "text");
     expect(backupToken).toHaveValue("");
     expect(constructorId).toHaveValue("");
-    expect(backupToken).toHaveAccessibleDescription("Optional · Configured");
+    expect(backupToken).toHaveAccessibleDescription("Optional");
     expect(apiToken).toHaveAccessibleDescription(
       "Issued by the provider Required",
     );
@@ -5465,12 +5214,17 @@ describe("connectors page", () => {
       [supportAgentId, []],
     ]);
     let connector: CustomConnectorMcpResponse | null = null;
+    mockCustomConnectorAccountSummary(
+      "44444444-4444-4444-8444-444444444444",
+      () => {
+        return connector?.connected ?? false;
+      },
+    );
     let savedValues: readonly {
       readonly key: string;
       readonly kind: "secret" | "variable";
       readonly value: string;
     }[] = [];
-    let disconnectCount = 0;
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -5528,7 +5282,7 @@ describe("connectors page", () => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
         }
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         savedValues = body.values;
         connector = {
           ...connector,
@@ -5537,26 +5291,6 @@ describe("connectors page", () => {
           configuredFieldKeys: ["secret"],
         };
         return respond(200, connector);
-      },
-    );
-    context.mocks.api(
-      connectorAccountsContract.disconnectSingleAccount,
-      ({ body, respond }) => {
-        if (!connector) {
-          throw new Error("Expected an MCP custom connector");
-        }
-        expect(body.target).toStrictEqual({
-          kind: "custom",
-          customConnectorId: connector.id,
-        });
-        disconnectCount += 1;
-        connector = {
-          ...connector,
-          connected: false,
-          missingRequiredFields: ["secret"],
-          configuredFieldKeys: [],
-        };
-        return respond(204);
       },
     );
     context.mocks.api(
@@ -5628,7 +5362,7 @@ describe("connectors page", () => {
       expect(
         within(card).getByText("https://mcp.acme.test/server"),
       ).toBeInTheDocument();
-      expect(within(card).getByText("Not connected")).toBeInTheDocument();
+      expect(within(card).getByText("No accounts")).toBeInTheDocument();
     });
     expect(createBodies).toStrictEqual([
       {
@@ -5671,9 +5405,11 @@ describe("connectors page", () => {
         within(connectorCardByLabel("Acme MCP")).getByTestId(
           "connector-card-agent-access",
         ),
-      ).toHaveTextContent("Used by 2 agents");
+      ).toHaveTextContent("Add access");
       expect(
-        within(connectorCardByLabel("Acme MCP")).getByText("Connected"),
+        within(connectorCardByLabel("Acme MCP")).getByLabelText(
+          "Manage Acme MCP accounts",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -5686,16 +5422,6 @@ describe("connectors page", () => {
       name: "Manage Acme MCP access",
     });
     click(
-      within(accessDialog).getByLabelText("Revoke Acme MCP access for Support"),
-    );
-    await waitFor(() => {
-      expect(
-        within(accessDialog).getByLabelText(
-          "Authorize Acme MCP access for Support",
-        ),
-      ).toBeEnabled();
-    });
-    click(
       within(accessDialog).getByLabelText(
         "Authorize Acme MCP access for Support",
       ),
@@ -5706,6 +5432,16 @@ describe("connectors page", () => {
           "Revoke Acme MCP access for Support",
         ),
       ).toBeInTheDocument();
+    });
+    click(
+      within(accessDialog).getByLabelText("Revoke Acme MCP access for Support"),
+    );
+    await waitFor(() => {
+      expect(
+        within(accessDialog).getByLabelText(
+          "Authorize Acme MCP access for Support",
+        ),
+      ).toBeEnabled();
     });
     expect(
       authorizationUpdates.some(({ agentId, body }) => {
@@ -5759,19 +5495,18 @@ describe("connectors page", () => {
         storageVersion: 1,
       },
     ]);
-
-    click(screen.getByLabelText("More options"));
-    click(await screen.findByText("Disconnect"));
-    await waitFor(() => {
-      expect(disconnectCount).toBe(1);
-      expect(buttonByAriaLabel("Connect Acme MCP v2")).toBeInTheDocument();
-    });
   });
 
   it("preserves confidential OAuth configuration for MCP edits and connects", async () => {
     const createdBodies: CreateCustomConnectorBody[] = [];
     const updatedBodies: UpdateCustomConnectorBody[] = [];
     let connector: CustomConnectorMcpResponse | null = null;
+    mockCustomConnectorAccountSummary(
+      "44444444-4444-4444-8444-444444444444",
+      () => {
+        return connector?.connected ?? false;
+      },
+    );
     let oauthStartCount = 0;
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
@@ -5831,7 +5566,7 @@ describe("connectors page", () => {
         if (!connector) {
           throw new Error("Expected an OAuth MCP custom connector");
         }
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         oauthStartCount += 1;
         connector = {
           ...connector,
@@ -5935,9 +5670,10 @@ describe("connectors page", () => {
   it("keeps MCP access reductions available while the feature is disabled", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000063";
     const supportAgentId = "c0000000-0000-4000-a000-000000000064";
-    let connector = mcpCustomConnector({
+    const connector = mcpCustomConnector({
       connected: true,
     });
+    mockCustomConnectorAccountSummary(connector.id);
     const grantsByAgentId = new Map<string, AgentCustomConnectorGrant[]>([
       [
         researchAgentId,
@@ -5951,7 +5687,6 @@ describe("connectors page", () => {
       [supportAgentId, []],
     ]);
     const authorizationUpdates: AgentCustomConnectorUpdate[] = [];
-    let disconnectCount = 0;
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -5991,21 +5726,6 @@ describe("connectors page", () => {
         return respond(200, { grants });
       },
     );
-    context.mocks.api(
-      connectorAccountsContract.disconnectSingleAccount,
-      ({ body, respond }) => {
-        expect(body.target).toStrictEqual({
-          kind: "custom",
-          customConnectorId: connector.id,
-        });
-        disconnectCount += 1;
-        connector = {
-          ...connector,
-          connected: false,
-        };
-        return respond(204);
-      },
-    );
 
     detachedSetupPage({
       context,
@@ -6032,7 +5752,9 @@ describe("connectors page", () => {
     expect(
       within(card).getByText("https://mcp.acme.test/server"),
     ).toBeInTheDocument();
-    expect(within(card).getByText("Connected")).toBeInTheDocument();
+    expect(
+      within(card).getByLabelText("Manage Acme MCP accounts"),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
     expect(
       within(card).getByTestId("connector-card-agent-access"),
@@ -6087,13 +5809,6 @@ describe("connectors page", () => {
     });
 
     click(screen.getByLabelText("More options"));
-    click(await screen.findByText("Disconnect"));
-    await waitFor(() => {
-      expect(disconnectCount).toBe(1);
-    });
-    expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
-
-    click(screen.getByLabelText("More options"));
     await expect(screen.findByText("Delete")).resolves.toBeInTheDocument();
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
     expect(screen.queryByText("Edit")).not.toBeInTheDocument();
@@ -6139,6 +5854,7 @@ describe("connectors page", () => {
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
     });
+    mockCustomConnectorAccountSummary(connector.id);
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -6162,7 +5878,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("Acme Search");
-      expect(within(card).getByText("Conectado")).toBeInTheDocument();
+      expect(within(card).getByText("Conta #00000000")).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
       ).toHaveTextContent("Usado por Research");
@@ -6270,6 +5986,12 @@ describe("connectors page", () => {
     const updatedBodies: UpdateCustomConnectorBody[] = [];
     let oauthStartCount = 0;
     let connector: CustomConnectorHttpResponse | null = null;
+    mockCustomConnectorAccountSummary(
+      "33333333-3333-4333-8333-333333333333",
+      () => {
+        return connector?.connected ?? false;
+      },
+    );
     const authWindow = createMockAuthWindow();
     const browserOpen = context.mocks.browser.open(authWindow);
     const clipboard = context.mocks.browser.clipboardWriteText();
@@ -6329,7 +6051,7 @@ describe("connectors page", () => {
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
         });
         oauthStartCount += 1;
         if (!connector) {
@@ -6579,10 +6301,12 @@ describe("connectors page", () => {
         "https://oauth.acme.test/authorize?state=ui-test",
       );
       const card = connectorCardByLabel("Acme API");
-      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByLabelText("Manage Acme API accounts"),
+      ).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by 2 agents");
+      ).toHaveTextContent("Add access");
     });
     expect(browserOpen.calls).toStrictEqual([
       {
@@ -6650,7 +6374,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     await waitFor(() => {
@@ -6774,7 +6497,6 @@ describe("connectors page", () => {
         context,
         path: "/connectors?tab=custom",
         featureSwitches: {
-          [FeatureSwitchKey.ConnectorAccounts]: true,
           [FeatureSwitchKey.CustomConnectorMcp]: true,
         },
       });
@@ -6861,7 +6583,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(
@@ -6954,7 +6675,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(
@@ -7037,7 +6757,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors?tab=custom",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.CustomConnectorMcp]: false,
       },
     });
@@ -7150,7 +6869,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
     click(await screen.findByLabelText(`Connect ${connector.displayName}`));
@@ -7214,7 +6932,7 @@ describe("connectors page", () => {
       expect(
         within(card).getByText("https://api.acme.test/v1/"),
       ).toBeInTheDocument();
-      expect(within(card).getByText("Not connected")).toBeInTheDocument();
+      expect(within(card).getByText("No accounts")).toBeInTheDocument();
     });
     expect(story.createBodies[0]?.storageVersion).toBe(1);
 
@@ -7233,10 +6951,12 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("Acme API");
-      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByLabelText("Manage Acme API accounts"),
+      ).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by 3 agents");
+      ).toHaveTextContent("Add access");
     });
     expect(
       within(connectorCardByLabel("Acme API")).getByTestId(
@@ -7265,18 +6985,6 @@ describe("connectors page", () => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();
     });
     expect(story.updateBodies[0]?.storageVersion).toBe(1);
-
-    click(screen.getByLabelText("More options"));
-    click(await screen.findByText("Disconnect"));
-
-    await waitFor(() => {
-      expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
-      expect(
-        within(connectorCardByLabel("Acme Billing API")).queryByTestId(
-          "connector-card-agent-access",
-        ),
-      ).not.toBeInTheDocument();
-    });
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Delete"));

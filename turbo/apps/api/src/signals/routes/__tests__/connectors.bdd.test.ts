@@ -580,7 +580,7 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("restores explicit single-account and reconnect intents across OAuth callbacks", async () => {
+  it("preserves legacy intents and allows explicit sibling adds across OAuth callbacks", async () => {
     mockGitHubConnectorOAuth();
 
     const bdd = createBddApi(context);
@@ -666,18 +666,25 @@ describe("CONN-02: OAuth start and callback", () => {
       externalId: initialConnection.externalId,
     });
 
-    const siblingAdd = await connectorsApi.requestOauthStart(
+    const siblingAdd = await connectorsApi.startOauth(
       actor,
       "github",
       "oauth",
-      {
-        statuses: [409],
-        authorizeAgent: true,
-        account: { intent: "add", displayName: "Personal" },
-      },
+      undefined,
+      { intent: "add", displayName: "Personal" },
     );
-    expectApiError(siblingAdd.body);
-    expect(siblingAdd.body.error.code).toBe("CONFLICT");
+    await connectorsApi.completeOauthCallback("github", {
+      code: "github-sibling-account-code",
+      state: stateFromAuthorizationUrl(siblingAdd.authorizationUrl),
+    });
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "github",
+    );
+    expect(accounts).toHaveLength(2);
+    expect(accounts).toContainEqual(
+      expect.objectContaining({ displayName: "Personal", isDefault: false }),
+    );
   });
 
   it("persists the callback-selected Datadog site through the public OAuth flow", async () => {
@@ -2115,7 +2122,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   it("uses explicit single-account semantics for HTTP and MCP custom connectors", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
     const definitions = [
@@ -2540,9 +2546,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
               initialScope: tokenScope,
             });
       const admin = createBddApi(context).user({ orgRole: "org:admin" });
-      await connectorsApi.updateFeatureSwitches(admin, {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      });
       const connector = await connectorsApi.createCustomConnector(admin, {
         displayName: `BDD OAuth Scope ${randomUUID()}`,
         prefixTemplates: [

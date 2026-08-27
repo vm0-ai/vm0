@@ -7,11 +7,9 @@ import {
   type ConnectorAccountSummary,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { onRejection, resetSignal } from "../utils.ts";
 
 const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
@@ -26,11 +24,6 @@ const internalSummariesReload$ = state(0);
 const connectorAccountSummaries$ = computed(
   async (get): Promise<readonly ConnectorAccountSummary[]> => {
     get(internalSummariesReload$);
-    const enabled =
-      get(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
-    if (!enabled) {
-      return [];
-    }
     const result = await accept(
       get(apiClient$)(connectorAccountsContract).summaries(),
       [200],

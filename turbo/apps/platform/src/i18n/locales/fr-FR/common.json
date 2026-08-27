@@ -2745,12 +2745,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Plus d'options",
-      "statusConnected": "Connecté",
       "toasts": {
         "connected": "Connecté",
         "created": "Créé \"{{connector}}\"",
         "deleted": "Connecteur personnalisé supprimé",
-        "disconnected": "Déconnecté",
         "updated": "Mis à jour \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2805,14 +2803,6 @@
       "otherEndpointsDescription": "Points de terminaison API non couverts par aucune des autorisations ci-dessus",
       "permissions": "Autorisations",
       "restore": "Restaurer",
-      "scopeReview": {
-        "added": "Nouvelles autorisations",
-        "description": "Les autorisations requises pour ce connecteur ont changé. Veuillez les examiner et vous reconnecter pour appliquer la mise à jour.",
-        "failed": "Échec du chargement des modifications de portée.",
-        "loading": "Chargement des modifications de portée...",
-        "removed": "Autorisations supprimées",
-        "title": "Mise à jour des autorisations de {{connector}}"
-      },
       "selectAll": "Tout sélectionner",
       "showMore_one": "Afficher plus ({{count}})",
       "showMore_many": "Afficher plus ({{count}})",
@@ -3300,8 +3290,7 @@
       "redirectTitle": "Redirection vers {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connecté",
-      "disconnected": "{{connector}} déconnecté"
+      "connected": "{{connector}} connecté"
     }
   },
   "global": {

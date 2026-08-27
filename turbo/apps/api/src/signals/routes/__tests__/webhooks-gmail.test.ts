@@ -12,7 +12,6 @@ import {
   workflowAutomationsContract,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -38,7 +37,6 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
@@ -897,9 +895,6 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
     const created = await accept(

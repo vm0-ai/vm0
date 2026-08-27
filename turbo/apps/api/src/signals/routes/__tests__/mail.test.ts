@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -377,9 +376,6 @@ describe("POST /api/mail/drafts/link", () => {
   it("uses a healthy Gmail connection with unknown historical grants", async () => {
     const fixture = await seedGmailMailCardFixture();
     await setGmailOAuthScopeFacts(fixture, null);
-    await connectors.updateFeatureSwitches(fixture.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     const gmail = mockGmailDraftApi();
 
     await expect(

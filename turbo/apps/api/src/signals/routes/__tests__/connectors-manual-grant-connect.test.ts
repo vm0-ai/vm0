@@ -117,15 +117,31 @@ async function deleteConnector(
   connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context, routes: connectorAccountRoutes })(
-      connectorAccountsContract,
-    ).disconnectSingleAccount({
-      headers: authHeaders(),
-      body: { target: { kind: "builtin", connectorSlug } },
-    }),
-    [204, 404],
+  const client = setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
   );
+  while (true) {
+    const listed = await accept(
+      client.connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug, limit: 50 },
+      }),
+      [200],
+    );
+    if (listed.body.connections.length === 0) {
+      return;
+    }
+    for (const connection of listed.body.connections) {
+      await accept(
+        client.delete({
+          headers: authHeaders(),
+          params: { connectionId: connection.id },
+          body: { target: { kind: "builtin", connectorSlug } },
+        }),
+        [200, 404],
+      );
+    }
+  }
 }
 
 async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
@@ -408,7 +424,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     });
   });
 
-  it("accepts CLI add and reconnect while preserving account errors", async () => {
+  it("accepts CLI add and reconnect while preserving sibling accounts", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -451,11 +467,24 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         },
         headers: cliAuthHeaders(),
       }),
-      [409],
+      [200],
     );
-    expect(sibling.body.error.message).toBe(
-      "Additional connector accounts are not enabled yet",
+    expect(sibling.body.id).not.toBe(added.body.id);
+    const accounts = await accept(
+      setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      ).connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [200],
     );
+    expect(
+      accounts.body.connections.map(({ id }) => {
+        return id;
+      }),
+    ).toStrictEqual(expect.arrayContaining([added.body.id, sibling.body.id]));
+    expect(accounts.body.connections).toHaveLength(2);
 
     const missing = await accept(
       client.connect({
@@ -509,7 +538,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     expect(stored.body.id).toBe(added.body.id);
   });
 
-  it("serializes concurrent first-account adds", async () => {
+  it("allows concurrent first-account adds", async () => {
     await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -533,7 +562,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           return response.status;
         })
         .sort(),
-    ).toStrictEqual([200, 409]);
+    ).toStrictEqual([200, 200]);
   });
 
   it("connects Zendesk manual grant fields through the API", async () => {

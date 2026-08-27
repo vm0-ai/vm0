@@ -62,9 +62,7 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import { connectorAccountSiblingWritesEnabled } from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
 
 const connectorReadAuth = {
@@ -509,10 +507,6 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
     const writeDb = set(writeDb$);
     const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -520,8 +514,7 @@ const startConnectorOauthInner$ = command(
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
         mutation: bodyResult.data.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
         return { resolution, connectionId: null };
@@ -640,10 +633,6 @@ const startConnectorOpenIdInner$ = command(
     });
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
     const writeDb = set(writeDb$);
     const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -651,8 +640,7 @@ const startConnectorOpenIdInner$ = command(
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
         mutation: bodyResult.data.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
         return { resolution, connectionId: null };

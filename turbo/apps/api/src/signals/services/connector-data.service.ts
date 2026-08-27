@@ -89,10 +89,7 @@ import {
   type ConnectorConnectionMutationResolution,
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 
 const log = logger("api:connector-data");
 const oauthScopesSchema = z.array(z.string());
@@ -1227,9 +1224,7 @@ async function commitManualGrantConnector(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation: normalizeConnectorAccountMutation(args.account),
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -1420,8 +1415,7 @@ export const connectNoAuthConnector$ = command(
           connectorSlug: args.runtimeMethod.connectorSlug,
         },
         mutation: normalizeConnectorAccountMutation(args.account),
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       signal.throwIfAborted();
       if (resolution.kind !== "ready") {
@@ -1995,9 +1989,7 @@ async function commitConnectorTokenConnection(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation,
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
     matchExternalId: authorizedExternalIdForMutation({
       mutation,
       matchExistingExternalIdentity: args.matchExistingExternalIdentity,

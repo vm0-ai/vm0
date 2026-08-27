@@ -2689,12 +2689,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
-        "disconnected": "切断されました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -2747,14 +2745,6 @@
       "otherEndpointsDescription": "API エンドポイントが上記のどの権限にも一致しません",
       "permissions": "権限",
       "restore": "復元",
-      "scopeReview": {
-        "added": "新しい権限",
-        "description": "このコネクタに必要な権限が変更されました。確認して再接続し、アップデートを適用してください。",
-        "failed": "スコープの変更をロードできませんでした。",
-        "loading": "スコープの変更を読み込んでいます...",
-        "removed": "削除された権限",
-        "title": "{{connector}} 権限の更新"
-      },
       "selectAll": "すべて選択",
       "showMore_one": "もっと見る ({{count}})",
       "showMore_other": "もっと見る ({{count}})",
@@ -3241,8 +3231,7 @@
       "redirectTitle": "{{connector}} にリダイレクトしています…"
     },
     "toasts": {
-      "connected": "{{connector}} が接続されました",
-      "disconnected": "{{connector}} が切断されました"
+      "connected": "{{connector}} が接続されました"
     }
   },
   "global": {

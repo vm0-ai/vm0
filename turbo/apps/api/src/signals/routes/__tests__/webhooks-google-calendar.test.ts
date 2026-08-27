@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -21,7 +20,6 @@ import {
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -384,9 +382,6 @@ describe("POST /api/webhooks/google-calendar", () => {
 
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     await connectGoogleCalendar(scenario);
     const created = await accept(
       automationsClient().create({
