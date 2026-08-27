@@ -34,8 +34,9 @@ import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 import {
-  connectorAccountMutationFor as accountMutationFor,
+  connectorAccountOptionsFor,
   type ConnectorAccountConnectMode,
+  type ConnectorAccountMutationOptions,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 interface CustomConnectorConnectionSubmission {
@@ -149,7 +150,7 @@ function CredentialFields({
 
 function useCustomConnectorConnectionSubmitters(
   agentId: string | undefined,
-  accountMode: ConnectorAccountConnectMode | undefined,
+  accountOptions: ConnectorAccountMutationOptions,
 ) {
   const [valuesLoadable, submitValues] = useLoadableSet(
     setCustomConnectorValues$,
@@ -169,9 +170,9 @@ function useCustomConnectorConnectionSubmitters(
   const [accountOAuthLoadable, submitAccountOAuth2] = useLoadableSet(
     connectCustomConnectorAccountOAuth2$,
   );
-  const account = accountMutationFor(accountMode);
+  const account = accountOptions.account;
   const usesDefaultProjection =
-    accountMode?.completionSource === "default-projection";
+    accountOptions.useDefaultConnectorProjection === true;
   const managesAccount = account !== undefined && !usesDefaultProjection;
 
   const submitDeclaredValues = async (
@@ -291,6 +292,7 @@ interface CustomConnectorConnectDialogProps {
   readonly agentId?: string;
   readonly onClose?: () => void;
   readonly onSuccess?: (connectionId: string | null) => void | Promise<void>;
+  readonly accountOptions?: ConnectorAccountMutationOptions;
   readonly accountMode?: ConnectorAccountConnectMode;
 }
 
@@ -349,6 +351,7 @@ export function CustomConnectorConnectDialog({
   agentId,
   onClose,
   onSuccess,
+  accountOptions,
   accountMode,
 }: CustomConnectorConnectDialogProps) {
   const { t } = useTranslation();
@@ -356,8 +359,10 @@ export function CustomConnectorConnectDialog({
   const setField = useSet(setCustomConnectorConnectField$);
   const resetForm = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
+  const resolvedAccountOptions =
+    accountOptions ?? connectorAccountOptionsFor(accountMode);
   const { submitting, submitDeclaredValues, submitOAuth } =
-    useCustomConnectorConnectionSubmitters(agentId, accountMode);
+    useCustomConnectorConnectionSubmitters(agentId, resolvedAccountOptions);
   const signal = useGet(pageSignal$);
   const oauth = connector.authMode === "oauth";
   const values = declaredValuesFromForm(connector, form.values);

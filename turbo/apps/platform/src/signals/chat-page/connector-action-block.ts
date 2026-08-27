@@ -25,10 +25,7 @@ import {
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
 import { isAgentConnectorAuthorized } from "../okou-page/agent-connector-authorizations.ts";
-import {
-  connectorAccountOptionsFor,
-  defaultBuiltinConnectorAccountMode,
-} from "../okou-page/settings/connector-account-dialogs.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../okou-page/settings/connector-account-dialogs.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
@@ -231,8 +228,8 @@ function createCatalogConnectorActivation(
     if (!connector) {
       return;
     }
-    const accountMode = defaultBuiltinConnectorAccountMode(connector);
-    if (!accountMode) {
+    const accountOptions = defaultBuiltinConnectorAccountOptions(connector);
+    if (!accountOptions) {
       return;
     }
 
@@ -250,7 +247,7 @@ function createCatalogConnectorActivation(
       connectorLabel: connector.label,
       connectorIcon: connector.icon,
       agentId: descriptor.agentId,
-      ...connectorAccountOptionsFor(accountMode),
+      ...accountOptions,
     };
     const connectionCompleted =
       directConnectMethod.kind === "browser-auth"

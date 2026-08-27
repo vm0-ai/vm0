@@ -83,10 +83,9 @@ import { CustomConnectorConnectDialog } from "./components/settings/custom-conne
 import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  connectorAccountOptionsFor,
-  defaultBuiltinConnectorAccountMode,
-  defaultCustomConnectorAccountMode,
-  type ConnectorAccountConnectMode,
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+  type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 function runDirectedConnect(
@@ -127,11 +126,10 @@ function runDirectedConnect(
   },
   signal: AbortSignal,
 ): void {
-  const accountMode = defaultBuiltinConnectorAccountMode(params.item);
-  if (!accountMode) {
+  const accountOptions = defaultBuiltinConnectorAccountOptions(params.item);
+  if (!accountOptions) {
     return;
   }
-  const accountOptions = connectorAccountOptionsFor(accountMode);
   const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
@@ -172,8 +170,9 @@ function runDirectedConnect(
           {
             connectorLabel: params.item.label,
             connectorIcon: params.item.icon,
-            ...(params.agentId ? { agentId: params.agentId } : {}),
-            authorizeVisibleAgents: true,
+            ...(params.agentId
+              ? { agentId: params.agentId }
+              : { authorizeVisibleAgents: true }),
             ...accountOptions,
           },
           signal,
@@ -193,8 +192,9 @@ function runDirectedConnect(
             authMethod,
             options: {
               connectorLabel: params.item.label,
-              ...(params.agentId ? { agentId: params.agentId } : {}),
-              authorizeVisibleAgents: true,
+              ...(params.agentId
+                ? { agentId: params.agentId }
+                : { authorizeVisibleAgents: true }),
               ...accountOptions,
             },
           },
@@ -214,14 +214,14 @@ function ManualGrantForm({
   agentId,
   connectorLabel,
   manualGrantMethod,
-  accountMode,
+  accountOptions,
   onSuccess,
 }: {
   connectorSlug: ConnectorSlug;
   agentId: string | null;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail;
-  accountMode: ConnectorAccountConnectMode;
+  accountOptions: DefaultConnectorAccountMutationOptions;
   onSuccess: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -259,9 +259,8 @@ function ManualGrantForm({
                 ),
                 options: {
                   connectorLabel,
-                  ...(agentId ? { agentId } : {}),
-                  authorizeVisibleAgents: true,
-                  ...connectorAccountOptionsFor(accountMode),
+                  ...(agentId ? { agentId } : { authorizeVisibleAgents: true }),
+                  ...accountOptions,
                 },
               },
               pageSignal,
@@ -333,7 +332,7 @@ function ManualGrantDialog({
   icon,
   connectorLabel,
   manualGrantMethod,
-  accountMode,
+  accountOptions,
   open,
   onOpenChange,
   onSuccess,
@@ -343,12 +342,12 @@ function ManualGrantDialog({
   icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
-  accountMode: ConnectorAccountConnectMode | null;
+  accountOptions: DefaultConnectorAccountMutationOptions | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void | Promise<void>;
 }) {
-  if (!manualGrantMethod || !accountMode) {
+  if (!manualGrantMethod || !accountOptions) {
     return null;
   }
   return (
@@ -365,7 +364,7 @@ function ManualGrantDialog({
           agentId={agentId}
           connectorLabel={connectorLabel}
           manualGrantMethod={manualGrantMethod}
-          accountMode={accountMode}
+          accountOptions={accountOptions}
           onSuccess={async () => {
             await onSuccess();
             onOpenChange(false);
@@ -452,16 +451,21 @@ function DirectedConnectModal({
   if (!open || !item) {
     return null;
   }
-  const accountMode = defaultBuiltinConnectorAccountMode(item);
-  if (!accountMode) {
+  const accountOptions = defaultBuiltinConnectorAccountOptions(item);
+  if (!accountOptions) {
     return null;
   }
+  const reconnectAuthMethod =
+    accountOptions.account.intent === "reconnect"
+      ? item.connection?.authMethod
+      : undefined;
   return (
     <ConnectModal
       item={item}
       {...(agentId ? { agentId } : {})}
-      accountMode={accountMode}
-      authorizeVisibleAgentsOnConnect
+      accountOptions={accountOptions}
+      reconnectAuthMethod={reconnectAuthMethod}
+      authorizeVisibleAgentsOnConnect={!agentId}
       onClose={onClose}
       onSuccess={onSuccess}
     />
@@ -493,7 +497,9 @@ function DirectedConnectDialogs({
   readonly setConnectModalOpen: (open: boolean) => void;
   readonly onSuccess: () => void | Promise<void>;
 }) {
-  const accountMode = item ? defaultBuiltinConnectorAccountMode(item) : null;
+  const accountOptions = item
+    ? defaultBuiltinConnectorAccountOptions(item)
+    : null;
   return (
     <>
       <ManualGrantDialog
@@ -502,7 +508,7 @@ function DirectedConnectDialogs({
         icon={icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
-        accountMode={accountMode}
+        accountOptions={accountOptions}
         open={manualGrantDialogOpen}
         onOpenChange={setManualGrantDialogOpen}
         onSuccess={onSuccess}
@@ -694,11 +700,13 @@ function DirectedConnectCard() {
     return null;
   }
   const authMethods = item?.authMethods ?? [];
-  const accountMode = item ? defaultBuiltinConnectorAccountMode(item) : null;
+  const accountOptions = item
+    ? defaultBuiltinConnectorAccountOptions(item)
+    : null;
   const manualGrantMethod = item
     ? getOnlyManualConnectorStatusAuthMethod(item)
     : null;
-  const canConnect = authMethods.length > 0 && accountMode !== null;
+  const canConnect = authMethods.length > 0 && accountOptions !== null;
   const connectorLabel = item?.label ?? connectorSlug;
   const connectorDescription = item?.description ?? "";
   const handleConnectSuccess = async () => {
@@ -798,14 +806,14 @@ function customConnectorForSlug(
 
 interface CustomConnectorConnection {
   readonly connector: CustomConnectorResponse;
-  readonly accountMode: ConnectorAccountConnectMode;
+  readonly accountOptions: DefaultConnectorAccountMutationOptions;
 }
 
 function customConnectorConnection(
   connector: CustomConnectorResponse | undefined,
 ): CustomConnectorConnection | null {
-  const accountMode = defaultCustomConnectorAccountMode(connector);
-  return connector && accountMode ? { connector, accountMode } : null;
+  const accountOptions = defaultCustomConnectorAccountOptions(connector);
+  return connector && accountOptions ? { connector, accountOptions } : null;
 }
 
 function CustomDirectedConnectorDialog({
@@ -828,7 +836,7 @@ function CustomDirectedConnectorDialog({
     <CustomConnectorConnectDialog
       connector={connection.connector}
       {...(agentId ? { agentId } : {})}
-      accountMode={connection.accountMode}
+      accountOptions={connection.accountOptions}
       onClose={onClose}
       onSuccess={onSuccess}
     />

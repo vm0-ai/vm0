@@ -16,15 +16,10 @@ import {
   setSelectedConnectorSlug$,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "../okou-page/components/settings/add-connection-dialog.tsx";
 import { ConnectorCard } from "../okou-page/components/settings/connector-card.tsx";
-import type { ConnectorConnectHandlers } from "../okou-page/components/settings/launch-connector-connect.ts";
-import {
-  connectorAccountOptionsFor,
-  defaultBuiltinConnectorAccountMode,
-} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 
@@ -33,79 +28,6 @@ function parseConnectorSlugs(values: readonly string[]): ConnectorSlug[] {
     const parsed = connectorSlugSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
-}
-
-function OnboardingConnectorCard({
-  connectorSlug,
-  item,
-  connected,
-  connecting,
-  loading,
-  layout,
-  required,
-}: {
-  readonly connectorSlug: ConnectorSlug;
-  readonly item: PlatformConnectorCatalogStatusItem | undefined;
-  readonly connected: boolean;
-  readonly connecting: boolean;
-  readonly loading: boolean;
-  readonly layout: ConnectorSetupVariant;
-  readonly required: boolean;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const connect = useSet(connectConnectorOAuthAuthCode$);
-  const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const setSelectedConnectorSlug = useSet(setSelectedConnectorSlug$);
-  const accountMode = defaultBuiltinConnectorAccountMode(item);
-  const connectHandlers: ConnectorConnectHandlers | undefined =
-    item && accountMode
-      ? {
-          openModal: () => {
-            setSelectedConnectorSlug(connectorSlug);
-          },
-          connectBrowserAuth: (authMethod) => {
-            return connect(
-              connectorSlug,
-              authMethod,
-              {
-                connectorLabel: item.label,
-                connectorIcon: item.icon,
-                authorizeVisibleAgents: true,
-                ...connectorAccountOptionsFor(accountMode),
-              },
-              pageSignal,
-            );
-          },
-          connectNoAuth: (authMethod) => {
-            return connectNoAuth(
-              {
-                connectorSlug,
-                authMethod,
-                options: {
-                  connectorLabel: item.label,
-                  authorizeVisibleAgents: true,
-                  ...connectorAccountOptionsFor(accountMode),
-                },
-              },
-              pageSignal,
-            );
-          },
-        }
-      : undefined;
-
-  return (
-    <ConnectorCard
-      variant="onboarding"
-      connectorSlug={connectorSlug}
-      connector={item}
-      connected={connected}
-      busy={connecting}
-      loading={loading}
-      layout={layout}
-      required={required}
-      connect={connectHandlers}
-    />
-  );
 }
 
 export function OnboardingConnectorSetup({
@@ -123,9 +45,12 @@ export function OnboardingConnectorSetup({
   const requiredSet = new Set(
     parseConnectorSlugs(requiredConnectorSlugs ?? []),
   );
+  const pageSignal = useGet(pageSignal$);
   const connectorCatalogItemsLoadable = useLastLoadable(
     connectorCatalogStatus$,
   );
+  const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const selectedConnectorSlug = useGet(selectedConnectorSlug$);
   const setSelectedConnectorSlug = useSet(setSelectedConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -146,8 +71,8 @@ export function OnboardingConnectorSetup({
         return connector.slug === selectedConnectorSlug;
       })
     : undefined;
-  const selectedAccountMode =
-    defaultBuiltinConnectorAccountMode(selectedConnector);
+  const selectedAccountOptions =
+    defaultBuiltinConnectorAccountOptions(selectedConnector);
   const loading = connectorCatalogItemsLoadable.state === "loading";
 
   return (
@@ -169,26 +94,64 @@ export function OnboardingConnectorSetup({
             connectFlowSlug === connectorSlug ||
             pollingAuthCodeSlug === connectorSlug ||
             pollingDeviceAuthSlug === connectorSlug;
+          const accountOptions = defaultBuiltinConnectorAccountOptions(item);
 
           return (
-            <OnboardingConnectorCard
+            <ConnectorCard
               key={connectorSlug}
+              variant="onboarding"
               connectorSlug={connectorSlug}
-              item={item}
+              connector={item}
               connected={connected}
-              connecting={connecting}
+              busy={connecting}
               loading={loading}
               layout={variant}
               required={requiredSet.has(connectorSlug)}
+              connect={
+                item && accountOptions
+                  ? {
+                      openModal: () => {
+                        setSelectedConnectorSlug(connectorSlug);
+                      },
+                      connectBrowserAuth: (authMethod) => {
+                        return connect(
+                          connectorSlug,
+                          authMethod,
+                          {
+                            connectorLabel: item.label,
+                            connectorIcon: item.icon,
+                            authorizeVisibleAgents: true,
+                            ...accountOptions,
+                          },
+                          pageSignal,
+                        );
+                      },
+                      connectNoAuth: (authMethod) => {
+                        return connectNoAuth(
+                          {
+                            connectorSlug,
+                            authMethod,
+                            options: {
+                              connectorLabel: item.label,
+                              authorizeVisibleAgents: true,
+                              ...accountOptions,
+                            },
+                          },
+                          pageSignal,
+                        );
+                      },
+                    }
+                  : undefined
+              }
             />
           );
         })}
         {children}
       </section>
-      {selectedConnector && selectedAccountMode ? (
+      {selectedConnector && selectedAccountOptions ? (
         <ConnectModal
           item={selectedConnector}
-          accountMode={selectedAccountMode}
+          accountOptions={selectedAccountOptions}
           authorizeVisibleAgentsOnConnect
           onClose={() => {
             setSelectedConnectorSlug(null);

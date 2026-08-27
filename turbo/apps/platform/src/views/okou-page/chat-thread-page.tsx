@@ -176,8 +176,8 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import {
-  defaultBuiltinConnectorAccountMode,
-  defaultCustomConnectorAccountMode,
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
@@ -5568,30 +5568,37 @@ function ChatConnectorActionConnectModal() {
         (candidate.kind === "http" || mcpEnabled)
       );
     });
-    const accountMode = connector
-      ? defaultCustomConnectorAccountMode(connector)
+    const accountOptions = connector
+      ? defaultCustomConnectorAccountOptions(connector)
       : null;
-    return connector && accountMode ? (
+    return connector && accountOptions ? (
       <CustomConnectorConnectDialog
         connector={connector}
         agentId={active.agentId}
-        accountMode={accountMode}
+        accountOptions={accountOptions}
         onClose={close}
         onSuccess={onSuccess}
       />
     ) : null;
   }
 
-  const accountMode = defaultBuiltinConnectorAccountMode(active.catalogItem);
-  if (!accountMode) {
+  const accountOptions = defaultBuiltinConnectorAccountOptions(
+    active.catalogItem,
+  );
+  if (!accountOptions) {
     return null;
   }
+  const reconnectAuthMethod =
+    accountOptions.account.intent === "reconnect"
+      ? active.catalogItem.connection?.authMethod
+      : undefined;
 
   return (
     <ConnectModal
       item={active.catalogItem}
       agentId={active.agentId}
-      accountMode={accountMode}
+      accountOptions={accountOptions}
+      reconnectAuthMethod={reconnectAuthMethod}
       onClose={close}
       onSuccess={onSuccess}
     />

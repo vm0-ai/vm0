@@ -177,10 +177,9 @@ import { CustomConnectorConnectDialog } from "./components/settings/custom-conne
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
-  connectorAccountOptionsFor,
-  defaultBuiltinConnectorAccountMode,
-  defaultCustomConnectorAccountMode,
-  type ConnectorAccountConnectMode,
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+  type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import {
   connectConnectorNoAuth$,
@@ -10699,18 +10698,18 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
 
 function ComposerConnectorConnectDialogs({
   selectedConnector,
-  selectedConnectorAccountMode,
+  selectedConnectorAccountOptions,
   selectedCustomConnector,
-  selectedCustomConnectorAccountMode,
+  selectedCustomConnectorAccountOptions,
   agentId,
   onBuiltinClose,
   onBuiltinSuccess,
   onCustomClose,
 }: {
   readonly selectedConnector: PlatformConnectorCatalogStatusItem | undefined;
-  readonly selectedConnectorAccountMode: ConnectorAccountConnectMode | null;
+  readonly selectedConnectorAccountOptions: DefaultConnectorAccountMutationOptions | null;
   readonly selectedCustomConnector: CustomConnectorResponse | undefined;
-  readonly selectedCustomConnectorAccountMode: ConnectorAccountConnectMode | null;
+  readonly selectedCustomConnectorAccountOptions: DefaultConnectorAccountMutationOptions | null;
   readonly agentId: string;
   readonly onBuiltinClose: () => void;
   readonly onBuiltinSuccess: () => Promise<void>;
@@ -10718,20 +10717,20 @@ function ComposerConnectorConnectDialogs({
 }) {
   return (
     <>
-      {selectedConnector && selectedConnectorAccountMode ? (
+      {selectedConnector && selectedConnectorAccountOptions ? (
         <ConnectModal
           item={selectedConnector}
           agentId={agentId}
-          accountMode={selectedConnectorAccountMode}
+          accountOptions={selectedConnectorAccountOptions}
           onClose={onBuiltinClose}
           onSuccess={onBuiltinSuccess}
         />
       ) : null}
-      {selectedCustomConnector && selectedCustomConnectorAccountMode ? (
+      {selectedCustomConnector && selectedCustomConnectorAccountOptions ? (
         <CustomConnectorConnectDialog
           connector={selectedCustomConnector}
           agentId={agentId}
-          accountMode={selectedCustomConnectorAccountMode}
+          accountOptions={selectedCustomConnectorAccountOptions}
           onClose={onCustomClose}
         />
       ) : null}
@@ -10850,11 +10849,10 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const selectedConnector = selectedConnectorSlug
     ? connectorMap.get(selectedConnectorSlug)
     : undefined;
-  const selectedConnectorAccountMode =
-    defaultBuiltinConnectorAccountMode(selectedConnector);
-  const selectedCustomConnectorAccountMode = defaultCustomConnectorAccountMode(
-    selectedCustomConnector,
-  );
+  const selectedConnectorAccountOptions =
+    defaultBuiltinConnectorAccountOptions(selectedConnector);
+  const selectedCustomConnectorAccountOptions =
+    defaultCustomConnectorAccountOptions(selectedCustomConnector);
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -10924,7 +10922,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
     const connectorSlug = connector.slug;
-    const accountMode = defaultBuiltinConnectorAccountMode(connector);
+    const accountOptions = defaultBuiltinConnectorAccountOptions(connector);
     return {
       openModal: () => {
         updateConnectorUi({
@@ -10933,7 +10931,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         });
       },
       connectBrowserAuth: async (authMethod) => {
-        if (!accountMode) {
+        if (!accountOptions) {
           return false;
         }
         updateConnectorUi({ pendingConnectorSlug: connectorSlug });
@@ -10944,7 +10942,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             connectorLabel: connector.label,
             connectorIcon: connector.icon,
             agentId: agentRecordId,
-            ...connectorAccountOptionsFor(accountMode),
+            ...accountOptions,
           },
           pageSignal,
         );
@@ -10956,7 +10954,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         return connected;
       },
       connectNoAuth: async (authMethod) => {
-        if (!accountMode) {
+        if (!accountOptions) {
           return false;
         }
         updateConnectorUi({ pendingConnectorSlug: connectorSlug });
@@ -10967,7 +10965,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             options: {
               connectorLabel: connector.label,
               agentId: agentRecordId,
-              ...connectorAccountOptionsFor(accountMode),
+              ...accountOptions,
             },
           },
           pageSignal,
@@ -11039,9 +11037,11 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
       />
       <ComposerConnectorConnectDialogs
         selectedConnector={selectedConnector}
-        selectedConnectorAccountMode={selectedConnectorAccountMode}
+        selectedConnectorAccountOptions={selectedConnectorAccountOptions}
         selectedCustomConnector={selectedCustomConnector}
-        selectedCustomConnectorAccountMode={selectedCustomConnectorAccountMode}
+        selectedCustomConnectorAccountOptions={
+          selectedCustomConnectorAccountOptions
+        }
         agentId={agentRecordId}
         onBuiltinClose={() => {
           updateConnectorUi({ selectedConnectorSlug: null });

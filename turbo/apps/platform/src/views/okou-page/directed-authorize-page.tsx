@@ -44,10 +44,7 @@ import { ProductBrandMarkLink } from "./directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { useTranslation } from "react-i18next";
 import { assistantName$ } from "../../signals/branding.ts";
-import {
-  connectorAccountOptionsFor,
-  defaultBuiltinConnectorAccountMode,
-} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 // ---------------------------------------------------------------------------
 // Action button / authorized badge
@@ -338,13 +335,12 @@ function runDirectedAuthorize(
     );
     return;
   }
-  const accountMode = params.item
-    ? defaultBuiltinConnectorAccountMode(params.item)
+  const accountOptions = params.item
+    ? defaultBuiltinConnectorAccountOptions(params.item)
     : null;
-  if (!accountMode) {
+  if (!accountOptions) {
     return;
   }
-  const accountOptions = connectorAccountOptionsFor(accountMode);
   const launchMode = params.item
     ? getConnectorStatusConnectLaunchMode(params.item)
     : "modal";
@@ -418,8 +414,8 @@ function DirectedAuthorizeConnectModal({
   if (!open || !item) {
     return null;
   }
-  const accountMode = defaultBuiltinConnectorAccountMode(item);
-  if (!accountMode) {
+  const accountOptions = defaultBuiltinConnectorAccountOptions(item);
+  if (!accountOptions) {
     return null;
   }
 
@@ -427,7 +423,7 @@ function DirectedAuthorizeConnectModal({
     <ConnectModal
       item={item}
       agentId={agentId}
-      accountMode={accountMode}
+      accountOptions={accountOptions}
       onSuccess={async () => {
         reloadAuthorization();
         await handleAuthorizeSuccess();

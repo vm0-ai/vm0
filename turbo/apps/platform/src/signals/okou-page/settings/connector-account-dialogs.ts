@@ -27,6 +27,16 @@ export type ConnectorAccountConnectMode =
       readonly completionSource?: "default-projection";
     };
 
+export interface ConnectorAccountMutationOptions {
+  readonly account?: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection?: true;
+}
+
+export interface DefaultConnectorAccountMutationOptions {
+  readonly account: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection: true;
+}
+
 export function connectorAccountMutationFor(
   mode: ConnectorAccountConnectMode | undefined,
 ): ConnectorAccountMutationIntent | undefined {
@@ -41,12 +51,7 @@ export function connectorAccountMutationFor(
 
 export function connectorAccountOptionsFor(
   mode: ConnectorAccountConnectMode | undefined,
-):
-  | Record<string, never>
-  | {
-      readonly account: ConnectorAccountMutationIntent;
-      readonly useDefaultConnectorProjection?: true;
-    } {
+): ConnectorAccountMutationOptions {
   const account = connectorAccountMutationFor(mode);
   if (!account) {
     return {};
@@ -59,9 +64,9 @@ export function connectorAccountOptionsFor(
   };
 }
 
-export function defaultBuiltinConnectorAccountMode(
+export function defaultBuiltinConnectorAccountOptions(
   connector: PlatformConnectorCatalogStatusItem | undefined,
-): ConnectorAccountConnectMode | null {
+): DefaultConnectorAccountMutationOptions | null {
   if (!connector) {
     return null;
   }
@@ -69,32 +74,38 @@ export function defaultBuiltinConnectorAccountMode(
   if (!connection) {
     return connector.connected
       ? null
-      : { kind: "add", completionSource: "default-projection" };
+      : {
+          account: { intent: "add" },
+          useDefaultConnectorProjection: true,
+        };
   }
   return connection.id
     ? {
-        kind: "reconnect",
-        connectionId: connection.id,
-        authMethod: connection.authMethod,
-        completionSource: "default-projection",
+        account: { intent: "reconnect", connectionId: connection.id },
+        useDefaultConnectorProjection: true,
       }
     : null;
 }
 
-export function defaultCustomConnectorAccountMode(
+export function defaultCustomConnectorAccountOptions(
   connector: CustomConnectorResponse | undefined,
-): ConnectorAccountConnectMode | null {
+): DefaultConnectorAccountMutationOptions | null {
   if (!connector) {
     return null;
   }
   if (!connector.connected) {
-    return { kind: "add", completionSource: "default-projection" };
+    return {
+      account: { intent: "add" },
+      useDefaultConnectorProjection: true,
+    };
   }
   return connector.connectedAccountId
     ? {
-        kind: "reconnect",
-        connectionId: connector.connectedAccountId,
-        completionSource: "default-projection",
+        account: {
+          intent: "reconnect",
+          connectionId: connector.connectedAccountId,
+        },
+        useDefaultConnectorProjection: true,
       }
     : null;
 }
