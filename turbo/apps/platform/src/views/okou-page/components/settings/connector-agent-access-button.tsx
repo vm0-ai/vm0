@@ -34,9 +34,8 @@ export function ConnectorAgentAccessButton({
   const unnamed = t(($) => {
     return $.connectors.catalog.unnamedAgent;
   });
-  const agentNames = agents.map((agent) => {
-    return agent.displayName ?? unnamed;
-  });
+  const singleAgentName =
+    agents.length === 1 ? (agents[0]?.displayName ?? unnamed) : undefined;
 
   if (status === "ready" && agents.length === 0 && !allowAccessIncrease) {
     return null;
@@ -55,7 +54,7 @@ export function ConnectorAgentAccessButton({
         { connector: connectorLabel },
       )}
       data-testid="connector-card-agent-access"
-      title={agents.length === 1 ? agentNames[0] : undefined}
+      title={singleAgentName}
       disabled={status !== "ready"}
       onClick={onClick}
     >
@@ -89,7 +88,7 @@ export function ConnectorAgentAccessButton({
             data-testid="connector-card-access-names"
           >
             {agents.length === 1
-              ? agentNames[0]
+              ? singleAgentName
               : t(
                   ($) => {
                     return $.connectors.catalog.access.summaryMany;
