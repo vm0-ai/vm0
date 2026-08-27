@@ -28,31 +28,6 @@ const LOG_LEVEL_PRIORITY: Readonly<Record<Level, number>> = {
   [Level.Fatal]: 4,
 };
 
-const CANONICAL_DEBUG_KEY = "OKOU_DEBUG";
-const LEGACY_DEBUG_KEY = "VM0_DEBUG";
-const DEBUG_ALIAS_RESOLUTION_EVENT = "debug_environment_alias_resolution";
-const DEBUG_ALIAS_LOG_CONTEXT = "DebugEnvironment";
-const DEBUG_ALIAS_CONFLICT_ERROR =
-  "Debug environment aliases conflict: canonicalKey=OKOU_DEBUG legacyKey=VM0_DEBUG state=conflicting-dual";
-
-type DebugAliasState =
-  | "absent"
-  | "canonical-only"
-  | "legacy-only"
-  | "equal-dual"
-  | "conflicting-dual";
-
-type DebugConfiguration =
-  | {
-      readonly state:
-        | "absent"
-        | "canonical-only"
-        | "legacy-only"
-        | "equal-dual";
-      readonly patterns: readonly string[];
-    }
-  | { readonly state: "conflicting-dual" };
-
 interface Logger {
   readonly debug: LogMethod;
   readonly info: LogMethod;
@@ -66,7 +41,6 @@ interface Logger {
 type RetainedAliasResolutionEvent =
   | "api_backend_url_alias_resolution"
   | "web_url_alias_resolution"
-  | "debug_environment_alias_resolution"
   | "billing_machine_secret_alias_resolution"
   | "stripe_preview_job_ref_alias_resolution";
 
@@ -101,63 +75,9 @@ function parseDebugPatterns(value: string | undefined): readonly string[] {
     });
 }
 
-function reportDebugAliasResolution(state: DebugAliasState): void {
-  logToAxiom(
-    state === "conflicting-dual" ? Level.Warn : Level.Info,
-    DEBUG_ALIAS_LOG_CONTEXT,
-    [
-      DEBUG_ALIAS_RESOLUTION_EVENT,
-      {
-        canonicalKey: CANONICAL_DEBUG_KEY,
-        legacyKey: LEGACY_DEBUG_KEY,
-        state,
-      },
-    ],
-  );
-}
-
-function resolveDebugConfiguration(): DebugConfiguration {
-  const canonical = env(CANONICAL_DEBUG_KEY);
-  const legacy = env(LEGACY_DEBUG_KEY);
-
-  if (!canonical) {
-    const state = legacy ? "legacy-only" : "absent";
-    reportDebugAliasResolution(state);
-    return { state, patterns: parseDebugPatterns(legacy) };
-  }
-  if (!legacy) {
-    reportDebugAliasResolution("canonical-only");
-    return {
-      state: "canonical-only",
-      patterns: parseDebugPatterns(canonical),
-    };
-  }
-  if (canonical === legacy) {
-    reportDebugAliasResolution("equal-dual");
-    return {
-      state: "equal-dual",
-      patterns: parseDebugPatterns(canonical),
-    };
-  }
-
-  reportDebugAliasResolution("conflicting-dual");
-  return { state: "conflicting-dual" };
-}
-
-// Repository-owned preview, local-development, and Turbo writers emit only
-// OKOU_DEBUG. This dual reader and value-free source telemetry remain for
-// external legacy input, old checkout/rerun visibility, and supported rollback
-// compatibility. Remove them only in a later #28914 cleanup after those sources
-// and the rollback window are proven drained.
-const debugConfiguration = singleton(resolveDebugConfiguration);
-
-function getDebugPatterns(): readonly string[] {
-  const configuration = debugConfiguration();
-  if (configuration.state === "conflicting-dual") {
-    throw new Error(DEBUG_ALIAS_CONFLICT_ERROR);
-  }
-  return configuration.patterns;
-}
+const debugPatterns = singleton(() => {
+  return parseDebugPatterns(env("OKOU_DEBUG"));
+});
 
 function matchesDebugPattern(name: string, pattern: string): boolean {
   if (pattern === "*") {
@@ -172,7 +92,7 @@ function matchesDebugPattern(name: string, pattern: string): boolean {
 }
 
 function isDebugEnabled(name: string): boolean {
-  return getDebugPatterns().some((pattern) => {
+  return debugPatterns().some((pattern) => {
     return matchesDebugPattern(name, pattern);
   });
 }
@@ -445,7 +365,7 @@ export function logAliasResolutionInfo(
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export function __resetForTest(): void {
-  debugConfiguration.reset();
+  debugPatterns.reset();
   getAxiomLogger.reset();
   loggerRegistry.reset();
 }
