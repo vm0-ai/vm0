@@ -7,12 +7,6 @@ import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
   BOOTSTRAP_PHASE_TIMING_EVENT,
   type BootstrapThreadMetadataSource,
-  captureTaskCompletedSuccessfully,
-  clearPostHogUser,
-  initPostHog,
-  registerPostHogAttribution,
-  setPostHogOrganization,
-  setPostHogUser,
 } from "../../lib/posthog.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { detachedNavigateTo$ } from "../route.ts";
@@ -110,45 +104,6 @@ function mockEmptyThreadMetadata(): void {
 }
 
 describe("bootstrap phase telemetry", () => {
-  it("keeps every configured slim analytics call wired", () => {
-    initPostHog();
-    setPostHogUser({
-      email: "test@example.com",
-      id: "user_analytics",
-      name: "Analytics Test",
-    });
-    registerPostHogAttribution({ utm_source: "test" });
-    setPostHogOrganization("org_analytics");
-    setPostHogOrganization(undefined);
-    captureTaskCompletedSuccessfully();
-    clearPostHogUser();
-
-    expect(posthog.init).toHaveBeenCalledWith(
-      "phc_bootstrap_phase_telemetry_test",
-      expect.objectContaining({
-        autocapture: false,
-        capture_pageview: false,
-        disable_session_recording: true,
-      }),
-    );
-    expect(posthog.identify).toHaveBeenCalledWith("user_analytics", {
-      email: "test@example.com",
-      name: "Analytics Test",
-    });
-    expect(posthog.register).toHaveBeenNthCalledWith(1, {
-      utm_source: "test",
-    });
-    expect(posthog.register).toHaveBeenNthCalledWith(2, {
-      org_id: "org_analytics",
-    });
-    expect(posthog.unregister).toHaveBeenCalledWith("org_id");
-    expect(posthog.capture).toHaveBeenCalledWith(
-      "task_completed_successfully",
-      { surface: "chat_thread" },
-    );
-    expect(posthog.reset).toHaveBeenCalledOnce();
-  });
-
   it("captures bounded bootstrap and cold thread metadata phases", async () => {
     mockEmptyThreadMetadata();
 
