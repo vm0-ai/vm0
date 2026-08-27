@@ -405,7 +405,15 @@ async function seedLegacyCustomFeishuOAuthState(
       storageVersion: body.storage_version,
       providerContext: {
         provider: "feishu",
-        completionTarget: "custom",
+        ...(body.provider_context.completion_target === "custom"
+          ? { completionTarget: "custom" }
+          : {
+              completionTarget: "feishu",
+              installationId: body.provider_context.installation_id,
+              ...(body.provider_context.expected_open_id
+                ? { expectedOpenId: body.provider_context.expected_open_id }
+                : {}),
+            }),
       },
     }),
     accountMutation: { intent: "single-account" },

@@ -166,6 +166,13 @@ export async function seedLegacyCustomFeishuOAuthState(
     readonly customConnectorId: string;
     readonly storageVersion: number;
     readonly redirectUri: string;
+    readonly providerContext:
+      | { readonly completionTarget: "custom" }
+      | {
+          readonly completionTarget: "feishu";
+          readonly installationId: string;
+          readonly expectedOpenId?: string;
+        };
   },
 ): Promise<void> {
   await postAction(context, {
@@ -176,6 +183,16 @@ export async function seedLegacyCustomFeishuOAuthState(
     custom_connector_id: args.customConnectorId,
     storage_version: args.storageVersion,
     redirect_uri: args.redirectUri,
+    provider_context:
+      args.providerContext.completionTarget === "custom"
+        ? { completion_target: "custom" }
+        : {
+            completion_target: "feishu",
+            installation_id: args.providerContext.installationId,
+            ...(args.providerContext.expectedOpenId
+              ? { expected_open_id: args.providerContext.expectedOpenId }
+              : {}),
+          },
   });
 }
 

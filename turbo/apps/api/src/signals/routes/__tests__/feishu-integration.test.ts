@@ -13,7 +13,10 @@ import {
   chatThreadConnectorSelectionContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   customConnectorByIdContract,
   customConnectorOAuth2Contract,
@@ -259,6 +262,16 @@ async function expectExactFeishuMemberConnector(args: {
   expect(connected.body.installations?.[0]?.connectedUserName).toBe(
     "Feishu User",
   );
+  const connectUrl = requireValue(
+    connected.body.installations?.[0]?.connectUrl,
+    "Expected Feishu OAuth connect URL",
+  );
+  const appConnectUrl = new URL(connectUrl);
+  appConnectUrl.searchParams.set("callbackTarget", "app");
+  const oauthApp = createAppWithRoutes({
+    signal: context.signal,
+    routes: feishuOauthRoutes,
+  });
   const orgId = requireValue(args.member.orgId, "Expected an organization");
   const memberConnection = await readFeishuMemberConnectorState(context, {
     orgId,
@@ -323,6 +336,11 @@ async function expectExactFeishuMemberConnector(args: {
     installationId: args.installationId,
     connectorId: foreignConnectorId,
   });
+  const foreignLinkStart = await oauthApp.request(appConnectUrl);
+  expect(foreignLinkStart.status).toBe(400);
+  await expect(foreignLinkStart.json()).resolves.toStrictEqual({
+    error: "Connector account not found",
+  });
   const mismatched = await accept(
     args.client.getStatus({
       headers: { authorization: "Bearer clerk-session" },
@@ -348,6 +366,11 @@ async function expectExactFeishuMemberConnector(args: {
     userId: args.member.userId,
     installationId: args.installationId,
     connectorId: null,
+  });
+  const unlinkedStart = await oauthApp.request(appConnectUrl);
+  expect(unlinkedStart.status).toBe(400);
+  await expect(unlinkedStart.json()).resolves.toStrictEqual({
+    error: "Additional connector accounts are not enabled yet",
   });
   const unlinked = await accept(
     args.client.getStatus({
@@ -1027,6 +1050,7 @@ describe("Feishu integration", () => {
   async function completeFeishuAuthorization(
     authorizationUrl: URL,
     openId: string,
+    expectedAccountMutation: ConnectorAccountMutationIntent,
   ): Promise<URL> {
     const state = requireValue(
       authorizationUrl.searchParams.get("state"),
@@ -1035,7 +1059,7 @@ describe("Feishu integration", () => {
     await expect(
       readConnectorOAuthAccountMutation(context, state),
     ).resolves.toMatchObject({
-      account_mutation: { intent: "single-account" },
+      account_mutation: expectedAccountMutation,
     });
     oauthUserOpenId = openId;
     const oauthApp = createAppWithRoutes({
@@ -1104,6 +1128,7 @@ describe("Feishu integration", () => {
     const completionUrl = await completeFeishuAuthorization(
       authorizationUrl,
       openId,
+      { intent: "add" },
     );
     expect(completionUrl.toString()).toBe(
       `https://applink.feishu.cn/client/bot/open?appId=${fixture.appId}`,
@@ -2184,6 +2209,7 @@ describe("Feishu integration", () => {
       customConnectorId: managedConnector.id,
       storageVersion: managedConnector.storageVersion,
       redirectUri: `${APP_ORIGIN}/connectors/feishu/callback`,
+      providerContext: { completionTarget: "custom" },
     });
     const legacyGenericCallbackResponse = await createAppWithRoutes({
       signal: context.signal,
@@ -2393,7 +2419,7 @@ describe("Feishu integration", () => {
     await expect(
       readConnectorOAuthAccountMutation(context, state),
     ).resolves.toMatchObject({
-      account_mutation: { intent: "single-account" },
+      account_mutation: { intent: "add" },
     });
 
     const handoffResponse = await oauthApp.request(
@@ -2426,6 +2452,70 @@ describe("Feishu integration", () => {
       `${APP_ORIGIN}/connectors/feishu/callback`,
     ]);
 
+    const linkedMemberState = await readFeishuMemberConnectorState(context, {
+      orgId: requireValue(member.orgId, "Expected an organization"),
+      userId: member.userId,
+      installationId,
+    });
+    const linkedConnectorId = requireValue(
+      linkedMemberState.feishu_member_connection?.connector_id,
+      "Expected linked Feishu connector account",
+    );
+    const reconnectResponse = await oauthApp.request(appConnectUrl);
+    expect(reconnectResponse.status).toBe(307);
+    const reconnectState = requireValue(
+      new URL(reconnectResponse.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ),
+      "Expected reconnect OAuth state",
+    );
+    await expect(
+      readConnectorOAuthAccountMutation(context, reconnectState),
+    ).resolves.toMatchObject({
+      account_mutation: {
+        intent: "reconnect",
+        connectionId: linkedConnectorId,
+      },
+    });
+
+    const persistedSingletonState = `legacy-managed-feishu-${randomUUID()}`;
+    await seedLegacyCustomFeishuOAuthState(context, {
+      state: persistedSingletonState,
+      orgId: requireValue(member.orgId, "Expected an organization"),
+      userId: member.userId,
+      customConnectorId: managedConnector.id,
+      storageVersion: managedConnector.storageVersion,
+      redirectUri: `${APP_ORIGIN}/connectors/feishu/callback`,
+      providerContext: {
+        completionTarget: "feishu",
+        installationId,
+        expectedOpenId: "ou_oauth_user",
+      },
+    });
+    await expect(
+      readConnectorOAuthAccountMutation(context, persistedSingletonState),
+    ).resolves.toMatchObject({
+      account_mutation: { intent: "single-account" },
+    });
+    oauthUserOpenId = "ou_oauth_user";
+    clearConnectorInvalidationMocks();
+    const persistedSingletonResponse = await oauthApp.request(
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "persisted-singleton-feishu-code",
+        responseMode: "json",
+        state: persistedSingletonState,
+      })}`,
+    );
+    expect(persistedSingletonResponse.status).toBe(200);
+    expectCustomConnectorInvalidations([member.userId]);
+    await expect(persistedSingletonResponse.json()).resolves.toStrictEqual({
+      redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
+    });
+    expect(oauthTokenRedirectUris).toStrictEqual([
+      `${APP_ORIGIN}/connectors/feishu/callback`,
+      `${APP_ORIGIN}/connectors/feishu/callback`,
+    ]);
+
     clearConnectorInvalidationMocks();
     const legacyCallbackResponse = await oauthApp.request(
       `${feishuOauthContract.callback.path}?${new URLSearchParams({
@@ -2442,6 +2532,7 @@ describe("Feishu integration", () => {
     expect(legacyCallbackResponse.status).toBe(200);
     expectCustomConnectorInvalidations([member.userId]);
     expect(oauthTokenRedirectUris).toStrictEqual([
+      `${APP_ORIGIN}/connectors/feishu/callback`,
       `${APP_ORIGIN}/connectors/feishu/callback`,
       `${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`,
     ]);
@@ -3335,6 +3426,7 @@ describe("Feishu integration", () => {
     const completionUrl = await completeFeishuAuthorization(
       authorizationUrl,
       "ou_feishu_user",
+      { intent: "add" },
     );
     expect(completionUrl.toString()).toBe(
       `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
@@ -3402,7 +3494,19 @@ describe("Feishu integration", () => {
     );
     const retryAuthorizationUrl =
       await feishuAuthorizationUrlFromResponse(retryConnectResponse);
-    await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user");
+    const memberState = await readFeishuMemberConnectorState(context, {
+      orgId: requireValue(actor.orgId, "Expected an organization"),
+      userId: actor.userId,
+      installationId: fixture.installationId,
+    });
+    const memberConnectorId = requireValue(
+      memberState.feishu_member_connection?.connector_id,
+      "Expected Feishu member connector linkage",
+    );
+    await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user", {
+      intent: "reconnect",
+      connectionId: memberConnectorId,
+    });
     const preservedAccess = await accept(
       agentAccessClient.get({
         headers: { authorization: "Bearer clerk-session" },
@@ -3446,6 +3550,7 @@ describe("Feishu integration", () => {
     const rebindCompletionUrl = await completeFeishuAuthorization(
       rebindAuthorizationUrl,
       "ou_feishu_user",
+      { intent: "add" },
     );
     expect(rebindCompletionUrl.pathname).toBe("/settings/feishu");
     expect(rebindCompletionUrl.searchParams.get("error")).toBe(
@@ -3495,7 +3600,20 @@ describe("Feishu integration", () => {
     await completeFeishuAuthorization(
       replacementAuthorizationUrl,
       replacementOpenId,
+      { intent: "reconnect", connectionId: memberConnectorId },
     );
+    await expect(
+      readFeishuMemberConnectorState(context, {
+        orgId: requireValue(actor.orgId, "Expected an organization"),
+        userId: actor.userId,
+        installationId: fixture.installationId,
+      }),
+    ).resolves.toMatchObject({
+      feishu_member_connection: {
+        connector_id: memberConnectorId,
+        open_id: replacementOpenId,
+      },
+    });
     await flushWaitUntilForTest();
 
     outboundMessages = [];
