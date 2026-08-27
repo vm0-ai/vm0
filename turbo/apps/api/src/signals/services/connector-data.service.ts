@@ -1946,22 +1946,35 @@ async function loadPendingConnectorTokenRevokeForTokenConnect(
   );
 }
 
+function authorizedExternalIdForMutation(args: {
+  readonly mutation: ReturnType<typeof normalizeConnectorAccountMutation>;
+  readonly matchExistingExternalIdentity: boolean | undefined;
+  readonly externalId: string;
+}): string | undefined {
+  return args.matchExistingExternalIdentity && args.mutation.intent === "add"
+    ? args.externalId
+    : undefined;
+}
+
+interface CommitConnectorTokenConnectionArgs {
+  readonly db: Tx;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly connectorTokenState: PreparedConnectorTokenState;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly userInfo: ExternalUserInfo;
+  readonly oauthRequestedScopes: readonly string[];
+  readonly oauthGrantedScopes: readonly string[];
+  readonly tokenExpiresAt: Date | null;
+  readonly account?: ConnectorAccountMutationIntent;
+  readonly matchExistingExternalIdentity?: boolean;
+  readonly insertConnectionId?: string;
+}
+
 async function commitConnectorTokenConnection(
-  args: {
-    readonly db: Tx;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly runtimeMethod: ConnectorRuntimeMethod;
-    readonly snapshot: ConnectorRuntimeSnapshot;
-    readonly connectorTokenState: PreparedConnectorTokenState;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly userInfo: ExternalUserInfo;
-    readonly oauthRequestedScopes: readonly string[];
-    readonly oauthGrantedScopes: readonly string[];
-    readonly tokenExpiresAt: Date | null;
-    readonly account?: ConnectorAccountMutationIntent;
-    readonly insertConnectionId?: string;
-  },
+  args: CommitConnectorTokenConnectionArgs,
   signal: AbortSignal,
 ): Promise<
   | {
@@ -1985,6 +1998,11 @@ async function commitConnectorTokenConnection(
     allowSiblings: connectorAccountSiblingWritesEnabled(
       args.featureSwitchContext,
     ),
+    matchExternalId: authorizedExternalIdForMutation({
+      mutation,
+      matchExistingExternalIdentity: args.matchExistingExternalIdentity,
+      externalId: args.userInfo.id,
+    }),
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -2091,6 +2109,7 @@ export const upsertConnectorTokenConnection$ = command(
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
       readonly account?: ConnectorAccountMutationIntent;
+      readonly matchExistingExternalIdentity?: boolean;
       readonly insertConnectionId?: string;
     },
     signal: AbortSignal,
@@ -2157,6 +2176,7 @@ export const upsertConnectorTokenConnection$ = command(
           oauthGrantedScopes: args.oauthGrantedScopes,
           tokenExpiresAt,
           account: args.account,
+          matchExistingExternalIdentity: args.matchExistingExternalIdentity,
           insertConnectionId: args.insertConnectionId,
         },
         signal,

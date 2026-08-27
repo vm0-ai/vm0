@@ -184,6 +184,7 @@ export async function resolveConnectorConnectionMutation(
     readonly target: ConnectorAccountTarget;
     readonly mutation: ConnectorAccountMutation;
     readonly allowSiblings: boolean;
+    readonly matchExternalId?: string;
   },
 ): Promise<ConnectorConnectionMutationResolution> {
   await lockConnectorAccountTarget(db, args);
@@ -213,6 +214,37 @@ export async function resolveConnectorConnectionMutation(
       },
       resolution,
     );
+  }
+
+  if (args.mutation.intent === "add" && args.matchExternalId !== undefined) {
+    const existingByExternalId = await db
+      .select(existingConnectorConnectionSelection())
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          targetCondition(args.target),
+          eq(connectors.externalId, args.matchExternalId),
+        ),
+      )
+      .orderBy(connectors.id)
+      .for("update")
+      .limit(2);
+    const [existing, duplicate] = existingByExternalId;
+    if (existing) {
+      const resolution: ConnectorConnectionMutationResolution = duplicate
+        ? { kind: "ambiguous" }
+        : { kind: "ready", mutation: { kind: "update", existing } };
+      return observeConnectorConnectionMutation(
+        {
+          targetKind: args.target.kind,
+          intent: args.mutation.intent,
+          selectedCount: existingByExternalId.length,
+        },
+        resolution,
+      );
+    }
   }
 
   const existing = await db
