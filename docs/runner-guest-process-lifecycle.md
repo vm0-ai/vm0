@@ -85,13 +85,14 @@ not available through generic exec APIs.
 
 ## Agent Start Timing
 
-`runner_agent_start_process`, `runner_executor_start_to_spawn`, and
-`runner_claim_to_spawn` retain their historical shell-spawn boundary. Agent
-readiness is recorded separately by `runner_agent_start_to_ready`,
-`runner_executor_start_to_agent_ready`, `runner_claim_to_agent_ready`, and
-`api_to_agent_ready`.
-Bounded component series record containment creation, placement-broker setup,
-shell spawn, and bootstrap-ready wait. Fresh pre-spawn admission remains held
+`runner_agent_start_process`, `runner_executor_start_to_spawn`,
+`runner_claim_to_spawn`, and `api_to_spawn` retain their historical shell-spawn
+boundary. Agent readiness is recorded separately by
+`runner_agent_start_to_ready`, `runner_executor_start_to_agent_ready`,
+`runner_claim_to_agent_ready`, and `api_to_agent_ready`. The bounded component
+series are `runner_agent_containment_create`,
+`runner_agent_placement_broker_setup`, `runner_agent_shell_spawn`, and
+`runner_agent_bootstrap_ready_wait`. Fresh pre-spawn admission remains held
 until the ready event rather than shell creation.
 
 The production-path benchmark lives in
