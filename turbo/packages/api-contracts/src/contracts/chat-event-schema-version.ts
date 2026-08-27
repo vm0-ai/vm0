@@ -3,7 +3,10 @@
  * this one schema version. Snapshot storage records the version it contains;
  * live PostgreSQL rows are always represented in the API's current version.
  */
-export const CURRENT_CHAT_EVENT_SCHEMA_VERSION = 6 as const;
+export const CURRENT_CHAT_EVENT_SCHEMA_VERSION = 7 as const;
+
+/** Previous API/App/CLI wire version retained during the V7 rollout. */
+export const PREVIOUS_CHAT_EVENT_SCHEMA_VERSION = 6 as const;
 
 /**
  * Old app and pinned CLI -> new API fallback. Remove with #29362 after the V6
@@ -17,6 +20,10 @@ export const CHAT_EVENT_SNAPSHOT_PROJECTIONS = [
   "full",
   "tool-redacted",
 ] as const;
+
+/** V7 has one output.tool-free canonical Snapshot projection. */
+export const CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION =
+  "tool-redacted" as const;
 
 export type ChatEventSnapshotProjection =
   (typeof CHAT_EVENT_SNAPSHOT_PROJECTIONS)[number];

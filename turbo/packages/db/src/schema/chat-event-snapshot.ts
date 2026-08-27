@@ -35,8 +35,12 @@ export const chatEventSnapshots = pgTable(
       .notNull(),
     /** Highest physical stream position covered, including projection-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
-    /** Last physical event represented by the Snapshot's terminal cursor. */
+    /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
+    /** Last retained event exposed as the V7 logical cursor. */
+    terminalEventId: uuid("terminal_event_id"),
+    /** Sequence position paired with terminal_event_id, or zero for an empty V7 body. */
+    terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
     /** Version of the NDJSON line shape inside the archive object. */
     archiveSchemaVersion: integer("archive_schema_version").notNull(),
     /** Existing pointers are the full projection; redacted pointers are explicit. */
@@ -60,6 +64,30 @@ export const chatEventSnapshots = pgTable(
       check(
         "chat_event_snapshots_projection_check",
         sql`${table.projection} IN ('full', 'tool-redacted')`,
+      ),
+      check(
+        "chat_event_snapshots_terminal_cursor_check",
+        sql`(
+          ${table.archiveSchemaVersion} < 7
+          AND ${table.terminalEventId} IS NULL
+          AND ${table.terminalSeqId} IS NULL
+        ) OR (
+          ${table.archiveSchemaVersion} >= 7
+          AND (
+            (
+              ${table.terminalEventId} IS NULL
+              AND ${table.terminalSeqId} = 0
+            ) OR (
+              ${table.terminalEventId} IS NOT NULL
+              AND ${table.terminalSeqId} > 0
+              AND ${table.terminalSeqId} <= ${table.lastSeqId}
+            )
+          )
+        )`,
+      ),
+      check(
+        "chat_event_snapshots_canonical_projection_check",
+        sql`${table.archiveSchemaVersion} < 7 OR ${table.projection} = 'tool-redacted'`,
       ),
     ];
   },

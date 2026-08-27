@@ -50,6 +50,25 @@ const chatEventCursorSchema = z.union([
     })
     .strict(),
 ]);
+const chatEventSnapshotResponseBaseSchema = z.object({
+  url: z.string().url(),
+  expiresInSeconds: z.number().int().positive(),
+  /**
+   * New app/CLI -> old API fallback. Remove with #29362 after the old API
+   * leaves rollback and contexts pinned to this client have drained.
+   */
+  projection: chatEventSnapshotProjectionSchema.optional(),
+});
+const chatEventSnapshotResponseSchema = z.union([
+  chatEventSnapshotResponseBaseSchema.extend({
+    lastEventId: z.null(),
+    lastSeqId: z.literal(0),
+  }),
+  chatEventSnapshotResponseBaseSchema.extend({
+    lastEventId: z.string().uuid(),
+    lastSeqId: z.number().int().positive(),
+  }),
+]);
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -1809,17 +1828,7 @@ export const chatThreadEventsContract = c.router({
     headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
-      200: z.object({
-        url: z.string().url(),
-        expiresInSeconds: z.number().int().positive(),
-        lastEventId: z.string().uuid(),
-        lastSeqId: z.number().int().positive(),
-        /**
-         * New app/CLI -> old API fallback. Remove with #29362 after the old API
-         * leaves rollback and contexts pinned to this client have drained.
-         */
-        projection: chatEventSnapshotProjectionSchema.optional(),
-      }),
+      200: chatEventSnapshotResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,

@@ -1,6 +1,9 @@
 import { command } from "ccstate";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { logger } from "../log.ts";
@@ -8,6 +11,7 @@ import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
@@ -75,36 +79,34 @@ const coldStartChatThreadRows$ = command(
   ): Promise<{
     readonly events: readonly ChatEvent[];
     readonly cursor: ChatEventCursor;
+    readonly schemaVersion: number;
   }> => {
-    const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
-    if (snapshot === null) {
-      return {
-        events: [],
-        cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
-      };
-    }
+    const result = await set(fetchChatEventSnapshotRows$, threadId, signal);
+    const snapshot = result.snapshot;
+    const cursor: ChatEventCursor =
+      snapshot === null || snapshot.lastEventId === null
+        ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+        : {
+            lastEventId: snapshot.lastEventId,
+            lastSeqId: snapshot.lastSeqId,
+            projection: snapshot.projection,
+          };
     await set(
-      writeIndexedDbChatEventRows$,
+      replaceIndexedDbChatEventRows$,
       {
         threadId,
-        rows: snapshot.rows,
-        cursor: {
-          lastEventId: snapshot.lastEventId,
-          lastSeqId: snapshot.lastSeqId,
-          projection: snapshot.projection,
-        },
+        rows: snapshot?.rows ?? [],
+        cursor,
+        schemaVersion: result.schemaVersion,
       },
       signal,
     );
     return {
-      events: snapshot.rows.map((row) => {
+      events: (snapshot?.rows ?? []).map((row) => {
         return chatEventFromRow(row);
       }),
-      cursor: {
-        lastEventId: snapshot.lastEventId,
-        lastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
-      },
+      cursor,
+      schemaVersion: result.schemaVersion,
     };
   },
 );
@@ -146,11 +148,13 @@ const syncChatThreadRowsToIndexedDb$ = command(
 
     const syncedEvents: ChatEvent[] = [];
     let cursorFromServer = false;
+    let cacheSchemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
     let cursor: ChatEventCursor;
     if (cachedCursor === null) {
       const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
       syncedEvents.push(...coldStart.events);
       cursor = coldStart.cursor;
+      cacheSchemaVersion = coldStart.schemaVersion;
       cursorFromServer = true;
     } else {
       cursor = cachedCursor;
@@ -170,13 +174,20 @@ const syncChatThreadRowsToIndexedDb$ = command(
         const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
         syncedEvents.push(...coldStart.events);
         cursor = coldStart.cursor;
+        cacheSchemaVersion = coldStart.schemaVersion;
         cursorFromServer = true;
         continue;
       }
       cursor = page.cursor;
+      cacheSchemaVersion = Math.min(cacheSchemaVersion, page.schemaVersion);
       await set(
         writeIndexedDbChatEventRows$,
-        { threadId, rows: page.rows, cursor },
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+          schemaVersion: cacheSchemaVersion,
+        },
         signal,
       );
       syncedEvents.push(

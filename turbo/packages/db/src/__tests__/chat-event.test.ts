@@ -170,6 +170,8 @@ describe("chatEventSnapshots schema", () => {
     const config = getTableConfig(chatEventSnapshots);
 
     expect(chatEventSnapshots.projection.notNull).toBe(true);
+    expect(chatEventSnapshots.terminalEventId.notNull).toBe(false);
+    expect(chatEventSnapshots.terminalSeqId.notNull).toBe(false);
     expect(chatEventSnapshots.projection.hasDefault).toBe(true);
     expect(chatEventSnapshots.projection.default).toBe("full");
     expect(
@@ -192,6 +194,12 @@ describe("chatEventSnapshots schema", () => {
       config.checks.map((check) => {
         return check.name;
       }),
-    ).toContain("chat_event_snapshots_projection_check");
+    ).toEqual(
+      expect.arrayContaining([
+        "chat_event_snapshots_projection_check",
+        "chat_event_snapshots_terminal_cursor_check",
+        "chat_event_snapshots_canonical_projection_check",
+      ]),
+    );
   });
 });

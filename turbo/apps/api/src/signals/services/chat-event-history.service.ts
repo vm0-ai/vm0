@@ -4,11 +4,12 @@ import { gunzip } from "node:zlib";
 
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
+  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { computed, type Computed } from "ccstate";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
@@ -19,6 +20,7 @@ import {
   projectChatEventSnapshotRows,
 } from "./chat-event-snapshot-body.service";
 import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
+import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
 
 const gunzipAsync = promisify(gunzip);
 const CHAT_EVENT_HISTORY_PAGE_SIZE = 1000;
@@ -85,8 +87,11 @@ function decodeSnapshotRows(
   body: Buffer,
   chatThreadId: string,
   lastSeqId: number,
-  lastEventId: string,
   projection: ChatEventSnapshotProjection,
+  terminalCursor: {
+    readonly eventId: string | null;
+    readonly seqId: number | null;
+  },
 ): readonly ChatEventRow[] {
   const rows = decodeChatEventSnapshotBody(body);
   if (projection === "full" && rows.length === 0) {
@@ -104,7 +109,11 @@ function decodeSnapshotRows(
     }
     previousSeqId = row.seqId;
   }
-  if (projection === "full" && rows.at(-1)?.id !== lastEventId) {
+  if (
+    terminalCursor.seqId !== null &&
+    ((rows.at(-1)?.id ?? null) !== terminalCursor.eventId ||
+      (rows.at(-1)?.seqId ?? 0) !== terminalCursor.seqId)
+  ) {
     throw new Error("Chat event snapshot terminal metadata is invalid");
   }
   return rows;
@@ -132,18 +141,34 @@ function readCurrentChatEventHistoryAtSnapshot(
         archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastSeqId: chatEventSnapshots.lastSeqId,
         lastEventId: chatEventSnapshots.lastEventId,
+        terminalSeqId: chatEventSnapshots.terminalSeqId,
+        terminalEventId: chatEventSnapshots.terminalEventId,
+        sourceProjection: chatEventSnapshots.projection,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreadId),
-          eq(
+          gte(
+            chatEventSnapshots.archiveSchemaVersion,
+            CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+          ),
+          lte(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-          eq(chatEventSnapshots.projection, projection),
+          projection === "full"
+            ? eq(chatEventSnapshots.projection, projection)
+            : undefined,
         ),
+      )
+      .orderBy(
+        // During rolling publication, the physically furthest compatible
+        // prefix is authoritative; V7 wins once it reaches equal coverage.
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.archiveSchemaVersion),
+        desc(eq(chatEventSnapshots.projection, projection)),
       )
       .limit(1);
     signal.throwIfAborted();
@@ -157,11 +182,7 @@ function readCurrentChatEventHistoryAtSnapshot(
         signal,
       );
     }
-    if (
-      head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
-      head.lastSeqId <= 0 ||
-      head.objectKey.trim().length === 0
-    ) {
+    if (head.lastSeqId <= 0 || head.objectKey.trim().length === 0) {
       throw new Error("Chat event snapshot head is not reusable");
     }
 
@@ -175,12 +196,26 @@ function readCurrentChatEventHistoryAtSnapshot(
     ) {
       throw new Error("Chat event snapshot checksum is invalid");
     }
+    const decompressed = await gunzipAsync(compressed);
+    if (
+      head.sourceProjection === "full" &&
+      decodeChatEventSnapshotBody(decompressed).at(-1)?.id !== head.lastEventId
+    ) {
+      throw new Error("Chat event snapshot physical metadata is invalid");
+    }
     const snapshot = decodeSnapshotRows(
-      await gunzipAsync(compressed),
+      upgradeChatEventSnapshotBody(
+        decompressed,
+        head.archiveSchemaVersion,
+        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      ),
       chatThreadId,
       head.lastSeqId,
-      head.lastEventId,
       projection,
+      {
+        eventId: head.terminalEventId,
+        seqId: head.terminalSeqId,
+      },
     );
     signal.throwIfAborted();
     const tail = await readPostgresTail(
@@ -195,9 +230,9 @@ function readCurrentChatEventHistoryAtSnapshot(
 }
 
 /**
- * Current logical thread history: the reusable V6 R2 pointer followed by every
- * PostgreSQL row after its watermark. A thread without a pointer is still a
- * cold thread, so its current PostgreSQL rows are the complete history.
+ * Current logical thread history: prefer the canonical V7 R2 pointer and fall
+ * back to an upgradable V5/V6 prefix while the bounded backfill converges.
+ * PostgreSQL continuation always begins after the pointer's physical coverage.
  */
 export function readCurrentChatEventHistory(
   runtime: ChatEventHistoryRuntime,

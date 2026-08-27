@@ -6,6 +6,7 @@ import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-r
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
@@ -523,6 +524,11 @@ describe("chat event snapshot read endpoints", () => {
       agentId: agent.agentId,
       prompt: `tool-projection-before-${randomUUID()}`,
     });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `tool-projection-after-${randomUUID()}`,
+    });
     const toolEventId = await store.set(
       seedRetentionToolEvent$,
       {
@@ -532,17 +538,17 @@ describe("chat event snapshot read endpoints", () => {
       },
       context.signal,
     );
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `tool-projection-after-${randomUUID()}`,
-    });
     await updateFeatureSwitchesForUser(context, featureActor, {
       [FeatureSwitchKey.ChatToolActivity]: true,
     });
+    const previousVersionHeaders = {
+      ...authenticate(owner),
+      [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    };
     const full = await accept(
       eventsClient().rows({
-        headers: authenticate(owner),
+        headers: previousVersionHeaders,
         params: { threadId },
         query: { sinceSeqId: 0 },
       }),
@@ -566,16 +572,42 @@ describe("chat event snapshot read endpoints", () => {
     });
     await projectChatEventSearch(threadId);
     await runSnapshotCron([threadId]);
-    const fullHead = await readChatEventSnapshotHead(context, threadId, "full");
-    const fullObject = readFakeChatEventObject(fullHead.object_key);
-    if (fullObject === undefined) {
-      throw new Error("Expected a full tool Snapshot object");
-    }
-    expect(gunzipSync(fullObject).toString("utf8")).toContain(toolEventId);
-
-    await updateFeatureSwitchesForUser(context, featureActor, {
-      [FeatureSwitchKey.ChatToolActivity]: false,
+    await setChatEventSnapshotHeadVersion(
+      context,
+      threadId,
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      undefined,
+      toolRow.seqId,
+      "tool-redacted",
+      toolRow.id,
+    );
+    const migrated = await runSnapshotCron([threadId]);
+    expect(migrated).toMatchObject({
+      canonicalSnapshotHeads: 1,
+      pendingCanonicalSnapshotMigrations: 0,
+      nonCurrentSnapshotHeads: 1,
     });
+    const canonicalHead = await readChatEventSnapshotHead(
+      context,
+      threadId,
+      "tool-redacted",
+    );
+    expect(canonicalHead).toMatchObject({
+      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      last_event_id: toolRow.id,
+      last_seq_id: toolRow.seqId,
+      terminal_event_id: previousRow.id,
+      terminal_seq_id: previousRow.seqId,
+      snapshot_count: 2,
+    });
+    const canonicalObject = readFakeChatEventObject(canonicalHead.object_key);
+    if (canonicalObject === undefined) {
+      throw new Error("Expected a canonical V7 Snapshot object");
+    }
+    expect(gunzipSync(canonicalObject).toString("utf8")).not.toContain(
+      toolEventId,
+    );
+
     const redactedDownload = await accept(
       eventsClient().snapshot({
         headers: authenticate(owner),
@@ -585,21 +617,9 @@ describe("chat event snapshot read endpoints", () => {
     );
     expect(redactedDownload.body).toMatchObject({
       projection: "tool-redacted",
-      lastEventId: fullHead.last_event_id,
-      lastSeqId: fullHead.last_seq_id,
+      lastEventId: previousRow.id,
+      lastSeqId: previousRow.seqId,
     });
-    const redactedHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    const redactedObject = readFakeChatEventObject(redactedHead.object_key);
-    if (redactedObject === undefined) {
-      throw new Error("Expected a redacted tool Snapshot object");
-    }
-    expect(gunzipSync(redactedObject).toString("utf8")).not.toContain(
-      toolEventId,
-    );
 
     const omittedPhysicalPage = await accept(
       eventsClient().rows({
@@ -614,10 +634,10 @@ describe("chat event snapshot read endpoints", () => {
       [200],
     );
     expect(omittedPhysicalPage.body.rows).toStrictEqual([]);
-    expect(omittedPhysicalPage.body.hasMore).toBeTruthy();
+    expect(omittedPhysicalPage.body.hasMore).toBeFalsy();
     expect(omittedPhysicalPage.body.cursor).toStrictEqual({
-      lastEventId: toolRow.id,
-      lastSeqId: toolRow.seqId,
+      lastEventId: previousRow.id,
+      lastSeqId: previousRow.seqId,
       projection: "tool-redacted",
     });
     const omittedCursor = omittedPhysicalPage.body.cursor;
@@ -626,8 +646,13 @@ describe("chat event snapshot read endpoints", () => {
       omittedCursor.lastEventId === null ||
       omittedCursor.projection === undefined
     ) {
-      throw new Error("Expected the omitted tool row's physical cursor");
+      throw new Error("Expected the canonical V7 logical cursor");
     }
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `tool-projection-new-tail-${randomUUID()}`,
+    });
     const afterTool = await accept(
       eventsClient().rows({
         headers: authenticate(owner),
@@ -644,22 +669,6 @@ describe("chat event snapshot read endpoints", () => {
     expect(afterTool.body.rows[0]?.seqId).toBeGreaterThan(toolRow.seqId);
     expect(afterTool.body.rows[0]?.eventType).not.toBe("output.tool");
 
-    await updateFeatureSwitchesForUser(context, featureActor, {
-      [FeatureSwitchKey.ChatToolActivity]: true,
-    });
-    const staleProjection = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: {
-          sinceSeqId: omittedCursor.lastSeqId,
-          sinceEventId: omittedCursor.lastEventId,
-          sinceProjection: "tool-redacted",
-        },
-      }),
-      [410],
-    );
-    expect(staleProjection.body.error.code).toBe("CHAT_EVENTS_EXPIRED");
     const restoredDownload = await accept(
       eventsClient().snapshot({
         headers: authenticate(owner),
@@ -667,20 +676,39 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(restoredDownload.body.projection).toBe("full");
-    expect(gunzipSync(fullObject).toString("utf8")).toContain(toolEventId);
+    expect(restoredDownload.body.projection).toBe("tool-redacted");
+    expect(gunzipSync(canonicalObject).toString("utf8")).not.toContain(
+      toolEventId,
+    );
+    await expect(
+      readChatEventSnapshotHead(context, threadId, "full"),
+    ).rejects.toThrow("missing snapshot head");
 
     const v5Headers = {
       ...authenticate(owner),
-      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: (
-        CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1
-      ).toString(),
+      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
     };
+    const v5Download = await accept(
+      eventsClient().snapshot({
+        headers: v5Headers,
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(v5Download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(v5Download.body.projection).toBe("tool-redacted");
+    if (v5Download.body.lastEventId === null) {
+      throw new Error("Expected a non-empty V5 compatibility Snapshot");
+    }
     const v5Rows = await accept(
       eventsClient().rows({
         headers: v5Headers,
         params: { threadId },
-        query: { sinceSeqId: 0 },
+        query: {
+          sinceSeqId: v5Download.body.lastSeqId,
+          sinceEventId: v5Download.body.lastEventId,
+          sinceProjection: "tool-redacted",
+        },
       }),
       [200],
     );
@@ -691,16 +719,6 @@ describe("chat event snapshot read endpoints", () => {
         return row.eventType === "output.tool";
       }),
     ).toBeFalsy();
-
-    const v5Download = await accept(
-      eventsClient().snapshot({
-        headers: v5Headers,
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(v5Download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
-    expect(v5Download.body.projection).toBe("tool-redacted");
   }, 60_000);
 
   it("pages V5 by visible rows across a redacted tool range", async () => {
@@ -868,29 +886,7 @@ describe("chat event snapshot read endpoints", () => {
     await runSnapshotCron([threadId]);
 
     const head = await readChatEventSnapshotHead(context, threadId);
-    const sharedBody = readFakeChatEventObject(head.object_key);
-    if (sharedBody === undefined) {
-      throw new Error("Expected a shared full/redacted Snapshot object");
-    }
-    const redactedHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(redactedHead.object_key).toBe(head.object_key);
-    const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(head.object_key)?.[1];
-    if (digest === undefined) {
-      throw new Error("Expected a content-addressed Snapshot key");
-    }
-    const fullOnlyKey = `chat-events/${threadId}/manual-${digest}.ndjson.gz`;
-    writeFakeChatEventObject(fullOnlyKey, sharedBody);
-    await trackFakeChatEventObject(Promise.resolve(fullOnlyKey));
-    await setChatEventSnapshotHeadVersion(
-      context,
-      threadId,
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      fullOnlyKey,
-    );
+    expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
     const future = mockR2GcWindowForKey(
       head.object_key,

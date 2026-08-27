@@ -8,7 +8,7 @@ import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-t
 import { accept } from "../../lib/accept.ts";
 import {
   assertChatEventSchemaVersion,
-  CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+  requestWithChatEventSchemaVersionFallback,
 } from "../../shared-database/chat-event-schema-version.ts";
 import { apiClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
@@ -22,8 +22,9 @@ type ChatEventRowsPage =
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
       readonly hasMore: boolean;
+      readonly schemaVersion: number;
     }
-  | { readonly kind: "expired" };
+  | { readonly kind: "expired"; readonly schemaVersion: number };
 
 export const listRowsAfter$ = command(
   async (
@@ -35,35 +36,44 @@ export const listRowsAfter$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventRowsPage> => {
     const client = get(apiClient$)(chatThreadEventsContract);
+    const versioned = await requestWithChatEventSchemaVersionFallback(
+      async (headers) => {
+        return await client.rows({
+          headers,
+          params: { threadId },
+          query:
+            cursor.lastEventId === null
+              ? {
+                  sinceSeqId: cursor.lastSeqId,
+                  limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+                }
+              : {
+                  sinceSeqId: cursor.lastSeqId,
+                  sinceEventId: cursor.lastEventId,
+                  ...(cursor.projection === undefined
+                    ? {}
+                    : { sinceProjection: cursor.projection }),
+                  limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+                },
+          fetchOptions: { signal },
+        });
+      },
+    );
+    signal.throwIfAborted();
     const result = await accept(
-      client.rows({
-        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-        params: { threadId },
-        query:
-          cursor.lastEventId === null
-            ? {
-                sinceSeqId: cursor.lastSeqId,
-                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-              }
-            : {
-                sinceSeqId: cursor.lastSeqId,
-                sinceEventId: cursor.lastEventId,
-                ...(cursor.projection === undefined
-                  ? {}
-                  : { sinceProjection: cursor.projection }),
-                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-              },
-        fetchOptions: { signal },
-      }),
+      Promise.resolve(versioned.response),
       [200, 410],
       signal,
       { showErrorToast: false },
     );
     signal.throwIfAborted();
-    assertChatEventSchemaVersion(result.headers);
+    assertChatEventSchemaVersion(result.headers, versioned.requestedVersion);
     if (result.status === 410) {
       L.debug("listRowsAfter$: cursor expired", { threadId, cursor });
-      return { kind: "expired" };
+      return {
+        kind: "expired",
+        schemaVersion: versioned.requestedVersion,
+      };
     }
     L.debug("listRowsAfter$", {
       threadId,
@@ -94,6 +104,7 @@ export const listRowsAfter$ = command(
       hasMore:
         result.body.hasMore ??
         result.body.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT,
+      schemaVersion: versioned.requestedVersion,
     };
   },
 );
@@ -111,26 +122,38 @@ export const fetchChatEventSnapshotRows$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<{
-    readonly rows: readonly ChatEventRow[];
-    readonly lastEventId: string;
-    readonly lastSeqId: number;
-    readonly projection: "full" | "tool-redacted";
-  } | null> => {
+    readonly schemaVersion: number;
+    readonly snapshot: {
+      readonly rows: readonly ChatEventRow[];
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+      readonly projection: "full" | "tool-redacted";
+    } | null;
+  }> => {
     const client = get(apiClient$)(chatThreadEventsContract);
+    const versioned = await requestWithChatEventSchemaVersionFallback(
+      async (headers) => {
+        return await client.snapshot({
+          headers,
+          params: { threadId },
+          fetchOptions: { signal },
+        });
+      },
+    );
+    signal.throwIfAborted();
     const download = await accept(
-      client.snapshot({
-        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-        params: { threadId },
-        fetchOptions: { signal },
-      }),
+      Promise.resolve(versioned.response),
       [200, 404],
       signal,
     );
     signal.throwIfAborted();
-    assertChatEventSchemaVersion(download.headers);
+    assertChatEventSchemaVersion(download.headers, versioned.requestedVersion);
     if (download.status === 404) {
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
-      return null;
+      return {
+        schemaVersion: versioned.requestedVersion,
+        snapshot: null,
+      };
     }
     const response = await fetch(download.body.url, { signal });
     if (!response.ok) {
@@ -160,10 +183,13 @@ export const fetchChatEventSnapshotRows$ = command(
     // New app -> old API fallback. Remove with #29362 after the old API leaves
     // rollback and the V6 app client-version floor is live.
     return {
-      rows,
-      lastEventId: download.body.lastEventId,
-      lastSeqId: download.body.lastSeqId,
-      projection: download.body.projection ?? "full",
+      schemaVersion: versioned.requestedVersion,
+      snapshot: {
+        rows,
+        lastEventId: download.body.lastEventId,
+        lastSeqId: download.body.lastSeqId,
+        projection: download.body.projection ?? "full",
+      },
     };
   },
 );

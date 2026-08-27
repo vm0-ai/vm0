@@ -7,9 +7,10 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type {
-  ChatEventCursor,
-  ChatEventSnapshotProjection,
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
@@ -57,7 +58,7 @@ import {
 } from "./worker-realtime.ts";
 import {
   assertChatEventSchemaVersion,
-  CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+  requestWithChatEventSchemaVersionFallback,
 } from "./chat-event-schema-version.ts";
 import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 
@@ -143,6 +144,26 @@ interface CredentialState {
 interface ChatEventSyncResult {
   readonly remoteRows: readonly ChatEventRow[];
   readonly changed: boolean;
+}
+
+type ChatEventContractClient = ReturnType<
+  typeof createSharedDatabaseContractClient<typeof chatThreadEventsContract>
+>;
+
+interface ChatEventRemoteState {
+  readonly remoteRows: readonly ChatEventRow[];
+  readonly cursor: ChatEventCursor;
+  readonly cursorFromServer: boolean;
+  readonly needsColdStartTailConfirmation: boolean;
+  readonly replacedCache: boolean;
+  readonly schemaVersion: number;
+}
+
+interface ChatEventRemoteContext {
+  readonly client: ChatEventContractClient;
+  readonly actor: ChatEventActor;
+  readonly credential: CredentialState;
+  readonly requestToken: string;
 }
 
 interface ChatThreadEventSyncResult {
@@ -324,11 +345,17 @@ async function persistChatEventRows(
     readonly remoteRows: readonly ChatEventRow[];
     readonly cursor: ChatEventCursor;
     readonly replacedCache: boolean;
+    readonly schemaVersion: number;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const { stores, actor, remoteRows, cursor, replacedCache } = input;
-  if (!replacedCache && remoteRows.length === 0) {
+  const { stores, actor, remoteRows, cursor, replacedCache, schemaVersion } =
+    input;
+  if (
+    !replacedCache &&
+    remoteRows.length === 0 &&
+    schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+  ) {
     return;
   }
   const write = replacedCache
@@ -336,12 +363,14 @@ async function persistChatEventRows(
         actor.dataKey.threadId,
         remoteRows,
         cursor,
+        schemaVersion,
         signal,
       )
     : stores.writeStore.upsertRowsAndCursor(
         actor.dataKey.threadId,
         remoteRows,
         cursor,
+        schemaVersion,
         signal,
       );
   const written = await settle(write, signal);
@@ -840,14 +869,17 @@ export class SharedDatabaseWorkerRuntime {
       },
     );
 
-    let remoteRows: ChatEventRow[] = [];
-    let cursor: ChatEventCursor = cachedCursor ?? {
-      lastEventId: null,
-      lastSeqId: THREAD_START_SEQ_ID,
+    let state: ChatEventRemoteState = {
+      remoteRows: [],
+      cursor: cachedCursor ?? {
+        lastEventId: null,
+        lastSeqId: THREAD_START_SEQ_ID,
+      },
+      cursorFromServer: false,
+      needsColdStartTailConfirmation: false,
+      replacedCache: false,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     };
-    let cursorFromServer = false;
-    let needsColdStartTailConfirmation = false;
-    let replacedCache = false;
 
     if (cachedCursor === null || actor.degraded) {
       const snapshot = await this.fetchChatEventSnapshot(
@@ -857,27 +889,73 @@ export class SharedDatabaseWorkerRuntime {
         requestToken,
         signal,
       );
-      remoteRows = [...snapshot.rows];
-      cursor = snapshot.cursor;
-      cursorFromServer = true;
-      needsColdStartTailConfirmation = true;
-      replacedCache = true;
+      state = {
+        remoteRows: snapshot.rows,
+        cursor: snapshot.cursor,
+        schemaVersion: snapshot.schemaVersion,
+        cursorFromServer: true,
+        needsColdStartTailConfirmation: true,
+        replacedCache: true,
+      };
     }
+    state = await this.fetchChatEventRows(
+      { client, actor, credential, requestToken },
+      state,
+      signal,
+    );
+    await persistChatEventRows(
+      {
+        stores,
+        actor,
+        remoteRows: state.remoteRows,
+        cursor: state.cursor,
+        replacedCache: state.replacedCache,
+        schemaVersion: state.schemaVersion,
+      },
+      signal,
+    );
+    const changed = advanceObservedSeqId(actor, state.cursor.lastSeqId);
+    return {
+      remoteRows: state.remoteRows,
+      changed,
+    };
+  }
 
+  private async fetchChatEventRows(
+    context: ChatEventRemoteContext,
+    initialState: ChatEventRemoteState,
+    signal: AbortSignal,
+  ): Promise<ChatEventRemoteState> {
+    const { client, actor, credential, requestToken } = context;
+    let remoteRows = [...initialState.remoteRows];
+    let cursor = initialState.cursor;
+    let cursorFromServer = initialState.cursorFromServer;
+    let needsColdStartTailConfirmation =
+      initialState.needsColdStartTailConfirmation;
+    let replacedCache = initialState.replacedCache;
+    let schemaVersion = initialState.schemaVersion;
     let loadNextPage = true;
     while (loadNextPage) {
-      const page = await client.rows({
-        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-        params: { threadId: actor.dataKey.threadId },
-        query: chatEventRowsQuery(cursor),
-        fetchOptions: { signal },
-      });
+      const versionedPage = await requestWithChatEventSchemaVersionFallback(
+        async (headers) => {
+          return await client.rows({
+            headers,
+            params: { threadId: actor.dataKey.threadId },
+            query: chatEventRowsQuery(cursor),
+            fetchOptions: { signal },
+          });
+        },
+      );
+      const page = versionedPage.response;
       signal.throwIfAborted();
       if (page.status === 401) {
         this.blockCredential(credential, requestToken);
         throw new SharedDatabaseAuthBlockedError();
       }
-      assertChatEventSchemaVersion(page.headers);
+      assertChatEventSchemaVersion(
+        page.headers,
+        versionedPage.requestedVersion,
+      );
       if (page.status === 410) {
         if (cursorFromServer) {
           throw new Error(
@@ -893,6 +971,7 @@ export class SharedDatabaseWorkerRuntime {
         );
         remoteRows = [...snapshot.rows];
         cursor = snapshot.cursor;
+        schemaVersion = snapshot.schemaVersion;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         replacedCache = true;
@@ -901,6 +980,7 @@ export class SharedDatabaseWorkerRuntime {
       if (page.status !== 200) {
         throw new SharedDatabaseHttpError(page.status);
       }
+      schemaVersion = Math.min(schemaVersion, versionedPage.requestedVersion);
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
       cursor = nextChatEventCursor(
@@ -917,28 +997,18 @@ export class SharedDatabaseWorkerRuntime {
         confirmColdStartTail ||
         (page.body.hasMore ?? pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT);
     }
-
-    await persistChatEventRows(
-      {
-        stores,
-        actor,
-        remoteRows,
-        cursor,
-        replacedCache,
-      },
-      signal,
-    );
-    const changed = advanceObservedSeqId(actor, cursor.lastSeqId);
     return {
       remoteRows,
-      changed,
+      cursor,
+      cursorFromServer,
+      needsColdStartTailConfirmation,
+      replacedCache,
+      schemaVersion,
     };
   }
 
   private async fetchChatEventSnapshot(
-    client: ReturnType<
-      typeof createSharedDatabaseContractClient<typeof chatThreadEventsContract>
-    >,
+    client: ChatEventContractClient,
     dataKey: ChatEventDataKey,
     credential: CredentialState,
     requestToken: string,
@@ -946,22 +1016,32 @@ export class SharedDatabaseWorkerRuntime {
   ): Promise<{
     readonly rows: readonly ChatEventRow[];
     readonly cursor: ChatEventCursor;
+    readonly schemaVersion: number;
   }> {
-    const snapshot = await client.snapshot({
-      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-      params: { threadId: dataKey.threadId },
-      fetchOptions: { signal },
-    });
+    const versionedSnapshot = await requestWithChatEventSchemaVersionFallback(
+      async (headers) => {
+        return await client.snapshot({
+          headers,
+          params: { threadId: dataKey.threadId },
+          fetchOptions: { signal },
+        });
+      },
+    );
+    const snapshot = versionedSnapshot.response;
     signal.throwIfAborted();
     if (snapshot.status === 401) {
       this.blockCredential(credential, requestToken);
       throw new SharedDatabaseAuthBlockedError();
     }
-    assertChatEventSchemaVersion(snapshot.headers);
+    assertChatEventSchemaVersion(
+      snapshot.headers,
+      versionedSnapshot.requestedVersion,
+    );
     if (snapshot.status === 404) {
       return {
         rows: [],
         cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
+        schemaVersion: versionedSnapshot.requestedVersion,
       };
     }
     if (snapshot.status !== 200) {
@@ -990,11 +1070,15 @@ export class SharedDatabaseWorkerRuntime {
     // leaves rollback and the V6 app client-version floor is live.
     return {
       rows,
-      cursor: {
-        lastEventId: snapshot.body.lastEventId,
-        lastSeqId: snapshot.body.lastSeqId,
-        projection: snapshot.body.projection ?? "full",
-      },
+      schemaVersion: versionedSnapshot.requestedVersion,
+      cursor:
+        snapshot.body.lastEventId === null
+          ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+          : {
+              lastEventId: snapshot.body.lastEventId,
+              lastSeqId: snapshot.body.lastSeqId,
+              projection: snapshot.body.projection ?? "full",
+            },
     };
   }
 

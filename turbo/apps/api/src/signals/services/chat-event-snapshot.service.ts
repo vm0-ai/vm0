@@ -1,11 +1,12 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
+  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, eq, gt, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lt, ne } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -30,7 +31,7 @@ type ChatEventSnapshotDownload =
       readonly kind: "ok";
       readonly url: string;
       readonly expiresInSeconds: number;
-      readonly lastEventId: string;
+      readonly lastEventId: string | null;
       readonly lastSeqId: number;
       readonly projection: ChatEventSnapshotProjection;
     };
@@ -52,6 +53,7 @@ interface ChatEventRowsBaseArgs {
   readonly limit: number;
   readonly projection: ChatEventSnapshotProjection;
   readonly pagination: "physical" | "visible";
+  readonly schemaVersion: number;
 }
 
 type ChatEventRowsArgs = ChatEventRowsBaseArgs &
@@ -70,11 +72,12 @@ const ownedThread = (threadId: string, userId: string) => {
 
 interface SnapshotPointer {
   readonly objectKey: string;
-  readonly lastEventId: string;
+  readonly lastEventId: string | null;
   readonly lastSeqId: number;
+  readonly physicalLastSeqId: number;
 }
 
-async function snapshotPointer(
+async function currentSnapshotPointer(
   db: ReadonlyDb,
   threadId: string,
   projection: ChatEventSnapshotProjection,
@@ -82,8 +85,9 @@ async function snapshotPointer(
   const [pointer] = await db
     .select({
       objectKey: chatEventSnapshots.objectKey,
-      lastEventId: chatEventSnapshots.lastEventId,
-      lastSeqId: chatEventSnapshots.lastSeqId,
+      lastEventId: chatEventSnapshots.terminalEventId,
+      lastSeqId: chatEventSnapshots.terminalSeqId,
+      physicalLastSeqId: chatEventSnapshots.lastSeqId,
     })
     .from(chatEventSnapshots)
     .where(
@@ -97,50 +101,312 @@ async function snapshotPointer(
       ),
     )
     .limit(1);
+  if (pointer === undefined) {
+    return null;
+  }
+  if (
+    pointer.lastSeqId === null ||
+    !(
+      (pointer.lastSeqId === THREAD_START_SEQ_ID &&
+        pointer.lastEventId === null) ||
+      (pointer.lastSeqId > THREAD_START_SEQ_ID && pointer.lastEventId !== null)
+    )
+  ) {
+    throw new Error("Current Chat Event Snapshot cursor is incomplete");
+  }
+  return { ...pointer, lastSeqId: pointer.lastSeqId };
+}
+
+async function legacySnapshotPointer(
+  db: ReadonlyDb,
+  threadId: string,
+  projection: ChatEventSnapshotProjection,
+): Promise<SnapshotPointer | null> {
+  const [pointer] = await db
+    .select({
+      objectKey: chatEventSnapshots.objectKey,
+      lastEventId: chatEventSnapshots.lastEventId,
+      lastSeqId: chatEventSnapshots.lastSeqId,
+      physicalLastSeqId: chatEventSnapshots.lastSeqId,
+    })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, threadId),
+        lt(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+        gte(
+          chatEventSnapshots.archiveSchemaVersion,
+          CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+        ),
+        eq(chatEventSnapshots.projection, projection),
+      ),
+    )
+    .orderBy(
+      desc(chatEventSnapshots.lastSeqId),
+      desc(chatEventSnapshots.archiveSchemaVersion),
+    )
+    .limit(1);
   return pointer ?? null;
 }
 
-async function validSnapshotCursor(
+async function compatibleSnapshotPointer(
+  db: ReadonlyDb,
+  args: {
+    readonly threadId: string;
+    readonly projection: ChatEventSnapshotProjection;
+    readonly schemaVersion: number;
+  },
+): Promise<SnapshotPointer | null> {
+  const [current, legacy, [latestLegacyCoverage]] = await Promise.all([
+    currentSnapshotPointer(db, args.threadId, args.projection),
+    args.schemaVersion < CURRENT_CHAT_EVENT_SCHEMA_VERSION
+      ? legacySnapshotPointer(db, args.threadId, args.projection)
+      : Promise.resolve(null),
+    db
+      .select({ lastSeqId: chatEventSnapshots.lastSeqId })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, args.threadId),
+          lt(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+          gte(
+            chatEventSnapshots.archiveSchemaVersion,
+            CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+          ),
+        ),
+      )
+      .orderBy(desc(chatEventSnapshots.lastSeqId))
+      .limit(1),
+  ]);
+  if (args.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
+    return current !== null &&
+      current.physicalLastSeqId >= (latestLegacyCoverage?.lastSeqId ?? 0)
+      ? current
+      : null;
+  }
+  // Old clients require a positive Snapshot cursor. During the bounded
+  // rollout, retain the latest V5/V6 pointer for a V7 archive whose logical
+  // body is empty; every non-empty V7 body is backward compatible.
+  if (current?.lastSeqId === THREAD_START_SEQ_ID && legacy !== null) {
+    return legacy;
+  }
+  if (
+    current !== null &&
+    current.physicalLastSeqId >= (legacy?.physicalLastSeqId ?? 0)
+  ) {
+    return current;
+  }
+  return legacy ?? current;
+}
+
+function cursorMatches(
+  cursor: { readonly lastEventId: string | null; readonly lastSeqId: number },
+  args: ChatEventRowsArgs,
+): boolean {
+  return (
+    cursor.lastSeqId === args.sinceSeqId &&
+    cursor.lastEventId ===
+      (args.sinceSeqId === THREAD_START_SEQ_ID ? null : args.sinceEventId)
+  );
+}
+
+interface CurrentSnapshotCursor {
+  readonly lastEventId: string | null;
+  readonly lastSeqId: number | null;
+  readonly physicalLastSeqId: number;
+}
+
+async function hasStoredSnapshot(
+  db: ReadonlyDb,
+  threadId: string,
+): Promise<boolean> {
+  const [snapshot] = await db
+    .select({ id: chatEventSnapshots.id })
+    .from(chatEventSnapshots)
+    .where(eq(chatEventSnapshots.chatThreadId, threadId))
+    .limit(1);
+  return snapshot !== undefined;
+}
+
+async function currentSnapshotCursor(
   db: ReadonlyDb,
   args: ChatEventRowsArgs,
-): Promise<boolean> {
+): Promise<CurrentSnapshotCursor | undefined> {
+  const [snapshot] = await db
+    .select({
+      lastEventId: chatEventSnapshots.terminalEventId,
+      lastSeqId: chatEventSnapshots.terminalSeqId,
+      physicalLastSeqId: chatEventSnapshots.lastSeqId,
+    })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, args.threadId),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+        eq(chatEventSnapshots.projection, args.projection),
+      ),
+    )
+    .limit(1);
+  return snapshot;
+}
+
+async function matchingLegacySnapshotSeqId(
+  db: ReadonlyDb,
+  args: ChatEventRowsArgs,
+): Promise<number | null> {
+  if (!("sinceEventId" in args) || args.sinceEventId === undefined) {
+    return null;
+  }
+  const sinceEventId = args.sinceEventId;
+  const [snapshot] = await db
+    .select({ lastSeqId: chatEventSnapshots.lastSeqId })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, args.threadId),
+        lt(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+        gte(
+          chatEventSnapshots.archiveSchemaVersion,
+          CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+        ),
+        eq(chatEventSnapshots.projection, args.projection),
+        eq(chatEventSnapshots.lastSeqId, args.sinceSeqId),
+        eq(chatEventSnapshots.lastEventId, sinceEventId),
+      ),
+    )
+    .limit(1);
+  return snapshot?.lastSeqId ?? null;
+}
+
+async function latestLegacyCoverageSeqId(
+  db: ReadonlyDb,
+  threadId: string,
+): Promise<number> {
+  const [snapshot] = await db
+    .select({ lastSeqId: chatEventSnapshots.lastSeqId })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, threadId),
+        lt(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+        gte(
+          chatEventSnapshots.archiveSchemaVersion,
+          CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
+        ),
+      ),
+    )
+    .orderBy(desc(chatEventSnapshots.lastSeqId))
+    .limit(1);
+  return snapshot?.lastSeqId ?? THREAD_START_SEQ_ID;
+}
+
+function currentSnapshotContinuation(
+  current: CurrentSnapshotCursor | undefined,
+  latestLegacyCoverage: number,
+  args: ChatEventRowsArgs,
+): number | null | undefined {
+  if (
+    current === undefined ||
+    current.lastSeqId === null ||
+    !cursorMatches(
+      { lastEventId: current.lastEventId, lastSeqId: current.lastSeqId },
+      args,
+    )
+  ) {
+    return undefined;
+  }
+  return current.physicalLastSeqId < latestLegacyCoverage
+    ? null
+    : current.physicalLastSeqId;
+}
+
+function legacySnapshotContinuation(
+  matchingLegacySeqId: number | null,
+  current: CurrentSnapshotCursor | undefined,
+  args: ChatEventRowsArgs,
+): number | null | undefined {
+  if (matchingLegacySeqId === null) {
+    return undefined;
+  }
+  if (
+    args.schemaVersion >= CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
+    (current !== undefined && current.physicalLastSeqId > matchingLegacySeqId)
+  ) {
+    return null;
+  }
+  return matchingLegacySeqId;
+}
+
+async function cursorContinuationSeqId(
+  db: ReadonlyDb,
+  args: ChatEventRowsArgs,
+): Promise<number | null> {
   if (
     args.sinceSeqId !== THREAD_START_SEQ_ID &&
     "sinceProjection" in args &&
     args.sinceProjection !== undefined &&
     args.sinceProjection !== args.projection
   ) {
-    return false;
+    return null;
   }
-  const [[storedSnapshot], [matchingSnapshotCursor]] = await Promise.all([
-    db
-      .select({ id: chatEventSnapshots.id })
-      .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, args.threadId))
-      .limit(1),
-    db
-      .select({ lastEventId: chatEventSnapshots.lastEventId })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, args.threadId),
-          eq(
-            chatEventSnapshots.archiveSchemaVersion,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          eq(chatEventSnapshots.projection, args.projection),
-          eq(chatEventSnapshots.lastSeqId, args.sinceSeqId),
-        ),
-      )
-      .limit(1),
-  ]);
+  const [storedSnapshot, currentSnapshot, matchingLegacySeqId, legacyCoverage] =
+    await Promise.all([
+      hasStoredSnapshot(db, args.threadId),
+      currentSnapshotCursor(db, args),
+      matchingLegacySnapshotSeqId(db, args),
+      latestLegacyCoverageSeqId(db, args.threadId),
+    ]);
+  const currentContinuation = currentSnapshotContinuation(
+    currentSnapshot,
+    legacyCoverage,
+    args,
+  );
+  if (currentContinuation !== undefined) {
+    return currentContinuation;
+  }
   // The cold-start cursor precedes every event, so it owns no row. It is
   // valid only while nothing has ever been archived; once any Snapshot exists
   // the client must start from that Snapshot's paired cursor.
-  if (args.sinceSeqId === THREAD_START_SEQ_ID && storedSnapshot === undefined) {
-    return true;
+  if (args.sinceSeqId === THREAD_START_SEQ_ID && !storedSnapshot) {
+    return THREAD_START_SEQ_ID;
   }
-  return matchingSnapshotCursor?.lastEventId === args.sinceEventId;
+  const legacyContinuation = legacySnapshotContinuation(
+    matchingLegacySeqId,
+    currentSnapshot,
+    args,
+  );
+  if (legacyContinuation !== undefined) {
+    return legacyContinuation;
+  }
+  if (args.sinceSeqId === THREAD_START_SEQ_ID) {
+    return null;
+  }
+  const [physicalCursorRow] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, args.threadId),
+        eq(chatEvents.seqId, args.sinceSeqId),
+      ),
+    )
+    .limit(1);
+  return physicalCursorRow?.id === args.sinceEventId ? args.sinceSeqId : null;
 }
 
 /** Resolve the current persisted Snapshot pointer. */
@@ -148,6 +414,7 @@ export function chatThreadEventSnapshot(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly projection: ChatEventSnapshotProjection;
+  readonly schemaVersion: number;
 }) {
   return command(
     async (
@@ -165,16 +432,19 @@ export function chatThreadEventSnapshot(args: {
         return { kind: "thread-not-found" } as const;
       }
 
-      let pointer = await snapshotPointer(db, args.threadId, args.projection);
+      let pointer = await compatibleSnapshotPointer(db, args);
       signal.throwIfAborted();
-      if (pointer === null) {
+      if (
+        pointer === null &&
+        args.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+      ) {
         const migrated = await set(
           migrateCurrentChatEventSnapshot$,
           { chatThreadId: args.threadId, projection: args.projection },
           signal,
         );
         if (migrated) {
-          pointer = await snapshotPointer(db, args.threadId, args.projection);
+          pointer = await compatibleSnapshotPointer(db, args);
           signal.throwIfAborted();
         }
       }
@@ -230,21 +500,8 @@ export function chatThreadEventRows(
       return { kind: "expired" } as const;
     }
 
-    const [physicalCursorRow] = await db
-      .select({ id: chatEvents.id })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.chatThreadId, args.threadId),
-          eq(chatEvents.seqId, args.sinceSeqId),
-        ),
-      )
-      .limit(1);
-    const validCursor =
-      physicalCursorRow === undefined
-        ? await validSnapshotCursor(db, args)
-        : physicalCursorRow.id === args.sinceEventId;
-    if (!validCursor) {
+    const continuationSeqId = await cursorContinuationSeqId(db, args);
+    if (continuationSeqId === null) {
       return { kind: "expired" } as const;
     }
 
@@ -267,7 +524,7 @@ export function chatThreadEventRows(
       .where(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
-          gt(chatEvents.seqId, args.sinceSeqId),
+          gt(chatEvents.seqId, continuationSeqId),
           args.pagination === "visible"
             ? ne(chatEvents.eventType, "output.tool")
             : undefined,

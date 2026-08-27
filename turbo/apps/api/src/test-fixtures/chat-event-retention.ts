@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import {
+  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CHAT_EVENT_SNAPSHOT_PROJECTIONS,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, max, ne } from "drizzle-orm";
 import {
   activeInputDeliveries,
   activeInputDeliveryItems,
@@ -376,7 +377,7 @@ export const coverRetentionThread$ = command(
       throw new Error("Expected retention fixture chat events");
     }
     const [terminal] = await database
-      .select({ id: chatEvents.id })
+      .select({ id: chatEvents.id, seqId: chatEvents.seqId })
       .from(chatEvents)
       .where(
         and(
@@ -398,8 +399,34 @@ export const coverRetentionThread$ = command(
       )
       .digest("hex");
     const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
-    for (const projection of args.snapshotProjections ??
-      CHAT_EVENT_SNAPSHOT_PROJECTIONS) {
+    const projections =
+      args.snapshotProjections ??
+      (archiveSchemaVersion >= CURRENT_CHAT_EVENT_SCHEMA_VERSION
+        ? [CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION]
+        : CHAT_EVENT_SNAPSHOT_PROJECTIONS);
+    for (const projection of projections) {
+      const [retainedTerminal] = await database
+        .select({ id: chatEvents.id, seqId: chatEvents.seqId })
+        .from(chatEvents)
+        .where(
+          and(
+            eq(chatEvents.chatThreadId, args.chatThreadId),
+            lte(chatEvents.seqId, lastSeqId),
+            projection === "tool-redacted"
+              ? ne(chatEvents.eventType, "output.tool")
+              : undefined,
+          ),
+        )
+        .orderBy(desc(chatEvents.seqId))
+        .limit(1);
+      signal.throwIfAborted();
+      const terminalCursor =
+        archiveSchemaVersion >= CURRENT_CHAT_EVENT_SCHEMA_VERSION
+          ? {
+              terminalEventId: retainedTerminal?.id ?? null,
+              terminalSeqId: retainedTerminal?.seqId ?? 0,
+            }
+          : { terminalEventId: null, terminalSeqId: null };
       const [head] = await database
         .select({ id: chatEventSnapshots.id })
         .from(chatEventSnapshots)
@@ -417,6 +444,7 @@ export const coverRetentionThread$ = command(
           chatThreadId: args.chatThreadId,
           lastSeqId,
           lastEventId: terminal.id,
+          ...terminalCursor,
           archiveSchemaVersion,
           projection,
           objectKey,
@@ -427,6 +455,7 @@ export const coverRetentionThread$ = command(
           .set({
             lastSeqId,
             lastEventId: terminal.id,
+            ...terminalCursor,
             archiveSchemaVersion,
             objectKey,
           })

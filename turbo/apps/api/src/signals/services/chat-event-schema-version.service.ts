@@ -29,7 +29,7 @@ function invalidVersion(): ChatEventSchemaVersionResolution {
   };
 }
 
-/** Resolve the explicit wire version during the bounded V5-to-V6 rollout. */
+/** Resolve the explicit wire version during the bounded V5/V6-to-V7 rollout. */
 export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {
@@ -44,8 +44,8 @@ export function resolveChatEventSchemaVersion(
     return invalidVersion();
   }
   // Old app bundles can live for about two days, and pinned runner/CLI
-  // contexts can live through the queue window plus two hours. Remove the V5
-  // bridge under #29362 after the V6 app floor ships and those contexts drain.
+  // contexts can live through the queue window plus two hours. Remove these
+  // bridges under #29362 after the V7 app floor ships and contexts drain.
   if (version < CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR) {
     return {
       kind: "error",

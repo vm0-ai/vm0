@@ -8,7 +8,10 @@ import {
 } from "ccstate";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
@@ -26,6 +29,7 @@ import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
   loadIndexedDbChatEventRowsAfter$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
@@ -169,30 +173,39 @@ function createSyncRemoteRowsCommand({
      * not reached yet has no snapshot, so the whole thread is still in
      * Postgres and the tail below reads it from the beginning.
      */
-    const loadColdStartCursor = async (): Promise<ChatEventCursor> => {
-      const snapshot = await settle(
+    const loadColdStartCursor = async (): Promise<{
+      readonly cursor: ChatEventCursor;
+      readonly schemaVersion: number;
+    }> => {
+      const result = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      if (!snapshot.ok) {
-        throw snapshot.error;
+      if (!result.ok) {
+        throw result.error;
       }
-      if (snapshot.value === null) {
-        return { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID };
-      }
-      const cursor = {
-        lastEventId: snapshot.value.lastEventId,
-        lastSeqId: snapshot.value.lastSeqId,
-        projection: snapshot.value.projection,
-      };
+      const snapshot = result.value.snapshot;
+      const cursor: ChatEventCursor =
+        snapshot === null || snapshot.lastEventId === null
+          ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+          : {
+              lastEventId: snapshot.lastEventId,
+              lastSeqId: snapshot.lastSeqId,
+              projection: snapshot.projection,
+            };
       await set(
-        writeIndexedDbChatEventRows$,
-        { threadId, rows: snapshot.value.rows, cursor },
+        replaceIndexedDbChatEventRows$,
+        {
+          threadId,
+          rows: snapshot?.rows ?? [],
+          cursor,
+          schemaVersion: result.value.schemaVersion,
+        },
         signal,
       );
       signal.throwIfAborted();
-      await mergeRows(snapshot.value.rows);
-      return cursor;
+      await mergeRows(snapshot?.rows ?? []);
+      return { cursor, schemaVersion: result.value.schemaVersion };
     };
 
     // True once the cursor came from the server rather than the local cache.
@@ -204,6 +217,7 @@ function createSyncRemoteRowsCommand({
     // subscription is live. Confirm the server-derived cursor once more after
     // that first response so the event is not stranded in the gap.
     let needsColdStartTailConfirmation = false;
+    let cacheSchemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
     let cursor: ChatEventCursor;
     const cachedCursor = await set(
       loadIndexedDbChatEventCursor$,
@@ -211,8 +225,10 @@ function createSyncRemoteRowsCommand({
       signal,
     );
     if (cachedCursor === null) {
-      cursor = await loadColdStartCursor();
+      const coldStart = await loadColdStartCursor();
       signal.throwIfAborted();
+      cursor = coldStart.cursor;
+      cacheSchemaVersion = coldStart.schemaVersion;
       cursorFromServer = true;
       needsColdStartTailConfirmation = true;
     } else {
@@ -231,16 +247,24 @@ function createSyncRemoteRowsCommand({
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        cursor = await loadColdStartCursor();
+        const coldStart = await loadColdStartCursor();
         signal.throwIfAborted();
+        cursor = coldStart.cursor;
+        cacheSchemaVersion = coldStart.schemaVersion;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         continue;
       }
       cursor = page.cursor;
+      cacheSchemaVersion = Math.min(cacheSchemaVersion, page.schemaVersion);
       await set(
         writeIndexedDbChatEventRows$,
-        { threadId, rows: page.rows, cursor },
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+          schemaVersion: cacheSchemaVersion,
+        },
         signal,
       );
       signal.throwIfAborted();

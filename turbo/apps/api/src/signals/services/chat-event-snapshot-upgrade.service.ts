@@ -21,6 +21,15 @@ function adjacentSnapshotUpgrade(
         return rows;
       };
     }
+    case 6: {
+      // V7 makes the already-redacted logical history canonical. A legacy
+      // full prefix is accepted only as an upgrade source and loses tool rows.
+      return (rows) => {
+        return rows.filter((row) => {
+          return row.eventType !== "output.tool";
+        });
+      };
+    }
     default: {
       return undefined;
     }
