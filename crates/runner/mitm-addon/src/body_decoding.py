@@ -375,9 +375,15 @@ def _decode_zstd_for_network_log_capture(data: bytes, max_output: int) -> bytes 
             data,
             read_across_frames=True,
         ) as reader:
-            return reader.read(max_output)
+            body = reader.read(max_output)
     except zstandard.ZstdError:
         return None
+
+    if len(body) >= max_output:
+        return body
+    if _validate_complete_zstd_frames(data, max_output) is not None:
+        return None
+    return body
 
 
 def decode_response_body_for_network_log_capture(
@@ -404,8 +410,8 @@ def decode_response_body_for_network_log_capture(
       requires a complete stream unless the decoded-output bound is reached.
     - ``br`` rejects invalid or incomplete input, except that reaching the
       decoded-output bound returns the bounded prefix.
-    - ``zstd`` reads concatenated frames up to ``max_output`` bytes and returns
-      ``None`` when the reader reports malformed or invalid trailing input.
+    - ``zstd`` reads concatenated frames up to ``max_output`` bytes and rejects
+      malformed or incomplete frames unless the decoded-output bound is reached.
 
     This is stricter than the best-effort ``decompress_body()`` path used for
     retained streaming buffers, which can preserve original wire bytes or
