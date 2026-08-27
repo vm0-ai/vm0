@@ -713,6 +713,10 @@ impl WorkspaceImageCache {
         }
 
         let mut locked_commit_keys = BTreeSet::new();
+        #[cfg(test)]
+        self.inner
+            .held_state_root_scan_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -796,6 +800,20 @@ impl WorkspaceImageCache {
             states,
             locked_commit_keys,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_held_state_root_scan_count(&self) {
+        self.inner
+            .held_state_root_scan_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn held_state_root_scan_count(&self) -> usize {
+        self.inner
+            .held_state_root_scan_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     async fn publishable_held_workspace_state(

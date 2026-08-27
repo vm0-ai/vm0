@@ -126,6 +126,8 @@ struct WorkspaceImageCacheInner {
     #[cfg(test)]
     gc_root_scan_count: AtomicUsize,
     #[cfg(test)]
+    held_state_root_scan_count: AtomicUsize,
+    #[cfg(test)]
     fail_next_session_history_sidecar_metadata_commit: AtomicBool,
 }
 
@@ -208,6 +210,7 @@ impl WorkspaceImageCache {
                 cache_scope: cache_scope.to_owned(),
                 fs_stats_override: fs_stats,
                 gc_root_scan_count: AtomicUsize::new(0),
+                held_state_root_scan_count: AtomicUsize::new(0),
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
             prepare_lock_test_gate: None,
