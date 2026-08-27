@@ -797,7 +797,7 @@ body {
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-active: hsl(var(--ring));
-  --color-sidebar-border: hsl(var(--border));
+  --color-sidebar-border: hsl(var(--border) / 0.5);
 }
 .zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
   background-color: hsl(var(--zero-nav-rail));
