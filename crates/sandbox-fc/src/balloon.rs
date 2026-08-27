@@ -550,23 +550,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unpark_deflation_guard_exits_when_sandbox_stops() {
+    async fn controller_after_unpark_deflation_exits_when_sandbox_stops() {
         let (mut api, _bind_tx) = MockFirecrackerApi::deferred_repeating(
             MockResponse::internal_error_raw("unused response"),
         );
         let client = ApiClient::new(api.socket_path()).unwrap();
-        let (state_tx, mut state_rx) = watch::channel(SandboxState::Running);
-        let guard = tokio::spawn(async move {
-            wait_for_unpark_deflation(&client, &mut state_rx, "test-unpark-stop").await
-        });
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        let controller = spawn_after_unpark_deflation(
+            client,
+            MIN_GUEST_MIB + 1,
+            state_rx,
+            "test-unpark-stop".into(),
+        );
 
         tokio::task::yield_now().await;
         state_tx.send(SandboxState::Stopped).unwrap();
 
-        assert!(
-            !guard.await.unwrap(),
-            "stopped sandbox should cancel the guard"
-        );
+        await_controller_exit(controller, "post-unpark controller after stop").await;
         assert!(
             api.drain_requests().is_empty(),
             "cancellation must not issue a policy request"
