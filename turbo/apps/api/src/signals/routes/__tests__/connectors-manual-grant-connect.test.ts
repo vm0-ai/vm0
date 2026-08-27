@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
+  CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+} from "@okouai/api-contracts/contracts/client-headers";
+import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
   connectorsBySlugContract,
@@ -51,6 +56,13 @@ const CONNECTOR_SLUGS_TO_CLEAN_UP = [
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function cliAuthHeaders() {
+  return {
+    ...authHeaders(),
+    [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
+  };
 }
 
 function featureSwitchesClient() {
@@ -199,6 +211,53 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     expect(response.status).toBe(400);
   });
 
+  it("requires identified CLI callers to send account-explicit intent", async () => {
+    await seedFixture();
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const request = (account?: { intent: "single-account" }) => {
+      return app.request("/api/connectors/openai/manual-grant", {
+        method: "POST",
+        headers: {
+          ...cliAuthHeaders(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          authMethod: "api-token",
+          values: { apiKey: "sk-retired-cli" },
+          ...(account ? { account } : {}),
+        }),
+      });
+    };
+
+    const omitted = await request();
+    expect(omitted.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+    await expect(omitted.json()).resolves.toStrictEqual({
+      error: {
+        message: "Update the CLI to connect this connector",
+        code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
+      },
+    });
+
+    const singleton = await request({ intent: "single-account" });
+    expect(singleton.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+    await expect(singleton.json()).resolves.toStrictEqual({
+      error: {
+        message: "Update the CLI to connect this connector",
+        code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
+      },
+    });
+
+    const list = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        connectorsMainContract,
+      ).list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(list.body.connectors).not.toContainEqual(
+      expect.objectContaining({ slug: "openai" }),
+    );
+  });
+
   it("accepts server-authored identity syntax before catalog rejection", async () => {
     await seedFixture();
     const connectorSlug = "server-authored-connector";
@@ -318,6 +377,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
+          account: { intent: "single-account" },
           values: { apiKey: " sk-test\n" },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -340,7 +400,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     });
   });
 
-  it("adds the first account, reconnects it exactly, and rejects a sibling", async () => {
+  it("accepts CLI add and reconnect while preserving account errors", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -354,7 +414,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "add", displayName: "Work" },
           values: { apiKey: "sk-first" },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [200],
     );
@@ -367,7 +427,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "reconnect", connectionId: added.body.id },
           values: { apiKey: "sk-reconnected" },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [200],
     );
@@ -381,7 +441,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "add", displayName: "Personal" },
           values: { apiKey: "sk-sibling" },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [409],
     );
@@ -397,7 +457,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "reconnect", connectionId: randomUUID() },
           values: { apiKey: "sk-missing" },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [404],
     );
@@ -412,7 +472,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           account: { intent: "reconnect", connectionId: added.body.id },
           values: { apiKey: "sk-wrong-owner" },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [404],
     );
@@ -431,7 +491,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
             subdomain: "example",
           },
         },
-        headers: authHeaders(),
+        headers: cliAuthHeaders(),
       }),
       [404],
     );
