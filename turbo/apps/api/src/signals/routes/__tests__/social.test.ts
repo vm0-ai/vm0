@@ -1694,6 +1694,121 @@ describe("managed SocialKit route", () => {
     ).toHaveLength(1);
   });
 
+  it("recovers billing after ready metadata is persisted before settlement interruption", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const payload = new TextEncoder().encode("settlement recovery video");
+    const providerJobId = `provider-settlement-${randomUUID()}`;
+    let interruptedSettlement = false;
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      if (milliseconds === 10_000 && !interruptedSettlement) {
+        interruptedSettlement = true;
+        const settlement = new AbortController();
+        settlement.abort(
+          new DOMException("Ready settlement timed out", "TimeoutError"),
+        );
+        return settlement.signal;
+      }
+      return undefined;
+    });
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/settlement-recovery",
+          durationSeconds: 61,
+          fileSizeMB: 1,
+          creditsCost: 2,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+      http.get("https://media.socialkit.test/settlement-recovery", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-settlement-upload" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-settlement-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const interrupted = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(interruptedSettlement).toBeTruthy();
+    expect(interrupted.body).toMatchObject({
+      status: "processing",
+      provider: { durationSeconds: 61, creditsCost: 2 },
+      billing: null,
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+
+    mockNow(now() + 61_000);
+    await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      billing: { quantity: 2, creditsCharged: 6 },
+      artifact: { sizeBytes: payload.byteLength },
+    });
+    expect(beforeCredits - (await credits(actor))).toBe(6);
+  });
+
   it("rejects credential-bearing download URLs before provider work", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;

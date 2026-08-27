@@ -52,6 +52,8 @@ const SOCIALKIT_DOWNLOAD_TIMEOUT_MS = 270_000;
 export const SOCIALKIT_RECONCILIATION_TIMEOUT_MS = 280_000;
 const MULTIPART_CLEANUP_TIMEOUT_MS = 10_000;
 const CLAIM_CLEANUP_TIMEOUT_MS = 10_000;
+// SocialKit charges when ready is observed, so durable settlement gets an independent budget.
+const READY_SETTLEMENT_TIMEOUT_MS = 10_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
@@ -784,6 +786,62 @@ const settleSocialKitDownloadUsage$ = command(
   },
 );
 
+const persistAndSettleSocialKitDownloadUsage$ = command(
+  async (
+    { set },
+    args: {
+      readonly job: DownloadJob;
+      readonly providerResult: NonNullable<DownloadJob["providerResult"]>;
+    },
+    signal: AbortSignal,
+  ): Promise<DownloadJob> => {
+    const writeDb = set(writeDb$);
+    const [readyJob] = await writeDb
+      .update(socialKitDownloadJobs)
+      .set({
+        providerResult: args.providerResult,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(socialKitDownloadJobs.id, args.job.id),
+          inArray(socialKitDownloadJobs.status, ACTIVE_STATUSES),
+        ),
+      )
+      .returning();
+    signal.throwIfAborted();
+    if (!readyJob) {
+      throw new Error("Failed to persist SocialKit ready metadata");
+    }
+
+    const creditsCharged = await set(
+      settleSocialKitDownloadUsage$,
+      { job: readyJob, quantity: args.providerResult.creditsCost },
+      signal,
+    );
+    const [materializing] = await writeDb
+      .update(socialKitDownloadJobs)
+      .set({
+        status: "materializing",
+        creditsCharged,
+        error: null,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(socialKitDownloadJobs.id, args.job.id),
+          inArray(socialKitDownloadJobs.status, ACTIVE_STATUSES),
+        ),
+      )
+      .returning();
+    signal.throwIfAborted();
+    if (!materializing) {
+      throw new Error("Failed to persist SocialKit usage settlement");
+    }
+    return materializing;
+  },
+);
+
 const materializeSocialKitArtifact$ = command(
   async (
     { set },
@@ -883,27 +941,18 @@ const completeReadySocialKitDownload$ = command(
     args: { readonly job: DownloadJob; readonly ready: ProviderReady },
     signal: AbortSignal,
   ): Promise<void> => {
-    const providerResult = safeProviderResult(args.ready);
-    const creditsCharged = await set(
-      settleSocialKitDownloadUsage$,
-      { job: args.job, quantity: providerResult.creditsCost },
-      signal,
+    const providerResult =
+      args.job.providerResult ?? safeProviderResult(args.ready);
+    const settledJob = await set(
+      persistAndSettleSocialKitDownloadUsage$,
+      { job: args.job, providerResult },
+      AbortSignal.timeout(READY_SETTLEMENT_TIMEOUT_MS),
     );
-    const writeDb = set(writeDb$);
-    await writeDb
-      .update(socialKitDownloadJobs)
-      .set({
-        status: "materializing",
-        providerResult,
-        creditsCharged,
-        error: null,
-        updatedAt: nowDate(),
-      })
-      .where(eq(socialKitDownloadJobs.id, args.job.id));
     signal.throwIfAborted();
+    const writeDb = set(writeDb$);
     const artifact = await set(
       materializeSocialKitArtifact$,
-      { job: args.job, ready: args.ready, providerResult },
+      { job: settledJob, ready: args.ready, providerResult },
       signal,
     );
     await writeDb
@@ -911,7 +960,7 @@ const completeReadySocialKitDownload$ = command(
       .set({
         status: "completed",
         providerResult,
-        creditsCharged,
+        creditsCharged: settledJob.creditsCharged,
         artifact,
         error: null,
         claimExpiresAt: null,
@@ -977,12 +1026,37 @@ export const reconcileSocialKitDownload$ = command(
     if (!accessKey) {
       return false;
     }
-    const job = await set(claimSocialKitDownload$, downloadId, signal);
-    if (!job?.providerJobId) {
+    let job = await set(claimSocialKitDownload$, downloadId, signal);
+    const providerJobId = job?.providerJobId;
+    if (!job || !providerJobId) {
       return false;
     }
-    const providerJobId = job.providerJobId;
     const writeDb = set(writeDb$);
+    if (job.providerResult && job.creditsCharged === null) {
+      const recovered = await settle(
+        set(
+          persistAndSettleSocialKitDownloadUsage$,
+          { job, providerResult: job.providerResult },
+          AbortSignal.timeout(READY_SETTLEMENT_TIMEOUT_MS),
+        ),
+      );
+      if (signal.aborted) {
+        await settleIncludingAbort(
+          deferClaimedJob(
+            writeDb,
+            job,
+            AbortSignal.timeout(CLAIM_CLEANUP_TIMEOUT_MS),
+          ),
+        );
+      }
+      signal.throwIfAborted();
+      if (!recovered.ok) {
+        await deferClaimedJob(writeDb, job, signal);
+        signal.throwIfAborted();
+        return true;
+      }
+      job = recovered.value;
+    }
     return await onRejection(
       (async (): Promise<boolean> => {
         const poll = await settle(
@@ -994,7 +1068,11 @@ export const reconcileSocialKitDownload$ = command(
           return true;
         }
         if (poll.value.status === "processing") {
-          await recordProcessingPoll(writeDb, job);
+          if (job.creditsCharged === null) {
+            await recordProcessingPoll(writeDb, job);
+          } else {
+            await deferClaimedJob(writeDb, job, signal);
+          }
           signal.throwIfAborted();
           return true;
         }
