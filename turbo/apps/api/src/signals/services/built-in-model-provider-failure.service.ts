@@ -5,7 +5,6 @@ import { and, eq } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { logger } from "../../lib/log";
-import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
 const DEFAULT_COOLDOWN_SECONDS = 5 * 60;
@@ -296,12 +295,12 @@ export async function reportBuiltInModelProviderFailure(
   db: Db,
   args: {
     readonly runId: string;
+    readonly receivedAt: Date;
     readonly failureKind: FailureKind;
     readonly connectionSource?: ConnectionSource;
     readonly retryAfterSeconds?: number;
   },
 ): Promise<BuiltInModelProviderFailureTransition> {
-  const timestamp = nowDate();
   return await db.transaction(async (tx) => {
     const run = await loadReportRun(tx, args.runId);
     const route = run ? routeForRun(run) : null;
@@ -320,7 +319,7 @@ export async function reportBuiltInModelProviderFailure(
         runId: args.runId,
         route,
         row,
-        timestamp,
+        timestamp: args.receivedAt,
       });
     }
 
@@ -328,7 +327,7 @@ export async function reportBuiltInModelProviderFailure(
       runId: args.runId,
       route,
       row,
-      timestamp,
+      timestamp: args.receivedAt,
       failureKind: args.failureKind,
       source: failureSource(args.connectionSource),
       retryAfterSeconds: cooldownSeconds(args),

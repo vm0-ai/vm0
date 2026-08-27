@@ -6,7 +6,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { withMockNowForTest } from "../../../lib/time";
+import { mockNow, withMockNowForTest } from "../../../lib/time";
+import { holdBuiltInModelCandidateRouteLockFixture } from "../../../test-fixtures/built-in-model-runtime-route";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -818,6 +819,147 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       ).toStrictEqual(["observed", "recorded"]);
       await expect(
         resolveVm0BuiltInModelRouteFixture(context, first.selectedModel, true),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
+  it("uses receipt time when a fifty-nine-second report waits for the route lock", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 5, 10, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const transportFailure = {
+      failureKind: "connection",
+      connectionSource: "upstream_transport",
+    } as const;
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    await withMockNowForTest(startedAt + 30_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    const routeLock = await holdBuiltInModelCandidateRouteLockFixture({
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      routeLock.release();
+      await routeLock.done;
+    });
+
+    const waiterResult = await withMockNowForTest(
+      startedAt + 59_000,
+      async () => {
+        const waiterRequest = runs.reportRunnerModelProviderFailure(
+          claimed.runId,
+          transportFailure,
+        );
+        await expect.poll(routeLock.blockedWaiterCount).toBe(1);
+        mockNow(startedAt + 60_001);
+        routeLock.release();
+        await routeLock.done;
+        return await waiterRequest;
+      },
+    );
+
+    expect(waiterResult).toStrictEqual({ outcome: "observed" });
+    await withMockNowForTest(startedAt + 60_001, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
+  it("uses inclusive receipt time when a boundary report waits past the route lock", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 5, 20, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const transportFailure = {
+      failureKind: "connection",
+      connectionSource: "upstream_transport",
+    } as const;
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, transportFailure),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    const routeLock = await holdBuiltInModelCandidateRouteLockFixture({
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      routeLock.release();
+      await routeLock.done;
+    });
+
+    const waiterResult = await withMockNowForTest(
+      startedAt + 60_000,
+      async () => {
+        const waiterRequest = runs.reportRunnerModelProviderFailure(
+          claimed.runId,
+          transportFailure,
+        );
+        await expect.poll(routeLock.blockedWaiterCount).toBe(1);
+        mockNow(startedAt + 60_001);
+        routeLock.release();
+        await routeLock.done;
+        return await waiterRequest;
+      },
+    );
+
+    expect(waiterResult).toStrictEqual({ outcome: "recorded" });
+    await withMockNowForTest(startedAt + 60_001, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
       ).resolves.not.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,

@@ -2617,6 +2617,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const modelProviderFailureInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const receivedAt = nowDate();
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
     if (!auth) {
@@ -2639,6 +2640,7 @@ const modelProviderFailureInner$ = command(
     ).runId;
     const transition = await reportBuiltInModelProviderFailure(set(writeDb$), {
       runId,
+      receivedAt,
       ...body.data,
     });
     signal.throwIfAborted();
