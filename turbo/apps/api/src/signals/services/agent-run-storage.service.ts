@@ -92,6 +92,7 @@ interface AdditionalVolume {
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+  readonly baselineCandidate?: true;
 }
 
 interface VolumeConfig {
@@ -277,6 +278,7 @@ interface ResolvedManifestStorageInput {
   readonly name: string;
   readonly mountPath: string;
   readonly vasStorageName: string;
+  readonly baselineCandidate?: true;
   readonly instructionsTargetFilename?: string;
   readonly optional?: boolean;
   readonly resolved: StorageResolution;
@@ -1751,6 +1753,9 @@ async function resolveAdditionalStorageInput(args: {
     name: args.volume.name,
     mountPath: args.volume.mountPath,
     vasStorageName: args.volume.name,
+    ...(args.volume.baselineCandidate === true
+      ? { baselineCandidate: args.volume.baselineCandidate }
+      : {}),
     resolved: resolvedResult.value,
   };
 }
@@ -1911,6 +1916,9 @@ function buildPreparedReadOnlyStorageEntry(args: {
       mountPath: args.plan.mountPath,
       archiveUrl: args.archiveUrl,
       ...(archiveSize === undefined ? {} : { archiveSize }),
+      ...(args.plan.baselineCandidate === true
+        ? { baselineCandidate: args.plan.baselineCandidate }
+        : {}),
       ...(args.plan.instructionsTargetFilename
         ? {
             instructionsTargetFilename: args.plan.instructionsTargetFilename,

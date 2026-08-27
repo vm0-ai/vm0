@@ -534,6 +534,7 @@ interface AdditionalVolume {
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+  readonly baselineCandidate?: true;
 }
 
 type AdditionalVolumeSources = readonly StorageManifestSource[] | undefined;
@@ -1257,12 +1258,17 @@ function buildInjectedSkillVolumes(
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
+      buildLegacySystemSkillVolumes(SEED_SKILLS, skillsRoot).map((volume) => {
+        return { ...volume, baselineCandidate: true };
+      }),
+      "system_skill",
+    ) ?? []),
+    ...(prepareAdditionalVolumesWithSource(
+      buildLegacySystemSkillVolumes([GOAL_SKILL_NAME], skillsRoot),
       "system_skill",
     ) ?? []),
     ...(args.connectorCatalogSelection.kind === "scoped"

@@ -23,6 +23,7 @@ import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -16966,16 +16967,40 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(created.runId);
-    const mountPaths =
-      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.map(
-        (storage) => {
-          return storage.mountPath;
-        },
-      ) ?? [];
+    const storageMounts =
+      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts ??
+      [];
+    const mountPaths = storageMounts.map((storage) => {
+      return storage.mountPath;
+    });
     expect(mountPaths).toContain("/cache");
-    const memoryArtifact = expectCanonicalStorageManifest(
-      claim.storageManifest,
-    )?.storageMounts.find((mount) => {
+    const seedMountPaths = new Set(
+      SEED_SKILLS.map((skillName) => {
+        return `/home/user/.claude/skills/${skillName}`;
+      }),
+    );
+    expect(
+      storageMounts
+        .filter((mount) => {
+          return mount.baselineCandidate === true;
+        })
+        .map((mount) => {
+          return mount.mountPath;
+        })
+        .sort(),
+    ).toStrictEqual(
+      mountPaths
+        .filter((mountPath) => {
+          return seedMountPaths.has(mountPath);
+        })
+        .sort(),
+    );
+    for (const mount of storageMounts.filter((entry) => {
+      return !seedMountPaths.has(entry.mountPath);
+    })) {
+      expect(mount).not.toHaveProperty("baselineCandidate");
+    }
+    const memoryArtifact = storageMounts.find((mount) => {
       return mount.name === "memory";
     });
     if (!memoryArtifact) {
