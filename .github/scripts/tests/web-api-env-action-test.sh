@@ -104,19 +104,6 @@ assert_env_key_count() {
   fi
 }
 
-assert_env_values_equal() {
-  local env_file="$1"
-  local first_key="$2"
-  local second_key="$3"
-  local first_value
-  local second_value
-  first_value="$(awk -F= -v key="$first_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
-  second_value="$(awk -F= -v key="$second_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
-  if [[ "$first_value" != "$second_value" ]]; then
-    fail "expected ${first_key} and ${second_key} values to be equal"
-  fi
-}
-
 assert_preview_job_ref_aliases_absent() {
   local env_file="$1"
   assert_env_key_absent "$env_file" OKOU_PREVIEW_JOB_REF
@@ -511,10 +498,8 @@ assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.
 assert_machine_secret_canonical_only "$success_env_file" "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
 assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
-assert_env_key_count "$success_env_file" VM0_PREVIEW_JOB_REF 1
 assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
-assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
-assert_env_values_equal "$success_env_file" OKOU_PREVIEW_JOB_REF VM0_PREVIEW_JOB_REF
+assert_env_key_absent "$success_env_file" VM0_PREVIEW_JOB_REF
 assert_api_backend_url_canonical_only "$success_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
