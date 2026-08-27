@@ -45,7 +45,10 @@ function authV2ActionLink(name: string): HTMLAnchorElement {
 
 function authV2Button(name: string): HTMLButtonElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === name;
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
   });
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error("Auth v2 button not found");
@@ -469,11 +472,7 @@ describe("app auth pages", () => {
     await expect(
       screen.findByRole("region", { name: "Choose an organization" }),
     ).resolves.toBeVisible();
-    expect(
-      screen.getByRole("button", {
-        name: "Continue with Route Organization",
-      }),
-    ).toBeVisible();
+    expect(authV2Button("Continue with Route Organization")).toBeVisible();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(document.title).toBe("Sign in | VM0");
@@ -503,10 +502,7 @@ describe("app auth pages", () => {
       "Sign in to Okou",
     );
 
-    const organizationButton = screen.getByRole("button", {
-      name: "Continue with Okou Organization",
-    });
-    fireEvent.click(organizationButton);
+    fireEvent.click(authV2Button("Continue with Okou Organization"));
 
     await waitFor(() => {
       expect(location.href).toBe(redirectUrl);
