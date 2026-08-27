@@ -28,7 +28,6 @@ import {
   runStatusSchema,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
-import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -88,7 +87,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
-import { extendBuiltInModelCandidateCooldown } from "../services/built-in-model-runtime-route.service";
+import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
 import {
   recordActiveInputDeliveryReceipt,
   reserveActiveInputDelivery,
@@ -164,8 +163,6 @@ const INVALID_EXECUTION_CONTEXT_ERROR =
 const runnerClaimVersionHeaderSchema = runnerVersionSchema.optional();
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
 const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
-const DEFAULT_BUILT_IN_MODEL_PROVIDER_COOLDOWN_SECONDS = 5 * 60;
-const BUILT_IN_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS = 30 * 60;
 const RESUME_SESSION_HISTORY_LOAD_ERROR =
   "Runner job missing resume session history";
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
@@ -2615,6 +2612,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const modelProviderFailureInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const receivedAt = nowDate();
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
     if (!auth) {
@@ -2636,55 +2634,21 @@ const modelProviderFailureInner$ = command(
       pathParamsOf(runnersModelProviderFailuresContract.report),
     ).runId;
     const db = set(writeDb$);
-    const [run] = await db
-      .select({
-        modelProvider: agentRuns.modelProvider,
-        selectedModel: agentRuns.selectedModel,
-        modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-        modelRuntimeModel: agentRuns.modelRuntimeModel,
-        builtInModelKeyId: agentRuns.builtInModelKeyId,
-      })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (
-      !run ||
-      !isBuiltInModelProviderType(run.modelProvider) ||
-      !run.selectedModel ||
-      !run.modelRuntimeProvider ||
-      !run.modelRuntimeModel ||
-      !run.builtInModelKeyId
-    ) {
-      L.debug("Built-in model provider failure report ignored", { runId });
-      return { status: 200 as const, body: { outcome: "ignored" as const } };
-    }
-
-    const cooldownSeconds =
-      body.data.failureKind === "authentication" ||
-      body.data.failureKind === "billing"
-        ? BUILT_IN_MODEL_PROVIDER_INTERVENTION_COOLDOWN_SECONDS
-        : (body.data.retryAfterSeconds ??
-          DEFAULT_BUILT_IN_MODEL_PROVIDER_COOLDOWN_SECONDS);
-    const unavailableUntil = await extendBuiltInModelCandidateCooldown(db, {
-      selectedModel: run.selectedModel,
-      providerType: run.modelRuntimeProvider,
-      upstreamModel: run.modelRuntimeModel,
-      retryAfterSeconds: cooldownSeconds,
-    });
-    signal.throwIfAborted();
-    L.error("Built-in model provider failure report recorded", {
-      type: "built_in_model_provider_cooldown",
+    const transition = await reportBuiltInModelProviderFailure(db, {
       runId,
-      selectedModel: run.selectedModel,
-      providerType: run.modelRuntimeProvider,
-      upstreamModel: run.modelRuntimeModel,
-      failureKind: body.data.failureKind,
-      retryAfterSeconds: cooldownSeconds,
-      unavailableUntil: unavailableUntil.toISOString(),
+      receivedAt,
+      ...body.data,
     });
-    return { status: 200 as const, body: { outcome: "recorded" as const } };
+    signal.throwIfAborted();
+    if (transition.outcome === "recorded" && transition.cooldown) {
+      L.error("Built-in model provider failure report recorded", {
+        type: "built_in_model_provider_cooldown",
+        runId,
+        ...transition.cooldown,
+        unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
+      });
+    }
+    return { status: 200 as const, body: { outcome: transition.outcome } };
   },
 );
 

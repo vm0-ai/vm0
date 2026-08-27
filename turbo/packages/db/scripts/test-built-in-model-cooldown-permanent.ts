@@ -3,11 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-interface CooldownRow {
+interface PreviousCooldownRow {
   readonly providerType: string;
   readonly selectedModel: string;
   readonly unavailableUntil: Date;
   readonly upstreamModel: string;
+}
+
+interface CooldownRow extends PreviousCooldownRow {
+  readonly connectionObservationStartedAt: Date | null;
+  readonly connectionObservationUntil: Date | null;
 }
 
 interface ColumnRow {
@@ -16,6 +21,9 @@ interface ColumnRow {
   readonly dataType: string;
   readonly isNullable: "NO" | "YES";
 }
+
+const observationPairConstraint =
+  "built_in_model_cooldown_observation_pair_check";
 
 const fixture = {
   baseline: {
@@ -28,9 +36,39 @@ const fixture = {
     selectedModel: "permanent-built-in-model-cooldown-statements",
     upstreamModel: "permanent-upstream-statements",
   },
+  observation: {
+    providerType: "permanent-provider-observation",
+    selectedModel: "permanent-built-in-model-cooldown-observation",
+    upstreamModel: "permanent-upstream-observation",
+  },
 } as const;
 
-async function readFixture(
+async function readPreviousFixture(
+  client: Client,
+  identity: {
+    readonly providerType: string;
+    readonly selectedModel: string;
+    readonly upstreamModel: string;
+  },
+): Promise<readonly PreviousCooldownRow[]> {
+  const result = await client.query<PreviousCooldownRow>(
+    `
+      SELECT
+        "selected_model" AS "selectedModel",
+        "provider_type" AS "providerType",
+        "upstream_model" AS "upstreamModel",
+        "unavailable_until" AS "unavailableUntil"
+      FROM "built_in_model_candidate_cooldown"
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+    `,
+    [identity.selectedModel, identity.providerType, identity.upstreamModel],
+  );
+  return result.rows;
+}
+
+async function readObservationFixture(
   client: Client,
   identity: {
     readonly providerType: string;
@@ -44,11 +82,15 @@ async function readFixture(
         "selected_model" AS "selectedModel",
         "provider_type" AS "providerType",
         "upstream_model" AS "upstreamModel",
-        "unavailable_until" AS "unavailableUntil"
+        "unavailable_until" AS "unavailableUntil",
+        "connection_observation_started_at"
+          AS "connectionObservationStartedAt",
+        "connection_observation_until" AS "connectionObservationUntil"
       FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
         AND "provider_type" = $2
         AND "upstream_model" = $3
+      FOR UPDATE
     `,
     [identity.selectedModel, identity.providerType, identity.upstreamModel],
   );
@@ -109,6 +151,18 @@ async function assertCanonicalSchema(client: Client): Promise<void> {
       dataType: "timestamp without time zone",
       isNullable: "NO",
     },
+    {
+      characterMaximumLength: null,
+      columnName: "connection_observation_started_at",
+      dataType: "timestamp without time zone",
+      isNullable: "YES",
+    },
+    {
+      characterMaximumLength: null,
+      columnName: "connection_observation_until",
+      dataType: "timestamp without time zone",
+      isNullable: "YES",
+    },
   ]);
 
   const primaryKey = await client.query<{ columnName: string }>(`
@@ -131,6 +185,80 @@ async function assertCanonicalSchema(client: Client): Promise<void> {
     }),
     ["selected_model", "provider_type", "upstream_model"],
   );
+
+  const observationCheck = await client.query<{
+    constraintName: string;
+    definition: string;
+    validated: boolean;
+  }>(
+    `
+      SELECT
+        "constraint"."conname" AS "constraintName",
+        pg_catalog.pg_get_constraintdef("constraint"."oid", true)
+          AS "definition",
+        "constraint"."convalidated" AS "validated"
+      FROM "pg_catalog"."pg_constraint" AS "constraint"
+      WHERE "constraint"."conrelid" =
+          'public.built_in_model_candidate_cooldown'::regclass
+        AND "constraint"."contype" = 'c'
+        AND "constraint"."conname" = $1
+    `,
+    [observationPairConstraint],
+  );
+  assert.equal(observationCheck.rows.length, 1);
+  const [check] = observationCheck.rows;
+  assert.ok(check);
+  assert.equal(check.constraintName, observationPairConstraint);
+  assert.equal(check.validated, true);
+  assert.match(
+    check.definition,
+    /connection_observation_started_at IS NULL.*connection_observation_until IS NULL.*connection_observation_started_at IS NOT NULL.*connection_observation_until IS NOT NULL/,
+  );
+}
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+function databaseErrorConstraint(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("constraint" in error)) {
+    return undefined;
+  }
+  return typeof error.constraint === "string" ? error.constraint : undefined;
+}
+
+async function assertObservationPairRejected(
+  client: Client,
+  columns: string,
+  values: readonly Date[],
+): Promise<void> {
+  await assert.rejects(
+    client.query(
+      `
+        INSERT INTO "built_in_model_candidate_cooldown" (
+          "selected_model", "provider_type", "upstream_model",
+          "unavailable_until", ${columns}
+        )
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [
+        fixture.observation.selectedModel,
+        fixture.observation.providerType,
+        fixture.observation.upstreamModel,
+        new Date("2026-08-25T09:00:00.000Z"),
+        ...values,
+      ],
+    ),
+    (error: unknown) => {
+      return (
+        databaseErrorCode(error) === "23514" &&
+        databaseErrorConstraint(error) === observationPairConstraint
+      );
+    },
+  );
 }
 
 async function validateCanonicalStatements(client: Client): Promise<void> {
@@ -138,6 +266,8 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
   const initialDeadline = new Date("2026-08-25T07:00:00.000Z");
   const earlierDeadline = new Date("2026-08-25T06:00:00.000Z");
   const laterDeadline = new Date("2026-08-25T08:00:00.000Z");
+  const observationStartedAt = new Date("2026-08-25T07:30:00.000Z");
+  const observationUntil = new Date("2026-08-25T07:31:00.000Z");
 
   await client.query(
     `
@@ -154,8 +284,10 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
     ],
   );
 
-  const upsert = async (deadline: Date): Promise<readonly CooldownRow[]> => {
-    const result = await client.query<CooldownRow>(
+  const upsertPreviousVersion = async (
+    deadline: Date,
+  ): Promise<readonly PreviousCooldownRow[]> => {
+    const result = await client.query<PreviousCooldownRow>(
       `
         INSERT INTO "built_in_model_candidate_cooldown" (
           "selected_model", "provider_type", "upstream_model", "unavailable_until"
@@ -184,19 +316,93 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
   };
 
   assert.equal(
-    (await upsert(initialDeadline))[0]?.unavailableUntil.getTime(),
+    (
+      await upsertPreviousVersion(initialDeadline)
+    )[0]?.unavailableUntil.getTime(),
     initialDeadline.getTime(),
   );
   assert.equal(
-    (await upsert(earlierDeadline))[0]?.unavailableUntil.getTime(),
+    (
+      await upsertPreviousVersion(earlierDeadline)
+    )[0]?.unavailableUntil.getTime(),
     initialDeadline.getTime(),
   );
   assert.equal(
-    (await upsert(laterDeadline))[0]?.unavailableUntil.getTime(),
+    (await upsertPreviousVersion(laterDeadline))[0]?.unavailableUntil.getTime(),
     laterDeadline.getTime(),
   );
 
-  const active = await client.query<CooldownRow>(
+  await client.query(
+    `
+      UPDATE "built_in_model_candidate_cooldown"
+      SET
+        "connection_observation_started_at" = $1,
+        "connection_observation_until" = $2
+      WHERE "selected_model" = $3
+        AND "provider_type" = $4
+        AND "upstream_model" = $5
+    `,
+    [
+      observationStartedAt,
+      observationUntil,
+      fixture.statement.selectedModel,
+      fixture.statement.providerType,
+      fixture.statement.upstreamModel,
+    ],
+  );
+  const outgoingDeadline = new Date("2026-08-25T08:30:00.000Z");
+  assert.equal(
+    (
+      await upsertPreviousVersion(outgoingDeadline)
+    )[0]?.unavailableUntil.getTime(),
+    outgoingDeadline.getTime(),
+  );
+  assert.deepEqual(await readObservationFixture(client, fixture.statement), [
+    {
+      ...fixture.statement,
+      unavailableUntil: outgoingDeadline,
+      connectionObservationStartedAt: observationStartedAt,
+      connectionObservationUntil: observationUntil,
+    },
+  ]);
+
+  await client.query(
+    `
+      UPDATE "built_in_model_candidate_cooldown"
+      SET
+        "connection_observation_started_at" = NULL,
+        "connection_observation_until" = NULL
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+    `,
+    [
+      fixture.statement.selectedModel,
+      fixture.statement.providerType,
+      fixture.statement.upstreamModel,
+    ],
+  );
+  assert.deepEqual(await readObservationFixture(client, fixture.statement), [
+    {
+      ...fixture.statement,
+      unavailableUntil: outgoingDeadline,
+      connectionObservationStartedAt: null,
+      connectionObservationUntil: null,
+    },
+  ]);
+
+  await assertObservationPairRejected(
+    client,
+    '"connection_observation_started_at"',
+    [observationStartedAt],
+  );
+  await assertObservationPairRejected(
+    client,
+    '"connection_observation_until"',
+    [observationUntil],
+  );
+
+  const activePreviousVersion = await client.query<PreviousCooldownRow>(
     `
       SELECT
         "selected_model" AS "selectedModel",
@@ -217,11 +423,11 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
     ],
   );
   assert.equal(
-    active.rows[0]?.unavailableUntil.getTime(),
-    laterDeadline.getTime(),
+    activePreviousVersion.rows[0]?.unavailableUntil.getTime(),
+    outgoingDeadline.getTime(),
   );
 
-  const deleted = await client.query<CooldownRow>(
+  const deletedPreviousVersion = await client.query<PreviousCooldownRow>(
     `
       DELETE FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
@@ -239,10 +445,10 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
       fixture.statement.upstreamModel,
     ],
   );
-  assert.deepEqual(deleted.rows, active.rows);
+  assert.deepEqual(deletedPreviousVersion.rows, activePreviousVersion.rows);
   assert.equal(
     (
-      await readFixture(client, fixture.baseline)
+      await readPreviousFixture(client, fixture.baseline)
     )[0]?.unavailableUntil.getTime(),
     baselineDeadline.getTime(),
   );
@@ -259,15 +465,20 @@ export async function validatePermanentBuiltInModelCooldownState(
     await validateCanonicalStatements(client);
 
     console.log("   ✅ only the canonical cooldown relation exists");
-    console.log("   ✅ canonical columns and primary key are stable");
-    console.log("   ✅ current statements preserve monotonic deadlines\n");
+    console.log("   ✅ canonical columns, key, and paired state are stable");
+    console.log("   ✅ outgoing statements preserve deadlines and state");
+    console.log("   ✅ observation state can be written and cleared\n");
   } finally {
     await client.query(
       `
         DELETE FROM "built_in_model_candidate_cooldown"
-        WHERE "selected_model" IN ($1, $2)
+        WHERE "selected_model" IN ($1, $2, $3)
       `,
-      [fixture.baseline.selectedModel, fixture.statement.selectedModel],
+      [
+        fixture.baseline.selectedModel,
+        fixture.statement.selectedModel,
+        fixture.observation.selectedModel,
+      ],
     );
     await client.end();
   }
