@@ -5302,15 +5302,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiError(missingSandboxStatesHeartbeat.body);
 
-    const canonicalHeartbeat = await api.requestRawHeartbeatRunner(
+    const overlapHeartbeat = await api.requestRawHeartbeatRunner(
       true,
       [200],
       rawHeartbeatBody({
+        runnerName: "v0.168.14",
         admittableProfiles: ["vm0/default"],
         heldSandboxStates: [],
       }),
     );
-    expect(canonicalHeartbeat.body).toStrictEqual({
+    expect(overlapHeartbeat.body).toStrictEqual({
       ok: true,
     });
     const invalidWorkspaceVersionHeartbeat =
