@@ -463,7 +463,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multipart_scheduler_drops_siblings_before_returning_upload_error() {
+    async fn multipart_scheduler_drops_siblings_before_returning_terminal_errors() {
+        #[derive(Clone, Copy)]
+        enum Failure {
+            Upload,
+            Join,
+        }
+
         struct DropFlag(Arc<AtomicBool>);
 
         impl Drop for DropFlag {
@@ -472,57 +478,71 @@ mod tests {
             }
         }
 
-        let queued_read_allowed = Arc::new(AtomicBool::new(false));
-        let reader = WindowGuardReader {
-            inner: Cursor::new(b"aaaabbbbcccc".to_vec()),
-            blocked_at: 8,
-            queued_read_allowed,
-        };
-        let initial_uploads_ready = Arc::new(Barrier::new(2));
-        let sibling_dropped = Arc::new(AtomicBool::new(false));
+        for failure in [Failure::Upload, Failure::Join] {
+            let reader = WindowGuardReader {
+                inner: Cursor::new(b"aaaabbbbcccc".to_vec()),
+                blocked_at: 8,
+                queued_read_allowed: Arc::new(AtomicBool::new(false)),
+            };
+            let initial_uploads_ready = Arc::new(Barrier::new(2));
+            let sibling_dropped = Arc::new(AtomicBool::new(false));
 
-        let upload = {
-            let initial_uploads_ready = Arc::clone(&initial_uploads_ready);
-            let sibling_dropped = Arc::clone(&sibling_dropped);
-            move |part_number: i32, chunk: bytes::Bytes| {
+            let upload = {
                 let initial_uploads_ready = Arc::clone(&initial_uploads_ready);
                 let sibling_dropped = Arc::clone(&sibling_dropped);
-                async move {
-                    let expected_chunk: &[u8] = match part_number {
-                        1 => b"aaaa",
-                        2 => b"bbbb",
-                        _ => panic!("unexpected part_number {part_number}"),
-                    };
-                    assert_eq!(chunk.as_ref(), expected_chunk);
+                move |part_number: i32, chunk: bytes::Bytes| {
+                    let initial_uploads_ready = Arc::clone(&initial_uploads_ready);
+                    let sibling_dropped = Arc::clone(&sibling_dropped);
+                    async move {
+                        let expected_chunk: &[u8] = match part_number {
+                            1 => b"aaaa",
+                            2 => b"bbbb",
+                            _ => panic!("unexpected part_number {part_number}"),
+                        };
+                        assert_eq!(chunk.as_ref(), expected_chunk);
 
-                    let _drop_flag =
-                        (part_number == 1).then(|| DropFlag(Arc::clone(&sibling_dropped)));
-                    initial_uploads_ready.wait().await;
+                        let _drop_flag =
+                            (part_number == 1).then(|| DropFlag(Arc::clone(&sibling_dropped)));
+                        initial_uploads_ready.wait().await;
 
-                    if part_number == 1 {
-                        std::future::pending::<Result<CompletedPart, R2Error>>().await
-                    } else {
-                        Err(R2Error::S3("upload part 2 failed".to_string()))
+                        if part_number == 1 {
+                            std::future::pending::<Result<CompletedPart, R2Error>>().await
+                        } else {
+                            match failure {
+                                Failure::Upload => {
+                                    Err(R2Error::S3("upload part 2 failed".to_string()))
+                                }
+                                Failure::Join => panic!("upload part 2 panicked"),
+                            }
+                        }
                     }
                 }
+            };
+
+            let error = tokio::time::timeout(
+                Duration::from_secs(5),
+                upload_parts_streaming_with(reader, 4, 2, upload),
+            )
+            .await
+            .expect("multipart scheduler test timed out")
+            .expect_err("multipart scheduler should return the terminal error");
+
+            assert!(
+                sibling_dropped.load(Ordering::SeqCst),
+                "sibling upload must be dropped before the scheduler returns"
+            );
+            match (failure, error) {
+                (Failure::Upload, R2Error::S3(message)) => {
+                    assert_eq!(message, "upload part 2 failed");
+                }
+                (Failure::Join, R2Error::Io(error)) => {
+                    assert!(
+                        error.to_string().contains("upload part 2 panicked"),
+                        "join error must preserve the task panic: {error}"
+                    );
+                }
+                (_, other) => panic!("unexpected scheduler error: {other:?}"),
             }
-        };
-
-        let error = tokio::time::timeout(
-            Duration::from_secs(5),
-            upload_parts_streaming_with(reader, 4, 2, upload),
-        )
-        .await
-        .expect("multipart scheduler test timed out")
-        .expect_err("multipart scheduler should return the upload error");
-
-        assert!(
-            sibling_dropped.load(Ordering::SeqCst),
-            "sibling upload must be dropped before the scheduler returns"
-        );
-        match error {
-            R2Error::S3(message) => assert_eq!(message, "upload part 2 failed"),
-            other => panic!("expected upload error, got {other:?}"),
         }
     }
 }
