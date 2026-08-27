@@ -384,6 +384,34 @@ describe("okou connector connect command", () => {
     );
   });
 
+  it("rejects invalid account names before requests", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/connectors/:connectorSlug/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("openai"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "openai",
+        "--add",
+        "--account-name",
+        "",
+        "--value",
+        "apiKey=sk-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
+  });
+
   it("rejects conflicting add and reconnect choices", async () => {
     let requestCalled = false;
     server.use(
