@@ -836,7 +836,7 @@ record_identity_and_stall() {
   starttime=$(awk '{print $22}' "/proc/$$/stat")
   printf '%s %s\n' "$$" "$starttime" > "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp"
   mv "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp" "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH"
-  while :; do :; done
+  exec sleep 60
 }
 
 if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "config-query" ]; then
