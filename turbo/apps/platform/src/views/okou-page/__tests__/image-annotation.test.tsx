@@ -243,53 +243,15 @@ describe("composer image annotation", () => {
     });
     mockAgentChatPage();
     failImageDecodes();
-    const savedDraftAttachments: (readonly SavedDraft[] | null)[] = [];
-    mockDraftWithImage(null, savedDraftAttachments);
+    mockDraftWithImage([boxMark()]);
 
     setup(true);
-
-    // Drawn through the UI rather than seeded from the draft response: the
-    // marks have to survive the whole path, and committing them is the step
-    // that used to leave them behind.
-    const chip = await screen.findByLabelText(
-      "Open image preview for billing-page.png",
-    );
-    await user.click(chip);
-    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
-    await screen.findByTestId("image-annotation-editor");
-    await dragOnSurface();
-
-    await user.click(await screen.findByTestId("annotation-mark-1"));
-    await user.type(
-      await screen.findByPlaceholderText("Say what should change here"),
-      "Tighten this spacing",
-    );
-    await user.click(attachMarksButton());
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("composer-attachment-mark-count"),
-      ).toHaveTextContent("1");
-    });
-
-    // Attaching has to reach the stored draft. It used to write the signal and
-    // stop, so anything that reloaded the draft took the marks with it.
-    await waitFor(() => {
-      expect(
-        savedDraftAttachments.some((saved) => {
-          return saved?.some((attachment) => {
-            return attachment.annotation !== undefined;
-          });
-        }),
-      ).toBeTruthy();
-    });
 
     await fillComposer(await composerEditor(), "Fix the billing page");
     await user.click(screen.getByLabelText("Send"));
 
-    // jsdom loads no images, so the flattened copy never renders and the send
-    // falls back on the deadline. That is the failure it has to survive: the
-    // notes still have to arrive.
+    // The image stub fails the flattened copy immediately. The send falls back
+    // to the original image, but the notes still have to arrive.
     await waitFor(() => {
       expect(sentPrompts.length).toBeGreaterThan(0);
     });
@@ -333,7 +295,8 @@ describe("composer image annotation", () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
     mockAgentChatPage();
-    mockDraftWithImage(null);
+    const savedDraftAttachments: (readonly SavedDraft[] | null)[] = [];
+    mockDraftWithImage(null, savedDraftAttachments);
 
     setup(true);
 
@@ -374,6 +337,18 @@ describe("composer image annotation", () => {
     expect(
       screen.getAllByLabelText("Open image preview for billing-page.png"),
     ).toHaveLength(1);
+
+    // Attaching has to reach the stored draft. It used to write the signal and
+    // stop, so anything that reloaded the draft took the marks with it.
+    await waitFor(() => {
+      expect(
+        savedDraftAttachments.some((saved) => {
+          return saved?.some((attachment) => {
+            return attachment.annotation !== undefined;
+          });
+        }),
+      ).toBeTruthy();
+    });
   });
 
   it("draws stored marks in the read-only viewer, not just in the editor", async () => {
