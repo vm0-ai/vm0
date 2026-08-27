@@ -10,12 +10,16 @@ import {
 } from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
-  MODEL_PROVIDER_WRITE_TYPE_IDS,
+  MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS,
   isBuiltInModelProviderType,
+  normalizeModelProviderWriteType,
   type ModelProviderFramework,
   type ModelProviderType,
 } from "./model-provider-types";
-export { isBuiltInModelProviderType } from "./model-provider-types";
+export {
+  isBuiltInModelProviderType,
+  normalizeModelProviderWriteType,
+} from "./model-provider-types";
 export {
   getModelProviderFirewall,
   getModelProviderPiChatCompletionsUrl,
@@ -148,7 +152,7 @@ export type ModelProviderCredentialScope = z.infer<
 export interface DefaultOrgModelPolicySeed {
   model: SupportedRunModel;
   isDefault: boolean;
-  defaultProviderType: "vm0";
+  defaultProviderType: "built-in";
   credentialScope: "org";
   modelProviderId: null;
 }
@@ -216,7 +220,7 @@ export function getDefaultOrgModelPolicySeed(
     return {
       model,
       isDefault: model === defaultModel,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
     };
@@ -257,7 +261,7 @@ interface ModelConfig {
 }
 
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
-// `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
+// `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER = {
   "claude-fable-5": {
@@ -904,70 +908,70 @@ export function getModelProviderPresentationLabel(
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "claude-fable-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-opus-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-opus-4-8": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-sonnet-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-sonnet-4-6": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "gpt-5.6-sol": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.6-terra": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.6-luna": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.5": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "deepseek-v4-flash": ["vm0", "deepseek"],
-  "deepseek-v4-pro": ["vm0", "deepseek"],
+  "deepseek-v4-flash": ["built-in", "deepseek"],
+  "deepseek-v4-pro": ["built-in", "deepseek"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -1027,7 +1031,7 @@ export function isModelSupportedByProvider(
   type: ModelProviderType,
 ): boolean {
   return getProvidersForModel(model).includes(
-    isBuiltInModelProviderType(type) ? "vm0" : type,
+    isBuiltInModelProviderType(type) ? "built-in" : type,
   );
 }
 
@@ -1071,15 +1075,15 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return type !== "built-in" && !HIDDEN_PROVIDER_TYPES.has(type);
+      return type !== "vm0" && !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
 }
 
 export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
-export const modelProviderWriteTypeSchema = z.enum(
-  MODEL_PROVIDER_WRITE_TYPE_IDS,
-);
+export const modelProviderWriteTypeSchema = z
+  .enum(MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS)
+  .transform(normalizeModelProviderWriteType);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 

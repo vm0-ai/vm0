@@ -381,10 +381,10 @@ const entitlementDisposition = {
 const providerDisposition = {
   classification: "migrate",
   reason:
-    "The vm0 provider discriminator remains an active persisted compatibility value while consumers dual-accept built-in.",
+    "built-in is the canonical persisted provider discriminator after Phase D1, while the exact vm0 request/read alias and database rollback bridge remain active compatibility contracts.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "The #28368 provider writer/default switch is production-accepted and all four mutable surfaces write built-in for new values.",
+    "The #29910 writer/default/backfill release is production-accepted and all supported application writers emit built-in on all four mutable surfaces.",
   drainEvidence:
     "Exact MaskDB counts on all four surfaces show zero mutable vm0 values and a 7-day production window shows zero supported legacy-provider writers.",
   removalGate:
@@ -459,14 +459,24 @@ const nonWorkflowPhysicalEntries = [
   ...physicalEntries(
     [
       {
-        key: "default:public.org_model_policies.default_provider_type",
-        kind: "default",
-        sources: SNAPSHOT_AND_CATALOG,
+        key: "function:public.canonicalize_agent_run_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
       },
       {
-        key: "constraint:public.org_model_policies.chk_org_model_policies_builtin_route_no_provider_id",
-        kind: "constraint",
-        sources: SNAPSHOT_AND_CATALOG,
+        key: "function:public.canonicalize_chat_thread_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "function:public.canonicalize_model_provider_builtin_type()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "function:public.canonicalize_org_model_policy_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
       },
     ],
     providerDisposition,

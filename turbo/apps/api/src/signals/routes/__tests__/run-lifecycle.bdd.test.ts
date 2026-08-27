@@ -641,7 +641,7 @@ async function expectBuiltInModelRunRuntimeRoute(
   selectedModel: string,
 ): Promise<void> {
   await expect(readRunModelRuntimeRouteFixture(runId)).resolves.toStrictEqual({
-    modelProvider: "vm0",
+    modelProvider: "built-in",
     selectedModel,
     modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
     modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
@@ -5273,7 +5273,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const first = await api.createRun(actor, {
       agentId,
       prompt: "start a managed direct session",
-      modelProvider: "vm0",
+      modelProvider: "built-in",
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const initialStorageManifest = expectCanonicalStorageManifest(
@@ -5318,7 +5318,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentId,
       sessionId: first.sessionId,
       prompt: "reuse the same built-in model runtime route",
-      modelProvider: "vm0",
+      modelProvider: "built-in",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
@@ -5372,7 +5372,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentId,
       sessionId: first.sessionId,
       prompt: "discard a checkpoint from another built-in model provider route",
-      modelProvider: "vm0",
+      modelProvider: "built-in",
     });
     expect(rotated.sessionId).toBe(first.sessionId);
     const rotatedClaim = await api.claimRunnerJob(rotated.runId);
@@ -6864,7 +6864,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       {
         agentId: agent.agentId,
         prompt: vm0Prompt,
-        modelProvider: "vm0",
+        modelProvider: "built-in",
       },
       [402],
     );
@@ -7516,7 +7516,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
     const noBilling = await api.requestCreateRun(
       uninitialized,
-      { agentId: bareAgent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      {
+        agentId: bareAgent.agentId,
+        prompt: "vm0 run",
+        modelProvider: "built-in",
+      },
       [402],
     );
     expectApiError(noBilling.body);
@@ -7536,7 +7540,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
     const rejected = await api.requestCreateRun(
       actor,
-      { agentId: agent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      {
+        agentId: agent.agentId,
+        prompt: "vm0 run",
+        modelProvider: "built-in",
+      },
       [402],
     );
     expectApiError(rejected.body);
@@ -7629,7 +7637,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         agentId: agent.agentId,
         prompt: vm0Prompt,
-        modelProvider: "vm0",
+        modelProvider: "built-in",
       },
       [402],
     );
@@ -7744,7 +7752,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const run = await api.createRun(actor, {
       agentId,
       prompt: "vm0 built-in model provider",
-      modelProvider: "vm0",
+      modelProvider: "built-in",
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchSpanKind(
@@ -7788,7 +7796,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         model: selectedModel,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7883,7 +7891,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         model: selectedModel,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7918,7 +7926,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         {
           model: selectedModel,
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "built-in",
           credentialScope: "org",
           modelProviderId: null,
         },
@@ -16822,7 +16830,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const run = await api.createRun(actor, {
       agentId,
       prompt: "generate server-priced model usage",
-      modelProvider: "vm0",
+      modelProvider: "built-in",
     });
     await setRunModelProviderFixture({
       runId: run.runId,

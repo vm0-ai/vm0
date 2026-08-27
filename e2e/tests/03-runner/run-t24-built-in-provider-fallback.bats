@@ -70,7 +70,7 @@ report_built_in_model_failure() {
     run jq -e --arg model "$BUILT_IN_FALLBACK_MODEL" '
         any(.policies[]?;
             .model == $model and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )

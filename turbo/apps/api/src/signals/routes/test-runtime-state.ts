@@ -479,7 +479,7 @@ async function seedVm0BuiltInDefaultModelKey(
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  const selectedModel = MODEL_PROVIDER_TYPES["built-in"].defaultModel;
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
@@ -2165,6 +2165,7 @@ async function readOfficialWorkflowRunStateActionResponse(
   const [run] = await db
     .select({
       status: agentRuns.status,
+      modelProvider: agentRuns.modelProvider,
       provenance: agentRuns.officialWorkflowProvenance,
       storageMounts: agentRuns.storageMounts,
     })
@@ -2198,6 +2199,7 @@ async function readOfficialWorkflowRunStateActionResponse(
       ok: true as const,
       official_workflow_run_state: {
         status: run.status,
+        model_provider: run.modelProvider,
         provenance: run.provenance,
         storage_mounts:
           run.storageMounts?.map((mount) => {

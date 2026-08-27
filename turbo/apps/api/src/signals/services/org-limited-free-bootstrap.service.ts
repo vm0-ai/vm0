@@ -270,7 +270,7 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
       upsertOrgNoSecretModelProvider$,
       {
         orgId: args.orgId,
-        type: "vm0",
+        type: "built-in",
         selectedModel: LIMITED_FREE1_DEFAULT_RUN_MODEL,
       },
       signal,

@@ -863,7 +863,7 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("renders canonical built-in rows once and keeps policy writes on vm0", async () => {
+  it("renders both built-in read aliases once and writes the canonical type", async () => {
     const canonicalPolicy = builtInPolicy(
       "00000000-0000-4000-a000-000000000219",
       "deepseek-v4-flash",
@@ -903,7 +903,7 @@ describe("organization model providers settings", () => {
     click(buttonByText("Save changes"));
 
     await waitFor(() => {
-      expect(writtenProviderType).toBe("vm0");
+      expect(writtenProviderType).toBe("built-in");
     });
   });
 

@@ -681,7 +681,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const limitedFreeProviders = await runs.listOrgModelProviders(admin);
     expect(
       limitedFreeProviders.find((provider) => {
-        return provider.type === "vm0";
+        return provider.type === "built-in";
       })?.selectedModel,
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
 
