@@ -11,6 +11,11 @@ import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
+// Keep the Onboarding -> Chat route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/onboarding.ts";
+import "../../../signals/route-setups/chat.ts";
+
 type Capture = (
   eventName: string,
   properties?: Record<string, unknown>,

@@ -43,6 +43,12 @@ import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
+// Keep Onboarding -> Works/Activity and Chat route transforms outside assertion
+// timeouts. Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/onboarding.ts";
+import "../../../signals/route-setups/activity.ts";
+import "../../../signals/route-setups/chat.ts";
+
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";

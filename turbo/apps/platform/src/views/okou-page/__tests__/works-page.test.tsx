@@ -26,6 +26,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep Works/Activity, Settings, and redirected Home route transforms outside
+// assertion timeouts. Production still resolves these groups lazily by route.
+import "../../../signals/route-setups/activity.ts";
+import "../../../signals/route-setups/settings.ts";
+import "../../../signals/route-setups/home.ts";
+
 const context = testContext();
 const AGENT_PHONE_HANDLE = "+15555550123";
 

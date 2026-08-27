@@ -6,6 +6,11 @@ import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep the Home -> Onboarding route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/home.ts";
+import "../../../signals/route-setups/onboarding.ts";
+
 const context = testContext();
 
 function mockOnboardingNeeded(): void {

@@ -15,6 +15,11 @@ import { talkDraft$ } from "../../../signals/okou-page/chat-draft.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
+// Keep Home and Prompt/Chat route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/home.ts";
+import "../../../signals/route-setups/chat.ts";
+
 const context = testContext();
 
 function templateFromUserMessage(document: UserMessageDocument | undefined) {

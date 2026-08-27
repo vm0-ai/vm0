@@ -32,6 +32,10 @@ import {
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
+// Keep the Chat -> Workflows route transform outside assertion timeouts.
+// Production must continue resolving this module lazily after route matching.
+import "../../../signals/route-setups/workflows.ts";
+
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached by the time a
 // test asserts on it. Read whichever editor is currently mounted.
@@ -1052,7 +1056,9 @@ describe("chat composer models", () => {
     expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
     await user.click(link);
-    expect(pathname()).toBe("/workflows");
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+    });
   });
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {

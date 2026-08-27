@@ -18,6 +18,12 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { isAbortError } from "../../../signals/utils.ts";
 
+// Keep Home -> Chat and Onboarding route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/home.ts";
+import "../../../signals/route-setups/chat.ts";
+import "../../../signals/route-setups/onboarding.ts";
+
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 const { set$: setLastUsedAgentId$, clear$: clearLastUsedAgentId$ } =

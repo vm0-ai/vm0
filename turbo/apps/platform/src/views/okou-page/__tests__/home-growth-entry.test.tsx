@@ -12,6 +12,11 @@ import { pathname, search } from "../../../signals/location.ts";
 import { AGENT_ID, context, mockAgent } from "./chat-composer-test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
+// Keep the Chat -> Works/Activity route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/chat.ts";
+import "../../../signals/route-setups/activity.ts";
+
 function mockSlackStatus(overrides: Partial<SlackOrgStatus>): void {
   const status: SlackOrgStatus = {
     isConnected: false,

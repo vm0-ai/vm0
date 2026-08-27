@@ -10,6 +10,11 @@ import { localStorageSignals } from "../../../signals/external/local-storage.ts"
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
+// Keep the Home -> Chat settings handoff transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/home.ts";
+import "../../../signals/route-setups/chat.ts";
+
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 const { set$: setLastUsedAgentId$, clear$: clearLastUsedAgentId$ } =

@@ -44,6 +44,11 @@ import {
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
 
+// Keep Workflows -> Chat route transforms outside assertion timeouts.
+// Production still resolves these groups lazily after route matching.
+import "../../../signals/route-setups/workflows.ts";
+import "../../../signals/route-setups/chat.ts";
+
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
 const UPDATED_USER_ID = "test-user-456";
