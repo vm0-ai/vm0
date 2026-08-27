@@ -11,7 +11,8 @@
  * whose execution context pinned a `CLI_PKG_URL` from before this change
  * carries a CLI whose bundled registry only knows the pre-cutover digest, and
  * it keeps asking for that digest for the queue lifetime plus a claimed run —
- * bounded by `JOB_TIMEOUT = Duration::from_secs(7200)` in
+ * bounded by the shared `AGENT_EXECUTION_TIMEOUT_SECONDS` contract in
+ * `turbo/packages/api-contracts/src/contracts/runners.ts`, enforced by
  * `crates/runner/src/executor/mod.rs`. See the "Commit-addressed CLI artifacts"
  * section of `docs/deployment-compatibility.md`.
  *
