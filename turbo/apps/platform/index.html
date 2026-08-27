@@ -1053,6 +1053,23 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
+    <script>
+      (function () {
+        var prompted = false;
+        window.addEventListener("vite:preloadError", function (event) {
+          // Vite rethrows preload failures unless this cancelable event is
+          // prevented. Keep preventing repeats, but prompt once per document.
+          event.preventDefault();
+          if (prompted) return;
+          prompted = true;
+
+          var reload = window.confirm(
+            "This tab could not load part of the app. Refresh now? Choose Cancel to keep this tab open so you can save or copy any unsent work before refreshing manually.",
+          );
+          if (reload) window.location.reload();
+        });
+      })();
+    </script>
     <script type="module">
       if (window.__vm0BrowserSupported === true) {
         import("/src/main.ts");
