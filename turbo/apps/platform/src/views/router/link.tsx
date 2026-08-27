@@ -1,9 +1,17 @@
 import { useSet } from "ccstate-react";
-import type { MouseEvent, Ref } from "react";
+import type {
+  FocusEvent,
+  MouseEvent,
+  PointerEvent,
+  Ref,
+  TouchEvent,
+} from "react";
 import {
   generateRouterPath,
   detachedNavigateTo$,
+  prefetchRoute$,
 } from "../../signals/route.ts";
+import { bestEffort, detach, Reason } from "../../signals/utils.ts";
 
 type PathName = Parameters<typeof generateRouterPath>[0];
 type PathParams = Parameters<typeof generateRouterPath>[1];
@@ -43,12 +51,24 @@ export function Link({
   options,
   children,
   onClick,
+  onFocus,
+  onPointerEnter,
+  onTouchStart,
   ref,
   ...rest
 }: LinkProps) {
   const navigate = useSet(detachedNavigateTo$);
+  const prefetch = useSet(prefetchRoute$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams, options?.hash);
+
+  const prefetchOnIntent = () => {
+    detach(
+      bestEffort(prefetch(path)),
+      Reason.DomCallback,
+      "route intent prefetch",
+    );
+  };
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e);
@@ -64,8 +84,37 @@ export function Link({
     }
   };
 
+  const handleFocus = (e: FocusEvent<HTMLAnchorElement>) => {
+    onFocus?.(e);
+    if (!e.defaultPrevented) {
+      prefetchOnIntent();
+    }
+  };
+
+  const handlePointerEnter = (e: PointerEvent<HTMLAnchorElement>) => {
+    onPointerEnter?.(e);
+    if (!e.defaultPrevented) {
+      prefetchOnIntent();
+    }
+  };
+
+  const handleTouchStart = (e: TouchEvent<HTMLAnchorElement>) => {
+    onTouchStart?.(e);
+    if (!e.defaultPrevented) {
+      prefetchOnIntent();
+    }
+  };
+
   return (
-    <a ref={ref} href={href} onClick={handleClick} {...rest}>
+    <a
+      ref={ref}
+      href={href}
+      onClick={handleClick}
+      onFocus={handleFocus}
+      onPointerEnter={handlePointerEnter}
+      onTouchStart={handleTouchStart}
+      {...rest}
+    >
       {children}
     </a>
   );

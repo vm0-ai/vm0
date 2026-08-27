@@ -1,5 +1,8 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { command } from "ccstate";
+import { StoreProvider } from "ccstate-react";
+import type { PointerEvent } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import {
@@ -8,10 +11,15 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, setPathname, setSearch } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reportForceUpgradeRequired } from "../../../signals/force-upgrade.ts";
 import { setLocale$ } from "../../../signals/locale.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
+import { initRoutes$, lazyRouteSetup } from "../../../signals/route.ts";
+import { setRootSignal$ } from "../../../signals/root-signal.ts";
+import { page$, updatePage$ } from "../../../signals/react-router.ts";
+import { Link } from "../link.tsx";
 
 // Keep runtime route-import transforms outside assertion timeouts. Production
 // still resolves these modules only after matching a route.
@@ -38,6 +46,95 @@ function mockAPIs(): void {
 }
 
 describe("link navigation", () => {
+  it("composes consumer intent handlers with matched-only route prefetch", async () => {
+    setPathname(ROUTES.agents, context.signal);
+    setSearch("", context.signal);
+    context.store.set(setRootSignal$, context.signal);
+    let matchedLoaderCalls = 0;
+    let unmatchedLoaderCalls = 0;
+    let authenticatedSetupCalls = 0;
+    let pageSetupCalls = 0;
+    const onPointerEnter = vi.fn<
+      (event: PointerEvent<HTMLAnchorElement>) => void
+    >((event) => {
+      event.preventDefault();
+    });
+    const onFocus = vi.fn<() => void>();
+    const onTouchStart = vi.fn<() => void>();
+    const workflowRoute = lazyRouteSetup(() => {
+      matchedLoaderCalls += 1;
+      return Promise.resolve(
+        command(() => {
+          pageSetupCalls += 1;
+        }),
+      );
+    });
+    const settingsRoute = lazyRouteSetup(() => {
+      unmatchedLoaderCalls += 1;
+      return Promise.resolve(command(() => {}));
+    });
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(({ set }) => {
+            set(updatePage$, "agents");
+          }),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          prefetch: workflowRoute.prefetch,
+          setup: command(async ({ set }, signal: AbortSignal) => {
+            authenticatedSetupCalls += 1;
+            await set(workflowRoute.setup, signal);
+          }),
+        },
+        {
+          path: ROUTES.settings,
+          analytics: false,
+          ...settingsRoute,
+        },
+      ],
+      context.signal,
+    );
+
+    render(
+      <StoreProvider value={context.store}>
+        <Link
+          pathname={ROUTES.workflows}
+          onPointerEnter={onPointerEnter}
+          onFocus={onFocus}
+          onTouchStart={onTouchStart}
+        >
+          Prefetch workflows
+        </Link>
+      </StoreProvider>,
+    );
+
+    const link = screen.getByText("Prefetch workflows").closest("a");
+    expect(link).not.toBeNull();
+    fireEvent.pointerEnter(link!);
+    expect(matchedLoaderCalls).toBe(0);
+    fireEvent.focus(link!);
+    fireEvent.touchStart(link!);
+
+    await waitFor(() => {
+      expect(matchedLoaderCalls).toBe(1);
+    });
+    expect(onPointerEnter).toHaveBeenCalledOnce();
+    expect(onFocus).toHaveBeenCalledOnce();
+    expect(onTouchStart).toHaveBeenCalledOnce();
+    expect(unmatchedLoaderCalls).toBe(0);
+    expect(authenticatedSetupCalls).toBe(0);
+    expect(pageSetupCalls).toBe(0);
+    expect(context.store.get(page$)).toBe("agents");
+    expect(pathname()).toBe(ROUTES.agents);
+  });
+
   it("renders the not found page for unknown routes", async () => {
     detachedSetupPage({ context, path: "/missing-platform-route" });
 

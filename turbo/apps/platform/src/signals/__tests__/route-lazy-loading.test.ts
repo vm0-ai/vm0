@@ -14,6 +14,7 @@ import {
   detachedNavigateTo$,
   initRoutes$,
   lazyRouteSetup,
+  prefetchRoute$,
   type RouteSetup,
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
@@ -59,7 +60,7 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.agents,
           analytics: false,
-          setup: lazyRouteSetup(() => {
+          ...lazyRouteSetup(() => {
             events.push("load");
             return Promise.resolve(setup$);
           }),
@@ -79,7 +80,7 @@ describe("lazy route setup", () => {
     const setup$ = command(() => {
       setupCalls += 1;
     });
-    const setup = lazyRouteSetup(() => {
+    const route = lazyRouteSetup(() => {
       loaderCalls += 1;
       if (loaderCalls === 1) {
         return Promise.reject(importError);
@@ -94,7 +95,7 @@ describe("lazy route setup", () => {
           {
             path: ROUTES.agents,
             analytics: false,
-            setup,
+            ...route,
           },
         ],
         context.signal,
@@ -102,20 +103,57 @@ describe("lazy route setup", () => {
     ).rejects.toBe(importError);
 
     await expect(
-      context.store.set(setup, context.signal),
+      context.store.set(route.setup, context.signal),
     ).resolves.toBeUndefined();
     expect(loaderCalls).toBe(2);
     expect(setupCalls).toBe(1);
   });
 
-  it("keeps the skeleton visible until the selected route is ready", async () => {
+  it("keeps the bootstrap skeleton until the first cold route is ready", async () => {
+    installNavigation(ROUTES.agents);
+    const loaderStarted = deferred<void>();
+    const releaseLoader = deferred<void>();
+    const agentsSetup$ = command(async ({ set }, signal: AbortSignal) => {
+      set(updatePage$, "agents");
+      await set(hideAppSkeleton$, signal);
+    });
+
+    const initialRoute = context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          ...lazyRouteSetup(async () => {
+            loaderStarted.resolve(undefined);
+            await releaseLoader.promise;
+            return agentsSetup$;
+          }),
+        },
+      ],
+      context.signal,
+    );
+
+    await loaderStarted.promise;
+    expect(context.store.get(page$)).toBeUndefined();
+    expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
+
+    releaseLoader.resolve(undefined);
+    await initialRoute;
+    expect(context.store.get(page$)).toBe("agents");
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+  });
+
+  it("preserves current content while a cold route group is prepared", async () => {
     installNavigation(ROUTES.agents);
     const loaderStarted = deferred<void>();
     const releaseLoader = deferred<void>();
     const setupStarted = deferred<void>();
     const releaseSetup = deferred<void>();
     const setupFinished = deferred<void>();
+    let agentsSignal: AbortSignal | undefined;
     const agentsSetup$ = command(async ({ set }, signal: AbortSignal) => {
+      agentsSignal = signal;
       set(updatePage$, "agents");
       await set(hideAppSkeleton$, signal);
     });
@@ -134,14 +172,14 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.agents,
           analytics: false,
-          setup: lazyRouteSetup(() => {
+          ...lazyRouteSetup(() => {
             return Promise.resolve(agentsSetup$);
           }),
         },
         {
           path: ROUTES.workflows,
           analytics: false,
-          setup: lazyRouteSetup(async () => {
+          ...lazyRouteSetup(async () => {
             loaderStarted.resolve(undefined);
             await releaseLoader.promise;
             return workflowsSetup$;
@@ -156,13 +194,15 @@ describe("lazy route setup", () => {
 
     context.store.set(detachedNavigateTo$, ROUTES.workflows);
     await loaderStarted.promise;
-    expect(context.store.get(page$)).toBeUndefined();
-    expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
+    expect(context.store.get(page$)).toBe("agents");
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    expect(agentsSignal?.aborted).toBeFalsy();
 
     releaseLoader.resolve(undefined);
     await setupStarted.promise;
     expect(context.store.get(page$)).toBeUndefined();
-    expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    expect(agentsSignal?.aborted).toBeTruthy();
 
     releaseSetup.resolve(undefined);
     await setupFinished.promise;
@@ -189,7 +229,7 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.agents,
           analytics: false,
-          setup: lazyRouteSetup(async () => {
+          ...lazyRouteSetup(async () => {
             loaderStarted.resolve(undefined);
             return await releaseLoader.promise;
           }),
@@ -197,7 +237,7 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.workflows,
           analytics: false,
-          setup: lazyRouteSetup(() => {
+          ...lazyRouteSetup(() => {
             return Promise.resolve(nextSetup$);
           }),
         },
@@ -245,7 +285,7 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.agents,
           analytics: false,
-          setup: lazyRouteSetup(() => {
+          ...lazyRouteSetup(() => {
             agentLoaderCalls += 1;
             return Promise.resolve(agentSetup$);
           }),
@@ -253,7 +293,7 @@ describe("lazy route setup", () => {
         {
           path: ROUTES.workflows,
           analytics: false,
-          setup: lazyRouteSetup(() => {
+          ...lazyRouteSetup(() => {
             workflowLoaderCalls += 1;
             return Promise.resolve(workflowSetup$);
           }),
@@ -275,6 +315,125 @@ describe("lazy route setup", () => {
     expect(pathname()).toBe(ROUTES.agents);
   });
 
+  it("prefetches only the matched route and reuses its pending load", async () => {
+    installNavigation(ROUTES.agents);
+    const loaderStarted = deferred<void>();
+    const releaseLoader = deferred<void>();
+    const workflowSetup = deferred<void>();
+    let loaderCalls = 0;
+    let unmatchedLoaderCalls = 0;
+    let authSetupCalls = 0;
+    let setupCalls = 0;
+    const workflowSetup$ = command(({ set }) => {
+      setupCalls += 1;
+      set(updatePage$, "workflows");
+      workflowSetup.resolve(undefined);
+    });
+    const workflowRoute = lazyRouteSetup(async () => {
+      loaderCalls += 1;
+      loaderStarted.resolve(undefined);
+      await releaseLoader.promise;
+      return workflowSetup$;
+    });
+    const authenticatedWorkflowSetup$ = command(
+      async ({ set }, signal: AbortSignal) => {
+        authSetupCalls += 1;
+        await set(workflowRoute.setup, signal);
+      },
+    );
+    const unmatchedRoute = lazyRouteSetup(() => {
+      unmatchedLoaderCalls += 1;
+      return Promise.resolve(command(() => {}));
+    });
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(({ set }) => {
+            set(updatePage$, "agents");
+          }),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          prefetch: workflowRoute.prefetch,
+          setup: authenticatedWorkflowSetup$,
+        },
+        {
+          path: ROUTES.settings,
+          analytics: false,
+          ...unmatchedRoute,
+        },
+      ],
+      context.signal,
+    );
+
+    const prefetch = context.store.set(prefetchRoute$, ROUTES.workflows);
+    await loaderStarted.promise;
+    expect(loaderCalls).toBe(1);
+    expect(unmatchedLoaderCalls).toBe(0);
+    expect(authSetupCalls).toBe(0);
+    expect(setupCalls).toBe(0);
+    expect(context.store.get(page$)).toBe("agents");
+    expect(pathname()).toBe(ROUTES.agents);
+
+    context.store.set(detachedNavigateTo$, ROUTES.workflows);
+    releaseLoader.resolve(undefined);
+    await prefetch;
+    await workflowSetup.promise;
+
+    expect(loaderCalls).toBe(1);
+    expect(unmatchedLoaderCalls).toBe(0);
+    expect(authSetupCalls).toBe(1);
+    expect(setupCalls).toBe(1);
+    expect(context.store.get(page$)).toBe("workflows");
+  });
+
+  it("retries navigation after a rejected route prefetch", async () => {
+    installNavigation(ROUTES.agents);
+    const importError = new Error("prefetch failed");
+    const workflowSetup = deferred<void>();
+    let loaderCalls = 0;
+    const workflowSetup$ = command(() => {
+      workflowSetup.resolve(undefined);
+    });
+    const workflowRoute = lazyRouteSetup(() => {
+      loaderCalls += 1;
+      if (loaderCalls === 1) {
+        return Promise.reject(importError);
+      }
+      return Promise.resolve(workflowSetup$);
+    });
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(() => {}),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          ...workflowRoute,
+        },
+      ],
+      context.signal,
+    );
+
+    await expect(
+      context.store.set(prefetchRoute$, ROUTES.workflows),
+    ).rejects.toBe(importError);
+
+    context.store.set(detachedNavigateTo$, ROUTES.workflows);
+    await workflowSetup.promise;
+    expect(loaderCalls).toBe(2);
+  });
+
   it("reloads a resolved route group for a new root lifecycle", async () => {
     const resetRootSignal$ = resetSignal();
     const firstRoot = context.store.set(resetRootSignal$, context.signal);
@@ -283,23 +442,23 @@ describe("lazy route setup", () => {
     const setup$ = command((_ctx, signal: AbortSignal) => {
       setupSignals.push(signal);
     });
-    const setup = lazyRouteSetup(() => {
+    const route = lazyRouteSetup(() => {
       loaderCalls += 1;
       return Promise.resolve(setup$);
     });
 
     context.store.set(setRootSignal$, firstRoot);
-    await context.store.set(setup, firstRoot);
+    await context.store.set(route.setup, firstRoot);
 
     const secondRoot = context.store.set(resetRootSignal$, context.signal);
     context.store.set(setRootSignal$, secondRoot);
-    await context.store.set(setup, secondRoot);
+    await context.store.set(route.setup, secondRoot);
 
     expect(loaderCalls).toBe(2);
     expect(setupSignals).toStrictEqual([firstRoot, secondRoot]);
   });
 
-  it("does not complete a pending import against a new root lifecycle", async () => {
+  it("does not reuse a pending prefetch across root lifecycles", async () => {
     const firstRoot = AbortSignal.any([context.signal]);
     const loaderStarted = deferred<void>();
     const releaseFirstLoader = deferred<RouteSetup>();
@@ -308,7 +467,7 @@ describe("lazy route setup", () => {
     const setup$ = command((_ctx, signal: AbortSignal) => {
       setupSignals.push(signal);
     });
-    const setup = lazyRouteSetup(async () => {
+    const route = lazyRouteSetup(async () => {
       loaderCalls += 1;
       if (loaderCalls === 1) {
         loaderStarted.resolve(undefined);
@@ -318,17 +477,17 @@ describe("lazy route setup", () => {
     });
 
     context.store.set(setRootSignal$, firstRoot);
-    const pendingSetup = context.store.set(setup, firstRoot);
+    const pendingPrefetch = context.store.set(route.prefetch, firstRoot);
     await loaderStarted.promise;
 
     const secondRoot = AbortSignal.any([context.signal]);
     context.store.set(setRootSignal$, secondRoot);
     releaseFirstLoader.resolve(setup$);
 
-    await expect(pendingSetup).rejects.toSatisfy(isAbortError);
+    await expect(pendingPrefetch).rejects.toSatisfy(isAbortError);
     expect(setupSignals).toStrictEqual([]);
 
-    await context.store.set(setup, secondRoot);
+    await context.store.set(route.setup, secondRoot);
     expect(loaderCalls).toBe(2);
     expect(setupSignals).toStrictEqual([secondRoot]);
   });

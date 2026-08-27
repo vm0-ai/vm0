@@ -5,7 +5,14 @@ import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { detach, onDomEventFn, Reason, resetSignal, settle } from "./utils.ts";
+import {
+  detach,
+  onDomEventFn,
+  onRejection,
+  Reason,
+  resetSignal,
+  settle,
+} from "./utils.ts";
 import { logger } from "./log.ts";
 import {
   capturePageView,
@@ -15,7 +22,6 @@ import {
 import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-conversion-milestones.ts";
-import { showAppSkeleton$ } from "./app-skeleton.ts";
 import { clearPage$ } from "./react-router.ts";
 
 const L = logger("Route");
@@ -72,36 +78,95 @@ export type RouteSetup = Command<Promise<void> | void, [AbortSignal]>;
 
 export type RouteSetupLoader = () => Promise<RouteSetup>;
 
-export function lazyRouteSetup(load: RouteSetupLoader): RouteSetup {
+type RoutePrefetch = Command<Promise<boolean>, [AbortSignal]>;
+
+export interface LazyRouteSetup {
+  readonly setup: RouteSetup;
+  readonly prefetch: RoutePrefetch;
+}
+
+export function lazyRouteSetup(load: RouteSetupLoader): LazyRouteSetup {
   let loadedRoute:
-    | { readonly rootSignal: AbortSignal; readonly setup: RouteSetup }
+    | {
+        readonly rootSignal: AbortSignal;
+        readonly setup: Promise<RouteSetup>;
+      }
     | undefined;
-  return command(async ({ get, set }, signal: AbortSignal) => {
+  let activatedRootSignal: AbortSignal | undefined;
+
+  const resolveRouteSetup$ = command(async ({ get }, signal: AbortSignal) => {
     const rootSignal = get(rootSignal$);
-    if (loadedRoute?.rootSignal === rootSignal) {
-      await set(loadedRoute.setup, signal);
-      return;
+    if (loadedRoute?.rootSignal !== rootSignal) {
+      loadedRoute = { rootSignal, setup: load() };
     }
-    set(showAppSkeleton$);
-    set(clearPage$);
-    const setup = await load();
+
+    const pendingRoute = loadedRoute;
+    const setup = await onRejection(pendingRoute.setup, () => {
+      if (loadedRoute === pendingRoute) {
+        loadedRoute = undefined;
+      }
+    });
     signal.throwIfAborted();
     rootSignal.throwIfAborted();
     if (get(rootSignal$) !== rootSignal) {
       throw new DOMException("Route setup root changed", "AbortError");
     }
-    loadedRoute = { rootSignal, setup };
-    await set(setup, signal);
+
+    return setup;
   });
+
+  const prefetch$ = command(async ({ get, set }, signal: AbortSignal) => {
+    await set(resolveRouteSetup$, signal);
+    return activatedRootSignal !== get(rootSignal$);
+  });
+
+  const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const resolvedSetup = await set(resolveRouteSetup$, signal);
+    signal.throwIfAborted();
+    const rootSignal = get(rootSignal$);
+    rootSignal.throwIfAborted();
+    activatedRootSignal = rootSignal;
+    await set(resolvedSetup, signal);
+  });
+
+  return { prefetch: prefetch$, setup: setup$ };
 }
 
 interface Route {
   path: string;
   setup: RouteSetup;
+  prefetch?: RoutePrefetch;
   analytics?: boolean;
 }
 
+function findMatchingRoute(
+  config: readonly Route[],
+  targetPathname: string,
+): Route | null {
+  for (const route of config) {
+    const matcher = match(route.path, { decode: decodeURIComponent });
+    if (matcher(targetPathname)) {
+      return route;
+    }
+  }
+  return null;
+}
+
 const internalRouteConfig$ = state<Route[] | undefined>(undefined);
+
+export const prefetchRoute$ = command(
+  ({ get, set }, targetPathname: string) => {
+    const config = get(internalRouteConfig$);
+    if (!config) {
+      return Promise.resolve(false);
+    }
+    const route = findMatchingRoute(config, targetPathname);
+    if (!route?.prefetch) {
+      return Promise.resolve(false);
+    }
+    return set(route.prefetch, get(rootSignal$));
+  },
+);
 
 const currentRoute$ = computed((get) => {
   const config = get(internalRouteConfig$);
@@ -109,17 +174,7 @@ const currentRoute$ = computed((get) => {
     return null;
   }
 
-  const currentPath = get(pathname$);
-
-  for (const route of config) {
-    const matcher = match(route.path, { decode: decodeURIComponent });
-    const result = matcher(currentPath);
-    if (result) {
-      return route;
-    }
-  }
-
-  return null;
+  return findMatchingRoute(config, get(pathname$));
 });
 
 export const pathParams$ = computed((get) => {
@@ -134,12 +189,10 @@ export const pathParams$ = computed((get) => {
 });
 
 const resetRouteSignal$ = resetSignal();
+const resetRouteLoadSignal$ = resetSignal();
 
 const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const routeSignal = set(
-    resetRouteSignal$,
-    ...([signal].filter(Boolean) as AbortSignal[]),
-  );
+  const navigationSignal = set(resetRouteLoadSignal$, signal);
 
   const currentRoute = get(currentRoute$);
   if (!currentRoute) {
@@ -151,18 +204,29 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     set(recordAdAttribution$, get(searchParams$));
   }
 
+  let clearBeforeSetup = false;
+  if (currentRoute.prefetch) {
+    clearBeforeSetup = await set(currentRoute.prefetch, navigationSignal);
+    navigationSignal.throwIfAborted();
+  }
+
+  // Keep the active route fully owned while a cold boundary is loading. Once
+  // preparation succeeds, remove its page before aborting the route signal so
+  // a mounted page never observes a torn-down lifecycle.
+  if (clearBeforeSetup) {
+    set(clearPage$);
+  }
+  const routeSignal = set(resetRouteSignal$, signal);
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
+  navigationSignal.throwIfAborted();
   if (currentRoute.analytics !== false) {
     capturePageView();
   }
   // Record first-touch signup attribution as part of the route-load lifecycle.
-  // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
-  // route load aborts the previous `routeSignal` via resetRouteSignal$, and
-  // binding here would reject the superseded load with AbortError. The parent
-  // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
-  // completes cleanly. The command early-returns when there is nothing to
-  // record, so this only performs network work on the first qualifying load.
+  // Attribution belongs to the app root rather than the route transition.
+  // The command early-returns when there is nothing to record, so this only
+  // performs network work on the first qualifying load.
   if (currentRoute.analytics !== false) {
     await set(recordSignupAttribution$, signal);
     await settle(set(bootstrapGoogleAdsConversionMilestones$, signal), signal);
@@ -237,11 +301,8 @@ const navigate$ = command(
     set(reloadPathname$, (x) => {
       return x + 1;
     });
-    // Use rootSignal$ (not the caller's route signal) so the new route gets
-    // a fresh, non-aborted signal.  resetRouteSignal$ inside loadRoute$ will
-    // abort the previous route's controller, which would poison any signal
-    // derived from it — passing the caller's signal here causes the new
-    // route's signal to be born-aborted.
+    // Route preparation is owned by the app root, not the outgoing page, so a
+    // route-triggered navigation is not born from the signal it will replace.
     await set(loadRoute$, get(rootSignal$));
     signal.throwIfAborted();
   },
