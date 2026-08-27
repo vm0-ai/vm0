@@ -5,7 +5,7 @@ import type {
 import { Button, Card, CardContent, cn } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { Root } from "hast";
-import { Share2 } from "lucide-react";
+import { Copy, MessageCircle, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   appUrlForPublicBrand,
@@ -14,16 +14,20 @@ import {
 
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import {
   ChatAssistantMessageBody,
   ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "../okou-page/chat-message-surface.tsx";
 
@@ -84,6 +88,63 @@ function groupSharedMessages(
   return groups;
 }
 
+function SharedAssistantAvatar({
+  assistantName,
+}: {
+  readonly assistantName: string;
+}) {
+  return (
+    <div
+      data-shared-assistant-avatar=""
+      role="img"
+      aria-label={assistantName}
+      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary text-primary-foreground @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9"
+    >
+      <MessageCircle size={17} aria-hidden="true" />
+    </div>
+  );
+}
+
+function SharedMessageCopyButton({ content }: { readonly content: string }) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.chat.actions.copyMessage;
+  });
+
+  return (
+    <IconTooltipButton
+      type="button"
+      data-shared-message-copy=""
+      className="rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+      aria-label={label}
+      onClick={() => {
+        detach(
+          (async () => {
+            const didCopy = await writeToClipboard(content);
+            if (didCopy) {
+              toast.success(
+                t(($) => {
+                  return $.chat.actions.copied;
+                }),
+              );
+              return;
+            }
+            toast.error(
+              t(($) => {
+                return $.chat.sharing.copyFailed;
+              }),
+            );
+          })(),
+          Reason.DomCallback,
+          "copy shared message",
+        );
+      }}
+    >
+      <Copy size={18} />
+    </IconTooltipButton>
+  );
+}
+
 function SharedUserGroup({ group }: { readonly group: SharedMessageGroup }) {
   return (
     <>
@@ -105,6 +166,12 @@ function SharedUserGroup({ group }: { readonly group: SharedMessageGroup }) {
                     {message.content}
                   </div>
                 </ChatUserMessageBubble>
+                <div
+                  data-shared-message-actions="user"
+                  className={CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS}
+                >
+                  <SharedMessageCopyButton content={message.content} />
+                </div>
               </div>
             </div>
           </div>
@@ -115,22 +182,24 @@ function SharedUserGroup({ group }: { readonly group: SharedMessageGroup }) {
 }
 
 function SharedAssistantGroup({
+  assistantName,
   group,
 }: {
+  readonly assistantName: string;
   readonly group: SharedMessageGroup;
 }) {
+  const content = group.messages
+    .map((message) => {
+      return message.content;
+    })
+    .join("\n\n");
   return (
     <div
       data-role="assistant"
       className={CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS}
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
-        {/* Public snapshots omit agent identity, so keep Chat's desktop avatar
-            column without inventing a different public avatar treatment. */}
-        <div
-          aria-hidden="true"
-          className="hidden @[900px]:block @[900px]:h-9 @[900px]:w-9 @[900px]:shrink-0"
-        />
+        <SharedAssistantAvatar assistantName={assistantName} />
         <div className="relative flex min-w-0 flex-col gap-2">
           {group.messages.map((message, index) => {
             return message.tree === undefined ? null : (
@@ -142,6 +211,17 @@ function SharedAssistantGroup({
               </ChatAssistantMessageBody>
             );
           })}
+        </div>
+      </div>
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS}>
+        <div className="hidden @[900px]:block" />
+        <div
+          data-shared-message-actions="assistant"
+          className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS}
+        >
+          <div className="flex items-center gap-1">
+            <SharedMessageCopyButton content={content} />
+          </div>
         </div>
       </div>
     </div>
@@ -307,8 +387,10 @@ function SharedThreadHeader({
 }
 
 function SharedThreadTranscript({
+  assistantName,
   groups,
 }: {
+  readonly assistantName: string;
   readonly groups: readonly SharedMessageGroup[];
 }) {
   return (
@@ -327,7 +409,11 @@ function SharedThreadTranscript({
               return group.role === "user" ? (
                 <SharedUserGroup key={group.key} group={group} />
               ) : (
-                <SharedAssistantGroup key={group.key} group={group} />
+                <SharedAssistantGroup
+                  key={group.key}
+                  assistantName={assistantName}
+                  group={group}
+                />
               );
             })}
           </div>
@@ -392,7 +478,10 @@ export function SharedThreadPage({
       />
       {sharedThread ? (
         <>
-          <SharedThreadTranscript groups={groups} />
+          <SharedThreadTranscript
+            assistantName={presentation.assistantName}
+            groups={groups}
+          />
           <SharedThreadHandoff
             assistantName={presentation.assistantName}
             handoffUrl={handoffUrl.toString()}

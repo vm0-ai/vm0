@@ -28,6 +28,12 @@ describe("shared thread page", () => {
           },
           {
             messageIndex: 1,
+            role: "user",
+            content: "Keep it concise.",
+            runIndex: 0,
+          },
+          {
+            messageIndex: 2,
             role: "assistant",
             content: "Launch the **public preview**.",
             runIndex: 0,
@@ -46,11 +52,27 @@ describe("shared thread page", () => {
       screen.findByRole("heading", { name: "Public launch plan" }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("What should we launch?")).toBeInTheDocument();
+    expect(screen.getByText("Keep it concise.")).toBeInTheDocument();
     expect(screen.getByText("public preview").tagName).toBe("STRONG");
-    expect(document.querySelector("[data-role='user']")).toBeInTheDocument();
+    const userMessages = document.querySelectorAll("[data-role='user']");
+    expect(userMessages).toHaveLength(2);
+    expect(userMessages[1]).toHaveClass("-mt-5");
     expect(
       document.querySelector("[data-role='assistant']"),
     ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Okou" })).toHaveClass(
+      "h-7",
+      "@[900px]:h-9",
+    );
+    expect(
+      document.querySelector("[data-shared-message-actions='user']"),
+    ).toHaveClass("mt-1");
+    expect(
+      document.querySelector("[data-shared-message-actions='assistant']"),
+    ).toHaveClass("pt-2", "pb-1");
+    expect(
+      document.querySelectorAll("[data-shared-message-copy]"),
+    ).toHaveLength(3);
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
     expect(

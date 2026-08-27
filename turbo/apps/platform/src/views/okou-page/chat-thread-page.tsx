@@ -299,11 +299,14 @@ import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import {
   ChatAssistantMessageBody,
   ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "./chat-message-surface.tsx";
 
@@ -6683,7 +6686,7 @@ function UserMessageActions({
     return null;
   }
   return (
-    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+    <div className={CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS}>
       <IconTooltipButton
         type="button"
         onClick={onCopy}
@@ -8128,9 +8131,9 @@ function PagedGroupActions({
   };
 
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+    <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS}>
         <PagedGroupPrimaryActions
           firstRunId={firstRunId}
           hasContent={hasContent}
