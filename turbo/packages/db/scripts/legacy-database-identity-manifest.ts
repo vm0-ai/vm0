@@ -251,6 +251,16 @@ const workflowIdentities = [
     sources: SNAPSHOT_AND_CATALOG,
   },
   {
+    key: "constraint:public.official_workflow_automation_identities.official_workflow_automation_identity_automation_fk",
+    kind: "constraint",
+    sources: SNAPSHOT_AND_CATALOG,
+  },
+  {
+    key: "constraint:public.official_workflow_automation_identities.official_workflow_automation_identity_workflow_fk",
+    kind: "constraint",
+    sources: SNAPSHOT_AND_CATALOG,
+  },
+  {
     key: "constraint:public.strapi_workflow_pending_events.strapi_workflow_pending_events_automation_id_zero_workflow_auto",
     kind: "constraint",
     sources: SNAPSHOT_AND_CATALOG,

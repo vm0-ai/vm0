@@ -19,19 +19,16 @@ import type {
 } from "@okouai/api-contracts/contracts/official-workflows";
 import { isValidTimeZone, parseScheduledAtTime } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
-import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { strapiWorkflowAutomations } from "@okouai/db/schema/strapi-integration";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
-import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { isUniqueViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { onRejection, safeSync, settle } from "../utils";
-import { reconcileAutomationEventWatchReconfiguration } from "./automation-event-watch-lifecycle.service";
 import { deleteWorkflow$ } from "./workflow-delete.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
@@ -40,11 +37,9 @@ import {
 } from "./official-workflow-catalog-read.service";
 import {
   createWorkflowAutomation$,
-  prepareOfficialAutomationReconfiguration$,
   type AutomationResult,
   type CreateAutomationInput,
   type OfficialAutomationEventPreparation,
-  type OfficialAutomationEventPreparationResult,
 } from "./workflow-automation.service";
 import type { WorkflowMember } from "./workflow-data.service";
 import { calculateNextRun } from "./time-automation";
@@ -60,7 +55,6 @@ type OfficialWorkflowFailure =
 export type OfficialWorkflowInstallResult =
   | { readonly kind: "ok"; readonly workflowId: string }
   | OfficialWorkflowFailure;
-type OfficialWorkflowReconfigureResult = OfficialWorkflowInstallResult;
 
 interface ConfigurableAgent {
   readonly id: string;
@@ -68,12 +62,23 @@ interface ConfigurableAgent {
   readonly visibility: "public" | "private";
 }
 
-interface ResolvedBlueprint {
+export interface ResolvedBlueprint {
   readonly blueprint: OfficialWorkflowAcceptedBlueprint;
   readonly bindings: readonly OfficialWorkflowParameterBinding[];
   readonly createRequest: WorkflowAutomationCreateRequest;
   readonly autonomyBudget: number | undefined;
 }
+
+type OfficialWorkflowBlueprintReconciliationResolution =
+  | {
+      readonly ok: true;
+      readonly resolved: ResolvedBlueprint;
+    }
+  | {
+      readonly ok: false;
+      readonly bindings: readonly OfficialWorkflowParameterBinding[];
+      readonly message: string;
+    };
 
 type ResolveResult =
   | { readonly ok: true; readonly blueprints: readonly ResolvedBlueprint[] }
@@ -407,6 +412,112 @@ function resolveBlueprint(
   };
 }
 
+/**
+ * Resolve one current Blueprint from a prior Installation projection. Values
+ * for removed or now-invalid parameter keys are deliberately discarded before
+ * current defaults and derivations are applied.
+ */
+function reconciliationParameterValues(
+  blueprint: OfficialWorkflowAcceptedBlueprint,
+  existing: readonly OfficialWorkflowParameterBinding[],
+  overrides: readonly OfficialWorkflowParameterBinding[],
+):
+  | {
+      readonly ok: true;
+      readonly values: ReadonlyMap<string, OfficialWorkflowParameterValue>;
+    }
+  | { readonly ok: false; readonly message: string } {
+  const parameters = new Map(
+    blueprint.parameters.map((parameter) => {
+      return [parameter.key, parameter] as const;
+    }),
+  );
+  const values = new Map<string, OfficialWorkflowParameterValue>();
+  for (const binding of existing) {
+    const parameter = parameters.get(binding.key);
+    if (parameter && validParameterValue(parameter, binding.value)) {
+      values.set(binding.key, binding.value);
+    }
+  }
+  const overrideKeys = new Set<string>();
+  for (const binding of overrides) {
+    if (overrideKeys.has(binding.key)) {
+      return {
+        ok: false,
+        message: `Duplicate parameter binding: ${blueprint.key}.${binding.key}`,
+      };
+    }
+    overrideKeys.add(binding.key);
+    const parameter = parameters.get(binding.key);
+    if (!parameter) {
+      return {
+        ok: false,
+        message: `Unknown parameter: ${blueprint.key}.${binding.key}`,
+      };
+    }
+    if (!validParameterValue(parameter, binding.value)) {
+      return {
+        ok: false,
+        message: `Invalid value for parameter: ${blueprint.key}.${binding.key}`,
+      };
+    }
+    values.set(binding.key, binding.value);
+  }
+  return { ok: true, values };
+}
+
+export function resolveOfficialWorkflowBlueprintForReconciliation(
+  blueprint: OfficialWorkflowAcceptedBlueprint,
+  existing: readonly OfficialWorkflowParameterBinding[],
+  overrides: readonly OfficialWorkflowParameterBinding[],
+  userTimezone: string | null,
+): OfficialWorkflowBlueprintReconciliationResolution {
+  const parameterValues = reconciliationParameterValues(
+    blueprint,
+    existing,
+    overrides,
+  );
+  if (!parameterValues.ok) {
+    return { ok: false, bindings: [], message: parameterValues.message };
+  }
+
+  const bindings: OfficialWorkflowParameterBinding[] = [];
+  let unresolvedMessage: string | undefined;
+  for (const parameter of blueprint.parameters) {
+    let value = parameterValues.values.get(parameter.key);
+    if (value === undefined && parameter.default !== undefined) {
+      value = parameter.default;
+    }
+    if (
+      value === undefined &&
+      parameter.type === "string" &&
+      parameter.derivation?.kind === "user-timezone" &&
+      userTimezone !== null &&
+      isValidTimeZone(userTimezone)
+    ) {
+      value = userTimezone;
+    }
+    if (value === undefined) {
+      if (parameter.required && unresolvedMessage === undefined) {
+        unresolvedMessage = `Missing parameter: ${blueprint.key}.${parameter.key}`;
+      }
+      continue;
+    }
+    bindings.push({ key: parameter.key, value });
+  }
+  if (unresolvedMessage !== undefined) {
+    return { ok: false, bindings, message: unresolvedMessage };
+  }
+  const resolved = resolveBlueprint(
+    blueprint,
+    { blueprintKey: blueprint.key, bindings },
+    userTimezone,
+  );
+  return resolved.ok
+    ? { ok: true, resolved: resolved.blueprint }
+    : { ok: false, bindings, message: resolved.message };
+}
+
 function resolveAllBlueprints(
   blueprints: readonly OfficialWorkflowAcceptedBlueprint[],
   supplied: readonly OfficialWorkflowBlueprintBindings[],
@@ -492,7 +603,7 @@ function isFailure(
   return "kind" in value;
 }
 
-async function loadUserTimezone(
+export async function loadOfficialWorkflowUserTimezone(
   db: ReadonlyDb,
   args: { readonly orgId: string; readonly userId: string },
 ): Promise<string | null> {
@@ -641,7 +752,7 @@ async function resolveInstallation(
   if (!revision) {
     throw new Error("Accepted Official Workflow revision is missing");
   }
-  const userTimezone = await loadUserTimezone(db, {
+  const userTimezone = await loadOfficialWorkflowUserTimezone(db, {
     orgId: args.orgId,
     userId: args.member.userId,
   });
@@ -765,7 +876,10 @@ async function completeInstallation(
   }
   const activation = await args.db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
+      sql`SELECT pg_advisory_xact_lock_shared(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
+    );
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${args.installation.orgId}))`,
     );
     signal.throwIfAborted();
     const currentCatalog = await readAcceptedOfficialWorkflowCatalog(
@@ -829,6 +943,7 @@ export const installOfficialWorkflow$ = command(
           workflowId,
           allowOfficialInstallationDeletion: true,
           requiredOfficialInstallationState: "installing",
+          serializeOfficialLifecycle: true,
         },
         cleanupSignal,
       );
@@ -902,11 +1017,11 @@ async function loadOfficialAutomationRows(db: ReadonlyDb, workflowId: string) {
     .orderBy(asc(workflowAutomations.officialBlueprintKey));
 }
 
-type OfficialAutomationRow = Awaited<
+export type OfficialAutomationRow = Awaited<
   ReturnType<typeof loadOfficialAutomationRows>
 >[number];
 
-interface OfficialAutomationPatch {
+export interface OfficialAutomationPatch {
   readonly kind: "schedule" | "event";
   readonly eventType: OfficialAutomationRow["eventType"];
   readonly eventConfig: OfficialAutomationRow["eventConfig"];
@@ -915,6 +1030,7 @@ interface OfficialAutomationPatch {
   readonly intervalSeconds: number | null;
   readonly atTime: Date | null;
   readonly timezone: string;
+  readonly enabled: boolean;
   readonly nextRunAt: Date | null;
   readonly autonomyBudget: number;
   readonly officialAppliedFingerprint: string;
@@ -927,15 +1043,6 @@ interface OfficialAutomationPatch {
 type OfficialAutomationPatchResult =
   | { readonly ok: true; readonly patch: OfficialAutomationPatch }
   | { readonly ok: false; readonly message: string };
-
-function blueprintStructureChanged(
-  resolved: ResolvedBlueprint,
-): OfficialAutomationPatchResult {
-  return {
-    ok: false,
-    message: `Blueprint structure changed: ${resolved.blueprint.key}`,
-  };
-}
 
 function officialPatchMetadata(resolved: ResolvedBlueprint, currentTime: Date) {
   return {
@@ -955,12 +1062,8 @@ function eventAutomationPatch(
   currentTime: Date,
 ): OfficialAutomationPatchResult {
   const request = resolved.createRequest;
-  if (
-    "schedule" in request ||
-    automation.kind !== "event" ||
-    automation.eventType !== request.eventType
-  ) {
-    return blueprintStructureChanged(resolved);
+  if ("schedule" in request) {
+    throw new Error("Official Workflow event patch received a schedule");
   }
   if (!preparation) {
     throw new Error("Official Workflow event preparation disappeared");
@@ -976,6 +1079,8 @@ function eventAutomationPatch(
       intervalSeconds: null,
       atTime: null,
       timezone: "UTC",
+      enabled:
+        automation.officialIntendedEnabled === true || automation.enabled,
       nextRunAt: null,
       ...officialPatchMetadata(resolved, currentTime),
     },
@@ -1018,7 +1123,12 @@ function cronAutomationPatch(
       intervalSeconds: null,
       atTime: null,
       timezone: schedule.timezone,
-      nextRunAt: automation.enabled ? calculated.ok : null,
+      enabled:
+        automation.officialIntendedEnabled === true || automation.enabled,
+      nextRunAt:
+        automation.officialIntendedEnabled === true || automation.enabled
+          ? calculated.ok
+          : null,
       ...officialPatchMetadata(resolved, currentTime),
     },
   };
@@ -1052,7 +1162,12 @@ function onceAutomationPatch(
       intervalSeconds: null,
       atTime: parsed.date,
       timezone: schedule.timezone,
-      nextRunAt: automation.enabled ? parsed.date : null,
+      enabled:
+        automation.officialIntendedEnabled === true || automation.enabled,
+      nextRunAt:
+        automation.officialIntendedEnabled === true || automation.enabled
+          ? parsed.date
+          : null,
       ...officialPatchMetadata(resolved, currentTime),
     },
   };
@@ -1082,13 +1197,18 @@ function loopAutomationPatch(
       intervalSeconds: schedule.intervalSeconds,
       atTime: null,
       timezone: "UTC",
-      nextRunAt: automation.enabled ? nextRunAt : null,
+      enabled:
+        automation.officialIntendedEnabled === true || automation.enabled,
+      nextRunAt:
+        automation.officialIntendedEnabled === true || automation.enabled
+          ? nextRunAt
+          : null,
       ...officialPatchMetadata(resolved, currentTime),
     },
   };
 }
 
-function schedulePatch(
+export function buildOfficialAutomationPatch(
   automation: OfficialAutomationRow,
   resolved: ResolvedBlueprint,
   preparation: OfficialAutomationEventPreparation | undefined,
@@ -1097,12 +1217,6 @@ function schedulePatch(
   const request = resolved.createRequest;
   if (!("schedule" in request)) {
     return eventAutomationPatch(automation, resolved, preparation, currentTime);
-  }
-  if (
-    automation.kind !== "schedule" ||
-    automation.scheduleType !== request.schedule.type
-  ) {
-    return blueprintStructureChanged(resolved);
   }
   if (request.schedule.type === "cron") {
     return cronAutomationPatch(
@@ -1128,33 +1242,7 @@ function schedulePatch(
   );
 }
 
-function existingBindingsInput(
-  automation: OfficialAutomationRow,
-  overrides: OfficialWorkflowBlueprintBindings | undefined,
-): OfficialWorkflowBlueprintBindings | null {
-  if (
-    automation.officialBlueprintKey === null ||
-    automation.officialParameterBindings === null
-  ) {
-    return null;
-  }
-  const merged = new Map(
-    automation.officialParameterBindings.map((binding) => {
-      return [binding.key, binding.value] as const;
-    }),
-  );
-  for (const binding of overrides?.bindings ?? []) {
-    merged.set(binding.key, binding.value);
-  }
-  return {
-    blueprintKey: automation.officialBlueprintKey,
-    bindings: [...merged].map(([key, value]) => {
-      return { key, value };
-    }),
-  };
-}
-
-function automationRestorePatch(
+export function officialAutomationRestorePatch(
   row: OfficialAutomationRow,
   nextRunAt: Date | null,
   currentTime: Date,
@@ -1179,70 +1267,13 @@ function automationRestorePatch(
   };
 }
 
-function sameOfficialParameterBindings(
-  left: OfficialAutomationRow["officialParameterBindings"],
-  right: OfficialAutomationRow["officialParameterBindings"],
-): boolean {
-  if (left === null || right === null) {
-    return left === right;
-  }
-  return (
-    left.length === right.length &&
-    left.every((binding, index) => {
-      const compared = right[index];
-      return (
-        compared !== undefined &&
-        binding.key === compared.key &&
-        binding.value === compared.value
-      );
-    })
-  );
-}
-
-function sameReconfigurationBaseline(
-  expected: OfficialAutomationRow,
-  current: OfficialAutomationRow,
-): boolean {
-  return (
-    expected.id === current.id &&
-    expected.officialBlueprintKey === current.officialBlueprintKey &&
-    expected.officialAppliedFingerprint ===
-      current.officialAppliedFingerprint &&
-    sameOfficialParameterBindings(
-      expected.officialParameterBindings,
-      current.officialParameterBindings,
-    ) &&
-    expected.officialResultEmailEnabled === current.officialResultEmailEnabled
-  );
-}
-
-function sameOptionalDate(left: Date | null, right: Date | null): boolean {
-  return left === null || right === null
-    ? left === right
-    : left.getTime() === right.getTime();
-}
-
-function sameOperationalState(
-  expected: OfficialAutomationRow,
-  current: OfficialAutomationRow,
-): boolean {
-  return (
-    expected.enabled === current.enabled &&
-    sameOptionalDate(expected.nextRunAt, current.nextRunAt) &&
-    sameOptionalDate(expected.lastRunAt, current.lastRunAt) &&
-    expected.lastRunId === current.lastRunId &&
-    expected.consecutiveFailures === current.consecutiveFailures &&
-    expected.officialIntendedEnabled === current.officialIntendedEnabled
-  );
-}
-
-function refreshOfficialAutomationPatch(
+export function refreshOfficialAutomationPatch(
   automation: OfficialAutomationRow,
   patch: OfficialAutomationPatch,
   currentTime: Date,
 ): OfficialAutomationPatch {
   let nextRunAt: Date | null = null;
-  if (automation.enabled && patch.kind === "schedule") {
+  if (patch.enabled && patch.kind === "schedule") {
     if (patch.scheduleType === "cron") {
       if (!patch.cronExpression) {
         throw new Error("Official cron schedule is incomplete");
@@ -1277,780 +1308,3 @@ function refreshOfficialAutomationPatch(
   }
   return { ...patch, nextRunAt, updatedAt: currentTime };
 }
-
-interface ReconfigureOfficialWorkflowArgs {
-  readonly orgId: string;
-  readonly member: WorkflowMember;
-  readonly workflowId: string;
-  readonly blueprints: readonly OfficialWorkflowBlueprintBindings[];
-}
-
-interface ReconfigurationContext {
-  readonly workflowId: string;
-  readonly catalog: NonNullable<
-    Awaited<ReturnType<typeof readAcceptedOfficialWorkflowCatalog>>
-  >;
-  readonly definition: OfficialWorkflowAcceptedDefinition;
-  readonly blueprints: readonly OfficialWorkflowAcceptedBlueprint[];
-  readonly automations: readonly OfficialAutomationRow[];
-  readonly automationByKey: ReadonlyMap<string, OfficialAutomationRow>;
-  readonly blueprintKeys: ReadonlySet<string>;
-}
-
-type ReconfigurationContextResult =
-  | { readonly ok: true; readonly context: ReconfigurationContext }
-  | { readonly ok: false; readonly failure: OfficialWorkflowFailure };
-
-type MergedBindingsResult =
-  | {
-      readonly ok: true;
-      readonly bindings: readonly OfficialWorkflowBlueprintBindings[];
-    }
-  | { readonly ok: false; readonly failure: OfficialWorkflowFailure };
-
-type ReconfigurationPatchesResult =
-  | {
-      readonly ok: true;
-      readonly patches: ReadonlyMap<string, OfficialAutomationPatch>;
-      readonly preparations: ReadonlyMap<
-        string,
-        OfficialAutomationEventPreparation
-      >;
-    }
-  | { readonly ok: false; readonly failure: OfficialWorkflowFailure };
-
-type PrepareReconfigurationEvent = (
-  automation: OfficialAutomationRow,
-  resolved: ResolvedBlueprint,
-) => Promise<OfficialAutomationEventPreparationResult>;
-
-function eventPreparationFailure(
-  result: Exclude<
-    OfficialAutomationEventPreparationResult,
-    { readonly kind: "ok" }
-  >,
-): OfficialWorkflowFailure {
-  if (result.kind === "not-found") {
-    return {
-      kind: "not-found",
-      message: "Official Workflow automation not found",
-    };
-  }
-  if (result.kind === "forbidden") {
-    return { kind: "forbidden", message: result.message };
-  }
-  if (result.kind === "conflict") {
-    return { kind: "conflict", message: result.message };
-  }
-  return { kind: "bad-request", message: result.message };
-}
-
-async function markNeedsReconfiguration(
-  db: Db,
-  workflowId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await db
-    .update(workflowAutomations)
-    .set({
-      officialReconciliationStatus: "needs_reconfiguration",
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(workflowAutomations.workflowId, workflowId),
-        isNotNull(workflowAutomations.officialBlueprintKey),
-        ne(workflowAutomations.officialReconciliationStatus, "reconciling"),
-      ),
-    );
-  signal.throwIfAborted();
-}
-
-function indexOfficialAutomations(
-  automations: readonly OfficialAutomationRow[],
-  blueprints: readonly OfficialWorkflowAcceptedBlueprint[],
-):
-  | {
-      readonly automationByKey: ReadonlyMap<string, OfficialAutomationRow>;
-      readonly blueprintKeys: ReadonlySet<string>;
-    }
-  | undefined {
-  const automationByKey = new Map(
-    automations.flatMap((automation) => {
-      return automation.officialBlueprintKey
-        ? [[automation.officialBlueprintKey, automation] as const]
-        : [];
-    }),
-  );
-  const blueprintKeys = new Set(
-    blueprints.map((blueprint) => {
-      return blueprint.key;
-    }),
-  );
-  const hasUnexpectedKey = [...automationByKey.keys()].some((key) => {
-    return !blueprintKeys.has(key);
-  });
-  if (
-    automationByKey.size !== blueprints.length ||
-    automations.length !== automationByKey.size ||
-    hasUnexpectedKey
-  ) {
-    return undefined;
-  }
-  return { automationByKey, blueprintKeys };
-}
-
-async function loadReconfigurationContext(
-  db: Db,
-  args: ReconfigureOfficialWorkflowArgs,
-  signal: AbortSignal,
-): Promise<ReconfigurationContextResult> {
-  const [workflow] = await db
-    .select({
-      id: workflows.id,
-      definitionName: workflows.officialDefinitionName,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.orgId, args.orgId),
-        eq(workflows.id, args.workflowId),
-        eq(workflows.ownerUserId, args.member.userId),
-        eq(workflows.officialInstallationState, "installed"),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!workflow?.definitionName) {
-    return {
-      ok: false,
-      failure: {
-        kind: "not-found",
-        message: `Official Workflow installation not found: ${args.workflowId}`,
-      },
-    };
-  }
-  const catalog = await readAcceptedOfficialWorkflowCatalog(db, signal);
-  const definition = catalog?.payload.definitions.find((entry) => {
-    return entry.name === workflow.definitionName;
-  });
-  if (!catalog || !definition) {
-    return {
-      ok: false,
-      failure: {
-        kind: "conflict",
-        message: "Accepted Official Workflow definition is unavailable",
-      },
-    };
-  }
-  const revision = await readAcceptedOfficialWorkflowRevision(
-    db,
-    { name: definition.name, revision: definition.revision },
-    signal,
-  );
-  if (!revision) {
-    return {
-      ok: false,
-      failure: {
-        kind: "conflict",
-        message: "Accepted Official Workflow revision is unavailable",
-      },
-    };
-  }
-  const automations = await loadOfficialAutomationRows(db, workflow.id);
-  signal.throwIfAborted();
-  const indexed = indexOfficialAutomations(
-    automations,
-    revision.definition.blueprints,
-  );
-  if (!indexed) {
-    await markNeedsReconfiguration(db, workflow.id, signal);
-    return {
-      ok: false,
-      failure: {
-        kind: "conflict",
-        message: "Official Workflow Blueprint structure changed",
-      },
-    };
-  }
-  return {
-    ok: true,
-    context: {
-      workflowId: workflow.id,
-      catalog,
-      definition,
-      blueprints: revision.definition.blueprints,
-      automations,
-      ...indexed,
-    },
-  };
-}
-
-function duplicateBindingKey(
-  bindings: readonly OfficialWorkflowParameterBinding[],
-): string | undefined {
-  const keys = new Set<string>();
-  for (const binding of bindings) {
-    if (keys.has(binding.key)) {
-      return binding.key;
-    }
-    keys.add(binding.key);
-  }
-  return undefined;
-}
-
-function mergeReconfigurationBindings(
-  context: ReconfigurationContext,
-  overrides: readonly OfficialWorkflowBlueprintBindings[],
-): MergedBindingsResult {
-  const overridesByKey = new Map<string, OfficialWorkflowBlueprintBindings>();
-  for (const entry of overrides) {
-    if (overridesByKey.has(entry.blueprintKey)) {
-      return {
-        ok: false,
-        failure: {
-          kind: "bad-request",
-          message: `Duplicate Blueprint bindings: ${entry.blueprintKey}`,
-        },
-      };
-    }
-    if (!context.blueprintKeys.has(entry.blueprintKey)) {
-      return {
-        ok: false,
-        failure: {
-          kind: "bad-request",
-          message: `Unknown Blueprint: ${entry.blueprintKey}`,
-        },
-      };
-    }
-    const duplicate = duplicateBindingKey(entry.bindings);
-    if (duplicate) {
-      return {
-        ok: false,
-        failure: {
-          kind: "bad-request",
-          message: `Duplicate parameter binding: ${entry.blueprintKey}.${duplicate}`,
-        },
-      };
-    }
-    overridesByKey.set(entry.blueprintKey, entry);
-  }
-  const bindings: OfficialWorkflowBlueprintBindings[] = [];
-  for (const blueprint of context.blueprints) {
-    const automation = context.automationByKey.get(blueprint.key);
-    if (!automation) {
-      throw new Error("Official Workflow automation disappeared");
-    }
-    const merged = existingBindingsInput(
-      automation,
-      overridesByKey.get(blueprint.key),
-    );
-    if (!merged) {
-      return {
-        ok: false,
-        failure: {
-          kind: "conflict",
-          message: `Official Workflow binding state is incomplete: ${blueprint.key}`,
-        },
-      };
-    }
-    bindings.push(merged);
-  }
-  return { ok: true, bindings };
-}
-
-async function buildReconfigurationPatches(
-  db: Db,
-  args: {
-    readonly context: ReconfigurationContext;
-    readonly resolved: Extract<ResolveResult, { readonly ok: true }>;
-    readonly currentTime: Date;
-    readonly prepareEvent: PrepareReconfigurationEvent;
-  },
-  signal: AbortSignal,
-): Promise<ReconfigurationPatchesResult> {
-  const patches = new Map<string, OfficialAutomationPatch>();
-  const preparations = new Map<string, OfficialAutomationEventPreparation>();
-  for (const resolvedBlueprint of args.resolved.blueprints) {
-    const automation = args.context.automationByKey.get(
-      resolvedBlueprint.blueprint.key,
-    );
-    if (!automation) {
-      throw new Error("Official Workflow automation disappeared");
-    }
-    let preparation: OfficialAutomationEventPreparation | undefined;
-    if (!("schedule" in resolvedBlueprint.createRequest)) {
-      const prepared = await args.prepareEvent(automation, resolvedBlueprint);
-      signal.throwIfAborted();
-      if (prepared.kind !== "ok") {
-        return { ok: false, failure: eventPreparationFailure(prepared) };
-      }
-      preparation = prepared.preparation;
-      preparations.set(automation.id, preparation);
-    }
-    const patch = schedulePatch(
-      automation,
-      resolvedBlueprint,
-      preparation,
-      args.currentTime,
-    );
-    if (!patch.ok) {
-      await markNeedsReconfiguration(db, args.context.workflowId, signal);
-      return {
-        ok: false,
-        failure: { kind: "conflict", message: patch.message },
-      };
-    }
-    patches.set(automation.id, patch.patch);
-  }
-  return { ok: true, patches, preparations };
-}
-
-async function persistReconfiguration(
-  db: Db,
-  args: {
-    readonly context: ReconfigurationContext;
-    readonly patches: ReadonlyMap<string, OfficialAutomationPatch>;
-    readonly preparations: ReadonlyMap<
-      string,
-      OfficialAutomationEventPreparation
-    >;
-  },
-  signal: AbortSignal,
-): Promise<
-  | {
-      readonly ok: true;
-      readonly original: readonly OfficialAutomationRow[];
-      readonly updated: readonly OfficialAutomationRow[];
-      readonly googleFormsCursorByAutomationId: ReadonlyMap<string, string>;
-    }
-  | { readonly ok: false }
-> {
-  const persisted = await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
-    );
-    signal.throwIfAborted();
-    const currentCatalog = await readAcceptedOfficialWorkflowCatalog(
-      tx,
-      signal,
-    );
-    if (
-      !sameAcceptedDefinition(
-        args.context.catalog.releaseId,
-        args.context.definition,
-        currentCatalog,
-      )
-    ) {
-      return { ok: false as const };
-    }
-    const original = await tx
-      .select()
-      .from(workflowAutomations)
-      .where(eq(workflowAutomations.workflowId, args.context.workflowId))
-      .orderBy(asc(workflowAutomations.officialBlueprintKey))
-      .for("update");
-    signal.throwIfAborted();
-    const indexed = indexOfficialAutomations(original, args.context.blueprints);
-    if (
-      !indexed ||
-      original.some((automation) => {
-        return automation.officialReconciliationStatus === "reconciling";
-      }) ||
-      args.context.automations.some((expected) => {
-        if (expected.officialBlueprintKey === null) {
-          return true;
-        }
-        const current = indexed.automationByKey.get(
-          expected.officialBlueprintKey,
-        );
-        return !current || !sameReconfigurationBaseline(expected, current);
-      })
-    ) {
-      return { ok: false as const };
-    }
-    const googleFormsCursors = await tx
-      .select({
-        automationId: googleFormsAutomationCursors.automationId,
-        cursor: googleFormsAutomationCursors.lastSeenSubmittedTime,
-      })
-      .from(googleFormsAutomationCursors)
-      .innerJoin(
-        workflowAutomations,
-        eq(workflowAutomations.id, googleFormsAutomationCursors.automationId),
-      )
-      .where(eq(workflowAutomations.workflowId, args.context.workflowId));
-    const currentTime = nowDate();
-    const rows: OfficialAutomationRow[] = [];
-    for (const automation of original) {
-      const patch = args.patches.get(automation.id);
-      if (!patch) {
-        return { ok: false as const };
-      }
-      const [row] = await tx
-        .update(workflowAutomations)
-        .set(refreshOfficialAutomationPatch(automation, patch, currentTime))
-        .where(eq(workflowAutomations.id, automation.id))
-        .returning();
-      if (!row) {
-        throw new Error("Official Workflow automation disappeared");
-      }
-      const strapiIntegrationId = args.preparations.get(
-        automation.id,
-      )?.strapiIntegrationId;
-      if (strapiIntegrationId !== undefined) {
-        const [binding] = await tx
-          .update(strapiWorkflowAutomations)
-          .set({ integrationId: strapiIntegrationId })
-          .where(eq(strapiWorkflowAutomations.automationId, automation.id))
-          .returning({ automationId: strapiWorkflowAutomations.automationId });
-        if (!binding) {
-          throw new Error("Official Strapi automation binding disappeared");
-        }
-      }
-      rows.push(row);
-    }
-    signal.throwIfAborted();
-    return {
-      ok: true as const,
-      original,
-      updated: rows,
-      googleFormsCursorByAutomationId: new Map(
-        googleFormsCursors.map((cursor) => {
-          return [cursor.automationId, cursor.cursor] as const;
-        }),
-      ),
-    };
-  });
-  return persisted;
-}
-
-function strapiIntegrationIdFromAutomation(
-  automation: OfficialAutomationRow,
-): string | undefined {
-  if (automation.eventType !== "strapi-entry-published") {
-    return undefined;
-  }
-  if (
-    !isJsonObject(automation.eventConfig) ||
-    typeof automation.eventConfig.integrationId !== "string"
-  ) {
-    throw new Error("Official Strapi automation binding is invalid");
-  }
-  return automation.eventConfig.integrationId;
-}
-
-async function markReconfigurationFailed(
-  db: Db,
-  workflowId: string,
-): Promise<void> {
-  await db
-    .update(workflowAutomations)
-    .set({
-      officialReconciliationStatus: "failed",
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(workflowAutomations.workflowId, workflowId),
-        isNotNull(workflowAutomations.officialBlueprintKey),
-      ),
-    );
-}
-
-async function restoreReconfiguration(
-  db: Db,
-  args: {
-    readonly workflowId: string;
-    readonly original: readonly OfficialAutomationRow[];
-    readonly updated: readonly OfficialAutomationRow[];
-    readonly googleFormsCursorByAutomationId: ReadonlyMap<string, string>;
-  },
-): Promise<void> {
-  const updatedById = new Map(
-    args.updated.map((automation) => {
-      return [automation.id, automation] as const;
-    }),
-  );
-  const currentTime = nowDate();
-  await db.transaction(async (tx) => {
-    for (const automation of args.original) {
-      const expectedUpdated = updatedById.get(automation.id);
-      if (!expectedUpdated) {
-        throw new Error("Official Workflow rollback state is incomplete");
-      }
-      const [current] = await tx
-        .select()
-        .from(workflowAutomations)
-        .where(eq(workflowAutomations.id, automation.id))
-        .for("update")
-        .limit(1);
-      if (!current || current.officialReconciliationStatus !== "reconciling") {
-        continue;
-      }
-      const nextRunAt = sameOperationalState(expectedUpdated, current)
-        ? automation.nextRunAt
-        : current.nextRunAt;
-      const [restored] = await tx
-        .update(workflowAutomations)
-        .set(automationRestorePatch(automation, nextRunAt, currentTime))
-        .where(
-          and(
-            eq(workflowAutomations.id, automation.id),
-            eq(workflowAutomations.officialReconciliationStatus, "reconciling"),
-          ),
-        )
-        .returning({ id: workflowAutomations.id });
-      if (!restored) {
-        continue;
-      }
-      const strapiIntegrationId = strapiIntegrationIdFromAutomation(automation);
-      if (strapiIntegrationId !== undefined) {
-        const [binding] = await tx
-          .update(strapiWorkflowAutomations)
-          .set({ integrationId: strapiIntegrationId })
-          .where(eq(strapiWorkflowAutomations.automationId, automation.id))
-          .returning({ automationId: strapiWorkflowAutomations.automationId });
-        if (!binding) {
-          throw new Error("Official Strapi automation binding disappeared");
-        }
-      }
-    }
-  });
-  const current = await loadOfficialAutomationRows(db, args.workflowId);
-  const currentIds = new Set(
-    current.map((automation) => {
-      return automation.id;
-    }),
-  );
-  const cleanupSignal = new AbortController().signal;
-  const restoration = await settle(
-    reconcileAutomationEventWatchReconfiguration(
-      db,
-      {
-        previous: args.updated,
-        current,
-        googleForms: [...args.googleFormsCursorByAutomationId].flatMap(
-          ([automationId, seedCursor]) => {
-            return currentIds.has(automationId)
-              ? [{ automationId, seedCursor }]
-              : [];
-          },
-        ),
-      },
-      cleanupSignal,
-    ),
-    cleanupSignal,
-  );
-  if (!restoration.ok) {
-    await markReconfigurationFailed(db, args.workflowId);
-    throw restoration.error;
-  }
-  if (restoration.value.kind !== "ok") {
-    await markReconfigurationFailed(db, args.workflowId);
-    throw new Error(restoration.value.message);
-  }
-}
-
-async function finalizeReconfiguration(
-  db: Db,
-  args: {
-    readonly workflowId: string;
-    readonly userId: string;
-    readonly updated: readonly OfficialAutomationRow[];
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  const currentTime = nowDate();
-  await db.transaction(async (tx) => {
-    for (const automation of args.updated) {
-      const [finalized] = await tx
-        .update(workflowAutomations)
-        .set({
-          officialReconciliationStatus: "current",
-          updatedAt: currentTime,
-        })
-        .where(
-          and(
-            eq(workflowAutomations.id, automation.id),
-            eq(workflowAutomations.officialReconciliationStatus, "reconciling"),
-          ),
-        )
-        .returning({ id: workflowAutomations.id });
-      if (!finalized) {
-        throw new Error("Official Workflow reconciliation lost ownership");
-      }
-    }
-    const [workflow] = await tx
-      .update(workflows)
-      .set({ updatedBy: args.userId, updatedAt: currentTime })
-      .where(eq(workflows.id, args.workflowId))
-      .returning({ id: workflows.id });
-    if (!workflow) {
-      throw new Error("Official Workflow installation disappeared");
-    }
-  });
-  signal.throwIfAborted();
-}
-
-async function reconcileReconfiguration(
-  db: Db,
-  args: {
-    readonly workflowId: string;
-    readonly userId: string;
-    readonly original: readonly OfficialAutomationRow[];
-    readonly updated: readonly OfficialAutomationRow[];
-    readonly preparations: ReadonlyMap<
-      string,
-      OfficialAutomationEventPreparation
-    >;
-    readonly googleFormsCursorByAutomationId: ReadonlyMap<string, string>;
-  },
-  signal: AbortSignal,
-): Promise<OfficialWorkflowFailure | null> {
-  const rollback = async (): Promise<void> => {
-    await restoreReconfiguration(db, {
-      workflowId: args.workflowId,
-      original: args.original,
-      updated: args.updated,
-      googleFormsCursorByAutomationId: args.googleFormsCursorByAutomationId,
-    });
-  };
-  const apply = async (): Promise<OfficialWorkflowFailure | null> => {
-    const googleForms = [...args.preparations].flatMap(
-      ([automationId, preparation]) => {
-        return preparation.googleFormsSeedCursor === undefined
-          ? []
-          : [
-              {
-                automationId,
-                seedCursor: preparation.googleFormsSeedCursor,
-              },
-            ];
-      },
-    );
-    const reconciled = await reconcileAutomationEventWatchReconfiguration(
-      db,
-      {
-        previous: args.original,
-        current: args.updated,
-        googleForms,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (reconciled.kind !== "ok") {
-      return { kind: "bad-request", message: reconciled.message };
-    }
-    await finalizeReconfiguration(
-      db,
-      {
-        workflowId: args.workflowId,
-        userId: args.userId,
-        updated: args.updated,
-      },
-      signal,
-    );
-    return null;
-  };
-  const failure = await onRejection(apply(), rollback);
-  if (failure) {
-    await rollback();
-  }
-  return failure;
-}
-
-export const reconfigureOfficialWorkflow$ = command(
-  async (
-    { set },
-    args: ReconfigureOfficialWorkflowArgs,
-    publicBrand: PublicBrand,
-    signal: AbortSignal,
-  ): Promise<OfficialWorkflowReconfigureResult> => {
-    const db = set(writeDb$);
-    const loaded = await loadReconfigurationContext(db, args, signal);
-    if (!loaded.ok) {
-      return loaded.failure;
-    }
-    const context = loaded.context;
-    const merged = mergeReconfigurationBindings(context, args.blueprints);
-    if (!merged.ok) {
-      return merged.failure;
-    }
-    const userTimezone = await loadUserTimezone(db, {
-      orgId: args.orgId,
-      userId: args.member.userId,
-    });
-    signal.throwIfAborted();
-    const resolved = resolveAllBlueprints(
-      context.blueprints,
-      merged.bindings,
-      userTimezone,
-    );
-    if (!resolved.ok) {
-      return { kind: "bad-request", message: resolved.message };
-    }
-    const currentTime = nowDate();
-    const patched = await buildReconfigurationPatches(
-      db,
-      {
-        context,
-        resolved,
-        currentTime,
-        prepareEvent: async (automation, resolvedBlueprint) => {
-          const input: CreateAutomationInput = {
-            ...resolvedBlueprint.createRequest,
-            orgId: args.orgId,
-            member: args.member,
-            workflowId: context.workflowId,
-            enabled: automation.enabled,
-            ...(resolvedBlueprint.autonomyBudget === undefined
-              ? {}
-              : { autonomyBudget: resolvedBlueprint.autonomyBudget }),
-          };
-          return await set(
-            prepareOfficialAutomationReconfiguration$,
-            { automationId: automation.id, input, publicBrand },
-            signal,
-          );
-        },
-      },
-      signal,
-    );
-    if (!patched.ok) {
-      return patched.failure;
-    }
-    const persisted = await persistReconfiguration(
-      db,
-      {
-        context,
-        patches: patched.patches,
-        preparations: patched.preparations,
-      },
-      signal,
-    );
-    if (!persisted.ok) {
-      return {
-        kind: "conflict",
-        message: "Official Workflow changed during reconfiguration; retry",
-      };
-    }
-    const reconciliationFailure = await reconcileReconfiguration(
-      db,
-      {
-        workflowId: context.workflowId,
-        userId: args.member.userId,
-        original: persisted.original,
-        updated: persisted.updated,
-        preparations: patched.preparations,
-        googleFormsCursorByAutomationId:
-          persisted.googleFormsCursorByAutomationId,
-      },
-      signal,
-    );
-    if (reconciliationFailure) {
-      return reconciliationFailure;
-    }
-    return { kind: "ok", workflowId: context.workflowId };
-  },
-);

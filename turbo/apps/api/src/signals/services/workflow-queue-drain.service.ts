@@ -23,6 +23,11 @@ import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
 } from "./workflow-automation-launch.service";
+import {
+  dispatchConfiguredOfficialWorkflowReconciliation$,
+  type OfficialWorkflowReconciliationArgs,
+  type OfficialWorkflowReconciliationResult,
+} from "./official-workflow-reconciliation-dispatch.service";
 
 const log = logger("WorkflowQueueDrain");
 
@@ -49,6 +54,52 @@ async function loadDequeueTarget(
     .where(eq(workflowAutomations.id, automationId))
     .limit(1);
   return row ?? null;
+}
+
+async function reconcileDequeueTarget(
+  reconcile: (
+    args: OfficialWorkflowReconciliationArgs,
+  ) => Promise<OfficialWorkflowReconciliationResult>,
+  db: Db,
+  event: LaunchableQueueEvent,
+  target: DequeueTarget,
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "current"; readonly target: DequeueTarget }
+  | { readonly kind: "conflict"; readonly message: string }
+  | { readonly kind: "retry" }
+> {
+  if (target.automation.officialBlueprintKey === null) {
+    return { kind: "current", target };
+  }
+  const reconciled = await reconcile({
+    orgId: target.automation.orgId,
+    member: { userId: target.automation.ownerUserId, role: "member" },
+    workflowId: target.automation.workflowId,
+    publicBrand: event.publicBrand,
+    targetAutomationId: target.automation.id,
+  });
+  signal.throwIfAborted();
+  if (reconciled.kind === "retry") {
+    return { kind: "retry" };
+  }
+  if (reconciled.kind !== "current") {
+    return {
+      kind: "conflict",
+      message:
+        reconciled.kind === "needs-reconfiguration"
+          ? reconciled.message
+          : "Official Workflow automation no longer exists",
+    };
+  }
+  const refreshed = await loadDequeueTarget(db, target.automation.id);
+  signal.throwIfAborted();
+  return refreshed
+    ? { kind: "current", target: refreshed }
+    : {
+        kind: "conflict",
+        message: "Official Workflow automation no longer exists",
+      };
 }
 
 type WorkflowRunAutonomyBudget =
@@ -118,6 +169,20 @@ interface DrainWorkflowQueueArgs {
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly automationEventLaunch?: AutomationEventLaunch;
+}
+
+async function loadNextDrainEvent(
+  db: Db,
+  args: DrainWorkflowQueueArgs,
+  signal: AbortSignal,
+) {
+  const event = await loadNextWorkflowQueueEvent(
+    db,
+    args.chatThreadId,
+    args.queueItemCreatedBefore,
+  );
+  signal.throwIfAborted();
+  return event;
 }
 
 const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
@@ -282,6 +347,59 @@ function isLaunchableQueueEvent(
   );
 }
 
+type PreparedDequeueTarget =
+  | { readonly kind: "target"; readonly target: DequeueTarget }
+  | { readonly kind: "drain-step"; readonly step: WorkflowQueueDrainStep };
+
+async function prepareDequeueTarget(
+  args: {
+    readonly db: Db;
+    readonly event: LaunchableQueueEvent;
+    readonly launchHint: AutomationEventLaunch | undefined;
+    readonly reconcile: (
+      reconcileArgs: OfficialWorkflowReconciliationArgs,
+    ) => Promise<OfficialWorkflowReconciliationResult>;
+  },
+  signal: AbortSignal,
+): Promise<PreparedDequeueTarget> {
+  const loaded = await loadDequeueTarget(args.db, args.event.automationId);
+  signal.throwIfAborted();
+  if (!loaded) {
+    return {
+      kind: "drain-step",
+      step: await consumeUnavailableAutomationEvent(
+        args.db,
+        args.event,
+        args.launchHint,
+        signal,
+      ),
+    };
+  }
+  const reconciled = await reconcileDequeueTarget(
+    args.reconcile,
+    args.db,
+    args.event,
+    loaded,
+    signal,
+  );
+  if (reconciled.kind === "retry") {
+    return { kind: "drain-step", step: null };
+  }
+  if (reconciled.kind === "conflict") {
+    return {
+      kind: "drain-step",
+      step: await consumeInvalidAutomationEvent(
+        args.db,
+        args.event,
+        reconciled.message,
+        args.launchHint,
+        signal,
+      ),
+    };
+  }
+  return { kind: "target", target: reconciled.target };
+}
+
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
@@ -289,14 +407,8 @@ export const drainWorkflowQueueForThread$ = command(
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
     const db = set(writeDb$);
-
     for (let attempt = 0; attempt < MAX_DRAIN_ATTEMPTS; attempt++) {
-      const event = await loadNextWorkflowQueueEvent(
-        db,
-        args.chatThreadId,
-        args.queueItemCreatedBefore,
-      );
-      signal.throwIfAborted();
+      const event = await loadNextDrainEvent(db, args, signal);
       if (!event) {
         return null;
       }
@@ -314,24 +426,30 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const target = await loadDequeueTarget(db, event.automationId);
-      signal.throwIfAborted();
-      if (!target) {
-        const step = await consumeUnavailableAutomationEvent(
+      const preparedTarget = await prepareDequeueTarget(
+        {
           db,
           event,
-          args.automationEventLaunch,
-          signal,
-        );
-        if (step !== CONTINUE_DRAIN) {
-          return step;
+          launchHint: args.automationEventLaunch,
+          reconcile: async (reconcileArgs) => {
+            return await set(
+              dispatchConfiguredOfficialWorkflowReconciliation$,
+              reconcileArgs,
+              signal,
+            );
+          },
+        },
+        signal,
+      );
+      if (preparedTarget.kind === "drain-step") {
+        if (preparedTarget.step !== CONTINUE_DRAIN) {
+          return preparedTarget.step;
         }
         continue;
       }
-
       const launchMaterial = queuedWorkflowLaunchMaterial(
         event,
-        target,
+        preparedTarget.target,
         event.publicBrand,
       );
       signal.throwIfAborted();
@@ -356,7 +474,7 @@ export const drainWorkflowQueueForThread$ = command(
       const autonomyBudget = await resolveWorkflowRunAutonomyBudget(
         db,
         event,
-        target.automation,
+        preparedTarget.target.automation,
       );
       signal.throwIfAborted();
       if (autonomyBudget.kind === "invalid") {
@@ -378,8 +496,8 @@ export const drainWorkflowQueueForThread$ = command(
         launchQueuedWorkflowAutomation$,
         {
           due: {
-            automation: target.automation,
-            agentId: target.agentId,
+            automation: preparedTarget.target.automation,
+            agentId: preparedTarget.target.agentId,
             chatThreadId: event.chatThreadId,
             allowClaimedOnceScheduleAutomation:
               launchMaterial.allowClaimedOnceScheduleAutomation,
