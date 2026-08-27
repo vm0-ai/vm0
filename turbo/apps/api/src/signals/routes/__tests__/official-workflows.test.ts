@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   DeleteObjectsCommand,
@@ -51,6 +51,7 @@ import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture,
@@ -84,6 +85,7 @@ const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chat = createChatFilesBddApi(context);
 const mocks = createRouteMocks(context);
+const outbox = createEmailOutboxStateApi(context);
 const CRON_SECRET = "official-workflow-installation-cron-secret";
 const GMAIL_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-gmail-events";
@@ -121,7 +123,7 @@ function catalog(
   };
 }
 
-function scheduledBlueprint(): OfficialWorkflowBlueprint {
+function scheduledBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
   return {
     key: "daily",
     parameters: [
@@ -155,11 +157,11 @@ function scheduledBlueprint(): OfficialWorkflowBlueprint {
       },
       autonomyBudget: 4,
     },
-    runtime: {},
+    runtime: { resultEmail },
   };
 }
 
-function loopBlueprint(): OfficialWorkflowBlueprint {
+function loopBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
   return {
     key: "pulse",
     parameters: [
@@ -183,11 +185,11 @@ function loopBlueprint(): OfficialWorkflowBlueprint {
       },
       autonomyBudget: { parameter: "autonomy-budget" },
     },
-    runtime: {},
+    runtime: { resultEmail },
   };
 }
 
-function onceBlueprint(): OfficialWorkflowBlueprint {
+function onceBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
   return {
     key: "one-shot",
     parameters: [
@@ -225,7 +227,7 @@ function onceBlueprint(): OfficialWorkflowBlueprint {
         timezone: { parameter: "time-zone" },
       },
     },
-    runtime: {},
+    runtime: { resultEmail },
   };
 }
 
@@ -238,7 +240,7 @@ function gmailBlueprint(): OfficialWorkflowBlueprint {
       eventType: "gmail-new-message",
       eventConfig: { provider: "gmail", event: "new_message" },
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
@@ -262,11 +264,11 @@ function gmailLabelBlueprint(): OfficialWorkflowBlueprint {
         labelName: { parameter: "label-name" },
       },
     },
-    runtime: {},
+    runtime: { resultEmail: false },
   };
 }
 
-function webhookBlueprint(): OfficialWorkflowBlueprint {
+function webhookBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
   return {
     key: "webhook-trigger",
     parameters: [],
@@ -274,7 +276,7 @@ function webhookBlueprint(): OfficialWorkflowBlueprint {
       kind: "event",
       eventType: "webhook-received",
     },
-    runtime: {},
+    runtime: { resultEmail },
   };
 }
 
@@ -538,6 +540,121 @@ async function setOfficialWorkflowsEnabled(
   );
 }
 
+function configureResultEmailRecipient(actor: ApiTestUser): void {
+  const emailId = `email_${actor.userId}`;
+  mockEnv("APP_URL", "https://app.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("VM0_API_BACKEND_URL", undefined);
+  mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [
+      {
+        id: actor.userId,
+        emailAddresses: [{ id: emailId, emailAddress: actor.email }],
+        primaryEmailAddressId: emailId,
+        firstName: "Official",
+        lastName: "Automation",
+        imageUrl: null,
+      },
+    ],
+  });
+}
+
+async function completeSuccessfulRun(
+  runnerGroup: string,
+  runId: string,
+  output: string,
+): Promise<void> {
+  await runs.heartbeatRunner(runnerGroup);
+  const claim = await runs.claimRunnerJob(runId);
+  const headers = { authorization: `Bearer ${claim.sandboxToken}` };
+  await webhooks.requestAgentEvents(
+    {
+      runId,
+      events: [{ type: "result", sequenceNumber: 0, result: output }],
+    },
+    headers,
+    [200],
+  );
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `official-result-email-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`official result email history ${runId}`)
+        .digest("hex"),
+    },
+    headers,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 0, lastEventSequence: 0 },
+    headers,
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
+async function installResultEmailLoopScenario(
+  prefix: string,
+  resultEmail: boolean,
+) {
+  installCatalogStorageFixture();
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+  const definitionName = `${prefix}-${suffix}`;
+  await syncCatalog(
+    catalog([activeDefinition(definitionName, [loopBlueprint(resultEmail)])]),
+  );
+  const { actor } = await workflowBdd.setupWorkflowOrg({ tier: "team" });
+  if (!actor.orgId) {
+    throw new Error("Expected organization-scoped actor");
+  }
+  const { agentId } = await workflowBdd.createAgent(actor);
+  const headers = authHeaders(actor);
+  await setOfficialWorkflowsEnabled(actor, true);
+  const installed = await accept(
+    officialClient().install({
+      headers,
+      params: { definitionName },
+      body: {
+        agentId,
+        blueprints: [
+          {
+            blueprintKey: "pulse",
+            bindings: [{ key: "interval-seconds", value: 60 }],
+          },
+        ],
+      },
+    }),
+    [201],
+  );
+  const automation = installed.body.workflow.automations.find((candidate) => {
+    return candidate.official?.blueprintKey === "pulse";
+  });
+  if (!automation) {
+    throw new Error("Expected Official result email loop Automation");
+  }
+  configureResultEmailRecipient(actor);
+  const runnerGroup = runs.configureRunnerGroup();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  onTestFinished(async () => {
+    installCatalogStorageFixture();
+    await bdd.deleteAgent(actor, agentId);
+    await cleanupCatalog();
+  });
+  return {
+    actor,
+    agentId,
+    automation,
+    definitionName,
+    headers,
+    installed,
+    runnerGroup,
+  };
+}
+
 beforeEach(async () => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockEnv(
@@ -557,7 +674,7 @@ describe.sequential("Official Workflow installations", () => {
     await syncCatalog(
       catalog([
         activeDefinition(definitionName, [
-          scheduledBlueprint(),
+          scheduledBlueprint(true),
           onceBlueprint(),
           loopBlueprint(),
         ]),
@@ -919,7 +1036,23 @@ describe.sequential("Official Workflow installations", () => {
     expect(dailyAutomation.official?.parameterBindings).toHaveLength(3);
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
-    ).resolves.toMatchObject({ autonomyBudget: 4, enabled: true });
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      enabled: true,
+      officialBlueprintKey: "daily",
+      officialResultEmailEnabled: true,
+    });
+    for (const automation of installed.body.workflow.automations) {
+      if (automation.id === dailyAutomation.id) {
+        continue;
+      }
+      await expect(
+        readWorkflowAutomationAutonomyFixture(context, automation.id),
+      ).resolves.toMatchObject({
+        officialBlueprintKey: automation.official?.blueprintKey,
+        officialResultEmailEnabled: false,
+      });
+    }
 
     const customStorage = await accept(
       storageClient().action({
@@ -1107,7 +1240,11 @@ describe.sequential("Official Workflow installations", () => {
     });
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
-    ).resolves.toMatchObject({ autonomyBudget: 4, enabled: false });
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      enabled: false,
+      officialResultEmailEnabled: true,
+    });
 
     const reconfigured = await accept(
       installationClient().reconfigure({
@@ -1170,7 +1307,11 @@ describe.sequential("Official Workflow installations", () => {
     );
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
-    ).resolves.toMatchObject({ autonomyBudget: 4, enabled: true });
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      enabled: true,
+      officialResultEmailEnabled: true,
+    });
 
     await accept(
       installationClient().uninstall({
@@ -2044,7 +2185,7 @@ describe.sequential("Official Workflow Run admission", () => {
     expect(ordinaryWorkflowId).not.toBe(firstInstallation.body.workflow.id);
   });
 
-  it("routes explicit, scheduled, once, and webhook producers through exact admission", async () => {
+  it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
     installCatalogStorageFixture();
     mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
@@ -2052,9 +2193,9 @@ describe.sequential("Official Workflow Run admission", () => {
     await syncCatalog(
       catalog([
         activeDefinition(definitionName, [
-          loopBlueprint(),
-          onceBlueprint(),
-          webhookBlueprint(),
+          loopBlueprint(true),
+          onceBlueprint(true),
+          webhookBlueprint(true),
         ]),
       ]),
     );
@@ -2069,6 +2210,7 @@ describe.sequential("Official Workflow Run admission", () => {
     await selectBuiltInDefaultModel(actor);
     const { agentId } = await workflowBdd.createAgent(actor);
     const headers = authHeaders(actor);
+    configureResultEmailRecipient(actor);
     await setOfficialWorkflowsEnabled(actor, true);
     const atTime = new Date(now() + 60_000).toISOString();
     const installed = await accept(
@@ -2104,7 +2246,7 @@ describe.sequential("Official Workflow Run admission", () => {
       await bdd.deleteAgent(actor, agentId);
       await cleanupCatalog();
     });
-    runs.configureRunnerGroup();
+    const runnerGroup = runs.configureRunnerGroup();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
 
@@ -2125,6 +2267,7 @@ describe.sequential("Official Workflow Run admission", () => {
     const explicit = await accept(
       automationClient().run({
         headers,
+        extraHeaders: { origin: "https://app.okou.ai" },
         params: { id: loopAutomation.id },
       }),
       [201],
@@ -2132,8 +2275,22 @@ describe.sequential("Official Workflow Run admission", () => {
     if (!explicit.body.runId) {
       throw new Error("Expected explicit Official Automation Run");
     }
-    const producerRunIds = [explicit.body.runId];
-    await runs.requestCancelRun(actor, explicit.body.runId, [200, 400]);
+    const producerRuns: {
+      readonly runId: string;
+      readonly automationId: string;
+      readonly publicBrand: "vm0" | "okou";
+    }[] = [
+      {
+        runId: explicit.body.runId,
+        automationId: loopAutomation.id,
+        publicBrand: "okou",
+      },
+    ];
+    await completeSuccessfulRun(
+      runnerGroup,
+      explicit.body.runId,
+      "Explicit Official result",
+    );
 
     const scheduled = await withMockNowForTest(now() + 120_000, async () => {
       return await accept(
@@ -2151,8 +2308,16 @@ describe.sequential("Official Workflow Run admission", () => {
     if (!scheduledRun || scheduledRun.runId === explicit.body.runId) {
       throw new Error("Expected a distinct scheduled Official Automation Run");
     }
-    producerRunIds.push(scheduledRun.runId);
-    await runs.requestCancelRun(actor, scheduledRun.runId, [200, 400]);
+    producerRuns.push({
+      runId: scheduledRun.runId,
+      automationId: loopAutomation.id,
+      publicBrand: "vm0",
+    });
+    await completeSuccessfulRun(
+      runnerGroup,
+      scheduledRun.runId,
+      "Scheduled Official result",
+    );
 
     const once = await withMockNowForTest(now() + 120_000, async () => {
       return await accept(
@@ -2170,8 +2335,16 @@ describe.sequential("Official Workflow Run admission", () => {
     if (!onceRun) {
       throw new Error("Expected once Official Automation Run");
     }
-    producerRunIds.push(onceRun.runId);
-    await runs.requestCancelRun(actor, onceRun.runId, [200, 400]);
+    producerRuns.push({
+      runId: onceRun.runId,
+      automationId: onceAutomation.id,
+      publicBrand: "vm0",
+    });
+    await completeSuccessfulRun(
+      runnerGroup,
+      onceRun.runId,
+      "Once Official result",
+    );
 
     if (
       webhookAutomation.kind !== "event" ||
@@ -2213,11 +2386,23 @@ describe.sequential("Official Workflow Run admission", () => {
     if (!webhookRun) {
       throw new Error("Expected Official webhook Automation Run");
     }
-    producerRunIds.push(webhookRun.runId);
+    producerRuns.push({
+      runId: webhookRun.runId,
+      automationId: webhookAutomation.id,
+      publicBrand: "vm0",
+    });
+    await completeSuccessfulRun(
+      runnerGroup,
+      webhookRun.runId,
+      "Event Official result",
+    );
 
     const accepted = await readAcceptedDefinitionFixture(definitionName);
-    for (const runId of producerRunIds) {
-      const state = await readOfficialWorkflowRunStateFixture(context, runId);
+    for (const producer of producerRuns) {
+      const state = await readOfficialWorkflowRunStateFixture(
+        context,
+        producer.runId,
+      );
       expect(state.model_provider).toBe("built-in");
       expect(state.provenance?.definitions).toStrictEqual([
         expect.objectContaining({
@@ -2235,8 +2420,290 @@ describe.sequential("Official Workflow Run admission", () => {
           }),
         ]),
       );
+      const source = await outbox.findSourceState({
+        sourceRunId: producer.runId,
+        sourceWorkflowAutomationId: producer.automationId,
+      });
+      expect(source.claim).not.toBeNull();
+      expect(source.items).toStrictEqual([
+        expect.objectContaining({
+          public_brand: producer.publicBrand,
+          source_run_id: producer.runId,
+          source_workflow_automation_id: producer.automationId,
+          status: "pending",
+          template: expect.objectContaining({
+            template: "official-automation-result",
+          }),
+        }),
+      ]);
     }
-    await runs.requestCancelRun(actor, webhookRun.runId, [200, 400]);
+  });
+
+  it("preserves session and agent-token brands across Official result callback retry", async () => {
+    const scenario = await installResultEmailLoopScenario(
+      "api-test-result-brand",
+      true,
+    );
+    const sessionRun = await accept(
+      automationClient().run({
+        headers: scenario.headers,
+        extraHeaders: { origin: "https://app.okou.ai" },
+        params: { id: scenario.automation.id },
+      }),
+      [201],
+    );
+    if (!sessionRun.body.runId) {
+      throw new Error("Expected session Official Automation Run");
+    }
+    await completeSuccessfulRun(
+      scenario.runnerGroup,
+      sessionRun.body.runId,
+      "Session-brand result",
+    );
+    await expect(
+      outbox.findSourceState({
+        sourceRunId: sessionRun.body.runId,
+        sourceWorkflowAutomationId: scenario.automation.id,
+      }),
+    ).resolves.toMatchObject({
+      items: [{ public_brand: "okou" }],
+      claim: { source_run_id: sessionRun.body.runId },
+    });
+
+    const agentToken = runs.okouTokenForRunWithCapabilities(
+      scenario.actor,
+      sessionRun.body.runId,
+      ["agent:write"],
+      "vm0",
+    );
+    const agentRun = await accept(
+      automationClient().run({
+        headers: { authorization: `Bearer ${agentToken}` },
+        extraHeaders: { origin: "https://app.okou.ai" },
+        params: { id: scenario.automation.id },
+      }),
+      [201],
+    );
+    if (!agentRun.body.runId) {
+      throw new Error("Expected agent-token Official Automation Run");
+    }
+
+    mockEnv("RESEND_FROM_DOMAIN", undefined);
+    await completeSuccessfulRun(
+      scenario.runnerGroup,
+      agentRun.body.runId,
+      "Agent-token retry result",
+    );
+    expect(
+      (await runs.readRun(scenario.actor, agentRun.body.runId)).status,
+    ).toBe("completed");
+    await expect(
+      outbox.findSourceState({
+        sourceRunId: agentRun.body.runId,
+        sourceWorkflowAutomationId: scenario.automation.id,
+      }),
+    ).resolves.toStrictEqual({ items: [], claim: null });
+
+    mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+    const redrive = await accept(
+      automationExecutionClient().dispatchCallbacks({
+        body: {
+          run_id: agentRun.body.runId,
+          status: "completed",
+          dispatch_count: 8,
+        },
+      }),
+      [200],
+    );
+    expect(redrive.body.successful_callbacks).toBeGreaterThan(0);
+    const source = await outbox.findSourceState({
+      sourceRunId: agentRun.body.runId,
+      sourceWorkflowAutomationId: scenario.automation.id,
+    });
+    expect(source.claim).not.toBeNull();
+    expect(source.items).toStrictEqual([
+      expect.objectContaining({
+        public_brand: "vm0",
+        source_run_id: agentRun.body.runId,
+        source_workflow_automation_id: scenario.automation.id,
+      }),
+    ]);
+  });
+
+  it("uses the immutable launch snapshot across Official result-email reconfiguration", async () => {
+    const scenario = await installResultEmailLoopScenario(
+      "api-test-result-reconfigure",
+      true,
+    );
+    const enabledRun = await accept(
+      automationClient().run({
+        headers: scenario.headers,
+        extraHeaders: { origin: "https://app.okou.ai" },
+        params: { id: scenario.automation.id },
+      }),
+      [201],
+    );
+    if (!enabledRun.body.runId) {
+      throw new Error("Expected enabled-at-launch Official Automation Run");
+    }
+
+    await syncCatalog(
+      catalog([
+        activeDefinition(scenario.definitionName, [loopBlueprint(false)]),
+      ]),
+    );
+    await accept(
+      installationClient().reconfigure({
+        headers: scenario.headers,
+        params: { workflowId: scenario.installed.body.workflow.id },
+        body: {
+          blueprints: [{ blueprintKey: "pulse", bindings: [] }],
+        },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, scenario.automation.id),
+    ).resolves.toMatchObject({ officialResultEmailEnabled: false });
+    await completeSuccessfulRun(
+      scenario.runnerGroup,
+      enabledRun.body.runId,
+      "Enabled launch survives disablement",
+    );
+    const enabledSource = await outbox.findSourceState({
+      sourceRunId: enabledRun.body.runId,
+      sourceWorkflowAutomationId: scenario.automation.id,
+    });
+    expect(enabledSource.claim).not.toBeNull();
+    expect(enabledSource.items).toStrictEqual([
+      expect.objectContaining({ public_brand: "okou" }),
+    ]);
+
+    const disabledRun = await accept(
+      automationClient().run({
+        headers: scenario.headers,
+        params: { id: scenario.automation.id },
+      }),
+      [201],
+    );
+    if (!disabledRun.body.runId) {
+      throw new Error("Expected disabled-at-launch Official Automation Run");
+    }
+    await syncCatalog(
+      catalog([
+        activeDefinition(scenario.definitionName, [loopBlueprint(true)]),
+      ]),
+    );
+    await accept(
+      installationClient().reconfigure({
+        headers: scenario.headers,
+        params: { workflowId: scenario.installed.body.workflow.id },
+        body: {
+          blueprints: [{ blueprintKey: "pulse", bindings: [] }],
+        },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, scenario.automation.id),
+    ).resolves.toMatchObject({ officialResultEmailEnabled: true });
+    await completeSuccessfulRun(
+      scenario.runnerGroup,
+      disabledRun.body.runId,
+      "Disabled launch stays ineligible",
+    );
+    await expect(
+      outbox.findSourceState({
+        sourceRunId: disabledRun.body.runId,
+        sourceWorkflowAutomationId: scenario.automation.id,
+      }),
+    ).resolves.toStrictEqual({ items: [], claim: null });
+  });
+
+  it("retains the Official result source through uninstall, TTL cleanup, and concurrent redrive", async () => {
+    const scenario = await installResultEmailLoopScenario(
+      "api-test-result-uninstall",
+      true,
+    );
+    const launched = await accept(
+      automationClient().run({
+        headers: scenario.headers,
+        params: { id: scenario.automation.id },
+      }),
+      [201],
+    );
+    if (!launched.body.runId) {
+      throw new Error("Expected pre-uninstall Official Automation Run");
+    }
+    const launchedRunId = launched.body.runId;
+    const beforeUninstall = await readOfficialWorkflowRunStateFixture(
+      context,
+      launchedRunId,
+    );
+    expect(beforeUninstall.provenance?.definitions).toHaveLength(1);
+    expect(beforeUninstall.storage_mounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ org_id: SYSTEM_ORG_ID }),
+      ]),
+    );
+
+    await accept(
+      installationClient().uninstall({
+        headers: scenario.headers,
+        params: { workflowId: scenario.installed.body.workflow.id },
+      }),
+      [204],
+    );
+    await completeSuccessfulRun(
+      scenario.runnerGroup,
+      launchedRunId,
+      "Post-uninstall result",
+    );
+    expect((await runs.readRun(scenario.actor, launchedRunId)).status).toBe(
+      "completed",
+    );
+    const beforeCleanup = await outbox.findSourceState({
+      sourceRunId: launchedRunId,
+      sourceWorkflowAutomationId: scenario.automation.id,
+    });
+    const originalItem = beforeCleanup.items[0];
+    if (!beforeCleanup.claim || !originalItem) {
+      throw new Error("Expected post-uninstall Official result source");
+    }
+
+    await withMockNowForTest(now() + 16 * 60 * 1000, async () => {
+      await expect(outbox.cleanupExpiredItems([originalItem.id])).resolves.toBe(
+        1,
+      );
+    });
+    await expect(
+      outbox.findSourceState({
+        sourceRunId: launchedRunId,
+        sourceWorkflowAutomationId: scenario.automation.id,
+      }),
+    ).resolves.toStrictEqual({ items: [], claim: beforeCleanup.claim });
+
+    const redrives = await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        return await accept(
+          automationExecutionClient().interruptResultEmailCallback({
+            body: { run_id: launchedRunId },
+          }),
+          [200],
+        );
+      }),
+    );
+    expect(
+      redrives.every((response) => {
+        return response.body.skipped;
+      }),
+    ).toBeTruthy();
+    await expect(
+      outbox.findSourceState({
+        sourceRunId: launchedRunId,
+        sourceWorkflowAutomationId: scenario.automation.id,
+      }),
+    ).resolves.toStrictEqual({ items: [], claim: beforeCleanup.claim });
   });
 
   it("creates no Run for stale or unverifiable Official admission state", async () => {

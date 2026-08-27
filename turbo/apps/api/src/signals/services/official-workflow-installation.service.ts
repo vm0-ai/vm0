@@ -753,6 +753,7 @@ async function completeInstallation(
         blueprintKey: resolvedBlueprint.blueprint.key,
         appliedFingerprint: resolvedBlueprint.blueprint.fingerprint,
         parameterBindings: resolvedBlueprint.bindings,
+        resultEmailEnabled: resolvedBlueprint.blueprint.runtime.resultEmail,
       },
     };
     const automation = await args.createAutomation(input);
@@ -918,6 +919,7 @@ interface OfficialAutomationPatch {
   readonly autonomyBudget: number;
   readonly officialAppliedFingerprint: string;
   readonly officialParameterBindings: OfficialWorkflowParameterBinding[];
+  readonly officialResultEmailEnabled: boolean;
   readonly officialReconciliationStatus: "reconciling";
   readonly updatedAt: Date;
 }
@@ -940,6 +942,7 @@ function officialPatchMetadata(resolved: ResolvedBlueprint, currentTime: Date) {
     autonomyBudget: resolved.autonomyBudget ?? 10,
     officialAppliedFingerprint: resolved.blueprint.fingerprint,
     officialParameterBindings: [...resolved.bindings],
+    officialResultEmailEnabled: resolved.blueprint.runtime.resultEmail,
     officialReconciliationStatus: "reconciling" as const,
     updatedAt: currentTime,
   };
@@ -1171,6 +1174,7 @@ function automationRestorePatch(
     officialAppliedFingerprint: row.officialAppliedFingerprint,
     officialReconciliationStatus: row.officialReconciliationStatus,
     officialParameterBindings: row.officialParameterBindings,
+    officialResultEmailEnabled: row.officialResultEmailEnabled,
     updatedAt: currentTime,
   };
 }
@@ -1207,7 +1211,8 @@ function sameReconfigurationBaseline(
     sameOfficialParameterBindings(
       expected.officialParameterBindings,
       current.officialParameterBindings,
-    )
+    ) &&
+    expected.officialResultEmailEnabled === current.officialResultEmailEnabled
   );
 }
 

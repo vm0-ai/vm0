@@ -3,6 +3,7 @@ import {
   type TestEmailOutboxStateActionBody,
   type TestEmailOutboxStateActionResponse,
   type TestEmailOutboxStateItem,
+  type TestOfficialAutomationResultEmailClaim,
 } from "@okouai/api-contracts/contracts/test-email-outbox-state";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -19,6 +20,16 @@ interface SeedEmailOutboxItemOptions {
 interface FindEmailOutboxItemsOptions {
   readonly toAddress: string;
   readonly subject: string;
+}
+
+interface FindEmailOutboxSourceItemsOptions {
+  readonly sourceRunId: string;
+  readonly sourceWorkflowAutomationId: string;
+}
+
+interface EmailOutboxSourceState {
+  readonly items: readonly TestEmailOutboxStateItem[];
+  readonly claim: TestOfficialAutomationResultEmailClaim | null;
 }
 
 function stateClient(context: TestContext) {
@@ -69,6 +80,20 @@ export function createEmailOutboxStateApi(context: TestContext) {
     },
 
     findItems,
+
+    async findSourceState(
+      options: FindEmailOutboxSourceItemsOptions,
+    ): Promise<EmailOutboxSourceState> {
+      const response = await postAction(context, {
+        action: "find-source",
+        source_run_id: options.sourceRunId,
+        source_workflow_automation_id: options.sourceWorkflowAutomationId,
+      });
+      if (response.action !== "find-source") {
+        throw new Error("Expected the email outbox source response");
+      }
+      return { items: response.items, claim: response.claim };
+    },
 
     async findItem(
       options: FindEmailOutboxItemsOptions,

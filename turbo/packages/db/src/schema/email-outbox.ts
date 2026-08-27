@@ -6,7 +6,10 @@ import {
   timestamp,
   integer,
   index,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type {
   EmailOutboxAddresses,
   EmailOutboxHeaders,
@@ -44,6 +47,11 @@ export const emailOutbox = pgTable(
     // Template (discriminated union stored as JSONB)
     template: jsonb("template").$type<EmailOutboxTemplate>().notNull(),
 
+    // Durable producer identity. The pair is intentionally not foreign-keyed:
+    // deleting a completed Run or Automation must not discard queued email.
+    sourceRunId: uuid("source_run_id"),
+    sourceWorkflowAutomationId: uuid("source_workflow_automation_id"),
+
     // Queue status
     status: text("status").notNull().default("pending"), // pending | sending | sent | failed
     attempts: integer("attempts").notNull().default(0),
@@ -63,6 +71,20 @@ export const emailOutbox = pgTable(
       ),
       // TTL cleanup
       index("email_outbox_created_at_idx").on(table.createdAt),
+      uniqueIndex("email_outbox_source_run_automation_unique").on(
+        table.sourceRunId,
+        table.sourceWorkflowAutomationId,
+      ),
+      check(
+        "email_outbox_source_identity_check",
+        sql`(
+          ${table.sourceRunId} IS NULL
+          AND ${table.sourceWorkflowAutomationId} IS NULL
+        ) OR (
+          ${table.sourceRunId} IS NOT NULL
+          AND ${table.sourceWorkflowAutomationId} IS NOT NULL
+        )`,
+      ),
     ];
   },
 );

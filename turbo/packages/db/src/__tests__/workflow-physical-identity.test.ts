@@ -69,6 +69,16 @@ describe("workflow schema physical identity", () => {
     expect(schema.strapiWorkflowAutomations).toBe(strapiWorkflowAutomations);
   });
 
+  it("keeps the Official result-email projection on the legacy Automation relation", () => {
+    expect(getTableConfig(workflowAutomations).columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "official_result_email_enabled",
+        }),
+      ]),
+    );
+  });
+
   it("keeps every explicit index and check name in the touched schemas", () => {
     expect({
       workflows: explicitNames(workflows),

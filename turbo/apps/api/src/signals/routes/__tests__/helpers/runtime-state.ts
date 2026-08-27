@@ -295,6 +295,8 @@ export async function readWorkflowAutomationAutonomyFixture(
   readonly autonomyBudget: number;
   readonly enabled: boolean;
   readonly lastRunId: string | null;
+  readonly officialBlueprintKey: string | null;
+  readonly officialResultEmailEnabled: boolean | null;
 } | null> {
   const response = await postAction(context, {
     action: "read-workflow-automation-autonomy-state",
@@ -311,6 +313,8 @@ export async function readWorkflowAutomationAutonomyFixture(
         autonomyBudget: state.autonomy_budget,
         enabled: state.enabled,
         lastRunId: state.last_run_id,
+        officialBlueprintKey: state.official_blueprint_key,
+        officialResultEmailEnabled: state.official_result_email_enabled,
       }
     : null;
 }

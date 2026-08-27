@@ -1467,6 +1467,12 @@ describe("workflows", () => {
       automation.body.id,
       4,
     );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.body.id),
+    ).resolves.toMatchObject({
+      officialBlueprintKey: null,
+      officialResultEmailEnabled: null,
+    });
     const webhookAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1519,7 +1525,11 @@ describe("workflows", () => {
     }
     await expect(
       readWorkflowAutomationAutonomyFixture(context, copiedSchedule.id),
-    ).resolves.toMatchObject({ autonomyBudget: 4 });
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      officialBlueprintKey: null,
+      officialResultEmailEnabled: null,
+    });
     expect(
       copiedAutomations.body.some((copiedAutomation) => {
         return (

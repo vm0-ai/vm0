@@ -45,6 +45,7 @@ export function workflowAutomationColumns() {
       workflowAutomations.officialReconciliationStatus,
     officialParameterBindings: workflowAutomations.officialParameterBindings,
     officialIntendedEnabled: workflowAutomations.officialIntendedEnabled,
+    officialResultEmailEnabled: workflowAutomations.officialResultEmailEnabled,
     createdAt: workflowAutomations.createdAt,
     updatedAt: workflowAutomations.updatedAt,
   };
