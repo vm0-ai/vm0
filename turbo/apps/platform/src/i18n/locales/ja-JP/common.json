@@ -2420,9 +2420,8 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} 件のアカウント",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} 件に対応が必要",
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "申し込む",
@@ -2486,6 +2485,8 @@
       "access": {
         "add": "アクセス権の追加",
         "manage": "{{connector}} アクセスを管理する",
+        "summaryMany": "{{value}} 件のエージェント",
+        "unavailable": "アクセスを利用できません",
         "usedBy": "使用者 "
       },
       "categories": {

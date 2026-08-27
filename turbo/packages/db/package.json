@@ -16,6 +16,10 @@
       "import": "./src/jsonb-contracts/*.ts",
       "types": "./src/jsonb-contracts/*.ts"
     },
+    "./operations/model-provider-built-in-identity": {
+      "import": "./src/operations/model-provider-built-in-identity.ts",
+      "types": "./src/operations/model-provider-built-in-identity.ts"
+    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"

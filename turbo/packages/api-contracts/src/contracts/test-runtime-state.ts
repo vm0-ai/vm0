@@ -396,6 +396,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   official_workflow_run_state: z
     .object({
       status: z.string(),
+      model_provider: z.string().nullable(),
       provenance: z
         .object({
           schemaVersion: z.literal(1),

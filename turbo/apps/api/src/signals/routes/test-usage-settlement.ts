@@ -214,7 +214,7 @@ const checkUsageSettlementAdmission$ = command(
         ? (await checkOrgCreditsForRunAdmission({
             db: set(writeDb$),
             ...args,
-            modelProviderType: "vm0",
+            modelProviderType: "built-in",
           })) === undefined
         : await set(checkBillableOperationCredits$, args, signal);
     signal.throwIfAborted();

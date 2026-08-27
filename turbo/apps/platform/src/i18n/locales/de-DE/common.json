@@ -2427,10 +2427,9 @@
       "summaryOne": "{{value}} Konto",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
+      "summaryWithAttention": "{{value}}/{{total}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Anwenden",
@@ -2494,6 +2493,8 @@
       "access": {
         "add": "Zugriff hinzufügen",
         "manage": "Verwalten Sie den {{connector}}-Zugriff",
+        "summaryMany": "{{value}} Agenten",
+        "unavailable": "Zugriff nicht verfügbar",
         "usedBy": "Verwendet von "
       },
       "categories": {

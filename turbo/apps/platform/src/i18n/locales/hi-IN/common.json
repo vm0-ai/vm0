@@ -2427,10 +2427,9 @@
       "summaryOne": "{{value}} खाता",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention": "{{value}}/{{total}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "आवेदन करना",
@@ -2494,6 +2493,8 @@
       "access": {
         "add": "पहुंच जोड़ें",
         "manage": "{{connector}} पहुंच प्रबंधित करें",
+        "summaryMany": "{{value}} एजेंट",
+        "unavailable": "पहुंच उपलब्ध नहीं है",
         "usedBy": "द्वारा उपयोग किया जाता है"
       },
       "categories": {

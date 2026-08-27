@@ -4310,7 +4310,7 @@ describe("CHAT-02: drain-time admission failure", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },

@@ -47,7 +47,7 @@ export function modelProviderWriteTypeForLaunch(
   type: string,
 ): ModelProviderWriteType {
   const providerType = modelProviderTypeSchema.parse(type);
-  return isBuiltInModelProviderType(providerType) ? "vm0" : providerType;
+  return isBuiltInModelProviderType(providerType) ? "built-in" : providerType;
 }
 
 export interface ModelFirstPin {

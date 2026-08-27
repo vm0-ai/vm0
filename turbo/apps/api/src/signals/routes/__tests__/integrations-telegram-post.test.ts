@@ -2944,7 +2944,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );
@@ -2997,7 +2997,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );

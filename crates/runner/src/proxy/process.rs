@@ -15,7 +15,7 @@ use super::flush::{
 };
 use super::managed_process::ManagedMitmdump;
 use super::registry::{ProxyRegistryHandle, SandboxRegistration, write_empty_registry};
-use super::runtime::{CANONICAL_RUNTIME_MARKER_ENV, LEGACY_RUNTIME_MARKER_ENV, MitmdumpRuntime};
+use super::runtime::{CANONICAL_RUNTIME_MARKER_ENV, MitmdumpRuntime};
 use super::stderr::log_mitmdump_stderr_line;
 use crate::error::{RunnerError, RunnerResult};
 
@@ -761,7 +761,6 @@ async fn spawn_mitmdump(
         .stderr(std::process::Stdio::piped());
     cmd.env("TMPDIR", &launch_path)
         .env(CANONICAL_RUNTIME_MARKER_ENV, &launch_path)
-        .env(LEGACY_RUNTIME_MARKER_ENV, &launch_path)
         .process_group(0);
     cmd.kill_on_drop(true);
 
@@ -972,6 +971,7 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::runtime::LEGACY_RUNTIME_MARKER_ENV;
     use super::*;
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
@@ -1131,14 +1131,6 @@ mod tests {
         );
     }
 
-    // Mirrors the pre-#28989 reader retained by rollback runners. Keep this
-    // test-only so Stage 1 proves its dual writer remains legacy-readable.
-    fn legacy_only_runtime_marker(environ: &[u8]) -> Option<&[u8]> {
-        environ
-            .split(|byte| *byte == 0)
-            .find_map(|entry| entry.strip_prefix(b"VM0_MITMDUMP_RUNTIME_DIR="))
-    }
-
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
             path,
@@ -1146,7 +1138,7 @@ mod tests {
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
 printf '%s\n%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
-  "$VM0_MITMDUMP_RUNTIME_DIR" "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
+  "${VM0_MITMDUMP_RUNTIME_DIR-}" "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
 cp -f "/proc/$$/environ" "$0.environ"
 port=""
 ready_path=""
@@ -1210,7 +1202,7 @@ PY
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
-  "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+  "${VM0_MITMDUMP_RUNTIME_DIR-}" > "$0.env"
 ready_path=""
 usage_state_id=""
 for arg in "$@"; do
@@ -1257,7 +1249,7 @@ from pathlib import Path
 Path(f"{sys.argv[0]}.env").write_text(
     f"{os.environ['TMPDIR']}\n"
     f"{os.environ['OKOU_MITMDUMP_RUNTIME_DIR']}\n"
-    f"{os.environ['VM0_MITMDUMP_RUNTIME_DIR']}\n",
+    f"{os.environ.get('VM0_MITMDUMP_RUNTIME_DIR', '')}\n",
     encoding="utf-8",
 )
 port = None
@@ -1307,7 +1299,7 @@ while True:
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
-  "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+  "${VM0_MITMDUMP_RUNTIME_DIR-}" > "$0.env"
 printf 'attempt\n' >> "$0.attempts"
 python3 - "$0.descendant" <<'PY' &
 import os
@@ -1870,13 +1862,30 @@ exit 42
         let environment: Vec<&str> = environment.lines().collect();
         assert_eq!(environment.len(), 4);
         assert_eq!(environment[0], environment[1]);
-        assert_eq!(environment[0], environment[2]);
+        assert!(environment[2].is_empty());
         assert_eq!(environment[3], "runner-token");
         let launched_environ = std::fs::read(fake_mitmdump.with_extension("environ")).unwrap();
+        let tmpdir = launched_environ
+            .split(|byte| *byte == 0)
+            .find_map(|entry| entry.strip_prefix(b"TMPDIR="))
+            .expect("launched mitmdump environment should contain TMPDIR");
+        let mut canonical_markers = launched_environ
+            .split(|byte| *byte == 0)
+            .filter_map(|entry| entry.strip_prefix(b"OKOU_MITMDUMP_RUNTIME_DIR="));
         assert_eq!(
-            legacy_only_runtime_marker(&launched_environ),
-            Some(environment[0].as_bytes()),
-            "the pre-migration legacy-only reader must recognize Stage 1 launch environments"
+            canonical_markers.next(),
+            Some(tmpdir),
+            "the canonical runtime marker must equal TMPDIR"
+        );
+        assert!(
+            canonical_markers.next().is_none(),
+            "the launched mitmdump environment must contain exactly one canonical runtime marker"
+        );
+        assert!(
+            launched_environ
+                .split(|byte| *byte == 0)
+                .all(|entry| !entry.starts_with(b"VM0_MITMDUMP_RUNTIME_DIR=")),
+            "the launched mitmdump environment must not contain the legacy runtime marker"
         );
         let launch_path = Path::new(environment[0]);
         assert_eq!(launch_path.parent(), Some(config.runtime_dir.as_path()));

@@ -345,13 +345,13 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
     const createdProvider = await api.upsertVm0Provider(admin, [201]);
     expect(createdProvider.body).toMatchObject({
       created: true,
-      provider: { type: "vm0" },
+      provider: { type: "built-in" },
     });
 
     const listedProviders = await api.listModelProviders(admin);
     expect(
       listedProviders.body.modelProviders.some((provider) => {
-        return provider.type === "vm0";
+        return provider.type === "built-in";
       }),
     ).toBeTruthy();
 
@@ -375,7 +375,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
     const afterDelete = await api.listModelProviders(admin);
     expect(
       afterDelete.body.modelProviders.some((provider) => {
-        return provider.type === "vm0";
+        return provider.type === "built-in";
       }),
     ).toBeFalsy();
   });

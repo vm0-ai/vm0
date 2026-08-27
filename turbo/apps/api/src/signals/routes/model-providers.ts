@@ -242,7 +242,7 @@ const upsertModelProviderInner$ = command(
       );
     }
 
-    if (type === "vm0") {
+    if (type === "built-in") {
       const result = await set(
         upsertOrgNoSecretModelProvider$,
         { orgId: auth.orgId, type },

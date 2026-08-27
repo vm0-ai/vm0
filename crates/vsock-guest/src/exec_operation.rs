@@ -2053,12 +2053,17 @@ fn append_exec_control_environment<'a>(
     workload_endpoints: Option<(&'a str, &'a str)>,
 ) {
     env.retain(|(key, _)| {
-        *key != WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV
+        *key != process_control_ipc::BOOTSTRAP_ENV
+            && *key != process_control_ipc::CANONICAL_BOOTSTRAP_ENV
+            && *key != WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV
             && *key != CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
             && *key != TOOL_CGROUP_PROCS_ENDPOINT_ENV
             && *key != CANONICAL_TOOL_CGROUP_PROCS_ENV
     });
-    env.push((process_control_ipc::BOOTSTRAP_ENV, process_control_endpoint));
+    env.push((
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+        process_control_endpoint,
+    ));
     if let Some((workload_endpoint, tool_endpoint)) = workload_endpoints {
         env.push((CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, workload_endpoint));
         env.push((CANONICAL_TOOL_CGROUP_PROCS_ENV, tool_endpoint));
@@ -2292,7 +2297,7 @@ mod tests {
     }
 
     #[test]
-    fn control_bootstrap_environment_replaces_cgroup_aliases_with_canonical() {
+    fn control_bootstrap_environment_replaces_aliases_with_canonical() {
         let mut env = vec![
             ("FIRST_USER_KEY", "first-user-value"),
             (
@@ -2301,7 +2306,7 @@ mod tests {
             ),
             (
                 process_control_ipc::BOOTSTRAP_ENV,
-                "stale-process-control-endpoint",
+                "stale-legacy-process-control-endpoint",
             ),
             ("SECOND_USER_KEY", "second-user-value"),
             (
@@ -2310,7 +2315,7 @@ mod tests {
             ),
             (
                 process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                "existing-canonical-process-control-endpoint",
+                "stale-canonical-process-control-endpoint",
             ),
             (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
             ("THIRD_USER_KEY", "third-user-value"),
@@ -2330,18 +2335,10 @@ mod tests {
             env,
             [
                 ("FIRST_USER_KEY", "first-user-value"),
-                (
-                    process_control_ipc::BOOTSTRAP_ENV,
-                    "stale-process-control-endpoint"
-                ),
                 ("SECOND_USER_KEY", "second-user-value"),
-                (
-                    process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                    "existing-canonical-process-control-endpoint"
-                ),
                 ("THIRD_USER_KEY", "third-user-value"),
                 (
-                    process_control_ipc::BOOTSTRAP_ENV,
+                    process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "process-control-endpoint"
                 ),
                 (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "workload-endpoint"),
@@ -2349,6 +2346,7 @@ mod tests {
             ]
         );
         for canonical_key in [
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             CANONICAL_TOOL_CGROUP_PROCS_ENV,
         ] {
@@ -2358,6 +2356,7 @@ mod tests {
             );
         }
         for legacy_key in [
+            process_control_ipc::BOOTSTRAP_ENV,
             WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         ] {

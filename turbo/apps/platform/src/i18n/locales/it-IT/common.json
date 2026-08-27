@@ -2474,11 +2474,10 @@
       "summaryOne_one": "",
       "summaryOne_many": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} richiedono attenzione",
+      "summaryWithAttention": "{{value}}/{{total}} richiedono attenzione",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Applicare",
@@ -2542,6 +2541,8 @@
       "access": {
         "add": "Aggiungi accesso",
         "manage": "Gestisci l'accesso {{connector}}",
+        "summaryMany": "{{value}} agenti",
+        "unavailable": "Accesso non disponibile",
         "usedBy": "Utilizzato da "
       },
       "categories": {

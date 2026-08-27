@@ -7,6 +7,7 @@ import {
   type LogsFilters,
   type TriggerSource,
 } from "@okouai/api-contracts/contracts/logs";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -372,7 +373,9 @@ export function logDetail(
       agentId,
       displayName: agentDisplayName ?? null,
       framework,
-      modelProvider: modelProvider ?? null,
+      modelProvider: isBuiltInModelProviderType(modelProvider)
+        ? "built-in"
+        : (modelProvider ?? null),
       selectedModel: selectedModel ?? null,
       modelRuntimeProvider: modelRuntimeProvider ?? null,
       modelRuntimeModel: modelRuntimeModel ?? null,

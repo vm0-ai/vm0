@@ -60,6 +60,7 @@ import {
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
 import { getModelProviderTypeForSurfaceProtocol } from "../model-provider-gateways";
+import { modelProvidersByTypeContract } from "../model-provider-routes";
 
 describe("model-first canonical catalog", () => {
   it("recognizes GPT 5.6 Codex fast mode models", () => {
@@ -331,70 +332,70 @@ describe("model-first canonical catalog", () => {
 
   it("returns compatible provider types for canonical models", () => {
     expect(getProvidersForModel("claude-fable-5")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("anthropic/claude-fable-5")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("claude-opus-5")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("anthropic/claude-opus-5")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("claude-opus-4-8")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("anthropic/claude-sonnet-5")).toEqual([
-      "vm0",
+      "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("gpt-5.5")).toEqual([
-      "vm0",
+      "built-in",
       "openai-api-key",
       "codex-oauth-token",
       "openrouter-codex",
       "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-sol")).toEqual([
-      "vm0",
+      "built-in",
       "openai-api-key",
       "codex-oauth-token",
       "openrouter-codex",
       "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-terra")).toEqual([
-      "vm0",
+      "built-in",
       "openai-api-key",
       "codex-oauth-token",
       "openrouter-codex",
       "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-luna")).toEqual([
-      "vm0",
+      "built-in",
       "openai-api-key",
       "codex-oauth-token",
       "openrouter-codex",
@@ -402,11 +403,11 @@ describe("model-first canonical catalog", () => {
     ]);
     expect(getProvidersForModel("openai/gpt-5.6-sol")).toEqual([]);
     expect(getProvidersForModel("deepseek-v4-flash")).toEqual([
-      "vm0",
+      "built-in",
       "deepseek",
     ]);
     expect(getProvidersForModel("deepseek-v4-pro")).toEqual([
-      "vm0",
+      "built-in",
       "deepseek",
     ]);
     expect(getProvidersForModel("kimi-k3")).toEqual([]);
@@ -631,7 +632,7 @@ describe("model-first canonical catalog", () => {
         return {
           model,
           isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-          defaultProviderType: "vm0",
+          defaultProviderType: "built-in",
           credentialScope: "org",
           modelProviderId: null,
         };
@@ -1638,17 +1639,19 @@ describe("built-in provider discriminator compatibility", () => {
     );
   });
 
-  it("keeps the temporary write fence legacy-only", () => {
-    expect(modelProviderWriteTypeSchema.safeParse("vm0").success).toBe(true);
-    expect(modelProviderWriteTypeSchema.safeParse("built-in").success).toBe(
-      false,
+  it("accepts both request aliases and normalizes exact vm0 to built-in", () => {
+    expect(modelProviderWriteTypeSchema.parse("vm0")).toBe("built-in");
+    expect(modelProviderWriteTypeSchema.parse("built-in")).toBe("built-in");
+    expect(upsertModelProviderRequestSchema.parse({ type: "vm0" }).type).toBe(
+      "built-in",
     );
     expect(
-      upsertModelProviderRequestSchema.safeParse({ type: "vm0" }).success,
-    ).toBe(true);
+      upsertModelProviderRequestSchema.parse({ type: "built-in" }).type,
+    ).toBe("built-in");
     expect(
-      upsertModelProviderRequestSchema.safeParse({ type: "built-in" }).success,
-    ).toBe(false);
+      modelProvidersByTypeContract.delete.pathParams.parse({ type: "vm0" })
+        .type,
+    ).toBe("built-in");
 
     const policy = {
       model: "gpt-5.6-sol",
@@ -1657,17 +1660,17 @@ describe("built-in provider discriminator compatibility", () => {
       modelProviderId: null,
     } as const;
     expect(
-      updateOrgModelPolicySchema.safeParse({
+      updateOrgModelPolicySchema.parse({
         ...policy,
         defaultProviderType: "vm0",
-      }).success,
-    ).toBe(true);
+      }).defaultProviderType,
+    ).toBe("built-in");
     expect(
-      updateOrgModelPolicySchema.safeParse({
+      updateOrgModelPolicySchema.parse({
         ...policy,
         defaultProviderType: "built-in",
-      }).success,
-    ).toBe(false);
+      }).defaultProviderType,
+    ).toBe("built-in");
   });
 
   it("shares built-in behavior without duplicating selectable providers", () => {
@@ -1690,22 +1693,22 @@ describe("built-in provider discriminator compatibility", () => {
     const selectable = getSelectableProviderTypes();
     expect(
       selectable.filter((type) => {
-        return type === "vm0";
+        return type === "built-in";
       }),
     ).toHaveLength(1);
-    expect(selectable).not.toContain("built-in");
-    expect(getProvidersForModel("gpt-5.6-sol")).toContain("vm0");
-    expect(getProvidersForModel("gpt-5.6-sol")).not.toContain("built-in");
+    expect(selectable).not.toContain("vm0");
+    expect(getProvidersForModel("gpt-5.6-sol")).toContain("built-in");
+    expect(getProvidersForModel("gpt-5.6-sol")).not.toContain("vm0");
   });
 
-  it("keeps default policy seeds on the legacy writer value", () => {
+  it("emits the canonical writer value from default policy seeds", () => {
     expect(
       getDefaultOrgModelPolicySeed().every((policy) => {
-        return policy.defaultProviderType === "vm0";
+        return policy.defaultProviderType === "built-in";
       }),
     ).toBe(true);
 
-    const writeType: ModelProviderWriteType = "vm0";
-    expect(writeType).toBe("vm0");
+    const writeType: ModelProviderWriteType = "built-in";
+    expect(writeType).toBe("built-in");
   });
 });

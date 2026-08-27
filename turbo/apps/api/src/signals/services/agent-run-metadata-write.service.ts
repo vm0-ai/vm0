@@ -69,7 +69,7 @@ export function normalizeRunMetadata(
     workflowAutomationId: input.workflowAutomationId ?? null,
     goalId: input.goalId ?? null,
     modelProvider: isBuiltInModelProviderType(input.modelProvider)
-      ? "vm0"
+      ? "built-in"
       : (input.modelProvider ?? null),
     modelProviderId: input.modelProviderId ?? null,
     modelProviderCredentialScope: input.modelProviderCredentialScope ?? null,

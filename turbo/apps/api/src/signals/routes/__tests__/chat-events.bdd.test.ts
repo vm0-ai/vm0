@@ -4261,7 +4261,7 @@ describe("CHAT-02: admission without spendable credits", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -5130,7 +5130,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -6543,7 +6543,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "gpt-5.6-terra",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -6847,21 +6847,21 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "gpt-5.6-sol",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "gpt-5.6-luna",
         isDefault: false,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "claude-sonnet-5",
         isDefault: false,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7263,7 +7263,7 @@ describe("CHAT-02: model-first provider policies", () => {
         {
           model: "deepseek-v4-flash",
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "built-in",
           credentialScope: "org",
           modelProviderId: null,
         },
@@ -7337,7 +7337,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "claude-opus-4-8",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7360,7 +7360,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       readRunModelRuntimeRouteFixture(run.runId),
     ).resolves.toMatchObject({
-      modelProvider: "vm0",
+      modelProvider: "built-in",
       selectedModel: "claude-opus-4-8",
     });
 
@@ -7819,7 +7819,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: selectedModel,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7843,7 +7843,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expect(
       readRunModelRuntimeRouteFixture(first.runId),
     ).resolves.toMatchObject({
-      modelProvider: "vm0",
+      modelProvider: "built-in",
       selectedModel,
       modelRuntimeProvider: "anthropic-api-key",
       modelRuntimeModel: selectedModel,

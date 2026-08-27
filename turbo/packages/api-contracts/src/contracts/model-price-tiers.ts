@@ -27,7 +27,7 @@ export type ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 
 /**
  * User-facing credit cost tier for Built-in model offerings. Only applies to
- * the `vm0` provider type; BYOK providers pay the vendor directly and do not
+ * the `built-in` provider type; BYOK providers pay the vendor directly and do not
  * carry a platform tier.
  */
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
