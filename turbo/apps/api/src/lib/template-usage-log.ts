@@ -11,10 +11,10 @@ const TEMPLATE_USED_TYPE = "template_used";
 /**
  * Which of the three paths that build a template prompt recorded this usage.
  *
- * Kept separate from the chat event's own `contextType`: that names the channel
- * a message arrived on, while this names how the message reached a run. A
- * message can arrive from Slack and still be dispatched by any of the three,
- * so collapsing them would make both unreadable.
+ * This names how a message reached a run, not the channel it arrived on. The
+ * three differ in when the template becomes guidance, which is what makes a
+ * count comparable: a message can sit in the queue for minutes before its
+ * template is used, or be steered into a run that is already executing.
  */
 export type TemplateUsageDispatchPath =
   | "active-input"
@@ -27,12 +27,6 @@ export interface TemplateUsageLogContext {
   readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string;
-  /**
-   * The chat event's channel, where the caller has the event in hand. Omitted
-   * rather than defaulted by callers that do not, so an absent channel reads as
-   * unknown instead of as a fabricated one.
-   */
-  readonly contextType?: string;
   /** Normal sends only: whether an agent token or a human session sent this. */
   readonly triggerSource?: string;
 }
