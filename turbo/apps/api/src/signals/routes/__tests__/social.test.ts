@@ -1881,8 +1881,11 @@ describe("managed SocialKit route", () => {
     await fundActor(actor);
     const providerStarted = createDeferredPromise<void>(context.signal);
     const releaseProvider = createDeferredPromise<void>(context.signal);
+    const providerPollStarted = createDeferredPromise<void>(context.signal);
+    const releaseProviderPoll = createDeferredPromise<void>(context.signal);
     const providerJobPrefix = `provider-single-download-${randomUUID()}`;
     let providerStarts = 0;
+    let providerPolls = 0;
     server.use(
       http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, async () => {
         providerStarts += 1;
@@ -1895,7 +1898,12 @@ describe("managed SocialKit route", () => {
           status: "queued",
         });
       }),
-      http.get(/^https:\/\/api\.socialkit\.dev\/v2\/downloads\//u, () => {
+      http.get(/^https:\/\/api\.socialkit\.dev\/v2\/downloads\//u, async () => {
+        providerPolls += 1;
+        if (providerPolls === 1) {
+          providerPollStarted.resolve();
+          await releaseProviderPoll.promise;
+        }
         return HttpResponse.json({ status: "failed" });
       }),
     );
@@ -1924,7 +1932,17 @@ describe("managed SocialKit route", () => {
     });
     expect(first.body.status).toBe("processing");
     expect(providerStarts).toBe(1);
+    await providerPollStarted.promise;
+    const blockedWhileProcessing = await accept(
+      socialClient.createDownload(request),
+      [409],
+    );
 
+    expectApiError(blockedWhileProcessing.body);
+    expect(blockedWhileProcessing.body.error.code).toBe("DOWNLOAD_IN_PROGRESS");
+    expect(providerStarts).toBe(1);
+
+    releaseProviderPoll.resolve();
     await flushWaitUntilForTest();
     const next = await accept(socialClient.createDownload(request), [202]);
 
