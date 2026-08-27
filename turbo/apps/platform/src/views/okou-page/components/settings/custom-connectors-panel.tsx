@@ -465,9 +465,28 @@ function CustomConnectorRow({
   );
 }
 
-function CustomConnectorDialogs() {
+function CustomConnectorDialogs({
+  mcpEnabled,
+}: {
+  readonly mcpEnabled: boolean;
+}) {
   const dialog = useGet(customConnectorDialog$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
+  const accountManagement =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
+  const accountSummariesLoadable = useLoadable(
+    connectorAccountSummaryByTarget$,
+  );
+  const accessAccountSummary =
+    dialog.kind === "access" && accountSummariesLoadable.state === "hasData"
+      ? accountSummariesLoadable.data.get(`custom:${dialog.connector.id}`)
+      : undefined;
+  const allowAccessIncrease =
+    dialog.kind === "access" &&
+    (dialog.connector.kind === "http" || mcpEnabled) &&
+    (!accountManagement ||
+      (accountSummariesLoadable.state === "hasData" &&
+        (accessAccountSummary?.accountCount ?? 0) > 0));
   return (
     <>
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
@@ -480,7 +499,7 @@ function CustomConnectorDialogs() {
       {dialog.kind === "access" && (
         <CustomConnectorAccessManagementDialog
           connector={dialog.connector}
-          allowAccessIncrease={dialog.allowAccessIncrease}
+          allowAccessIncrease={allowAccessIncrease}
           onClose={closeDialog}
         />
       )}
@@ -613,13 +632,7 @@ function CustomConnectorGrid({
               return openEdit(connector);
             }}
             onManageAccess={() => {
-              return openAccess({
-                connector,
-                allowAccessIncrease:
-                  (connector.kind === "http" || mcpEnabled) &&
-                  (!connectorAccountsEnabled ||
-                    (accountSummary?.accountCount ?? 0) > 0),
-              });
+              return openAccess(connector);
             }}
             onDelete={() => {
               return openDelete(connector);
@@ -750,7 +763,7 @@ export function CustomConnectorsPanel() {
           mcpEnabled={mcpEnabled}
         />
       ) : null}
-      <CustomConnectorDialogs />
+      <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
       <CustomAccountDialogs mcpEnabled={mcpEnabled} />
     </section>
   );

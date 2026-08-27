@@ -6537,6 +6537,87 @@ describe("connectors page", () => {
     expect(oauthStartCount).toBe(1);
   });
 
+  it("updates custom connector access eligibility while the dialog is open", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000051";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000052";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+    });
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      agentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        const grants: AgentCustomConnectorGrant[] =
+          params.id === researchAgentId
+            ? [{ customConnectorId: connector.id, permissionNames: [] }]
+            : [];
+        return respond(200, { grants });
+      },
+    );
+    let summariesRequestStarted = false;
+    let resolveSummaries = (): void => {
+      throw new Error("Account summaries request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.summaries,
+      async ({ deferred, respond }) => {
+        const summariesDeferred = deferred<void>();
+        resolveSummaries = () => {
+          summariesDeferred.resolve();
+        };
+        summariesRequestStarted = true;
+        await summariesDeferred.promise;
+        return respond(200, {
+          summaries: [
+            {
+              target: {
+                kind: "custom",
+                customConnectorId: connector.id,
+              },
+              accountCount: 1,
+              attentionCount: 0,
+              defaultConnection: null,
+            },
+          ],
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(summariesRequestStarted).toBeTruthy();
+      expect(
+        screen.getByLabelText("Manage Acme Search access"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Manage Acme Search access"));
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage Acme Search access",
+    });
+    const supportAccessSwitch = within(accessDialog).getByLabelText(
+      "Authorize Acme Search access for Support",
+    );
+    expect(supportAccessSwitch).toHaveAttribute("aria-disabled", "true");
+
+    resolveSummaries();
+
+    await waitFor(() => {
+      expect(supportAccessSwitch).not.toHaveAttribute("aria-disabled", "true");
+    });
+  });
+
   it.each([
     { label: "HTTP", connector: customConnector({}) },
     { label: "MCP", connector: mcpCustomConnector({ connected: false }) },
