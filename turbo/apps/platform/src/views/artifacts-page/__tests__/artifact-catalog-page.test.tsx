@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -14,6 +14,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 
@@ -36,10 +37,11 @@ function setupArtifactCatalogPage(
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {
     [FeatureSwitchKey.SharedThreadSharing]: true,
   },
+  path = "/artifacts",
 ): void {
   detachedSetupPage({
     context,
-    path: "/artifacts",
+    path,
     user: { id: CATALOG_USER_ID, fullName: "Test User" },
     org: {
       activeOrg: { id: CATALOG_ORG_ID, name: "Test Org" },
@@ -196,6 +198,134 @@ describe("artifact catalog page", () => {
 
     await findCard("avatar-video.mp4");
     expect(requestedKinds).toStrictEqual(["presentation", "avatar"]);
+  });
+
+  it("syncs the selected artifact tab with browser history", async () => {
+    const requestedKinds: (string | undefined)[] = [];
+    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+      requestedKinds.push(query.kind);
+      const kind = query.kind ?? "presentation";
+      return respond(200, {
+        artifacts: [artifact({ kind, title: `${kind}-artifact` })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage(undefined, "/artifacts?tab=image");
+    await findCard("image-artifact");
+    expect(buttonByLabel("Show image artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(new URLSearchParams(search()).get("tab")).toBe("image");
+
+    const videoFilter = buttonByLabel("Show video artifacts");
+    if (!videoFilter) {
+      throw new Error("Expected a video kind filter");
+    }
+    await click(videoFilter);
+    await findCard("video-artifact");
+    expect(new URLSearchParams(search()).get("tab")).toBe("video");
+
+    act(() => {
+      window.history.back();
+    });
+
+    await findCard("image-artifact");
+    expect(buttonByLabel("Show image artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(new URLSearchParams(search()).get("tab")).toBe("image");
+    expect(requestedKinds.slice(0, 2)).toStrictEqual(["image", "video"]);
+    expect(requestedKinds.at(-1)).toBe("image");
+  });
+
+  it("opens a routed artifact and restores its card when the preview closes", async () => {
+    const targetArtifactId = "a0000000-0000-4000-a000-000000000099";
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+      if (query.cursor === "image-cursor-2") {
+        return respond(200, {
+          artifacts: [
+            artifact({
+              id: targetArtifactId,
+              kind: "image",
+              title: "selected-image.png",
+            }),
+          ],
+          nextCursor: null,
+        });
+      }
+      return respond(200, {
+        artifacts: [
+          artifact({
+            id: "a0000000-0000-4000-a000-000000000098",
+            kind: "image",
+            title: "recent-image.png",
+          }),
+        ],
+        nextCursor: "image-cursor-2",
+      });
+    });
+    context.mocks.api(artifactCatalogContract.get, ({ params, respond }) => {
+      expect(params.artifactId).toBe(targetArtifactId);
+      return respond(200, {
+        ...artifact({
+          id: targetArtifactId,
+          kind: "image",
+          title: "selected-image.png",
+        }),
+        kind: "image",
+        file: {
+          id: "f0000000-0000-4000-a000-000000000099",
+          filename: "selected-image.png",
+          contentType: "image/png",
+          size: 4096,
+          url: "https://artifacts.example.com/selected-image.png",
+          previewImageUrl: null,
+        },
+        model: "image-model",
+        provider: "image-provider",
+      });
+    });
+
+    setupArtifactCatalogPage(
+      undefined,
+      `/artifacts?tab=image&artifact=${targetArtifactId}`,
+    );
+
+    await expect(
+      screen.findByTestId("attachment-lightbox-image"),
+    ).resolves.toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/selected-image.png",
+    );
+    expect(pathname()).toBe("/artifacts");
+    expect(new URLSearchParams(search()).get("tab")).toBe("image");
+    expect(new URLSearchParams(search()).get("artifact")).toBe(
+      targetArtifactId,
+    );
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    });
+
+    await click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+      expect(new URLSearchParams(search()).has("artifact")).toBeFalsy();
+    });
+    expect(pathname()).toBe("/artifacts");
+    expect(new URLSearchParams(search()).get("tab")).toBe("image");
+    await findCard("selected-image.png");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
   });
 
   it("keeps the avatar filter visible while avatar artifacts load", async () => {
