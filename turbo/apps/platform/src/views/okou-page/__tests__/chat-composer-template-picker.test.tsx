@@ -4421,6 +4421,71 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("releases rename focus after confirming an uploaded template title", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    let template = presentationTemplateDetail({
+      id: "34c41aed-b488-4e09-b7ea-23a712a270dd",
+      title: "Focus deck",
+      sourceFilename: "focus-deck.pptx",
+      coverUrl: "https://example.com/focus-deck-cover.png",
+      pageCount: 1,
+      visibility: "private",
+      canManage: true,
+      pageUrls: ["https://example.com/focus-deck-cover.png"],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    });
+    setMockPresentationTemplates([template]);
+    const updateStarted = context.mocks.deferred<void>();
+    const releaseUpdate = context.mocks.deferred<void>();
+    context.mocks.api(
+      presentationTemplatesContract.update,
+      async ({ body, params, respond }) => {
+        expect(params.templateId).toBe(template.id);
+        expect(body).toStrictEqual({ title: "Renamed focus deck" });
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+        template = {
+          ...template,
+          title: body.title ?? template.title,
+          updatedAt: "2026-08-27T02:41:59.522Z",
+        };
+        return respond(200, presentationTemplateSummary(template));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText("Preview Focus deck at current slide"),
+    );
+    const titleInput = await screen.findByRole("textbox", {
+      name: "Rename template",
+    });
+    await fill(titleInput, "Renamed focus deck");
+    const renameButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.getAttribute("aria-label") === "Rename template";
+    });
+    if (!renameButton) {
+      throw new Error("Imported template Rename button not found");
+    }
+    await user.click(renameButton);
+    await updateStarted.promise;
+
+    expect(renameButton).not.toHaveFocus();
+
+    releaseUpdate.resolve();
+    await expect(
+      screen.findByTestId("Renamed focus deck imported detail image preview"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("keeps loaded uploaded slides mounted while visibility metadata refreshes", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
