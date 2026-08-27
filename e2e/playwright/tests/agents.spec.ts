@@ -618,7 +618,7 @@ test("reveal the default agent unread action from the whole row", async ({
   const mobileSidebar = page.locator("aside.zero-pwa-fixed-cover");
   await expect(mobileSidebar).toBeVisible();
   const defaultAgentRow = mobileSidebar.getByTestId("pinned-agent-card").filter({
-    has: mobileSidebar.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
+    has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
   });
   const unreadIndicator = defaultAgentRow.getByLabel("Unread");
   const unreadContainer = unreadIndicator.locator("..");
