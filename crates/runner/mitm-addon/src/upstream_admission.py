@@ -48,6 +48,9 @@ class _ApiDestination:
     port: int
 
 
+_api_destination_cache: tuple[str, _ApiDestination | None] | None = None
+
+
 def _client_connection_id(client: object) -> str | None:
     client_id = getattr(client, "id", None)
     if isinstance(client_id, str) and client_id:
@@ -76,6 +79,11 @@ def forget_tls_admission(client: object) -> None:
 
 def reset_tls_admission_state_for_tests() -> None:
     _tls_admissions.clear()
+
+
+def reset_api_destination_cache_for_tests() -> None:
+    global _api_destination_cache
+    _api_destination_cache = None
 
 
 def _connected_verified_tls_destination_endpoint(
@@ -176,6 +184,19 @@ def _scheme_hostname_port_matches_api_destination(
 
 
 def _api_destination(
+    api_url: str,
+) -> _ApiDestination | None:
+    global _api_destination_cache
+    cached = _api_destination_cache
+    if cached is not None and cached[0] == api_url:
+        return cached[1]
+
+    api_destination = _derive_api_destination(api_url)
+    _api_destination_cache = (api_url, api_destination)
+    return api_destination
+
+
+def _derive_api_destination(
     api_url: str,
 ) -> _ApiDestination | None:
     if not api_url:
