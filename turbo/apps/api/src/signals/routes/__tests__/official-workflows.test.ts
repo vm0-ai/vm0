@@ -7,6 +7,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { cronOfficialWorkflowCatalogContract } from "@okouai/api-contracts/contracts/cron";
+import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
   OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
   type OfficialWorkflowBlueprint,
@@ -29,6 +30,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getCustomSkillStorageName,
+  SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
 import { HttpResponse, http } from "msw";
@@ -36,17 +38,31 @@ import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { now, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
+  assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture,
+  corruptOfficialWorkflowRevisionPayloadFixture,
+  installOfficialWorkflowRunGateFixture,
+  readAgentRunFamilyCountsFixture,
+  readChatEventRowsAsPreviousApiFixture,
   readLatestWorkflowAutomationRunFixture,
+  readOfficialWorkflowRunStateFixture,
   readWorkflowAutomationAutonomyFixture,
+  retargetWorkflowAutomationFixture,
+  setOfficialWorkflowAutomationAdmissionStateFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { createCronOfficialWorkflowCatalogRoutes } from "../cron-official-workflow-catalog";
@@ -55,12 +71,17 @@ import { testOfficialWorkflowCatalogStateRoutes } from "../test-official-workflo
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowsRoutes } from "../workflows";
+import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { createDeferredPromise } from "../../utils";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const workflowBdd = createWorkflowsBddApi(context);
+const runs = createRunsApi(context);
+const webhooks = createWebhookCallbackApi(context);
+const chat = createChatFilesBddApi(context);
 const mocks = createRouteMocks(context);
 const CRON_SECRET = "official-workflow-installation-cron-secret";
 const GMAIL_TOPIC_NAME =
@@ -231,6 +252,18 @@ function gmailLabelBlueprint(): OfficialWorkflowBlueprint {
   };
 }
 
+function webhookBlueprint(): OfficialWorkflowBlueprint {
+  return {
+    key: "webhook-trigger",
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "webhook-received",
+    },
+    runtime: {},
+  };
+}
+
 function activeDefinition(
   name: string,
   blueprints: readonly OfficialWorkflowBlueprint[],
@@ -346,6 +379,64 @@ function storageClient() {
     context,
     routes: testSystemStoragePresignedUrlCacheStateRoutes,
   })(testSystemStoragePresignedUrlCacheStateContract);
+}
+
+function staleQueueReconcileClient() {
+  return setupApp({ context, routes: testBrowserReconcileRoutes })(
+    testBrowserReconcileContract,
+  );
+}
+
+async function reconcileStaleQueuedMessages(threadId: string): Promise<void> {
+  await accept(
+    staleQueueReconcileClient().reconcile({
+      body: { chat_thread_ids: [threadId] },
+    }),
+    [200],
+  );
+}
+
+async function readAcceptedDefinitionFixture(definitionName: string) {
+  const response = await accept(
+    stateClient().action({ body: { action: "read", definitionName } }),
+    [200],
+  );
+  if (!response.body.definition || !response.body.storage) {
+    throw new Error(`Accepted Definition is unavailable: ${definitionName}`);
+  }
+  return {
+    definition: response.body.definition,
+    storage: response.body.storage,
+  };
+}
+
+async function postOfficialWorkflowWebhook(args: {
+  readonly webhookUrl: string;
+  readonly secret: string;
+  readonly body: string;
+}) {
+  const url = new URL(args.webhookUrl);
+  const timestamp = Math.floor(now() / 1000);
+  const response = await createApp({
+    signal: context.signal,
+    routes: [
+      ...webhooksWorkflowAutomationsRoutes,
+      ...workflowAutomationsRoutes,
+    ],
+  }).request(url.pathname, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-VM0-Timestamp": String(timestamp),
+      "X-VM0-Signature": computeHmacSignature(
+        args.body,
+        args.secret,
+        timestamp,
+      ),
+    },
+    body: args.body,
+  });
+  return { status: response.status, body: await response.json() };
 }
 
 function s3BodyBuffer(body: unknown): Buffer {
@@ -933,13 +1024,6 @@ describe.sequential("Official Workflow installations", () => {
       [409],
     );
     await accept(
-      workflowClient().run({
-        headers,
-        params: { workflowId: firstWorkflowId },
-      }),
-      [409],
-    );
-    await accept(
       workflowClient().chatThread({
         headers,
         params: { workflowId: firstWorkflowId },
@@ -987,20 +1071,6 @@ describe.sequential("Official Workflow installations", () => {
       }),
       [409],
     );
-    const runNow = await accept(
-      automationClient().run({
-        headers,
-        params: { id: dailyAutomation.id },
-      }),
-      [409],
-    );
-    expect(runNow.body.error.message).toBe(
-      "Official Workflows are not executable until shared Definition execution is available",
-    );
-    await expect(
-      readLatestWorkflowAutomationRunFixture(context, dailyAutomation.id),
-    ).resolves.toBeNull();
-
     const pulseAutomation = installed.body.workflow.automations.find(
       (automation) => {
         return automation.official?.blueprintKey === "pulse";
@@ -1009,17 +1079,6 @@ describe.sequential("Official Workflow installations", () => {
     if (!pulseAutomation) {
       throw new Error("Expected Official Workflow loop automation");
     }
-    const scheduledExecution = await accept(
-      automationExecutionClient().execute({
-        body: { automation_id: pulseAutomation.id },
-      }),
-      [200],
-    );
-    expect(scheduledExecution.body).toMatchObject({ executed: 0, skipped: 1 });
-    await expect(
-      readLatestWorkflowAutomationRunFixture(context, pulseAutomation.id),
-    ).resolves.toBeNull();
-
     const paused = await accept(
       automationClient().disable({
         headers,
@@ -1750,5 +1809,1594 @@ describe.sequential("Official Workflow installations", () => {
       [404],
     );
     expect(stopCalls).toBeGreaterThan(stopCallsBeforeAgentDeletion);
+  });
+});
+
+describe.sequential("Official Workflow Run admission", () => {
+  it("pins exact active and retained-retired artifacts without org shadowing", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const firstName = `api-test-run-a-${suffix}`;
+    const secondName = `api-test-run-b-${suffix}`;
+    await syncCatalog(
+      catalog([
+        activeDefinition(firstName, [], "accepted first revision"),
+        activeDefinition(secondName, [], "accepted retained revision"),
+      ]),
+    );
+
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const ordinaryWorkflowId = await workflowBdd.createWorkflow(actor, {
+      agentId,
+      name: firstName,
+      visibility: "public",
+    });
+    const firstInstallation = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: firstName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: secondName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+
+    const firstAccepted = await readAcceptedDefinitionFixture(firstName);
+    const secondAccepted = await readAcceptedDefinitionFixture(secondName);
+    const shadowStorageId = randomUUID();
+    const shadowVersion = "e".repeat(64);
+    await accept(
+      storageClient().action({
+        body: {
+          action: "claim-owned-storages",
+          storages: [
+            {
+              storage_id: shadowStorageId,
+              org_id: actor.orgId,
+              user_id: VOLUME_ORG_USER_ID,
+              storage_name: firstAccepted.definition.artifact.storageName,
+              s3_prefix: `official-shadow/${shadowStorageId}`,
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    await accept(
+      storageClient().action({
+        body: {
+          action: "seed-owned-storage-version",
+          storage_id: shadowStorageId,
+          version_id: shadowVersion,
+          s3_key: `official-shadow/${shadowStorageId}/${shadowVersion}`,
+          archive_size: 1,
+        },
+      }),
+      [200],
+    );
+    onTestFinished(async () => {
+      await accept(
+        storageClient().action({
+          body: {
+            action: "cleanup-owned-storages",
+            storage_ids: [shadowStorageId],
+          },
+        }),
+        [200],
+      );
+    });
+
+    const runnerGroup = runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    await runs.heartbeatRunner(runnerGroup);
+    await setOfficialWorkflowsEnabled(actor, false);
+    const direct = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: firstInstallation.body.workflow.id },
+      }),
+      [200],
+    );
+    if (!direct.body.runId) {
+      throw new Error("Expected direct Official Workflow Run");
+    }
+    const firstRunId = direct.body.runId;
+    const firstState = await readOfficialWorkflowRunStateFixture(
+      context,
+      firstRunId,
+    );
+    expect(firstState.provenance?.definitions).toStrictEqual(
+      [firstAccepted.definition, secondAccepted.definition]
+        .map((definition) => {
+          return {
+            name: definition.name,
+            revision: definition.revision,
+            artifact: {
+              orgId: SYSTEM_ORG_ID,
+              userId: VOLUME_ORG_USER_ID,
+              storageName: definition.artifact.storageName,
+              storageId: definition.artifact.storageId,
+              storageVersion: definition.artifact.storageVersion,
+            },
+          };
+        })
+        .sort((left, right) => {
+          return left.name.localeCompare(right.name);
+        }),
+    );
+    expect(firstState.storage_mounts).toStrictEqual(
+      expect.arrayContaining(
+        [firstAccepted.definition, secondAccepted.definition].map(
+          (definition) => {
+            return expect.objectContaining({
+              org_id: SYSTEM_ORG_ID,
+              user_id: VOLUME_ORG_USER_ID,
+              name: definition.artifact.storageName,
+              storage_id: definition.artifact.storageId,
+              version: definition.artifact.storageVersion,
+              mount_path: expect.stringMatching(`/${definition.name}$`),
+            });
+          },
+        ),
+      ),
+    );
+    expect(firstState.storage_mounts).not.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ storage_id: shadowStorageId }),
+      ]),
+    );
+
+    await syncCatalog(
+      catalog([
+        activeDefinition(firstName, [], "accepted second revision"),
+        retiredDefinition(secondName),
+      ]),
+    );
+    const nextFirstAccepted = await readAcceptedDefinitionFixture(firstName);
+    expect(nextFirstAccepted.definition.revision).not.toBe(
+      firstAccepted.definition.revision,
+    );
+
+    const firstClaim = await runs.claimRunnerJob(firstRunId);
+    if (
+      !firstClaim.storageManifest ||
+      !("storageMounts" in firstClaim.storageManifest)
+    ) {
+      throw new Error("Expected canonical Run storage manifest");
+    }
+    expect(firstClaim.storageManifest.storageMounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          storageId: firstAccepted.definition.artifact.storageId,
+          versionId: firstAccepted.definition.artifact.storageVersion,
+        }),
+      ]),
+    );
+    await expect(
+      readOfficialWorkflowRunStateFixture(context, firstRunId),
+    ).resolves.toMatchObject({ provenance: firstState.provenance });
+    await webhooks.requestAgentComplete(
+      { runId: firstRunId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const later = await runs.createRun(actor, {
+      agentId,
+      prompt: "resolve the newly accepted Official Definition revision",
+    });
+    const laterState = await readOfficialWorkflowRunStateFixture(
+      context,
+      later.runId,
+    );
+    expect(laterState.provenance?.definitions).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: firstName,
+          revision: nextFirstAccepted.definition.revision,
+        }),
+        expect.objectContaining({
+          name: secondName,
+          revision: secondAccepted.definition.revision,
+        }),
+      ]),
+    );
+    expect(
+      laterState.provenance?.definitions.find((definition) => {
+        return definition.name === firstName;
+      })?.revision,
+    ).not.toBe(firstAccepted.definition.revision);
+    await runs.requestCancelRun(actor, later.runId, [200, 400]);
+    expect(ordinaryWorkflowId).not.toBe(firstInstallation.body.workflow.id);
+  });
+
+  it("routes explicit, scheduled, once, and webhook producers through exact admission", async () => {
+    installCatalogStorageFixture();
+    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-producers-${suffix}`;
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          loopBlueprint(),
+          onceBlueprint(),
+          webhookBlueprint(),
+        ]),
+      ]),
+    );
+    const setup = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+      tier: "team",
+    });
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const atTime = new Date(now() + 60_000).toISOString();
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [
+            {
+              blueprintKey: "pulse",
+              bindings: [{ key: "interval-seconds", value: 60 }],
+            },
+            {
+              blueprintKey: "one-shot",
+              bindings: [
+                { key: "at-time", value: atTime },
+                {
+                  key: "callback-url",
+                  value: "https://example.test/official-callback",
+                },
+                { key: "correlation-id", value: randomUUID() },
+              ],
+            },
+            { blueprintKey: "webhook-trigger", bindings: [] },
+          ],
+        },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const automations = new Map(
+      installed.body.workflow.automations.flatMap((automation) => {
+        return automation.official
+          ? [[automation.official.blueprintKey, automation] as const]
+          : [];
+      }),
+    );
+    const loopAutomation = automations.get("pulse");
+    const onceAutomation = automations.get("one-shot");
+    const webhookAutomation = automations.get("webhook-trigger");
+    if (!loopAutomation || !onceAutomation || !webhookAutomation) {
+      throw new Error("Expected all Official Workflow producer automations");
+    }
+
+    const explicit = await accept(
+      automationClient().run({
+        headers,
+        params: { id: loopAutomation.id },
+      }),
+      [201],
+    );
+    if (!explicit.body.runId) {
+      throw new Error("Expected explicit Official Automation Run");
+    }
+    const producerRunIds = [explicit.body.runId];
+    await runs.requestCancelRun(actor, explicit.body.runId, [200, 400]);
+
+    const scheduled = await withMockNowForTest(now() + 120_000, async () => {
+      return await accept(
+        automationExecutionClient().execute({
+          body: { automation_id: loopAutomation.id },
+        }),
+        [200],
+      );
+    });
+    expect(scheduled.body.executed).toBe(1);
+    const scheduledRun = await readLatestWorkflowAutomationRunFixture(
+      context,
+      loopAutomation.id,
+    );
+    if (!scheduledRun || scheduledRun.runId === explicit.body.runId) {
+      throw new Error("Expected a distinct scheduled Official Automation Run");
+    }
+    producerRunIds.push(scheduledRun.runId);
+    await runs.requestCancelRun(actor, scheduledRun.runId, [200, 400]);
+
+    const once = await withMockNowForTest(now() + 120_000, async () => {
+      return await accept(
+        automationExecutionClient().execute({
+          body: { automation_id: onceAutomation.id },
+        }),
+        [200],
+      );
+    });
+    expect(once.body.executed).toBe(1);
+    const onceRun = await readLatestWorkflowAutomationRunFixture(
+      context,
+      onceAutomation.id,
+    );
+    if (!onceRun) {
+      throw new Error("Expected once Official Automation Run");
+    }
+    producerRunIds.push(onceRun.runId);
+    await runs.requestCancelRun(actor, onceRun.runId, [200, 400]);
+
+    if (
+      webhookAutomation.kind !== "event" ||
+      webhookAutomation.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected Official webhook automation");
+    }
+    const webhookCredentials = await accept(
+      automationClient().revealWebhookSecret({
+        headers,
+        params: { id: webhookAutomation.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    const webhook = await postOfficialWorkflowWebhook({
+      webhookUrl: webhookCredentials.body.webhookUrl,
+      secret: webhookCredentials.body.webhookSecret,
+      body: JSON.stringify({ event: "official-p2-regression" }),
+    });
+    expect(webhook).toMatchObject({
+      status: 200,
+      body: { success: true, duplicate: false },
+    });
+    await expect
+      .poll(async () => {
+        return (
+          await readLatestWorkflowAutomationRunFixture(
+            context,
+            webhookAutomation.id,
+          )
+        )?.runId;
+      })
+      .toEqual(expect.any(String));
+    const webhookRun = await readLatestWorkflowAutomationRunFixture(
+      context,
+      webhookAutomation.id,
+    );
+    if (!webhookRun) {
+      throw new Error("Expected Official webhook Automation Run");
+    }
+    producerRunIds.push(webhookRun.runId);
+
+    const accepted = await readAcceptedDefinitionFixture(definitionName);
+    for (const runId of producerRunIds) {
+      const state = await readOfficialWorkflowRunStateFixture(context, runId);
+      expect(state.provenance?.definitions).toStrictEqual([
+        expect.objectContaining({
+          name: definitionName,
+          revision: accepted.definition.revision,
+        }),
+      ]);
+      expect(state.storage_mounts).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            org_id: SYSTEM_ORG_ID,
+            user_id: VOLUME_ORG_USER_ID,
+            storage_id: accepted.definition.artifact.storageId,
+            version: accepted.definition.artifact.storageVersion,
+          }),
+        ]),
+      );
+    }
+    await runs.requestCancelRun(actor, webhookRun.runId, [200, 400]);
+  });
+
+  it("creates no Run for stale or unverifiable Official admission state", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-stale-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [loopBlueprint()])]),
+    );
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const ordinaryWorkflowId = await workflowBdd.createWorkflow(actor, {
+      agentId,
+      name: `api-test-stale-ordinary-${suffix}`,
+    });
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [
+            {
+              blueprintKey: "pulse",
+              bindings: [{ key: "interval-seconds", value: 60 }],
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const ordinaryAutomation = await accept(
+      automationClient().create({
+        headers,
+        params: { workflowId: ordinaryWorkflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const automation = installed.body.workflow.automations[0];
+    if (!automation?.official) {
+      throw new Error("Expected Official Automation state");
+    }
+    const originalFingerprint = automation.official.appliedFingerprint;
+    const before = await runs.listAgentRuns(actor, {
+      agent: agentId,
+      limit: 100,
+    });
+    const beforeRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const crossTableMismatches = [
+      {
+        automationId: automation.id,
+        mismatchedWorkflowId: ordinaryWorkflowId,
+        restoredWorkflowId: installed.body.workflow.id,
+      },
+      {
+        automationId: ordinaryAutomation.body.id,
+        mismatchedWorkflowId: installed.body.workflow.id,
+        restoredWorkflowId: ordinaryWorkflowId,
+      },
+    ];
+
+    for (const mismatch of crossTableMismatches) {
+      await retargetWorkflowAutomationFixture(
+        context,
+        mismatch.automationId,
+        mismatch.mismatchedWorkflowId,
+      );
+      await assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
+        context,
+        mismatch.automationId,
+        installed.body.workflow.id,
+      );
+      await accept(
+        automationClient().run({
+          headers,
+          params: { id: mismatch.automationId },
+        }),
+        [409],
+      );
+      await expect(
+        readAgentRunFamilyCountsFixture(context, agentId),
+      ).resolves.toStrictEqual(beforeRunFamily);
+      await retargetWorkflowAutomationFixture(
+        context,
+        mismatch.automationId,
+        mismatch.restoredWorkflowId,
+      );
+    }
+
+    for (const status of [
+      "reconciling",
+      "needs_reconfiguration",
+      "failed",
+    ] as const) {
+      await setOfficialWorkflowAutomationAdmissionStateFixture(
+        context,
+        automation.id,
+        status,
+      );
+      await accept(
+        automationClient().run({
+          headers,
+          params: { id: automation.id },
+        }),
+        [409],
+      );
+    }
+
+    await setOfficialWorkflowAutomationAdmissionStateFixture(
+      context,
+      automation.id,
+      "current",
+      "0".repeat(64),
+    );
+    await accept(
+      automationClient().run({
+        headers,
+        params: { id: automation.id },
+      }),
+      [409],
+    );
+    await setOfficialWorkflowAutomationAdmissionStateFixture(
+      context,
+      automation.id,
+      "current",
+      originalFingerprint,
+    );
+
+    const changedBlueprint: OfficialWorkflowBlueprint = {
+      ...loopBlueprint(),
+      desiredState: {
+        ...loopBlueprint().desiredState,
+        autonomyBudget: 5,
+      },
+    };
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [changedBlueprint])]),
+    );
+    await accept(
+      automationClient().run({
+        headers,
+        params: { id: automation.id },
+      }),
+      [409],
+    );
+
+    await cleanupCatalog();
+    await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+      }),
+      [409],
+    );
+    await expect(
+      readLatestWorkflowAutomationRunFixture(context, automation.id),
+    ).resolves.toBeNull();
+    const after = await runs.listAgentRuns(actor, {
+      agent: agentId,
+      limit: 100,
+    });
+    expect(after.runs).toHaveLength(before.runs.length);
+  });
+
+  it("does not downgrade persisted Official catalog invariant failures to stale admission", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-run-invariant-${suffix}`;
+    await syncCatalog(catalog([activeDefinition(definitionName, [])]));
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+      await bdd.deleteAgent(actor, agentId);
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const before = await readAgentRunFamilyCountsFixture(context, agentId);
+
+    await corruptOfficialWorkflowRevisionPayloadFixture(
+      context,
+      definitionName,
+    );
+    await expect(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(before);
+  });
+
+  it("keeps pre-bootstrap Official source requirements fail closed without changing ordinary Workflow runs", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-bootstrap-${suffix}`;
+    const ordinaryName = `api-test-ordinary-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [loopBlueprint()])]),
+    );
+    const setup = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+      tier: "team",
+    });
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const ordinaryWorkflowId = await workflowBdd.createWorkflow(actor, {
+      agentId,
+      name: ordinaryName,
+    });
+    const install = async () => {
+      return await accept(
+        officialClient().install({
+          headers,
+          params: { definitionName },
+          body: {
+            agentId,
+            blueprints: [
+              {
+                blueprintKey: "pulse",
+                bindings: [{ key: "interval-seconds", value: 60 }],
+              },
+            ],
+          },
+        }),
+        [201],
+      );
+    };
+    let installation = await install();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      const createdRuns = await runs.listAgentRuns(actor, {
+        agent: agentId,
+        limit: 100,
+      });
+      for (const run of createdRuns.runs) {
+        await runs.requestCancelRun(actor, run.id, [200, 400]);
+      }
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const initialCounts = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const directGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "bootstrap-requirement",
+    );
+    const directRequest = workflowClient().run({
+      headers,
+      params: { workflowId: installation.body.workflow.id },
+    });
+    await expect
+      .poll(async () => {
+        return (await directGate.read()).bootstrap_requirement;
+      })
+      .toStrictEqual({
+        workflow_ids: [installation.body.workflow.id],
+        queue_first_kind: "user_message",
+        workflow_automation_id: null,
+      });
+    await accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await directGate.release();
+    await accept(directRequest, [409]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(initialCounts);
+
+    installation = await install();
+    const automation = installation.body.workflow.automations.find(
+      (candidate) => {
+        return candidate.official?.blueprintKey === "pulse";
+      },
+    );
+    if (!automation) {
+      throw new Error("Expected Official Automation for bootstrap race");
+    }
+    const automationGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "bootstrap-requirement",
+    );
+    const automationRequest = automationClient().run({
+      headers,
+      params: { id: automation.id },
+    });
+    await expect
+      .poll(async () => {
+        return (await automationGate.read()).bootstrap_requirement;
+      })
+      .toStrictEqual({
+        workflow_ids: [installation.body.workflow.id],
+        queue_first_kind: "automation_event",
+        workflow_automation_id: automation.id,
+      });
+    await accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await automationGate.release();
+    await accept(automationRequest, [409]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(initialCounts);
+
+    const ordinaryGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "bootstrap-requirement",
+    );
+    const ordinary = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: ordinaryWorkflowId },
+      }),
+      [200],
+    );
+    await expect(ordinaryGate.read()).resolves.toMatchObject({ arrivals: 0 });
+    await ordinaryGate.release();
+    if (!ordinary.body.runId) {
+      throw new Error("Expected ordinary Workflow Run");
+    }
+    await expect(
+      readOfficialWorkflowRunStateFixture(context, ordinary.body.runId),
+    ).resolves.toMatchObject({
+      status: "pending",
+      provenance: null,
+      runner_job_count: 1,
+    });
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual({
+      run_count: initialCounts.run_count + 1,
+      callback_count: initialCounts.callback_count + 1,
+      runner_job_count: initialCounts.runner_job_count + 1,
+      launch_queue_count: initialCounts.launch_queue_count,
+    });
+    await runs.requestCancelRun(actor, ordinary.body.runId, [200, 400]);
+  });
+
+  it("preserves and terminalizes a queued Official source claim before draining the ordinary message behind it", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-queued-source-${suffix}`;
+    await syncCatalog(catalog([activeDefinition(definitionName, [])]));
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installation = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      const createdRuns = await runs.listAgentRuns(actor, {
+        agent: agentId,
+        limit: 100,
+      });
+      for (const run of createdRuns.runs) {
+        await runs.requestCancelRun(actor, run.id, [200, 400]);
+      }
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const first = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [200],
+    );
+    if (!first.body.runId) {
+      throw new Error("Expected first Official Workflow Run");
+    }
+    const firstRunId = first.body.runId;
+    const firstClaim = await runs.claimRunnerJob(firstRunId);
+    const beforeQueuedEvents = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    const beforeQueuedEventIds = new Set(
+      beforeQueuedEvents.events.map((event) => {
+        return event.id;
+      }),
+    );
+    const beforeQueuedRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const queuedOfficial = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [200],
+    );
+    expect(queuedOfficial.body).toMatchObject({
+      chatThreadId: first.body.chatThreadId,
+      runId: null,
+    });
+    const afterOfficialQueued = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    const officialQueuedEvent = afterOfficialQueued.events.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        !beforeQueuedEventIds.has(event.id)
+      );
+    });
+    if (!officialQueuedEvent) {
+      throw new Error("Expected persisted Official queued message");
+    }
+
+    const ordinaryPrompt = `ordinary queued control ${suffix}`;
+    const ordinaryQueuedEventId = randomUUID();
+    const queuedOrdinary = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.body.chatThreadId,
+        prompt: ordinaryPrompt,
+        clientEventId: ordinaryQueuedEventId,
+      },
+      [201],
+    );
+    if ("error" in queuedOrdinary.body) {
+      throw new Error(queuedOrdinary.body.error.message);
+    }
+    expect(queuedOrdinary.body.runId).toBeNull();
+
+    const previousReaderBeforeResolution =
+      await readChatEventRowsAsPreviousApiFixture(
+        context,
+        first.body.chatThreadId,
+      );
+    const previousReaderOfficialSource = previousReaderBeforeResolution.find(
+      (event) => {
+        return event.id === officialQueuedEvent.id;
+      },
+    );
+    if (!previousReaderOfficialSource) {
+      throw new Error("Previous API reader missed queued Official input");
+    }
+    expect(previousReaderOfficialSource).toMatchObject({
+      event_type: "input.prompt",
+      revokes_event_id: null,
+    });
+    expect(previousReaderOfficialSource.payload_keys).not.toContain(
+      "requiredOfficialWorkflowIds",
+    );
+
+    await accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: firstRunId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(async () => {
+        const events = await chat.listThreadEvents(
+          actor,
+          first.body.chatThreadId,
+        );
+        return events.events.filter((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === officialQueuedEvent.id &&
+            event.error === "conflict"
+          );
+        }).length;
+      })
+      .toBe(1);
+    const afterOfficialFailure = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    expect(
+      afterOfficialFailure.events.filter((event) => {
+        return (
+          event.eventType === "input.rejected" &&
+          event.revokesEventId === officialQueuedEvent.id &&
+          event.error === "conflict"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterOfficialFailure.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "conflict" &&
+          typeof event.content === "string" &&
+          event.content.length > 0
+        );
+      }),
+    ).toHaveLength(1);
+    const previousReaderAfterResolution =
+      await readChatEventRowsAsPreviousApiFixture(
+        context,
+        first.body.chatThreadId,
+      );
+    expect(
+      previousReaderAfterResolution.find((event) => {
+        return event.id === officialQueuedEvent.id;
+      }),
+    ).toMatchObject(previousReaderOfficialSource);
+    expect(
+      previousReaderAfterResolution.filter((event) => {
+        return (
+          event.event_type === "input.rejected" &&
+          event.revokes_event_id === officialQueuedEvent.id
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(beforeQueuedRunFamily);
+
+    const staleAt = now() + 10 * 60 * 1000;
+    await withMockNowForTest(staleAt, async () => {
+      await reconcileStaleQueuedMessages(first.body.chatThreadId);
+    });
+    await flushWaitUntilForTest();
+    let ordinaryRunId: string | undefined;
+    await expect
+      .poll(async () => {
+        const listed = await runs.listAgentRuns(actor, {
+          agent: agentId,
+          limit: 100,
+        });
+        ordinaryRunId = listed.runs.find((run) => {
+          return run.prompt === ordinaryPrompt;
+        })?.id;
+        return ordinaryRunId;
+      })
+      .toStrictEqual(expect.any(String));
+    if (!ordinaryRunId) {
+      throw new Error("Expected ordinary queued control Run");
+    }
+    await expect(
+      readOfficialWorkflowRunStateFixture(context, ordinaryRunId),
+    ).resolves.toMatchObject({
+      provenance: null,
+      runner_job_count: 1,
+    });
+    const expectedRunFamilyAfterOrdinary = {
+      run_count: beforeQueuedRunFamily.run_count + 1,
+      callback_count: beforeQueuedRunFamily.callback_count + 1,
+      runner_job_count: beforeQueuedRunFamily.runner_job_count + 1,
+      launch_queue_count: beforeQueuedRunFamily.launch_queue_count,
+    };
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(expectedRunFamilyAfterOrdinary);
+
+    const ordinaryClaim = await runs.claimRunnerJob(ordinaryRunId);
+    await webhooks.requestAgentComplete(
+      { runId: ordinaryRunId, exitCode: 1 },
+      { authorization: `Bearer ${ordinaryClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const beforeLaterDrain = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+    await withMockNowForTest(staleAt + 10 * 60 * 1000, async () => {
+      await reconcileStaleQueuedMessages(first.body.chatThreadId);
+    });
+    await flushWaitUntilForTest();
+
+    const afterLaterDrain = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    expect(
+      afterLaterDrain.events.filter((event) => {
+        return (
+          event.eventType === "input.rejected" &&
+          event.revokesEventId === officialQueuedEvent.id &&
+          event.error === "conflict"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterLaterDrain.events.filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "conflict" &&
+          typeof event.content === "string" &&
+          event.content.length > 0
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      afterLaterDrain.events.filter((event) => {
+        return (
+          event.revokesEventId === ordinaryQueuedEventId &&
+          event.runId === ordinaryRunId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(beforeLaterDrain);
+  });
+
+  it("keeps a queued Official source claim retryable across an unexpected persisted-revision failure", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-queued-retry-${suffix}`;
+    await syncCatalog(catalog([activeDefinition(definitionName, [])]));
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installation = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      const createdRuns = await runs.listAgentRuns(actor, {
+        agent: agentId,
+        limit: 100,
+      });
+      for (const run of createdRuns.runs) {
+        await runs.requestCancelRun(actor, run.id, [200, 400]);
+      }
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const first = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [200],
+    );
+    if (!first.body.runId) {
+      throw new Error("Expected first Official Workflow Run");
+    }
+    const firstRunId = first.body.runId;
+    const firstClaim = await runs.claimRunnerJob(firstRunId);
+    const beforeQueueEvents = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    const beforeQueueEventIds = new Set(
+      beforeQueueEvents.events.map((event) => {
+        return event.id;
+      }),
+    );
+    const beforeQueuedRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const queued = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [200],
+    );
+    expect(queued.body.runId).toBeNull();
+    const afterQueued = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    const queuedEvent = afterQueued.events.find((event) => {
+      return (
+        event.eventType === "input.prompt" && !beforeQueueEventIds.has(event.id)
+      );
+    });
+    if (!queuedEvent) {
+      throw new Error("Expected persisted retryable Official queued message");
+    }
+
+    await corruptOfficialWorkflowRevisionPayloadFixture(
+      context,
+      definitionName,
+    );
+    await webhooks.requestAgentComplete(
+      { runId: firstRunId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const afterUnexpectedFailure = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    expect(
+      afterUnexpectedFailure.events.filter((event) => {
+        return event.revokesEventId === queuedEvent.id;
+      }),
+    ).toHaveLength(0);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual({
+      run_count: beforeQueuedRunFamily.run_count,
+      callback_count: beforeQueuedRunFamily.callback_count,
+      runner_job_count: beforeQueuedRunFamily.runner_job_count,
+      launch_queue_count: beforeQueuedRunFamily.launch_queue_count,
+    });
+
+    await cleanupCatalog();
+    await syncCatalog(
+      catalog([
+        activeDefinition(
+          definitionName,
+          [],
+          "Execute the repaired accepted Definition content.",
+        ),
+      ]),
+    );
+    const repaired = await readAcceptedDefinitionFixture(definitionName);
+    await withMockNowForTest(now() + 10 * 60 * 1000, async () => {
+      await reconcileStaleQueuedMessages(first.body.chatThreadId);
+    });
+    await flushWaitUntilForTest();
+
+    let retriedRunId: string | undefined;
+    await expect
+      .poll(async () => {
+        const listed = await runs.listAgentRuns(actor, {
+          agent: agentId,
+          limit: 100,
+        });
+        retriedRunId = listed.runs.find((run) => {
+          return run.id !== firstRunId;
+        })?.id;
+        return retriedRunId;
+      })
+      .toStrictEqual(expect.any(String));
+    if (!retriedRunId) {
+      throw new Error("Expected retried Official queued Run");
+    }
+    await expect(
+      readOfficialWorkflowRunStateFixture(context, retriedRunId),
+    ).resolves.toMatchObject({
+      provenance: {
+        definitions: [
+          {
+            name: definitionName,
+            revision: repaired.definition.revision,
+          },
+        ],
+      },
+      runner_job_count: 1,
+    });
+    const afterRetry = await chat.listThreadEvents(
+      actor,
+      first.body.chatThreadId,
+    );
+    expect(
+      afterRetry.events.filter((event) => {
+        return (
+          event.revokesEventId === queuedEvent.id &&
+          event.runId === retriedRunId
+        );
+      }),
+    ).toHaveLength(1);
+    const retriedClaim = await runs.claimRunnerJob(retriedRunId);
+    await webhooks.requestAgentComplete(
+      { runId: retriedRunId, exitCode: 1 },
+      { authorization: `Bearer ${retriedClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+  });
+
+  it("checks uninstall before both successful and retained-failure Run insertion paths", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-uninstall-${suffix}`;
+    await syncCatalog(catalog([activeDefinition(definitionName, [])]));
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const install = async () => {
+      return await accept(
+        officialClient().install({
+          headers,
+          params: { definitionName },
+          body: { agentId, blueprints: [] },
+        }),
+        [201],
+      );
+    };
+    let installation = await install();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    const initialRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const normalGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "observation",
+    );
+    const normalRequest = workflowClient().run({
+      headers,
+      params: { workflowId: installation.body.workflow.id },
+    });
+    await expect
+      .poll(async () => {
+        return (await normalGate.read()).arrivals;
+      })
+      .toBe(1);
+    await accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await normalGate.release();
+    await accept(normalRequest, [409]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(initialRunFamily);
+
+    installation = await install();
+    const acceptedDefinition =
+      await readAcceptedDefinitionFixture(definitionName);
+    await accept(
+      storageClient().action({
+        body: {
+          action: "cleanup-owned-storage-cache",
+          storage_id: acceptedDefinition.definition.artifact.storageId,
+        },
+      }),
+      [200],
+    );
+    context.mocks.s3.getSignedUrl.mockRejectedValue(
+      new Error("unrelated presign failure after Official resolution"),
+    );
+    const failedGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "observation",
+    );
+    const failedRequest = workflowClient().run({
+      headers,
+      params: { workflowId: installation.body.workflow.id },
+    });
+    await expect
+      .poll(async () => {
+        return (await failedGate.read()).arrivals;
+      })
+      .toBe(1);
+    await accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await failedGate.release();
+    await accept(failedRequest, [409]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual(initialRunFamily);
+
+    installation = await install();
+    const retainedFailure = await accept(
+      workflowClient().run({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [200],
+    );
+    if (!retainedFailure.body.runId) {
+      throw new Error("Expected retained unrelated-failure Run");
+    }
+    const failedState = await readOfficialWorkflowRunStateFixture(
+      context,
+      retainedFailure.body.runId,
+    );
+    expect(failedState).toMatchObject({
+      status: "failed",
+      runner_job_count: 0,
+      callback_count: 1,
+      storage_mounts: null,
+      provenance: {
+        definitions: [expect.objectContaining({ name: definitionName })],
+      },
+    });
+  });
+
+  it("serializes Run-first uninstall after exact Run persistence", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-run-first-${suffix}`;
+    await syncCatalog(catalog([activeDefinition(definitionName, [])]));
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installation = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: { agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const gate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "final-admission",
+    );
+    const runRequest = workflowClient().run({
+      headers,
+      params: { workflowId: installation.body.workflow.id },
+    });
+    await expect
+      .poll(async () => {
+        return await gate.read();
+      })
+      .toMatchObject({ arrivals: 1, shared_catalog_holder_count: 1 });
+    const uninstallRequest = accept(
+      installationClient().uninstall({
+        headers,
+        params: { workflowId: installation.body.workflow.id },
+      }),
+      [204],
+    );
+    await expect
+      .poll(async () => {
+        return (await gate.read()).blocked_waiter_count;
+      })
+      .toBe(1);
+    await gate.release();
+    const run = await accept(runRequest, [200]);
+    await uninstallRequest;
+    if (!run.body.runId) {
+      throw new Error("Expected Run-first Official Workflow Run");
+    }
+    await expect(
+      readOfficialWorkflowRunStateFixture(context, run.body.runId),
+    ).resolves.toMatchObject({
+      status: "pending",
+      provenance: {
+        definitions: [expect.objectContaining({ name: definitionName })],
+      },
+    });
+    await runs.requestCancelRun(actor, run.body.runId, [200, 400]);
+  });
+
+  it("admits cross-org Runs concurrently under the shared catalog lock and rejects a superseded observation", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-shared-lock-${suffix}`;
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [], "shared-lock revision one"),
+      ]),
+    );
+    const original = await readAcceptedDefinitionFixture(definitionName);
+    const firstSetup = await workflowBdd.setupWorkflowOrg();
+    const secondSetup = await workflowBdd.setupWorkflowOrg();
+    const firstActor = firstSetup.actor;
+    const secondActor = secondSetup.actor;
+    if (!firstActor.orgId || !secondActor.orgId) {
+      throw new Error("Expected organization-scoped actors");
+    }
+    const firstAgent = await workflowBdd.createAgent(firstActor);
+    const secondAgent = await workflowBdd.createAgent(secondActor);
+    await setOfficialWorkflowsEnabled(firstActor, true);
+    await setOfficialWorkflowsEnabled(secondActor, true);
+    const firstHeaders = authHeaders(firstActor);
+    const firstInstallation = await accept(
+      officialClient().install({
+        headers: firstHeaders,
+        params: { definitionName },
+        body: { agentId: firstAgent.agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    const secondHeaders = authHeaders(secondActor);
+    await accept(
+      officialClient().install({
+        headers: secondHeaders,
+        params: { definitionName },
+        body: { agentId: secondAgent.agentId, blueprints: [] },
+      }),
+      [201],
+    );
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(firstActor, firstAgent.agentId);
+      await bdd.deleteAgent(secondActor, secondAgent.agentId);
+      await cleanupCatalog();
+    });
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    const sharedGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "final-admission",
+    );
+    const firstRunPromise = runs.createRun(firstActor, {
+      agentId: firstAgent.agentId,
+      prompt: "hold the first shared Official admission",
+    });
+    await expect
+      .poll(async () => {
+        return (await sharedGate.read()).arrivals;
+      })
+      .toBe(1);
+    const secondRunPromise = runs.createRun(secondActor, {
+      agentId: secondAgent.agentId,
+      prompt: "hold the second shared Official admission",
+    });
+    await expect
+      .poll(async () => {
+        return await sharedGate.read();
+      })
+      .toMatchObject({ arrivals: 2, shared_catalog_holder_count: 2 });
+
+    const activation = syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [], "shared-lock revision two"),
+      ]),
+    );
+    await expect
+      .poll(async () => {
+        return (await sharedGate.read()).exclusive_catalog_waiter_count;
+      })
+      .toBe(1);
+    await sharedGate.release();
+    const [firstRun, secondRun] = await Promise.all([
+      firstRunPromise,
+      secondRunPromise,
+    ]);
+    await activation;
+    for (const runId of [firstRun.runId, secondRun.runId]) {
+      await expect(
+        readOfficialWorkflowRunStateFixture(context, runId),
+      ).resolves.toMatchObject({
+        provenance: {
+          definitions: [
+            expect.objectContaining({
+              name: definitionName,
+              revision: original.definition.revision,
+            }),
+          ],
+        },
+      });
+    }
+
+    const beforeRace = await readAgentRunFamilyCountsFixture(
+      context,
+      firstAgent.agentId,
+    );
+    const raceGate = await installOfficialWorkflowRunGateFixture(
+      context,
+      "observation",
+    );
+    const staleRequest = workflowClient().run({
+      headers: authHeaders(firstActor),
+      params: { workflowId: firstInstallation.body.workflow.id },
+    });
+    await expect
+      .poll(async () => {
+        return (await raceGate.read()).arrivals;
+      })
+      .toBe(1);
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [], "shared-lock revision three"),
+      ]),
+    );
+    await raceGate.release();
+    await accept(staleRequest, [409]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, firstAgent.agentId),
+    ).resolves.toStrictEqual(beforeRace);
+    await runs.requestCancelRun(firstActor, firstRun.runId, [200, 400]);
+    await runs.requestCancelRun(secondActor, secondRun.runId, [200, 400]);
   });
 });

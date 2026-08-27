@@ -138,7 +138,6 @@ import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecy
 import { readAcceptedOfficialWorkflowCatalog } from "./official-workflow-catalog-read.service";
 import {
   OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
-  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
   OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
 } from "./official-workflow-constants";
 
@@ -3725,12 +3724,6 @@ export const runOwnedWorkflowAutomationNow$ = command(
       return owned;
     }
     const { automation } = owned;
-    if (automation.officialBlueprintKey !== null) {
-      return {
-        kind: "conflict",
-        message: OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
-      };
-    }
     if (
       automation.eventType === "strapi-entry-published" &&
       !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {

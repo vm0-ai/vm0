@@ -83,10 +83,7 @@ import {
 import type { RouteEntry } from "../route-entry";
 import { sendNormalEvent$ } from "../services/chat-events.command";
 import type { Tx } from "../../lib/db-types";
-import {
-  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
-  OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE,
-} from "../services/official-workflow-constants";
+import { OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE } from "../services/official-workflow-constants";
 
 const log = logger("api:workflow-connector-readiness");
 
@@ -1135,10 +1132,6 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return workflowNotFound(params.workflowId);
   }
   const { workflow, agent } = visible;
-  if (workflow.officialDefinitionName !== null) {
-    return conflict(OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE);
-  }
-
   // The workflow is run on its owning agent; the caller must be able to run
   // that agent (public agents are runnable by any member, private ones only by
   // their owner).
@@ -1209,6 +1202,9 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       preloadedAgent: agent,
       timing,
       agentRunPreCreateSource: "workflow_slash_command",
+      ...(workflow.officialDefinitionName === null
+        ? {}
+        : { requiredOfficialWorkflowIds: [workflow.id] }),
     },
     signal,
   );
