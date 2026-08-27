@@ -321,6 +321,7 @@ export async function reportBuiltInModelProviderFailure(
     readonly retryAfterSeconds?: number;
   },
 ): Promise<BuiltInModelProviderFailureTransition> {
+  const timestamp = nowDate();
   return await db.transaction(async (tx) => {
     const run = await loadReportRun(tx, args.runId);
     const route = run ? routeForRun(run) : null;
@@ -334,7 +335,6 @@ export async function reportBuiltInModelProviderFailure(
     }
 
     const row = await materializeAndLockRoute(tx, route);
-    const timestamp = nowDate();
     if (args.connectionSource === "upstream_transport") {
       return await observeTransportFailure(tx, {
         runId: args.runId,
