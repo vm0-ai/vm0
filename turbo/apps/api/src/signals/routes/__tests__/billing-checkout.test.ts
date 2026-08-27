@@ -14721,21 +14721,60 @@ describe("POST /api/billing/checkout/complete", () => {
   });
 
   it("reconciles a paid invoice before its webhook arrives", async () => {
+    setUsagePackPrices();
+    mockUsagePackCatalog();
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_${randomUUID().slice(0, 8)}`;
+    const checkoutSessionId = `cs_${randomUUID().slice(0, 8)}`;
     const periodEnd = currentSecond() + 30 * 86_400;
     const fixture = await trackedSeed({
       onboardingPaymentPending: true,
       stripeCustomerId: customerId,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const seeded = await usagePackStateAction({
+      action: "seed",
+      orgId: fixture.orgId,
+      tier: "pro",
+      stripePlanPriceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+      stripeCustomerId: customerId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      allocations: [
+        {
+          userId: fixture.userId,
+          invitationId: null,
+          usagePackUsd: 20,
+          stripePriceId: TEST_PRICE_USAGE_PACK_20,
+        },
+      ],
+    });
+    if (seeded.action !== "seeded") {
+      throw new Error("Failed to seed the usage pack Checkout snapshot");
+    }
+    const usagePackSubscriptionId = seeded.usagePackSubscriptionId;
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: true,
+        deleteOrgMetadata: false,
+      });
+    });
+    const metadata = {
+      orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+      purpose: "usage_pack_subscription",
+      usagePackSubscriptionId,
+    };
 
     const paidInvoice: StripeInvoice = {
       id: invoiceId,
       customer: customerId,
-      metadata: {},
+      metadata,
       amount_due: 2000,
       amount_paid: 2000,
       currency: "usd",
@@ -14743,7 +14782,7 @@ describe("POST /api/billing/checkout/complete", () => {
       parent: {
         subscription_details: {
           subscription: subscriptionId,
-          metadata: {},
+          metadata,
         },
       },
       lines: {
@@ -14751,10 +14790,25 @@ describe("POST /api/billing/checkout/complete", () => {
         data: [
           {
             id: `il_${randomUUID().slice(0, 8)}`,
+            amount: 0,
+            subtotal: 0,
+            quantity: 1,
+            price: { id: TEST_PRICE_USAGE_PACK_PLAN_PRO },
+            period: {
+              start: periodEnd - 30 * 86_400,
+              end: periodEnd,
+            },
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: { proration: false },
+            },
+          },
+          {
+            id: `il_${randomUUID().slice(0, 8)}`,
             amount: 2000,
             subtotal: 2000,
             quantity: 1,
-            price: { id: TEST_PRICE_PRO },
+            price: { id: TEST_PRICE_USAGE_PACK_20 },
             period: {
               start: periodEnd - 30 * 86_400,
               end: periodEnd,
@@ -14775,19 +14829,27 @@ describe("POST /api/billing/checkout/complete", () => {
       cancel_at: null,
       schedule: null,
       trial_end: null,
-      metadata: {},
+      metadata,
       latest_invoice: paidInvoice,
       items: {
         data: [
           {
-            price: { id: TEST_PRICE_PRO },
+            price: { id: TEST_PRICE_USAGE_PACK_PLAN_PRO },
+            quantity: 1,
+            current_period_start: periodEnd - 30 * 86_400,
+            current_period_end: periodEnd,
+          },
+          {
+            price: { id: TEST_PRICE_USAGE_PACK_20 },
+            quantity: 1,
+            current_period_start: periodEnd - 30 * 86_400,
             current_period_end: periodEnd,
           },
         ],
       },
     };
     context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
-      id: "cs_test_paid_before_webhook",
+      id: checkoutSessionId,
       mode: "subscription",
       status: "complete",
       customer: customerId,
@@ -14800,11 +14862,11 @@ describe("POST /api/billing/checkout/complete", () => {
     );
     const requests = [
       client.complete({
-        body: { sessionId: "cs_test_paid_before_webhook" },
+        body: { sessionId: checkoutSessionId },
         headers: { authorization: "Bearer clerk-session" },
       }),
       client.complete({
-        body: { sessionId: "cs_test_paid_before_webhook" },
+        body: { sessionId: checkoutSessionId },
         headers: { authorization: "Bearer clerk-session" },
       }),
     ];
@@ -14823,13 +14885,42 @@ describe("POST /api/billing/checkout/complete", () => {
         },
       });
     }
+    const stateBeforeWebhook = await readUsagePackState(
+      fixture.orgId,
+      usagePackSubscriptionId,
+    );
+    expect(stateBeforeWebhook).toMatchObject({
+      subscription: {
+        stripeCheckoutSessionId: checkoutSessionId,
+        stripeSubscriptionId: subscriptionId,
+        subscriptionStatus: "active",
+      },
+      allocations: [
+        expect.objectContaining({
+          userId: fixture.userId,
+          status: "active",
+        }),
+      ],
+      grants: expect.arrayContaining([
+        expect.objectContaining({
+          userId: fixture.userId,
+          grantType: "purchased",
+          originalAmount: 20_000,
+        }),
+        expect.objectContaining({
+          userId: fixture.userId,
+          grantType: "bonus",
+          originalAmount: 400,
+        }),
+      ]),
+      fulfillmentInvoiceIds: [invoiceId],
+    });
     const statusBeforeWebhook = await readBillingStatus(fixture);
     expect(statusBeforeWebhook).toMatchObject({
       tier: "pro",
-      credits: 20_000,
       hasSubscription: true,
       subscriptionStatus: "active",
-      onboardingPaymentPending: false,
+      memberInviteUsagePackRequired: true,
     });
 
     const event = {
@@ -14847,6 +14938,9 @@ describe("POST /api/billing/checkout/complete", () => {
       [200],
     );
 
+    await expect(
+      readUsagePackState(fixture.orgId, usagePackSubscriptionId),
+    ).resolves.toStrictEqual(stateBeforeWebhook);
     await expect(readBillingStatus(fixture)).resolves.toStrictEqual(
       statusBeforeWebhook,
     );
