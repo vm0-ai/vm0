@@ -656,6 +656,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
+      "introVideo": "Intro-Video",
       "multiAccent": "Multi-Akzent",
       "nextSlide": "Vorschau der nächsten Folie",
       "noMatches": "Keine Übereinstimmungen",
@@ -673,6 +674,7 @@
       "searchConnector": "Vorlagen suchen",
       "searchConnectors": "Vorlagen suchen",
       "selected": "Vorlage: {{title}}",
+      "selectIntroVideo": "Wählen Sie die Intro-Video-Vorlage {{title}} aus.",
       "selectStyle": "Stil auswählen {{style}}",
       "selectTemplate": "Wählen Sie die Vorlage {{title}} aus.",
       "selectVideo": "Wählen Sie die Videovorlage {{title}} aus.",
@@ -2255,6 +2257,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustration",
+        "introVideo": "Intro-Video",
         "presentation": "Präsentation",
         "video": "Video",
         "website": "Webseite",

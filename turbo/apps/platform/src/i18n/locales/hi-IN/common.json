@@ -656,6 +656,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
+      "introVideo": "इंट्रो वीडियो",
       "multiAccent": "बहु-उच्चारण",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
@@ -673,6 +674,7 @@
       "searchConnector": "टेम्पलेट खोजें",
       "searchConnectors": "टेम्पलेट खोजें",
       "selected": "टेम्पलेट: {{title}}",
+      "selectIntroVideo": "इंट्रो वीडियो टेम्पलेट {{title}} चुनें",
       "selectStyle": "शैली {{style}} चुनें",
       "selectTemplate": "टेम्पलेट {{title}} चुनें",
       "selectVideo": "वीडियो टेम्पलेट {{title}} चुनें",
@@ -2255,6 +2257,7 @@
     "templates": {
       "categories": {
         "illustration": "चित्रण",
+        "introVideo": "इंट्रो वीडियो",
         "presentation": "प्रस्तुति",
         "video": "वीडियो",
         "website": "वेबसाइट",

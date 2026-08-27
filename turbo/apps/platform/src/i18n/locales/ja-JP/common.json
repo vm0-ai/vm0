@@ -655,6 +655,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
+      "introVideo": "イントロビデオ",
       "multiAccent": "マルチアクセント",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
@@ -672,6 +673,7 @@
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",
+      "selectIntroVideo": "イントロビデオ テンプレート {{title}} を選択してください",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
@@ -2251,6 +2253,7 @@
     "templates": {
       "categories": {
         "illustration": "イラストレーション",
+        "introVideo": "イントロビデオ",
         "presentation": "プレゼンテーション",
         "video": "ビデオ",
         "website": "ウェブサイト",
