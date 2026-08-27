@@ -75,6 +75,9 @@ describe("shared thread page", () => {
     expect(
       document.querySelectorAll("[data-shared-message-copy]"),
     ).toHaveLength(3);
+    expect(
+      document.querySelector("[data-shared-thread-product-logo]"),
+    ).toHaveAttribute("src", "/icons/icon-192.png");
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
     expect(
@@ -175,6 +178,9 @@ describe("shared thread page", () => {
       screen.findByRole("heading", { name: "VM0" }),
     ).resolves.toBeInTheDocument();
     expect(document.title).toBe("VM0");
+    expect(
+      document.querySelector("[data-shared-thread-product-logo]"),
+    ).not.toBeInTheDocument();
   });
 
   it("defaults an ambiguous not-found page to VM0 presentation", async () => {

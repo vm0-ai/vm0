@@ -320,8 +320,17 @@ function SharedThreadHeader({
         <a
           href={homeUrl}
           aria-label={brandName}
-          className="shrink-0 text-foreground transition-opacity hover:opacity-70"
+          className="inline-flex shrink-0 items-center gap-1.5 text-foreground transition-opacity hover:opacity-70"
         >
+          {brandName === "Okou" ? (
+            <img
+              data-shared-thread-product-logo=""
+              src="/icons/icon-192.png"
+              alt=""
+              aria-hidden="true"
+              className="h-5 w-5 rounded-md"
+            />
+          ) : null}
           <ProductBrandMark size="small" />
         </a>
         {title !== null ? (
