@@ -150,17 +150,17 @@ const CLERK_CSS = `
   color: hsl(var(--muted-foreground)) !important;
 }
 
-/* Primary page action - match the neutral-dark shared page button while
-   removing Clerk's gradients and borders (exclude social buttons). */
+/* Primary action - mirror @vm0/ui's default Button treatment while removing
+   Clerk's gradients and borders (exclude social buttons). */
 .cl-formButtonPrimary,
 button[type="submit"]:not(.cl-socialButtonsBlockButton),
 [data-localization-key="formButtonPrimary"],
 .cl-formButtonPrimary > * {
   background-image: none !important;
-  background: hsl(var(--foreground)) !important;
+  background: hsl(var(--primary)) !important;
   border: none !important;
   box-shadow: none !important;
-  color: hsl(var(--background)) !important;
+  color: hsl(var(--primary-foreground)) !important;
 }
 
 /* Button hover state (exclude social buttons) */
@@ -168,14 +168,14 @@ button[type="submit"]:not(.cl-socialButtonsBlockButton),
 button[type="submit"]:not(.cl-socialButtonsBlockButton):hover,
 [data-localization-key="formButtonPrimary"]:hover {
   background-image: none !important;
-  background: var(--color-foreground-hover) !important;
+  background: var(--color-primary-hover) !important;
   box-shadow: none !important;
 }
 
 .cl-formButtonPrimary:active,
 button[type="submit"]:not(.cl-socialButtonsBlockButton):active,
 [data-localization-key="formButtonPrimary"]:active {
-  background: var(--color-foreground-pressed) !important;
+  background: var(--color-primary-pressed) !important;
 }
 
 /* Remove pseudo elements (exclude social buttons) */

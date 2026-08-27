@@ -773,8 +773,8 @@ describe("app auth pages", () => {
     detachedSetupPage({ context, path: "/sign-in" });
 
     const clerkSurface = await screen.findByTestId("clerk-sign-in");
-    clerkSurface.style.setProperty("--background", "0, 0%, 100%");
-    clerkSurface.style.setProperty("--foreground", "220, 18%, 10%");
+    clerkSurface.style.setProperty("--primary", "20, 99%, 47%");
+    clerkSurface.style.setProperty("--primary-foreground", "0, 0%, 100%");
 
     const primaryAction = document.createElement("button");
     primaryAction.className = "cl-formButtonPrimary";
@@ -793,7 +793,7 @@ describe("app auth pages", () => {
     clerkSurface.append(primaryAction, footerAction);
 
     expect(getComputedStyle(primaryAction).backgroundColor).toBe(
-      "hsl(220, 18%, 10%)",
+      "hsl(20, 99%, 47%)",
     );
     expect(getComputedStyle(primaryLabel).color).toBe("hsl(0, 0%, 100%)");
     expect(getComputedStyle(footerLink).textDecoration).toBe("none");
