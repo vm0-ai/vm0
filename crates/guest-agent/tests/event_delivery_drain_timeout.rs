@@ -29,7 +29,10 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
 
     unsafe {
         common::setup_env(&mock_cli, tmp.path(), &prompt, 3, 1)?;
-        std::env::set_var("VM0_API_BACKEND_URL", &server.base_url);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            &server.base_url,
+        );
         std::env::set_var("VM0_API_TOKEN", "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;

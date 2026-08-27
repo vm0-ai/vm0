@@ -75,7 +75,10 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
         )
-        .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")
+        .env(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
         .env("VM0_API_TOKEN", "")
         .env(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

@@ -50,7 +50,7 @@ unsafe fn setup_api_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
-        std::env::set_var("VM0_API_BACKEND_URL", api_url);
+        std::env::set_var(guest_contracts::env::CANONICAL_API_URL_ENV, api_url);
         std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

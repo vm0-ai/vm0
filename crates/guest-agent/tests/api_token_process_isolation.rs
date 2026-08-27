@@ -65,7 +65,10 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
         )
         .env("SHELL", "/bin/sh")
         .env("HOME", &home)
-        .env(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1")
+        .env(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
         .env(token_env, API_TOKEN)
         .env(guest_contracts::env::RUN_ID_ENV, format!("{RUN_ID}-{case}"))
         .env(

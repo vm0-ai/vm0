@@ -42,7 +42,10 @@ exec tail -f /dev/null
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::CLI_AGENT_TYPE_ENV, "pi");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, run_id);
-        std::env::set_var(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
         std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

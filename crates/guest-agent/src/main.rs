@@ -1142,7 +1142,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         unsafe {
             clear_test_env();
-            std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            );
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(

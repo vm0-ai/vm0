@@ -33,7 +33,10 @@ async fn claude_code_event_delivery_byte_overload_terminates_promptly()
 
     unsafe {
         common::setup_env(&mock_cli, tmp.path(), &prompt, 1, 1)?;
-        std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            server.base_url(),
+        );
         std::env::set_var("VM0_API_TOKEN", "test-token");
     }
     let runtime = common::guest_runtime_from_process_env()?;
