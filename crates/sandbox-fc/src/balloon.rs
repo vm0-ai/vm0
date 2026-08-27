@@ -35,12 +35,13 @@ pub(crate) const MIN_GUEST_MIB: u32 = 512;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// Fast-start polling while a post-unpark controller protects the lifecycle's
 /// target-zero deflation from reactive policy.
-const UNPARK_DEFLATE_FAST_POLL_INTERVALS: [Duration; 7] = [
+const UNPARK_DEFLATE_FAST_POLL_INTERVALS: [Duration; 8] = [
     Duration::from_millis(25),
     Duration::from_millis(50),
     Duration::from_millis(100),
     Duration::from_millis(100),
     Duration::from_millis(100),
+    Duration::from_millis(200),
     Duration::from_millis(200),
     Duration::from_millis(200),
 ];
@@ -546,6 +547,20 @@ mod tests {
         assert!(
             api.drain_requests().is_empty(),
             "the startup guard must never patch balloon policy"
+        );
+    }
+
+    #[test]
+    fn unpark_deflation_fast_poll_window_covers_expected_transition() {
+        let fast_poll_window: Duration = UNPARK_DEFLATE_FAST_POLL_INTERVALS.into_iter().sum();
+
+        assert!(
+            fast_poll_window >= Duration::from_millis(900),
+            "fast polling should cover the observed subsecond deflation window"
+        );
+        assert!(
+            fast_poll_window <= Duration::from_secs(1),
+            "fast polling must remain a bounded startup burst"
         );
     }
 
