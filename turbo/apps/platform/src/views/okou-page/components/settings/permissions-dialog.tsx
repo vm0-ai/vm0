@@ -1531,7 +1531,7 @@ function LoadedPermissionsDrawerContent({
             )}
           </div>
           {!groups && !searchActive && (
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 overflow-y-auto [scrollbar-gutter:stable]">
               <span className="text-xs font-medium text-foreground">
                 {readOnly
                   ? t(($) => {
@@ -1553,7 +1553,7 @@ function LoadedPermissionsDrawerContent({
         </div>
 
         <div
-          className={`flex-1 overflow-y-auto -mx-6 px-3 ${displayedGroups ? "pt-1" : ""}`}
+          className={`flex-1 overflow-y-auto -mx-6 px-3 [scrollbar-gutter:stable] ${displayedGroups ? "pt-1" : ""}`}
           onScroll={(e) => {
             const target = e.currentTarget;
             setScrolled(stateKey, target.scrollTop > 0, initialUiState);
