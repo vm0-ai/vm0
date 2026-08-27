@@ -469,7 +469,11 @@ describe("app auth pages", () => {
     await expect(
       screen.findByRole("region", { name: "Choose an organization" }),
     ).resolves.toBeVisible();
-    expect(authV2Button("Continue with Route Organization")).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: "Continue with Route Organization",
+      }),
+    ).toBeVisible();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(document.title).toBe("Sign in | VM0");
@@ -499,7 +503,10 @@ describe("app auth pages", () => {
       "Sign in to Okou",
     );
 
-    fireEvent.click(authV2Button("Continue with Okou Organization"));
+    const organizationButton = screen.getByRole("button", {
+      name: "Continue with Okou Organization",
+    });
+    fireEvent.click(organizationButton);
 
     await waitFor(() => {
       expect(location.href).toBe(redirectUrl);
