@@ -140,6 +140,7 @@ import { socialRoutes } from "./routes/social";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
+import { officialWorkflowRoutes } from "./routes/official-workflows";
 import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
@@ -348,6 +349,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...userPreferencesRoutes,
   ...userModelPreferenceRoutes,
   ...workflowsRoutes,
+  ...officialWorkflowRoutes,
   ...workflowAutomationsRoutes,
   ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,

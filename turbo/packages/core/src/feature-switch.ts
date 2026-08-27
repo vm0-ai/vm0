@@ -236,6 +236,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
     enabled: false,
   },
+  [FeatureSwitchKey.OfficialWorkflows]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Official Workflow catalog discovery and new installations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
