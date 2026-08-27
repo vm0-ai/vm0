@@ -2,6 +2,7 @@ import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2Navigation } from "../../../signals/auth-v2/navigation.ts";
 import type { AuthV2SignInSignals } from "../../../signals/auth-v2/sign-in-flow.ts";
+import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
@@ -16,9 +17,11 @@ import {
 } from "./sign-in-copy.ts";
 
 export function AuthV2SignInCard({
+  authBrand,
   navigation,
   signals,
 }: {
+  readonly authBrand: AuthBrandContext;
   readonly navigation: AuthV2Navigation;
   readonly signals: AuthV2SignInSignals;
 }) {
@@ -48,6 +51,7 @@ export function AuthV2SignInCard({
   return (
     <AuthV2Shell
       announcement={description ?? title}
+      authBrand={authBrand}
       cardFooter={
         showsMethodsHelp ? (
           <SignInMethodsHelpFooter copy={copy} signals={signals} />

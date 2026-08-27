@@ -1133,6 +1133,7 @@
         "hidePassword": "Ocultar senha",
         "identifierLabel": "E-mail ou nome de usuário",
         "identifierPlaceholder": "Digite seu e-mail ou nome de usuário",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "Não tem nenhuma destas opções?",
         "newPasswordLabel": "Nova senha",
         "newPasswordSubtitle": "Por razões de segurança, é necessário redefinir sua senha.",
