@@ -43,12 +43,6 @@ interface RouteIdentity {
   readonly upstreamModel: string;
 }
 
-interface TransitionBase {
-  readonly runId: string;
-  readonly route: RouteIdentity;
-  readonly source: FailureSource;
-}
-
 interface IgnoredTransition {
   readonly kind: "ignored";
   readonly outcome: "ignored";
@@ -56,31 +50,26 @@ interface IgnoredTransition {
   readonly disposition: "ineligible_run";
 }
 
-interface ObservationTransition extends TransitionBase {
+interface ObservationTransition {
   readonly kind: "observation";
   readonly outcome: "observed";
-  readonly source: "upstream_transport";
-  readonly disposition: "continued" | "restarted" | "started";
-  readonly observationStartedAt: Date;
-  readonly observationUntil: Date;
 }
 
-interface CooldownTransition extends TransitionBase {
+interface CooldownTransition {
   readonly kind: "cooldown";
   readonly outcome: "recorded";
+  readonly runId: string;
+  readonly route: RouteIdentity;
+  readonly source: FailureSource;
   readonly activationReason: ActivationReason;
   readonly failureKind: FailureKind;
   readonly retryAfterSeconds: number;
   readonly unavailableUntil: Date;
 }
 
-interface CooldownUnchangedTransition extends TransitionBase {
+interface CooldownUnchangedTransition {
   readonly kind: "cooldown_unchanged";
   readonly outcome: "recorded";
-  readonly activationReason: ActivationReason;
-  readonly failureKind: FailureKind;
-  readonly retryAfterSeconds: number;
-  readonly unavailableUntil: Date;
 }
 
 type BuiltInModelProviderFailureTransition =
@@ -237,7 +226,12 @@ async function activateLockedRoute(
       .where(routeCondition(args.route));
   }
 
-  const base = {
+  if (!deadlineChanged) {
+    return { kind: "cooldown_unchanged", outcome: "recorded" };
+  }
+  return {
+    kind: "cooldown",
+    outcome: "recorded",
     runId: args.runId,
     route: args.route,
     source: args.source,
@@ -245,11 +239,7 @@ async function activateLockedRoute(
     failureKind: args.failureKind,
     retryAfterSeconds: args.retryAfterSeconds,
     unavailableUntil,
-  } as const;
-  if (!deadlineChanged) {
-    return { kind: "cooldown_unchanged", outcome: "recorded", ...base };
-  }
-  return { kind: "cooldown", outcome: "recorded", ...base };
+  };
 }
 
 async function observeTransportFailure(
@@ -299,16 +289,6 @@ async function observeTransportFailure(
   return {
     kind: "observation",
     outcome: "observed",
-    runId: args.runId,
-    route: args.route,
-    source: "upstream_transport",
-    disposition: currentObservation
-      ? "continued"
-      : args.row.connectionObservationStartedAt === null
-        ? "started"
-        : "restarted",
-    observationStartedAt,
-    observationUntil,
   };
 }
 
@@ -360,8 +340,14 @@ export async function reportBuiltInModelProviderFailure(
 export function logBuiltInModelProviderFailureTransition(
   transition: BuiltInModelProviderFailureTransition,
 ): void {
-  const L = logger("Runners");
+  if (
+    transition.kind === "cooldown_unchanged" ||
+    transition.kind === "observation"
+  ) {
+    return;
+  }
 
+  const L = logger("Runners");
   if (transition.kind === "ignored") {
     L.warn("Built-in model provider failure report ignored", {
       runId: transition.runId,
@@ -370,43 +356,16 @@ export function logBuiltInModelProviderFailureTransition(
     return;
   }
 
-  const dimensions = {
+  L.error("Built-in model provider failure report recorded", {
+    type: "built_in_model_provider_cooldown",
     runId: transition.runId,
     selectedModel: transition.route.selectedModel,
     providerType: transition.route.providerType,
     upstreamModel: transition.route.upstreamModel,
     connectionSource: transition.source,
-  };
-  if (transition.kind === "cooldown") {
-    L.error("Built-in model provider failure report recorded", {
-      type: "built_in_model_provider_cooldown",
-      ...dimensions,
-      failureKind: transition.failureKind,
-      retryAfterSeconds: transition.retryAfterSeconds,
-      unavailableUntil: transition.unavailableUntil.toISOString(),
-      activationReason: transition.activationReason,
-    });
-    return;
-  }
-  if (transition.kind === "cooldown_unchanged") {
-    L.warn("Built-in model provider cooldown unchanged", {
-      type: "built_in_model_provider_observation",
-      ...dimensions,
-      disposition: "active_retained",
-      failureKind: transition.failureKind,
-      retryAfterSeconds: transition.retryAfterSeconds,
-      unavailableUntil: transition.unavailableUntil.toISOString(),
-      activationReason: transition.activationReason,
-    });
-    return;
-  }
-  L.warn("Built-in model provider failure observation updated", {
-    type: "built_in_model_provider_observation",
-    ...dimensions,
-    disposition: transition.disposition,
-    observationStartedAt: transition.observationStartedAt.toISOString(),
-    observationUntil: transition.observationUntil.toISOString(),
-    minimumSustainedSeconds: TRANSPORT_FAILURE_MINIMUM_SECONDS,
-    maximumGapSeconds: TRANSPORT_FAILURE_MAXIMUM_GAP_SECONDS,
+    failureKind: transition.failureKind,
+    retryAfterSeconds: transition.retryAfterSeconds,
+    unavailableUntil: transition.unavailableUntil.toISOString(),
+    activationReason: transition.activationReason,
   });
 }
