@@ -204,7 +204,9 @@ describe("home route", () => {
 
     await team.started.promise;
     expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
-    expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
+    await waitFor(() => {
+      expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
+    });
     await expect(
       screen.findByRole("textbox", { name: "Message" }),
     ).resolves.toBeInTheDocument();

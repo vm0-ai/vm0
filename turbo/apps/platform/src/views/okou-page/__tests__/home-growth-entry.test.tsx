@@ -3,6 +3,7 @@ import {
   integrationsSlackContract,
   type SlackOrgStatus,
 } from "@okouai/api-contracts/contracts/integrations-slack";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -58,6 +59,38 @@ function setupGrowthEntry(
 }
 
 describe("home growth entry", () => {
+  it("keeps the app skeleton until the current admin role resolves", async () => {
+    const orgRequested = context.mocks.deferred<void>();
+    const releaseOrg = context.mocks.deferred<void>();
+    mockAgent();
+    mockSlackStatus({ isConnected: false, isInstalled: true });
+    context.mocks.api(orgContract.get, async ({ respond }) => {
+      orgRequested.resolve(undefined);
+      await releaseOrg.promise;
+      return respond(200, {
+        id: "org_1",
+        name: "Test Org",
+        role: "admin",
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await orgRequested.promise;
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+
+    releaseOrg.resolve(undefined);
+
+    await screen.findByTestId("growth-entry");
+    await waitFor(() => {
+      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
+  });
+
   it("hides the growth entry from non-admin members", async () => {
     setupGrowthEntry(
       { isConnected: false, isInstalled: false },

@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Coins, PlusCircle } from "lucide-react";
@@ -13,6 +13,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
@@ -293,18 +294,30 @@ function AdminGrowthEntryHeader() {
 }
 
 export function GrowthEntryHeader() {
-  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
-  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  if (!isAdmin) {
-    return null;
-  }
+  const currentIsAdminLoadable = useLoadable(isOrgAdmin$);
+  const lastIsAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const hideAppSkeletonOnContentReadyRef = useSet(
+    hideAppSkeletonOnContentReadyRef$,
+  );
+  const roleReady = currentIsAdminLoadable.state === "hasData";
+  const isAdmin = roleReady
+    ? currentIsAdminLoadable.data
+    : lastIsAdminLoadable.state === "hasData" && lastIsAdminLoadable.data;
   return (
     <>
-      {/* Match the former in-flow header's 16px + 32px + 8px height. The
-          controls stay absolute, but the home content keeps its established
-          desktop position before and after the async entry resolves. */}
-      <div aria-hidden className="hidden h-14 shrink-0 md:block" />
-      <AdminGrowthEntryHeader />
+      {/* Reveal only after the current role and its layout commit together. */}
+      {roleReady ? (
+        <span ref={hideAppSkeletonOnContentReadyRef} hidden />
+      ) : null}
+      {isAdmin ? (
+        <>
+          {/* Match the former in-flow header's 16px + 32px + 8px height. The
+              controls stay absolute, but the home content keeps its
+              established desktop position while Slack resolves. */}
+          <div aria-hidden className="hidden h-14 shrink-0 md:block" />
+          <AdminGrowthEntryHeader />
+        </>
+      ) : null}
     </>
   );
 }

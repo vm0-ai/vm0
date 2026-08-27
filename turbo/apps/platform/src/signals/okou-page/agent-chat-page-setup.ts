@@ -17,7 +17,6 @@ import {
 } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { setTalkDraft$, talkDraft$ } from "./chat-draft.ts";
-import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$, resetChatPageModelSelection$ } from "./chat-page.ts";
 import {
   ensureAgentDraft$,
@@ -53,8 +52,6 @@ export const setupAgentChatPage$ = command(
     set(reloadTagline$);
     set(resetChatPageModelSelection$);
     set(updatePage$, createElement(AgentChatPage), "sidebar");
-
-    await set(hideAppSkeleton$, signal);
 
     const agents = await get(agents$);
     signal.throwIfAborted();

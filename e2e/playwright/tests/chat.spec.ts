@@ -1253,8 +1253,24 @@ test("home content stays fixed while the growth entry loads", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  const orgRoleRequested = deferred();
+  const releaseOrgRole = deferred();
   const slackStatusRequested = deferred();
   const releaseSlackStatus = deferred();
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      orgRoleRequested.resolve();
+      await releaseOrgRole.promise;
+      await route.fulfill({
+        json: { id: "org_admin", name: "Admin Org", role: "admin" },
+      });
+    },
+  );
   await page.route("**/api/integrations/slack", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
@@ -1284,11 +1300,18 @@ test("home content stays fixed while the growth entry loads", async ({
 
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
-  await slackStatusRequested.promise;
 
   const growthEntry = page.getByTestId("growth-entry");
+  const appSkeleton = page.locator("#app-bootstrap-skeleton");
   const main = page.locator("main");
   const tagline = page.getByTestId("chat-tagline");
+  await orgRoleRequested.promise;
+  await expect(appSkeleton).toBeVisible();
+  await expect(growthEntry).not.toBeAttached();
+
+  releaseOrgRole.resolve();
+  await slackStatusRequested.promise;
+  await expect(appSkeleton).toBeHidden();
   await expect(tagline).toBeVisible({ timeout: 20_000 });
   await expect(growthEntry).not.toBeAttached();
   const mainBefore = await main.boundingBox();
@@ -1328,30 +1351,12 @@ test("non-admin home content keeps its original top edge", async ({ page }) => {
       });
     },
   );
-  const memberOrgLoaded = page.waitForResponse((response) => {
-    const request = response.request();
-    return (
-      response.ok() &&
-      request.method() === "GET" &&
-      new URL(response.url()).pathname === "/api/org"
-    );
-  });
 
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
-  await memberOrgLoaded;
+  await expect(page.locator("#app-bootstrap-skeleton")).toBeHidden();
   await expect(page.getByTestId("chat-tagline")).toBeVisible({
     timeout: 20_000,
-  });
-  // Let the member role commit before reading the stable layout.
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          resolve();
-        });
-      });
-    });
   });
 
   await expect(page.getByTestId("growth-entry")).not.toBeAttached();
