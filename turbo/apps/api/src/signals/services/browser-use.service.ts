@@ -14,7 +14,7 @@ import {
   settle,
 } from "../utils";
 
-const BROWSER_USE_API_BASE_URL = "https://api.browser-use.com/api/v3";
+const BROWSER_USE_API_BASE_URL = "https://api.browser-use.com/api/v4";
 const BROWSER_USE_REQUEST_TIMEOUT_MS = 30_000;
 const BROWSER_USE_CDP_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BROWSER_USE_RESPONSE_BYTES = 512 * 1024;

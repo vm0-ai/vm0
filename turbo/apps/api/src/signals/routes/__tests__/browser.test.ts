@@ -51,7 +51,7 @@ const TEST_APP_ROUTES = Object.freeze([
 
 const context = testContext();
 const computerUse = createComputerUseBddApi(context);
-const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
+const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v4";
 const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
