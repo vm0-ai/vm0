@@ -2051,7 +2051,14 @@ fn append_exec_control_environment<'a>(
     process_control_endpoint: &'a str,
     workload_endpoints: Option<(&'a str, &'a str)>,
 ) {
-    env.push((process_control_ipc::BOOTSTRAP_ENV, process_control_endpoint));
+    env.retain(|(key, _)| {
+        *key != process_control_ipc::BOOTSTRAP_ENV
+            && *key != process_control_ipc::CANONICAL_BOOTSTRAP_ENV
+    });
+    env.push((
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+        process_control_endpoint,
+    ));
     if let Some((workload_endpoint, tool_endpoint)) = workload_endpoints {
         env.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, workload_endpoint));
         env.push((TOOL_CGROUP_PROCS_ENDPOINT_ENV, tool_endpoint));
@@ -2285,8 +2292,17 @@ mod tests {
     }
 
     #[test]
-    fn control_bootstrap_environment_writers_remain_legacy_only() {
-        let mut env = vec![("USER_KEY", "user-value")];
+    fn control_bootstrap_environment_replaces_process_aliases_with_canonical() {
+        let mut env = vec![
+            ("FIRST_USER_KEY", "first-user-value"),
+            (process_control_ipc::BOOTSTRAP_ENV, "stale-legacy-endpoint"),
+            ("SECOND_USER_KEY", "second-user-value"),
+            (
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+                "stale-canonical-endpoint",
+            ),
+            ("THIRD_USER_KEY", "third-user-value"),
+        ];
 
         append_exec_control_environment(
             &mut env,
@@ -2297,9 +2313,11 @@ mod tests {
         assert_eq!(
             env,
             [
-                ("USER_KEY", "user-value"),
+                ("FIRST_USER_KEY", "first-user-value"),
+                ("SECOND_USER_KEY", "second-user-value"),
+                ("THIRD_USER_KEY", "third-user-value"),
                 (
-                    process_control_ipc::BOOTSTRAP_ENV,
+                    process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "process-control-endpoint"
                 ),
                 (WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, "workload-endpoint"),
