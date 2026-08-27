@@ -145,6 +145,7 @@ describe("auth v2 password recovery diagnostics", () => {
         },
         { strategy: "passkey" },
       ] as const;
+      context.mocks.browser.webAuthn({ platformAuthenticatorResult: true });
       mockAuthV2Capabilities({ appleOAuth: true, passkey: true });
       if (operation === "prepare") {
         mockedClerk.signInPrepareFirstFactor.mockRejectedValueOnce(
