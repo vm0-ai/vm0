@@ -9,6 +9,9 @@ const DEFAULT_COOLDOWN_SECONDS = 5 * 60;
 const INTERVENTION_COOLDOWN_SECONDS = 30 * 60;
 const CONNECTION_OBSERVATION_MINIMUM_MS = 60 * 1000;
 const CONNECTION_OBSERVATION_MAX_GAP_MS = 60 * 1000;
+// A route resolver can capture its comparison time before this row is inserted.
+// Keep provisional evidence expired for every in-flight resolver.
+const INACTIVE_COOLDOWN_DEADLINE_MS = 0;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -103,11 +106,13 @@ async function loadBuiltInModelRoute(
 async function materializeAndLockRoute(
   tx: WriteTx,
   route: BuiltInModelRouteIdentity,
-  receivedAt: Date,
 ): Promise<LockedBuiltInModelRoute> {
   await tx
     .insert(builtInModelCandidateCooldown)
-    .values({ ...route, unavailableUntil: receivedAt })
+    .values({
+      ...route,
+      unavailableUntil: new Date(INACTIVE_COOLDOWN_DEADLINE_MS),
+    })
     .onConflictDoNothing();
 
   const [lockedRoute] = await tx
@@ -268,11 +273,7 @@ export async function reportBuiltInModelProviderFailure(
     if (!route) {
       return { outcome: "ignored" };
     }
-    const lockedRoute = await materializeAndLockRoute(
-      tx,
-      route,
-      report.receivedAt,
-    );
+    const lockedRoute = await materializeAndLockRoute(tx, route);
     if (
       report.failureKind === "connection" &&
       report.connectionSource === "upstream_transport"
