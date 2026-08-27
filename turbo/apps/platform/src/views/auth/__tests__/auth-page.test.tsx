@@ -33,13 +33,6 @@ function okouBrandLink(): HTMLElement {
   return link;
 }
 
-function legacyAuthLink(): HTMLElement | undefined {
-  return queryAllByRoleFast("link").find((candidate) => {
-    const href = candidate.getAttribute("href");
-    return href === "/sign-in" || href === "/sign-up";
-  });
-}
-
 function authV2Button(name: string): HTMLButtonElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.textContent?.trim() === name;
@@ -433,7 +426,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: routeCase.heading }),
     ).resolves.toBeVisible();
     expect(screen.getByTestId("app-auth-v2")).toBeVisible();
-    expect(legacyAuthLink()).toBeUndefined();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(

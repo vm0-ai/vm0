@@ -71,8 +71,9 @@ test("primary and link actions retain accessible brand colors in both themes", a
     exact: true,
     name: "Continue",
   });
-  const currentSignUpLink = page.getByRole("link", {
-    name: "Use current sign-up",
+  const signInLink = root.getByRole("link", {
+    exact: true,
+    name: "Sign in",
   });
   const passwordVisibilityAction = root.getByRole("button", {
     name: "Show password",
@@ -84,7 +85,7 @@ test("primary and link actions retain accessible brand colors in both themes", a
     AUTH_V2_PRIMARY_COLOR,
   );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
+  await expect(signInLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
@@ -94,7 +95,7 @@ test("primary and link actions retain accessible brand colors in both themes", a
     AUTH_V2_PRIMARY_COLOR,
   );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
+  await expect(signInLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",
