@@ -3451,14 +3451,6 @@ async function buildNormalChatRunArgs(
     ),
   });
   signal.throwIfAborted();
-  // Reported here rather than at resolution: this is the one point a normal
-  // send is committed to creating its own run. A send rejected later in
-  // preparation never reaches it, and a queue-first message left queued is
-  // reported by the claim path when that run is created.
-  logTemplateUsage(
-    normalSendTemplateUsageContext(args, prepared.thread),
-    prepared.generationTemplateIdentities,
-  );
   return createRunArgs;
 }
 
@@ -3555,6 +3547,14 @@ const createNormalChatRun$ = command(
     if (runResult.status !== 201) {
       return runResult;
     }
+    // The run now exists, which is what makes this a use. Reporting any earlier
+    // counts sends that never produced one: a lost claim hands the message to
+    // another dispatcher that reports it through `queued-claim`, and a non-201
+    // result leaves no run at all.
+    logTemplateUsage(
+      normalSendTemplateUsageContext(args, prepared.thread),
+      prepared.generationTemplateIdentities,
+    );
     const response = createdNormalChatRunResponse({
       runId: runResult.body.runId,
       threadId: prepared.thread.threadId,

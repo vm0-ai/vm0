@@ -11137,6 +11137,72 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
+  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input template usage",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "restyle it mid-run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: style.illustrationStyleId },
+              },
+            },
+          ],
+        },
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    context.mocks.axiom.ingest.mockClear();
+
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected the templated active input to be reserved");
+    }
+    // The same open delivery is rematerialized on retrieval, which must not
+    // count the steered prompt a second time.
+    await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "active-input",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("reports no usage for a selection the prompt builder rejected", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
