@@ -26,6 +26,204 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 16;
+
+#[derive(Clone, Copy)]
+struct BootstrapAliasSourceEventSpec {
+    family: &'static str,
+    canonical_key: &'static str,
+}
+
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
+    BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] = [
+    BootstrapAliasSourceEventSpec {
+        family: "api_url_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_API_URL_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "guest_agent_tuning_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "guest_agent_tuning_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "guest_agent_tuning_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "guest_agent_tuning_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "private_payload_file_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "private_payload_file_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "api_token_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_API_TOKEN_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "run_metadata_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "run_metadata_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "run_metadata_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "run_metadata_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "run_metadata_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "agent_execution_timeout_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "mock_binary_path_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+    },
+    BootstrapAliasSourceEventSpec {
+        family: "mock_binary_path_env_source",
+        canonical_key: guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+    },
+];
+
+#[derive(Clone, Copy)]
+enum BootstrapAlias {
+    ApiUrl,
+    StuckToolTimeout,
+    PostResultSigtermGrace,
+    PostResultTotalCap,
+    PostResultSigkillGrace,
+    UserEnvFile,
+    RunPayloadFile,
+    ApiToken,
+    SandboxId,
+    SandboxReuseResult,
+    WorkspaceReuseResult,
+    ResumeSessionId,
+    ApiStartTime,
+    AgentExecutionTimeout,
+    MockClaudePath,
+    MockCodexPath,
+}
+
+#[derive(Clone, Copy)]
+enum BootstrapAliasSource {
+    CanonicalOnly,
+    LegacyOnly,
+    Dual,
+}
+
+impl BootstrapAliasSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CanonicalOnly => "canonical-only",
+            Self::LegacyOnly => "legacy-only",
+            Self::Dual => "dual",
+        }
+    }
+}
+
+/// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
+///
+/// The internal slots correspond exactly to the 16 canonical keys in
+/// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
+/// resolvers can populate them.
+#[derive(Clone, Default)]
+pub struct BootstrapAliasSourceEvents {
+    api_url: Option<BootstrapAliasSource>,
+    stuck_tool_timeout: Option<BootstrapAliasSource>,
+    post_result_sigterm_grace: Option<BootstrapAliasSource>,
+    post_result_total_cap: Option<BootstrapAliasSource>,
+    post_result_sigkill_grace: Option<BootstrapAliasSource>,
+    user_env_file: Option<BootstrapAliasSource>,
+    run_payload_file: Option<BootstrapAliasSource>,
+    api_token: Option<BootstrapAliasSource>,
+    sandbox_id: Option<BootstrapAliasSource>,
+    sandbox_reuse_result: Option<BootstrapAliasSource>,
+    workspace_reuse_result: Option<BootstrapAliasSource>,
+    resume_session_id: Option<BootstrapAliasSource>,
+    api_start_time: Option<BootstrapAliasSource>,
+    agent_execution_timeout: Option<BootstrapAliasSource>,
+    mock_claude_path: Option<BootstrapAliasSource>,
+    mock_codex_path: Option<BootstrapAliasSource>,
+}
+
+impl BootstrapAliasSourceEvents {
+    fn record(&mut self, alias: BootstrapAlias, source: BootstrapAliasSource) {
+        let slot = match alias {
+            BootstrapAlias::ApiUrl => &mut self.api_url,
+            BootstrapAlias::StuckToolTimeout => &mut self.stuck_tool_timeout,
+            BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
+            BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
+            BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
+            BootstrapAlias::UserEnvFile => &mut self.user_env_file,
+            BootstrapAlias::RunPayloadFile => &mut self.run_payload_file,
+            BootstrapAlias::ApiToken => &mut self.api_token,
+            BootstrapAlias::SandboxId => &mut self.sandbox_id,
+            BootstrapAlias::SandboxReuseResult => &mut self.sandbox_reuse_result,
+            BootstrapAlias::WorkspaceReuseResult => &mut self.workspace_reuse_result,
+            BootstrapAlias::ResumeSessionId => &mut self.resume_session_id,
+            BootstrapAlias::ApiStartTime => &mut self.api_start_time,
+            BootstrapAlias::AgentExecutionTimeout => &mut self.agent_execution_timeout,
+            BootstrapAlias::MockClaudePath => &mut self.mock_claude_path,
+            BootstrapAlias::MockCodexPath => &mut self.mock_codex_path,
+        };
+        *slot = Some(source);
+    }
+
+    fn sources(&self) -> [Option<BootstrapAliasSource>; BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] {
+        [
+            self.api_url,
+            self.stuck_tool_timeout,
+            self.post_result_sigterm_grace,
+            self.post_result_total_cap,
+            self.post_result_sigkill_grace,
+            self.user_env_file,
+            self.run_payload_file,
+            self.api_token,
+            self.sandbox_id,
+            self.sandbox_reuse_result,
+            self.workspace_reuse_result,
+            self.resume_session_id,
+            self.api_start_time,
+            self.agent_execution_timeout,
+            self.mock_claude_path,
+            self.mock_codex_path,
+        ]
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
+        BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY
+            .into_iter()
+            .zip(self.sources())
+            .filter_map(|(event, source)| {
+                source.map(|source| (event.family, event.canonical_key, source.label()))
+            })
+    }
+
+    fn emit(&self) {
+        for (family, canonical_key, source) in self.iter() {
+            log_info!(LOG_TAG, "{family} key={canonical_key} source={source}");
+        }
+    }
+}
+
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
@@ -36,7 +234,7 @@ fn env_or_empty(name: &str) -> String {
 /// Remove the legacy reader only after the exact production Runner plus
 /// embedded-Guest reader floor, complete pre-reader service and reusable-sandbox
 /// drain, supported rollback window, and value-free legacy-source-zero gates.
-fn api_url_env_or_empty() -> Result<String, String> {
+fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
     let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
     let legacy_key = guest_contracts::env::API_URL_ENV;
     let canonical = std::env::var(canonical_key).ok();
@@ -44,9 +242,11 @@ fn api_url_env_or_empty() -> Result<String, String> {
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, "canonical-only"),
-        (None, Some(value)) => (value, "legacy-only"),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, BootstrapAliasSource::Dual)
+        }
         (Some(_), Some(_)) => {
             return Err(format!(
                 "conflicting API backend URL environment aliases: canonical_key={canonical_key} \
@@ -55,31 +255,11 @@ fn api_url_env_or_empty() -> Result<String, String> {
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "api_url_env_source key={canonical_key} source={source}"
-    );
+    events.record(BootstrapAlias::ApiUrl, source);
     Ok(value)
 }
 
-#[derive(Clone, Copy)]
-enum PrivatePayloadFileEnvSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-type PrivatePayloadFileEnvResolution = (String, Option<PrivatePayloadFileEnvSource>);
-
-impl PrivatePayloadFileEnvSource {
-    fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
-}
+type PrivatePayloadFileEnvResolution = (String, Option<BootstrapAliasSource>);
 
 /// Resolve Stage 1 compatibility between existing runners or sandboxes and a
 /// new guest reader. Existing pointers can remain live through the two-hour
@@ -100,10 +280,10 @@ fn private_payload_file_env(
 
     match (canonical, legacy) {
         (None, None) => Ok((String::new(), None)),
-        (Some(value), None) => Ok((value, Some(PrivatePayloadFileEnvSource::CanonicalOnly))),
-        (None, Some(value)) => Ok((value, Some(PrivatePayloadFileEnvSource::LegacyOnly))),
+        (Some(value), None) => Ok((value, Some(BootstrapAliasSource::CanonicalOnly))),
+        (None, Some(value)) => Ok((value, Some(BootstrapAliasSource::LegacyOnly))),
         (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok((canonical, Some(PrivatePayloadFileEnvSource::Dual)))
+            Ok((canonical, Some(BootstrapAliasSource::Dual)))
         }
         (Some(_), Some(_)) => Err(format!(
             "conflicting private payload file environment aliases: canonical_key={canonical_key} \
@@ -113,22 +293,19 @@ fn private_payload_file_env(
 }
 
 fn record_private_payload_file_env_source(
-    canonical_key: &'static str,
-    source: Option<PrivatePayloadFileEnvSource>,
+    events: &mut BootstrapAliasSourceEvents,
+    alias: BootstrapAlias,
+    source: Option<BootstrapAliasSource>,
 ) {
     if let Some(source) = source {
-        log_info!(
-            LOG_TAG,
-            "private_payload_file_env_source key={canonical_key} source={}",
-            source.label()
-        );
+        events.record(alias, source);
     }
 }
 
 /// Resolve the sensitive runner-to-guest API token at the single process-env
 /// capture boundary. Both aliases are reader-only during #28914 migration
 /// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
-fn api_token_env_or_empty() -> Result<String, String> {
+fn api_token_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
     let canonical_key = guest_contracts::env::CANONICAL_API_TOKEN_ENV;
     let legacy_key = guest_contracts::env::API_TOKEN_ENV;
     let canonical = std::env::var(canonical_key).ok();
@@ -136,9 +313,11 @@ fn api_token_env_or_empty() -> Result<String, String> {
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, "canonical-only"),
-        (None, Some(value)) => (value, "legacy-only"),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, BootstrapAliasSource::Dual)
+        }
         (Some(_), Some(_)) => {
             return Err(format!(
                 "conflicting API token environment aliases: canonical_key={canonical_key} \
@@ -147,10 +326,7 @@ fn api_token_env_or_empty() -> Result<String, String> {
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "api_token_env_source key={canonical_key} source={source}"
-    );
+    events.record(BootstrapAlias::ApiToken, source);
     Ok(value)
 }
 
@@ -158,7 +334,9 @@ fn api_token_env_or_empty() -> Result<String, String> {
 /// capture boundary. Both aliases are reader-only during #28914 migration
 /// Stage 1; the runner writer remains
 /// [`guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
-fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
+fn agent_execution_timeout_env_or_empty(
+    events: &mut BootstrapAliasSourceEvents,
+) -> Result<String, String> {
     let canonical_key = guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV;
     let legacy_key = guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV;
     let canonical = std::env::var(canonical_key).ok();
@@ -166,9 +344,11 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, "canonical-only"),
-        (None, Some(value)) => (value, "legacy-only"),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, BootstrapAliasSource::Dual)
+        }
         (Some(_), Some(_)) => {
             return Err(format!(
                 "conflicting agent execution timeout environment aliases: \
@@ -177,10 +357,7 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "agent_execution_timeout_env_source key={canonical_key} source={source}"
-    );
+    events.record(BootstrapAlias::AgentExecutionTimeout, source);
     Ok(value)
 }
 
@@ -190,17 +367,21 @@ fn agent_execution_timeout_env_or_empty() -> Result<String, String> {
 /// Remove the legacy reader only after #28914's existing runner/sandbox drain
 /// and rollback gates close and source telemetry shows zero legacy-only reads.
 fn guest_agent_tuning_env_or_empty(
+    alias: BootstrapAlias,
     canonical_key: &'static str,
     legacy_key: &'static str,
+    events: &mut BootstrapAliasSourceEvents,
 ) -> Result<String, String> {
     let canonical = std::env::var(canonical_key).ok();
     let legacy = std::env::var(legacy_key).ok();
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, "canonical-only"),
-        (None, Some(value)) => (value, "legacy-only"),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, BootstrapAliasSource::Dual)
+        }
         (Some(_), Some(_)) => {
             return Err(format!(
                 "conflicting guest agent tuning environment aliases: \
@@ -209,10 +390,7 @@ fn guest_agent_tuning_env_or_empty(
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "guest_agent_tuning_env_source key={canonical_key} source={source}"
-    );
+    events.record(alias, source);
     Ok(value)
 }
 
@@ -220,17 +398,21 @@ fn guest_agent_tuning_env_or_empty(
 /// process-env capture boundary. Canonical aliases are reader-only during
 /// #28914 Stage 1; all existing test/debug writers remain legacy-only.
 fn mock_binary_path_env(
+    alias: BootstrapAlias,
     canonical_key: &'static str,
     legacy_key: &'static str,
+    events: &mut BootstrapAliasSourceEvents,
 ) -> Result<Option<String>, String> {
     let canonical = std::env::var(canonical_key).ok();
     let legacy = std::env::var(legacy_key).ok();
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(None),
-        (Some(value), None) => (value, "canonical-only"),
-        (None, Some(value)) => (value, "legacy-only"),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (canonical, "dual"),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
+        (Some(canonical), Some(legacy)) if canonical == legacy => {
+            (canonical, BootstrapAliasSource::Dual)
+        }
         (Some(_), Some(_)) => {
             return Err(format!(
                 "conflicting mock binary path environment aliases: \
@@ -239,28 +421,8 @@ fn mock_binary_path_env(
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "mock_binary_path_env_source key={canonical_key} source={source}"
-    );
+    events.record(alias, source);
     Ok(Some(value))
-}
-
-#[derive(Clone, Copy)]
-enum RunMetadataEnvSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl RunMetadataEnvSource {
-    fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
 }
 
 /// Resolve Stage 1 compatibility between an existing runner or sandbox and a
@@ -268,18 +430,20 @@ impl RunMetadataEnvSource {
 /// issues; remove the legacy branch only after the reader floor, sandbox drain,
 /// rollback window, and legacy-read-zero gates are complete.
 fn run_metadata_env_or_empty(
+    alias: BootstrapAlias,
     canonical_key: &'static str,
     legacy_key: &'static str,
+    events: &mut BootstrapAliasSourceEvents,
 ) -> Result<String, String> {
     let canonical = std::env::var(canonical_key).ok();
     let legacy = std::env::var(legacy_key).ok();
 
     let (value, source) = match (canonical, legacy) {
         (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, RunMetadataEnvSource::CanonicalOnly),
-        (None, Some(value)) => (value, RunMetadataEnvSource::LegacyOnly),
+        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
+        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
         (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, RunMetadataEnvSource::Dual)
+            (canonical, BootstrapAliasSource::Dual)
         }
         (Some(_), Some(_)) => {
             return Err(format!(
@@ -289,11 +453,7 @@ fn run_metadata_env_or_empty(
         }
     };
 
-    log_info!(
-        LOG_TAG,
-        "run_metadata_env_source key={canonical_key} source={}",
-        source.label()
-    );
+    events.record(alias, source);
     Ok(value)
 }
 
@@ -472,6 +632,10 @@ pub struct GuestConfigRaw {
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
     pub post_result_sigkill_grace_secs: String,
+    /// Opaque, value-free bootstrap alias source state retained until the
+    /// run-scoped system-log sink is installed.
+    #[doc(hidden)]
+    pub bootstrap_alias_sources: BootstrapAliasSourceEvents,
 }
 
 impl GuestConfigRaw {
@@ -492,23 +656,32 @@ impl GuestConfigRaw {
         guest_runtime_dir: guest_contracts::runtime_paths::GuestRuntimeDirEnvResolution,
     ) -> Result<Self, String> {
         let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
-        let api_url = api_url_env_or_empty()?;
+        let mut bootstrap_alias_sources = BootstrapAliasSourceEvents::default();
+        let api_url = api_url_env_or_empty(&mut bootstrap_alias_sources)?;
 
         let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
+            BootstrapAlias::StuckToolTimeout,
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
             guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            &mut bootstrap_alias_sources,
         )?;
         let post_result_sigterm_grace_secs = guest_agent_tuning_env_or_empty(
+            BootstrapAlias::PostResultSigtermGrace,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            &mut bootstrap_alias_sources,
         )?;
         let post_result_total_cap_secs = guest_agent_tuning_env_or_empty(
+            BootstrapAlias::PostResultTotalCap,
             guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
             guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+            &mut bootstrap_alias_sources,
         )?;
         let post_result_sigkill_grace_secs = guest_agent_tuning_env_or_empty(
+            BootstrapAlias::PostResultSigkillGrace,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            &mut bootstrap_alias_sources,
         )?;
 
         let (user_env_file, user_env_file_source) = private_payload_file_env(
@@ -521,52 +694,70 @@ impl GuestConfigRaw {
         )?;
 
         record_private_payload_file_env_source(
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            &mut bootstrap_alias_sources,
+            BootstrapAlias::UserEnvFile,
             user_env_file_source,
         );
         record_private_payload_file_env_source(
-            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            &mut bootstrap_alias_sources,
+            BootstrapAlias::RunPayloadFile,
             run_payload_file_source,
         );
 
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url,
-            api_token: api_token_env_or_empty()?,
+            api_token: api_token_env_or_empty(&mut bootstrap_alias_sources)?,
             sandbox_id: run_metadata_env_or_empty(
+                BootstrapAlias::SandboxId,
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 guest_contracts::env::SANDBOX_ID_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             sandbox_reuse_result: run_metadata_env_or_empty(
+                BootstrapAlias::SandboxReuseResult,
                 guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
                 guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             workspace_reuse_result: run_metadata_env_or_empty(
+                BootstrapAlias::WorkspaceReuseResult,
                 guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
                 guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: run_metadata_env_or_empty(
+                BootstrapAlias::ResumeSessionId,
                 guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
                 guest_contracts::env::RESUME_SESSION_ID_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             api_start_time: run_metadata_env_or_empty(
+                BootstrapAlias::ApiStartTime,
                 guest_contracts::env::CANONICAL_API_START_TIME_ENV,
                 guest_contracts::env::API_START_TIME_ENV,
+                &mut bootstrap_alias_sources,
             )?,
-            agent_execution_timeout_secs: agent_execution_timeout_env_or_empty()?,
+            agent_execution_timeout_secs: agent_execution_timeout_env_or_empty(
+                &mut bootstrap_alias_sources,
+            )?,
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: mock_binary_path_env(
+                BootstrapAlias::MockClaudePath,
                 guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
                 guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file,
             run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
             mock_codex_path: mock_binary_path_env(
+                BootstrapAlias::MockCodexPath,
                 guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
                 guest_contracts::env::MOCK_CODEX_PATH_ENV,
+                &mut bootstrap_alias_sources,
             )?,
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
@@ -583,7 +774,21 @@ impl GuestConfigRaw {
             post_result_sigterm_grace_secs,
             post_result_total_cap_secs,
             post_result_sigkill_grace_secs,
+            bootstrap_alias_sources,
         })
+    }
+
+    /// Iterate the captured fixed event family, canonical key, and source
+    /// label without exposing any selected environment value.
+    #[doc(hidden)]
+    pub fn bootstrap_alias_source_events(
+        &self,
+    ) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
+        self.bootstrap_alias_sources.iter()
+    }
+
+    pub(crate) fn emit_bootstrap_alias_source_events(&self) {
+        self.bootstrap_alias_sources.emit();
     }
 
     pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {

@@ -66,15 +66,24 @@ fn clear_run_metadata_env() {
 }
 
 fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let raw = GuestConfigRaw::from_process_env();
     guest_common::log::clear_system_log_file();
-    let log = match std::fs::read_to_string(log_path) {
-        Ok(log) => log,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    Ok((raw, log))
+    let raw = GuestConfigRaw::from_process_env();
+    assert!(
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let evidence = raw
+        .as_ref()
+        .map(|raw| {
+            raw.bootstrap_alias_source_events()
+                .map(|(family, key, source)| {
+                    format!("[captured] {family} key={key} source={source}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Ok((raw, evidence))
 }
 
 fn assert_source_log(
@@ -248,17 +257,24 @@ fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
     }
 
     let config_log_path = tmp.join(format!("{source}-config.log"));
-    guest_common::log::set_system_log_file(&config_log_path);
-    let config =
-        guest_agent::env::GuestConfig::from_process_env().map_err(std::io::Error::other)?;
     guest_common::log::clear_system_log_file();
+    let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
+    let config_log = raw
+        .bootstrap_alias_source_events()
+        .map(|(family, key, source)| format!("[captured] {family} key={key} source={source}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !config_log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let config = guest_agent::env::GuestConfig::from_raw(raw).map_err(std::io::Error::other)?;
 
     assert_eq!(config.sandbox_id, values[0]);
     assert_eq!(config.sandbox_reuse_result, values[1]);
     assert_eq!(config.workspace_reuse_result, values[2]);
     assert_eq!(config.resume_session_id, values[3]);
     assert_eq!(config.api_start_time, values[4]);
-    let config_log = std::fs::read_to_string(config_log_path)?;
     for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
         assert_source_log(&config_log, pair, source_label, Some(value));
     }
