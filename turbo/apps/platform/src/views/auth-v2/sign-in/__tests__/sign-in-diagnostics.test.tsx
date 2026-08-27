@@ -38,7 +38,7 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return { posthog };
 });
 

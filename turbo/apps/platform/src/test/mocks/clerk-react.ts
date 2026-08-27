@@ -43,9 +43,12 @@ interface ClerkProviderProps {
   localization?: {
     signIn?: {
       emailCode?: { subtitle?: string };
-      start?: { title?: string };
+      start?: { actionLink?: string; title?: string };
     };
-    unstable__errors?: { user_banned?: string };
+    unstable__errors?: {
+      not_allowed_access?: string;
+      user_banned?: string;
+    };
   };
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;
@@ -65,7 +68,11 @@ export function ClerkProvider({
     createElement("span", {
       "data-clerk-sign-in-email-code-subtitle":
         localization?.signIn?.emailCode?.subtitle,
+      "data-clerk-sign-in-start-action-link":
+        localization?.signIn?.start?.actionLink,
       "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
+      "data-clerk-access-not-allowed-error":
+        localization?.unstable__errors?.not_allowed_access,
       "data-clerk-user-banned-error":
         localization?.unstable__errors?.user_banned,
       "data-clerk-touch-session":

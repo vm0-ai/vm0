@@ -5,6 +5,7 @@ import {
 import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { clerkLocalizations$ } from "../../i18n/clerk-localization.ts";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { locale$ } from "../../signals/locale.ts";
@@ -30,6 +31,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const clerkInstance = useGet(clerkInstance$);
   const clerkUi = useGet(clerkUi$);
   const domainBrandName = useGet(brandName$);
+  const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
   const isAuthPage =
     location.pathname === ROUTES.signIn ||
@@ -54,7 +56,12 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
-    localization: getClerkLocalization(clerkBrandName, locale, t),
+    localization: getClerkLocalization(
+      clerkBrandName,
+      locale,
+      clerkLocalizations,
+      t,
+    ),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/sign-in"),
