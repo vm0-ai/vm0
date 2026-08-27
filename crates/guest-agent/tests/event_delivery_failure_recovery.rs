@@ -147,7 +147,7 @@ async fn run_event_failure_case(
                 guest_contracts::env::CANONICAL_API_URL_ENV,
                 server.base_url(),
             )
-            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

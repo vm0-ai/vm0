@@ -35,7 +35,7 @@ async fn nonretryable_client_rejection_records_one_attempt()
             guest_contracts::env::CANONICAL_API_URL_ENV,
             &server.base_url,
         );
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     let run_id = runtime.config.run_id.clone();

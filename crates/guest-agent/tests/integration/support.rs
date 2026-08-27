@@ -28,7 +28,10 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
             guest_contracts::env::CANONICAL_API_URL_ENV,
             server.base_url(),
         );
-        std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_TOKEN_ENV,
+            "test-token-abc123",
+        );
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, TEST_RUN_ID);
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,

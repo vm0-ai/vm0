@@ -25,7 +25,7 @@ async fn claude_code_event_delivery_count_overload_terminates_promptly()
             guest_contracts::env::CANONICAL_API_URL_ENV,
             server.base_url(),
         );
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);

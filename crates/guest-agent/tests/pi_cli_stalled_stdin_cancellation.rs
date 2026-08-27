@@ -64,7 +64,7 @@ done
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "http://127.0.0.1:1",
         );
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",

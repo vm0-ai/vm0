@@ -38,7 +38,7 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "http://127.0.0.1:1",
         );
-        std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV, &mock);
