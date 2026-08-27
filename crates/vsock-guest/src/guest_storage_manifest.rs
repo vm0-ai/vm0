@@ -634,10 +634,12 @@ fn failed_output(
         stdout: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         stderr: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         diagnostic: truncate_utf8(diagnostic, MAX_DIAGNOSTIC_BYTES),
     }
