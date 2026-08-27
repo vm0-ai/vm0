@@ -1462,6 +1462,30 @@ describe("connectors page", () => {
     });
   });
 
+  it("shows the connector description when there are no accounts or agent access", async () => {
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      expect(within(card).getByTestId("connector-help-text")).toHaveTextContent(
+        "Connect your GitHub account to access repositories and GitHub features.",
+      );
+      expect(within(card).queryByText("No accounts")).toBeNull();
+      expect(
+        within(card).queryByTestId("connector-card-agent-access"),
+      ).toBeNull();
+    });
+  });
+
   it("shows an account identity while agent access is unavailable", async () => {
     const [connector] = mockConnectors([
       { connectorSlug: "github", externalUsername: "work" },

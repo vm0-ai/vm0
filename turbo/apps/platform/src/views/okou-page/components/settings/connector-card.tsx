@@ -66,6 +66,7 @@ type AccountsConnectorCardProps = {
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly summary: ConnectorAccountSummary | undefined;
   readonly summaryStatus: ConnectorAccountSummaryStatus;
+  readonly showCatalogDescription: boolean;
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
   readonly manageAccess?: ReactNode;
@@ -468,6 +469,7 @@ function AccountsConnectorCard({
   connector,
   summary,
   summaryStatus,
+  showCatalogDescription,
   busy,
   connect,
   manageAccess,
@@ -475,6 +477,8 @@ function AccountsConnectorCard({
 }: AccountsConnectorCardProps) {
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
+  const showDescription =
+    summaryStatus === "ready" && accountCount === 0 && showCatalogDescription;
   const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
   const canConnect = summaryStatus === "ready" && accountCount === 0 && !busy;
   const canActivate = canManage || canConnect;
@@ -491,6 +495,7 @@ function AccountsConnectorCard({
     <div
       className={cn(
         "zero-card relative flex flex-col text-left",
+        showDescription && "overflow-hidden",
         canActivate && "cursor-pointer",
       )}
     >
@@ -516,7 +521,12 @@ function AccountsConnectorCard({
           onClick={activate}
         />
       ) : null}
-      <div className="flex h-14 items-center gap-2.5 px-5">
+      <div
+        className={cn(
+          "flex items-center gap-2.5 px-5",
+          showDescription ? "pb-1 pt-4" : "h-14",
+        )}
+      >
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           <ConnectorIcon icon={connector.icon} size={20} />
         </span>
@@ -542,14 +552,25 @@ function AccountsConnectorCard({
           </span>
         ) : null}
       </div>
-      <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
-        <ConnectorAccountSummaryText
-          summary={summary}
-          status={summaryStatus}
-          className="min-w-0 flex-1 text-xs text-muted-foreground"
-        />
-        <div className="relative z-20">{manageAccess}</div>
-      </div>
+      {showDescription ? (
+        <div className="px-5 pb-4 pt-1">
+          <div
+            data-testid="connector-help-text"
+            className="line-clamp-2 text-xs text-muted-foreground"
+          >
+            {connector.description}
+          </div>
+        </div>
+      ) : (
+        <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
+          <ConnectorAccountSummaryText
+            summary={summary}
+            status={summaryStatus}
+            className="min-w-0 flex-1 text-xs text-muted-foreground"
+          />
+          <div className="relative z-20">{manageAccess}</div>
+        </div>
+      )}
     </div>
   );
 }

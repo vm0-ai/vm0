@@ -944,31 +944,8 @@ function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
 }
 
 function SettingsConnectorCard(props: SettingsConnectorCardProps) {
-  const manageAccess = (
-    <ConnectorAccessButton
-      connectorSlug={props.connector.slug}
-      connectorLabel={props.connector.label}
-      allowAccessIncrease={
-        !props.accountManagement ||
-        (props.accountSummaryStatus === "ready" &&
-          (props.accountSummary?.accountCount ?? 0) > 0)
-      }
-      onClick={props.onManageAccess}
-    />
-  );
   if (props.accountManagement) {
-    return (
-      <ConnectorCard
-        variant="accounts"
-        connector={props.connector}
-        summary={props.accountSummary}
-        summaryStatus={props.accountSummaryStatus}
-        busy={props.busy}
-        connect={props.connect}
-        onManage={props.onManageAccounts}
-        manageAccess={manageAccess}
-      />
-    );
+    return <AccountManagedSettingsConnectorCard {...props} />;
   }
   if (!props.connected) {
     return (
@@ -980,6 +957,14 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
       />
     );
   }
+  const manageAccess = (
+    <ConnectorAccessButton
+      connectorSlug={props.connector.slug}
+      connectorLabel={props.connector.label}
+      allowAccessIncrease
+      onClick={props.onManageAccess}
+    />
+  );
   return (
     <ConnectorCard
       variant="connection"
@@ -991,6 +976,44 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
       onDisconnect={props.onDisconnect}
       manageAccess={manageAccess}
       onReviewScopes={props.onReviewScopes}
+    />
+  );
+}
+
+function AccountManagedSettingsConnectorCard(
+  props: SettingsConnectorCardProps,
+) {
+  const agentsBySlugLoadable = useLastLoadable(
+    connectorAuthorizedAgentsBySlug$,
+  );
+  const agents =
+    agentsBySlugLoadable.state === "hasData"
+      ? (agentsBySlugLoadable.data.get(props.connector.slug) ?? [])
+      : [];
+  const accessStatus = connectorAgentAccessStatus(agentsBySlugLoadable.state);
+  const accountCount = props.accountSummary?.accountCount ?? 0;
+  const manageAccess = (
+    <ConnectorAgentAccessButton
+      agents={agents}
+      status={accessStatus}
+      allowAccessIncrease={
+        props.accountSummaryStatus === "ready" && accountCount > 0
+      }
+      connectorLabel={props.connector.label}
+      onClick={props.onManageAccess}
+    />
+  );
+  return (
+    <ConnectorCard
+      variant="accounts"
+      connector={props.connector}
+      summary={props.accountSummary}
+      summaryStatus={props.accountSummaryStatus}
+      showCatalogDescription={accessStatus === "ready" && agents.length === 0}
+      busy={props.busy}
+      connect={props.connect}
+      onManage={props.onManageAccounts}
+      manageAccess={manageAccess}
     />
   );
 }
