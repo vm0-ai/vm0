@@ -1695,6 +1695,107 @@ describe("managed SocialKit route", () => {
     ).toHaveLength(1);
   });
 
+  it.each([
+    {
+      caseName: "declared oversized",
+      response: () => {
+        return new HttpResponse(new Uint8Array([1]), {
+          headers: {
+            "content-length": String(2 * 1024 * 1024 * 1024 + 1),
+          },
+        });
+      },
+      expectsMultipartAbort: false,
+    },
+    {
+      caseName: "empty",
+      response: () => {
+        return new HttpResponse(new Uint8Array(0), {
+          headers: { "content-length": "0" },
+        });
+      },
+      expectsMultipartAbort: true,
+    },
+  ])(
+    "marks $caseName artifact output billed and retryable",
+    async ({ response, expectsMultipartAbort }) => {
+      const actor = createBddApi(context).user();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      const beforeCredits = await credits(actor);
+      const providerJobId = `provider-invalid-artifact-${randomUUID()}`;
+      context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+        { address: "8.8.8.8", family: 4 },
+      ]);
+      server.use(
+        http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+          return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+        }),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            status: "ready",
+            platform: "youtube",
+            downloadUrl:
+              "https://media.socialkit.test/invalid-artifact-download",
+            durationSeconds: 61,
+            fileSizeMB: 1,
+            creditsCost: 2,
+            quality: "720p",
+            format: "mp4",
+          });
+        }),
+        http.get(
+          "https://media.socialkit.test/invalid-artifact-download",
+          response,
+        ),
+      );
+      context.mocks.s3.send.mockImplementation((command: unknown) => {
+        if (command instanceof CreateMultipartUploadCommand) {
+          return Promise.resolve({ UploadId: "socialkit-invalid-artifact" });
+        }
+        return Promise.resolve({});
+      });
+      const socialClient = client(pricing.resolution)(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: authenticate(actor),
+          body: {
+            platform: "youtube",
+            url: "https://youtu.be/public-video",
+            maxDuration: 120,
+            quality: "720p",
+            format: "mp4",
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const failed = await accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(failed.body).toMatchObject({
+        status: "artifact_failed",
+        billing: { quantity: 2, creditsCharged: 6 },
+        artifact: null,
+        error: { billed: true, retryable: true },
+      });
+      expect(beforeCredits - (await credits(actor))).toBe(6);
+      expect(
+        context.mocks.s3.send.mock.calls.some(([command]) => {
+          return command instanceof AbortMultipartUploadCommand;
+        }),
+      ).toBe(expectsMultipartAbort);
+    },
+  );
+
   it("recovers billing after ready metadata is persisted before settlement interruption", async () => {
     const actor = createBddApi(context).user();
     configureProvider();
