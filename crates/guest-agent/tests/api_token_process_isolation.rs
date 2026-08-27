@@ -86,7 +86,7 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
             &probe_path,
         )
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
         )
         .env(

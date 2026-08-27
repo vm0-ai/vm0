@@ -170,7 +170,7 @@ async fn run_event_failure_case(
             )
             .env("MOCK_CODEX_APP_SERVER_SCENARIO", mock_scenario)
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(

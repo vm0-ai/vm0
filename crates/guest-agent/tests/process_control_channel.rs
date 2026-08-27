@@ -155,7 +155,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ),
         (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             run_payload_path.as_str(),
         ),
         (
@@ -301,7 +301,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ),
         (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             run_payload_path.as_str(),
         ),
         (

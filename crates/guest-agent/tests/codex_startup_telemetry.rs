@@ -139,7 +139,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         .env_clear()
         .env(guest_contracts::env::RUN_ID_ENV, args.run_id)
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,
         )
         .env(

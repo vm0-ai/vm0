@@ -64,11 +64,11 @@ fn guest_agent_command(root: &Path, run_id: &str, private_files: &PrivateFiles) 
         )
         .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "")
         .env(
-            guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
             &private_files.user_env_path,
         )
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             &private_files.run_payload_path,
         );
     command

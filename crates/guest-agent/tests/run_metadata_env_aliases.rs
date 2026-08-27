@@ -245,7 +245,10 @@ fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
-    set_test_env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, &payload_path);
+    set_test_env(
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        &payload_path,
+    );
     remove_test_env(guest_contracts::env::USER_ENV_FILE_ENV);
     for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
         let key = if canonical {

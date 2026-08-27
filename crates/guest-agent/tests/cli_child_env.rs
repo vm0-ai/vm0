@@ -106,7 +106,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         }))?,
     )?;
     unsafe {
-        std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            &user_env_path,
+        );
     }
 
     let runtime = GuestRuntime::from_process_env()?;
