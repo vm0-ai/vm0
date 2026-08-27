@@ -4,6 +4,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   HIGHLIGHT_FILL,
+  markOrdinal,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "./image-annotation.ts";
@@ -342,7 +343,7 @@ export async function flattenAnnotatedImage(
   const scale = scaleFor(width, height);
   for (const [index, mark] of annotation.marks.entries()) {
     context.save();
-    drawMark(context, scale, mark, index + 1);
+    drawMark(context, scale, mark, markOrdinal(mark, index));
     context.restore();
   }
 

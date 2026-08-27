@@ -49,7 +49,9 @@ import {
   setAnnotationStroke$,
   setAnnotationDrag$,
   setAnnotationTool$,
+  markOrdinal,
   moveAnnotationMarkRect$,
+  nextMarkOrdinal,
   resetAnnotationZoom$,
   undoAnnotation$,
   zoomAnnotation$,
@@ -886,7 +888,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
               <MarkShape
                 key={mark.id}
                 mark={mark}
-                ordinal={index + 1}
+                ordinal={markOrdinal(mark, index)}
                 aspect={aspect}
                 selected={mark.id === selectedId}
                 onSelect={() => {
@@ -905,7 +907,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
           {preview && (
             <MarkShape
               mark={preview}
-              ordinal={annotation.marks.length + 1}
+              ordinal={nextMarkOrdinal(annotation.marks)}
               aspect={aspect}
             />
           )}

@@ -144,8 +144,17 @@ function attachMarksButton(): HTMLElement {
   return button;
 }
 
+interface DragBox {
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+}
+
 /** Drags a rectangle across the drawing surface. */
-async function dragOnSurface(): Promise<void> {
+async function dragOnSurface(
+  box: DragBox = { fromX: 40, fromY: 30, toX: 200, toY: 180 },
+): Promise<void> {
   const surface = await screen.findByTestId("image-annotation-surface");
   // jsdom reports a zero-sized box for every element, so the surface is given
   // one explicitly — the editor divides by it to normalize each point.
@@ -164,9 +173,21 @@ async function dragOnSurface(): Promise<void> {
       },
     };
   };
-  fireEvent.pointerDown(surface, { clientX: 40, clientY: 30, pointerId: 1 });
-  fireEvent.pointerMove(surface, { clientX: 200, clientY: 180, pointerId: 1 });
-  fireEvent.pointerUp(surface, { clientX: 200, clientY: 180, pointerId: 1 });
+  fireEvent.pointerDown(surface, {
+    clientX: box.fromX,
+    clientY: box.fromY,
+    pointerId: 1,
+  });
+  fireEvent.pointerMove(surface, {
+    clientX: box.toX,
+    clientY: box.toY,
+    pointerId: 1,
+  });
+  fireEvent.pointerUp(surface, {
+    clientX: box.toX,
+    clientY: box.toY,
+    pointerId: 1,
+  });
 }
 
 /**
@@ -373,6 +394,56 @@ describe("composer image annotation", () => {
     await screen.findByTestId("attachment-lightbox");
     await waitFor(() => {
       expect(screen.getByTestId("annotation-mark-layer")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The numbers are what the user's notes refer to, in the editor and in the
+   * text the agent receives. Deleting one must not slide the rest down; the
+   * hole it leaves is what the next mark fills.
+   */
+  it("reuses a deleted mark's number instead of renumbering the rest", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    await dragOnSurface({ fromX: 20, fromY: 20, toX: 80, toY: 70 });
+    await dragOnSurface({ fromX: 120, fromY: 20, toX: 180, toY: 70 });
+    await dragOnSurface({ fromX: 220, fromY: 20, toX: 280, toY: 70 });
+    await waitFor(() => {
+      expect(screen.getByText("3 marks")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("annotation-mark-2"));
+    await user.click(await screen.findByLabelText("Remove mark"));
+    await waitFor(() => {
+      expect(screen.getByText("2 marks")).toBeInTheDocument();
+    });
+
+    // The survivor keeps its own number rather than sliding into the gap.
+    expect(screen.getByTestId("annotation-mark-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("annotation-mark-2")).toBeNull();
+
+    await dragOnSurface({ fromX: 20, fromY: 150, toX: 80, toY: 200 });
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-2")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("annotation-mark-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("annotation-mark-4")).toBeNull();
+
+    // With no hole left, numbering carries on from the end.
+    await dragOnSurface({ fromX: 120, fromY: 150, toX: 180, toY: 200 });
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-4")).toBeInTheDocument();
     });
   });
 
