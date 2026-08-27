@@ -58,6 +58,7 @@ export interface ArtifactCatalogSignals {
   readonly reload$: Command<void, []>;
   readonly catalog$: Computed<Promise<ArtifactCatalogPage>>;
   readonly loadMore$: Command<Promise<void>, [AbortSignal]>;
+  readonly loadThroughArtifact$: Command<Promise<void>, [string, AbortSignal]>;
   readonly selectArtifact$: Command<void, [string | null]>;
   readonly selectedArtifactDetail$: Computed<Promise<ArtifactDetail | null>>;
 }
@@ -221,6 +222,35 @@ export function createArtifactCatalogSignals(
     fetchedCursors$: internalFetchedCursors$,
   });
 
+  const loadThroughArtifact$ = command(
+    async ({ get, set }, artifactId: string, signal: AbortSignal) => {
+      while (true) {
+        const loaded = await get(catalog$);
+        signal.throwIfAborted();
+        if (
+          loaded.artifacts.some((artifact) => {
+            return artifact.id === artifactId;
+          }) ||
+          !loaded.nextCursor
+        ) {
+          return;
+        }
+        const loadedCount = loaded.artifacts.length;
+        const loadedCursor = loaded.nextCursor;
+        await set(loadMore$, signal);
+        signal.throwIfAborted();
+        const next = await get(catalog$);
+        signal.throwIfAborted();
+        if (
+          next.artifacts.length === loadedCount &&
+          next.nextCursor === loadedCursor
+        ) {
+          return;
+        }
+      }
+    },
+  );
+
   const selectArtifact$ = command(({ set }, artifactId: string | null) => {
     set(internalSelectedArtifactId$, artifactId);
   });
@@ -256,6 +286,7 @@ export function createArtifactCatalogSignals(
     reload$,
     catalog$,
     loadMore$,
+    loadThroughArtifact$,
     selectArtifact$,
     selectedArtifactDetail$,
   };

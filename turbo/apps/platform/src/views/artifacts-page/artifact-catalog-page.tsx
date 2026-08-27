@@ -22,6 +22,7 @@ import {
   artifactCatalog$,
   loadMoreArtifactCatalog$,
   openArtifact$,
+  scrollArtifactCardIntoViewRef$,
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
@@ -142,15 +143,20 @@ function ArtifactCatalogFallbackPreview({
 function ArtifactCatalogCard({
   artifact,
   onOpen,
+  scrollIntoView,
 }: {
   readonly artifact: CatalogArtifact;
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollIntoView: boolean;
 }) {
   const { t } = useTranslation();
+  const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
     <article
+      ref={scrollIntoView ? scrollArtifactCardIntoViewRef : undefined}
       role="button"
       tabIndex={0}
+      data-artifact-id={artifact.id}
       aria-label={t(
         ($) => {
           return $.artifacts.catalog.cardPreview;
@@ -208,18 +214,27 @@ function ArtifactCatalogCard({
 function ArtifactSharedConversationList({
   artifacts,
   onOpen,
+  scrollToArtifactId,
 }: {
   readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollToArtifactId: string | null;
 }) {
   const { t } = useTranslation();
+  const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
     <ul className="zero-card divide-y divide-border overflow-hidden">
       {artifacts.map((artifact) => {
         return (
           <li key={artifact.id}>
             <button
+              ref={
+                artifact.id === scrollToArtifactId
+                  ? scrollArtifactCardIntoViewRef
+                  : undefined
+              }
               type="button"
+              data-artifact-id={artifact.id}
               aria-label={t(
                 ($) => {
                   return $.artifacts.catalog.cardPreview;
@@ -256,9 +271,11 @@ function ArtifactSharedConversationList({
 export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
+  scrollToArtifactId = null,
 }: {
   readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollToArtifactId?: string | null;
 }) {
   return (
     <div
@@ -274,6 +291,7 @@ export function ArtifactCatalogGrid({
             key={artifact.id}
             artifact={artifact}
             onOpen={onOpen}
+            scrollIntoView={artifact.id === scrollToArtifactId}
           />
         );
       })}
@@ -474,7 +492,11 @@ function ArtifactCatalogKindFilter({
   );
 }
 
-export function ArtifactCatalogPage() {
+export function ArtifactCatalogPage({
+  scrollToArtifactId,
+}: {
+  readonly scrollToArtifactId: string | null;
+}) {
   const { t } = useTranslation();
   const selectedKind = useGet(selectedArtifactCatalogKind$);
   const setKind = useSet(setArtifactCatalogKind$);
@@ -487,7 +509,6 @@ export function ArtifactCatalogPage() {
   const sharedConversationLayout = selectedKind === "shared-thread";
   const hasMore =
     catalog.state === "hasData" && catalog.data.nextCursor !== null;
-
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     if (!hasMore) {
       return;
@@ -547,6 +568,7 @@ export function ArtifactCatalogPage() {
           ) : sharedConversationLayout ? (
             <ArtifactSharedConversationList
               artifacts={artifacts}
+              scrollToArtifactId={scrollToArtifactId}
               onOpen={(artifactId) => {
                 detach(
                   openArtifact(artifactId, pageSignal),
@@ -558,6 +580,7 @@ export function ArtifactCatalogPage() {
           ) : (
             <ArtifactCatalogGrid
               artifacts={artifacts}
+              scrollToArtifactId={scrollToArtifactId}
               onOpen={(artifactId) => {
                 detach(
                   openArtifact(artifactId, pageSignal),

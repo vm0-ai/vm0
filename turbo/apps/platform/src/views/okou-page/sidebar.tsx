@@ -64,7 +64,6 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { openArtifact$ } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -807,8 +806,6 @@ function ThreeColumnSearchDialogContainer() {
   const open = useGet(threeColumnSearchOpen$);
   const onOpenChange = useSet(setThreeColumnSearchOpen$);
   const navigate = useSet(detachedNavigateTo$);
-  const openArtifact = useSet(openArtifact$);
-  const rootSignal = useGet(rootSignal$);
 
   if (!open) {
     return null;
@@ -828,12 +825,14 @@ function ThreeColumnSearchDialogContainer() {
           pathParams: { workflowId },
         });
       }}
-      onSelectArtifact={(artifactId) => {
-        detach(
-          openArtifact(artifactId, rootSignal),
-          Reason.DomCallback,
-          "open artifact from workspace search",
-        );
+      onSelectArtifact={(artifact) => {
+        const searchParams = new URLSearchParams({
+          artifact: artifact.id,
+        });
+        if (artifact.kind !== "presentation") {
+          searchParams.set("tab", artifact.kind);
+        }
+        navigate("/artifacts", { searchParams });
       }}
     />
   );
