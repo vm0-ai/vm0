@@ -131,6 +131,38 @@ assert_api_backend_url_canonical_only() {
   assert_env_key_count "$env_file" VM0_API_BACKEND_URL 0
 }
 
+assert_api_backend_url_aliases_absent() {
+  local env_file="$1"
+  assert_env_key_absent "$env_file" OKOU_API_BACKEND_URL
+  assert_env_key_absent "$env_file" VM0_API_BACKEND_URL
+}
+
+assert_api_backend_url_source_state() {
+  local output="$1"
+  local state="$2"
+  local expected
+  local source_lines
+  expected="::notice::API backend URL source canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=${state}"
+  source_lines="$(grep -F "API backend URL source" <<< "$output" || true)"
+  if [[ "$source_lines" != "$expected" ]]; then
+    fail "unexpected API backend URL source evidence for ${state}"
+  fi
+}
+
+assert_api_backend_url_source_evidence_absent() {
+  local output="$1"
+  assert_not_contains "$output" "API backend URL source"
+}
+
+assert_api_backend_url_values_absent_from_output() {
+  local output="$1"
+  shift
+  local value
+  for value in "$@"; do
+    assert_not_contains "$output" "$value"
+  done
+}
+
 assert_machine_secret_canonical_only() {
   local env_file="$1"
   local expected="$2"
@@ -317,6 +349,8 @@ run_action() {
   local github_app_vars_json="${7:-}"
   local github_app_secrets_json="${8:-}"
   local input_job_ref="${9-pr-123}"
+  local input_api_backend_url="${10-https://pr-123-api-backend.vm0.test}"
+  local api_backend_repo_vars_json="${11:-}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -336,6 +370,14 @@ run_action() {
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_secrets_json")"
   fi
+  if [[ -n "$api_backend_repo_vars_json" ]]; then
+    repo_vars_json="$(
+      jq -c \
+        --argjson api_backend_vars "$api_backend_repo_vars_json" \
+        'del(.OKOU_API_BACKEND_URL, .VM0_API_BACKEND_URL) + $api_backend_vars' \
+        <<< "$repo_vars_json"
+    )"
+  fi
   repo_vars_json="$(jq -c --argjson github_app_vars "$github_app_vars_json" '. + $github_app_vars' <<< "$repo_vars_json")"
   repo_secrets_json="$(jq -c --argjson github_app_secrets "$github_app_secrets_json" '. + $github_app_secrets' <<< "$repo_secrets_json")"
 
@@ -351,7 +393,7 @@ run_action() {
     INPUT_JOB_REF="$input_job_ref" \
     INPUT_WEB_URL="https://pr-123-www.vm0.test" \
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
-    INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
+    INPUT_API_BACKEND_URL="$input_api_backend_url" \
     INPUT_CLI_PKG_URL="$input_cli_pkg_url" \
     REPO_VARS_JSON="$repo_vars_json" \
     REPO_SECRETS_JSON="$repo_secrets_json" \
@@ -372,6 +414,43 @@ run_github_app_action() {
     canonical \
     "$repo_vars_json" \
     "$repo_secrets_json"
+}
+
+run_api_backend_url_action() {
+  local test_dir="$1"
+  local repo_vars_json="$2"
+  local input_api_backend_url="${3-}"
+  run_action \
+    "$(build_doppler_secrets_json)" \
+    "$test_dir" \
+    api \
+    production \
+    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    canonical \
+    "" \
+    "" \
+    pr-123 \
+    "$input_api_backend_url" \
+    "$repo_vars_json"
+}
+
+assert_api_backend_url_fallback_case() {
+  local state="$1"
+  local repo_vars_json="$2"
+  local expected="$3"
+  local test_dir
+  local output
+  local env_file
+  test_dir="$(mktemp -d)"
+  TEMP_DIRS+=("$test_dir")
+  output="$(run_api_backend_url_action "$test_dir" "$repo_vars_json" 2>&1)"
+  env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${test_dir}/github-output")"
+  assert_contains "$output" "Rendered"
+  assert_api_backend_url_source_state "$output" "$state"
+  assert_api_backend_url_values_absent_from_output "$output" "$expected"
+  assert_api_backend_url_canonical_only "$env_file" "$expected"
+  assert_env_value "$env_file" FEISHU_CALLBACK_BASE_URL "$expected"
+  assert_env_value "$env_file" FINICITY_WEBHOOK_BASE_URL "$expected"
 }
 
 if grep -En 'add_(var|secret) [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)' "$ACTION"; then
@@ -457,6 +536,74 @@ assert_contains "$github_app_secret_conflict_output" "canonical_key=OKOU_GITHUB_
 assert_no_fixture_secret_values "$github_app_secret_conflict_output"
 assert_file_absent "${github_app_secret_conflict_dir}/github-output"
 assert_file_absent "${github_app_secret_conflict_dir}/web-api-api-preview.env"
+
+assert_api_backend_url_fallback_case \
+  canonical-only \
+  '{"OKOU_API_BACKEND_URL":"https://canonical-api.example.test"}' \
+  "https://canonical-api.example.test"
+assert_api_backend_url_fallback_case \
+  legacy-only \
+  '{"VM0_API_BACKEND_URL":"https://legacy-api.example.test"}' \
+  "https://legacy-api.example.test"
+assert_api_backend_url_fallback_case \
+  dual \
+  '{"OKOU_API_BACKEND_URL":"https://dual-api.example.test","VM0_API_BACKEND_URL":"https://dual-api.example.test"}' \
+  "https://dual-api.example.test"
+
+api_backend_url_conflict_dir="$(mktemp -d)"
+TEMP_DIRS+=("$api_backend_url_conflict_dir")
+status=0
+api_backend_url_conflict_output="$(
+  run_api_backend_url_action \
+    "$api_backend_url_conflict_dir" \
+    '{"OKOU_API_BACKEND_URL":"https://canonical-conflict.example.test","VM0_API_BACKEND_URL":"https://legacy-conflict.example.test"}' \
+    2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected conflicting API backend URL aliases to fail"
+fi
+expected_api_backend_url_conflict="::error::API backend URL source conflict canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=conflict"
+api_backend_url_conflict_lines="$(grep -F "API backend URL source" <<< "$api_backend_url_conflict_output" || true)"
+if [[ "$api_backend_url_conflict_lines" != "$expected_api_backend_url_conflict" ]]; then
+  fail "unexpected API backend URL conflict evidence"
+fi
+assert_api_backend_url_values_absent_from_output \
+  "$api_backend_url_conflict_output" \
+  "https://canonical-conflict.example.test" \
+  "https://legacy-conflict.example.test"
+assert_file_absent "${api_backend_url_conflict_dir}/github-output"
+assert_file_absent "${api_backend_url_conflict_dir}/web-api-api-production.env"
+
+api_backend_url_explicit_dir="$(mktemp -d)"
+TEMP_DIRS+=("$api_backend_url_explicit_dir")
+api_backend_url_explicit_output="$(
+  run_api_backend_url_action \
+    "$api_backend_url_explicit_dir" \
+    '{"OKOU_API_BACKEND_URL":"https://ignored-canonical.example.test","VM0_API_BACKEND_URL":"https://ignored-legacy.example.test"}' \
+    "https://explicit-api.example.test" \
+    2>&1
+)"
+api_backend_url_explicit_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_explicit_dir}/github-output")"
+assert_contains "$api_backend_url_explicit_output" "Rendered"
+assert_api_backend_url_source_evidence_absent "$api_backend_url_explicit_output"
+assert_api_backend_url_values_absent_from_output \
+  "$api_backend_url_explicit_output" \
+  "https://explicit-api.example.test" \
+  "https://ignored-canonical.example.test" \
+  "https://ignored-legacy.example.test"
+assert_api_backend_url_canonical_only "$api_backend_url_explicit_env_file" "https://explicit-api.example.test"
+assert_env_value "$api_backend_url_explicit_env_file" FEISHU_CALLBACK_BASE_URL "https://explicit-api.example.test"
+assert_env_value "$api_backend_url_explicit_env_file" FINICITY_WEBHOOK_BASE_URL "https://explicit-api.example.test"
+
+api_backend_url_absent_dir="$(mktemp -d)"
+TEMP_DIRS+=("$api_backend_url_absent_dir")
+api_backend_url_absent_output="$(run_api_backend_url_action "$api_backend_url_absent_dir" '{}' 2>&1)"
+api_backend_url_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_absent_dir}/github-output")"
+assert_contains "$api_backend_url_absent_output" "Rendered"
+assert_api_backend_url_source_evidence_absent "$api_backend_url_absent_output"
+assert_api_backend_url_aliases_absent "$api_backend_url_absent_env_file"
+assert_env_value "$api_backend_url_absent_env_file" FEISHU_CALLBACK_BASE_URL ""
+assert_env_value "$api_backend_url_absent_env_file" FINICITY_WEBHOOK_BASE_URL ""
 
 success_dir="$(mktemp -d)"
 TEMP_DIRS+=("$success_dir")

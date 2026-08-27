@@ -297,6 +297,46 @@ ruby -e '
   rollback = rollback_config.fetch("jobs")
   release = release_config.fetch("jobs")
   turbo = turbo_config.fetch("jobs")
+  canonical_api_backend_source = "$" + "{{ vars.OKOU_API_BACKEND_URL }}"
+  legacy_api_backend_source = "$" + "{{ vars.VM0_API_BACKEND_URL }}"
+  release_api_step = release.fetch("promote-api-production").fetch("steps").find do |step|
+    step["name"] == "Resolve API production environment"
+  end
+  raise "missing release API production environment step" unless release_api_step
+  release_runner_step = release.fetch("build-runner-production").fetch("steps").find do |step|
+    step["name"] == "Build rootfs and snapshot on production hosts"
+  end
+  raise "missing release Runner build step" unless release_runner_step
+  rollback_runner_step = rollback.fetch("rollback-runner").fetch("steps").find do |step|
+    step["name"] == "Roll back Runner on production hosts"
+  end
+  raise "missing production Runner rollback step" unless rollback_runner_step
+
+  selected_api_backend_sources = [
+    release_api_step.fetch("with").fetch("api-backend-url"),
+    release_runner_step.fetch("env").fetch("API_URL"),
+    rollback_runner_step.fetch("env").fetch("API_URL"),
+  ]
+  unless selected_api_backend_sources == Array.new(3, canonical_api_backend_source)
+    raise "production API backend sources must use only the canonical GitHub variable"
+  end
+  if selected_api_backend_sources.include?(legacy_api_backend_source)
+    raise "selected production API backend sources must not use the legacy GitHub variable"
+  end
+
+  neutral_api_url = "$" + "{API_URL}"
+  {
+    "release Runner build" => release_runner_step,
+    "production Runner rollback" => rollback_runner_step,
+  }.each do |boundary, step|
+    env = step.fetch("env")
+    if env.key?("OKOU_API_BACKEND_URL") || env.key?("VM0_API_BACKEND_URL")
+      raise "#{boundary} must retain the neutral API_URL shell boundary"
+    end
+    unless step.fetch("run").include?("-e \"api_url=#{neutral_api_url}\"")
+      raise "#{boundary} must retain the neutral Ansible api_url input"
+    end
+  end
   raise "rollback resolver must wait for queue" unless rollback.fetch("resolve-target").fetch("needs") == "queue-production-deploy"
   raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"

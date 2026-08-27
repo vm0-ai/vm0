@@ -298,7 +298,7 @@ jobs:
 
       - name: Roll back Runner on production hosts
         env:
-          API_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          API_URL: ${{ vars.OKOU_API_BACKEND_URL }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}

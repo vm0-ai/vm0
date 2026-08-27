@@ -1168,7 +1168,7 @@ jobs:
           database-url: ${{ steps.get-db-url.outputs.database-url }}
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
-          api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
+          api-backend-url: ${{ vars.OKOU_API_BACKEND_URL }}
           cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
@@ -2227,7 +2227,7 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          API_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          API_URL: ${{ vars.OKOU_API_BACKEND_URL }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
           # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
