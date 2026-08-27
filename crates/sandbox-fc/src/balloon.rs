@@ -44,7 +44,6 @@ const UNPARK_DEFLATE_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(200),
     Duration::from_millis(200),
 ];
-const UNPARK_DEFLATE_MAX_POLL: Duration = Duration::from_millis(200);
 /// How often to emit balloon status logs (in ticks).
 /// 12 ticks × 5s = 60s.
 const STATUS_INTERVAL_TICKS: u64 = 12;
@@ -205,9 +204,7 @@ async fn wait_for_unpark_deflation(
                     );
                     return true;
                 }
-                fast_poll_intervals
-                    .next()
-                    .unwrap_or(UNPARK_DEFLATE_MAX_POLL)
+                fast_poll_intervals.next().unwrap_or(POLL_INTERVAL)
             }
             Err(error) => {
                 warn!(
