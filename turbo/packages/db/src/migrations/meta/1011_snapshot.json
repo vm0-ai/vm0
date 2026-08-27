@@ -1,6 +1,6 @@
 {
-  "id": "4f574e1b-1f7f-429a-a3fc-fe465923f11c",
-  "prevId": "08d423c8-0e3e-4837-b0d6-4c4de299da79",
+  "id": "3d2a7f7f-93e6-4105-b2b0-f2c5332a9207",
+  "prevId": "4f574e1b-1f7f-429a-a3fc-fe465923f11c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5697,6 +5697,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_events_output_tool_thread_seq_idx": {
+          "name": "chat_events_output_tool_thread_seq_idx",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"chat_events\".\"event_type\" = 'output.tool'",
           "concurrently": false,
           "method": "btree",
           "with": {}
