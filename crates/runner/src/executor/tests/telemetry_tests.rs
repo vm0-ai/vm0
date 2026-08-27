@@ -10,6 +10,7 @@ use sandbox::{
     SandboxInitializationPhase, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
     SandboxNbdNetlinkConnectStage, SandboxOperation, SandboxOperationReason,
     SandboxOperationTimeoutStage, SandboxStartObserver, SandboxStartStage, StartProcessRequest,
+    WriteFileEntry,
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
@@ -383,6 +384,10 @@ impl Sandbox for ObservedStartSandbox {
 
     async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         self.inner.write_private_file(path, content).await
+    }
+
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> sandbox::Result<()> {
+        self.inner.write_private_files(files).await
     }
 
     async fn start_process(
@@ -1112,7 +1117,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_fresh_sandbox_proxy_register",
         "runner_fresh_sandbox_start",
         "runner_guest_timezone_sync",
-        "runner_user_env_write",
+        "runner_required_private_files_write",
         "runner_agent_env_build",
         "runner_agent_start_process",
         "runner_agent_start_to_ready",
@@ -1571,7 +1576,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         "runner_claim_to_agent_ready",
         "runner_reused_sandbox_prepare",
         "runner_guest_state_restore",
-        "runner_user_env_write",
+        "runner_required_private_files_write",
         "runner_agent_env_build",
         "runner_agent_start_process",
         "runner_agent_start_to_ready",
@@ -1603,8 +1608,6 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 
 async fn assert_reused_private_write_timeout_telemetry(
     context: crate::types::ExecutionContext,
-    expected_action: &str,
-    successful_writes_before: usize,
     stage: SandboxOperationTimeoutStage,
     expected_outcome: &str,
 ) {
@@ -1618,10 +1621,8 @@ async fn assert_reused_private_write_timeout_telemetry(
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
-    for _ in 0..successful_writes_before {
-        overrides.push_private_write_file_result(Ok(()));
-    }
-    overrides.push_private_write_file_result(Err(SandboxError::OperationTimeout {
+    overrides.push_private_write_file_result(Ok(()));
+    overrides.push_private_write_files_result(Err(SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,
         stage,
         timeout_ms: 60_000,
@@ -1649,13 +1650,15 @@ async fn assert_reused_private_write_timeout_telemetry(
         outcome.sandbox_reuse_disposition,
         SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
     );
-    assert_action_bounded_outcome(&telemetry, expected_action, expected_outcome);
+    assert_action_bounded_outcome(
+        &telemetry,
+        "runner_required_private_files_write",
+        expected_outcome,
+    );
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    assert_eq!(
-        overrides.private_write_file_calls().len(),
-        successful_writes_before + 1
-    );
+    assert_eq!(overrides.private_write_file_calls().len(), 1);
+    assert_eq!(overrides.private_write_files_calls().len(), 1);
 }
 
 #[tokio::test]
@@ -1714,7 +1717,7 @@ async fn reused_connector_account_context_timeout_records_failure_and_continues(
 }
 
 #[tokio::test]
-async fn reused_user_env_write_timeout_records_bounded_stage_before_agent_start() {
+async fn reused_required_private_files_timeout_records_bounded_stage_before_agent_start() {
     let context = context_with_env(HashMap::from([(
         "CUSTOM_ENV".to_string(),
         "value".to_string(),
@@ -1722,22 +1725,8 @@ async fn reused_user_env_write_timeout_records_bounded_stage_before_agent_start(
 
     assert_reused_private_write_timeout_telemetry(
         context,
-        "runner_user_env_write",
-        1,
         SandboxOperationTimeoutStage::FrameWrite,
         "frame_write",
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn reused_run_payload_write_timeout_records_bounded_stage_before_agent_start() {
-    assert_reused_private_write_timeout_telemetry(
-        minimal_context(),
-        "runner_run_payload_write",
-        2,
-        SandboxOperationTimeoutStage::AwaitingTerminalResponse,
-        "await_terminal_response",
     )
     .await;
 }

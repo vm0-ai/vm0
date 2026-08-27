@@ -78,6 +78,10 @@ pub(crate) struct FileOverrideState {
     pub(crate) private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of write_private_file results consumed by factory-created sandboxes.
     pub(crate) private_write_file_results: Mutex<VecDeque<Result<()>>>,
+    /// Recorded write_private_files calls across all sandboxes built from this override set.
+    pub(crate) private_write_files_calls: Mutex<Vec<WriteFilesCall>>,
+    /// FIFO queue of write_private_files results consumed by factory-created sandboxes.
+    pub(crate) private_write_files_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     pub(crate) read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// FIFO queue of copy_file results consumed by factory-created sandboxes.
@@ -590,12 +594,31 @@ impl MockSandboxOverrides {
             .clone()
     }
 
+    /// Return recorded private write-files batch calls across all sandboxes
+    /// built from this override set.
+    pub fn private_write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.file
+            .private_write_files_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
     /// Queue a write_private_file result applied to the next private write made
     /// through any sandbox built from these overrides after that sandbox's
     /// local private-write queue is empty.
     pub fn push_private_write_file_result(&self, result: Result<()>) {
         self.file
             .private_write_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Queue a write_private_files result applied to the next private batch
+    /// made through any sandbox built from these overrides after that
+    /// sandbox's local private-batch queue is empty.
+    pub fn push_private_write_files_result(&self, result: Result<()>) {
+        self.file
+            .private_write_files_results
             .lock_ignoring_poison()
             .push_back(result);
     }

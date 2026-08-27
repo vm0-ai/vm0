@@ -2586,6 +2586,22 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> sandbox::Result<()> {
+        let operation = SandboxOperation::WriteFile;
+        let files = files
+            .iter()
+            .map(|file| vsock_host::WriteFileEntry {
+                path: file.path,
+                content: file.content,
+            })
+            .collect::<Vec<_>>();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_private_files(&files).await
+        })
+        .await
+    }
+
     async fn start_process(
         &self,
         request: &StartProcessRequest<'_>,

@@ -825,6 +825,22 @@ pub trait Sandbox: Send + Sync + Any {
     /// The guest path must be non-empty and must not contain NUL bytes.
     async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()>;
 
+    /// Write multiple private runtime files inside the guest.
+    ///
+    /// Each entry has the same private path, parent, ownership, and permission
+    /// semantics as [`write_private_file`](Self::write_private_file). An empty
+    /// batch is accepted as a no-op. A later failure can leave earlier entries
+    /// complete, but the operation returns an error.
+    ///
+    /// The default implementation preserves compatibility by writing entries
+    /// sequentially with [`write_private_file`](Self::write_private_file).
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> Result<()> {
+        for file in files {
+            self.write_private_file(file.path, file.content).await?;
+        }
+        Ok(())
+    }
+
     /// Start `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_process`](Self::wait_process).
     ///

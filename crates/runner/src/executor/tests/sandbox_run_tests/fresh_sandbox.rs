@@ -1152,19 +1152,18 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "user env file should not be written through shell exec"
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 3);
-    let user_env_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_user_env_file)
-        .unwrap();
-    let run_payload_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_run_payload_file)
-        .unwrap();
+    assert_eq!(private_writes.len(), 1);
     let connector_account_context_write = private_writes
         .iter()
         .find(|write| write.path == expected_connector_account_context_file)
         .unwrap();
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 2);
+    let user_env_write = &private_batches[0].files[0];
+    assert_eq!(user_env_write.path, expected_user_env_file);
+    let run_payload_write = &private_batches[0].files[1];
+    assert_eq!(run_payload_write.path, expected_run_payload_file);
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
@@ -1235,6 +1234,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
     assert!(error_msg.is_none());
     let private_writes = overrides.private_write_file_calls();
     assert_eq!(private_writes.len(), 2);
+    assert!(overrides.private_write_files_calls().is_empty());
     assert_eq!(
         private_writes[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
@@ -1255,8 +1255,7 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_private_write_file_result(Ok(()));
-    overrides.push_private_write_file_result(Ok(()));
-    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+    overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "No space left on device (os error 28)",
     )));
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
@@ -1287,13 +1286,23 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 3);
+    assert_eq!(private_writes.len(), 1);
     assert!(
-        private_writes[2]
+        private_writes[0]
+            .path
+            .ends_with("/connector-account-context/context.json"),
+        "got: {}",
+        private_writes[0].path
+    );
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 2);
+    assert!(
+        private_batches[0].files[1]
             .path
             .ends_with("/run-payload/payload.json"),
         "got: {}",
-        private_writes[2].path
+        private_batches[0].files[1].path
     );
     assert!(
         overrides.start_agent_process_calls().is_empty(),

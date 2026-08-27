@@ -48,6 +48,8 @@ pub struct MockSandbox {
     write_files_calls: Mutex<Vec<WriteFilesCall>>,
     private_write_file_results: Mutex<VecDeque<Result<()>>>,
     private_write_file_calls: Mutex<Vec<WriteFileCall>>,
+    private_write_files_results: Mutex<VecDeque<Result<()>>>,
+    private_write_files_calls: Mutex<Vec<WriteFilesCall>>,
     write_file_gate: Mutex<Option<MockLifecycleGate>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when an override requests a
@@ -91,6 +93,8 @@ impl MockSandbox {
             write_files_calls: Mutex::new(Vec::new()),
             private_write_file_results: Mutex::new(VecDeque::new()),
             private_write_file_calls: Mutex::new(Vec::new()),
+            private_write_files_results: Mutex::new(VecDeque::new()),
+            private_write_files_calls: Mutex::new(Vec::new()),
             write_file_gate: Mutex::new(None),
             overrides,
             stdout_tx: Mutex::new(None),
@@ -338,6 +342,22 @@ impl MockSandbox {
     /// [`MockSandboxOverrides::private_write_file_calls`].
     pub fn private_write_file_calls(&self) -> Vec<WriteFileCall> {
         self.private_write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a write_private_files result. Results are consumed in FIFO order.
+    /// When the queue is empty, a valid non-empty private batch returns
+    /// `Ok(())` unless a shared override result is available.
+    pub fn push_private_write_files_result(&self, result: Result<()>) {
+        self.private_write_files_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return this sandbox's recorded private write-files batch calls.
+    pub fn private_write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.private_write_files_calls
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Block every write operation with a durable lifecycle gate.
@@ -1101,6 +1121,58 @@ impl Sandbox for MockSandbox {
             overrides
                 .file
                 .private_write_file_results
+                .lock_ignoring_poison()
+                .pop_front()
+        }) {
+            return result;
+        }
+        Ok(())
+    }
+
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        if let Some(overrides) = &self.overrides {
+            wait_lifecycle_gate(&overrides.file.private_write_file_gate).await;
+        }
+        let batch_call = WriteFilesCall {
+            files: files
+                .iter()
+                .map(|file| WriteFileCall {
+                    path: file.path.to_string(),
+                    content: file.content.to_vec(),
+                })
+                .collect(),
+        };
+        self.private_write_files_calls
+            .lock_ignoring_poison()
+            .push(batch_call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .file
+                .private_write_files_calls
+                .lock_ignoring_poison()
+                .push(batch_call);
+        }
+        for file in files {
+            validate_mock_guest_file_path(
+                SandboxOperation::WriteFile,
+                "write_private_files",
+                file.path,
+            )?;
+        }
+        if let Some(result) = self
+            .private_write_files_results
+            .lock_ignoring_poison()
+            .pop_front()
+        {
+            return result;
+        }
+        if let Some(result) = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .file
+                .private_write_files_results
                 .lock_ignoring_poison()
                 .pop_front()
         }) {
