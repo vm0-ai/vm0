@@ -138,6 +138,7 @@ fi
         Some(FailureDetailSource::PiResult)
     );
     assert_eq!(terminal_failure.diagnostic.claude_num_turns, None);
+    assert_eq!(terminal_failure.diagnostic.failure_reason, None);
 
     let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
     assert!(
@@ -192,10 +193,10 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "responseId": "response-error",
             "usage": {},
             "stopReason": "error",
-            "errorMessage": "provider failed",
+            "errorMessage": "API Error: Overloaded",
             "timestamp": 1,
         }),
-        "provider failed",
+        "API Error: Overloaded",
         &base_path,
         &original_directory,
     )
