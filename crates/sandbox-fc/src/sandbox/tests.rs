@@ -4262,10 +4262,6 @@ impl MockLifecycleApi {
         )
     }
 
-    fn with_actual(patch_statuses: std::collections::VecDeque<u16>, actual_mib: u32) -> Self {
-        Self::new(patch_statuses, Some(Arc::new(AtomicU32::new(actual_mib))))
-    }
-
     fn with_stats_source(
         patch_statuses: std::collections::VecDeque<u16>,
         balloon_stats_source: MockBalloonStatsSource,
@@ -4348,17 +4344,6 @@ async fn capture_balloon_timeout_after_sample<F>(future: F) -> (F::Output, Vec<C
 where
     F: Future,
 {
-    capture_timeout_after_sample(future, "waiting for balloon", BALLOON_SETTLE_TIMEOUT).await
-}
-
-async fn capture_timeout_after_sample<F>(
-    future: F,
-    waiting_message: &str,
-    timeout: Duration,
-) -> (F::Output, Vec<CapturedEvent>)
-where
-    F: Future,
-{
     let captured = CapturedEvents::default();
     let subscriber = tracing_subscriber::registry().with(captured.clone());
     let guard = tracing::subscriber::set_default(subscriber);
@@ -4367,7 +4352,7 @@ where
     tokio::time::pause();
 
     loop {
-        if has_captured_event(&captured.entries(), waiting_message) {
+        if has_captured_event(&captured.entries(), "waiting for balloon") {
             break;
         }
         tokio::select! {
@@ -4378,7 +4363,7 @@ where
         }
     }
 
-    tokio::time::advance(timeout).await;
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
     drop(guard);
@@ -4393,7 +4378,7 @@ async fn advance_balloon_wait_to_progress_grace<F>(
 {
     for expected_sample_count in 1..=2 {
         if expected_sample_count == 2 {
-            tokio::time::advance(BALLOON_TRANSITION_FAST_POLL_INTERVALS[0]).await;
+            tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
             tokio::time::resume();
         }
         loop {
@@ -5733,7 +5718,7 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
 
 #[tokio::test]
 async fn unpark_resumes_and_deflates() {
-    let mut api = MockLifecycleApi::with_actual(std::collections::VecDeque::new(), 0);
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
 
     let mut is_parked = true;
     let mut controller: Option<balloon::ControllerHandle> = None;
@@ -5772,9 +5757,13 @@ async fn unpark_resumes_and_deflates() {
 }
 
 #[tokio::test]
-async fn unpark_waits_for_actual_deflation_before_starting_controller() {
-    let stats_entered = Arc::new(Notify::new());
+async fn unpark_returns_while_controller_guards_pending_deflation() {
+    let lagging_stats_entered = Arc::new(Notify::new());
     let release_lagging_stats = Arc::new(Notify::new());
+    let converged_stats_entered = Arc::new(Notify::new());
+    let release_converged_stats = Arc::new(Notify::new());
+    let active_stats_entered = Arc::new(Notify::new());
+    let release_active_stats = Arc::new(Notify::new());
     let lagging_stats = MockBalloonStats::new(0, 3581).with_memory(
         3431 * BYTES_PER_MIB,
         3506 * BYTES_PER_MIB,
@@ -5784,132 +5773,71 @@ async fn unpark_waits_for_actual_deflation_before_starting_controller() {
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([
             MockBalloonStatsReply::GatedOk {
-                entered: Arc::clone(&stats_entered),
+                entered: Arc::clone(&lagging_stats_entered),
                 release: Arc::clone(&release_lagging_stats),
                 stats: lagging_stats,
             },
-            MockBalloonStatsReply::Ok(MockBalloonStats::new(0, 0)),
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&converged_stats_entered),
+                release: Arc::clone(&release_converged_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&active_stats_entered),
+                release: Arc::clone(&release_active_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
         ]),
     );
     let api_socket = api.socket_path().to_path_buf();
     let mut is_parked = true;
     let mut controller: Option<balloon::ControllerHandle> = None;
-    let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
+    let (state_tx, state_rx) = watch::channel(SandboxState::Running);
 
-    {
-        let unpark = unpark_inner(
-            &mut is_parked,
-            4096,
-            &mut controller,
-            &api_socket,
-            state_rx,
-            "test-unpark-lagging-actual",
-        );
-        tokio::pin!(unpark);
-        tokio::select! {
-            result = &mut unpark => panic!("unpark completed before lagging stats were released: {result:?}"),
-            () = stats_entered.notified() => {}
-        }
-
-        let pending_requests = api.drain_requests();
-        let pending_patches = patches(&pending_requests);
-        assert_eq!(
-            pending_patches.len(),
-            2,
-            "only resume and target-zero deflate may run before convergence"
-        );
-        assert_eq!(pending_patches[0].path, "/vm");
-        assert_eq!(pending_patches[1].path, "/balloon");
-        assert_eq!(mock_request_body_json(pending_patches[1])["amount_mib"], 0);
-
-        release_lagging_stats.notify_one();
-        unpark.await.unwrap();
-    }
+    unpark_inner(
+        &mut is_parked,
+        4096,
+        &mut controller,
+        &api_socket,
+        state_rx,
+        "test-unpark-lagging-actual",
+    )
+    .await
+    .unwrap();
     assert!(!is_parked);
     assert!(
         controller.is_some(),
-        "controller starts after exact deflation"
+        "protected controller should be installed without waiting for deflation"
     );
 
-    let completed_requests = api.drain_requests();
+    lagging_stats_entered.notified().await;
+    let unpark_requests = api.drain_requests();
+    let unpark_patches = patches(&unpark_requests);
+    assert_eq!(unpark_patches.len(), 2);
+    assert_eq!(unpark_patches[0].path, "/vm");
+    assert_eq!(unpark_patches[1].path, "/balloon");
+    assert_eq!(mock_request_body_json(unpark_patches[1])["amount_mib"], 0);
+
+    release_lagging_stats.notify_one();
+    converged_stats_entered.notified().await;
+    let guarded_requests = api.drain_requests();
     assert!(
-        patches(&completed_requests).is_empty(),
+        patches(&guarded_requests).is_empty(),
         "the contradictory high-free sample must not reverse target-zero deflation"
     );
 
+    release_converged_stats.notify_one();
+    active_stats_entered.notified().await;
+    assert!(
+        patches(&api.drain_requests()).is_empty(),
+        "normal policy must not start before exact deflation"
+    );
+
+    release_active_stats.notify_one();
+    state_tx.send(SandboxState::Stopped).unwrap();
     if let Some(handle) = controller.take() {
-        handle.abort();
+        handle.abort_and_join().await;
     }
-}
-
-#[tokio::test]
-async fn unpark_propagates_deflation_statistics_error() {
-    let mut api = MockLifecycleApi::with_stats(
-        std::collections::VecDeque::new(),
-        std::collections::VecDeque::from([MockBalloonStatsReply::Status(500)]),
-    );
-    let mut is_parked = true;
-    let mut controller: Option<balloon::ControllerHandle> = None;
-    let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
-
-    let result = unpark_inner(
-        &mut is_parked,
-        2048,
-        &mut controller,
-        api.socket_path(),
-        state_rx,
-        "test-unpark-stats-error",
-    )
-    .await;
-
-    assert_idle_transition_message(
-        result,
-        SandboxIdleTransition::Unpark,
-        "balloon deflate statistics: HTTP 500: test",
-    );
-    assert!(is_parked, "flag must stay true on statistics failure");
-    assert!(controller.is_none(), "controller must remain absent");
-
-    let requests = api.drain_requests();
-    let request_patches = patches(&requests);
-    assert_eq!(request_patches.len(), 2);
-    assert_eq!(request_patches[0].path, "/vm");
-    assert_eq!(request_patches[1].path, "/balloon");
-}
-
-#[tokio::test]
-async fn unpark_bounds_nonconverging_actual_deflation() {
-    let api = MockLifecycleApi::with_stats(
-        std::collections::VecDeque::new(),
-        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-            0, 3581,
-        ))]),
-    );
-    let mut is_parked = true;
-    let mut controller: Option<balloon::ControllerHandle> = None;
-    let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
-
-    let (result, _) = capture_timeout_after_sample(
-        unpark_inner(
-            &mut is_parked,
-            4096,
-            &mut controller,
-            api.socket_path(),
-            state_rx,
-            "test-unpark-deflate-timeout",
-        ),
-        "waiting for balloon deflation",
-        BALLOON_DEFLATE_TIMEOUT,
-    )
-    .await;
-
-    assert_idle_transition_message(
-        result,
-        SandboxIdleTransition::Unpark,
-        "balloon deflate did not settle within 5000 ms (last target_mib: Some(0), last actual_mib: Some(3581))",
-    );
-    assert!(is_parked, "flag must stay true on deflation timeout");
-    assert!(controller.is_none(), "controller must remain absent");
 }
 
 #[tokio::test]
@@ -6020,7 +5948,7 @@ async fn double_park_is_idempotent() {
 
 #[tokio::test]
 async fn double_unpark_is_idempotent() {
-    let mut api = MockLifecycleApi::with_actual(std::collections::VecDeque::new(), 0);
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
 
     let mut is_parked = true;
     let mut controller: Option<balloon::ControllerHandle> = None;
@@ -6097,11 +6025,7 @@ async fn unpark_without_park_is_noop() {
 
 #[tokio::test]
 async fn park_unpark_park_cycle() {
-    let balloon_actual = Arc::new(AtomicU32::new(1536));
-    let mut api = MockLifecycleApi::new(
-        std::collections::VecDeque::new(),
-        Some(Arc::clone(&balloon_actual)),
-    );
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
 
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
@@ -6121,7 +6045,6 @@ async fn park_unpark_park_cycle() {
     assert!(controller.is_none());
 
     // Turn 2: unpark → park.
-    balloon_actual.store(0, Ordering::Relaxed);
     unpark_inner(
         &mut is_parked,
         2048,
@@ -6135,7 +6058,6 @@ async fn park_unpark_park_cycle() {
     assert!(!is_parked);
     assert!(controller.is_some(), "unpark must respawn the controller");
 
-    balloon_actual.store(1536, Ordering::Relaxed);
     park_inner(
         &mut is_parked,
         2048,
@@ -6281,7 +6203,7 @@ async fn unpark_retry_after_failure_succeeds() {
     // First unpark: resume fails (500 — genuine error, not idempotent 400).
     // Second unpark: resume OK (204), deflate OK (204).
     let mut api =
-        MockLifecycleApi::with_actual(std::collections::VecDeque::from(vec![500, 204, 204]), 0);
+        MockLifecycleApi::new(std::collections::VecDeque::from(vec![500, 204, 204]), None);
 
     let mut is_parked = true;
     let mut controller: Option<balloon::ControllerHandle> = None;
@@ -6412,9 +6334,9 @@ async fn unpark_resume_http_400_propagates_as_idle_transition() {
 async fn unpark_retry_after_partial_failure_resumes_idempotently() {
     // First unpark: resume OK (204), deflate fails (400).
     // Second unpark: repeated resume OK (204), deflate OK (204).
-    let api = MockLifecycleApi::with_actual(
+    let api = MockLifecycleApi::new(
         std::collections::VecDeque::from(vec![204, 400, 204, 204]),
-        0,
+        None,
     );
 
     let mut is_parked = true;
