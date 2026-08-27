@@ -1296,6 +1296,9 @@ test("home content stays fixed while the growth entry loads", async ({
   if (!mainBefore || !taglineBefore) {
     throw new Error("Home content has no measurable layout before entry load");
   }
+  // The async entry is absolute, but its former 56px header slot remains in
+  // flow so the landing content does not jump upward.
+  expect(mainBefore.y).toBe(56);
 
   releaseSlackStatus.resolve();
   await expect(growthEntry).toBeVisible();
