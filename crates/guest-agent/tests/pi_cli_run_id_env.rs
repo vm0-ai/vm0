@@ -102,7 +102,7 @@ fi
         std::env::set_var(guest_contracts::env::CLI_AGENT_TYPE_ENV, "pi");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, run_id);
         std::env::set_var(guest_contracts::env::API_URL_ENV, &server.base_url);
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",

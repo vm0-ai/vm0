@@ -29,7 +29,7 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
             &runtime_dir,
         )
         .env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, run_payload_file)
-        .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+        .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
         .env(guest_contracts::env::API_URL_ENV, "")
         .output()
         .unwrap();

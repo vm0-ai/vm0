@@ -28,7 +28,7 @@ async fn codex_app_server_event_delivery_byte_overload_terminates_promptly()
             },
         )?;
         std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     runtime.http = guest_agent::http::HttpClient::with_api_config(
