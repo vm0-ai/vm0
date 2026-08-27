@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.176.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.5...runner-rs-v0.176.6) (2026-08-27)
+
+
+### Bug Fixes
+
+* **runner:** await multipart upload cancellation ([#29863](https://github.com/vm0-ai/vm0/issues/29863)) ([29c46bb](https://github.com/vm0-ai/vm0/commit/29c46bb8fbac252a78f30399106a8c8372541789))
+
+
+### Performance Improvements
+
+* **python:** reuse bounded aws request classification ([#29868](https://github.com/vm0-ai/vm0/issues/29868)) ([325fe42](https://github.com/vm0-ai/vm0/commit/325fe42a89b9425afbb528f562a476f72d740e71))
+* **runner:** observe default seed baseline stability ([#29862](https://github.com/vm0-ai/vm0/issues/29862)) ([eca3635](https://github.com/vm0-ai/vm0/commit/eca36351ec7cf90aea1368f025bef26e1500714c))
+* **runner:** reuse workspace cache snapshot for heartbeats ([#29864](https://github.com/vm0-ai/vm0/issues/29864)) ([40f5b99](https://github.com/vm0-ai/vm0/commit/40f5b99ac7c2f1651531f9c8769d4e6db9fd2d82))
+
 ## [0.176.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.4...runner-rs-v0.176.5) (2026-08-27)
 
 
