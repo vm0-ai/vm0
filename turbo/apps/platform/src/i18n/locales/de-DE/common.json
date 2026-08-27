@@ -516,7 +516,6 @@
         "arrow": "Pfeil",
         "box": "Rechteck",
         "pen": "Zeichnen",
-        "redact": "Schwärzen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -1078,6 +1077,7 @@
         "secondFactorDescription": "Diese Anmeldung erfordert einen zusätzlichen Bestätigungsschritt, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "secondFactorTitle": "Zusätzliche Bestätigung erforderlich",
         "selectOrganization": "Mit {{organizationName}} fortfahren",
+        "signedInAs": "Angemeldet als {{identifier}}",
         "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
       },
@@ -1086,7 +1086,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Aktuelle Anmeldung verwenden",
         "addAccount": "Konto hinzufügen",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
@@ -1116,6 +1115,7 @@
         "hidePassword": "Passwort ausblenden",
         "identifierLabel": "E-Mail-Adresse oder Benutzername",
         "identifierPlaceholder": "E-Mail-Adresse oder Benutzernamen eingeben",
+        "lastUsed": "Zuletzt verwendet",
         "methodsHelpPrompt": "Keine dieser Methoden verfügbar?",
         "newPasswordLabel": "Neues Passwort",
         "newPasswordSubtitle": "Es existiert bereits ein Konto mit einer nicht verifizierten E-Mail Adresse. Bitte setzen Sie Ihr Passwort zur Sicherheit zurück.",
@@ -1153,7 +1153,6 @@
         "verify": "Verifizieren"
       },
       "signUp": {
-        "action": "Aktuelle Registrierung verwenden",
         "alreadyHaveAccount": "Haben Sie ein Konto?",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",

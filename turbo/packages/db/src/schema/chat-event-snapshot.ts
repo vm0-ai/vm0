@@ -33,7 +33,7 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    /** The snapshot object contains every logical thread event through this watermark. */
+    /** Highest physical stream position covered, including projection-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /** Last physical event represented by the Snapshot's terminal cursor. */
     lastEventId: uuid("last_event_id").notNull(),

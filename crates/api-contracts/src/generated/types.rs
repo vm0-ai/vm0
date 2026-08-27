@@ -227,12 +227,26 @@ pub mod runners {
                 Connection,
             }
 
+            /// Source of an eligible connection failure.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestConnectionSource {
+                /// The provider returned a connection failure.
+                #[serde(rename = "provider_response")]
+                ProviderResponse,
+                /// The runner observed an upstream transport failure.
+                #[serde(rename = "upstream_transport")]
+                UpstreamTransport,
+            }
+
             /// Request body for reporting a built-in model provider failure.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct Request {
                 /// Normalized eligible provider failure kind.
                 pub failure_kind: RequestFailureKind,
+                /// Optional source for connection failures; omitted by legacy runners.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub connection_source: Option<RequestConnectionSource>,
                 /// Optional bounded provider retry delay in seconds.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub retry_after_seconds: Option<i64>,
@@ -274,6 +288,9 @@ pub mod runners {
             /// Whether the resolved Storage version is explicitly empty.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub empty: Option<bool>,
+            /// Whether this read-only mount participates in baseline stability observation.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub baseline_candidate: Option<bool>,
             /// Optional filename used when Storage instructions are normalized.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub instructions_target_filename: Option<String>,

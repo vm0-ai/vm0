@@ -104,32 +104,17 @@ assert_env_key_count() {
   fi
 }
 
-assert_env_values_equal() {
-  local env_file="$1"
-  local first_key="$2"
-  local second_key="$3"
-  local first_value
-  local second_value
-  first_value="$(awk -F= -v key="$first_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
-  second_value="$(awk -F= -v key="$second_key" '$1 == key { sub(/^[^=]*=/, ""); print }' "$env_file")"
-  if [[ "$first_value" != "$second_value" ]]; then
-    fail "expected ${first_key} and ${second_key} values to be equal"
-  fi
-}
-
 assert_preview_job_ref_aliases_absent() {
   local env_file="$1"
   assert_env_key_absent "$env_file" OKOU_PREVIEW_JOB_REF
   assert_env_key_absent "$env_file" VM0_PREVIEW_JOB_REF
 }
 
-assert_debug_aliases_equal_dual() {
+assert_debug_canonical_only() {
   local env_file="$1"
   assert_env_key_count "$env_file" OKOU_DEBUG 1
-  assert_env_key_count "$env_file" VM0_DEBUG 1
   assert_env_value "$env_file" OKOU_DEBUG "*"
-  assert_env_value "$env_file" VM0_DEBUG "*"
-  assert_env_values_equal "$env_file" OKOU_DEBUG VM0_DEBUG
+  assert_env_key_absent "$env_file" VM0_DEBUG
 }
 
 assert_debug_aliases_absent() {
@@ -146,14 +131,12 @@ assert_api_backend_url_canonical_only() {
   assert_env_key_count "$env_file" VM0_API_BACKEND_URL 0
 }
 
-assert_machine_secret_aliases_equal_dual() {
+assert_machine_secret_canonical_only() {
   local env_file="$1"
   local expected="$2"
   assert_env_key_count "$env_file" OKOU_MACHINE_SECRET_KEY 1
-  assert_env_key_count "$env_file" VM0_MACHINE_SECRET_KEY 1
   assert_env_value "$env_file" OKOU_MACHINE_SECRET_KEY "$expected"
-  assert_env_value "$env_file" VM0_MACHINE_SECRET_KEY "$expected"
-  assert_env_values_equal "$env_file" OKOU_MACHINE_SECRET_KEY VM0_MACHINE_SECRET_KEY
+  assert_env_key_count "$env_file" VM0_MACHINE_SECRET_KEY 0
 }
 
 assert_web_url_canonical_only() {
@@ -482,7 +465,7 @@ success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${succ
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
 assert_zero_keys_with_live_readers_absent "$success_env_file"
-assert_debug_aliases_equal_dual "$success_env_file"
+assert_debug_canonical_only "$success_env_file"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_ID "doppler-GH_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_ID "doppler-SLACK_OAUTH_CLIENT_ID"
@@ -512,13 +495,11 @@ assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-se
 assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
 assert_env_value "$success_env_file" UNSPLASH_ACCESS_KEY "github-unsplash-access-key"
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
-assert_machine_secret_aliases_equal_dual "$success_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical_only "$success_env_file" "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
 assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
-assert_env_key_count "$success_env_file" VM0_PREVIEW_JOB_REF 1
 assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
-assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
-assert_env_values_equal "$success_env_file" OKOU_PREVIEW_JOB_REF VM0_PREVIEW_JOB_REF
+assert_env_key_absent "$success_env_file" VM0_PREVIEW_JOB_REF
 assert_api_backend_url_canonical_only "$success_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
@@ -564,7 +545,7 @@ preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_d
 preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
 assert_contains "$preview_web_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
-assert_debug_aliases_equal_dual "$preview_web_env_file"
+assert_debug_canonical_only "$preview_web_env_file"
 assert_api_backend_url_canonical_only "$preview_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
 assert_env_key_absent "$preview_web_env_file" VM0_MACHINE_SECRET_KEY
@@ -576,9 +557,9 @@ empty_job_ref_output="$(run_action "$(build_doppler_secrets_json)" "$empty_job_r
 empty_job_ref_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_job_ref_dir}/github-output")"
 assert_contains "$empty_job_ref_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$empty_job_ref_env_file"
-assert_debug_aliases_equal_dual "$empty_job_ref_env_file"
+assert_debug_canonical_only "$empty_job_ref_env_file"
 assert_api_backend_url_canonical_only "$empty_job_ref_env_file" "https://pr-123-api-backend.vm0.test"
-assert_machine_secret_aliases_equal_dual "$empty_job_ref_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical_only "$empty_job_ref_env_file" "github-atom-machine-secret"
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")
@@ -587,9 +568,9 @@ empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
 assert_zero_keys_with_live_readers_absent "$empty_env_file"
-assert_debug_aliases_equal_dual "$empty_env_file"
+assert_debug_canonical_only "$empty_env_file"
 assert_api_backend_url_canonical_only "$empty_env_file" "https://pr-123-api-backend.vm0.test"
-assert_machine_secret_aliases_equal_dual "$empty_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical_only "$empty_env_file" "github-atom-machine-secret"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
 assert_env_value "$empty_env_file" OKOU_PUBLIC_HOST_DOMAIN ""
 assert_env_value "$empty_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN ""
@@ -641,7 +622,7 @@ assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr
 assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
-assert_machine_secret_aliases_equal_dual "$production_api_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical_only "$production_api_env_file" "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" JOGGAI_WEBHOOK_SECRET "github-joggai-webhook-secret"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-teams-bot-app-id"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-teams-bot-app-password"

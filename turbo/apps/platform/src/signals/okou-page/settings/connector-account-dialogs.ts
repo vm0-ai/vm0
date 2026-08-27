@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
+import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAccountConnection,
   ConnectorAccountMutationIntent,
@@ -18,8 +19,19 @@ export type ConnectorAccountConnectMode =
   | { readonly kind: "add" }
   | {
       readonly kind: "reconnect";
-      readonly account: ConnectorAccountConnection;
+      readonly connectionId: string;
+      readonly authMethod?: ConnectorAuthMethodId;
     };
+
+export interface ConnectorAccountMutationOptions {
+  readonly account?: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection?: true;
+}
+
+export interface DefaultConnectorAccountMutationOptions {
+  readonly account: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection: true;
+}
 
 export function connectorAccountMutationFor(
   mode: ConnectorAccountConnectMode | undefined,
@@ -28,9 +40,65 @@ export function connectorAccountMutationFor(
     return undefined;
   }
   if (mode.kind === "reconnect") {
-    return { intent: "reconnect", connectionId: mode.account.id };
+    return { intent: "reconnect", connectionId: mode.connectionId };
   }
   return { intent: "add" };
+}
+
+export function connectorAccountOptionsFor(
+  mode: ConnectorAccountConnectMode | undefined,
+): ConnectorAccountMutationOptions {
+  const account = connectorAccountMutationFor(mode);
+  if (!account) {
+    return {};
+  }
+  return { account };
+}
+
+export function defaultBuiltinConnectorAccountOptions(
+  connector: PlatformConnectorCatalogStatusItem | undefined,
+): DefaultConnectorAccountMutationOptions | null {
+  if (!connector) {
+    return null;
+  }
+  const connection = connector.connection;
+  if (!connection) {
+    return connector.connected
+      ? null
+      : {
+          account: { intent: "add" },
+          useDefaultConnectorProjection: true,
+        };
+  }
+  return connection.id
+    ? {
+        account: { intent: "reconnect", connectionId: connection.id },
+        useDefaultConnectorProjection: true,
+      }
+    : null;
+}
+
+export function defaultCustomConnectorAccountOptions(
+  connector: CustomConnectorResponse | undefined,
+): DefaultConnectorAccountMutationOptions | null {
+  if (!connector) {
+    return null;
+  }
+  if (!connector.connected) {
+    return {
+      account: { intent: "add" },
+      useDefaultConnectorProjection: true,
+    };
+  }
+  return connector.connectedAccountId
+    ? {
+        account: {
+          intent: "reconnect",
+          connectionId: connector.connectedAccountId,
+        },
+        useDefaultConnectorProjection: true,
+      }
+    : null;
 }
 
 interface BuiltinAccountConnectDialog {

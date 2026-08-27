@@ -521,9 +521,9 @@ body {
 
 /* Full-system themes keep the existing lightness hierarchy and rotate only a
    low-concentration hue through surfaces, borders, inputs, and interaction
-   states. Foreground, destructive, success, and brand-primary colors stay
-   unchanged for contrast and hierarchy. Because these variables live on the
-   document root, portaled dialogs and popovers inherit the same system. */
+   states. Content foreground, destructive, success, and brand-primary colors
+   stay unchanged for contrast and hierarchy. Because these variables live on
+   the document root, portaled dialogs and popovers inherit the same system. */
 :root[data-gradient-color-themes][data-color-theme] {
   --gray-0: var(--zero-color-theme-hue) 24% 98%;
   --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
@@ -543,7 +543,10 @@ body {
   --border: var(--gray-400);
   --input: var(--card);
   --ring: var(--zero-color-theme-ring);
-  --sidebar: var(--gray-50);
+  --sidebar: var(--zero-color-theme-hue) 30% 96%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
   --background-50: var(--gray-50);
   --state-layer: var(--zero-color-theme-ring);
   --segment-selected: var(--card);
@@ -581,7 +584,10 @@ body {
   --border: var(--gray-300);
   --input: var(--gray-200);
   --ring: var(--zero-color-theme-hue) 45% 62%;
-  --sidebar: var(--gray-100);
+  --sidebar: var(--zero-color-theme-hue) 14% 12%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 18% 8%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 22% 90%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 16% 64%;
   --background-50: var(--gray-50);
   --state-layer: var(--zero-color-theme-hue) 35% 82%;
   --segment-selected: var(--gray-400);
@@ -795,7 +801,19 @@ body {
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-active: hsl(var(--ring));
-  --color-sidebar-border: hsl(var(--border));
+  --color-sidebar-border: hsl(var(--border) / 0.5);
+}
+.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy {
+  color: hsl(var(--zero-nav-foreground));
+}
+.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy-muted {
+  color: hsl(var(--zero-nav-muted-foreground));
+}
+.zero-app[data-gradient-color-themes] .group:hover .zero-nav-copy-muted-hover {
+  color: hsl(var(--zero-nav-foreground));
+}
+.zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
+  background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);

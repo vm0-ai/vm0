@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.40](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.39...guest-session-prune-v0.3.40) (2026-08-27)
+
+
+### Performance Improvements
+
+* **guest-session-prune:** avoid duplicate codex buffers ([#29758](https://github.com/vm0-ai/vm0/issues/29758)) ([c890eb7](https://github.com/vm0-ai/vm0/commit/c890eb7e4e730fae6b483b34ab217623398e4d85))
+
 ## [0.3.39](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.38...guest-session-prune-v0.3.39) (2026-08-26)
 
 ## [0.3.38](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.37...guest-session-prune-v0.3.38) (2026-08-26)

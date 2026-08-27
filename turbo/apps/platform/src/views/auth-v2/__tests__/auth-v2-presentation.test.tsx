@@ -7,7 +7,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -30,16 +33,6 @@ function useGermanLocale(): void {
     locale: "de-DE",
     supportedLocales: ["de-DE", "en-US"],
   });
-}
-
-function linkByText(text: string): HTMLAnchorElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error(`Link not found: ${text}`);
-  }
-  return link;
 }
 
 function linkByLabel(label: string): HTMLAnchorElement {
@@ -108,20 +101,18 @@ describe("auth v2 presentation", () => {
     ).toHaveAccessibleDescription(
       "Select the account with which you wish to continue.",
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
     expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
 
     const announcer = screen.getByTestId("auth-v2-announcer");
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
-
-    const currentSignInAction = linkByText("Use current sign-in");
-    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
-    expect(
-      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
-  it("keeps password controls and fallback navigation in their accessible regions", async () => {
+  it("keeps password controls in their accessible region", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-up");
 
     detachedSetupPage({ context, path: "/v2/sign-up" });
@@ -132,11 +123,6 @@ describe("auth v2 presentation", () => {
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
-    const currentSignUpAction = linkByText("Use current sign-up");
-    expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
-    expect(
-      currentSignUpAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
@@ -159,6 +145,10 @@ describe("auth v2 presentation", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
     expect(screen.getByAltText("VM0")).toHaveAttribute(
+      "src",
+      platformVm0LogoImg,
+    );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
       "src",
       platformVm0LogoImg,
     );
@@ -185,10 +175,7 @@ describe("auth v2 presentation", () => {
       screen.getByRole("region", { name: "アカウントを作成" }),
     ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
-    expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
-      "href",
-      "/sign-up",
-    );
+    expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");
   });

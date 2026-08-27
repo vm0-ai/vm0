@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use crate::config::RunnerConfig;
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::live_runner_instances::LiveRunnerInstance;
 use crate::paths::HomePaths;
 use crate::process;
@@ -25,7 +25,7 @@ use reqwest::Client;
 /// CLI arguments for the `doctor` subcommand.
 #[derive(Args)]
 pub struct DoctorArgs {
-    /// Only check the runner with this name (matches config `name` field)
+    /// Only check the Runner service with this systemd unit suffix
     #[arg(long)]
     name: Option<String>,
 }
@@ -342,7 +342,6 @@ fn firecracker_found_for_sandbox(
 
 struct RunnerReport {
     live_runner: LiveRunnerInstance,
-    name: Option<String>,
     base_dir: Option<PathBuf>,
     pid: u32,
     config_path: PathBuf,
@@ -432,6 +431,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
     let home = HomePaths::new()?;
+    let config_path_filter = resolve_service_config_path(args.name.as_deref()).await?;
 
     // Phase 2: Discover installed services
     let installed_services = find_installed_services().await;
@@ -441,7 +441,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     let api_client = build_api_client();
     let mut reports = build_runner_reports(
         &live_runners,
-        args.name.as_deref(),
+        config_path_filter.as_deref(),
         api_client.as_ref(),
         &discovered,
         &installed_services,
@@ -449,7 +449,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     .await;
 
     // Phase 4: Find stopped services (installed but no matching running process)
-    // Skip when filtering by name — other runners' stopped services are irrelevant
+    // Skip when filtering by service — other runners' stopped services are irrelevant.
     let stopped = if args.name.is_none() {
         find_stopped_services(&installed_services, &reports)
     } else {
@@ -458,23 +458,20 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
 
     // Phase 5: Global orphan detection
     // When --name is set, run orphan firecracker detection scoped to that
-    // runner. Orphan mitmproxy and namespace are skipped (no
+    // service's selected Runner. Orphan mitmproxy and namespace are skipped (no
     // runner-identifying info on orphaned processes).
     let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
-        // Scoped detection: orphan firecracker for the named runner.
+        // Scoped detection: orphan firecracker for the selected service.
         // Orphan mitmproxy, namespace, and NBD devices are skipped because
         // they lack per-runner attribution — report them only in global mode
         // (no --name) so they don't cause unrelated runners to fail.
         let mut warnings = Vec::new();
 
         // Orphan firecracker: scope by base_dir match.
-        let named_base_dir = reports
-            .iter()
-            .find(|r| r.name.as_deref() == args.name.as_deref())
-            .and_then(|r| r.base_dir.clone());
-        if let Some(base_dir) = named_base_dir {
+        let selected_base_dir = reports.first().and_then(|r| r.base_dir.clone());
+        if let Some(base_dir) = selected_base_dir {
             let runner_pids: Vec<u32> = live_runners.iter().map(|runner| runner.pid).collect();
             warnings.extend(
                 detect_orphan_firecrackers(&discovered.firecrackers, &runner_pids, Some(&base_dir))
@@ -624,16 +621,14 @@ async fn recheck_current_runner_warnings(
 
 async fn build_runner_reports(
     live_runners: &[LiveRunnerInstance],
-    name_filter: Option<&str>,
+    config_path_filter: Option<&Path>,
     api_client: Option<&Client>,
     discovered: &process::DiscoveredProcesses,
     installed: &[InstalledService],
 ) -> Vec<RunnerReport> {
-    stream::iter(
-        live_runners
-            .iter()
-            .filter(|runner| name_filter.is_none_or(|name| runner.runner_name == name)),
-    )
+    stream::iter(live_runners.iter().filter(|runner| {
+        config_path_filter.is_none_or(|config_path| runner.config_path == config_path)
+    }))
     .map(|runner| {
         build_runner_report(
             runner,
@@ -665,7 +660,6 @@ async fn build_runner_report(
 
     // Load config (best-effort)
     let config = load_config_lenient(&runner.config_path).await;
-    let name = Some(runner.runner_name.clone());
 
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
@@ -695,7 +689,6 @@ async fn build_runner_report(
 
     let mut report = RunnerReport {
         live_runner: runner.clone(),
-        name,
         base_dir: Some(runner.base_dir.clone()),
         pid: runner.pid,
         config_path: runner.config_path.clone(),
@@ -724,6 +717,22 @@ async fn build_runner_report(
     }
 
     report
+}
+
+async fn resolve_service_config_path(name: Option<&str>) -> RunnerResult<Option<PathBuf>> {
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    let unit = super::service::RunnerServiceUnit::from_suffix(name)?;
+    let config_path = super::service::read_unit_config_path(&unit)
+        .await?
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "{} does not select a runner --config path",
+                unit.unit_name()
+            ))
+        })?;
+    Ok(Some(config_path))
 }
 
 fn build_status_diagnostics(
@@ -2474,7 +2483,6 @@ mod tests {
                 PathBuf::from("/data/active.yaml"),
                 PathBuf::from("/data/active"),
             ),
-            name: None,
             base_dir: None,
             pid: 1,
             config_path: PathBuf::from("/data/active.yaml"),
@@ -2493,17 +2501,13 @@ mod tests {
         assert_eq!(stopped[0].config_info, "/data/stopped.yaml");
     }
 
-    fn make_report(name: Option<&str>) -> RunnerReport {
+    fn make_report(label: &str) -> RunnerReport {
+        let config_path = PathBuf::from(format!("/data/{label}.yaml"));
         RunnerReport {
-            live_runner: live_runner_instance(
-                1,
-                PathBuf::from("/data/test.yaml"),
-                PathBuf::from("/data/test"),
-            ),
-            name: name.map(String::from),
+            live_runner: live_runner_instance(1, config_path.clone(), PathBuf::from("/data/test")),
             base_dir: None,
             pid: 1,
-            config_path: PathBuf::from("/data/test.yaml"),
+            config_path,
             subcommand: "start".into(),
             service_type: ServiceType::Bare,
             status: None,
@@ -2699,21 +2703,21 @@ mod tests {
         config_path: PathBuf,
         base_dir: PathBuf,
     ) -> LiveRunnerInstance {
-        live_runner_instance_named(pid, config_path, base_dir, "test-runner")
+        live_runner_instance_named(pid, config_path, base_dir, Some("test-runner"))
     }
 
     fn live_runner_instance_named(
         pid: u32,
         config_path: PathBuf,
         base_dir: PathBuf,
-        runner_name: &str,
+        runner_name: Option<&str>,
     ) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid,
             starttime: 0,
             config_path,
             base_dir,
-            runner_name: runner_name.into(),
+            runner_name: runner_name.map(String::from),
             runner_group: "vm0/test".into(),
             subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
@@ -2940,7 +2944,6 @@ mod tests {
         );
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
             base_dir: Some(base_dir.clone()),
             pid: runner.pid,
             config_path: runner.config_path.clone(),
@@ -2982,7 +2985,7 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: dir.path().join("runner.yaml"),
                 base_dir: base_dir.clone(),
-                runner_name: "test-runner".into(),
+                runner_name: Some("test-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             },
@@ -2997,7 +3000,6 @@ mod tests {
             .unwrap();
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
             base_dir: Some(base_dir.clone()),
             pid: runner.pid,
             config_path: runner.config_path.clone(),
@@ -3031,7 +3033,7 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: dir.path().join("runner.yaml"),
                 base_dir: base_dir.clone(),
-                runner_name: "test-runner".into(),
+                runner_name: Some("test-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             },
@@ -3052,7 +3054,6 @@ mod tests {
         .unwrap();
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
             base_dir: Some(base_dir.clone()),
             pid: runner.pid,
             config_path: runner.config_path.clone(),
@@ -3106,7 +3107,6 @@ mod tests {
 
         let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
 
-        assert_eq!(report.name.as_deref(), Some("test-runner"));
         assert_eq!(report.base_dir.as_deref(), Some(base_dir.as_path()));
         assert_eq!(report.config_path, dir.path().join("missing-runner.yaml"));
         assert_eq!(report.pid, std::process::id());
@@ -3254,25 +3254,25 @@ mod tests {
                 u32::MAX - 3,
                 slow_fixture.config_path.clone(),
                 slow_fixture.base_dir.clone(),
-                "runner-a",
+                Some("runner-a"),
             ),
             live_runner_instance_named(
                 u32::MAX - 2,
                 fast_a_fixture.config_path.clone(),
                 fast_a_fixture.base_dir.clone(),
-                "runner-b",
+                Some("runner-b"),
             ),
             live_runner_instance_named(
                 u32::MAX - 1,
                 fast_b_fixture.config_path.clone(),
                 fast_b_fixture.base_dir.clone(),
-                "runner-c",
+                Some("runner-c"),
             ),
             live_runner_instance_named(
                 u32::MAX,
                 fast_c_fixture.config_path.clone(),
                 fast_c_fixture.base_dir.clone(),
-                "runner-d",
+                Some("runner-d"),
             ),
         ];
         let client = build_api_client();
@@ -3287,9 +3287,14 @@ mod tests {
         assert_eq!(
             reports
                 .iter()
-                .map(|report| report.name.as_deref().unwrap())
+                .map(|report| report.config_path.as_path())
                 .collect::<Vec<_>>(),
-            vec!["runner-a", "runner-b", "runner-c", "runner-d"]
+            vec![
+                slow_fixture.config_path.as_path(),
+                fast_a_fixture.config_path.as_path(),
+                fast_b_fixture.config_path.as_path(),
+                fast_c_fixture.config_path.as_path(),
+            ]
         );
         assert!(reports.iter().all(|report| report.api_ok == Some(true)));
         slow.assert_calls_async(1).await;
@@ -3299,7 +3304,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_runner_reports_filters_non_target_before_api_check() {
+    async fn build_runner_reports_filters_non_target_config_path_before_api_check() {
         let server = MockServer::start_async().await;
         let target_api = server
             .mock_async(|when, then| {
@@ -3322,6 +3327,19 @@ mod tests {
             None,
             Some((&target_url, "target-token")),
         );
+        let mut target_config: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&std::fs::read_to_string(&target_fixture.config_path).unwrap())
+                .unwrap();
+        target_config
+            .as_mapping_mut()
+            .unwrap()
+            .remove(serde_yaml_ng::Value::String("name".into()))
+            .unwrap();
+        std::fs::write(
+            &target_fixture.config_path,
+            serde_yaml_ng::to_string(&target_config).unwrap(),
+        )
+        .unwrap();
         let other_fixture = doctor_report_fixture_for_runner(
             "other-runner",
             "running",
@@ -3334,20 +3352,20 @@ mod tests {
                 u32::MAX - 1,
                 other_fixture.config_path.clone(),
                 other_fixture.base_dir.clone(),
-                "other-runner",
+                Some("shared-legacy-name"),
             ),
             live_runner_instance_named(
                 u32::MAX,
                 target_fixture.config_path.clone(),
                 target_fixture.base_dir.clone(),
-                "target-runner",
+                None,
             ),
         ];
         let client = build_api_client();
 
         let reports = build_runner_reports(
             &runners,
-            Some("target-runner"),
+            Some(&target_fixture.config_path),
             client.as_ref(),
             &empty_discovered(),
             &[],
@@ -3355,7 +3373,7 @@ mod tests {
         .await;
 
         assert_eq!(reports.len(), 1);
-        assert_eq!(reports[0].name.as_deref(), Some("target-runner"));
+        assert_eq!(reports[0].config_path, target_fixture.config_path);
         target_api.assert_calls_async(1).await;
         other_api.assert_calls_async(0).await;
     }
@@ -3388,10 +3406,10 @@ mod tests {
             })
             .await;
         let mut reports = [
-            make_report(Some("runner-a")),
-            make_report(Some("runner-b")),
-            make_report(Some("runner-c")),
-            make_report(Some("runner-d")),
+            make_report("runner-a"),
+            make_report("runner-b"),
+            make_report("runner-c"),
+            make_report("runner-d"),
         ];
         for (report, path) in reports.iter_mut().zip(["/a", "/b", "/c", "/d"]) {
             report.warnings.push(Warning::ApiUnreachable {
@@ -3411,9 +3429,14 @@ mod tests {
         assert_eq!(
             reports
                 .iter()
-                .map(|report| report.name.as_deref().unwrap())
+                .map(|report| report.config_path.as_path())
                 .collect::<Vec<_>>(),
-            vec!["runner-a", "runner-b", "runner-c", "runner-d"]
+            vec![
+                Path::new("/data/runner-a.yaml"),
+                Path::new("/data/runner-b.yaml"),
+                Path::new("/data/runner-c.yaml"),
+                Path::new("/data/runner-d.yaml"),
+            ]
         );
         assert!(reports.iter().all(|report| report.warnings.is_empty()));
         api_a.assert_calls_async(1).await;

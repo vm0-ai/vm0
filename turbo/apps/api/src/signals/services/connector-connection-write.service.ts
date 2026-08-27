@@ -184,6 +184,7 @@ export async function resolveConnectorConnectionMutation(
     readonly target: ConnectorAccountTarget;
     readonly mutation: ConnectorAccountMutation;
     readonly allowSiblings: boolean;
+    readonly matchExternalId?: string;
   },
 ): Promise<ConnectorConnectionMutationResolution> {
   await lockConnectorAccountTarget(db, args);
@@ -213,6 +214,37 @@ export async function resolveConnectorConnectionMutation(
       },
       resolution,
     );
+  }
+
+  if (args.mutation.intent === "add" && args.matchExternalId !== undefined) {
+    const existingByExternalId = await db
+      .select(existingConnectorConnectionSelection())
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          targetCondition(args.target),
+          eq(connectors.externalId, args.matchExternalId),
+        ),
+      )
+      .orderBy(connectors.id)
+      .for("update")
+      .limit(2);
+    const [existing, duplicate] = existingByExternalId;
+    if (existing) {
+      const resolution: ConnectorConnectionMutationResolution = duplicate
+        ? { kind: "ambiguous" }
+        : { kind: "ready", mutation: { kind: "update", existing } };
+      return observeConnectorConnectionMutation(
+        {
+          targetKind: args.target.kind,
+          intent: args.mutation.intent,
+          selectedCount: existingByExternalId.length,
+        },
+        resolution,
+      );
+    }
   }
 
   const existing = await db
@@ -279,6 +311,7 @@ export async function writeConnectorConnectionMetadata(
             args.target.oauthScopes === null
               ? null
               : JSON.stringify(args.target.oauthScopes),
+          oauthGrantedScopes: null,
         }
       : args.target.identity.kind === "external"
         ? {
@@ -288,12 +321,16 @@ export async function writeConnectorConnectionMetadata(
             oauthScopes: JSON.stringify(
               args.target.identity.oauthRequestedScopes,
             ),
+            oauthGrantedScopes: JSON.stringify(
+              args.target.identity.oauthGrantedScopes,
+            ),
           }
         : {
             externalId: null,
             externalUsername: null,
             externalEmail: null,
             oauthScopes: null,
+            oauthGrantedScopes: null,
           };
   const targetValues =
     args.target.kind === "builtin"
@@ -309,7 +346,6 @@ export async function writeConnectorConnectionMetadata(
     authMethod: args.authMethod,
     storageVersion: args.storageVersion,
     ...identityValues,
-    oauthGrantedScopes: null,
     tokenExpiresAt: args.tokenExpiresAt,
     needsReconnect: false,
     reconnectReason: null,
@@ -341,27 +377,7 @@ export async function writeConnectorConnectionMetadata(
       `Failed to write ${args.target.kind === "builtin" ? "Builtin" : "Custom"} connector connection`,
     );
   }
-  if (
-    args.target.kind !== "builtin" ||
-    args.target.identity.kind !== "external"
-  ) {
-    return row;
-  }
-  // The rollout trigger clears explicit grants whenever oauthScopes changes.
-  // Restore the grant separately until #29468 removes that compatibility bridge.
-  const [connectionWithGrant] = await db
-    .update(connectors)
-    .set({
-      oauthGrantedScopes: JSON.stringify(
-        args.target.identity.oauthGrantedScopes,
-      ),
-    })
-    .where(eq(connectors.id, row.id))
-    .returning(connectorConnectionSelection());
-  if (!connectionWithGrant) {
-    throw new Error("Failed to write built-in connector granted scopes");
-  }
-  return connectionWithGrant;
+  return row;
 }
 
 export async function replaceConnectorConnection(

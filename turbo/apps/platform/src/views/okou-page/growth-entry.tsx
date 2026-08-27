@@ -267,12 +267,15 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
  *
  * The row spans the page rather than the 900px content column, so the entry
  * lands in the top-right corner — the position the invite button has always
- * held, and the one the menu's `align="end"` is drawn against.
+ * held, and the one the menu's `align="end"` is drawn against. It stays outside
+ * the page's flex layout so loading it cannot shift the home content.
  */
 function CornerHeader({ children }: { children: ReactNode }) {
   return (
-    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
-      <div className="flex items-center justify-end gap-2">{children}</div>
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
+      <div className="pointer-events-auto flex items-center justify-end gap-2">
+        {children}
+      </div>
     </header>
   );
 }
@@ -295,5 +298,13 @@ export function GrowthEntryHeader() {
   if (!isAdmin) {
     return null;
   }
-  return <AdminGrowthEntryHeader />;
+  return (
+    <>
+      {/* Match the former in-flow header's 16px + 32px + 8px height. The
+          controls stay absolute, but the home content keeps its established
+          desktop position before and after the async entry resolves. */}
+      <div aria-hidden className="hidden h-14 shrink-0 md:block" />
+      <AdminGrowthEntryHeader />
+    </>
+  );
 }

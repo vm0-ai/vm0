@@ -58,7 +58,6 @@ import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-mode
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
-import { validateConnectorOAuthScopeFacts } from "./test-connector-oauth-scope-facts";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
@@ -2350,15 +2349,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
   },
-  // #29465/#29466 rolling API bridge. Remove in #29468 after old writers and
-  // rollback versions can no longer reconnect built-in OAuth accounts.
-  {
-    definition:
-      "CREATE TRIGGER connectors_clear_builtin_oauth_granted_scopes_1006 BEFORE UPDATE OF oauth_scopes ON public.connectors FOR EACH ROW WHEN ((new.connector_slug IS NOT NULL)) EXECUTE FUNCTION clear_builtin_oauth_granted_scopes_1006()",
-    schemaName: "public",
-    tableName: "connectors",
-    triggerName: "connectors_clear_builtin_oauth_granted_scopes_1006",
-  },
   {
     definition:
       "CREATE TRIGGER enforce_hosted_deployment_scope_0753 BEFORE INSERT ON public.hosted_deployments FOR EACH ROW EXECUTE FUNCTION enforce_hosted_deployment_scope_0753()",
@@ -2473,14 +2463,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  // Same #29465/#29466 rollout bridge and #29468 removal gate as its trigger.
-  {
-    bodyHash: "c56516b5a7fb5ed9ccbbccc61015b136",
-    functionName: "clear_builtin_oauth_granted_scopes_1006",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -10936,7 +10918,6 @@ async function main(): Promise<void> {
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
-    await validateConnectorOAuthScopeFacts(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validatePermanentBuiltInModelCooldownState(dbUrl1);

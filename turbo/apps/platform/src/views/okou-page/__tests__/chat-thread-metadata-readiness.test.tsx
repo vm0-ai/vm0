@@ -47,7 +47,7 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return { posthog };
 });
 
@@ -171,6 +171,32 @@ async function expectActiveThread(
 }
 
 describe("chat thread metadata readiness", () => {
+  it("sets a cold thread document title without an intermediate title", async () => {
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      return respond(200, shellMetadata(THREAD_ID, "Cold thread"));
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
+      return never();
+    });
+    const titleSetter = vi.spyOn(document, "title", "set");
+
+    try {
+      setupChatPage();
+
+      await expectActiveThread(THREAD_ID, "Cold thread");
+      await waitFor(() => {
+        expect(document.title).toBe("Cold thread | VM0");
+      });
+      expect(
+        titleSetter.mock.calls.map(([title]) => {
+          return title;
+        }),
+      ).toStrictEqual(["Cold thread | VM0"]);
+    } finally {
+      titleSetter.mockRestore();
+    }
+  });
+
   it("uses in-memory event metadata without another metadata request", async () => {
     const metadataThreadIds: string[] = [];
     context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {

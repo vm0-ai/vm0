@@ -10,7 +10,12 @@ import type {
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
-import { AUTH_V2_PRIMARY_ACTION_CLASS } from "../auth-v2-action-styles.ts";
+import { WorkspaceLogo } from "../../components/avatar.tsx";
+import {
+  AUTH_V2_LINK_ACTION_CLASS,
+  AUTH_V2_PRIMARY_ACTION_CLASS,
+} from "../auth-v2-action-styles.ts";
+import { AuthV2ChoiceRow } from "../auth-v2-choice-row.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
   type AuthV2ContinuationCopy,
@@ -87,38 +92,80 @@ function OrganizationContent({
   );
   const selectionPending = selectionLoadable.state === "loading";
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-border">
       {state.organizations.map((organization) => {
         const selected =
           state.selectingOrganizationId === organization.id && selectionPending;
         const actionLabel = copy.selectOrganization(organization.name);
         return (
-          <Button
-            aria-busy={selected}
-            aria-label={actionLabel}
-            className={
-              selected ? "w-full justify-center" : "w-full justify-start"
-            }
+          <AuthV2ChoiceRow
+            actionLabel={actionLabel}
+            busy={selected}
             disabled={selectionPending}
             key={organization.id}
-            onClick={() => {
+            leading={
+              <WorkspaceLogo
+                imageUrl={organization.imageUrl}
+                name={organization.name}
+                size="md"
+              />
+            }
+            onSelect={() => {
               detach(
                 selectOrganization(organization.id, pageSignal),
                 Reason.DomCallback,
                 "select auth v2 organization",
               );
             }}
-            type="button"
-            variant="outline"
-          >
-            {selected ? (
-              <Loader2 className="animate-spin" aria-hidden="true" />
-            ) : (
-              actionLabel
-            )}
-          </Button>
+            primary={organization.name}
+          />
         );
       })}
+    </div>
+  );
+}
+
+function OrganizationFooter({
+  accountIdentifier,
+  copy,
+  signals,
+}: {
+  readonly accountIdentifier: string;
+  readonly copy: AuthV2ContinuationCopy;
+  readonly signals: AuthV2ContinuationSignals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [restartLoadable, restart] = useLoadableSet(signals.restart$);
+  const signingOut = restartLoadable.state === "loading";
+  return (
+    <div className="flex w-full items-center justify-between gap-4 text-sm">
+      <span className="min-w-0 truncate">
+        {copy.signedInAs(accountIdentifier)}
+      </span>
+      <Button
+        aria-busy={signingOut}
+        aria-label={copy.signOut}
+        className={cn(
+          "h-auto w-fit shrink-0 p-0 text-sm leading-5",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
+        disabled={signingOut}
+        onClick={() => {
+          detach(
+            restart(pageSignal),
+            Reason.DomCallback,
+            "sign out of auth v2 organization continuation",
+          );
+        }}
+        type="button"
+        variant="link"
+      >
+        {signingOut ? (
+          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          copy.signOut
+        )}
+      </Button>
     </div>
   );
 }
@@ -186,8 +233,19 @@ export function AuthV2ContinuationCard({
   return (
     <AuthV2Shell
       announcement={heading.description}
+      authBrand={authBrand}
+      cardFooter={
+        state.status === "incomplete" ? (
+          <OrganizationFooter
+            accountIdentifier={state.accountIdentifier}
+            copy={copy}
+            signals={signals}
+          />
+        ) : null
+      }
       description={heading.description}
       focusKey={focusKey}
+      layout={state.status === "incomplete" ? "choice" : "default"}
       title={heading.title}
     >
       {content}

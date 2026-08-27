@@ -1,3 +1,4 @@
+mod agent_ready;
 mod control;
 mod output;
 mod result;
@@ -6,6 +7,7 @@ mod started_cancel;
 
 pub use super::process_termination::ExecTermination;
 
+pub use agent_ready::{ExecAgentReadyTiming, decode_exec_agent_ready, encode_exec_agent_ready};
 pub use control::{
     DecodedExecControl, DecodedExecControlResult, EXEC_CONTROL_MAX_PAYLOAD_BYTES,
     EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus, decode_exec_control,

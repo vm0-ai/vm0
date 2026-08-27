@@ -531,7 +531,6 @@
         "arrow": "Seta",
         "box": "Retângulo",
         "pen": "Desenhar",
-        "redact": "Ocultar",
         "text": "Texto"
       },
       "undo": "Desfazer"
@@ -1097,6 +1096,7 @@
         "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "secondFactorTitle": "Verificação adicional necessária",
         "selectOrganization": "Continuar com {{organizationName}}",
+        "signedInAs": "Conectado como {{identifier}}",
         "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "unsupportedTitle": "Etapa de login indisponível"
       },
@@ -1105,7 +1105,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar o login atual",
         "addAccount": "Adicionar conta",
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",
@@ -1135,6 +1134,7 @@
         "hidePassword": "Ocultar senha",
         "identifierLabel": "E-mail ou nome de usuário",
         "identifierPlaceholder": "Digite seu e-mail ou nome de usuário",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "Não tem nenhuma destas opções?",
         "newPasswordLabel": "Nova senha",
         "newPasswordSubtitle": "Por razões de segurança, é necessário redefinir sua senha.",
@@ -1172,7 +1172,6 @@
         "verify": "Verificar"
       },
       "signUp": {
-        "action": "Usar o cadastro atual",
         "alreadyHaveAccount": "Possui uma conta?",
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",

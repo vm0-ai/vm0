@@ -515,7 +515,6 @@
         "arrow": "矢印",
         "box": "矩形",
         "pen": "手描き",
-        "redact": "塗りつぶし",
         "text": "テキスト"
       },
       "undo": "元に戻す"
@@ -1077,6 +1076,7 @@
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
         "selectOrganization": "{{organizationName}} で続行",
+        "signedInAs": "{{identifier}} としてサインイン中",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },
@@ -1085,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1115,6 +1114,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",
@@ -1152,7 +1152,6 @@
         "verify": "確認する"
       },
       "signUp": {
-        "action": "現在のサインアップを使用",
         "alreadyHaveAccount": "アカウントをお持ちですか？",
         "appleMethod": "Appleで続ける",
         "back": "戻る",

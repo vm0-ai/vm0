@@ -41,7 +41,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   setConnectorCredentialStorageState,
-  setLegacyBuiltinOAuthScopes,
+  setBuiltinOAuthScopeFacts,
 } from "./helpers/connector-credential-storage-state";
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -980,11 +980,12 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     );
     expect(preservedConnector.oauthScopes).toStrictEqual(["provider-added"]);
 
-    await setLegacyBuiltinOAuthScopes(context, {
+    await setBuiltinOAuthScopeFacts(context, {
       orgId: actor.orgId,
       userId: actor.userId,
       connectorSlug: "test-oauth",
       oauthScopes: ["legacy-requested"],
+      oauthGrantedScopes: null,
     });
     fw.mockTestOauthTokenRefresh(() => {
       return fw.oauthTokenResponse({
@@ -998,9 +999,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       actor,
       "test-oauth",
     );
-    expect(legacyUnknownConnector.oauthScopes).toStrictEqual([
-      "legacy-requested",
-    ]);
+    expect(legacyUnknownConnector.oauthScopes).toBeNull();
   });
 
   it("resolves a current connector token missing from the runtime namespace", async () => {

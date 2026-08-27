@@ -1,4 +1,17 @@
-"""Firewall auth cache, fetch admission, and force-refresh lifecycle."""
+"""Firewall auth cache, fetch admission, and force-refresh lifecycle.
+
+The cache separates credential identity from registry ownership freshness. A cache key is
+credential-equivalent when its ``(run_id, api_id, auth_identity)`` fields match. Its optional
+``registry_generation`` records which published registry snapshot authorized the lookup, but is
+not part of credential identity, so an unchanged auth identity can reuse its cached payload and
+refresh lifecycle across registry snapshots.
+
+Shared ownership is limited to one auth identity per ``(run_id, api_id)`` scope. A current registry
+generation may claim that scope or replace its previous identity. A stale generation can use
+existing equivalent state, but cannot create, replace, or reclaim shared ownership; when no
+equivalent state remains, its fetch uses detached state instead. Registry reconciliation also
+removes ownership for runs that are no longer active.
+"""
 
 import asyncio
 import time
@@ -29,7 +42,18 @@ class FirewallAuthCacheEntryIdentity:
 
 @dataclass(frozen=True)
 class FirewallAuthCacheKey:
-    """Auth cache identity for one run, API, and resolved auth input set."""
+    """Auth cache identity for one run, API, and resolved auth input set.
+
+    ``registry_generation`` is ownership-freshness metadata rather than credential identity. It is
+    intentionally excluded from equality, hashing, and representation so an unchanged auth
+    identity reuses its cached payload and refresh lifecycle across registry generations. Lookup
+    checks the generation separately before allowing a key to mutate shared ownership.
+
+    The shared owner scope is one auth identity per ``(run_id, api_id)``. A current key with a
+    different ``auth_identity`` replaces the previous owner's state. A stale key cannot reclaim
+    that ownership; it can reuse equivalent existing state, or otherwise receives detached state
+    that is not stored in the shared cache.
+    """
 
     run_id: str
     api_id: str
@@ -99,7 +123,14 @@ _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
 def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
-    """Return owned state, or detached state for a superseded registry key."""
+    """Return shared state, or detached state for a stale registry key.
+
+    A current key owns one ``(run_id, api_id)`` scope. Claiming that scope with a different
+    ``auth_identity`` evicts the previous shared state. Because ``registry_generation`` is excluded
+    from key equality, an unchanged auth identity reuses its lifecycle state across generations.
+    A stale key may use equivalent existing state, but cannot mutate shared ownership; if that
+    state is absent, it receives a detached state object.
+    """
     state = _auth_state.get(cache_key)
 
     registry_generation = cache_key.registry_generation
@@ -177,7 +208,18 @@ def invalidate_cached_firewall_headers(
 
 
 def reconcile_registry_cache_ownership(active_run_generations: dict[str, int]) -> None:
-    """Reconcile cache ownership with the current registry generation."""
+    """Publish registry freshness and reconcile shared auth-cache ownership.
+
+    ``active_run_generations`` maps each active run to the generation of the registry snapshot just
+    published. Replacing this map makes only matching generations current for ownership mutation.
+    The ``(run_id, api_id)`` owner remains reusable across generations when the auth identity is
+    unchanged, because generation is excluded from cache-key equality. A current key with a new
+    identity replaces the prior owner, while stale keys cannot reclaim it.
+
+    Runs absent from ``active_run_generations`` are no longer active owners, so their entries are
+    removed from both ownership and auth state, including cached payload and refresh lifecycle
+    state.
+    """
     _active_registry_generations.clear()
     _active_registry_generations.update(active_run_generations)
 

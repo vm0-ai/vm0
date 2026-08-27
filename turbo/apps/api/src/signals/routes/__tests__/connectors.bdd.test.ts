@@ -62,7 +62,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
   setConnectorDefaultState,
-  setLegacyBuiltinOAuthScopes,
+  setBuiltinOAuthScopeFacts,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
@@ -2048,7 +2048,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
-    ).resolves.toMatchObject({ connected: true });
+    ).resolves.toMatchObject({
+      connected: true,
+      connectedAccountId: connected.connectedAccountId,
+      connectedAccountUpdatedAt: expect.any(String),
+    });
 
     const parent = await readCustomConnectorCredentialStorageParent(context, {
       orgId: admin.orgId ?? "",
@@ -6242,18 +6246,27 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       storedScopes: ["read"],
     });
 
-    await setLegacyBuiltinOAuthScopes(context, {
+    await setBuiltinOAuthScopeFacts(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
       connectorSlug: "test-oauth",
       oauthScopes: ["read", "legacy-write"],
+      oauthGrantedScopes: null,
     });
     await expect(
       connectorsApi.readConnectorBySlug(actor, "test-oauth"),
     ).resolves.toMatchObject({
       id: supplemental.id,
-      oauthScopes: ["read", "legacy-write"],
+      oauthScopes: null,
       connectionStatus: "connected",
+    });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "test-oauth"),
+    ).resolves.toStrictEqual({
+      addedScopes: [],
+      removedScopes: ["legacy-write"],
+      currentScopes: ["read"],
+      storedScopes: ["read", "legacy-write"],
     });
 
     const omittedProvider = mockTestOAuthAuthCodeProvider({

@@ -1364,7 +1364,8 @@ export function ConnectorsPage() {
           onReconnect={(account) => {
             openAccountConnect(managedAccountConnector, {
               kind: "reconnect",
-              account,
+              connectionId: account.id,
+              authMethod: account.authMethod,
             });
           }}
         />

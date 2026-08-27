@@ -11,7 +11,8 @@ use tracing::Level;
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 use vsock_proto::{
-    ExecCapturedOutput, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_RESULT, RawMessage,
+    ExecCapturedOutput, ExecProcessRole, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_RESULT,
+    RawMessage,
 };
 
 use crate::tests::support::read_guest_message;
@@ -662,6 +663,7 @@ fn exec_terminal_log_lifecycle_maps_supervised_states() {
     let (start_tx, _start_rx) = oneshot::channel();
     let awaiting_start = ExecOperationLifecycle::SupervisedAwaitingStart {
         start_tx: Some(start_tx),
+        role: ExecProcessRole::Workload,
         control_nonce: None,
     };
     let started = ExecOperationLifecycle::SupervisedStarted {

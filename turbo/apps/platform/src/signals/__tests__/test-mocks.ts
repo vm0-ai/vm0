@@ -67,6 +67,13 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
+interface BrowserWebAuthnOptions {
+  readonly credentials?: boolean;
+  readonly platformAuthenticatorResult?: boolean | "error";
+  readonly publicKeyCredential?: boolean;
+  readonly secureContext?: boolean;
+}
+
 interface LocationAssignMock {
   calls: string[];
 }
@@ -284,6 +291,61 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       userAgent: (ua: string): void => {
         vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      },
+      webAuthn: (options: BrowserWebAuthnOptions = {}): void => {
+        const platformAuthenticatorResult = options.platformAuthenticatorResult;
+        const secureContextDescriptor = defineWindowProperty(
+          window,
+          "isSecureContext",
+          options.secureContext ?? true,
+        );
+        const credentialsDescriptor = defineWindowProperty(
+          navigator,
+          "credentials",
+          options.credentials === false
+            ? undefined
+            : {
+                get: () => {
+                  return Promise.resolve(null);
+                },
+              },
+        );
+        const publicKeyCredential =
+          options.publicKeyCredential === false
+            ? undefined
+            : platformAuthenticatorResult === undefined
+              ? class TestPublicKeyCredential {}
+              : class TestPublicKeyCredential {
+                  static isUserVerifyingPlatformAuthenticatorAvailable(): Promise<boolean> {
+                    return platformAuthenticatorResult === "error"
+                      ? Promise.reject(
+                          new Error("Platform authenticator check failed"),
+                        )
+                      : Promise.resolve(platformAuthenticatorResult);
+                  }
+                };
+        const publicKeyCredentialDescriptor = defineWindowProperty(
+          window,
+          "PublicKeyCredential",
+          publicKeyCredential,
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(
+            window,
+            "isSecureContext",
+            secureContextDescriptor,
+          );
+          restoreWindowProperty(
+            navigator,
+            "credentials",
+            credentialsDescriptor,
+          );
+          restoreWindowProperty(
+            window,
+            "PublicKeyCredential",
+            publicKeyCredentialDescriptor,
+          );
+        });
       },
       platform: (platform: string): void => {
         vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);

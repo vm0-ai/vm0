@@ -1,11 +1,8 @@
-import { Button } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2Navigation } from "../../../signals/auth-v2/navigation.ts";
 import type { AuthV2SignInSignals } from "../../../signals/auth-v2/sign-in-flow.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
-import { Link } from "../../router/link.tsx";
-import { AUTH_V2_LINK_ACTION_CLASS } from "../auth-v2-action-styles.ts";
+import type { AuthBrandContext } from "../../../signals/auth.ts";
 import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
@@ -20,9 +17,11 @@ import {
 } from "./sign-in-copy.ts";
 
 export function AuthV2SignInCard({
+  authBrand,
   navigation,
   signals,
 }: {
+  readonly authBrand: AuthBrandContext;
   readonly navigation: AuthV2Navigation;
   readonly signals: AuthV2SignInSignals;
 }) {
@@ -40,6 +39,8 @@ export function AuthV2SignInCard({
     identifier.length > 0;
   const showsAccountSwitch =
     flowState.status === "incomplete" && flowState.step === "identifier";
+  const showsAccountChooser =
+    flowState.status === "incomplete" && flowState.step === "choose-session";
   const showsMethodsHelp =
     flowState.status === "incomplete" &&
     (flowState.step === "choose-factor" ||
@@ -52,6 +53,7 @@ export function AuthV2SignInCard({
   return (
     <AuthV2Shell
       announcement={description ?? title}
+      authBrand={authBrand}
       cardFooter={
         showsMethodsHelp ? (
           <SignInMethodsHelpFooter copy={copy} signals={signals} />
@@ -61,26 +63,6 @@ export function AuthV2SignInCard({
       }
       description={description}
       focusKey={focusKey}
-      footer={
-        <div className="flex justify-center">
-          <Button
-            asChild
-            className={AUTH_V2_LINK_ACTION_CLASS}
-            size="sm"
-            variant="link"
-          >
-            <Link
-              pathname={ROUTES.signIn}
-              options={{
-                hash: location.hash,
-                searchParams: new URLSearchParams(location.search),
-              }}
-            >
-              {copy.legacySignIn}
-            </Link>
-          </Button>
-        </div>
-      }
       headerDetail={
         showsIdentifierPreview ? (
           <AuthV2IdentityPreview
@@ -90,6 +72,7 @@ export function AuthV2SignInCard({
           />
         ) : null
       }
+      layout={showsAccountChooser ? "choice" : "default"}
       title={title}
     >
       <SignInCardContent

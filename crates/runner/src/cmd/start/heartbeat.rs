@@ -93,7 +93,7 @@ impl HeartbeatRequest {
     fn ordinary() -> Self {
         Self {
             force_send: true,
-            refresh_workspace_cache: true,
+            refresh_workspace_cache: false,
             workspace_cache_change: None,
         }
     }
@@ -957,12 +957,16 @@ mod tests {
 
     #[test]
     fn ordinary_heartbeat_forces_send_without_dropping_coalesced_cache_commits() {
+        let ordinary = HeartbeatRequest::ordinary();
         let cache_then_ordinary = HeartbeatRequest::workspace_cache(workspace_cache_change("a"))
             .merge(HeartbeatRequest::ordinary());
         let ordinary_then_cache = HeartbeatRequest::ordinary().merge(
             HeartbeatRequest::workspace_cache(workspace_cache_change("b")),
         );
 
+        assert!(ordinary.force_send);
+        assert!(!ordinary.refresh_workspace_cache);
+        assert!(ordinary.workspace_cache_change.is_none());
         assert!(cache_then_ordinary.force_send);
         assert!(cache_then_ordinary.refresh_workspace_cache);
         assert_eq!(
@@ -1107,6 +1111,12 @@ mod tests {
         let active_runs = test_active_runs();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
+        refresh_initial_workspace_cache_snapshot(
+            &workspace_cache_snapshot,
+            Some(&cache),
+            &profiles,
+        )
+        .await;
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
             runner_identity: test_runner_identity(),

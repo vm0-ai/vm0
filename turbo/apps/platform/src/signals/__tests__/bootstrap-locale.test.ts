@@ -4,20 +4,31 @@ import { describe, expect, it, vi } from "vitest";
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
 import { formatAppNumber } from "../../i18n/format.ts";
+import frFRClerk from "../../i18n/clerk-localizations/fr-FR.json";
+import frFRClerkUrl from "../../i18n/clerk-localizations/fr-FR.json?url";
+import itITClerk from "../../i18n/clerk-localizations/it-IT.json";
+import itITClerkUrl from "../../i18n/clerk-localizations/it-IT.json?url";
+import ptBRClerkUrl from "../../i18n/clerk-localizations/pt-BR.json?url";
+import {
+  clerkLocalizationForLocale,
+  clerkLocalizations$,
+} from "../../i18n/clerk-localization.ts";
 import frFRCommonUrl from "../../i18n/locales/fr-FR/common.json?url";
 import hiINAgents from "../../i18n/locales/hi-IN/agents.json";
 import hiINCommon from "../../i18n/locales/hi-IN/common.json";
 import idIDAgents from "../../i18n/locales/id-ID/agents.json";
 import itITCommon from "../../i18n/locales/it-IT/common.json";
+import itITCommonUrl from "../../i18n/locales/it-IT/common.json?url";
 import {
   CHAT_ATTACHMENT_HEADINGS,
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
+  type SupportedLocale,
 } from "../../i18n/resources.ts";
 import { changeI18nLanguage, i18n, initializeI18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
-import { locale$, setLocale$ } from "../locale.ts";
+import { initLocale$, locale$, setLocale$ } from "../locale.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -26,6 +37,13 @@ const TEST_ORG_ID = "org_inline_locale";
 const TEST_LOCALE_STORAGE_KEY = `vm0:locale:${TEST_ORG_ID}`;
 const testLocaleStorage = localStorageSignals(TEST_LOCALE_STORAGE_KEY);
 const activeOrgIdStorage = sessionStorageSignals(ACTIVE_ORG_STORAGE_KEY);
+
+function loadedClerkLocalization(locale: SupportedLocale) {
+  return clerkLocalizationForLocale(
+    context.store.get(clerkLocalizations$),
+    locale,
+  );
+}
 
 type LocaleEntrypointScript = (
   windowObject: Window,
@@ -164,6 +182,120 @@ describe("bootstrap locale", () => {
     expect(i18n.language).toBe(DEFAULT_LOCALE);
     expect(i18n.hasResourceBundle(DEFAULT_LOCALE, "common")).toBeTruthy();
     expect(i18n.hasResourceBundle(DEFAULT_LOCALE, "agents")).toBeTruthy();
+  });
+
+  it("loads only the selected Clerk localization and reuses its cache", async () => {
+    const clerkLocalizationRequests: string[] = [];
+    context.mocks.http.get(
+      /\/clerk-localizations\/[^/]+\.json$/,
+      ({ request }) => {
+        clerkLocalizationRequests.push(new URL(request.url).pathname);
+        return HttpResponse.json(frFRClerk);
+      },
+    );
+    context.mocks.browser.language("fr-FR");
+    executeLocaleEntrypoint();
+
+    await setupPage({ context, path: "/error", withoutRender: true });
+
+    expect(clerkLocalizationRequests).toStrictEqual([
+      new URL(frFRClerkUrl, location.href).pathname,
+    ]);
+    expect(loadedClerkLocalization("fr-FR").signIn?.start?.actionLink).toBe(
+      "S'inscrire",
+    );
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+    await context.store.set(setLocale$, "fr-FR", context.signal);
+
+    expect(clerkLocalizationRequests).toHaveLength(1);
+  });
+
+  it("uses English Clerk fallback when a selected localization fails", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    context.mocks.http.get(ptBRClerkUrl, () => {
+      return new HttpResponse(null, { status: 503 });
+    });
+    await initializeI18n(DEFAULT_LOCALE, context.signal);
+
+    await context.store.set(setLocale$, "pt-BR", context.signal);
+
+    expect(context.store.get(locale$)).toBe("pt-BR");
+    expect(i18n.language).toBe("pt-BR");
+    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(context.store.get(clerkLocalizations$).has("pt-BR")).toBeFalsy();
+    expect(loadedClerkLocalization("pt-BR").locale).toBe(DEFAULT_LOCALE);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[E][ClerkLocalization]",
+      `Failed to load pt-BR Clerk localization; falling back to ${DEFAULT_LOCALE}`,
+      expect.any(Error),
+    );
+  });
+
+  it("does not cache or apply a runtime Clerk localization after abort", async () => {
+    await initializeI18n(DEFAULT_LOCALE, context.signal);
+    const requestStarted = context.mocks.deferred<void>();
+    context.mocks.http.get(itITClerkUrl, ({ never }) => {
+      requestStarted.resolve(undefined);
+      return never();
+    });
+    const resetLocaleSwitchSignal$ = resetSignal();
+    const localeSwitchSignal = context.store.set(
+      resetLocaleSwitchSignal$,
+      context.signal,
+    );
+
+    const switching = context.store.set(
+      setLocale$,
+      "it-IT",
+      localeSwitchSignal,
+    );
+    await requestStarted.promise;
+    context.store.set(resetLocaleSwitchSignal$, context.signal);
+
+    await expect(switching).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(context.store.get(clerkLocalizations$).has("it-IT")).toBeFalsy();
+    expect(loadedClerkLocalization("it-IT").locale).toBe(DEFAULT_LOCALE);
+  });
+
+  it("does not initialize or cache a selected Clerk locale after abort", async () => {
+    document.documentElement.lang = "it-IT";
+    const appRequestStarted = context.mocks.deferred<void>();
+    const clerkLocalizationLoaded = context.mocks.deferred<void>();
+    context.mocks.http.get(itITCommonUrl, ({ never }) => {
+      appRequestStarted.resolve(undefined);
+      return never();
+    });
+    context.mocks.http.get(itITClerkUrl, () => {
+      clerkLocalizationLoaded.resolve(undefined);
+      return HttpResponse.json(itITClerk);
+    });
+    const resetLocaleInitializationSignal$ = resetSignal();
+    const localeInitializationSignal = context.store.set(
+      resetLocaleInitializationSignal$,
+      context.signal,
+    );
+
+    const initializing = context.store.set(
+      initLocale$,
+      localeInitializationSignal,
+    );
+    await Promise.all([
+      appRequestStarted.promise,
+      clerkLocalizationLoaded.promise,
+    ]);
+    context.store.set(resetLocaleInitializationSignal$, context.signal);
+
+    await expect(initializing).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe("it-IT");
+    expect(context.store.get(clerkLocalizations$).has("it-IT")).toBeFalsy();
   });
 
   it("loads resources for every supported locale", async () => {

@@ -531,7 +531,6 @@
         "arrow": "Flèche",
         "box": "Rectangle",
         "pen": "Dessiner",
-        "redact": "Masquer",
         "text": "Texte"
       },
       "undo": "Annuler"
@@ -1097,6 +1096,7 @@
         "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "secondFactorTitle": "Vérification supplémentaire requise",
         "selectOrganization": "Continuer avec {{organizationName}}",
+        "signedInAs": "Connecté en tant que {{identifier}}",
         "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "unsupportedTitle": "Étape de connexion indisponible"
       },
@@ -1105,7 +1105,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Utiliser la connexion actuelle",
         "addAccount": "Ajouter un compte",
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",
@@ -1135,6 +1134,7 @@
         "hidePassword": "Masquer le mot de passe",
         "identifierLabel": "Adresse e-mail ou nom d'utilisateur",
         "identifierPlaceholder": "Saisissez votre adresse e-mail ou votre nom d'utilisateur",
+        "lastUsed": "Utilisé la dernière fois",
         "methodsHelpPrompt": "Vous n’avez aucune de ces options ?",
         "newPasswordLabel": "Nouveau mot de passe",
         "newPasswordSubtitle": "Pour des raisons de sécurité, il est nécessaire de réinitialiser votre mot de passe.",
@@ -1172,7 +1172,6 @@
         "verify": "Vérifier"
       },
       "signUp": {
-        "action": "Utiliser l'inscription actuelle",
         "alreadyHaveAccount": "Vous avez déjà un compte ?",
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",

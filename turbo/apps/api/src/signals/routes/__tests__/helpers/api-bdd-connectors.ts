@@ -274,7 +274,11 @@ export function mockCustomConnectorOAuth2Provider(
 }
 
 export function mockGitHubConnectorOAuth(
-  options: { readonly userId?: number } = {},
+  options: {
+    readonly userId?: number;
+    readonly login?: string;
+    readonly email?: string | null;
+  } = {},
 ): void {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
@@ -292,8 +296,11 @@ export function mockGitHubConnectorOAuth(
     http.get(GITHUB_USER_URL, () => {
       return HttpResponse.json({
         id: options.userId ?? 42,
-        login: "bdd-github-user",
-        email: "bdd-github@example.test",
+        login: options.login ?? "bdd-github-user",
+        email:
+          options.email === undefined
+            ? "bdd-github@example.test"
+            : options.email,
       });
     }),
   );
@@ -1482,6 +1489,23 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listBuiltinConnectorAccounts(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+    ): Promise<readonly ConnectorAccountConnection[]> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: { kind: "builtin", connectorSlug, limit: 100 },
+        }),
+        [200],
+      );
+      return response.body.connections;
     },
 
     async listCustomConnectorAccounts(

@@ -1,5 +1,5 @@
 import { command, state } from "ccstate";
-import { posthog, type CaptureResult } from "posthog-js";
+import { posthog, type CaptureResult } from "posthog-js/dist/module.slim";
 import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 

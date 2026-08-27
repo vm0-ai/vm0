@@ -130,6 +130,7 @@ jobs:
               ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},

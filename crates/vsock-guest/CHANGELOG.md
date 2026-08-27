@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.19.115](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.114...vsock-guest-v0.19.115) (2026-08-27)
+
+
+### Bug Fixes
+
+* **vsock-guest:** mark incomplete exec output truncated ([#29729](https://github.com/vm0-ai/vm0/issues/29729)) ([accc1cc](https://github.com/vm0-ai/vm0/commit/accc1cc182219bc47c1074ca6467cd37e81241bc))
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+
+### Performance Improvements
+
+* **vsock-guest:** cancel accepted placement handshakes ([#29759](https://github.com/vm0-ai/vm0/issues/29759)) ([64b79f6](https://github.com/vm0-ai/vm0/commit/64b79f65f2fed3a7fb7ed997bbeeb7a14b131966))
+
 ## [0.19.114](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.113...vsock-guest-v0.19.114) (2026-08-26)
 
 

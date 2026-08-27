@@ -20,8 +20,10 @@ import {
   eq,
   exists,
   gt,
+  gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   or,
@@ -854,6 +856,26 @@ export const migrateCurrentChatEventSnapshot$ = command(
     if (head !== undefined) {
       return true;
     }
+    if (projection === "full") {
+      const [canonicalHead] = await db
+        .select({ id: chatEventSnapshots.id })
+        .from(chatEventSnapshots)
+        .where(
+          and(
+            eq(chatEventSnapshots.chatThreadId, chatThreadId),
+            eq(
+              chatEventSnapshots.archiveSchemaVersion,
+              CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+            ),
+            eq(chatEventSnapshots.projection, "tool-redacted"),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (canonicalHead !== undefined) {
+        return false;
+      }
+    }
     const candidate: SnapshotCandidate = {
       chatThreadId,
       indexedSeqId: thread.indexedSeqId,
@@ -958,26 +980,8 @@ const deleteRetiredSnapshotVersions$ = command(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-          // Never discard the only durable historical prefix. Once a current
-          // pointer exists, older stored pointers are superseded.
-          exists(
-            db
-              .select({ id: currentFullSnapshot.id })
-              .from(currentFullSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentFullSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentFullSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentFullSnapshot.projection, "full"),
-                ),
-              ),
-          ),
+          // The current redacted pointer is the durable historical authority.
+          // R2 object deletion remains reference-aware and grace-period based.
           exists(
             db
               .select({ id: currentToolRedactedSnapshot.id })
@@ -993,6 +997,12 @@ const deleteRetiredSnapshotVersions$ = command(
                     CURRENT_CHAT_EVENT_SCHEMA_VERSION,
                   ),
                   eq(currentToolRedactedSnapshot.projection, "tool-redacted"),
+                  gte(
+                    currentToolRedactedSnapshot.lastSeqId,
+                    chatEventSnapshots.lastSeqId,
+                  ),
+                  sql`${currentToolRedactedSnapshot.objectKey}
+                    ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'`,
                 ),
               ),
           ),
@@ -1021,24 +1031,6 @@ const deleteRetiredSnapshotVersions$ = command(
           ),
           exists(
             db
-              .select({ id: currentFullSnapshot.id })
-              .from(currentFullSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentFullSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentFullSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentFullSnapshot.projection, "full"),
-                ),
-              ),
-          ),
-          exists(
-            db
               .select({ id: currentToolRedactedSnapshot.id })
               .from(currentToolRedactedSnapshot)
               .where(
@@ -1052,6 +1044,12 @@ const deleteRetiredSnapshotVersions$ = command(
                     CURRENT_CHAT_EVENT_SCHEMA_VERSION,
                   ),
                   eq(currentToolRedactedSnapshot.projection, "tool-redacted"),
+                  gte(
+                    currentToolRedactedSnapshot.lastSeqId,
+                    chatEventSnapshots.lastSeqId,
+                  ),
+                  sql`${currentToolRedactedSnapshot.objectKey}
+                    ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'`,
                 ),
               ),
           ),
@@ -1271,15 +1269,23 @@ async function loadSnapshotCandidates(
           ? undefined
           : inArray(chatThreads.id, chatThreadIds),
         or(
-          gt(
-            chatEventSearchMessageWatermarks.indexedSeqId,
-            sql`COALESCE(${currentFullSnapshot.lastSeqId}, 0)`,
-          ),
           and(
-            isNotNull(currentFullSnapshot.id),
             or(
-              lte(currentFullSnapshot.lastSeqId, 0),
-              sql`btrim(${currentFullSnapshot.objectKey}) = ''`,
+              isNotNull(currentFullSnapshot.id),
+              isNull(currentToolRedactedSnapshot.id),
+            ),
+            or(
+              gt(
+                chatEventSearchMessageWatermarks.indexedSeqId,
+                sql`COALESCE(${currentFullSnapshot.lastSeqId}, 0)`,
+              ),
+              and(
+                isNotNull(currentFullSnapshot.id),
+                or(
+                  lte(currentFullSnapshot.lastSeqId, 0),
+                  sql`btrim(${currentFullSnapshot.objectKey}) = ''`,
+                ),
+              ),
             ),
           ),
           gt(
@@ -1302,6 +1308,11 @@ async function loadSnapshotCandidates(
   return rows.flatMap((row): readonly SnapshotCandidate[] => {
     return CHAT_EVENT_SNAPSHOT_PROJECTIONS.flatMap((projection) => {
       const full = projection === "full";
+      // A current redacted head makes an absent full head intentional. Keep
+      // extending the canonical V6 projection without recreating retired data.
+      if (full && row.fullHeadId === null && row.redactedHeadId !== null) {
+        return [];
+      }
       const headId = full ? row.fullHeadId : row.redactedHeadId;
       const headLastSeqId = full
         ? row.fullHeadLastSeqId

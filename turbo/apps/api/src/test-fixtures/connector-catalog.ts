@@ -203,6 +203,12 @@ export function setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(
   });
 }
 
+export function setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(
+  hook: () => Promise<void>,
+): void {
+  setConnectorCatalogRuntimeProjectionIdentityReadHookForTest(hook);
+}
+
 export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(): void {
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest();
 }

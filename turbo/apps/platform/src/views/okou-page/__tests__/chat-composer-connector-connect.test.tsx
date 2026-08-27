@@ -337,6 +337,58 @@ describe("chat composer connector connection", () => {
     expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("places the account action before connector permissions", async () => {
+    const user = userEvent.setup({ delay: null });
+    const defaultAccount: ConnectorAccountConnection = {
+      ...githubAccount("10000000-0000-4000-8000-000000000004", "Work", true),
+      target: { kind: "builtin", connectorSlug: "axiom" },
+      authMethod: "api-token",
+    };
+    mockThread();
+    mockConnectors([{ connectorSlug: "axiom", authMethod: "api-token" }]);
+    mockAgentConnectorAuthorizations(["axiom"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    const accountAction = await screen.findByLabelText(
+      "Axiom · Using default account: Work",
+    );
+    const permissionAction = screen.getByLabelText(
+      "Configure Axiom permissions",
+    );
+
+    expect(
+      accountAction.compareDocumentPosition(permissionAction) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("keeps permissioned connector row height stable while toggling access", async () => {
     const user = userEvent.setup({ delay: null });
     let authorizationWrites = 0;
@@ -1175,7 +1227,7 @@ describe("chat composer connector connection", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
         });
         connected = true;
@@ -1290,7 +1342,11 @@ describe("chat composer connector connection", () => {
       connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-analytics");
-        expect(body.agentId).toBe(AGENT_ID);
+        expect(body).toMatchObject({
+          account: { intent: "add" },
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/analytics/authorize",
         });
@@ -1343,7 +1399,7 @@ describe("chat composer connector connection", () => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,

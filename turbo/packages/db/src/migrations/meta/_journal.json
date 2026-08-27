@@ -1408,6 +1408,34 @@
       "when": 1787794381799,
       "tag": "1008_spotty_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 1009,
+      "version": "7",
+      "when": 1787809366082,
+      "tag": "1009_drop_builtin_oauth_scope_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 1010,
+      "version": "7",
+      "when": 1787813971397,
+      "tag": "1010_late_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1011,
+      "version": "7",
+      "when": 1787818418078,
+      "tag": "1011_conscious_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 1012,
+      "version": "7",
+      "when": 1787820730994,
+      "tag": "1012_yellow_spyke",
+      "breakpoints": true
     }
   ]
 }

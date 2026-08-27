@@ -821,6 +821,7 @@ function connectionForCatalogStatus(
     return null;
   }
   return {
+    id: connector.id,
     authMethod: connector.authMethod,
     externalUsername: connector.externalUsername,
     externalEmail: connector.externalEmail,

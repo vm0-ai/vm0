@@ -4,9 +4,9 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-/// Identity of a Firecracker VM sandbox — the workspace directory basename
-/// and socket directory name. A newly created sandbox receives this ID, and
-/// subsequent reuse jobs retain it.
+/// Provider-neutral identity of a sandbox lifecycle. A newly created sandbox
+/// receives this ID, and subsequent reuse jobs retain it. Providers use it to
+/// identify the same sandbox instance across lifecycle operations.
 ///
 /// Distinct from `RunId` (a per-job server identifier defined in the
 /// `runner` crate). A new sandbox receives its ID independently of the current

@@ -24,6 +24,12 @@ export interface ModelStatsFixtureScope {
   readonly statKeys: readonly ModelStatsStatKey[];
 }
 
+interface ModelStatsAggregationFixtureOptions extends ModelStatsFixtureScope {
+  readonly processedAt: Date;
+  readonly cleanupBatchSize?: number;
+  readonly cleanupMaxBatches?: number;
+}
+
 export interface ModelStatsObservationFixture {
   readonly idempotencyKey: string;
   readonly model: string;
@@ -110,19 +116,25 @@ function wireStatKeys(statKeys: readonly ModelStatsStatKey[]) {
 }
 
 function aggregateFixtureBody(
-  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+  args: ModelStatsAggregationFixtureOptions,
 ): TestModelStatsStateActionBody {
   return {
     action: "aggregate-fixture",
     processed_at: args.processedAt.toISOString(),
     observation_idempotency_keys: [...args.observationIdempotencyKeys],
     stat_keys: wireStatKeys(args.statKeys),
+    ...(args.cleanupBatchSize === undefined
+      ? {}
+      : { cleanup_batch_size: args.cleanupBatchSize }),
+    ...(args.cleanupMaxBatches === undefined
+      ? {}
+      : { cleanup_max_batches: args.cleanupMaxBatches }),
   };
 }
 
 export function requestAggregateModelStatsFixture(
   context: TestContext,
-  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+  args: ModelStatsAggregationFixtureOptions,
   signal: AbortSignal = context.signal,
 ): Promise<Response> {
   return requestModelStatsState(
@@ -139,7 +151,7 @@ export function requestAggregateModelStatsFixture(
 
 export async function aggregateModelStatsFixture(
   context: TestContext,
-  args: ModelStatsFixtureScope & { readonly processedAt: Date },
+  args: ModelStatsAggregationFixtureOptions,
 ): Promise<ModelStatsAggregationResult> {
   const response = await postAction(context, aggregateFixtureBody(args));
   if (!response.aggregation) {

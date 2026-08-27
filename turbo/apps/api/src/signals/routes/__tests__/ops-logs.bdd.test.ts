@@ -1046,7 +1046,9 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       },
     ]);
 
-    const cleanupBatchIdempotencyKeys = Array.from({ length: 10_001 }, () => {
+    const cleanupBatchSize = 2;
+    const cleanupMaxBatches = 2;
+    const cleanupBatchIdempotencyKeys = Array.from({ length: 5 }, () => {
       return randomUUID();
     });
     fixtureObservationKeys.push(...cleanupBatchIdempotencyKeys);
@@ -1060,13 +1062,15 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const firstBatch = await aggregateModelStatsFixture(context, {
       ...fixtureScope(),
       processedAt: new Date(cleanupAt),
+      cleanupBatchSize,
+      cleanupMaxBatches,
     });
     expect(firstBatch).toStrictEqual({
       cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
       processedHours: 0,
       processedObservations: 0,
       updatedStats: 0,
-      deletedObservations: 10_000,
+      deletedObservations: 4,
     });
     await expect(
       readModelStatsObservations(context, cleanupBatchIdempotencyKeys),
@@ -1075,6 +1079,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const finalBatch = await aggregateModelStatsFixture(context, {
       ...fixtureScope(),
       processedAt: new Date(cleanupAt),
+      cleanupBatchSize,
+      cleanupMaxBatches,
     });
     expect(finalBatch).toStrictEqual({
       cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),

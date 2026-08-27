@@ -140,6 +140,7 @@ const writeGithubConnectorConnection$ = command(
       readonly oauthRequestedScopes: readonly string[];
       readonly oauthGrantedScopes: readonly string[];
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
+      readonly account: { readonly intent: "add" };
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -155,6 +156,8 @@ const writeGithubConnectorConnection$ = command(
         oauthRequestedScopes: args.oauthRequestedScopes,
         oauthGrantedScopes: args.oauthGrantedScopes,
         extraConnectorSecrets: args.extraConnectorSecrets,
+        account: args.account,
+        matchExistingExternalIdentity: true,
       },
       signal,
     );
@@ -510,6 +513,7 @@ const connectGithubUserAfterSetup$ = command(
           userInfo,
           oauthRequestedScopes,
           oauthGrantedScopes: scopes,
+          account: { intent: "add" },
         },
         signal,
       );

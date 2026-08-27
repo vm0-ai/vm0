@@ -156,6 +156,8 @@ const customConnectorResponseBaseSchema = z.object({
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   storageVersion: z.number().int().positive(),
   connected: z.boolean(),
+  connectedAccountId: z.uuid().optional(),
+  connectedAccountUpdatedAt: z.string().optional(),
   missingRequiredFields: z.array(z.string()),
   configuredFieldKeys: z.array(z.string()),
   createdAt: z.string(),
