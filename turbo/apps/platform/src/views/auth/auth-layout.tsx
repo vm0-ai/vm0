@@ -150,15 +150,17 @@ const CLERK_CSS = `
   color: hsl(var(--muted-foreground)) !important;
 }
 
-/* Button styles - remove gradients and borders (exclude social buttons) */
+/* Primary page action - match the neutral-dark shared page button while
+   removing Clerk's gradients and borders (exclude social buttons). */
 .cl-formButtonPrimary,
 button[type="submit"]:not(.cl-socialButtonsBlockButton),
 [data-localization-key="formButtonPrimary"],
 .cl-formButtonPrimary > * {
   background-image: none !important;
-  background: hsl(var(--primary)) !important;
+  background: hsl(var(--foreground)) !important;
   border: none !important;
   box-shadow: none !important;
+  color: hsl(var(--background)) !important;
 }
 
 /* Button hover state (exclude social buttons) */
@@ -166,8 +168,14 @@ button[type="submit"]:not(.cl-socialButtonsBlockButton),
 button[type="submit"]:not(.cl-socialButtonsBlockButton):hover,
 [data-localization-key="formButtonPrimary"]:hover {
   background-image: none !important;
-  background: hsl(var(--primary) / 0.9) !important;
+  background: var(--color-foreground-hover) !important;
   box-shadow: none !important;
+}
+
+.cl-formButtonPrimary:active,
+button[type="submit"]:not(.cl-socialButtonsBlockButton):active,
+[data-localization-key="formButtonPrimary"]:active {
+  background: var(--color-foreground-pressed) !important;
 }
 
 /* Remove pseudo elements (exclude social buttons) */
@@ -251,11 +259,13 @@ button[class*="socialButtonsBlockButton"] img,
 .cl-footerActionLink,
 [class*="footerActionLink"] {
   color: hsl(var(--primary)) !important;
+  text-decoration: none !important;
 }
 
 .cl-footerActionLink:hover,
 [class*="footerActionLink"]:hover {
   color: hsl(var(--primary) / 0.9) !important;
+  text-decoration: none !important;
 }
 
 /* The discoverable passkey action is rendered by Clerk as a footer link even

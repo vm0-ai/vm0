@@ -767,6 +767,38 @@ describe("app auth pages", () => {
     expect(getComputedStyle(link).borderStyle).toBe("solid");
   });
 
+  it("presents Clerk page actions with the standard button and link treatment", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    clerkSurface.style.setProperty("--background", "0, 0%, 100%");
+    clerkSurface.style.setProperty("--foreground", "220, 18%, 10%");
+
+    const primaryAction = document.createElement("button");
+    primaryAction.className = "cl-formButtonPrimary";
+    primaryAction.type = "submit";
+    const primaryLabel = document.createElement("span");
+    primaryLabel.textContent = "Continue";
+    primaryAction.append(primaryLabel);
+
+    const footerAction = document.createElement("div");
+    footerAction.className = "cl-footerAction";
+    const footerLink = document.createElement("a");
+    footerLink.className = "cl-footerActionLink";
+    footerLink.href = "/sign-up";
+    footerLink.textContent = "Sign up";
+    footerAction.append(footerLink);
+    clerkSurface.append(primaryAction, footerAction);
+
+    expect(getComputedStyle(primaryAction).backgroundColor).toBe(
+      "hsl(220, 18%, 10%)",
+    );
+    expect(getComputedStyle(primaryLabel).color).toBe("hsl(0, 0%, 100%)");
+    expect(getComputedStyle(footerLink).textDecoration).toBe("none");
+  });
+
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);
