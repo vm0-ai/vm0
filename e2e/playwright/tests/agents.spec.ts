@@ -23,6 +23,10 @@ const unreadThreadStory = {
   createdAt: "2026-08-25T10:00:00.000Z",
 } as const;
 type PinnedAgentStoryEntry = (typeof pinnedAgentStory)[number];
+type PinnedAgentStoryControls = {
+  readonly setGradientColorThemes: (enabled: boolean) => void;
+  readonly setPinnedAgents: (agents: readonly PinnedAgentStoryEntry[]) => void;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -31,7 +35,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function mockPinnedAgentGrid(
   page: Page,
   defaultAgentId: string,
-): Promise<(agents: readonly PinnedAgentStoryEntry[]) => void> {
+): Promise<PinnedAgentStoryControls> {
+  let gradientColorThemes = false;
   let pinnedAgents: readonly PinnedAgentStoryEntry[] = pinnedAgentStory;
 
   await page.route("**/api/feature-switches", async (route) => {
@@ -46,6 +51,7 @@ async function mockPinnedAgentGrid(
         ...body,
         effectiveSwitches: {
           ...body.effectiveSwitches,
+          gradientColorThemes,
           threeColumnNav: true,
         },
       },
@@ -100,8 +106,13 @@ async function mockPinnedAgentGrid(
     });
   });
 
-  return (agents) => {
-    pinnedAgents = agents;
+  return {
+    setGradientColorThemes(enabled) {
+      gradientColorThemes = enabled;
+    },
+    setPinnedAgents(agents) {
+      pinnedAgents = agents;
+    },
   };
 }
 
@@ -199,6 +210,76 @@ async function computedIconStyle(control: Locator): Promise<{
   });
 }
 
+async function computedSurfaceStyle(
+  locator: Locator,
+  pseudoElement: string | null = null,
+): Promise<{
+  readonly backgroundColor: string;
+  readonly borderRightColor: string;
+  readonly luminance: number;
+}> {
+  return locator.evaluate((element, pseudo) => {
+    const style = getComputedStyle(element, pseudo);
+    const channels = style.backgroundColor
+      .match(/\d+(?:\.\d+)?/gu)
+      ?.slice(0, 3)
+      .map(Number);
+    const [red, green, blue] = channels ?? [];
+    if (red === undefined || green === undefined || blue === undefined) {
+      throw new Error(`Cannot read background color: ${style.backgroundColor}`);
+    }
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRightColor: style.borderRightColor,
+      luminance: 0.2126 * red + 0.7152 * green + 0.0722 * blue,
+    };
+  }, pseudoElement);
+}
+
+async function computedColor(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+}
+
+async function computedNavigationAppearance(page: Page) {
+  const rail = page.getByTestId("labeled-nav-rail");
+  const sidebar = page.getByTestId("chat-list-column");
+  const workspace = page.locator(".zero-workspace-bg");
+  const primaryCopy = rail.getByText("New", { exact: true });
+  const mutedCopy = rail.getByText("Connectors", { exact: true });
+  const hoverCopy = sidebar.getByText("Chats with Zero", { exact: true });
+
+  await Promise.all([
+    expect(rail).toBeVisible(),
+    expect(sidebar).toBeVisible(),
+    expect(workspace).toBeVisible(),
+    expect(primaryCopy).toBeVisible(),
+    expect(mutedCopy).toBeVisible(),
+    expect(hoverCopy).toBeVisible(),
+  ]);
+
+  const [railStyle, sidebarStyle, workspaceStyle, primary, muted, hover] =
+    await Promise.all([
+      computedSurfaceStyle(rail),
+      computedSurfaceStyle(sidebar),
+      computedSurfaceStyle(workspace, "::before"),
+      computedColor(primaryCopy),
+      computedColor(mutedCopy),
+      computedColor(hoverCopy),
+    ]);
+
+  return {
+    hover,
+    hoverCopy,
+    muted,
+    primary,
+    rail: railStyle,
+    sidebar: sidebarStyle,
+    workspace: workspaceStyle,
+  };
+}
+
 test("navigate to agents page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/agents`);
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({
@@ -258,6 +339,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     // The dark palette inverts surface luminance, so use light mode to verify
     // the requested darker rail hierarchy without assuming dark-mode ordering.
     localStorage.setItem("theme", "light");
+    localStorage.setItem("colorTheme", "blue-horizon");
   });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
@@ -268,7 +350,10 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
+  const { setGradientColorThemes, setPinnedAgents } = await mockPinnedAgentGrid(
+    page,
+    defaultAgentId,
+  );
   await mockUnreadThread(page, defaultAgentId);
   await Promise.all([
     ...[
@@ -299,44 +384,46 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   await expect(cards).toHaveCount(4);
   await expect(pinAgent).toBeVisible();
 
-  const railSurface = await page
-    .getByTestId("labeled-nav-rail")
-    .evaluate((rail) => {
-      const chatList = document.querySelector(
-        '[data-testid="chat-list-column"]',
+  const featureOff = await computedNavigationAppearance(page);
+
+  setGradientColorThemes(true);
+  await Promise.all([
+    page.waitForResponse((response) => {
+      return (
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/feature-switches"
       );
-      if (!(chatList instanceof HTMLElement)) {
-        throw new Error("Three-column chat list is not rendered");
-      }
+    }),
+    page.reload(),
+  ]);
+  await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
 
-      const appearance = (element: Element) => {
-        const backgroundColor = getComputedStyle(element).backgroundColor;
-        const channels = backgroundColor
-          .match(/\d+(?:\.\d+)?/gu)
-          ?.slice(0, 3)
-          .map(Number);
-        const [red, green, blue] = channels ?? [];
-        if (red === undefined || green === undefined || blue === undefined) {
-          throw new Error(`Cannot read background color: ${backgroundColor}`);
-        }
-        return {
-          backgroundColor,
-          luminance: 0.2126 * red + 0.7152 * green + 0.0722 * blue,
-        };
-      };
+  const themed = await computedNavigationAppearance(page);
 
-      return {
-        chatList: appearance(chatList),
-        rail: appearance(rail),
-      };
-    });
-
-  expect(railSurface.rail.backgroundColor).not.toBe(
-    railSurface.chatList.backgroundColor,
+  expect(themed.rail.backgroundColor).not.toBe(featureOff.rail.backgroundColor);
+  expect(themed.sidebar.backgroundColor).not.toBe(
+    featureOff.sidebar.backgroundColor,
   );
-  expect(railSurface.rail.luminance).toBeLessThan(
-    railSurface.chatList.luminance,
+  expect(themed.workspace.backgroundColor).not.toBe(
+    featureOff.workspace.backgroundColor,
   );
+  expect(themed.primary).not.toBe(featureOff.primary);
+  expect(themed.muted).not.toBe(featureOff.muted);
+  expect(themed.rail.backgroundColor).not.toBe(themed.sidebar.backgroundColor);
+  expect(themed.rail.luminance).toBeLessThan(themed.sidebar.luminance);
+  expect(themed.sidebar.luminance).toBeLessThan(themed.workspace.luminance);
+  expect(
+    featureOff.workspace.luminance - themed.workspace.luminance,
+  ).toBeLessThan(4);
+  expect(themed.rail.borderRightColor).not.toBe(
+    featureOff.rail.borderRightColor,
+  );
+  expect(themed.rail.borderRightColor).toMatch(/,\s*0\.5\)$/u);
+  expect(themed.primary).not.toBe(themed.muted);
+  expect(themed.hover).toBe(themed.muted);
+
+  await themed.hoverCopy.locator("..").hover();
+  await expect(themed.hoverCopy).toHaveCSS("color", themed.primary);
 
   const defaultAgentCard = grid.locator(
     `[data-testid="pinned-agent-card"][href="/agents/${defaultAgentId}/chat"]`,
