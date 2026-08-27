@@ -565,7 +565,7 @@ function AccountsConnectorCard({
             status={summaryStatus}
             className="min-w-0 flex-1 text-xs text-muted-foreground"
           />
-          <div className="relative z-20">{manageAccess}</div>
+          <div className="relative z-20 min-w-0 max-w-full">{manageAccess}</div>
         </div>
       )}
     </div>

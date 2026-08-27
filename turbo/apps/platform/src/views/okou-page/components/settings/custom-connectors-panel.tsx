@@ -234,6 +234,7 @@ function CustomConnectorCardFooter({
       )}
       {connector.connected || accountManagement ? (
         <div
+          className="min-w-0 max-w-full"
           onClick={(event) => {
             event.stopPropagation();
           }}

@@ -2984,6 +2984,26 @@ describe("connectors page", () => {
     expect(dialog).toBeInTheDocument();
   });
 
+  it("keeps a single long authorized-agent name available on the card", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    const agentName = "Research Operations for International Partnerships";
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    context.mocks.data.agents([listAgent(agentId, agentName)]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: ["github"] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      const access = within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      );
+      expect(access).toHaveTextContent(`Used by ${agentName}`);
+      expect(access).toHaveAttribute("title", agentName);
+    });
+  });
+
   it("shows an add-access affordance when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);

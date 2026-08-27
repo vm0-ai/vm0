@@ -47,7 +47,7 @@ export function ConnectorAgentAccessButton({
       type="button"
       variant="quiet"
       size="xs"
-      className="min-w-0 gap-0 px-2 text-xs"
+      className="min-w-0 max-w-full gap-0 px-2 text-xs"
       aria-label={t(
         ($) => {
           return $.connectors.catalog.access.manage;
