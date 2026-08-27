@@ -26,6 +26,12 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import { mockResizeObserver } from "./chat-lifecycle-test-helpers.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. This file
+// exercises only home and chat routes; production still resolves these
+// modules only after matching the corresponding route.
+import "../../../signals/route-setups/chat.ts";
+import "../../../signals/route-setups/home.ts";
+
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
