@@ -53,6 +53,7 @@ use std::time::{Duration, Instant};
 #[cfg(test)]
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use guest_contracts::process_containment::{
+    CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
     TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
 };
 use vsock_proto::{
@@ -2051,10 +2052,16 @@ fn append_exec_control_environment<'a>(
     process_control_endpoint: &'a str,
     workload_endpoints: Option<(&'a str, &'a str)>,
 ) {
+    env.retain(|(key, _)| {
+        *key != WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV
+            && *key != CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
+            && *key != TOOL_CGROUP_PROCS_ENDPOINT_ENV
+            && *key != CANONICAL_TOOL_CGROUP_PROCS_ENV
+    });
     env.push((process_control_ipc::BOOTSTRAP_ENV, process_control_endpoint));
     if let Some((workload_endpoint, tool_endpoint)) = workload_endpoints {
-        env.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, workload_endpoint));
-        env.push((TOOL_CGROUP_PROCS_ENDPOINT_ENV, tool_endpoint));
+        env.push((CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, workload_endpoint));
+        env.push((CANONICAL_TOOL_CGROUP_PROCS_ENV, tool_endpoint));
     }
 }
 
@@ -2285,8 +2292,33 @@ mod tests {
     }
 
     #[test]
-    fn control_bootstrap_environment_writers_remain_legacy_only() {
-        let mut env = vec![("USER_KEY", "user-value")];
+    fn control_bootstrap_environment_replaces_cgroup_aliases_with_canonical() {
+        let mut env = vec![
+            ("FIRST_USER_KEY", "first-user-value"),
+            (
+                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+                "stale-legacy-workload-endpoint",
+            ),
+            (
+                process_control_ipc::BOOTSTRAP_ENV,
+                "stale-process-control-endpoint",
+            ),
+            ("SECOND_USER_KEY", "second-user-value"),
+            (
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                "stale-canonical-workload-endpoint",
+            ),
+            (
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+                "existing-canonical-process-control-endpoint",
+            ),
+            (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
+            ("THIRD_USER_KEY", "third-user-value"),
+            (
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                "stale-canonical-tool-endpoint",
+            ),
+        ];
 
         append_exec_control_environment(
             &mut env,
@@ -2297,20 +2329,39 @@ mod tests {
         assert_eq!(
             env,
             [
-                ("USER_KEY", "user-value"),
+                ("FIRST_USER_KEY", "first-user-value"),
+                (
+                    process_control_ipc::BOOTSTRAP_ENV,
+                    "stale-process-control-endpoint"
+                ),
+                ("SECOND_USER_KEY", "second-user-value"),
+                (
+                    process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+                    "existing-canonical-process-control-endpoint"
+                ),
+                ("THIRD_USER_KEY", "third-user-value"),
                 (
                     process_control_ipc::BOOTSTRAP_ENV,
                     "process-control-endpoint"
                 ),
-                (WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, "workload-endpoint"),
-                (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "tool-endpoint"),
+                (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "workload-endpoint"),
+                (CANONICAL_TOOL_CGROUP_PROCS_ENV, "tool-endpoint"),
             ]
         );
         for canonical_key in [
-            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+            CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            CANONICAL_TOOL_CGROUP_PROCS_ENV,
         ] {
-            assert!(env.iter().all(|(key, _)| *key != canonical_key));
+            assert_eq!(
+                env.iter().filter(|(key, _)| *key == canonical_key).count(),
+                1
+            );
+        }
+        for legacy_key in [
+            WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+        ] {
+            assert!(env.iter().all(|(key, _)| *key != legacy_key));
         }
     }
 
