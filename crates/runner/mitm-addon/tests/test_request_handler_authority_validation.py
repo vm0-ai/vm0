@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 import flow_metadata_keys as metadata_keys
+import host_normalization
 import mitm_addon
 import request_authority
 import upstream_destination_binding
@@ -276,10 +277,21 @@ async def test_rejects_oversized_unicode_authority_before_punycode_encoding(
     if flow.request.is_http2 or flow.request.is_http3:
         flow.request.authority = oversized_label
     original_headers = tuple(flow.request.headers.fields)
+    real_normalize_label_text = host_normalization._normalize_label_text
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
+        patch.object(
+            host_normalization,
+            "_normalize_label_text",
+            wraps=real_normalize_label_text,
+        ) as normalize_label_text,
+        patch.object(
+            host_normalization,
+            "_validate_normalized_label_text",
+            side_effect=AssertionError("oversized authority reached normalized text validation"),
+        ) as validate_normalized_label_text,
         patch.object(
             encodings.punycode,
             "punycode_encode",
@@ -295,6 +307,8 @@ async def test_rejects_oversized_unicode_authority_before_punycode_encoding(
     assert tuple(flow.request.headers.fields) == original_headers
     assert flow.request.headers["Authorization"] == "Bearer sandbox-token"
     auth_fetch.assert_not_called()
+    normalize_label_text.assert_called_once_with(oversized_label)
+    validate_normalized_label_text.assert_not_called()
 
 
 @pytest.mark.parametrize(
