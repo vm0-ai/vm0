@@ -21,6 +21,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       return await pollBase44DeviceAuth({
         clientId,
         deviceCode: args.deviceCode,
+        scopes: args.scopes,
       });
     },
   },

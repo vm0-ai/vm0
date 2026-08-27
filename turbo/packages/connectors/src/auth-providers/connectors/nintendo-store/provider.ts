@@ -70,10 +70,7 @@ function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAu
           locale: locale.locale,
         },
         expiresIn: token.expiresIn,
-        scopes:
-          token.scopes !== null && token.scopes.length > 0
-            ? token.scopes
-            : args.externalCodeGrant.scopes,
+        scopes: token.scopes ?? args.externalCodeGrant.scopes,
         userInfo: nintendoStoreUserInfo(token.idToken),
       };
     },

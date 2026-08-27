@@ -1174,6 +1174,7 @@ interface RuntimeDeviceAuthorizationPollArgs {
   readonly authClient: ConnectorAuthClient;
   readonly deviceCode: string;
   readonly pollState?: string;
+  readonly scopes: readonly string[];
 }
 
 interface RuntimeRefreshTokenAccessArgs {
@@ -1462,6 +1463,7 @@ export async function pollConnectorDeviceAuthorizationWithMethod(
     readonly authClient: ConnectorAuthClient;
     readonly deviceCode: string;
     readonly pollState?: string;
+    readonly scopes: readonly string[];
   },
 ): Promise<OAuthDeviceAuthPollResultBase> {
   const provider = connectorDeviceAuthGrantProviderFor(args);
@@ -1480,6 +1482,7 @@ export async function pollConnectorDeviceAuthorizationWithMethod(
   >(provider.pollDeviceAuth, {
     authClient: args.authClient,
     deviceCode: args.deviceCode,
+    scopes: args.scopes,
     ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
   if (result.status === "complete") {

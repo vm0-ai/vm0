@@ -844,7 +844,7 @@ interface TestOAuthDeviceConnectorProviderOptions {
   readonly deviceCode?: string;
   readonly interval?: number;
   readonly expiresIn?: number;
-  readonly tokenScope?: string;
+  readonly tokenScope?: string | null;
   readonly tokenBehavior?: "ok" | "emptyJson";
 }
 
@@ -957,7 +957,9 @@ export function mockTestOAuthDeviceConnectorProvider(
         access_token: `test-device-access:${deviceCode}`,
         token_type: "Bearer",
         expires_in: 3600,
-        scope: options.tokenScope ?? "read",
+        ...(options.tokenScope === null
+          ? {}
+          : { scope: options.tokenScope ?? "read" }),
       });
     }),
   );
@@ -1062,7 +1064,6 @@ export function mockBase44OAuthProvider(): Base44OAuthProviderRecorder {
         refresh_token: "base44-refresh-token",
         token_type: "Bearer",
         expires_in: 3600,
-        scope: "apps:read apps:write offline",
       });
     }),
     http.get(BASE44_USERINFO_URL, ({ request }) => {
