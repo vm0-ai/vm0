@@ -2564,6 +2564,8 @@
         "status": "Status"
       },
       "iconUnavailable": "Ikon konektor tidak tersedia",
+      "loadMoreFailed": "Konektor lainnya tidak dapat dimuat.",
+      "loadMoreRetry": "Coba lagi",
       "newConnector": "Konektor baru",
       "noConnectorsAlt": "Tidak ada konektor",
       "results": "Menampilkan {{shown}} dari {{total}} konektor",
@@ -2574,11 +2576,13 @@
         "aria": "Urutkan konektor",
         "recommended": "Direkomendasikan"
       },
-      "tabs": {
+      "title": "Konektor",
+      "types": {
+        "all": "Semua jenis",
+        "aria": "Filter jenis konektor",
         "builtin": "Bawaan",
         "custom": "Kustom"
       },
-      "title": "Konektor",
       "unnamedAgent": "Tanpa nama"
     },
     "connectDialog": {

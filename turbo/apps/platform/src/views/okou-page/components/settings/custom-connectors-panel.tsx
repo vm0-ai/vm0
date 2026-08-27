@@ -1,10 +1,4 @@
-import {
-  useGet,
-  useLoadable,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLoadable, useLastLoadable, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { EllipsisVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -16,10 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@okouai/ui";
-import {
-  isIntegrationManagedCustomConnector,
-  type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/custom-connectors";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
@@ -29,13 +20,11 @@ import {
   connectCustomConnectorOAuth2$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
-  customConnectors$,
   openCustomConnectorAccessDialog$,
   openCustomConnectorConnectDialog$,
   openCustomConnectorDeleteDialog$,
   openCustomConnectorEditDialog$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
-import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   customConnectorMcpEnabled$,
   featureSwitch$,
@@ -153,11 +142,18 @@ function CustomConnectorHeaderContent({
         size={20}
       />
       <span className="min-w-0 flex-1">
-        <span
-          data-testid="connector-card-label"
-          className="block truncate text-sm font-medium text-foreground"
-        >
-          {connector.displayName}
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            data-testid="connector-card-label"
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+          >
+            {connector.displayName}
+          </span>
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            {t(($) => {
+              return $.connectors.catalog.types.custom;
+            })}
+          </span>
         </span>
         <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
           <span className="shrink-0">{connectorType}</span>
@@ -515,7 +511,11 @@ function CustomConnectorDialogs({
   );
 }
 
-function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
+export function CustomConnectorDirectoryEmptyState({
+  isAdmin,
+}: {
+  readonly isAdmin: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <div className="zero-card py-12 flex flex-col items-center gap-3">
@@ -612,7 +612,7 @@ function CustomConnectorGrid({
     openConnect(connector);
   };
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <>
       {connectors.map((connector) => {
         const accountSummary =
           accountSummariesLoadable.state === "hasData"
@@ -648,7 +648,7 @@ function CustomConnectorGrid({
           />
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -745,28 +745,29 @@ function CustomAccountDialogs({
   );
 }
 
-export function CustomConnectorsPanel() {
-  const connectors = useLastResolved(customConnectors$);
-  const userManagedConnectors = connectors?.filter((connector) => {
-    return !isIntegrationManagedCustomConnector(connector);
-  });
-  const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
+export function CustomConnectorDirectoryCards({
+  connectors,
+  isAdmin,
+}: {
+  readonly connectors: readonly CustomConnectorResponse[];
+  readonly isAdmin: boolean;
+}) {
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
-
   return (
-    <section className="flex flex-col gap-3">
-      {userManagedConnectors?.length === 0 ? (
-        <CustomConnectorEmptyState isAdmin={isAdmin} />
-      ) : null}
-      {userManagedConnectors && userManagedConnectors.length > 0 ? (
-        <CustomConnectorGrid
-          connectors={userManagedConnectors}
-          isAdmin={isAdmin}
-          mcpEnabled={mcpEnabled}
-        />
-      ) : null}
+    <CustomConnectorGrid
+      connectors={connectors}
+      isAdmin={isAdmin}
+      mcpEnabled={mcpEnabled}
+    />
+  );
+}
+
+export function CustomConnectorDirectoryOverlays() {
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  return (
+    <>
       <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
       <CustomAccountDialogs mcpEnabled={mcpEnabled} />
-    </section>
+    </>
   );
 }

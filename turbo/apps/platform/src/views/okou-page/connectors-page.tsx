@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { ReactNode } from "react";
+import type { ReactNode, UIEvent } from "react";
 import {
   useGet,
   useSet,
@@ -13,6 +13,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpDown,
+  Boxes,
   Check,
   ChevronDown,
   Filter,
@@ -31,17 +32,20 @@ import type {
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import {
-  connectorsPageTab$,
-  setConnectorsPageTab$,
+  customConnectorDirectory$,
   openCustomConnectorCreateDialog$,
+  type CustomConnectorDirectoryResult,
 } from "../../signals/okou-page/settings/custom-connectors.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
-import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
+import {
+  CustomConnectorDirectoryCards,
+  CustomConnectorDirectoryEmptyState,
+  CustomConnectorDirectoryOverlays,
+} from "./components/settings/custom-connectors-panel.tsx";
 import {
   connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
@@ -54,10 +58,12 @@ import {
   loadMoreConnectorCatalog$,
   connectorsCategory$,
   connectorsSort$,
+  connectorsType$,
   setConnectorsCategory$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
   setConnectorsSort$,
+  setConnectorsType$,
   selectedConnectorSlug$,
   setSelectedConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
@@ -70,6 +76,7 @@ import {
   getConnectorStatusAuthMethod,
   type ConnectorCatalogSort,
   type ConnectorsConnectionFilter,
+  type ConnectorsTypeFilter,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -504,9 +511,78 @@ function ConnectorSortDropdown({
   );
 }
 
+function ConnectorTypeDropdown({
+  value,
+  onChange,
+}: {
+  readonly value: ConnectorsTypeFilter;
+  readonly onChange: (value: ConnectorsTypeFilter) => void;
+}) {
+  const { t } = useTranslation();
+  const label =
+    value === "builtin"
+      ? t(($) => {
+          return $.connectors.catalog.types.builtin;
+        })
+      : value === "custom"
+        ? t(($) => {
+            return $.connectors.catalog.types.custom;
+          })
+        : t(($) => {
+            return $.connectors.catalog.types.all;
+          });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={t(($) => {
+            return $.connectors.catalog.types.aria;
+          })}
+          className="zero-btn-morandi h-10 shrink-0 gap-1.5 rounded-lg border"
+        >
+          <Boxes size={14} />
+          <span>{label}</span>
+          <ChevronDown size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {(["all", "builtin", "custom"] as const).map((type) => {
+          const optionLabel =
+            type === "builtin"
+              ? t(($) => {
+                  return $.connectors.catalog.types.builtin;
+                })
+              : type === "custom"
+                ? t(($) => {
+                    return $.connectors.catalog.types.custom;
+                  })
+                : t(($) => {
+                    return $.connectors.catalog.types.all;
+                  });
+          return (
+            <ConnectorFilterOption
+              key={type}
+              active={value === type}
+              onSelect={() => {
+                onChange(type);
+              }}
+            >
+              {optionLabel}
+            </ConnectorFilterOption>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ConnectorDirectoryToolbar({
   search,
   setSearch,
+  type,
+  setType,
   connectionFilter,
   agents,
   setConnectionFilter,
@@ -515,6 +591,8 @@ function ConnectorDirectoryToolbar({
 }: {
   readonly search: string;
   readonly setSearch: (value: string) => void;
+  readonly type: ConnectorsTypeFilter;
+  readonly setType: (value: ConnectorsTypeFilter) => void;
   readonly connectionFilter: ConnectorsConnectionFilter;
   readonly agents: readonly AgentResponse[];
   readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
@@ -544,7 +622,8 @@ function ConnectorDirectoryToolbar({
           className="h-10 rounded-lg pl-9 pr-3"
         />
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <ConnectorTypeDropdown value={type} onChange={setType} />
         <ConnectorFilterDropdown
           value={connectionFilter}
           agents={agents}
@@ -640,11 +719,13 @@ function ConnectorCategoryButton({
 function ConnectorCategoryRail({
   metadata,
   categoryCounts,
+  allCategoryCount,
   selectedCategory,
   onSelect,
 }: {
   readonly metadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly categoryCounts: Readonly<Record<string, number>>;
+  readonly allCategoryCount: number;
   readonly selectedCategory: string | null;
   readonly onSelect: (categoryId: string | null) => void;
 }) {
@@ -672,7 +753,7 @@ function ConnectorCategoryRail({
           label={t(($) => {
             return $.connectors.catalog.allCategories;
           })}
-          count={categoryCountTotal(categoryCounts)}
+          count={allCategoryCount}
           selected={selectedCategory === null}
           onSelect={onSelect}
         />
@@ -749,11 +830,13 @@ function ConnectorCategoryRail({
 function ConnectorCategoryDropdown({
   metadata,
   categoryCounts,
+  allCategoryCount,
   selectedCategory,
   onSelect,
 }: {
   readonly metadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly categoryCounts: Readonly<Record<string, number>>;
+  readonly allCategoryCount: number;
   readonly selectedCategory: string | null;
   readonly onSelect: (categoryId: string | null) => void;
 }) {
@@ -802,7 +885,7 @@ function ConnectorCategoryDropdown({
             })}
           </span>
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatLocalizedNumber(categoryCountTotal(categoryCounts))}
+            {formatLocalizedNumber(allCategoryCount)}
           </span>
         </ConnectorFilterOption>
         {metadata.categories.flatMap((category) => {
@@ -866,20 +949,28 @@ function ConnectorAccessButton({
   );
 }
 
-function renderBuiltinList({
-  loadingState,
-  connectors,
-  renderCard,
+function renderConnectorDirectoryList({
+  loading,
+  builtinConnectors,
+  customConnectorCount,
+  customCards,
+  customEmptyState,
+  renderBuiltinCard,
   search,
   connectionFilter,
 }: {
-  loadingState: "loading" | "hasData" | "hasError";
-  connectors: readonly PlatformConnectorCatalogStatusItem[];
-  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
-  search: string;
-  connectionFilter: ConnectorsConnectionFilter;
+  readonly loading: boolean;
+  readonly builtinConnectors: readonly PlatformConnectorCatalogStatusItem[];
+  readonly customConnectorCount: number;
+  readonly customCards: ReactNode;
+  readonly customEmptyState: ReactNode;
+  readonly renderBuiltinCard: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => ReactNode;
+  readonly search: string;
+  readonly connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
-  if (loadingState !== "hasData") {
+  if (loading && builtinConnectors.length + customConnectorCount === 0) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {Array.from({ length: 6 }, (_, i) => {
@@ -903,7 +994,7 @@ function renderBuiltinList({
     );
   }
 
-  if (connectors.length === 0) {
+  if (builtinConnectors.length + customConnectorCount === 0) {
     const trimmedSearch = search.trim();
     const base =
       connectionFilter.kind === "connected"
@@ -937,7 +1028,7 @@ function renderBuiltinList({
           )
         : null;
     if (!message) {
-      return null;
+      return customEmptyState;
     }
     return (
       <div className="flex flex-col items-center gap-3 py-12">
@@ -955,7 +1046,8 @@ function renderBuiltinList({
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {connectors.map(renderCard)}
+      {customCards}
+      {builtinConnectors.map(renderBuiltinCard)}
     </div>
   );
 }
@@ -1033,6 +1125,91 @@ function loadedConnectorItems(
   loadable: Loadable<PlatformConnectorCatalogStatusItem[]>,
 ): readonly PlatformConnectorCatalogStatusItem[] {
   return loadable.state === "hasData" ? loadable.data : [];
+}
+
+function visibleBuiltinConnectorItems(
+  type: ConnectorsTypeFilter,
+  loadable: Loadable<PlatformConnectorCatalogStatusItem[]>,
+): readonly PlatformConnectorCatalogStatusItem[] {
+  if (type === "custom") {
+    return [];
+  }
+  return loadedConnectorItems(loadable);
+}
+
+function visibleCustomConnectorItems(
+  type: ConnectorsTypeFilter,
+  loadable: Loadable<CustomConnectorDirectoryResult>,
+): CustomConnectorDirectoryResult["connectors"] {
+  if (type === "builtin" || loadable.state !== "hasData") {
+    return [];
+  }
+  return loadable.data.connectors;
+}
+
+function connectorDirectoryCatalogCount(
+  type: ConnectorsTypeFilter,
+  builtinCount: number | null,
+  customLoadable: Loadable<CustomConnectorDirectoryResult>,
+): number | null {
+  if (type === "builtin") {
+    return builtinCount;
+  }
+  if (customLoadable.state !== "hasData") {
+    return null;
+  }
+  if (type === "custom") {
+    return customLoadable.data.totalConnectorCount;
+  }
+  return builtinCount === null
+    ? null
+    : builtinCount + customLoadable.data.totalConnectorCount;
+}
+
+function connectorDirectoryMatchingCount(args: {
+  readonly type: ConnectorsTypeFilter;
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly builtinCount: number | null;
+  readonly customLoadable: Loadable<CustomConnectorDirectoryResult>;
+}): number | null {
+  if (args.connectionFilter.kind === "agent") {
+    return null;
+  }
+  let count = 0;
+  if (args.type !== "custom") {
+    if (args.builtinCount === null) {
+      return null;
+    }
+    count += args.builtinCount;
+  }
+  if (args.type !== "builtin") {
+    if (args.customLoadable.state !== "hasData") {
+      return null;
+    }
+    count += args.customLoadable.data.connectors.length;
+  }
+  return count;
+}
+
+function connectorDirectoryIsLoading(args: {
+  readonly type: ConnectorsTypeFilter;
+  readonly builtinLoadable: Loadable<PlatformConnectorCatalogStatusItem[]>;
+  readonly customLoadable: Loadable<CustomConnectorDirectoryResult>;
+}): boolean {
+  if (args.type !== "custom" && args.builtinLoadable.state !== "hasData") {
+    return true;
+  }
+  return args.type !== "builtin" && args.customLoadable.state !== "hasData";
+}
+
+function connectorDirectoryHasMore(
+  type: ConnectorsTypeFilter,
+  catalogLoadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
+): boolean {
+  return type !== "custom" && connectorCatalogHasMore(catalogLoadable);
 }
 
 function localizedCategoryMetadata(
@@ -1117,6 +1294,7 @@ interface SettingsConnectorCardProps {
 interface ConnectorCatalogHeaderProps {
   readonly connectorCatalogCountEnabled: boolean;
   readonly connectorCatalogCount: number | null;
+  readonly action: ReactNode;
 }
 
 function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
@@ -1134,7 +1312,7 @@ function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
         });
   return (
     <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-      <div className="mx-auto w-full max-w-[1180px]">
+      <div className="mx-auto flex w-full max-w-[1180px] items-start justify-between gap-4">
         <div className="min-w-0 hidden md:block">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">
             {t(($) => {
@@ -1143,6 +1321,7 @@ function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
         </div>
+        {props.action}
       </div>
     </header>
   );
@@ -1202,6 +1381,7 @@ export function ConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
+  const customDirectoryLoadable = useLastLoadable(customConnectorDirectory$);
   const connectorCatalogCountEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const connectorAccountsEnabled =
@@ -1234,8 +1414,6 @@ export function ConnectorsPage() {
   const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
   const optimisticConnected = useGet(justConnectedSlugs$);
-  const activeTab = useGet(connectorsPageTab$);
-  const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openCreateCustom = useSet(openCustomConnectorCreateDialog$);
 
@@ -1247,19 +1425,41 @@ export function ConnectorsPage() {
   const setCategory = useSet(setConnectorsCategory$);
   const sort = useGet(connectorsSort$);
   const setSort = useSet(setConnectorsSort$);
+  const type = useGet(connectorsType$);
+  const setType = useSet(setConnectorsType$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     loadMoreConnectorCatalog$,
   );
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
-  const filteredConnectors = loadedConnectorItems(filteredCatalogItemsLoadable);
-  const connectorCatalogCount = effectiveConnectorCatalogCount(
+  const showBuiltinConnectors = type !== "custom";
+  const showCustomConnectors = type !== "builtin";
+  const filteredConnectors = visibleBuiltinConnectorItems(
+    type,
+    filteredCatalogItemsLoadable,
+  );
+  const customConnectors = visibleCustomConnectorItems(
+    type,
+    customDirectoryLoadable,
+  );
+  const builtinCatalogCount = effectiveConnectorCatalogCount(
     catalogStatusLoadable,
   );
-  const matchingConnectorCount = effectiveMatchingConnectorCount(
+  const builtinMatchingConnectorCount = effectiveMatchingConnectorCount(
     catalogStatusLoadable,
   );
+  const connectorCatalogCount = connectorDirectoryCatalogCount(
+    type,
+    builtinCatalogCount,
+    customDirectoryLoadable,
+  );
+  const matchingConnectorCount = connectorDirectoryMatchingCount({
+    type,
+    connectionFilter,
+    builtinCount: builtinMatchingConnectorCount,
+    customLoadable: customDirectoryLoadable,
+  });
   const categoryCounts = effectiveConnectorCategoryCounts(
     catalogStatusLoadable,
   );
@@ -1274,7 +1474,16 @@ export function ConnectorsPage() {
     managedConnectorSlug,
   );
   const disconnecting = disconnectLoadable.state === "loading";
-  const hasMore = connectorCatalogHasMore(catalogStatusLoadable);
+  const hasMore = connectorDirectoryHasMore(type, catalogStatusLoadable);
+  const directoryLoading = connectorDirectoryIsLoading({
+    type,
+    builtinLoadable: filteredCatalogItemsLoadable,
+    customLoadable: customDirectoryLoadable,
+  });
+  const directoryLoaded = !directoryLoading;
+  const allCategoryCount =
+    categoryCountTotal(categoryCounts) +
+    (type === "all" ? customConnectors.length : 0);
 
   const connectHandlers = (
     connector: PlatformConnectorCatalogStatusItem,
@@ -1420,126 +1629,154 @@ export function ConnectorsPage() {
     );
   };
 
-  const builtinList = renderBuiltinList({
-    loadingState: filteredCatalogItemsLoadable.state,
-    connectors: filteredConnectors,
-    renderCard,
+  const connectorList = renderConnectorDirectoryList({
+    loading: directoryLoading,
+    builtinConnectors: filteredConnectors,
+    customConnectorCount: customConnectors.length,
+    customCards: showCustomConnectors ? (
+      <CustomConnectorDirectoryCards
+        connectors={customConnectors}
+        isAdmin={isAdmin}
+      />
+    ) : null,
+    customEmptyState:
+      type === "custom" ? (
+        <CustomConnectorDirectoryEmptyState isAdmin={isAdmin} />
+      ) : null,
+    renderBuiltinCard: renderCard,
     search,
     connectionFilter,
   });
   const resultSummary = connectorDirectoryResultSummary({
     connectionFilter,
     matchingConnectorCount,
-    shownConnectorCount: filteredConnectors.length,
+    shownConnectorCount: filteredConnectors.length + customConnectors.length,
   });
+  const startLoadingMore = () => {
+    detach(loadMore(signal), Reason.DomCallback, "connector catalog paging");
+  };
+  const handleDirectoryScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (
+      !hasMore ||
+      loadMoreLoadable.state === "loading" ||
+      loadMoreLoadable.state === "hasError"
+    ) {
+      return;
+    }
+    const container = event.currentTarget;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom <= 480) {
+      startLoadingMore();
+    }
+  };
+  const handleOpenCreateCustom = () => {
+    if (type === "builtin") {
+      setType("custom");
+    }
+    openCreateCustom();
+  };
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]"
+      data-testid="connectors-scroll-container"
+      onScroll={handleDirectoryScroll}
+    >
       <ConnectorCatalogHeader
         connectorCatalogCountEnabled={connectorCatalogCountEnabled}
         connectorCatalogCount={connectorCatalogCount}
+        action={
+          <CustomConnectorAction
+            isAdmin={isAdmin}
+            onCreate={handleOpenCreateCustom}
+          />
+        }
       />
 
       <main className="flex-1 px-4 pb-16 pt-3 sm:px-6">
         <div className="relative mx-auto w-full max-w-[1180px]">
           <div className="flex min-w-0 w-full flex-col gap-5">
-            <div className="flex items-center justify-between gap-3">
-              <Tabs
-                value={activeTab}
-                onValueChange={(v) => {
-                  return setActiveTab(v === "custom" ? "custom" : "builtin");
-                }}
-              >
-                <TabsList>
-                  <TabsTrigger value="builtin">
-                    {t(($) => {
-                      return $.connectors.catalog.tabs.builtin;
-                    })}
-                  </TabsTrigger>
-                  <TabsTrigger value="custom">
-                    {t(($) => {
-                      return $.connectors.catalog.tabs.custom;
-                    })}
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {activeTab === "custom" && (
-                <CustomConnectorAction
-                  isAdmin={isAdmin}
-                  onCreate={openCreateCustom}
+            <ConnectorDirectoryToolbar
+              search={search}
+              setSearch={setSearch}
+              type={type}
+              setType={setType}
+              connectionFilter={connectionFilter}
+              agents={agents}
+              setConnectionFilter={setConnectionFilter}
+              sort={sort}
+              setSort={setSort}
+            />
+            <div className="flex items-start gap-6">
+              {showBuiltinConnectors && (
+                <ConnectorCategoryRail
+                  metadata={categoryMetadata}
+                  categoryCounts={categoryCounts}
+                  allCategoryCount={allCategoryCount}
+                  selectedCategory={selectedCategory}
+                  onSelect={setCategory}
                 />
               )}
-            </div>
-
-            {activeTab === "builtin" && (
-              <>
-                <ConnectorDirectoryToolbar
-                  search={search}
-                  setSearch={setSearch}
-                  connectionFilter={connectionFilter}
-                  agents={agents}
-                  setConnectionFilter={setConnectionFilter}
-                  sort={sort}
-                  setSort={setSort}
-                />
-                <div className="flex items-start gap-6">
-                  <ConnectorCategoryRail
+              <section className="flex min-w-0 flex-1 flex-col gap-4">
+                {showBuiltinConnectors && (
+                  <ConnectorCategoryDropdown
                     metadata={categoryMetadata}
                     categoryCounts={categoryCounts}
+                    allCategoryCount={allCategoryCount}
                     selectedCategory={selectedCategory}
                     onSelect={setCategory}
                   />
-                  <section className="flex min-w-0 flex-1 flex-col gap-4">
-                    <ConnectorCategoryDropdown
-                      metadata={categoryMetadata}
-                      categoryCounts={categoryCounts}
-                      selectedCategory={selectedCategory}
-                      onSelect={setCategory}
-                    />
-                    {filteredCatalogItemsLoadable.state === "hasData" && (
-                      <p
-                        className="text-sm text-muted-foreground"
-                        data-testid="connector-result-count"
-                      >
-                        {resultSummary}
-                      </p>
+                )}
+                {directoryLoaded && (
+                  <p
+                    className="text-sm text-muted-foreground"
+                    data-testid="connector-result-count"
+                  >
+                    {resultSummary}
+                  </p>
+                )}
+                {connectorList}
+                {hasMore && (
+                  <div
+                    className="flex min-h-10 items-center justify-center pt-2 text-sm text-muted-foreground"
+                    data-testid="connector-load-more-status"
+                  >
+                    {loadMoreLoadable.state === "loading" && (
+                      <span className="flex items-center gap-2">
+                        <Loader2 size={15} className="animate-spin" />
+                        {t(($) => {
+                          return $.connectors.accounts.loadingMore;
+                        })}
+                      </span>
                     )}
-                    {builtinList}
-                    {hasMore && (
-                      <div className="flex justify-center pt-3">
+                    {loadMoreLoadable.state === "hasError" && (
+                      <div className="flex flex-col items-center gap-2">
+                        <span>
+                          {t(($) => {
+                            return $.connectors.catalog.loadMoreFailed;
+                          })}
+                        </span>
                         <Button
                           variant="outline"
-                          className="zero-btn-morandi min-w-36 rounded-lg border"
-                          disabled={loadMoreLoadable.state === "loading"}
-                          onClick={() => {
-                            detach(
-                              loadMore(signal),
-                              Reason.DomCallback,
-                              "connector catalog paging",
-                            );
-                          }}
+                          size="sm"
+                          className="zero-btn-morandi rounded-lg border"
+                          onClick={startLoadingMore}
                         >
-                          {loadMoreLoadable.state === "loading" && (
-                            <Loader2 size={15} className="animate-spin" />
-                          )}
-                          {loadMoreLoadable.state === "loading"
-                            ? t(($) => {
-                                return $.connectors.accounts.loadingMore;
-                              })
-                            : t(($) => {
-                                return $.connectors.accounts.loadMore;
-                              })}
+                          {t(($) => {
+                            return $.connectors.catalog.loadMoreRetry;
+                          })}
                         </Button>
                       </div>
                     )}
-                  </section>
-                </div>
-              </>
-            )}
-
-            {activeTab === "custom" && <CustomConnectorsPanel />}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         </div>
       </main>
+
+      <CustomConnectorDirectoryOverlays />
 
       {selectedConnector && (
         <ConnectModal

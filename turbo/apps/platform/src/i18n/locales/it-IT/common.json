@@ -2620,6 +2620,8 @@
         "status": "Stato"
       },
       "iconUnavailable": "Icona del connettore non disponibile",
+      "loadMoreFailed": "Impossibile caricare altri connettori.",
+      "loadMoreRetry": "Riprova",
       "newConnector": "Nuovo connettore",
       "noConnectorsAlt": "Nessun connettore",
       "results": "Visualizzazione di {{shown}} connettori su {{total}}",
@@ -2630,11 +2632,13 @@
         "aria": "Ordina connettori",
         "recommended": "Consigliati"
       },
-      "tabs": {
+      "title": "Connettori",
+      "types": {
+        "all": "Tutti i tipi",
+        "aria": "Filtra per tipo di connettore",
         "builtin": "Integrato",
         "custom": "Personalizzato"
       },
-      "title": "Connettori",
       "unnamedAgent": "Senza nome"
     },
     "connectDialog": {

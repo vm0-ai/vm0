@@ -2572,6 +2572,8 @@
         "status": "Status"
       },
       "iconUnavailable": "Integrationssymbol nicht verfügbar",
+      "loadMoreFailed": "Weitere Connectoren konnten nicht geladen werden.",
+      "loadMoreRetry": "Erneut versuchen",
       "newConnector": "Neue Integration",
       "noConnectorsAlt": "Keine Integrationen",
       "results": "{{shown}} von {{total}} Integrationen werden angezeigt",
@@ -2582,11 +2584,13 @@
         "aria": "Integrationen sortieren",
         "recommended": "Empfohlen"
       },
-      "tabs": {
+      "title": "Integrationen",
+      "types": {
+        "all": "Alle Typen",
+        "aria": "Connector-Typ filtern",
         "builtin": "Eingebaut",
         "custom": "Benutzerdefiniert"
       },
-      "title": "Integrationen",
       "unnamedAgent": "Unbenannt"
     },
     "connectDialog": {

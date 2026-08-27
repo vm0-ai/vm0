@@ -138,14 +138,9 @@ function menuItemByText(text: string): HTMLElement {
   return menuItem;
 }
 
-function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent === text;
-  });
-  if (!tab) {
-    throw new Error(`${text} tab not found`);
-  }
-  return tab;
+async function selectConnectorType(type: string): Promise<void> {
+  click(await waitForButtonByAriaLabel("Filter connector type"));
+  click(menuItemByText(type));
 }
 
 function queryConnectorCardByLabel(label: string): HTMLElement | null {
@@ -623,27 +618,95 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
-  it("syncs the active connector tab with the URL query", async () => {
+  it("syncs the connector type filter with the URL query", async () => {
     mockCustomConnectorStory();
 
     detachedSetupPage({ context, path: "/connectors?tab=custom" });
 
     await waitFor(() => {
-      expect(tabByText("Custom")).toHaveAttribute("aria-selected", "true");
+      expect(buttonByAriaLabel("Filter connector type")).toHaveTextContent(
+        "Custom",
+      );
     });
-    const customTab = tabByText("Custom");
     expect(new URLSearchParams(search()).get("tab")).toBe("custom");
 
-    click(tabByText("Built-in"));
+    await selectConnectorType("All types");
     await waitFor(() => {
       expect(new URLSearchParams(search()).has("tab")).toBeFalsy();
-      expect(tabByText("Built-in")).toHaveAttribute("aria-selected", "true");
+      expect(new URLSearchParams(search()).has("type")).toBeFalsy();
+      expect(buttonByAriaLabel("Filter connector type")).toHaveTextContent(
+        "All types",
+      );
     });
 
-    click(customTab);
+    await selectConnectorType("Built-in");
     await waitFor(() => {
-      expect(new URLSearchParams(search()).get("tab")).toBe("custom");
-      expect(customTab).toHaveAttribute("aria-selected", "true");
+      expect(new URLSearchParams(search()).get("type")).toBe("builtin");
+    });
+
+    await selectConnectorType("Custom");
+    await waitFor(() => {
+      expect(new URLSearchParams(search()).get("type")).toBe("custom");
+    });
+  });
+
+  it("shows built-in and custom connectors in one filterable directory", async () => {
+    const connector = customConnector({});
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "github",
+        label: "GitHub",
+        authMethods: [],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("GitHub")).toBeInTheDocument();
+      expect(connectorCardByLabel(connector.displayName)).toBeInTheDocument();
+    });
+    expect(
+      within(connectorCardByLabel(connector.displayName)).getByText("Custom"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("New connector")).toBeInTheDocument();
+
+    await fill(
+      screen.getByPlaceholderText("Find connectors"),
+      connector.displayName,
+    );
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
+      expect(connectorCardByLabel(connector.displayName)).toBeInTheDocument();
+    });
+    await fill(screen.getByPlaceholderText("Find connectors"), " ");
+    await waitFor(() => {
+      expect(connectorCardByLabel("GitHub")).toBeInTheDocument();
+      expect(connectorCardByLabel(connector.displayName)).toBeInTheDocument();
+    });
+
+    await selectConnectorType("Built-in");
+    await waitFor(() => {
+      expect(connectorCardByLabel("GitHub")).toBeInTheDocument();
+      expect(
+        queryConnectorCardByLabel(connector.displayName),
+      ).not.toBeInTheDocument();
+    });
+
+    await selectConnectorType("Custom");
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
+      expect(connectorCardByLabel(connector.displayName)).toBeInTheDocument();
     });
   });
 
@@ -734,7 +797,7 @@ describe("connectors page", () => {
     expect(screen.queryByText(/Cmd\+K|⌘K/u)).not.toBeInTheDocument();
   });
 
-  it("loads additional connector directory pages on demand", async () => {
+  it("loads additional connector directory pages near the scroll boundary", async () => {
     mockConnectors([]);
     const connectors = Array.from({ length: 30 }, (_, index) => {
       const number = String(index + 1).padStart(2, "0");
@@ -789,12 +852,18 @@ describe("connectors page", () => {
       screen.findByText("Showing 24 of 30 connectors"),
     ).resolves.toBeInTheDocument();
     expect(screen.getAllByTestId("connector-card-label")).toHaveLength(24);
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
 
-    click(buttonByText("Load more"));
+    const scrollContainer = screen.getByTestId("connectors-scroll-container");
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 800 },
+      scrollHeight: { configurable: true, value: 1600 },
+      scrollTop: { configurable: true, value: 400 },
+    });
+    fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
       expect(screen.getAllByTestId("connector-card-label")).toHaveLength(30);
-      expect(screen.queryByText("Load more")).not.toBeInTheDocument();
     });
     expect(cursors).toStrictEqual([undefined, "24"]);
   });
@@ -1494,7 +1563,7 @@ describe("connectors page", () => {
       expect(within(card).queryByText("No accounts")).toBeNull();
     });
 
-    click(tabByText("Custom"));
+    await selectConnectorType("Custom");
 
     await waitFor(() => {
       const card = connectorCardByLabel(connector.displayName);
@@ -5948,11 +6017,11 @@ describe("connectors page", () => {
         context.mocks.ably.hasSubscription("customConnectorListChanged"),
       ).toBeTruthy();
     });
-    click(tabByText("Built-in"));
+    await selectConnectorType("Built-in");
 
     connectors = [customConnector({ slug: "_acme-search" })];
     context.mocks.ably.trigger("customConnectorListChanged");
-    click(tabByText("Custom"));
+    await selectConnectorType("Custom");
 
     await waitFor(() => {
       expect(connectorCardByLabel("Acme Search")).toBeInTheDocument();
@@ -6180,7 +6249,7 @@ describe("connectors page", () => {
       featureSwitches: {},
     });
 
-    click(await screen.findByText("Custom"));
+    await selectConnectorType("Custom");
     click(await screen.findByText("New connector"));
 
     const createDialog = await screen.findByRole("dialog", {
@@ -6917,7 +6986,7 @@ describe("connectors page", () => {
       path: "/connectors",
     });
 
-    click(await screen.findByText("Custom"));
+    await selectConnectorType("Custom");
 
     await waitFor(() => {
       expect(screen.getByText("New connector")).toBeInTheDocument();

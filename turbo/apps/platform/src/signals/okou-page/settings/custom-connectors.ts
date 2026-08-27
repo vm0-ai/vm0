@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
+  isIntegrationManagedCustomConnector,
   customConnectorByIdContract,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
@@ -26,7 +27,6 @@ import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
-import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { singleAccountConnectorMutation } from "../../connector-domain.ts";
@@ -36,7 +36,13 @@ import {
   readConnectorAccountMutationVersion,
   type ConnectorAccountMutationVersion,
 } from "./connector-accounts.ts";
-import { resetConnectorAccountDialogs$ } from "./connector-account-dialogs.ts";
+import {
+  connectorsCategory$,
+  connectorsConnectionFilter$,
+  connectorsSearch$,
+  connectorsSort$,
+  connectorsType$,
+} from "./connectors.ts";
 
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
@@ -45,33 +51,6 @@ export type CustomConnectorAuthMethodType = "api" | "oauth2";
 
 export const customConnectorAuthorizationReloadVersion$ = computed((get) => {
   return get(internalAuthorizedAgentsReload$);
-});
-
-// ---------------------------------------------------------------------------
-// Active tab on the Connectors settings page
-// ---------------------------------------------------------------------------
-
-type ConnectorsPageTab = "builtin" | "custom";
-
-function normalizeConnectorsPageTab(value: string | null): ConnectorsPageTab {
-  return value === "custom" ? "custom" : "builtin";
-}
-
-export const connectorsPageTab$ = computed((get) => {
-  return normalizeConnectorsPageTab(get(searchParams$).get("tab"));
-});
-export const setConnectorsPageTab$ = command(({ get, set }, value: string) => {
-  const tab = normalizeConnectorsPageTab(value);
-  if (tab !== normalizeConnectorsPageTab(get(searchParams$).get("tab"))) {
-    set(resetConnectorAccountDialogs$);
-  }
-  const next = new URLSearchParams(get(searchParams$));
-  if (tab === "builtin") {
-    next.delete("tab");
-  } else {
-    next.set("tab", tab);
-  }
-  set(updateSearchParams$, next);
 });
 
 /**
@@ -131,6 +110,86 @@ export const customConnectorAuthorizedAgentsById$ = computed(
       }
     }
     return agentsByConnectorId;
+  },
+);
+
+export interface CustomConnectorDirectoryResult {
+  readonly connectors: readonly CustomConnectorResponse[];
+  readonly totalConnectorCount: number;
+}
+
+function matchesCustomConnectorSearch(
+  connector: CustomConnectorResponse,
+  keyword: string,
+): boolean {
+  const needle = keyword.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  const targets =
+    connector.kind === "mcp" ? [connector.endpoint] : connector.prefixTemplates;
+  return [connector.displayName, connector.slug, ...targets].some((value) => {
+    return value.toLowerCase().includes(needle);
+  });
+}
+
+export const customConnectorDirectory$ = computed(
+  async (get): Promise<CustomConnectorDirectoryResult> => {
+    const type = get(connectorsType$);
+    if (type === "builtin") {
+      return { connectors: [], totalConnectorCount: 0 };
+    }
+
+    const connectors = (await get(customConnectors$)).filter((connector) => {
+      return !isIntegrationManagedCustomConnector(connector);
+    });
+    const search = get(connectorsSearch$);
+    const category = type === "all" ? get(connectorsCategory$) : null;
+    const connectionFilter = get(connectorsConnectionFilter$);
+    const agentConnectorIds =
+      connectionFilter.kind === "agent"
+        ? new Set(
+            (
+              (await get(customConnectorAgentAuthorizations$)).find((row) => {
+                return row.agent.agentId === connectionFilter.agentId;
+              })?.access.grants ?? []
+            ).map((grant) => {
+              return grant.customConnectorId;
+            }),
+          )
+        : null;
+
+    const matchingConnectors = category
+      ? []
+      : connectors.filter((connector) => {
+          if (!matchesCustomConnectorSearch(connector, search)) {
+            return false;
+          }
+          if (connectionFilter.kind === "connected") {
+            return connector.connected;
+          }
+          if (connectionFilter.kind === "not-connected") {
+            return !connector.connected;
+          }
+          if (connectionFilter.kind === "agent") {
+            return agentConnectorIds?.has(connector.id) ?? false;
+          }
+          return true;
+        });
+
+    if (get(connectorsSort$) === "alphabetical") {
+      matchingConnectors.sort((left, right) => {
+        return (
+          left.displayName.localeCompare(right.displayName) ||
+          left.slug.localeCompare(right.slug)
+        );
+      });
+    }
+
+    return {
+      connectors: matchingConnectors,
+      totalConnectorCount: connectors.length,
+    };
   },
 );
 

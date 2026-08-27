@@ -2572,6 +2572,8 @@
         "status": "स्थिति"
       },
       "iconUnavailable": "कनेक्टर आइकन अनुपलब्ध",
+      "loadMoreFailed": "और कनेक्टर लोड नहीं हो सके।",
+      "loadMoreRetry": "फिर से कोशिश करें",
       "newConnector": "नया कनेक्टर",
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
       "results": "{{total}} में से {{shown}} कनेक्टर दिखाए जा रहे हैं",
@@ -2582,11 +2584,13 @@
         "aria": "कनेक्टर क्रमबद्ध करें",
         "recommended": "अनुशंसित"
       },
-      "tabs": {
+      "title": "कनेक्टर्स",
+      "types": {
+        "all": "सभी प्रकार",
+        "aria": "कनेक्टर प्रकार फ़िल्टर करें",
         "builtin": "बिल्ट-इन",
         "custom": "कस्टम"
       },
-      "title": "कनेक्टर्स",
       "unnamedAgent": "अज्ञात"
     },
     "connectDialog": {

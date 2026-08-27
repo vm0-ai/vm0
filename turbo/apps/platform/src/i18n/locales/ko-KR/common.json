@@ -2564,6 +2564,8 @@
         "status": "상태"
       },
       "iconUnavailable": "커넥터 아이콘을 사용할 수 없습니다",
+      "loadMoreFailed": "커넥터를 더 불러오지 못했습니다.",
+      "loadMoreRetry": "다시 시도",
       "newConnector": "새 커넥터",
       "noConnectorsAlt": "커넥터 없음",
       "results": "커넥터 {{total}}개 중 {{shown}}개 표시",
@@ -2574,11 +2576,13 @@
         "aria": "커넥터 정렬",
         "recommended": "추천"
       },
-      "tabs": {
+      "title": "커넥터",
+      "types": {
+        "all": "모든 유형",
+        "aria": "커넥터 유형 필터",
         "builtin": "내장",
         "custom": "사용자 지정"
       },
-      "title": "커넥터",
       "unnamedAgent": "이름 없음"
     },
     "connectDialog": {

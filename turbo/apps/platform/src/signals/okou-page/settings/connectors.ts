@@ -78,6 +78,7 @@ import {
   type ConnectorAccountMutationVersion,
 } from "./connector-accounts.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../../bootstrap/google-ads-conversion-milestones.ts";
+import { resetConnectorAccountDialogs$ } from "./connector-account-dialogs.ts";
 
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
@@ -413,9 +414,12 @@ const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
 const CONNECTORS_CATEGORY_PARAM = "category";
 const CONNECTORS_SORT_PARAM = "sort";
+const CONNECTORS_TYPE_PARAM = "type";
+const LEGACY_CONNECTORS_TAB_PARAM = "tab";
 const CONNECTOR_CATALOG_PAGE_SIZE = 24;
 
 export type ConnectorCatalogSort = "recommended" | "alphabetical";
+export type ConnectorsTypeFilter = "all" | "builtin" | "custom";
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
 // status, or the connectors a given agent is authorized to use.
@@ -456,6 +460,17 @@ export const connectorsSort$ = computed((get): ConnectorCatalogSort => {
   return get(searchParams$).get(CONNECTORS_SORT_PARAM) === "alphabetical"
     ? "alphabetical"
     : "recommended";
+});
+
+export const connectorsType$ = computed((get): ConnectorsTypeFilter => {
+  const params = get(searchParams$);
+  const type = params.get(CONNECTORS_TYPE_PARAM);
+  if (type === "builtin" || type === "custom") {
+    return type;
+  }
+  return params.get(LEGACY_CONNECTORS_TAB_PARAM) === "custom"
+    ? "custom"
+    : "all";
 });
 
 const connectorCatalogDiscoveryQuery$ = computed(
@@ -567,6 +582,25 @@ export const setConnectorsSort$ = command(
       params.delete(CONNECTORS_SORT_PARAM);
     } else {
       params.set(CONNECTORS_SORT_PARAM, sort);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const setConnectorsType$ = command(
+  ({ get, set }, type: ConnectorsTypeFilter) => {
+    if (type !== get(connectorsType$)) {
+      set(resetConnectorAccountDialogs$);
+    }
+    const params = new URLSearchParams(get(searchParams$));
+    params.delete(LEGACY_CONNECTORS_TAB_PARAM);
+    if (type === "all") {
+      params.delete(CONNECTORS_TYPE_PARAM);
+    } else {
+      params.set(CONNECTORS_TYPE_PARAM, type);
+    }
+    if (type === "custom") {
+      params.delete(CONNECTORS_CATEGORY_PARAM);
     }
     set(replaceSearchParams$, params);
   },

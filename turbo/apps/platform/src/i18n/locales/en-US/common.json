@@ -2564,6 +2564,8 @@
         "status": "Status"
       },
       "iconUnavailable": "Connector icon unavailable",
+      "loadMoreFailed": "Couldn't load more connectors.",
+      "loadMoreRetry": "Try again",
       "newConnector": "New connector",
       "noConnectorsAlt": "No connectors",
       "results": "Showing {{shown}} of {{total}} connectors",
@@ -2574,11 +2576,13 @@
         "aria": "Sort connectors",
         "recommended": "Recommended"
       },
-      "tabs": {
+      "title": "Connectors",
+      "types": {
+        "all": "All types",
+        "aria": "Filter connector type",
         "builtin": "Built-in",
         "custom": "Custom"
       },
-      "title": "Connectors",
       "unnamedAgent": "Unnamed"
     },
     "connectDialog": {

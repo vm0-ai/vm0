@@ -2564,6 +2564,8 @@
         "status": "ステータス"
       },
       "iconUnavailable": "コネクタアイコンが使用不可",
+      "loadMoreFailed": "他のコネクターを読み込めませんでした。",
+      "loadMoreRetry": "もう一度試す",
       "newConnector": "新しいコネクタ",
       "noConnectorsAlt": "コネクターなし",
       "results": "{{total}} 件中 {{shown}} 件のコネクターを表示",
@@ -2574,11 +2576,13 @@
         "aria": "コネクターを並べ替え",
         "recommended": "おすすめ"
       },
-      "tabs": {
+      "title": "コネクター",
+      "types": {
+        "all": "すべてのタイプ",
+        "aria": "コネクタータイプで絞り込む",
         "builtin": "内蔵",
         "custom": "カスタム"
       },
-      "title": "コネクター",
       "unnamedAgent": "無名"
     },
     "connectDialog": {
