@@ -8895,10 +8895,18 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSelection = await connectorCatalogSelectionForRun({
-    ...args,
-    orgId: args.createArgs.orgId,
-  });
+  const [connectorCatalogSelectionResult, modelProviderResult] =
+    await Promise.allSettled([
+      connectorCatalogSelectionForRun({
+        ...args,
+        orgId: args.createArgs.orgId,
+      }),
+      resolvePreparedRunModelProvider(args, signal),
+    ]);
+  if (connectorCatalogSelectionResult.status === "rejected") {
+    throw connectorCatalogSelectionResult.reason;
+  }
+  const connectorCatalogSelection = connectorCatalogSelectionResult.value;
   signal.throwIfAborted();
   const threadConnectorSelectionIds =
     await resolvePreparedThreadConnectorSelections(
@@ -8920,7 +8928,10 @@ async function prepareRunRuntimeContext(
           connectorCatalogSelection.selection,
         )
       : args.connectorScope;
-  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
+  if (modelProviderResult.status === "rejected") {
+    throw modelProviderResult.reason;
+  }
+  const modelProvider = modelProviderResult.value;
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }

@@ -71,6 +71,7 @@ import {
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -650,6 +651,7 @@ async function expectBuiltInModelRunRuntimeRoute(
 
 function useSecretKmsClientForTests(args: {
   readonly failAfterGenerateDataKeys?: number;
+  readonly onDecrypt?: () => void;
   readonly onGenerateDataKey?: (callNumber: number) => void;
 }): void {
   let generateDataKeyCalls = 0;
@@ -677,6 +679,7 @@ function useSecretKmsClientForTests(args: {
       });
     },
     decrypt(): Promise<Uint8Array> {
+      args.onDecrypt?.();
       return Promise.resolve(TEST_DATA_KEY);
     },
   };
@@ -2279,6 +2282,136 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         "fixture-confidential-secret",
       ]);
     }
+  });
+
+  it("overlaps runtime catalog and provider reads while preserving cancellation", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-context-overlap-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-context-overlap-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await api.createOrgModelProvider(actor, {
+      type: "aws-bedrock",
+      authMethod: "access-keys",
+      secrets: {
+        AWS_ACCESS_KEY_ID: "runtime-context-access-key",
+        AWS_SECRET_ACCESS_KEY: "runtime-context-secret-key",
+        AWS_REGION: "us-east-1",
+      },
+    });
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "runtime-context-x-access",
+      refreshToken: "runtime-context-x-refresh",
+    });
+
+    const providerDecryptStarted = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!providerDecryptStarted.settled()) {
+        providerDecryptStarted.resolve(undefined);
+      }
+      clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    });
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(async () => {
+      await providerDecryptStarted.promise;
+    });
+    useSecretKmsClientForTests({
+      onDecrypt: () => {
+        if (!providerDecryptStarted.settled()) {
+          providerDecryptStarted.resolve(undefined);
+        }
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "overlap runtime catalog and provider reads",
+      }),
+      modelProviderType: "aws-bedrock",
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    expect(providerDecryptStarted.settled()).toBeTruthy();
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_connector_catalog_load_runtime_snapshot",
+      "api_dispatch_prepare_context_resolve_model_provider",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(claim.environment).toMatchObject({
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      AWS_ACCESS_KEY_ID: "runtime-context-access-key",
+      AWS_SECRET_ACCESS_KEY: "runtime-context-secret-key",
+      AWS_REGION: "us-east-1",
+    });
+    expect(claim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({ kind: "builtin", connectorSlug: "x" }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+
+    clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-context-cancel-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    const cancelledDecryptStarted = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!cancelledDecryptStarted.settled()) {
+        cancelledDecryptStarted.resolve(undefined);
+      }
+    });
+    setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(async () => {
+      await cancelledDecryptStarted.promise;
+    });
+    const requestController = new AbortController();
+    const cancellation = new Error("runtime context preparation cancelled");
+    cancellation.name = "AbortError";
+    useSecretKmsClientForTests({
+      onDecrypt: () => {
+        if (!cancelledDecryptStarted.settled()) {
+          cancelledDecryptStarted.resolve(undefined);
+          requestController.abort(cancellation);
+        }
+      },
+    });
+    const cancellableApi = createRunsApi({
+      ...context,
+      signal: requestController.signal,
+    });
+    const cancelledPrompt = `cancel overlapped runtime context ${randomUUID()}`;
+    await expect(
+      cancellableApi.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt: cancelledPrompt }),
+        modelProviderType: "aws-bedrock",
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
+      }),
+    ).rejects.toThrow(cancellation.message);
+    expect(cancelledDecryptStarted.settled()).toBeTruthy();
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((candidate) => {
+        return candidate.prompt === cancelledPrompt;
+      }),
+    ).toHaveLength(0);
   });
 
   it("memoizes scoped runtime entries by exact catalog identity", async () => {
