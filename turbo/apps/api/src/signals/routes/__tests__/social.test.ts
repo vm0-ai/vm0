@@ -1889,7 +1889,6 @@ describe("managed SocialKit route", () => {
     let providerStarts = 0;
     let multipartAttempts = 0;
     let artifactStored = false;
-    let createdDownloadId: string | undefined;
     context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
       { address: "8.8.8.8", family: 4 },
     ]);
@@ -1979,7 +1978,7 @@ describe("managed SocialKit route", () => {
       }),
       [202],
     );
-    createdDownloadId = created.body.downloadId;
+    const createdDownloadId = created.body.downloadId;
     await flushWaitUntilForTest();
     const failed = await accept(
       socialClient.getDownload({
