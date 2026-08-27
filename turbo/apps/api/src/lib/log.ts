@@ -144,12 +144,11 @@ function resolveDebugConfiguration(): DebugConfiguration {
   return { state: "conflicting-dual" };
 }
 
-// The preview and local-development writers now emit byte-equal OKOU_DEBUG and
-// VM0_DEBUG values, with Turbo passing both aliases. VM0_DEBUG remains for API
-// rollback artifacts whose reader is legacy-only. Under #28914, refresh stale
-// Worker PR #25722 before the later canonical-only writer cutover, then retain
-// this resolver until bounded source evidence records zero legacy-only and
-// equal-dual states throughout the supported rollback window.
+// Repository-owned preview, local-development, and Turbo writers emit only
+// OKOU_DEBUG. This dual reader and value-free source telemetry remain for
+// external legacy input, old checkout/rerun visibility, and supported rollback
+// compatibility. Remove them only in a later #28914 cleanup after those sources
+// and the rollback window are proven drained.
 const debugConfiguration = singleton(resolveDebugConfiguration);
 
 function getDebugPatterns(): readonly string[] {

@@ -123,13 +123,11 @@ assert_preview_job_ref_aliases_absent() {
   assert_env_key_absent "$env_file" VM0_PREVIEW_JOB_REF
 }
 
-assert_debug_aliases_equal_dual() {
+assert_debug_canonical_only() {
   local env_file="$1"
   assert_env_key_count "$env_file" OKOU_DEBUG 1
-  assert_env_key_count "$env_file" VM0_DEBUG 1
   assert_env_value "$env_file" OKOU_DEBUG "*"
-  assert_env_value "$env_file" VM0_DEBUG "*"
-  assert_env_values_equal "$env_file" OKOU_DEBUG VM0_DEBUG
+  assert_env_key_absent "$env_file" VM0_DEBUG
 }
 
 assert_debug_aliases_absent() {
@@ -480,7 +478,7 @@ success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${succ
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
 assert_zero_keys_with_live_readers_absent "$success_env_file"
-assert_debug_aliases_equal_dual "$success_env_file"
+assert_debug_canonical_only "$success_env_file"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_ID "doppler-GH_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_ID "doppler-SLACK_OAUTH_CLIENT_ID"
@@ -562,7 +560,7 @@ preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_d
 preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
 assert_contains "$preview_web_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
-assert_debug_aliases_equal_dual "$preview_web_env_file"
+assert_debug_canonical_only "$preview_web_env_file"
 assert_api_backend_url_canonical_only "$preview_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
 assert_env_key_absent "$preview_web_env_file" VM0_MACHINE_SECRET_KEY
@@ -574,7 +572,7 @@ empty_job_ref_output="$(run_action "$(build_doppler_secrets_json)" "$empty_job_r
 empty_job_ref_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_job_ref_dir}/github-output")"
 assert_contains "$empty_job_ref_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$empty_job_ref_env_file"
-assert_debug_aliases_equal_dual "$empty_job_ref_env_file"
+assert_debug_canonical_only "$empty_job_ref_env_file"
 assert_api_backend_url_canonical_only "$empty_job_ref_env_file" "https://pr-123-api-backend.vm0.test"
 assert_machine_secret_canonical_only "$empty_job_ref_env_file" "github-atom-machine-secret"
 
@@ -585,7 +583,7 @@ empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
 assert_zero_keys_with_live_readers_absent "$empty_env_file"
-assert_debug_aliases_equal_dual "$empty_env_file"
+assert_debug_canonical_only "$empty_env_file"
 assert_api_backend_url_canonical_only "$empty_env_file" "https://pr-123-api-backend.vm0.test"
 assert_machine_secret_canonical_only "$empty_env_file" "github-atom-machine-secret"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
