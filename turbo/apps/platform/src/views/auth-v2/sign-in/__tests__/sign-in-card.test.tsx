@@ -28,7 +28,10 @@ import { detachedNavigateTo$ } from "../../../../signals/route.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
 import { renderedIdentityEditPresentation } from "../../__tests__/auth-v2-button-style-assertions.ts";
-import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
+import {
+  renderedCheckboxPresentation,
+  renderedFocusedElementPresentation,
+} from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -1806,11 +1809,9 @@ describe("auth v2 sign-in flow", () => {
     const mismatchAlert = await screen.findByRole("alert");
     expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
     expect(document.activeElement).toBe(mismatchAlert);
-    expect(mismatchAlert).not.toHaveClass(
-      "focus:ring-2",
-      "focus:ring-ring",
-      "focus:ring-offset-2",
-    );
+    await expect(
+      renderedFocusedElementPresentation(mismatchAlert, context.signal),
+    ).resolves.toStrictEqual({ boxShadow: "none" });
     expectNoFieldErrorAssociation(newPasswordInput);
     expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();

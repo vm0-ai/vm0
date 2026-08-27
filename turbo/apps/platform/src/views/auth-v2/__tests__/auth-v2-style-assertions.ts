@@ -11,6 +11,10 @@ interface CheckboxPresentation {
   readonly width: string;
 }
 
+interface FocusedElementPresentation {
+  readonly boxShadow: string;
+}
+
 const checkboxTheme = `
   @theme {
     --spacing: 0.25rem;
@@ -22,6 +26,35 @@ const checkboxTheme = `
   }
   @tailwind utilities;
 `;
+
+const focusedElementTheme = `
+  @theme {
+    --color-ring: rgb(10 20 30);
+  }
+  @tailwind utilities;
+`;
+
+export async function renderedFocusedElementPresentation(
+  element: HTMLElement,
+  signal: AbortSignal,
+): Promise<FocusedElementPresentation> {
+  const compiler = await compile(focusedElementTheme);
+  const styleElement = document.createElement("style");
+  styleElement.textContent = [
+    "* { box-shadow: none; }",
+    compiler.build([...element.classList]),
+  ].join("\n");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
+
+  return { boxShadow: getComputedStyle(element).boxShadow };
+}
 
 export async function renderedCheckboxPresentation(
   checkbox: HTMLElement,
