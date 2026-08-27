@@ -42,6 +42,7 @@ path calls ``release_flow()`` to remove the reducer state and the registered res
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
@@ -77,6 +78,7 @@ FailureKind = Literal[
     "timeout",
     "connection",
 ]
+ConnectionSource = Literal["provider_response", "upstream_transport"]
 _Protocol = Literal[
     "anthropic_messages",
     "openai_chat_completions",
@@ -96,6 +98,7 @@ _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
 RUNNER_AUTH_ENV = "OKOU_MITM_RUNNER_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
+_HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_PAYMENT_REQUIRED = 402
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
@@ -144,6 +147,7 @@ _ANTHROPIC_IGNORED_HTTP_EVENTS = frozenset(
 class Failure:
     failure_kind: FailureKind
     retry_after_seconds: int | None = None
+    connection_source: ConnectionSource | None = None
 
 
 @dataclass(frozen=True)
@@ -451,7 +455,11 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
         if (
             flow_state.pending_intent == "normal" or flow_state.active_intent == "normal"
         ) and _upstream_connection_failed(flow):
-            _apply_outcome(flow, flow_state, _failure_outcome("connection"))
+            _apply_outcome(
+                flow,
+                flow_state,
+                _failure_outcome("connection", connection_source="upstream_transport"),
+            )
     else:
         response = flow.response
         failure_kind = (
@@ -468,7 +476,7 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
                 _retry_after_seconds(response.status_code, response.headers),
             )
         elif response is None and _upstream_connection_failed(flow):
-            outcome = _failure_outcome("connection")
+            outcome = _failure_outcome("connection", connection_source="upstream_transport")
         else:
             parsed_outcome = _finish_response_body(flow, flow_state.protocol)
             if flow_state.terminal_observed:
@@ -480,7 +488,10 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
                 and _HTTP_STATUS_SUCCESS_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
                 and _upstream_connection_failed(flow)
             ):
-                outcome = _failure_outcome("connection")
+                outcome = _failure_outcome(
+                    "connection",
+                    connection_source="upstream_transport",
+                )
             else:
                 outcome = _unknown_outcome()
         _apply_outcome(flow, flow_state, outcome)
@@ -708,7 +719,10 @@ def _failure_from_codes(codes: tuple[str, ...]) -> Failure | None:
     for code in codes:
         failure_kind = _failure_kind_from_code(code)
         if failure_kind is not None:
-            return Failure(failure_kind)
+            return Failure(
+                failure_kind,
+                connection_source=("provider_response" if failure_kind == "connection" else None),
+            )
     return None
 
 
@@ -778,8 +792,13 @@ def _retry_after_seconds(status: int, headers: http.Headers) -> int | None:
 def _failure_outcome(
     failure_kind: FailureKind,
     retry_after_seconds: int | None = None,
+    *,
+    connection_source: ConnectionSource | None = None,
 ) -> _Outcome:
-    return _Outcome("failure", Failure(failure_kind, retry_after_seconds))
+    return _Outcome(
+        "failure",
+        Failure(failure_kind, retry_after_seconds, connection_source),
+    )
 
 
 def _success_outcome() -> _Outcome:
@@ -882,6 +901,10 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     payload: dict[str, str | int] = {"failureKind": failure.failure_kind}
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
+    legacy_content: bytes | None = None
+    if failure.connection_source is not None:
+        legacy_content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        payload["connectionSource"] = failure.connection_source
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     report_url = (
         f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
@@ -895,6 +918,7 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
                     report_url,
                     bearer_credential,
                     content,
+                    legacy_content,
                 )
             except RuntimeError:
                 pass
@@ -907,12 +931,47 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     future.add_done_callback(lambda completed: _finish_report(completed, report_context))
 
 
-def _post_report(url: str, bearer_credential: str, content: bytes) -> int:
+def _post_report(
+    url: str,
+    bearer_credential: str,
+    content: bytes,
+    legacy_content: bytes | None,
+) -> int:
+    deadline = time.monotonic() + _REPORT_TIMEOUT_SECONDS
+    status = _post_report_once(
+        url,
+        bearer_credential,
+        content,
+        timeout=deadline - time.monotonic(),
+    )
+    if status != _HTTP_STATUS_BAD_REQUEST or legacy_content is None:
+        return status
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return status
+
+    # TODO(#29882): Remove the legacy retry after pre-source APIs leave the rollback window.
+    return _post_report_once(
+        url,
+        bearer_credential,
+        legacy_content,
+        timeout=remaining,
+    )
+
+
+def _post_report_once(
+    url: str,
+    bearer_credential: str,
+    content: bytes,
+    *,
+    timeout: float,
+) -> int:
     request = platform_api.make_api_request(url, content, bearer_credential)
     try:
         with platform_api.build_api_opener().open(
             request,
-            timeout=_REPORT_TIMEOUT_SECONDS,
+            timeout=timeout,
         ) as response:
             return response.status
     except urllib.error.HTTPError as error:
