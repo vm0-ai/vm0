@@ -44,7 +44,7 @@ import {
   reloadUserModelPreference$,
   userModelPreference$,
 } from "../../../signals/external/user-model-preference.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { detachedNavigateTo$, pathname$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import {
   resetChatPageModelSelection$,
@@ -3752,11 +3752,17 @@ describe("chat composer image model", () => {
         context.store.get(eventDrivenChatThread(optimisticThreadId)),
       ).toMatchObject({ selectedImageModel: "gpt-image-2" });
     });
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(`/chats/${optimisticThreadId}`);
+    });
 
     act(() => {
       context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
         pathParams: { agentId: AGENT_ID },
       });
+    });
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(`/agents/${AGENT_ID}/chat`);
     });
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
