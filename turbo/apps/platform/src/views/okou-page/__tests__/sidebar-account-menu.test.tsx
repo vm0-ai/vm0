@@ -32,6 +32,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. This file
+// exercises only chat and settings routes; production still resolves these
+// modules only after matching the corresponding route.
+import "../../../signals/route-setups/chat.ts";
+import "../../../signals/route-setups/settings.ts";
+
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
