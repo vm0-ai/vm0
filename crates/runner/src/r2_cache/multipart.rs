@@ -169,8 +169,18 @@ where
         // Drain at least one completion. JoinSet returns None only when
         // empty, which our outer loop condition prevents.
         if let Some(joined) = tasks.join_next().await {
-            let (pn, part) = joined.map_err(|e| R2Error::Io(io_other(e)))??;
-            parts.push((pn, part));
+            let result = match joined {
+                Ok(result) => result,
+                Err(error) => Err(R2Error::Io(io_other(error))),
+            };
+            match result {
+                Ok((pn, part)) => parts.push((pn, part)),
+                Err(error) => {
+                    // Finish cancelling uploads before the caller aborts the multipart session.
+                    tasks.shutdown().await;
+                    return Err(error);
+                }
+            }
         }
     }
 
@@ -308,7 +318,7 @@ mod tests {
 
     use tokio::{
         io::{AsyncRead, ReadBuf},
-        sync::{Notify, mpsc},
+        sync::{Barrier, Notify, mpsc},
     };
 
     use super::*;
@@ -450,5 +460,69 @@ mod tests {
                 (3, "etag-3".to_string()),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn multipart_scheduler_drops_siblings_before_returning_upload_error() {
+        struct DropFlag(Arc<AtomicBool>);
+
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let queued_read_allowed = Arc::new(AtomicBool::new(false));
+        let reader = WindowGuardReader {
+            inner: Cursor::new(b"aaaabbbbcccc".to_vec()),
+            blocked_at: 8,
+            queued_read_allowed,
+        };
+        let initial_uploads_ready = Arc::new(Barrier::new(2));
+        let sibling_dropped = Arc::new(AtomicBool::new(false));
+
+        let upload = {
+            let initial_uploads_ready = Arc::clone(&initial_uploads_ready);
+            let sibling_dropped = Arc::clone(&sibling_dropped);
+            move |part_number: i32, chunk: bytes::Bytes| {
+                let initial_uploads_ready = Arc::clone(&initial_uploads_ready);
+                let sibling_dropped = Arc::clone(&sibling_dropped);
+                async move {
+                    let expected_chunk: &[u8] = match part_number {
+                        1 => b"aaaa",
+                        2 => b"bbbb",
+                        _ => panic!("unexpected part_number {part_number}"),
+                    };
+                    assert_eq!(chunk.as_ref(), expected_chunk);
+
+                    let _drop_flag =
+                        (part_number == 1).then(|| DropFlag(Arc::clone(&sibling_dropped)));
+                    initial_uploads_ready.wait().await;
+
+                    if part_number == 1 {
+                        std::future::pending::<Result<CompletedPart, R2Error>>().await
+                    } else {
+                        Err(R2Error::S3("upload part 2 failed".to_string()))
+                    }
+                }
+            }
+        };
+
+        let error = tokio::time::timeout(
+            Duration::from_secs(5),
+            upload_parts_streaming_with(reader, 4, 2, upload),
+        )
+        .await
+        .expect("multipart scheduler test timed out")
+        .expect_err("multipart scheduler should return the upload error");
+
+        assert!(
+            sibling_dropped.load(Ordering::SeqCst),
+            "sibling upload must be dropped before the scheduler returns"
+        );
+        match error {
+            R2Error::S3(message) => assert_eq!(message, "upload part 2 failed"),
+            other => panic!("expected upload error, got {other:?}"),
+        }
     }
 }

@@ -209,6 +209,7 @@ async fn multipart_upload_guard_aborts_on_drop() {
 async fn upload_part_missing_etag_errors_with_part_number() {
     use aws_sdk_s3::Client;
     use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadOutput;
+    use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadOutput;
     use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
     use aws_sdk_s3::operation::upload_part::UploadPartOutput;
 
@@ -221,12 +222,14 @@ async fn upload_part_missing_etag_errors_with_part_number() {
     // runs (pack→stream→complete pipeline short-circuits on upload error).
     let upload_part =
         mock!(Client::upload_part).then_output(|| UploadPartOutput::builder().build());
+    let complete = mock!(Client::complete_multipart_upload)
+        .then_output(|| CompleteMultipartUploadOutput::builder().build());
     // Abort is best-effort on any error path — include a mock so the SDK
     // dispatch doesn't panic on unmatched.
     let abort = mock!(Client::abort_multipart_upload)
         .then_output(|| AbortMultipartUploadOutput::builder().build());
 
-    let cache = mock_cache("test-bucket", &[&create, &upload_part, &abort]);
+    let cache = mock_cache("test-bucket", &[&create, &upload_part, &complete, &abort]);
 
     let (_dir, path) = small_src_file().await;
     let err = cache.upload_template("abc", &path, true).await.unwrap_err();
@@ -241,6 +244,8 @@ async fn upload_part_missing_etag_errors_with_part_number() {
         }
         other => panic!("expected R2Error::S3 with pinned part_number, got {other:?}"),
     }
+    assert_eq!(abort.num_calls(), 1, "failed upload must abort once");
+    assert_eq!(complete.num_calls(), 0, "failed upload must not complete");
 }
 
 #[tokio::test]
