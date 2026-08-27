@@ -34,7 +34,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { mockEnv } from "../../../lib/env";
 import { buildArtifactKeyV2 } from "../../../lib/file-url";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1551,9 +1551,6 @@ describe("managed SocialKit route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     mockNow(Date.UTC(2000, 0, 1));
-    onTestFinished(() => {
-      clearMockNow();
-    });
     const payload = new TextEncoder().encode("downloaded social video");
     const providerJobId = `provider-download-${randomUUID()}`;
     let startBody: unknown;
@@ -1857,9 +1854,6 @@ describe("managed SocialKit route", () => {
     await expect(credits(actor)).resolves.toBe(beforeCredits);
 
     mockNow(now() + 61_000);
-    onTestFinished(() => {
-      clearMockNow();
-    });
     server.use(
       http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
         return HttpResponse.json({ jobId: providerJobId, status: "failed" });
@@ -2081,9 +2075,6 @@ describe("managed SocialKit route", () => {
     ).toBeTruthy();
 
     mockNow(now() + 61_000);
-    onTestFinished(() => {
-      clearMockNow();
-    });
     await Promise.all([
       accept(
         socialClient.getDownload({
