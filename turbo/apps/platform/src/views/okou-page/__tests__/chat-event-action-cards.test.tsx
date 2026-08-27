@@ -1695,9 +1695,11 @@ describe("chat event action cards", () => {
     });
     context.mocks.browser.open(authWindow);
     let reconnectRequired = true;
+    const gmailConnectionId = crypto.randomUUID();
 
     context.mocks.data.connectors([
       connectedConnector({
+        id: gmailConnectionId,
         slug: "gmail",
         authMethod: "oauth",
         connectionStatus: "reconnect-required",
@@ -1714,6 +1716,7 @@ describe("chat event action cards", () => {
             ? "reconnect-required"
             : "connected",
           connection: {
+            id: gmailConnectionId,
             authMethod: "oauth",
             externalUsername: null,
             externalEmail: "sender@example.com",
@@ -1741,7 +1744,10 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("gmail");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: {
+            intent: "reconnect",
+            connectionId: gmailConnectionId,
+          },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1750,6 +1756,7 @@ describe("chat event action cards", () => {
         reconnectRequired = false;
         context.mocks.data.connectors([
           connectedConnector({
+            id: gmailConnectionId,
             slug: "gmail",
             authMethod: "oauth",
             externalEmail: "sender@example.com",
@@ -1863,7 +1870,7 @@ describe("chat event action cards", () => {
       connectorOauthStartContract.start,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1969,7 +1976,7 @@ describe("chat event action cards", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -2922,7 +2929,7 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("future-connector");
         expect(body.agentId).toBe(AGENT_ID);
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authorizeAgent).toBeTruthy();
         connected = true;
         authorized = true;

@@ -66,7 +66,7 @@ import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 import { i18n } from "../../../../i18n/index.ts";
 import {
-  connectorAccountMutationFor,
+  connectorAccountOptionsFor,
   type ConnectorAccountConnectMode,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
@@ -312,11 +312,7 @@ function ManualGrantForm({
           authorizeVisibleAgents: authorizeVisibleAgentsOnConnect,
           connectorLabel,
           ...(agentId ? { agentId } : {}),
-          ...(accountMode
-            ? {
-                account: connectorAccountMutationFor(accountMode),
-              }
-            : {}),
+          ...connectorAccountOptionsFor(accountMode),
         },
         pageSignal,
       );
@@ -446,11 +442,7 @@ function OAuthAuthCodeConnectButton({
               connectorLabel: item.label,
               connectorIcon: item.icon,
               ...(agentId ? { agentId } : {}),
-              ...(accountMode
-                ? {
-                    account: connectorAccountMutationFor(accountMode),
-                  }
-                : {}),
+              ...connectorAccountOptionsFor(accountMode),
             },
             signal,
           ),
@@ -813,11 +805,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...connectorAccountOptionsFor(props.accountMode),
         },
         startOptions: selectedDeviceAuthStartOptions(
           startOptions,
@@ -1052,12 +1040,8 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
-        ...(props.accountMode
-          ? {
-              account: connectorAccountMutationFor(props.accountMode),
-              authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
-            }
-          : {}),
+        ...connectorAccountOptionsFor(props.accountMode),
+        authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
       },
       signal,
     );
@@ -1074,11 +1058,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...connectorAccountOptionsFor(props.accountMode),
         },
       },
       signal,
@@ -1161,11 +1141,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...connectorAccountOptionsFor(props.accountMode),
         },
       },
       signal,
@@ -1234,7 +1210,8 @@ function getConnectMethodContentEntries(
   return item.authMethods.flatMap((method) => {
     if (
       accountMode?.kind === "reconnect" &&
-      method.id !== accountMode.account.authMethod
+      accountMode.authMethod !== undefined &&
+      method.id !== accountMode.authMethod
     ) {
       return [];
     }

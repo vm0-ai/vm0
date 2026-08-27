@@ -175,6 +175,10 @@ import {
 } from "../../signals/chat-page/chat-goal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import {
+  defaultBuiltinConnectorAccountMode,
+  defaultCustomConnectorAccountMode,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
   openImageLightbox$ as openAttachmentImageLightbox$,
@@ -5564,20 +5568,30 @@ function ChatConnectorActionConnectModal() {
         (candidate.kind === "http" || mcpEnabled)
       );
     });
-    return connector ? (
+    const accountMode = connector
+      ? defaultCustomConnectorAccountMode(connector)
+      : null;
+    return connector && accountMode ? (
       <CustomConnectorConnectDialog
         connector={connector}
         agentId={active.agentId}
+        accountMode={accountMode}
         onClose={close}
         onSuccess={onSuccess}
       />
     ) : null;
   }
 
+  const accountMode = defaultBuiltinConnectorAccountMode(active.catalogItem);
+  if (!accountMode) {
+    return null;
+  }
+
   return (
     <ConnectModal
       item={active.catalogItem}
       agentId={active.agentId}
+      accountMode={accountMode}
       onClose={close}
       onSuccess={onSuccess}
     />

@@ -51,10 +51,11 @@ import {
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
   type ConnectorCatalogBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
-  singleAccountConnectorMutation,
-  type PlatformConnectorCatalogStatusItem,
-} from "../../signals/connector-domain.ts";
+  connectorAccountMutationFor,
+  defaultBuiltinConnectorAccountMode,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import {
   copyAttachmentLinkToClipboard,
   publicAttachmentUrl,
@@ -185,6 +186,14 @@ function startGoogleDriveConnectAndRun(
     return;
   }
   const agentId = params.agentId;
+  const accountMode = defaultBuiltinConnectorAccountMode(params.connector);
+  if (!accountMode) {
+    return;
+  }
+  const account = connectorAccountMutationFor(accountMode);
+  if (!account) {
+    return;
+  }
   const authWindow = window.open(
     "about:blank",
     "_blank",
@@ -203,7 +212,7 @@ function startGoogleDriveConnectAndRun(
       const request = {
         params: { connectorSlug: params.connector.slug },
         body: {
-          account: singleAccountConnectorMutation,
+          account,
           authMethod: params.authMethod.id,
           agentId,
           authorizeAgent: true as const,

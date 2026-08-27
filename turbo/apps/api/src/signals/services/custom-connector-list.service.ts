@@ -11,7 +11,8 @@ import {
 } from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
-  customConnectorDefinitionHasConnectedConnection,
+  customConnectorDefinitionConnectedAccountId,
+  customConnectorDefinitionConnectedAccountUpdatedAt,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
@@ -48,10 +49,15 @@ export function customConnectorList(args: {
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),
         valueMarkers: markers,
-        connectedConnection: customConnectorDefinitionHasConnectedConnection({
+        connectedAccountId: customConnectorDefinitionConnectedAccountId({
           connectedConnections,
           definition: row.connector,
         }),
+        connectedAccountUpdatedAt:
+          customConnectorDefinitionConnectedAccountUpdatedAt({
+            connectedConnections,
+            definition: row.connector,
+          }),
       });
     });
   });

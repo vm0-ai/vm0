@@ -455,6 +455,7 @@ describe("directed connector connect page", () => {
 
   it("starts OAuth and authorizes an OAuth custom connector", async () => {
     let connected = false;
+    const connectionId = crypto.randomUUID();
     let grants: AgentCustomConnectorGrant[] = [];
     const connector = customConnector({
       slug: "_acme-oauth",
@@ -481,16 +482,29 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected }],
+        connectors: [
+          {
+            ...connector,
+            connected,
+            ...(connected
+              ? {
+                  connectedAccountId: connectionId,
+                  connectedAccountUpdatedAt: "2026-01-01T00:00:01Z",
+                }
+              : {}),
+          },
+        ],
       });
     });
     context.mocks.api(
       customConnectorOAuth2Contract.start,
-      ({ params, respond }) => {
+      ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
+        expect(body.account).toStrictEqual({ intent: "add" });
         connected = true;
         return respond(200, {
           authorizationUrl: "https://acme.test/oauth/authorize",
+          connectionId,
         });
       },
     );
@@ -532,8 +546,96 @@ describe("directed connector connect page", () => {
     });
   });
 
+  it("reconnects the exact default OAuth custom connector account", async () => {
+    const connectionId = crypto.randomUUID();
+    let connectedAccountUpdatedAt = "2026-01-01T00:00:00Z";
+    let grants: AgentCustomConnectorGrant[] = [];
+    const connector = customConnector({
+      slug: "_acme-oauth-reconnect",
+      displayName: "Acme OAuth Reconnect",
+      authMode: "oauth",
+      connected: true,
+      connectedAccountId: connectionId,
+      connectedAccountUpdatedAt,
+      fields: [],
+      missingRequiredFields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "client-id",
+        authorizationUrl: "https://acme.test/oauth/reconnect",
+        tokenUrl: "https://acme.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [{ ...connector, connectedAccountUpdatedAt }],
+      });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId,
+        });
+        connectedAccountUpdatedAt = "2026-01-01T00:00:01Z";
+        return respond(200, {
+          authorizationUrl: "https://acme.test/oauth/reconnect",
+        });
+      },
+    );
+    context.mocks.api(
+      agentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        grants = body.grants;
+        return respond(200, { grants });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    authWindow.closed = true;
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Acme OAuth Reconnect connected");
+    click(getButtonByText("Reconnect"));
+    await screen.findByRole("dialog", {
+      name: "Connect Acme OAuth Reconnect",
+    });
+    click(getButtonByText("Continue"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://acme.test/oauth/reconnect",
+      );
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
+    });
+  });
+
   it("starts permissioned OAuth before checking the target grant", async () => {
     let connected = false;
+    const connectionId = crypto.randomUUID();
     let authorizationUpdates = 0;
     const authorizationRequested = context.mocks.deferred<void>();
     const releaseAuthorization = context.mocks.deferred<void>();
@@ -563,16 +665,29 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected }],
+        connectors: [
+          {
+            ...connector,
+            connected,
+            ...(connected
+              ? {
+                  connectedAccountId: connectionId,
+                  connectedAccountUpdatedAt: "2026-01-01T00:00:01Z",
+                }
+              : {}),
+          },
+        ],
       });
     });
     context.mocks.api(
       customConnectorOAuth2Contract.start,
-      ({ params, respond }) => {
+      ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
+        expect(body.account).toStrictEqual({ intent: "add" });
         connected = true;
         return respond(200, {
           authorizationUrl: "https://acme.test/oauth/authorize",
+          connectionId,
         });
       },
     );
@@ -731,7 +846,7 @@ describe("directed connector connect page", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
